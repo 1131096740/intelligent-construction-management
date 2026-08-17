@@ -2,7 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Injectable
+  Inject,
+  Injectable,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -11,7 +12,17 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { dbMoneyToBigInt } from "../money/decimal-money";
+import {
+  OperatingLedgerService
+} from "../operating-ledger/operating-ledger.service";
+import { CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE } from "./contract-takeover-operating-source.adapter";
 import { ContractTakeoverBalanceService } from "./contract-takeover-balance.service";
+import {
+  buildOperatingCorrectionInput,
+  operatingInputFromStoredFact,
+  type ContractTakeoverCorrectionProjection,
+  type StoredOperatingFact
+} from "./contract-takeover-operating-correction";
 import type { ReviewContractTakeoverCorrectionDto } from "./dto/review-contract-takeover-correction.dto";
 import type {
   ContractTakeoverCorrectionScope,
@@ -64,6 +75,7 @@ interface LockedBalanceEntry {
   reversesEntryId: string | null;
   balanceType: BalanceType;
   takeoverId: string;
+  historicalPaymentId: string | null;
 }
 
 type Snapshot = Record<string, string | number | null>;
@@ -75,7 +87,10 @@ export class ContractTakeoverCorrectionService {
     private readonly audit: AuditService,
     private readonly auth: AuthService,
     private readonly files: FileService,
-    private readonly balances: ContractTakeoverBalanceService
+    private readonly balances: ContractTakeoverBalanceService,
+    @Inject(OperatingLedgerService)
+    private readonly operatingLedger: OperatingLedgerService =
+      missingOperatingLedgerService()
   ) {}
 
   async submit(
@@ -327,7 +342,8 @@ export class ContractTakeoverCorrectionService {
             takeover,
             correction,
             scope,
-            actorUserId
+            actorUserId,
+            now
           );
           const applied =
             await tx.contractTakeoverCorrection.updateMany({
@@ -710,7 +726,7 @@ export class ContractTakeoverCorrectionService {
           "反向后余额"
         ).toString()
       },
-      targetHistoricalPaymentId: null,
+      targetHistoricalPaymentId: entry.historicalPaymentId,
       targetAllocationId: null,
       targetBalanceEntryId: entry.id
     };
@@ -724,6 +740,7 @@ export class ContractTakeoverCorrectionService {
       correctionOperation: string | null;
       targetRevision: number | null;
       targetBalanceRevision: number | null;
+      targetHistoricalPaymentId: string | null;
       targetAllocationId: string | null;
       targetBalanceEntryId: string | null;
       beforeSnapshot: Prisma.JsonValue;
@@ -732,13 +749,16 @@ export class ContractTakeoverCorrectionService {
       applicationIdempotencyKey: string | null;
     },
     scope: ContractTakeoverCorrectionScope,
-    actorUserId: string
+    actorUserId: string,
+    appliedAt: Date
   ) {
     const applicationIdempotencyKey = required(
       correction.applicationIdempotencyKey,
       "历史更正缺少应用幂等键"
     );
+    let entryKind: "correction" | "reversal" = "correction";
     if (correction.correctionOperation === "reversal") {
+      entryKind = "reversal";
       const entryId = required(
         correction.targetBalanceEntryId,
         "历史反向更正缺少原流水"
@@ -756,9 +776,7 @@ export class ContractTakeoverCorrectionService {
         `${applicationIdempotencyKey}:reversal`,
         correction.id
       );
-      return;
-    }
-    if (correction.correctionOperation === "reclassification") {
+    } else if (correction.correctionOperation === "reclassification") {
       await this.applyReclassification(
         tx,
         takeover,
@@ -767,42 +785,50 @@ export class ContractTakeoverCorrectionService {
         actorUserId,
         applicationIdempotencyKey
       );
-      return;
-    }
-    const deltaCents = jsonMoney(
-      correction.deltaSnapshot,
-      "amountCents",
-      "历史更正差额"
-    );
-    if (scope === "historical_settlement") {
-      await this.applySettlementCorrection(
-        tx,
-        takeover,
-        correction,
-        deltaCents,
-        actorUserId
+    } else {
+      const deltaCents = jsonMoney(
+        correction.deltaSnapshot,
+        "amountCents",
+        "历史更正差额"
       );
-      return;
+      if (scope === "historical_settlement") {
+        await this.applySettlementCorrection(
+          tx,
+          takeover,
+          correction,
+          deltaCents,
+          actorUserId
+        );
+      } else if (scope === "historical_payment") {
+        await this.applyPaymentCorrection(
+          tx,
+          takeover,
+          correction,
+          deltaCents,
+          actorUserId,
+          applicationIdempotencyKey
+        );
+      } else {
+        await this.applyBalanceCorrection(
+          tx,
+          takeover,
+          correction,
+          this.parseBalanceType(scope),
+          deltaCents,
+          actorUserId,
+          applicationIdempotencyKey
+        );
+      }
     }
-    if (scope === "historical_payment") {
-      await this.applyPaymentCorrection(
-        tx,
-        takeover,
-        correction,
-        deltaCents,
-        actorUserId,
-        applicationIdempotencyKey
-      );
-      return;
-    }
-    await this.applyBalanceCorrection(
+    await this.appendOperatingCorrection(
       tx,
       takeover,
       correction,
-      this.parseBalanceType(scope),
-      deltaCents,
+      scope,
       actorUserId,
-      applicationIdempotencyKey
+      applicationIdempotencyKey,
+      entryKind,
+      appliedAt
     );
   }
 
@@ -936,6 +962,114 @@ export class ContractTakeoverCorrectionService {
         "历史接管累计金额并发变化，更正应用已中止"
       );
     }
+  }
+
+  private async appendOperatingCorrection(
+    tx: Prisma.TransactionClient,
+    takeover: LockedTakeover,
+    correction: {
+      id: string;
+      correctionOperation: string | null;
+      targetHistoricalPaymentId: string | null;
+      beforeSnapshot: Prisma.JsonValue;
+      deltaSnapshot: Prisma.JsonValue | null;
+    },
+    scope: ContractTakeoverCorrectionScope,
+    actorUserId: string,
+    idempotencyKey: string,
+    entryKind: "correction" | "reversal",
+    appliedAt: Date
+  ) {
+    const project = await tx.project.findUnique({
+      where: { id: takeover.projectId },
+      select: { operatingLedgerEffectiveDate: true }
+    });
+    if (!project?.operatingLedgerEffectiveDate) return;
+
+    const sourceType =
+      scope === "historical_settlement"
+        ? "settlement"
+        : CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE;
+    let sourceBusinessId =
+      scope === "historical_settlement"
+        ? takeover.historicalInitialSettlementId
+        : correction.targetHistoricalPaymentId;
+    if (scope !== "historical_settlement" && !sourceBusinessId) {
+      const candidates = await tx.$queryRaw<
+        Array<{ historicalPaymentId: string }>
+      >(
+        Prisma.sql`
+          SELECT allocation."historicalPaymentId"
+          FROM "ContractTakeoverHistoricalPaymentAllocation" allocation
+          JOIN "ContractTakeoverHistoricalPayment" payment
+            ON payment."id" = allocation."historicalPaymentId"
+          WHERE payment."takeoverId" = ${takeover.id}
+            AND payment."status" = 'activated'
+            AND allocation."allocationType" = ${scope}
+          ORDER BY payment."sequenceNo", allocation."allocationOrder"
+          LIMIT 2
+        `
+      );
+      if (candidates.length !== 1) {
+        throw new ConflictException(
+          "历史余额更正必须引用唯一的历史实付来源，不能自动选择首笔付款"
+        );
+      }
+      sourceBusinessId = candidates[0].historicalPaymentId;
+    }
+    if (!sourceBusinessId) {
+      throw new ConflictException("历史更正缺少可追溯的经营来源");
+    }
+    const original = await tx.operatingFact.findUnique({
+      where: {
+        sourceType_sourceBusinessId: { sourceType, sourceBusinessId }
+      },
+      include: { impacts: true }
+    });
+    if (!original || original.entryKind !== "original") {
+      throw new ConflictException("历史更正对应的原经营事实不存在");
+    }
+
+    const originalInput = operatingInputFromStoredFact(
+      original as StoredOperatingFact
+    );
+    const originalSnapshot = {
+      projectId: original.projectId,
+      sourceType,
+      sourceBusinessId,
+      sourceBusinessCode: original.sourceBusinessCode,
+      sourceVersion: original.sourceVersion,
+      status: "confirmed" as const,
+      sourceSnapshot: original.sourceSnapshot as Prisma.InputJsonObject
+    };
+    const projection: ContractTakeoverCorrectionProjection = {
+      id: correction.id,
+      originalFactId: original.id,
+      correctionOperation: correction.correctionOperation,
+      correctionScope: scope,
+      targetHistoricalPaymentId: correction.targetHistoricalPaymentId,
+      beforeSnapshot: correction.beforeSnapshot,
+      deltaSnapshot: correction.deltaSnapshot,
+      applicationIdempotencyKey: idempotencyKey,
+      appliedByUserId: actorUserId,
+      appliedAt
+    };
+    // This business reversal reopens one balance impact; it is not a reversal
+    // of the entire historical payment fact. Keep the ledger entry partial so
+    // it satisfies the ledger's full-reversal invariant.
+    const operatingEntryKind = entryKind === "reversal" ? "correction" : entryKind;
+    const input = buildOperatingCorrectionInput(
+      originalInput,
+      originalSnapshot,
+      projection,
+      operatingEntryKind
+    );
+    await this.operatingLedger.appendCorrectionInTransaction(
+      tx,
+      input,
+      actorUserId,
+      operatingEntryKind
+    );
   }
 
   private async applySettlementCorrection(
@@ -1528,6 +1662,7 @@ export class ContractTakeoverCorrectionService {
           entry."entryKind",
           entry."amountCents",
           entry."reversesEntryId",
+          entry."historicalPaymentId",
           account."balanceType",
           account."takeoverId"
         FROM "ContractTakeoverBalanceEntry" entry
@@ -1749,6 +1884,14 @@ export class ContractTakeoverCorrectionService {
     }
     throw error;
   }
+}
+
+function missingOperatingLedgerService(): OperatingLedgerService {
+  return {
+    appendCorrectionInTransaction: async () => {
+      throw new Error("经营账更正服务未注入，已拒绝正式来源写入");
+    }
+  } as unknown as OperatingLedgerService;
 }
 
 function required(value: string | null | undefined, message: string) {

@@ -964,6 +964,29 @@ test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", 
   );
 });
 
+test("新增主线 Prisma 模型均有唯一显式中文归类", () => {
+  const policyByName = new Map(
+    BUSINESS_ZEROING_POLICY.tables.map((item) => [item.name, item])
+  );
+  const expected = {
+    BusinessEntrySubmissionSnapshot: ["business_review", "统一业务录入提交快照"],
+    OperatingFact: ["business_review", "经营事实"],
+    OperatingImpactEntry: ["business_review", "经营影响分录"],
+    OperatingTakeoverActivation: ["business_review", "历史经营接管激活记录"],
+    OperatingTakeoverAttachmentGroup: ["business_review", "历史经营接管附件组"],
+    OperatingTakeoverAttachmentLink: ["business_review", "历史经营接管附件绑定"],
+    OperatingTakeoverBatch: ["business_review", "历史经营接管批次"],
+    OperatingTakeoverConfirmation: ["business_review", "历史经营接管专业确认"],
+    OperatingTakeoverIssue: ["business_review", "历史经营接管问题"],
+    OperatingTakeoverRow: ["business_review", "历史经营接管明细"],
+    ProjectParticipatingCompany: ["review", "项目我方参与公司"]
+  };
+
+  for (const [name, [disposition, chineseName]] of Object.entries(expected)) {
+    assert.deepEqual(policyByName.get(name), { name, chineseName, disposition });
+  }
+});
+
 test("基础资料无外键逻辑关联有显式注册且触发器函数进入 Schema 指纹", () => {
   for (const expected of [
     ["UserPosition", "userId", "User"],

@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { BadRequestException } from "@nestjs/common";
 import * as ExcelJS from "exceljs";
 import { degrees, PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument = require("pdfkit");
@@ -19,6 +20,22 @@ const PDF_TABLE_HEADERS = [
   "含税金额",
   "备注"
 ] as const;
+
+const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  approval_pending: "审批中",
+  approval_rejected: "审批退回",
+  pending_generation: "待生成",
+  approved_pending_archive: "已批待归档",
+  archive_pending: "待归档确认",
+  pending_archive_confirm: "待归档确认",
+  effective: "已生效",
+  partially_paid: "部分已付款",
+  paid: "已付款",
+  withdrawn: "已撤回",
+  abandoned: "已放弃",
+  voided: "已作废"
+};
 export const SETTLEMENT_SIGNATURE_BOARD_LAYOUT = {
   margin: 24,
   boardTop: 470,
@@ -87,6 +104,10 @@ export interface SettlementDocumentLine {
   remark: string | null;
 }
 
+export function settlementStatusLabel(value: string): string {
+  return SETTLEMENT_STATUS_LABELS[value] ?? "状态待确认";
+}
+
 export interface SettlementDocumentRow {
   source: string;
   previousCumulativeCents: bigint;
@@ -146,6 +167,7 @@ export function settlementSignatureBoardPageIndexes(
 }
 
 export async function renderSettlementDraftExcel(input: SettlementDocumentInput): Promise<Buffer> {
+  assertSettlementTaxLabels(input);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "建工智管";
   workbook.created = input.generatedAt;
@@ -170,7 +192,7 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
     }
   });
   sheet.pageSetup.printTitlesRow = "1:9";
-  sheet.headerFooter.oddHeader = '&C&"Arial,Bold"&24草稿 DRAFT';
+  sheet.headerFooter.oddHeader = '&C&"Arial,Bold"&24草稿';
   sheet.views = [{ state: "frozen", ySplit: 9 }];
   sheet.columns = [
     { width: 6 },
@@ -194,7 +216,7 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
   sheet.getRow(1).height = 28;
 
   sheet.mergeCells("A2:L2");
-  sheet.getCell("A2").value = "草稿 DRAFT";
+  sheet.getCell("A2").value = "草稿";
   sheet.getCell("A2").font = { size: 22, bold: true, color: { argb: "FFBFBFBF" } };
   sheet.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
   sheet.getRow(2).height = 32;
@@ -203,7 +225,7 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
     ["项目名称", input.projectName, "", "结算编号", input.settlementCode, "", "结算期次", input.periodLabel, "", "", "", ""],
     ["合同名称", input.contractName, "", "合同编号", input.contractCode, "", "相对方", input.counterparty, "", "", "", ""],
     ["我方主体", input.companyEntityName, "", "结算类型", input.isFinal ? "最终结算" : "过程结算", "", "生成日期", formatDate(input.generatedAt), "", "", "", ""],
-    ["状态", input.status, "", "", "", "", "", "", "", "", "", ""]
+    ["状态", settlementStatusLabel(input.status), "", "", "", "", "", "", "", "", "", ""]
   ];
   for (const values of infoRows) {
     sheet.addRow(values);
@@ -212,13 +234,13 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
   sheet.addRow([
     "税务事实",
     "发票类型",
-    input.invoiceType,
+    settlementInvoiceTypeLabel(input.invoiceType),
     "税率模式",
-    input.taxMode,
+    settlementTaxModeLabel(input.taxMode),
     "默认税率",
     input.defaultTaxRatePercent ? `${input.defaultTaxRatePercent}%` : "—",
-    "税务修订",
-    input.taxFactRevision ?? "—",
+    "税务资料",
+    input.taxFactRevision == null ? "未提供" : "已核对",
     "",
     "",
     ""
@@ -314,6 +336,7 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
 }
 
 export async function renderSettlementArchivePdf(input: SettlementDocumentInput): Promise<Buffer> {
+  assertSettlementTaxLabels(input);
   const margin = 24;
   const doc = new PDFDocument({
     size: "A4",
@@ -367,7 +390,7 @@ export function settlementPdfPagePlan(input: SettlementDocumentInput): Settlemen
     pageNumber: pageIndex + 1,
     pageCount: linePages.length,
     settlementCode: input.settlementCode,
-    revisionLabel: `R${input.documentRevision ?? 1}`,
+    revisionLabel: "结算单",
     pageMarker: `第 ${pageIndex + 1}/${linePages.length} 页`,
     lineStartIndex: pageIndex * PDF_LINE_ROWS_PER_PAGE,
     lines,
@@ -434,7 +457,7 @@ function drawSettlementPdfPage(
   const contentWidth = pageWidth - margin * 2;
   doc.fontSize(16).text("工程结算单", margin, 18, { width: contentWidth, align: "center" });
   doc.fontSize(7.5).fillColor("#334155").text(
-    `结算编号：${page.settlementCode}    文件 revision：${page.revisionLabel}`,
+    `结算编号：${page.settlementCode}    单据：${page.revisionLabel}`,
     margin,
     44,
     { width: contentWidth / 2, align: "left" }
@@ -452,7 +475,7 @@ function drawSettlementPdfPage(
   }
   drawSingleRowSignatureBoard(doc, input, margin, contentWidth);
   doc.fontSize(6.5).fillColor("#475569").text(
-    `生成日期：${formatDate(input.generatedAt)}  ·  本页表头及签名栏为冻结版式`,
+    `生成日期：${formatDate(input.generatedAt)}  ·  本页表头及签名栏按结算单版式生成`,
     margin,
     558,
     { width: contentWidth, align: "center" }
@@ -475,14 +498,46 @@ function drawCompactInfoRows(
     x,
     y + 42,
     [
-      "发票类型", input.invoiceType,
+      "发票类型", settlementInvoiceTypeLabel(input.invoiceType),
       "税率", input.defaultTaxRatePercent ? `${input.defaultTaxRatePercent}%` : "—",
-      "税务事实", `修订 ${input.taxFactRevision ?? "—"} · ${input.taxMode}`
+      "税务事实",
+      `${input.taxFactRevision == null ? "未提供" : "已核对"} · ${settlementTaxModeLabel(input.taxMode)}`
     ],
     widths,
     22,
     [0, 2, 4]
   );
+}
+
+const SETTLEMENT_INVOICE_TYPE_LABELS: Record<string, string> = {
+  vat_general: "增值税普通发票",
+  vat_special: "增值税专用发票",
+  增值税普通发票: "增值税普通发票",
+  增值税专用发票: "增值税专用发票"
+};
+
+const SETTLEMENT_TAX_MODE_LABELS: Record<string, string> = {
+  single_rate: "单一税率",
+  multiple_rate: "特殊多税率",
+  单一税率: "单一税率",
+  特殊多税率: "特殊多税率"
+};
+
+function settlementInvoiceTypeLabel(value: string): string {
+  return SETTLEMENT_INVOICE_TYPE_LABELS[value] ?? "—";
+}
+
+function settlementTaxModeLabel(value: string): string {
+  return SETTLEMENT_TAX_MODE_LABELS[value] ?? "—";
+}
+
+function assertSettlementTaxLabels(input: SettlementDocumentInput) {
+  const invoiceTypeMissing = !input.invoiceType || input.invoiceType === "—";
+  const taxModeMissing = !input.taxMode || input.taxMode === "—";
+  if ((!invoiceTypeMissing && !SETTLEMENT_INVOICE_TYPE_LABELS[input.invoiceType]) ||
+    (!taxModeMissing && !SETTLEMENT_TAX_MODE_LABELS[input.taxMode])) {
+    throw new BadRequestException("结算单税务事实不完整，不能生成业务制品");
+  }
 }
 
 function drawSettlementLineTable(

@@ -500,6 +500,7 @@ describe("web admin routes", () => {
       "组织权限",
       "系统配置",
       "项目经营",
+      "历史经营接管",
       "项目花名册"
     ]));
   });
@@ -576,6 +577,7 @@ describe("web admin routes", () => {
       { label: "全局搜索", path: "/全局搜索" },
       { label: "审批中心", path: "/审批中心" },
       { label: "项目工作台", path: "/项目经营" },
+      { label: "历史经营接管", path: "/历史经营接管" },
       { label: "项目花名册", path: "/项目花名册" },
       { label: "合同工作台", path: "/合同工作台" },
       { label: "历史合同接管", path: "/历史合同接管" },

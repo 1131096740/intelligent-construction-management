@@ -153,6 +153,7 @@ run_workspace_tests() {
 }
 
 run_business_and_operations_safety() {
+  "$NODE_BIN" scripts/check-business-language.mjs
   "$NODE_BIN" services/api/scripts/check-business-errors.self-test.cjs
   "$PNPM_BIN" --filter @jiangkong/api check:business-errors
   "$BASH_BIN" scripts/ops/go-live-safety-self-test.sh

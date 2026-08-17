@@ -34,19 +34,13 @@ export interface FileDownloadAuditRow {
   occurredAt: string;
   actor: string;
   action: string;
-  actionKey:
-    | "file.download.ticket"
-    | "file.download"
-    | "approval.form.download"
-    | "settlement.approval_pdf.download";
-  fileId: string;
+  actionKind: "ticket" | "download" | "other";
   fileName: string;
   businessType: string;
   businessTarget: string;
   downloadReason: string;
   ipAddress: string;
-  traceId: string;
-  sensitive: string;
+  auditNote: string;
 }
 
 export interface FileDownloadAuditFilters {
@@ -117,8 +111,7 @@ export const fileDownloadAuditColumns: PrimaryTableCol<FileDownloadAuditRow>[] =
   { colKey: "downloadReason", title: "下载原因", minWidth: 180 },
   { colKey: "businessTarget", title: "业务对象", minWidth: 128 },
   { colKey: "ipAddress", title: "IP地址", width: 112 },
-  { colKey: "traceId", title: "追溯编号", minWidth: 128 },
-  { colKey: "sensitive", title: "脱敏说明", minWidth: 150 }
+  { colKey: "auditNote", title: "审计说明", minWidth: 220 }
 ];
 
 export const auditLogRows: AuditLogRow[] = [];
@@ -151,12 +144,10 @@ export function filterFileDownloadAuditRows(
       includesAny(
         [
           row.action,
-          row.actionKey,
           row.businessType,
           row.businessTarget,
-          row.fileId,
           row.ipAddress,
-          row.traceId
+          row.auditNote
         ],
         filters.keyword
       )

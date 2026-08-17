@@ -9,8 +9,7 @@ async function takeoverWorkbook() {
     "合同名称",
     "相对方",
     "合同类型",
-    "签约主体编号",
-    "签约主体名称",
+    "签约主体",
     "合同金额(元)",
     "签订日期",
     "接管等级",
@@ -26,13 +25,12 @@ async function takeoverWorkbook() {
     "HT-HIS-001",
     "历史材料合同",
     "供应商甲",
-    "material_purchase",
-    "entity-historical-1",
+    "材料采购合同",
     "甲公司",
     "10000.00",
     "2026-01-10",
-    "B",
-    "in_progress",
+    "B级",
+    "履约中",
     "按月结算",
     "增值税专用发票",
     "单一税率",
@@ -43,9 +41,7 @@ async function takeoverWorkbook() {
   const pricing = workbook.addWorksheet("计价清单");
   pricing.addRow([
     "合同编号",
-    "清单标识",
     "清单名称",
-    "项目标识",
     "项目编号",
     "名称",
     "规格型号",
@@ -58,9 +54,7 @@ async function takeoverWorkbook() {
   ]);
   pricing.addRow([
     "HT-HIS-001",
-    "main",
     "材料清单",
-    "row-1",
     "CL-001",
     "钢材",
     "HRB400",
@@ -83,9 +77,13 @@ describe("ContractTakeoverExcelService", () => {
 
     expect(result.fileName).toBe("历史合同接管导入模板.xlsx");
     expect(workbook.getWorksheet("合同主表")?.getRow(1).getCell(1).value).toBe("合同编号");
-    expect(workbook.getWorksheet("计价清单")?.getRow(1).getCell(10).value).toBe(
+    expect(workbook.getWorksheet("计价清单")?.getRow(1).getCell(8).value).toBe(
       "含税单价(元)"
     );
+    const templateText = JSON.stringify(workbook.model);
+    expect(templateText).not.toContain("签约主体编号");
+    expect(templateText).not.toContain("清单标识");
+    expect(templateText).not.toContain("项目标识");
   });
 
   it("re-reads the same private file and applies only the prechecked workbook facts", async () => {
@@ -126,14 +124,14 @@ describe("ContractTakeoverExcelService", () => {
         rows: [
           expect.objectContaining({
             code: "HT-HIS-001",
-            companyEntityId: "entity-historical-1",
             companyEntityName: "甲公司",
             amountCents: "1000000",
             invoiceType: "vat_special",
             defaultTaxRatePercent: "13",
             pricingItems: [
               expect.objectContaining({
-                rowKey: "row-1",
+                billKey: "HT-HIS-001-清单-1",
+                rowKey: "项目-1",
                 estimatedQuantity: "2",
                 taxInclusiveUnitPrice: "100"
               })
@@ -160,7 +158,6 @@ describe("ContractTakeoverExcelService", () => {
         rows: [
           expect.objectContaining({
             code: "HT-HIS-001",
-            companyEntityId: "entity-historical-1",
             companyEntityName: "甲公司",
             pricingItems: [expect.objectContaining({ itemName: "钢材" })]
           })
@@ -168,6 +165,44 @@ describe("ContractTakeoverExcelService", () => {
       }),
       "contract-user"
     );
+  });
+
+  it("rejects technical enum values instead of passing them into the takeover precheck", async () => {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load((await takeoverWorkbook()) as unknown as ExcelJS.Buffer);
+    workbook.getWorksheet("合同主表")!.getRow(2).getCell(4).value = "material_purchase";
+    workbook.getWorksheet("计价清单")!.getRow(2).getCell(10).value = "true";
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const files = {
+      getFileBuffer: jest.fn().mockResolvedValue({
+        file: {
+          originalName: "历史合同.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          sizeBytes: buffer.length,
+          uploadedByUserId: "contract-user",
+          storageStatus: "active"
+        },
+        buffer
+      })
+    };
+    const takeovers = { precheckImport: jest.fn() };
+    const service = new ContractTakeoverExcelService(files as never, takeovers as never);
+
+    const preview = await service.preview("project-1", "contract-user", { fileId: "file-1" });
+
+    expect(preview.errors).toContainEqual({
+      sheet: "合同主表",
+      row: 2,
+      column: "合同类型",
+      message: "合同类型必须填写中文业务名称"
+    });
+    expect(preview.errors).toContainEqual({
+      sheet: "计价清单",
+      row: 2,
+      column: "是否暂定",
+      message: "是否暂定必须填写“是”或“否”"
+    });
+    expect(takeovers.precheckImport).not.toHaveBeenCalled();
   });
 
   it("rejects an apply request when the private file changed after preview", async () => {
@@ -248,8 +283,10 @@ describe("ContractTakeoverExcelService", () => {
   });
 
   it("exports one takeover detail with pricing, evidence metadata and tax revision history", async () => {
+    const detail = takeoverReadModel();
+    detail.pricingItems[0]!.pricingFactStatus = "pricing_fact_internal";
     const takeovers = {
-      detail: jest.fn().mockResolvedValue(takeoverReadModel())
+      detail: jest.fn().mockResolvedValue(detail)
     };
     const taxFacts = {
       list: jest.fn().mockResolvedValue({
@@ -347,7 +384,7 @@ describe("ContractTakeoverExcelService", () => {
       "税务修订明细",
       "资料与更正"
     ]);
-    expect(workbook.getWorksheet("税务修订")?.getRow(2).getCell(2).value).toBe(1);
+    expect(workbook.getWorksheet("税务修订")?.getRow(2).getCell(2).value).toBe("当前资料");
     expect(
       workbook.getWorksheet("税务修订明细")?.getRow(2).values
     ).toEqual(
@@ -355,6 +392,10 @@ describe("ContractTakeoverExcelService", () => {
     );
     expect(JSON.stringify(workbook.model)).not.toContain("file-tax-1");
     expect(JSON.stringify(workbook.model)).not.toContain("bill-row-internal-1");
+    expect(JSON.stringify(workbook.model)).not.toContain("修订号");
+    expect(JSON.stringify(workbook.model)).not.toContain("revisionNo");
+    expect(JSON.stringify(workbook.model)).not.toContain("pricing_fact_internal");
+    expect(JSON.stringify(workbook.model)).toContain("价格状态待确认");
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

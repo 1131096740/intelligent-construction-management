@@ -15,28 +15,34 @@ const {
   parseArguments,
   validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
+const {
+  GROUPS: remainingGroups,
+  selectGroups: selectRemainingGroups
+} = require("./run-database-dynamic-remaining-local.cjs");
 
 const runnerPath = path.join(
   __dirname,
   "run-database-dynamic-gate-local.cjs"
 );
 
-test("manifest derives all 66 pending tests as executable local coverage", () => {
+test("manifest derives all 94 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
 
   assert.deepEqual(result, {
-    pendingFiles: 32,
-    fullyPendingSuites: 23,
-    partiallyPendingSuites: 9,
-    pendingTests: 66,
-    coveredFiles: 32,
-    coveredTests: 66,
+    pendingFiles: 38,
+    fullyPendingSuites: 28,
+    partiallyPendingSuites: 10,
+    pendingTests: 94,
+    coveredFiles: 38,
+    coveredTests: 94,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 125,
+    migrationCount: 136,
     terminalMigration:
-      "20260811090000_contract_document_content_revision"
+      "20260816120000_pol08_contract_lineage_operating_sources",
+    terminalMigrationChecksum:
+      "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0"
   });
 });
 
@@ -46,7 +52,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=25，派生值=66/u
+    /inventory\.coveredTests=25，派生值=94/u
   );
 });
 
@@ -123,6 +129,26 @@ test("group selection rejects unknown and duplicate database groups", () => {
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /数据库组/u);
+  }
+});
+
+test("remaining runner can isolate one exact database subgroup", () => {
+  assert.deepEqual(
+    selectRemainingGroups(["--group", "generic_database_constraints"]).map(
+      (group) => group.id
+    ),
+    ["generic_database_constraints"]
+  );
+  assert.equal(selectRemainingGroups([]).length, remainingGroups.length);
+});
+
+test("remaining runner rejects unknown, duplicate or malformed subgroup arguments", () => {
+  for (const args of [
+    ["--group", "missing_group"],
+    ["--group", "generic_database_constraints", "--group", "generic_database_constraints"],
+    ["--unknown", "generic_database_constraints"]
+  ]) {
+    assert.throws(() => selectRemainingGroups(args), /子组/u);
   }
 });
 

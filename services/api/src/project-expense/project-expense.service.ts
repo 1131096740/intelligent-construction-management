@@ -1004,6 +1004,15 @@ export class ProjectExpenseService {
   async create(projectId: string, actorUserId: string, input: CreateProjectExpenseRequestDto) {
     const code = requiredTrimmed(input.code, "支出单号必填");
     const expenseType = enumValue(input.expenseType, EXPENSE_TYPES, "项目支出类型无效");
+    if (
+      expenseType === "comprehensive_expense" ||
+      expenseType === "reimbursement" ||
+      expenseType === "loan_reserve"
+    ) {
+      throw new GoneException(
+        "旧项目支出入口已停止新建，请使用费用与报销流程"
+      );
+    }
     const expenseSubtype = enumValue(input.expenseSubtype, EXPENSE_SUBTYPES, "项目支出明细类型无效");
     const paymentMethod = enumValue(input.paymentMethod, PAYMENT_METHODS, "项目支出付款方式无效");
     assertExpenseSubtypeMatchesType(expenseType, expenseSubtype);

@@ -12,7 +12,7 @@ import { PaymentRequestService } from "../payment/payment-request.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 
 const DATABASE_NAME = "jiangkong_payment_execution_concurrency";
-const EXPECTED_MIGRATION_COUNT = 125;
+const EXPECTED_MIGRATION_COUNT = 136;
 const COMPANY_ENTITY_ID = "payment-execution-company";
 const COMPANY_ENTITY_NAME = "付款实付并发验收建设有限公司";
 const COMPANY_ENTITY_CREDIT_CODE = "91310000PAYEXEC0001";
@@ -369,6 +369,18 @@ async function seedScenario(
       id: scenario.projectId,
       code: `${scenario.projectId}_code`,
       name: `付款实付并发验收项目 ${scenario.label}`
+    }
+  });
+  await client.projectAffiliateAssignment.create({
+    data: {
+      id: `${scenario.projectId}_construction_enterprise`,
+      projectId: scenario.projectId,
+      businessPartyId: `${scenario.projectId}_party`,
+      businessPartyVersionId: `${scenario.projectId}_party_version`,
+      affiliateNameSnapshot: "付款实付并发验收施工企业",
+      effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+      changeReason: "数据库测试夹具",
+      assignedByUserId: actorUserId
     }
   });
   await client.projectMember.create({

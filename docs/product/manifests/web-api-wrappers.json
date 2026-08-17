@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 16,
-    "exportedFunctionCount": 459,
-    "transportWrapperCount": 439,
+    "apiModuleCount": 19,
+    "exportedFunctionCount": 485,
+    "transportWrapperCount": 465,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 461,
+    "mainRequestBindingCount": 487,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 461,
-    "productionConsumerCount": 337,
+    "requestEdgeCount": 487,
+    "productionConsumerCount": 358,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,10 +22,147 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 251,
-    "reachableProductionModuleCount": 225
+    "productionModuleCount": 264,
+    "reachableProductionModuleCount": 230
   },
   "wrappers": [
+    {
+      "name": "downloadBusinessEntryExcelTemplate",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "GET",
+          "path": "/business-entry-definitions/:param/excel-template?:param",
+          "normalizedPath": "/business-entry-definitions/:param/excel-template",
+          "normalizedKey": "GET /business-entry-definitions/:param/excel-template",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadBusinessEntryExcelTemplate"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchBusinessEntryDefinition",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "GET",
+          "path": "/business-entry-definitions/:param?:param",
+          "normalizedPath": "/business-entry-definitions/:param",
+          "normalizedKey": "GET /business-entry-definitions/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchBusinessEntryDefinition"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "freezeBusinessEntrySnapshot",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 65,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/freeze?:param",
+          "normalizedPath": "/business-entry-definitions/:param/freeze",
+          "normalizedKey": "POST /business-entry-definitions/:param/freeze",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "freezeBusinessEntrySnapshot",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "previewBusinessEntryExcel",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 130,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/excel-preview?:param",
+          "normalizedPath": "/business-entry-definitions/:param/excel-preview",
+          "normalizedKey": "POST /business-entry-definitions/:param/excel-preview",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "previewBusinessEntryExcel"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "validateBusinessEntryDraft",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 65,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/validate?:param",
+          "normalizedPath": "/business-entry-definitions/:param/validate",
+          "normalizedKey": "POST /business-entry-definitions/:param/validate",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "validateBusinessEntryDraft",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
     {
       "name": "createCompanyEntity",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
@@ -4930,7 +5067,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6936,
+          "sourceLine": 6990,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4960,7 +5097,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6920,
+          "sourceLine": 6974,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4990,7 +5127,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6920,
+          "sourceLine": 6974,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -5020,7 +5157,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5349,
+          "sourceLine": 5403,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -5049,7 +5186,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6920,
+          "sourceLine": 6974,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5111,7 +5248,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5240,
+          "sourceLine": 5294,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -5196,7 +5333,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6963,
+          "sourceLine": 7017,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -5225,7 +5362,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6950,
+          "sourceLine": 7004,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5254,7 +5391,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6978,
+          "sourceLine": 7032,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5283,7 +5420,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6920,
+          "sourceLine": 6974,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -6184,6 +6321,7 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
       ],
       "unreachableConsumers": []
@@ -6560,6 +6698,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchProjectUpstreamFundReferenceOptions",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/upstream-fund-facts/reference-options",
+          "normalizedPath": "/projects/:param/upstream-fund-facts/reference-options",
+          "normalizedKey": "GET /projects/:param/upstream-fund-facts/reference-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectUpstreamFundReferenceOptions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchProjects",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -6588,6 +6756,7 @@
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
       ],
@@ -10258,6 +10427,357 @@
       "unreachableConsumers": []
     },
     {
+      "name": "activateOperatingTakeover",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/activation",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/activation",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/activation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "activateOperatingTakeover",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "addOperatingTakeoverAttachmentGroup",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "addOperatingTakeoverAttachmentGroup",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmOperatingTakeover",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/confirmations",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/confirmations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmOperatingTakeover",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createOperatingTakeoverBatch",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedPath": "/projects/:param/operating-takeovers",
+          "normalizedKey": "POST /projects/:param/operating-takeovers",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createOperatingTakeoverBatch",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadOperatingTakeoverTemplate",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 178,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/workbook-template",
+          "normalizedPath": "/projects/:param/operating-takeovers/workbook-template",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/workbook-template",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadOperatingTakeoverTemplate"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOperatingTakeoverBatches",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 92,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedPath": "/projects/:param/operating-takeovers",
+          "normalizedKey": "GET /projects/:param/operating-takeovers",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOperatingTakeoverBatches",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOperatingTakeoverCapability",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 92,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/capability",
+          "normalizedPath": "/projects/:param/operating-takeovers/capability",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOperatingTakeoverCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOperatingTakeoverDetail",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 92,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/:param",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOperatingTakeoverDetail",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "precheckOperatingTakeover",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck",
+          "normalizedPath": "/projects/:param/operating-takeovers/precheck",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "precheckOperatingTakeover",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "precheckOperatingTakeoverXlsx",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 118,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck-xlsx",
+          "normalizedPath": "/projects/:param/operating-takeovers/precheck-xlsx",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck-xlsx",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "precheckOperatingTakeoverXlsx",
+              "postFormData"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateOperatingTakeoverRow",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 108,
+          "method": "PATCH",
+          "path": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateOperatingTakeoverRow",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadOperatingTakeoverSourceFile",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 118,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/files",
+          "normalizedPath": "/projects/:param/operating-takeovers/files",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadOperatingTakeoverSourceFile",
+              "postFormData"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "applyOrganizationRoleAddition",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
@@ -11035,6 +11555,247 @@
         "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "addProjectParticipatingCompany",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 102,
+          "method": "POST",
+          "path": "/projects/:param/participating-companies",
+          "normalizedPath": "/projects/:param/participating-companies",
+          "normalizedKey": "POST /projects/:param/participating-companies",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "addProjectParticipatingCompany",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "assignProjectConstructionEnterprise",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 102,
+          "method": "POST",
+          "path": "/projects/:param/construction-enterprise",
+          "normalizedPath": "/projects/:param/construction-enterprise",
+          "normalizedKey": "POST /projects/:param/construction-enterprise",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "assignProjectConstructionEnterprise",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "deactivateProjectParticipatingCompany",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 113,
+          "method": "PATCH",
+          "path": "/projects/:param/participating-companies/:param/deactivation",
+          "normalizedPath": "/projects/:param/participating-companies/:param/deactivation",
+          "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deactivateProjectParticipatingCompany",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectConstructionEnterpriseOptions",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-options",
+          "normalizedPath": "/projects/:param/construction-enterprise-options",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectConstructionEnterpriseOptions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectOperatingProfile",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "GET",
+          "path": "/projects/:param/operating-profile",
+          "normalizedPath": "/projects/:param/operating-profile",
+          "normalizedKey": "GET /projects/:param/operating-profile",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectOperatingProfile",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectParticipatingCompanyOptions",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "GET",
+          "path": "/projects/:param/participating-company-options",
+          "normalizedPath": "/projects/:param/participating-company-options",
+          "normalizedKey": "GET /projects/:param/participating-company-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectParticipatingCompanyOptions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "removeProjectParticipatingCompany",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 123,
+          "method": "DELETE",
+          "path": "/projects/:param/participating-companies/:param",
+          "normalizedPath": "/projects/:param/participating-companies/:param",
+          "normalizedKey": "DELETE /projects/:param/participating-companies/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "removeProjectParticipatingCompany",
+              "deleteJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateProjectOperatingProfile",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 113,
+          "method": "PATCH",
+          "path": "/projects/:param/operating-profile",
+          "normalizedPath": "/projects/:param/operating-profile",
+          "normalizedKey": "PATCH /projects/:param/operating-profile",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateProjectOperatingProfile",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -13796,6 +14557,36 @@
     }
   ],
   "retiredWrappers": [
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "downloadBusinessEntryExcelTemplate",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "fetchBusinessEntryDefinition",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "freezeBusinessEntrySnapshot",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "previewBusinessEntryExcel",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "validateBusinessEntryDraft",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
     {
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "wrapper": "createCompanyEntity",

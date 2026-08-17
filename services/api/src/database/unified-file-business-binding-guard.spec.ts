@@ -92,6 +92,13 @@ const projectFinancingQuotaRequestBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const operatingTakeoverBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260816110000_pol10_operating_takeover/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -116,7 +123,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}`.matchAll(
+    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -135,7 +142,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(78);
+    expect(registered).toHaveLength(80);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(

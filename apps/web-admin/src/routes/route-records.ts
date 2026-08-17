@@ -39,6 +39,8 @@ export const contractMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["contract.create"];
 export const settlementMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["settlement.create"];
+export const operatingTakeoverRoleKeys =
+  ACTION_REQUIRED_ROLES["operating_takeover.manage"];
 
 export const organizationAdminRoleKeys = [
   "chairman",
@@ -85,6 +87,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "项目",
     items: [
       { label: "项目工作台", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
+      { label: "历史经营接管", path: "/历史经营接管", requiredRoleKeys: operatingTakeoverRoleKeys },
       { label: "项目花名册", path: "/项目花名册" }
     ]
   },
@@ -311,6 +314,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "项目经营",
         component: () => import("../pages/projects/ProjectOperatingOverviewPage.vue"),
         meta: { requiredRoleKeys: projectOperationsRoleKeys, title: "项目经营" }
+      },
+      {
+        path: "历史经营接管",
+        component: () => import("../pages/projects/ProjectOperatingTakeoverPage.vue"),
+        meta: { requiredRoleKeys: operatingTakeoverRoleKeys, title: "历史经营接管" }
       },
       {
         path: "项目支出/:projectId/:expenseRequestId",

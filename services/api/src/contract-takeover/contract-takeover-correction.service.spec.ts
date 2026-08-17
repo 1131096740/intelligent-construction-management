@@ -56,6 +56,7 @@ function createContext(options: {
   balanceRevision?: number;
   takeoverActivated?: boolean;
   rawRows?: unknown[][];
+  operatingLedger?: { appendCorrectionInTransaction: jest.Mock };
 } = {}) {
   const currentCorrection =
     options.correction === undefined ? correction() : options.correction;
@@ -152,6 +153,14 @@ function createContext(options: {
         id: "finance-1",
         isActive: true
       })
+    },
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        operatingLedgerEffectiveDate: null
+      })
+    },
+    operatingFact: {
+      findUnique: jest.fn()
     }
   };
   const prisma = {
@@ -164,7 +173,8 @@ function createContext(options: {
     audit as never,
     auth as never,
     files as never,
-    balances as never
+    balances as never,
+    options.operatingLedger as never
   );
   return { prisma, service, tx };
 }
@@ -221,6 +231,131 @@ describe("ContractTakeoverCorrectionService", () => {
         })
       })
     });
+  });
+
+  it("appends a reviewed payment correction to the operating ledger against the original fact", async () => {
+    const operatingLedger = {
+      appendCorrectionInTransaction: jest.fn().mockResolvedValue({
+        created: true
+      })
+    };
+    const { service, tx } = createContext({ operatingLedger });
+    tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+    tx.operatingFact.findUnique.mockResolvedValue({
+      id: "operating-fact-1",
+      projectId: "project-1",
+      sourceType: "contract_takeover_historical_payment",
+      sourceBusinessId: "payment-1",
+      sourceVersion: 1,
+      sourceBusinessCode: "HT-001/历史实付/1",
+      occurredAt: new Date("2026-07-30T00:00:00.000Z"),
+      confirmedAt: new Date("2026-08-02T00:00:00.000Z"),
+      affiliateAssignmentId: "assignment-1",
+      affiliateBusinessPartyVersionId: "affiliate-1",
+      affiliateNameSnapshot: "施工企业甲",
+      affiliateCreditCodeSnapshot: null,
+      operatingLedgerEffectiveDateSnapshot: new Date("2026-08-01T00:00:00.000Z"),
+      isBeforeOperatingLedgerEffectiveDate: true,
+      historicalTakeoverBatchId: "batch-1",
+      factKind: "downstream_payment",
+      operatingLevel: "project",
+      evidenceLevel: "A",
+      amountCents: 100n,
+      currencyCode: "CNY",
+      direction: "outflow",
+      debtorSubjectKind: "participating_company",
+      debtorSubjectId: "company-1",
+      creditorSubjectKind: null,
+      creditorSubjectId: null,
+      approvedPayerSubjectKind: "participating_company",
+      approvedPayerSubjectId: "company-1",
+      actualPayerSubjectKind: "participating_company",
+      actualPayerSubjectId: "company-1",
+      payeeSubjectKind: "downstream_counterparty",
+      payeeSubjectId: "counterparty-1",
+      costBearingCompanySubjectKind: null,
+      costBearingCompanySubjectId: null,
+      entryKind: "original",
+      impacts: [
+        {
+          sourceImpactKey: "company_project_funds_decrease",
+          impactKind: "company_project_funds_decrease",
+          amountCents: 100n,
+          direction: "decrease",
+          subjectRole: "actual_payer",
+          subjectKind: "participating_company",
+          subjectId: "company-1",
+          costCategoryCode: null,
+          fundPurpose: null,
+          description: "历史逐笔实付减少实际付款主体项目资金",
+          impactSnapshot: {}
+        },
+        {
+          sourceImpactKey: "historical_advance",
+          impactKind: "company_advance_for_project_increase",
+          amountCents: 100n,
+          direction: "increase",
+          subjectRole: "actual_payer",
+          subjectKind: "participating_company",
+          subjectId: "company-1",
+          costCategoryCode: null,
+          fundPurpose: null,
+          description: "历史实付超出累计结算形成历史预付款余额",
+          impactSnapshot: {}
+        }
+      ]
+    });
+
+    await (service as unknown as {
+      appendOperatingCorrection: (...args: unknown[]) => Promise<void>;
+    }).appendOperatingCorrection(
+      tx,
+      {
+        id: "takeover-1",
+        projectId: "project-1",
+        historicalInitialSettlementId: "settlement-opening-1",
+        historicalPaidCents: 100n,
+        historicalAdvancePaidCents: 100n,
+        historicalAdvanceDeductedCents: 0n,
+        activatedAt: new Date("2026-08-02T00:00:00.000Z")
+      },
+      {
+        id: "correction-1",
+        correctionOperation: "correction",
+        targetHistoricalPaymentId: "payment-1",
+        beforeSnapshot: { allocationType: "historical_advance" },
+        deltaSnapshot: { amountCents: "-10" }
+      },
+      "historical_payment",
+      "finance-director-1",
+      "correction-key",
+      "correction",
+      new Date("2026-08-15T08:00:00.000Z")
+    );
+
+    expect(operatingLedger.appendCorrectionInTransaction).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        sourceType: "contract_takeover_historical_payment",
+        sourceBusinessId: "correction-1",
+        adjustsFactId: "operating-fact-1",
+        amountCents: 10n
+      }),
+      "finance-director-1",
+      "correction"
+    );
+    expect(
+      operatingLedger.appendCorrectionInTransaction.mock.calls[0][1].impacts
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          impactKind: "company_advance_for_project_decrease",
+          amountCents: 10n
+        })
+      ])
+    );
   });
 
   it("rejects a stale balance revision before accepting the correction", async () => {
@@ -633,6 +768,7 @@ describe("ContractTakeoverCorrectionService", () => {
       targetRevision: 4,
       targetBalanceRevision: 2,
       targetBalanceEntryId: "deduction-1",
+      targetHistoricalPaymentId: "payment-1",
       beforeSnapshot: {
         balanceCents: "20",
         balanceRevision: 2,
@@ -649,8 +785,14 @@ describe("ContractTakeoverCorrectionService", () => {
       entryId: "reversal-1",
       repeated: false
     });
-    const { service } = createContext({
+    const operatingLedger = {
+      appendCorrectionInTransaction: jest.fn().mockResolvedValue({
+        created: true
+      })
+    };
+    const { service, tx } = createContext({
       correction: reversal,
+      operatingLedger,
       rawRows: [
         [reversal],
         [
@@ -676,6 +818,61 @@ describe("ContractTakeoverCorrectionService", () => {
         ]
       ]
     });
+    tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+    tx.operatingFact.findUnique.mockResolvedValue({
+      id: "operating-fact-1",
+      projectId: "project-1",
+      sourceType: "contract_takeover_historical_payment",
+      sourceBusinessId: "payment-1",
+      sourceVersion: 1,
+      sourceBusinessCode: "HT-001/历史实付/1",
+      occurredAt: new Date("2026-07-30T00:00:00.000Z"),
+      confirmedAt: new Date("2026-08-02T00:00:00.000Z"),
+      affiliateAssignmentId: "assignment-1",
+      affiliateBusinessPartyVersionId: "affiliate-1",
+      affiliateNameSnapshot: "施工企业甲",
+      affiliateCreditCodeSnapshot: null,
+      operatingLedgerEffectiveDateSnapshot: new Date("2026-08-01T00:00:00.000Z"),
+      isBeforeOperatingLedgerEffectiveDate: true,
+      historicalTakeoverBatchId: "batch-1",
+      factKind: "downstream_payment",
+      operatingLevel: "project",
+      evidenceLevel: "A",
+      amountCents: 80n,
+      currencyCode: "CNY",
+      direction: "outflow",
+      debtorSubjectKind: "participating_company",
+      debtorSubjectId: "company-1",
+      creditorSubjectKind: null,
+      creditorSubjectId: null,
+      approvedPayerSubjectKind: "participating_company",
+      approvedPayerSubjectId: "company-1",
+      actualPayerSubjectKind: "participating_company",
+      actualPayerSubjectId: "company-1",
+      payeeSubjectKind: "downstream_counterparty",
+      payeeSubjectId: "counterparty-1",
+      costBearingCompanySubjectKind: null,
+      costBearingCompanySubjectId: null,
+      entryKind: "original",
+      sourceSnapshot: {},
+      impacts: [
+        {
+          sourceImpactKey: "historical_advance",
+          impactKind: "company_advance_for_project_increase",
+          amountCents: 80n,
+          direction: "increase",
+          subjectRole: "actual_payer",
+          subjectKind: "participating_company",
+          subjectId: "company-1",
+          costCategoryCode: null,
+          fundPurpose: null,
+          description: "历史实付超出累计结算形成历史预付款余额",
+          impactSnapshot: {}
+        }
+      ]
+    });
 
     await service.review(
       "project-1",
@@ -697,6 +894,16 @@ describe("ContractTakeoverCorrectionService", () => {
       "finance-director-1",
       "11111111-1111-4111-8111-111111111111:reversal",
       "correction-1"
+    );
+    expect(operatingLedger.appendCorrectionInTransaction).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        sourceBusinessId: "correction-1",
+        adjustsFactId: "operating-fact-1",
+        sourceSnapshot: expect.objectContaining({ entryKind: "correction" })
+      }),
+      "finance-director-1",
+      "correction"
     );
   });
 });

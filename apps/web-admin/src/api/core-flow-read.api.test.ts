@@ -39,6 +39,7 @@ import {
   recordProjectOwnerContract,
   recordProjectUpstreamFundFact,
   confirmProjectUpstreamFundFact,
+  fetchProjectUpstreamFundReferenceOptions,
   fetchProjectAffiliateBusinessFacts,
   recordProjectAffiliateContractFact,
   confirmProjectAffiliateContractFact,
@@ -1030,6 +1031,20 @@ describe("core flow read API client", () => {
         confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
       })
     );
+  });
+
+  it("loads readable upstream fund business reference options from the project route", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ projectId: "project/1" })
+    } as Response);
+
+    await fetchProjectUpstreamFundReferenceOptions("project/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/upstream-fund-facts/reference-options"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
   });
 
   it("records project proxy payments through the backend", async () => {

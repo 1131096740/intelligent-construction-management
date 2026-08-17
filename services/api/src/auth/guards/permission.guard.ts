@@ -130,7 +130,8 @@ export class PermissionGuard implements CanActivate {
       }
 
       if (
-        requiredAction === "project_expense.create" &&
+        (requiredAction === "project_expense.create" ||
+          requiredAction === "project.operating_profile.manage") &&
         projectId &&
         !this.hasProjectScopedActionRole(requiredAction, roleScopes)
       ) {
@@ -200,6 +201,9 @@ export class PermissionGuard implements CanActivate {
     roleScopes: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] }
   ) {
     const requiredRoles = ACTION_REQUIRED_ROLES[action];
+    if (action === "project.operating_profile.manage") {
+      return roleScopes.projectRoleKeys.some((role) => requiredRoles.includes(role));
+    }
     return (
       roleScopes.projectRoleKeys.some((role) => requiredRoles.includes(role)) ||
       roleScopes.globalRoleKeys.some((role) => role !== "employee" && requiredRoles.includes(role))

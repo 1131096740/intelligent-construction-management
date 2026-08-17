@@ -75,7 +75,7 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("preparePdfReview");
     expect(counterpartyPanel).toContain("在线核对两份 PDF");
     expect(pdfComparisonPanel).toContain("同步两份文件");
-    expect(pdfComparisonPanel).toContain("按冻结版重新对齐");
+    expect(pdfComparisonPanel).toContain("按冻结结算单重新对齐");
     expect(page).toContain("settlement-pdf-review-v1");
     expect(pdfComparisonPanel).toContain("mobile-document-switch");
   });

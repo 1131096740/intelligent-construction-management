@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 237,
-    "pageActionCount": 46,
-    "backgroundActionCount": 191,
-    "reachableVueFileCount": 126,
-    "routeRootCount": 47,
-    "totalVueFileCount": 144,
-    "parsedVueFileCount": 144,
-    "reachableProductionModuleCount": 225,
-    "templateEventDirectiveCount": 832,
+    "registeredActionCount": 250,
+    "pageActionCount": 51,
+    "backgroundActionCount": 199,
+    "reachableVueFileCount": 129,
+    "routeRootCount": 48,
+    "totalVueFileCount": 153,
+    "parsedVueFileCount": 153,
+    "reachableProductionModuleCount": 230,
+    "templateEventDirectiveCount": 862,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 228,
-    "candidateProductionMutationConsumerCount": 228,
-    "acceptedProductionMutationConsumerCount": 228,
-    "productionMutationConsumerPairCount": 228,
+    "coveredProductionMutationConsumerCount": 241,
+    "candidateProductionMutationConsumerCount": 241,
+    "acceptedProductionMutationConsumerCount": 241,
+    "productionMutationConsumerPairCount": 241,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 251,
-    "reachableProductionModuleCount": 225,
-    "totalVueFileCount": 144,
-    "parsedVueFileCount": 144
+    "totalProductionModuleCount": 264,
+    "reachableProductionModuleCount": 230,
+    "totalVueFileCount": 153,
+    "parsedVueFileCount": 153
   },
   "actions": [
     {
@@ -47,7 +47,7 @@
         "event": "confirm",
         "handler": "submitConfirm",
         "kind": "event",
-        "sourceLine": 737,
+        "sourceLine": 738,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -112,7 +112,7 @@
         "event": "click",
         "handler": "submitRecord",
         "kind": "event",
-        "sourceLine": 721,
+        "sourceLine": 722,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -3089,7 +3089,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5240,
+              "sourceLine": 5294,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3133,7 +3133,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5240,
+              "sourceLine": 5294,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3748,7 +3748,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2019,
+        "sourceLine": 2020,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3813,7 +3813,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1978,
+        "sourceLine": 1979,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3878,7 +3878,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1939,
+        "sourceLine": 1940,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3943,7 +3943,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2070,
+        "sourceLine": 2071,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4008,7 +4008,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2083,
+        "sourceLine": 2084,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4073,7 +4073,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2057,
+        "sourceLine": 2058,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4138,7 +4138,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2122,
+        "sourceLine": 2123,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4203,7 +4203,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2135,
+        "sourceLine": 2136,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4268,7 +4268,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1891,
+        "sourceLine": 1892,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4333,7 +4333,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1915,
+        "sourceLine": 1916,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4398,7 +4398,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2241,
+        "sourceLine": 2242,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4463,7 +4463,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1903,
+        "sourceLine": 1904,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4528,7 +4528,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1964,
+        "sourceLine": 1965,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4593,7 +4593,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1927,
+        "sourceLine": 1928,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4658,7 +4658,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2044,
+        "sourceLine": 2045,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4723,7 +4723,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2220,
+        "sourceLine": 2221,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4788,7 +4788,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2191,
+        "sourceLine": 2192,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4853,7 +4853,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 1951,
+        "sourceLine": 1952,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4918,7 +4918,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2096,
+        "sourceLine": 2097,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4983,7 +4983,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2109,
+        "sourceLine": 2110,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5048,7 +5048,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2205,
+        "sourceLine": 2206,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5113,7 +5113,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2178,
+        "sourceLine": 2179,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5178,7 +5178,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2032,
+        "sourceLine": 2033,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5243,7 +5243,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2006,
+        "sourceLine": 2007,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5308,7 +5308,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1993,
+        "sourceLine": 1994,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5375,7 +5375,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2148,
+        "sourceLine": 2149,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5440,7 +5440,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2163,
+        "sourceLine": 2164,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7617,6 +7617,526 @@
       ]
     },
     {
+      "id": "operating-takeover.activate",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "activateOperatingTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 787,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "activate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "activateOperatingTakeover",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/activation",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/activation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/activation",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/:param/activation",
+            "controller": "OperatingTakeoverController",
+            "handler": "activate",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.activate"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "activateOperatingTakeoverWithCapability",
+              "activateOperatingTakeover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.attach-files",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "addOperatingTakeoverAttachmentGroupWithCapability",
+        "kind": "background_call",
+        "sourceLine": 823,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "file_upload",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "addOperatingTakeoverAttachmentGroup",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/attachments",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+            "controller": "OperatingTakeoverController",
+            "handler": "attachments",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.file.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "addOperatingTakeoverAttachmentGroupWithCapability",
+              "addOperatingTakeoverAttachmentGroup"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmOperatingTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 774,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "confirmOperatingTakeover",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/confirmations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/confirmations",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/:param/confirmations",
+            "controller": "OperatingTakeoverController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmOperatingTakeoverWithCapability",
+              "confirmOperatingTakeover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.create-batch",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createOperatingTakeoverBatchWithCapability",
+        "kind": "background_call",
+        "sourceLine": 762,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "createOperatingTakeoverBatch",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedKey": "POST /projects/:param/operating-takeovers",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers",
+            "normalizedKey": "POST /projects/:param/operating-takeovers",
+            "controller": "OperatingTakeoverController",
+            "handler": "create",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createOperatingTakeoverBatchWithCapability",
+              "createOperatingTakeoverBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.precheck",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "precheckOperatingTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 737,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "precheckOperatingTakeover",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/precheck",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/precheck",
+            "controller": "OperatingTakeoverController",
+            "handler": "precheck",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "precheckOperatingTakeoverWithCapability",
+              "precheckOperatingTakeover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.precheck-excel",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "precheckOperatingTakeoverXlsxWithCapability",
+        "kind": "background_call",
+        "sourceLine": 749,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "precheckOperatingTakeoverXlsx",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck-xlsx",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck-xlsx",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/precheck-xlsx",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/precheck-xlsx",
+            "controller": "OperatingTakeoverController",
+            "handler": "precheckXlsx",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "precheckOperatingTakeoverXlsxWithCapability",
+              "precheckOperatingTakeoverXlsx"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.update-row",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateOperatingTakeoverRowWithCapability",
+        "kind": "background_call",
+        "sourceLine": 809,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "updateOperatingTakeoverRow",
+          "method": "PATCH",
+          "path": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/rows/:rowId",
+            "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+            "controller": "OperatingTakeoverController",
+            "handler": "updateRow",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateOperatingTakeoverRowWithCapability",
+              "updateOperatingTakeoverRow"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.upload-source-file",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadOperatingTakeoverFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 800,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "file_upload",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "uploadOperatingTakeoverSourceFile",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/files",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/files",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+            "controller": "OperatingTakeoverController",
+            "handler": "uploadSourceFile",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.file.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadOperatingTakeoverFileWithCapability",
+              "uploadOperatingTakeoverSourceFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "payment-approval.approve",
       "usage": "page_action",
       "routePaths": [
@@ -8649,7 +9169,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2027,
+        "sourceLine": 2277,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8714,7 +9234,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1988,
+        "sourceLine": 2238,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8779,7 +9299,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1527,
+        "sourceLine": 1697,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8844,7 +9364,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 1511,
+        "sourceLine": 1681,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9147,7 +9667,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1947,
+        "sourceLine": 2197,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10157,6 +10677,326 @@
       ]
     },
     {
+      "id": "project-operating-profile.add-participating-company",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "addParticipant",
+        "kind": "event",
+        "sourceLine": 141,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "addProjectParticipatingCompany",
+          "method": "POST",
+          "path": "/projects/:param/participating-companies",
+          "normalizedKey": "POST /projects/:param/participating-companies",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/participating-companies",
+            "normalizedKey": "POST /projects/:param/participating-companies",
+            "controller": "ProjectController",
+            "handler": "addParticipatingCompany",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "addParticipant",
+              "addProjectParticipatingCompany"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.deactivate-participating-company",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDeactivate",
+        "kind": "event",
+        "sourceLine": 173,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "deactivateProjectParticipatingCompany",
+          "method": "PATCH",
+          "path": "/projects/:param/participating-companies/:param/deactivation",
+          "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/participating-companies/:participantId/deactivation",
+            "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
+            "controller": "ProjectController",
+            "handler": "deactivateParticipatingCompany",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmDeactivate",
+              "deactivateProjectParticipatingCompany"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.remove-participating-company",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "remove",
+        "kind": "event",
+        "sourceLine": 128,
+        "sourceColumn": 14
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "removeProjectParticipatingCompany",
+          "method": "DELETE",
+          "path": "/projects/:param/participating-companies/:param",
+          "normalizedKey": "DELETE /projects/:param/participating-companies/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "DELETE",
+            "path": "/projects/:projectId/participating-companies/:participantId",
+            "normalizedKey": "DELETE /projects/:param/participating-companies/:param",
+            "controller": "ProjectController",
+            "handler": "removeParticipatingCompany",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "remove",
+              "removeProjectParticipatingCompany"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.save",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "saveProfile",
+        "kind": "event",
+        "sourceLine": 19,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "updateProjectOperatingProfile",
+          "method": "PATCH",
+          "path": "/projects/:param/operating-profile",
+          "normalizedKey": "PATCH /projects/:param/operating-profile",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/operating-profile",
+            "normalizedKey": "PATCH /projects/:param/operating-profile",
+            "controller": "ProjectController",
+            "handler": "updateOperatingProfile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveProfile",
+              "updateProjectOperatingProfile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.set-construction-enterprise",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "saveConstructionEnterprise",
+        "kind": "event",
+        "sourceLine": 82,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "assignProjectConstructionEnterprise",
+          "method": "POST",
+          "path": "/projects/:param/construction-enterprise",
+          "normalizedKey": "POST /projects/:param/construction-enterprise",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/construction-enterprise",
+            "normalizedKey": "POST /projects/:param/construction-enterprise",
+            "controller": "ProjectController",
+            "handler": "assignConstructionEnterprise",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveConstructionEnterprise",
+              "assignProjectConstructionEnterprise"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "project.affiliate-contract.confirm",
       "usage": "background",
       "routePaths": [
@@ -10171,7 +11011,7 @@
         "event": "call",
         "handler": "confirmProjectAffiliateContractFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 598,
+        "sourceLine": 632,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10236,7 +11076,7 @@
         "event": "call",
         "handler": "uploadProjectAffiliateContractEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 477,
+        "sourceLine": 511,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10301,7 +11141,7 @@
         "event": "call",
         "handler": "recordProjectAffiliateContractFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 402,
+        "sourceLine": 436,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10366,7 +11206,7 @@
         "event": "call",
         "handler": "supplementProjectAffiliateBusinessEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 694,
+        "sourceLine": 728,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10467,7 +11307,7 @@
         "event": "call",
         "handler": "confirmProjectAffiliatePaymentFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 640,
+        "sourceLine": 674,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10532,7 +11372,7 @@
         "event": "call",
         "handler": "uploadProjectAffiliatePaymentEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 527,
+        "sourceLine": 561,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10597,7 +11437,7 @@
         "event": "call",
         "handler": "recordProjectAffiliatePaymentFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 452,
+        "sourceLine": 486,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10662,7 +11502,7 @@
         "event": "call",
         "handler": "confirmProjectAffiliateSettlementFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 619,
+        "sourceLine": 653,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10727,7 +11567,7 @@
         "event": "call",
         "handler": "uploadProjectAffiliateSettlementEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 502,
+        "sourceLine": 536,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10792,7 +11632,7 @@
         "event": "call",
         "handler": "recordProjectAffiliateSettlementFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 427,
+        "sourceLine": 461,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10857,7 +11697,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1243,
+        "sourceLine": 1384,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10925,7 +11765,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1252,
+        "sourceLine": 1393,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10993,7 +11833,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1731,
+        "sourceLine": 1976,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11058,7 +11898,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 1670,
+        "sourceLine": 1915,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11123,7 +11963,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1654,
+        "sourceLine": 1899,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11273,7 +12113,7 @@
         "event": "call",
         "handler": "downloadSettlementApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 1290,
+        "sourceLine": 1291,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11338,7 +12178,7 @@
         "event": "call",
         "handler": "confirmSettlementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1324,
+        "sourceLine": 1325,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11403,7 +12243,7 @@
         "event": "call",
         "handler": "uploadSettlementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1307,
+        "sourceLine": 1308,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11504,7 +12344,7 @@
         "event": "call",
         "handler": "delegateSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1269,
+        "sourceLine": 1270,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11569,7 +12409,7 @@
         "event": "call",
         "handler": "downloadSettlementPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1377,
+        "sourceLine": 1378,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11634,7 +12474,7 @@
         "event": "call",
         "handler": "retrySettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1355,
+        "sourceLine": 1356,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11699,7 +12539,7 @@
         "event": "call",
         "handler": "generateSettlementPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1366,
+        "sourceLine": 1367,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11764,7 +12604,7 @@
         "event": "call",
         "handler": "remindSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1281,
+        "sourceLine": 1282,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11829,7 +12669,7 @@
         "event": "call",
         "handler": "reviewSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1245,
+        "sourceLine": 1246,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11894,7 +12734,7 @@
         "event": "call",
         "handler": "regenerateSettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1339,
+        "sourceLine": 1340,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11959,7 +12799,7 @@
         "event": "call",
         "handler": "transferSettlementApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1257,
+        "sourceLine": 1258,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12230,7 +13070,7 @@
         "event": "call",
         "handler": "downloadSettlementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1400,
+        "sourceLine": 1401,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12295,7 +13135,7 @@
         "event": "call",
         "handler": "generateSettlementFrozenDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1341,
+        "sourceLine": 1342,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12360,7 +13200,7 @@
         "event": "call",
         "handler": "linkSettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1377,
+        "sourceLine": 1378,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12425,7 +13265,7 @@
         "event": "call",
         "handler": "saveSettlementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1236,
+        "sourceLine": 1237,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12490,7 +13330,7 @@
         "event": "call",
         "handler": "submitSettlementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1327,
+        "sourceLine": 1328,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12555,7 +13395,7 @@
         "event": "call",
         "handler": "updateSettlementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1252,
+        "sourceLine": 1253,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12620,7 +13460,7 @@
         "event": "call",
         "handler": "uploadSettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1361,
+        "sourceLine": 1362,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12687,7 +13527,7 @@
         "event": "call",
         "handler": "applySettlementImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1313,
+        "sourceLine": 1314,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12752,7 +13592,7 @@
         "event": "call",
         "handler": "previewSettlementImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1274,
+        "sourceLine": 1275,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -12855,7 +13695,7 @@
         "event": "call",
         "handler": "attachSettlementLineFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 109,
+        "sourceLine": 110,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12956,7 +13796,7 @@
         "event": "call",
         "handler": "invalidateSettlementLineAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 132,
+        "sourceLine": 133,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13021,7 +13861,7 @@
         "event": "call",
         "handler": "copySettlementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 412,
+        "sourceLine": 413,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13086,7 +13926,7 @@
         "event": "call",
         "handler": "previewSettlementLinesWithCapability",
         "kind": "background_call",
-        "sourceLine": 1298,
+        "sourceLine": 1299,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -13151,7 +13991,7 @@
         "event": "call",
         "handler": "recordSettlementRecoveryWithCapability",
         "kind": "background_call",
-        "sourceLine": 335,
+        "sourceLine": 336,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13256,7 +14096,7 @@
         "event": "call",
         "handler": "reverseSettlementRecoveryWithCapability",
         "kind": "background_call",
-        "sourceLine": 358,
+        "sourceLine": 359,
         "sourceColumn": 0
       },
       "semantic": "business_write",

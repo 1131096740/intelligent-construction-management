@@ -216,7 +216,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordReceipt("project-1", "finance-1", {} as never)
     ).rejects.toThrow(
-      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+      "旧项目收款入口已停止新增；请分别登记业主付款、施工企业向我方拨款、施工企业扣款或待核对到账差额"
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -1404,7 +1404,16 @@ describe("ProjectService", () => {
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
     };
-    const service = new ProjectService(prisma as never, undefined, auth as never);
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      auth as never,
+      undefined,
+      operatingSources as never
+    );
 
     const result = await service.recordProxyPayment("project-1", "finance-1", {
       paidAt,
@@ -1440,6 +1449,17 @@ describe("ProjectService", () => {
       createdAt: createdAt.toISOString()
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        projectId: "project-1",
+        sourceType: "project_proxy_payment",
+        sourceBusinessId: "proxy-payment-1"
+      },
+      "finance-1"
+    );
     expect(tx.projectProxyPayment.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",

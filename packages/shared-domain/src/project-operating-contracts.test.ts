@@ -21,6 +21,8 @@ import {
   PRIMARY_COST_CATEGORIES,
   PRIMARY_COST_CATEGORY_LABELS,
   PRIMARY_COST_CATEGORY_CODES,
+  PROJECT_OPERATING_TAKEOVER_STATUS_LABELS,
+  PROJECT_OPERATING_TAKEOVER_STATUSES,
   PROJECT_STAGE_LABELS,
   PROJECT_STAGES
 } from "./project-operating-contracts";
@@ -43,12 +45,33 @@ describe("project operating shared contracts", () => {
     expectExhaustiveLabels(DEDUCTION_LIFECYCLES, DEDUCTION_LIFECYCLE_LABELS);
     expectExhaustiveLabels(PROJECT_STAGES, PROJECT_STAGE_LABELS);
     expectExhaustiveLabels(
+      PROJECT_OPERATING_TAKEOVER_STATUSES,
+      PROJECT_OPERATING_TAKEOVER_STATUS_LABELS
+    );
+    expectExhaustiveLabels(
       FINANCIAL_RECONCILIATION_STATUSES,
       FINANCIAL_RECONCILIATION_STATUS_LABELS
     );
 
     expect(OPERATING_SUBJECT_KIND_LABELS.construction_enterprise).toBe("施工企业");
     expect(Object.values(OPERATING_SUBJECT_KIND_LABELS).join("、")).not.toContain("挂靠");
+  });
+
+  it("keeps project takeover status separate from the seven project completion stages", () => {
+    expect(PROJECT_OPERATING_TAKEOVER_STATUSES).toEqual([
+      "preparing",
+      "operating_with_takeover",
+      "balance_review",
+      "takeover_completed",
+      "supplemental_review"
+    ]);
+    expect(PROJECT_OPERATING_TAKEOVER_STATUS_LABELS).toEqual({
+      preparing: "准备中",
+      operating_with_takeover: "正式使用、历史接管中",
+      balance_review: "余额复核中",
+      takeover_completed: "经营接管完成",
+      supplemental_review: "需要补充复核"
+    });
   });
 
   it("locks the eight company-wide primary cost categories and their names", () => {

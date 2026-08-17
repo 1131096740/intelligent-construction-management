@@ -2049,6 +2049,15 @@ describe("SpotProcurementReceiptService workflow", () => {
       materialDirector: true,
       photos: [lockedMaterialPhoto]
     });
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest
+        .fn()
+        .mockResolvedValue(null)
+    };
+    Object.assign(
+      harness.service as unknown as { operatingSources: typeof operatingSources },
+      { operatingSources }
+    );
 
     await expect(
       harness.service.review(
@@ -2088,6 +2097,17 @@ describe("SpotProcurementReceiptService workflow", () => {
       where: { id: "receipt-1" },
       data: { status: "reviewed" }
     });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      harness.tx,
+      {
+        projectId: "project-1",
+        sourceType: "spot_procurement_receipt_review",
+        sourceBusinessId: "review-approved"
+      },
+      "material-director-1"
+    );
     expect(
       harness.tx.spotProcurementDiscrepancy.updateMany
     ).toHaveBeenCalledWith({

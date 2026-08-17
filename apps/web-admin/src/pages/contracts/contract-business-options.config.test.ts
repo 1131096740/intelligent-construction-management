@@ -83,6 +83,22 @@ describe("contract business options configuration", () => {
     });
   });
 
+  it("carries the construction-enterprise payment subject from the signed contract", () => {
+    const selectedContract = findContractOption(
+      [{ ...contract(), paymentSubjectType: "affiliate" }],
+      "version-1"
+    );
+
+    expect(
+      buildPaymentCreatePayload(selectedContract, null, {
+        sourceType: "contract_due",
+        paymentTermsStageId: "stage-due-1",
+        code: "FK-AFFILIATE-001",
+        requestedAmountYuan: "2500"
+      })
+    ).toMatchObject({ paymentSubjectType: "affiliate" });
+  });
+
   it("requires a frozen payment stage for a new contract-due request", () => {
     expect(() =>
       buildPaymentCreatePayload(contract(), null, {

@@ -7,7 +7,11 @@ import PizZip from "pizzip";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { parseMoneyCentsInput, parseSignedMoneyCentsInput } from "../money/decimal-money";
+import {
+  formatMoneyCentsAsYuan,
+  signedYuanTextToCents,
+  yuanTextToCents
+} from "../money/decimal-money";
 import type { CreateSettlementLineDto } from "./dto/create-settlement.dto";
 import type { PreviewSettlementImportDto } from "./dto/preview-settlement-import.dto";
 import { SettlementService } from "./settlement.service";
@@ -28,12 +32,11 @@ const VISIBLE_COLUMNS = [
   "清单项名称",
   "是否本期结算",
   "本期数量",
-  "本期人工金额(分)",
+  "本期金额（元）",
   "调整原因",
   "备注"
 ] as const;
-const SYSTEM_COLUMN = "__系统清单项标识";
-const ALL_COLUMNS = [...VISIBLE_COLUMNS, SYSTEM_COLUMN] as const;
+const ALL_COLUMNS = VISIBLE_COLUMNS;
 
 export interface SettlementImportError {
   row: number;
@@ -75,13 +78,12 @@ export class SettlementImportService {
       { width: 16 },
       { width: 22 },
       { width: 28 },
-      { width: 28 },
-      { width: 38, hidden: true }
+      { width: 28 }
     ];
+    const displayKeyById = this.displaySourceKeys(source.rows);
     for (const row of source.rows) {
-      sheet.addRow([this.displaySourceKey(row), row.itemName, "否", "", "", "", "", row.id]);
+      sheet.addRow([displayKeyById.get(row.id), row.itemName, "否", "", "", "", ""]);
     }
-    sheet.getColumn(8).hidden = true;
     for (let rowNumber = 2; rowNumber <= Math.max(2, source.rows.length + 1); rowNumber += 1) {
       sheet.getCell(`C${rowNumber}`).dataValidation = {
         type: "list",
@@ -131,8 +133,8 @@ export class SettlementImportService {
       } catch (error) {
         parsed.errors.push({
           row: 2,
-          column: "后台校验",
-          message: error instanceof Error ? error.message : "结算明细后台校验失败"
+          column: "业务校验",
+          message: settlementPreviewErrorMessage()
         });
       }
     }
@@ -294,7 +296,7 @@ export class SettlementImportService {
       "计算模式",
       "本期数量",
       "合同单价",
-      "后台金额(分)",
+      "本期金额（元）",
       "调整原因",
       "备注"
     ]);
@@ -311,7 +313,7 @@ export class SettlementImportService {
         this.calculationModeLabel(row.calculationMode),
         row.quantity ?? "",
         row.unitPrice ?? "",
-        row.amountCents ?? "",
+        this.moneyYuan(row.amountCents),
         row.reason ?? "",
         row.remark ?? ""
       ]);
@@ -357,6 +359,7 @@ export class SettlementImportService {
       itemName: string;
       itemCode: string | null;
       billKey: string;
+      billName: string;
       rowKey: string;
       calculationMode: "normal_auto" | "manual_amount";
     }>
@@ -376,6 +379,7 @@ export class SettlementImportService {
     if (((sheet.model as unknown as { merges?: string[] }).merges ?? []).length > 0) {
       throw new BadRequestException("结算导入 Excel 不允许合并单元格");
     }
+    this.assertNoExtraColumns(sheet, ALL_COLUMNS.length);
     const headers = ALL_COLUMNS.map((_column, index) => this.cellText(sheet.getRow(1).getCell(index + 1)));
     if (headers.some((header, index) => header !== ALL_COLUMNS[index])) {
       throw new BadRequestException("Excel 表头不正确，请重新下载结算导入模板");
@@ -386,10 +390,10 @@ export class SettlementImportService {
     }
     this.assertNoFormulas(sheet);
 
-    const sourceById = new Map(sourceRows.map((row) => [row.id, row]));
+    const displayKeyById = this.displaySourceKeys(sourceRows);
     const sourceByKey = new Map<string, typeof sourceRows>();
     for (const row of sourceRows) {
-      const key = this.displaySourceKey(row);
+      const key = displayKeyById.get(row.id) as string;
       sourceByKey.set(key, [...(sourceByKey.get(key) ?? []), row]);
     }
     const seen = new Set<string>();
@@ -402,19 +406,14 @@ export class SettlementImportService {
       const selected = this.selection(selectedText, rowNumber, errors);
       if (!selected) return;
       const visibleSourceKey = this.cellText(row.getCell(1));
-      const systemSourceId = this.cellText(row.getCell(8));
       const name = this.cellText(row.getCell(2));
       const quantity = this.cellText(row.getCell(4));
       const amount = this.moneyCellText(row.getCell(5), rowNumber, errors);
       const reason = this.cellText(row.getCell(6));
       const remark = this.cellText(row.getCell(7));
-      if (systemSourceId || visibleSourceKey) {
+      if (visibleSourceKey) {
         const matchedByKey = sourceByKey.get(visibleSourceKey) ?? [];
-        const source = systemSourceId
-          ? sourceById.get(systemSourceId)
-          : matchedByKey.length === 1
-            ? matchedByKey[0]
-            : undefined;
+        const source = matchedByKey.length === 1 ? matchedByKey[0] : undefined;
         if (!source) {
           errors.push({
             row: rowNumber,
@@ -423,9 +422,9 @@ export class SettlementImportService {
           });
           return;
         }
-        const expectedKey = this.displaySourceKey(source);
+        const expectedKey = displayKeyById.get(source.id) as string;
         if (visibleSourceKey !== expectedKey) {
-          errors.push({ row: rowNumber, column: "清单编码/行号", message: "清单编码与系统匹配列不一致，请重新下载模板" });
+          errors.push({ row: rowNumber, column: "清单编码/行号", message: "清单编码与合同清单不一致，请重新下载模板" });
           return;
         }
         if (seen.has(source.id)) {
@@ -439,7 +438,7 @@ export class SettlementImportService {
         }
         if (quantity && !this.validQuantity(quantity, rowNumber, errors)) return;
         if (source.calculationMode === "manual_amount" && !amount) {
-          errors.push({ row: rowNumber, column: "本期人工金额(分)", message: "非自动计价行必须填写本期人工金额" });
+          errors.push({ row: rowNumber, column: "本期金额（元）", message: "非自动计价行必须填写本期金额" });
           return;
         }
         if (
@@ -459,7 +458,7 @@ export class SettlementImportService {
         return;
       }
       if (!name) errors.push({ row: rowNumber, column: "清单项名称", message: "手工调整必须填写名称" });
-      if (!amount) errors.push({ row: rowNumber, column: "本期人工金额(分)", message: "手工调整必须填写金额" });
+      if (!amount) errors.push({ row: rowNumber, column: "本期金额（元）", message: "手工调整必须填写金额" });
       if (!reason) errors.push({ row: rowNumber, column: "调整原因", message: "手工调整必须填写原因" });
       if (!name || !amount || !reason) return;
       if (!this.validMoney(amount, rowNumber, true, errors)) return;
@@ -513,6 +512,18 @@ export class SettlementImportService {
     );
   }
 
+  private assertNoExtraColumns(sheet: Worksheet, expectedColumnCount: number) {
+    let hasExtraValue = false;
+    sheet.eachRow((row) =>
+      row.eachCell((cell, columnNumber) => {
+        if (columnNumber > expectedColumnCount && this.cellText(cell)) hasExtraValue = true;
+      })
+    );
+    if (hasExtraValue) {
+      throw new BadRequestException("结算导入模板不得新增系统字段或隐藏列，请重新下载模板");
+    }
+  }
+
   private assertSafeXlsxArchive(buffer: Buffer) {
     let zip: InstanceType<typeof PizZip>;
     try {
@@ -548,18 +559,25 @@ export class SettlementImportService {
   }
 
   private selection(value: string, row: number, errors: SettlementImportError[]): boolean {
-    if (["是", "yes", "y", "1", "true"].includes(value.toLowerCase())) return true;
-    if (["", "否", "no", "n", "0", "false"].includes(value.toLowerCase())) return false;
+    if (value === "是") return true;
+    if (value === "" || value === "否") return false;
     errors.push({ row, column: "是否本期结算", message: "只能填写是或否" });
     return false;
   }
 
   private moneyCellText(cell: Cell, row: number, errors: SettlementImportError[]): string {
-    if (typeof cell.value === "number" && !Number.isSafeInteger(cell.value)) {
-      errors.push({ row, column: "本期人工金额(分)", message: "大额金额必须按文本填写，不能使用 Excel 数值" });
+    if (typeof cell.value === "number" && !Number.isFinite(cell.value)) {
+      errors.push({ row, column: "本期金额（元）", message: "金额必须填写有效数字" });
       return "";
     }
-    return this.cellText(cell);
+    const value = this.cellText(cell);
+    if (!value) return "";
+    try {
+      return signedYuanTextToCents(value, "本期金额").toString();
+    } catch {
+      errors.push({ row, column: "本期金额（元）", message: "金额必须填写有效数字，最多两位小数" });
+      return "";
+    }
   }
 
   private validQuantity(value: string, row: number, errors: SettlementImportError[]): boolean {
@@ -581,18 +599,18 @@ export class SettlementImportService {
   ): boolean {
     try {
       if (signed) {
-        parseSignedMoneyCentsInput(value, "本期人工金额");
+        signedYuanTextToCents(formatMoneyCentsAsYuan(BigInt(value)), "本期金额");
       } else {
-        parseMoneyCentsInput(value, "本期人工金额");
+        yuanTextToCents(formatMoneyCentsAsYuan(BigInt(value)), "本期金额");
       }
       return true;
     } catch {
       errors.push({
         row,
-        column: "本期人工金额(分)",
+        column: "本期金额（元）",
         message: signed
-          ? "手工调整金额必须按分填写为整数"
-          : "非自动计价金额必须按分填写为非负整数"
+          ? "手工调整金额必须填写有效金额"
+          : "非自动计价行必须填写有效金额"
       });
       return false;
     }
@@ -634,8 +652,34 @@ export class SettlementImportService {
     );
   }
 
-  private displaySourceKey(row: { itemCode: string | null; billKey: string; rowKey: string }): string {
-    return row.itemCode?.trim() || `${row.billKey}/${row.rowKey}`;
+  private displaySourceKeys(rows: Array<{
+    id: string;
+    itemCode: string | null;
+    itemName: string;
+    billName: string;
+  }>): Map<string, string> {
+    const occurrenceByBase = new Map<string, number>();
+    const usedKeys = new Set<string>();
+    return new Map(rows.map((row) => {
+      const base = row.itemCode?.trim() || `${row.billName}/${row.itemName}`;
+      let occurrence = (occurrenceByBase.get(base) ?? 0) + 1;
+      let key = occurrence === 1 ? base : `${base}（第${occurrence}项）`;
+      while (usedKeys.has(key)) {
+        occurrence += 1;
+        key = `${base}（第${occurrence}项）`;
+      }
+      occurrenceByBase.set(base, occurrence);
+      usedKeys.add(key);
+      return [row.id, key];
+    }));
+  }
+
+  private moneyYuan(value: unknown): string {
+    try {
+      return formatMoneyCentsAsYuan(BigInt(String(value)));
+    } catch {
+      return "—";
+    }
   }
 
   private calculationModeLabel(value: string | null | undefined): string {
@@ -651,4 +695,8 @@ export class SettlementImportService {
       throw new BadRequestException("结算导入记录不属于当前项目");
     }
   }
+}
+
+function settlementPreviewErrorMessage(): string {
+  return "结算明细校验失败";
 }

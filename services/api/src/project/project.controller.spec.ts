@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { BadRequestException, GoneException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectController } from "./project.controller";
@@ -852,10 +853,13 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
-  it("limits affiliate mapping writes to company decision roles and exposes a read-only review report", () => {
+  it("limits legacy affiliate mapping writes to project finance and exposes a read-only review report", () => {
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.assignAffiliate)
-    ).toEqual(projectCreatePositions);
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.assignAffiliate)
+    ).toBe("project.operating_profile.manage");
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.affiliateMappingReport)
     ).toEqual(["chairman", "general_manager", "contract_director"]);
@@ -905,6 +909,12 @@ describe("ProjectController authorization wiring", () => {
       Reflect.getMetadata(
         "requiredProjectAction",
         ProjectController.prototype.recordUpstreamFundFact
+      )
+    ).toBe("project.upstream_fund_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        ProjectController.prototype.upstreamFundReferenceOptions
       )
     ).toBe("project.upstream_fund_fact.record");
     expect(
@@ -1231,7 +1241,8 @@ describe("ProjectController authorization wiring", () => {
   it("forwards upstream fund fact recording and confirmation with authenticated user id", async () => {
     const projects = {
       recordUpstreamFundFact: jest.fn(),
-      confirmUpstreamFundFact: jest.fn()
+      confirmUpstreamFundFact: jest.fn(),
+      getUpstreamFundReferenceOptions: jest.fn()
     };
     const controller = new ProjectController(projects as never);
     const recordBody = {
@@ -1259,6 +1270,7 @@ describe("ProjectController authorization wiring", () => {
       { id: "director-1" } as never,
       confirmBody
     );
+    await controller.upstreamFundReferenceOptions("project-1");
 
     expect(projects.recordUpstreamFundFact).toHaveBeenCalledWith(
       "project-1",
@@ -1270,6 +1282,9 @@ describe("ProjectController authorization wiring", () => {
       "fact-1",
       "director-1",
       confirmBody
+    );
+    expect(projects.getUpstreamFundReferenceOptions).toHaveBeenCalledWith(
+      "project-1"
     );
   });
 
@@ -1289,7 +1304,7 @@ describe("ProjectController authorization wiring", () => {
     expect(() =>
       controller.recordProxyPayment("project-1", { id: "finance-1" } as never, body)
     ).toThrow(
-      "旧挂靠代付一步式写入口已停用，请使用挂靠业务持续接管的合同、结算、付款事实链"
+      "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
     expect(projects.recordProxyPayment).not.toHaveBeenCalled();
   });

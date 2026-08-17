@@ -1,4 +1,5 @@
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
+const { readFileSync } = require("node:fs");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
@@ -11,10 +12,25 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_spot_procurement_concurrency_verify";
-const EXPECTED_MIGRATION_COUNT = 125;
-const TERMINAL_MIGRATION =
-  "20260811090000_contract_document_content_revision";
+const EXPECTED_MIGRATION_COUNT = 136;
 const root = path.resolve(__dirname, "../../..");
+const TERMINAL_MIGRATION =
+  "20260816120000_pol08_contract_lineage_operating_sources";
+const TERMINAL_MIGRATION_CHECKSUM = createHash("sha256")
+  .update(readFileSync(path.join(
+    root,
+    "services/api/prisma/migrations",
+    TERMINAL_MIGRATION,
+    "migration.sql"
+  )))
+  .digest("hex");
+const manifest = JSON.parse(readFileSync(path.join(
+  root,
+  "services/api/prisma/database-dynamic-gate-manifest.json"
+), "utf8"));
+if (manifest.migrationBaseline?.terminalMigrationChecksum !== TERMINAL_MIGRATION_CHECKSUM) {
+  throw new Error("spot procurement runner 的终点迁移 checksum 未与 canonical manifest 对齐");
+}
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
@@ -304,26 +320,29 @@ async function main() {
             `count(*) FILTER (` +
             `WHERE migration_name = '${TERMINAL_MIGRATION}' ` +
             `AND finished_at IS NOT NULL ` +
+            `AND rolled_back_at IS NULL), ` +
+            `max(checksum) FILTER (` +
+            `WHERE migration_name = '${TERMINAL_MIGRATION}' ` +
+            `AND finished_at IS NOT NULL ` +
             `AND rolled_back_at IS NULL) ` +
             `FROM _prisma_migrations;`
         ],
         { timeoutMs: 30_000 }
       );
-      const [
-        appliedMigrationCount,
-        terminalMigrationCount
-      ] = migrationProof.stdout
-        .trim()
-        .split("|")
-        .map((value) => Number(value));
+      const [appliedMigrationCountRaw, terminalMigrationCountRaw, terminalMigrationChecksum] =
+        migrationProof.stdout.trim().split("|");
+      const appliedMigrationCount = Number(appliedMigrationCountRaw);
+      const terminalMigrationCount = Number(terminalMigrationCountRaw);
       if (
         appliedMigrationCount !== EXPECTED_MIGRATION_COUNT ||
-        terminalMigrationCount !== 1
+        terminalMigrationCount !== 1 ||
+        terminalMigrationChecksum !== TERMINAL_MIGRATION_CHECKSUM
       ) {
         throw new Error(
           "临时 PostgreSQL 迁移证明不完整：" +
             `applied=${appliedMigrationCount} ` +
-            `terminal=${terminalMigrationCount}`
+            `terminal=${terminalMigrationCount} ` +
+            `checksum=${terminalMigrationChecksum}`
         );
       }
       console.log(

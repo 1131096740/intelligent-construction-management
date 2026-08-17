@@ -19,11 +19,15 @@ import {
 
 export class RecordProjectAffiliateSettlementFactDto {
   @IsRequiredText({
-    requiredMessage: "关联挂靠合同账本编号不能为空",
-    typeMessage: "关联挂靠合同账本编号必须是文字",
-    blankMessage: "关联挂靠合同账本编号不能为空白"
+    requiredMessage: "关联施工企业合同账本编号不能为空",
+    typeMessage: "关联施工企业合同账本编号必须是文字",
+    blankMessage: "关联施工企业合同账本编号不能为空白"
   })
   contractLedgerId!: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "施工企业—我方合同档案编号必须是文字" })
+  affiliateCompanyContractId?: string;
 
   @IsRequiredText({
     requiredMessage: "结算相对方不能为空",
@@ -55,22 +59,22 @@ export class RecordProjectAffiliateSettlementFactDto {
   @IsString({ message: "外部结算依据文件编号必须是文字" })
   evidenceFileId?: string;
 
-  @IsUUID("4", { message: "挂靠结算登记幂等键必须是 UUID" })
+  @IsUUID("4", { message: "施工企业结算登记幂等键必须是 UUID" })
   idempotencyKey!: string;
 
   @IsOptional()
-  @IsIn(PROJECT_AFFILIATE_ENTRY_KINDS, { message: "挂靠结算追加类型不正确" })
+  @IsIn(PROJECT_AFFILIATE_ENTRY_KINDS, { message: "施工企业结算追加类型不正确" })
   entryKind?: ProjectAffiliateEntryKind;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "被调整挂靠结算事实编号必须是文字" })
+  @IsString({ message: "被调整施工企业结算事实编号必须是文字" })
   adjustsFactId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsIn(["increase", "decrease"], { message: "挂靠结算金额调整方向不正确" })
+  @IsIn(["increase", "decrease"], { message: "施工企业结算金额调整方向不正确" })
   effectDirection?: "increase" | "decrease";
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "挂靠结算说明必须是文字" })
+  @IsString({ message: "施工企业结算说明必须是文字" })
   description?: string;
 }

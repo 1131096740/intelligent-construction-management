@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   GoneException,
   Optional,
@@ -24,6 +25,9 @@ import {
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";
 import { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
+import { AssignProjectConstructionEnterpriseDto } from "./dto/assign-project-construction-enterprise.dto";
+import { AddProjectParticipatingCompanyDto } from "./dto/add-project-participating-company.dto";
+import { DeactivateProjectParticipatingCompanyDto } from "./dto/deactivate-project-participating-company.dto";
 import { ConfirmProjectAffiliateBusinessFactDto } from "./dto/confirm-project-affiliate-business-fact.dto";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
@@ -45,9 +49,11 @@ import { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-excep
 import { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-financing-quota.dto";
 import { SupplementProjectAffiliateBusinessEvidenceDto } from "./dto/supplement-project-affiliate-business-evidence.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
+import { UpdateProjectOperatingProfileDto } from "./dto/update-project-operating-profile.dto";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectService } from "./project.service";
+import { ProjectOperatingProfileService } from "./project-operating-profile.service";
 
 @Controller("projects")
 export class ProjectController {
@@ -58,8 +64,17 @@ export class ProjectController {
     @Optional()
     private readonly affiliateCompanyContracts?: ProjectAffiliateCompanyContractService,
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    @Optional()
+    private readonly operatingProfiles?: ProjectOperatingProfileService
   ) {}
+
+  private operatingProfileService(): ProjectOperatingProfileService {
+    if (!this.operatingProfiles) {
+      throw new Error("Project operating profile service is not available");
+    }
+    return this.operatingProfiles;
+  }
 
   private affiliateBusinessService(): ProjectAffiliateBusinessService {
     if (!this.affiliateBusiness) {
@@ -128,6 +143,93 @@ export class ProjectController {
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
   operatingFundsOverview(@Param("projectId") projectId: string) {
     return this.projects.getOperatingFundsOverview(projectId);
+  }
+
+  @Get(":projectId/operating-profile")
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
+  getOperatingProfile(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.operatingProfileService().getProfile(projectId, user.id);
+  }
+
+  @Get(":projectId/participating-company-options")
+  @RequireProjectRole("project.operating_profile.manage")
+  participatingCompanyOptions(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.operatingProfileService().listParticipatingCompanyOptions(projectId, user.id);
+  }
+
+  @Get(":projectId/construction-enterprise-options")
+  @RequireProjectRole("project.operating_profile.manage")
+  constructionEnterpriseOptions(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.operatingProfileService().listConstructionEnterpriseOptions(projectId, user.id);
+  }
+
+  @Patch(":projectId/operating-profile")
+  @RequireProjectRole("project.operating_profile.manage")
+  updateOperatingProfile(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UpdateProjectOperatingProfileDto
+  ) {
+    return this.operatingProfileService().updateProfile(projectId, user.id, body);
+  }
+
+  @Post(":projectId/construction-enterprise")
+  @RequireProjectRole("project.operating_profile.manage")
+  assignConstructionEnterprise(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AssignProjectConstructionEnterpriseDto
+  ) {
+    return this.projects.assignAffiliate(projectId, user.id, body);
+  }
+
+  @Post(":projectId/participating-companies")
+  @RequireProjectRole("project.operating_profile.manage")
+  addParticipatingCompany(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AddProjectParticipatingCompanyDto
+  ) {
+    return this.operatingProfileService().addParticipatingCompany(projectId, user.id, body);
+  }
+
+  @Patch(":projectId/participating-companies/:participantId/deactivation")
+  @RequireProjectRole("project.operating_profile.manage")
+  deactivateParticipatingCompany(
+    @Param("projectId") projectId: string,
+    @Param("participantId") participantId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: DeactivateProjectParticipatingCompanyDto
+  ) {
+    return this.operatingProfileService().deactivateParticipatingCompany(
+      projectId,
+      participantId,
+      user.id,
+      body
+    );
+  }
+
+  @Delete(":projectId/participating-companies/:participantId")
+  @RequireProjectRole("project.operating_profile.manage")
+  removeParticipatingCompany(
+    @Param("projectId") projectId: string,
+    @Param("participantId") participantId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.operatingProfileService().removeParticipatingCompany(
+      projectId,
+      participantId,
+      user.id
+    );
   }
 
   @Get(":projectId/financing-quotas")
@@ -259,7 +361,7 @@ export class ProjectController {
   }
 
   @Post(":projectId/affiliate-assignment")
-  @RequirePositions("chairman", "general_manager")
+  @RequireProjectRole("project.operating_profile.manage")
   assignAffiliate(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -292,6 +394,12 @@ export class ProjectController {
   @RequireProjectRole("project.upstream_fund_fact.record")
   upstreamFundRecordCapability(@Param("projectId") projectId: string) {
     return { projectId, availableActions: ["record_upstream_fund_fact"] };
+  }
+
+  @Get(":projectId/upstream-fund-facts/reference-options")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  upstreamFundReferenceOptions(@Param("projectId") projectId: string) {
+    return this.projects.getUpstreamFundReferenceOptions(projectId);
   }
 
   @Post(":projectId/upstream-fund-facts/file-uploads")
@@ -356,7 +464,7 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body("idempotencyKey") idempotencyKey?: string
   ) {
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠合同依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业合同依据");
   }
 
   @Post(":projectId/affiliate-contract-facts/:factId/confirmation")
@@ -397,7 +505,7 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body("idempotencyKey") idempotencyKey?: string
   ) {
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠结算依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业结算依据");
   }
 
   @Post(":projectId/affiliate-settlement-facts/:factId/confirmation")
@@ -438,7 +546,7 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body("idempotencyKey") idempotencyKey?: string
   ) {
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠付款依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业付款依据");
   }
 
   @Post(":projectId/affiliate-payment-facts/:factId/confirmation")
@@ -494,7 +602,7 @@ export class ProjectController {
       user.id,
       businessType
     );
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠业务补充依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业业务补充依据");
   }
 
   @Post(":projectId/proxy-payments")
@@ -508,7 +616,7 @@ export class ProjectController {
     void user;
     void body;
     throw new GoneException(
-      "旧挂靠代付一步式写入口已停用，请使用挂靠业务持续接管的合同、结算、付款事实链"
+      "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
   }
 

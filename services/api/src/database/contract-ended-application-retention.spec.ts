@@ -60,6 +60,18 @@ describe("contract ended application retention PostgreSQL evidence", () => {
           name: "结束申请保留 PostgreSQL 测试项目"
         }
       });
+      await prisma.projectAffiliateAssignment.create({
+        data: {
+          id: `ended-retention-construction-enterprise-${suffix}`,
+          projectId,
+          businessPartyId: `ended-retention-party-${suffix}`,
+          businessPartyVersionId: `ended-retention-party-version-${suffix}`,
+          affiliateNameSnapshot: "结束申请保留测试施工企业",
+          effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+          changeReason: "数据库测试夹具",
+          assignedByUserId: directorId
+        }
+      });
       await prisma.project.create({
         data: {
           id: inactiveProjectId,

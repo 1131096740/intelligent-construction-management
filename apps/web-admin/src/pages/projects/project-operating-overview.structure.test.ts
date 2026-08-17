@@ -24,7 +24,7 @@ describe("project operating overview structure", () => {
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {
-    expect(source).toContain('label="挂靠业务接管"');
+    expect(source).toContain('label="施工企业业务接管"');
     expect(source).toContain("<AffiliateCompanyContractPanel");
     expect(source).toContain("<AffiliateBusinessLedgerPanel");
     expect(source).not.toContain("recordProjectProxyPayment");
@@ -36,6 +36,49 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<t-select");
     expect(source).toContain("<t-collapse");
     expect(source).toContain("项目维护");
+  });
+
+  it("mounts the project operating profile as a dedicated settings entry", () => {
+    expect(source).toContain('label="项目设置"');
+    expect(source).toContain("<ProjectOperatingProfilePanel");
+    expect(source).toContain(':project-id="selectedProjectId"');
+  });
+
+  it("reloads the complete operating profile after saving its partial update response", () => {
+    const panel = readFileSync(
+      fileURLToPath(new URL("./components/ProjectOperatingProfilePanel.vue", import.meta.url)),
+      "utf8"
+    );
+    expect(panel).toContain("await updateProjectOperatingProfile");
+    expect(panel).toContain("await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok(\"项目经营档案已保存\")");
+    expect(panel).not.toContain("sync(await updateProjectOperatingProfile");
+  });
+
+  it("discards stale profile responses after switching projects", () => {
+    const panel = readFileSync(
+      fileURLToPath(new URL("./components/ProjectOperatingProfilePanel.vue", import.meta.url)),
+      "utf8"
+    );
+    expect(panel).toContain("const expectedProjectId = props.projectId");
+    expect(panel).toContain("const requestId = ++loadRequestId");
+    expect(panel).toContain("ownsLoad(requestId, expectedProjectId)");
+    expect(panel).toContain("updateProjectOperatingProfile(expectedProjectId, payload)");
+    expect(panel).toContain("addProjectParticipatingCompany(expectedProjectId");
+    expect(panel).toContain("deactivateProjectParticipatingCompany(expectedProjectId");
+    expect(panel).toContain("removeProjectParticipatingCompany(expectedProjectId");
+    expect(panel).toContain("assignProjectConstructionEnterprise(expectedProjectId");
+    expect(panel).toContain("if (!ownsProject(expectedProjectId, expectedGeneration)) return");
+    expect(panel).toContain("resetProjectForms(); load()");
+  });
+
+  it("shows a future stop date as an arranged stop rather than an active operation", () => {
+    const panel = readFileSync(
+      fileURLToPath(new URL("./components/ProjectOperatingProfilePanel.vue", import.meta.url)),
+      "utf8"
+    );
+    expect(panel).toContain('row.status === "scheduled_inactive" ? "已安排停止"');
+    expect(panel).toContain("row.status === 'active'");
+    expect(panel).toContain('row.status === "scheduled_active" ? "待生效"');
   });
 
   it("separates upstream owner payments, company remittances, deductions, and unresolved differences", () => {
@@ -50,6 +93,17 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<SensitiveActionDialog");
     expect(source).not.toContain("recordProjectReceipt");
     expect(source).not.toContain('value="owner_direct_payment"');
+  });
+
+  it("uses readable business selectors instead of editable internal identifiers", () => {
+    expect(source).toContain(':options="affiliateCompanyContractSelectOptions"');
+    expect(source).toContain(':options="affiliateSettlementSelectOptions"');
+    expect(source).toContain(':options="invoiceRecordSelectOptions"');
+    expect(source).toContain(':options="upstreamSettlementSelectOptions"');
+    expect(source).toContain("fetchProjectUpstreamFundReferenceOptions");
+    expect(source).not.toMatch(
+      /<t-input[\s\S]*?v-model="receiptForm\.(?:affiliateCompanyContractId|affiliateSettlementFactId|invoiceRecordId|upstreamSettlementId)"/
+    );
   });
 
   it("routes pilot projects away from the legacy spot-purchase create option", () => {

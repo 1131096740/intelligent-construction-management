@@ -5,6 +5,7 @@ import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
 import { ContractTakeoverModule } from "../contract-takeover/contract-takeover.module";
+import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { PaymentController } from "./payment.controller";
 import { PaymentAmountService } from "./payment-amount.service";
 import { PaymentReadService } from "./payment-read.service";
@@ -17,6 +18,7 @@ import { PaymentRequestService } from "./payment-request.service";
     AuthModule,
     ContractTakeoverModule,
     FileModule,
+    OperatingLedgerModule,
     ProjectFundingModule
   ],
   controllers: [PaymentController],

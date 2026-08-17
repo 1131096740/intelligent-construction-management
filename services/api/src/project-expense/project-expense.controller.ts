@@ -87,7 +87,7 @@ export class ProjectExpenseController {
   createCapability(@Param("projectId") projectId: string) {
     return {
       projectId,
-      availableActions: ["create_project_expense_request"]
+      availableActions: []
     };
   }
 

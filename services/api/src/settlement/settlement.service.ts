@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   Optional
@@ -93,6 +94,11 @@ import {
 import { freezeSettlementParticipants } from "./settlement-participant-freeze";
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 import { SettlementRecoveryService } from "./settlement-recovery.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
@@ -438,7 +444,10 @@ export class SettlementService {
     @Optional()
     private readonly recoveries?: SettlementRecoveryService,
     @Optional()
-    private readonly processes?: ContractSettlementProcessService
+    private readonly processes?: ContractSettlementProcessService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -2891,6 +2900,12 @@ export class SettlementService {
         await this.ensureRecoveryBalance(tx, effectiveSettlement, actorUserId);
         await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
         await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
+        await this.appendOperatingSettlement(
+          tx,
+          effectiveSettlement.projectId,
+          effectiveSettlement.id,
+          actorUserId
+        );
         await this.audit.record(tx, {
           actorUserId,
           action: "settlement.archive.confirm",
@@ -2946,6 +2961,12 @@ export class SettlementService {
 
       await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
       await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
+      await this.appendOperatingSettlement(
+        tx,
+        effectiveSettlement.projectId,
+        effectiveSettlement.id,
+        actorUserId
+      );
 
       await this.audit.record(tx, {
         actorUserId,
@@ -2959,6 +2980,23 @@ export class SettlementService {
 
       return effectiveSettlement;
     });
+  }
+
+  private async appendOperatingSettlement(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    settlementId: string,
+    actorUserId: string
+  ): Promise<void> {
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      tx,
+      {
+        projectId,
+        sourceType: "settlement",
+        sourceBusinessId: settlementId
+      },
+      actorUserId
+    );
   }
 
   private async closeContractAfterFinalSettlement(
@@ -3529,9 +3567,10 @@ export class SettlementService {
       (currentTaxFactsStillMatch ? contractVersion?.taxMode ?? null : null) ??
       (lineTaxRates.length > 1
         ? "multiple_rate"
-        : lineTaxRates.length === 1
-          ? "single_rate"
-          : null);
+          : lineTaxRates.length === 1
+            ? "single_rate"
+            : null);
+    assertSettlementDocumentTaxFacts(invoiceType, taxMode);
     const defaultTaxRatePercent =
       decimalSnapshotText(frozenTaxRevision?.defaultTaxRatePercent) ??
       (currentTaxFactsStillMatch
@@ -4049,6 +4088,15 @@ function settlementInvoiceTypeLabel(value: string | null): string {
   return value === "vat_general" || value === "vat_special"
     ? contractInvoiceTypeLabel(value as ContractInvoiceType)
     : "—";
+}
+
+function assertSettlementDocumentTaxFacts(invoiceType: string | null, taxMode: string | null) {
+  if (invoiceType !== null && invoiceType !== "vat_general" && invoiceType !== "vat_special") {
+    throw new BadRequestException("结算单税务事实不完整，不能生成业务制品");
+  }
+  if (taxMode !== null && taxMode !== "single_rate" && taxMode !== "multiple_rate") {
+    throw new BadRequestException("结算单税务事实不完整，不能生成业务制品");
+  }
 }
 
 function settlementTaxModeLabel(value: string | null): string {

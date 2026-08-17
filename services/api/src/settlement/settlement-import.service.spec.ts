@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import * as ExcelJS from "exceljs";
 import { createHash } from "node:crypto";
 import PizZip from "pizzip";
@@ -81,10 +82,9 @@ async function importWorkbook(rows: unknown[][]): Promise<Buffer> {
     "清单项名称",
     "是否本期结算",
     "本期数量",
-    "本期人工金额(分)",
+    "本期金额（元）",
     "调整原因",
-    "备注",
-    "__系统清单项标识"
+    "备注"
   ]);
   rows.forEach((row) => sheet.addRow(row));
   return Buffer.from(await workbook.xlsx.writeBuffer());
@@ -117,8 +117,8 @@ describe("SettlementImportService", () => {
 
   it("previews only explicitly selected rows and writes no settlement facts", async () => {
     const buffer = await importWorkbook([
-      ["A-1", "自动计价行", "是", "2", "", "", "本期完成", "row-1"],
-      ["A-2", "未选中行", "否", "999", "999", "", "应忽略", "row-2"]
+      ["A-1", "自动计价行", "是", "2", "", "", "本期完成"],
+      ["A-2", "未选中行", "否", "999", "999", "", "应忽略"]
     ]);
     const tx = {
       settlementImport: {
@@ -195,6 +195,50 @@ describe("SettlementImportService", () => {
     );
   });
 
+  it("maps settlement preview exceptions before persisting or exporting the error", async () => {
+    const buffer = await importWorkbook([
+      ["A-1", "自动计价行", "是", "2", "", "", "本期完成"]
+    ]);
+    const tx = {
+      settlementImport: {
+        create: jest.fn().mockResolvedValue({ id: "import-error" })
+      }
+    };
+    const audit = { record: jest.fn() };
+    const service = new SettlementImportService(
+      {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      } as never,
+      audit as never,
+      {
+        getFileBuffer: jest.fn().mockResolvedValue({
+          file: {
+            originalName: "本期结算.xlsx",
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            sizeBytes: buffer.length,
+            uploadedByUserId: "user-1",
+            storageStatus: "active"
+          },
+          buffer
+        })
+      } as never,
+      { sourceLines: jest.fn().mockResolvedValue(sourceSnapshot) } as never,
+      {
+        previewLines: jest.fn().mockRejectedValue(
+          new BadRequestException({ message: ["PrismaClientKnownRequestError: internal"] })
+        )
+      } as never
+    );
+
+    const result = await service.previewImport("version-1", "user-1", { fileId: "file-1" });
+
+    expect(result.errors).toEqual([
+      { row: 2, column: "业务校验", message: "结算明细校验失败" }
+    ]);
+    const storedPreview = tx.settlementImport.create.mock.calls[0]?.[0]?.data.preview;
+    expect(JSON.stringify(storedPreview)).not.toContain("PrismaClientKnownRequestError");
+  });
+
   it("keeps 98 correct Excel rows in preview when two selected rows are invalid", async () => {
     const rows = Array.from({ length: 100 }, (_value, index) => {
       const sequence = index + 1;
@@ -219,8 +263,7 @@ describe("SettlementImportService", () => {
       index < 98 ? "1" : "",
       "",
       "",
-      "",
-      row.id
+      ""
     ]));
     const tx = { settlementImport: { create: jest.fn().mockResolvedValue({ id: "import-98-2" }) } };
     const settlements = { previewLines: jest.fn() };
@@ -261,7 +304,7 @@ describe("SettlementImportService", () => {
 
   it("writes no import preview when the selected template is incompatible", async () => {
     const buffer = await importWorkbook([
-      ["A-1", "自动计价行", "是", "1", "", "", "", "row-1"]
+      ["A-1", "自动计价行", "是", "1", "", "", ""]
     ]);
     const tx = {
       settlementImport: { create: jest.fn() },
@@ -311,9 +354,9 @@ describe("SettlementImportService", () => {
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });
 
-  it("reports a tampered visible source key instead of trusting the hidden row id", async () => {
+  it("rejects a tampered visible source key without an internal fallback", async () => {
     const buffer = await importWorkbook([
-      ["A-2", "自动计价行", "是", "1", "", "", "", "row-1"]
+      ["A-999", "自动计价行", "是", "1", "", "", ""]
     ]);
     const tx = {
       settlementImport: { create: jest.fn().mockResolvedValue({ id: "import-1" }) }
@@ -344,7 +387,7 @@ describe("SettlementImportService", () => {
         expect.objectContaining({
           row: 2,
           column: "清单编码/行号",
-          message: "清单编码与系统匹配列不一致，请重新下载模板"
+          message: "清单项不属于当前有效合同版本"
         })
       ]
     });
@@ -358,12 +401,11 @@ describe("SettlementImportService", () => {
       "清单项名称",
       "是否本期结算",
       "本期数量",
-      "本期人工金额(分)",
+      "本期金额（元）",
       "调整原因",
-      "备注",
-      "__系统清单项标识"
+      "备注"
     ]);
-    sheet.addRow(["A-1", "自动计价行", "是", { formula: "1+1", result: 2 }, "", "", "", "row-1"]);
+    sheet.addRow(["A-1", "自动计价行", "是", { formula: "1+1", result: 2 }, "", "", ""]);
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
     const prisma = { $transaction: jest.fn() };
     const service = new SettlementImportService(
@@ -507,15 +549,41 @@ describe("SettlementImportService", () => {
       "清单项名称",
       "是否本期结算",
       "本期数量",
-      "本期人工金额(分)",
+      "本期金额（元）",
       "调整原因",
-      "备注",
-      "__系统清单项标识"
+      "备注"
     ]);
-    expect(sheet.getColumn(8).hidden).toBe(true);
     const visibleValues = sheet.getRow(2).values;
     expect(Array.isArray(visibleValues) ? visibleValues.slice(1, 8) : []).not.toContain("row-1");
     expect(sheet.getRow(2).getCell(1).text).toBe("A-1");
+    expect(sheet.columnCount).toBe(7);
+    expect(JSON.stringify(workbook.model)).not.toContain("__系统清单项标识");
+  });
+
+  it("keeps duplicate visible contract keys uniquely selectable without exposing ids", async () => {
+    const sourceRows = [
+      sourceSnapshot.rows[0],
+      { ...sourceSnapshot.rows[0], id: "row-2", itemName: "自动计价行二" },
+      { ...sourceSnapshot.rows[0], id: "row-3", itemCode: "A-1（第2项）", itemName: "自动计价行三" }
+    ];
+    const prisma = { $transaction: jest.fn(async (callback) => callback({})) };
+    const service = new SettlementImportService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      {} as never,
+      { sourceLines: jest.fn().mockResolvedValue({ ...sourceSnapshot, rows: sourceRows }) } as never,
+      {} as never
+    );
+
+    const result = await service.exportTemplate("version-1", "user-1");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet("本期结算明细")!;
+
+    expect(sheet.getCell("A2").text).toBe("A-1");
+    expect(sheet.getCell("A3").text).toBe("A-1（第2项）");
+    expect(sheet.getCell("A3").text).not.toContain("row-2");
+    expect(sheet.getCell("A4").text).toBe("A-1（第2项）（第2项）");
   });
 
   it("applies a clean preview once and freezes the canonical payload without settlements", async () => {
@@ -633,6 +701,8 @@ describe("SettlementImportService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
     expect(workbook.getWorksheet("本期结算结果")?.getRow(2).getCell(1).text).toBe("A-1");
     expect(workbook.getWorksheet("本期结算结果")?.getRow(2).getCell(3).text).toBe("自动计价");
+    expect(workbook.getWorksheet("本期结算结果")?.getRow(2).getCell(6).text).toBe("200.00");
+    expect(JSON.stringify(workbook.model)).not.toContain("后台金额(分)");
     expect(workbook.getWorksheet("导入错误")?.actualRowCount).toBe(3);
     const errors = await service.exportErrors("project-1", "import-1", "user-1");
     expect(errors.fileName).toBe("结算导入错误.xlsx");

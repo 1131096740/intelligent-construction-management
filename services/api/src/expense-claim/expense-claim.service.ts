@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
@@ -11,7 +11,17 @@ import { BusinessNumberingService } from "../business-number/business-numbering.
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
+import {
+  missingOperatingSourceReplayService,
+  type OperatingSourceAppendPort,
+  OperatingSourceReplayService
+} from "../operating-ledger/operating-source-replay.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import {
+  EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE,
+  EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE,
+  EXPENSE_CLAIM_PAYMENT_EXECUTION_SOURCE_TYPE
+} from "./expense-claim-operating-source.adapter";
 import { renderExpenseClaimFinalPaymentPdf } from "./expense-claim-final-payment-pdf";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
@@ -57,7 +67,10 @@ export class ExpenseClaimService {
     @Optional()
     private readonly approvalForms?: ApprovalFormService,
     @Optional()
-    private readonly projectFunding?: ProjectFundingAvailabilityService
+    private readonly projectFunding?: ProjectFundingAvailabilityService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -147,6 +160,9 @@ export class ExpenseClaimService {
     }
     if (claimType === "incidental_expense" && !input.projectId?.trim()) {
       throw new BadRequestException("零星费用必须选择项目");
+    }
+    if (claimType === "incidental_expense" && !input.payeeName?.trim()) {
+      throw new BadRequestException("零星费用收款对象必填");
     }
     const incidentalExpenseCategory =
       input.incidentalExpenseCategory?.trim() || null;
@@ -868,6 +884,19 @@ export class ExpenseClaimService {
           signatureVersionIdSnapshot: signature.versionId
         }
       });
+      if (
+        completed &&
+        claim.projectId &&
+        (claim.claimType === "reimbursement" ||
+          claim.claimType === "incidental_expense")
+      ) {
+        await this.appendOperatingExpenseClaimApproval(
+          tx,
+          claim.projectId,
+          updated.id,
+          actorUserId
+        );
+      }
       await this.audit.record(tx, {
         actorUserId,
         action: "expense_claim.approval.approve",
@@ -969,6 +998,12 @@ export class ExpenseClaimService {
           occurredAt: paidAt,
           actorUserId
         });
+        await this.appendOperatingEmployeeLoanEntry(
+          tx,
+          claim.projectId,
+          existingEntry.id,
+          actorUserId
+        );
         return {
           id: existingEntry.id,
           expenseClaimId: claim.id,
@@ -1021,6 +1056,12 @@ export class ExpenseClaimService {
       const claimFundedAmountCents = claim.fundedAmountCents + amountCents;
       const claimStatus = claimFundedAmountCents === claim.requestedAmountCents ? "disbursed" : "partially_disbursed";
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents: claimFundedAmountCents, status: claimStatus } });
+      await this.appendOperatingEmployeeLoanEntry(
+        tx,
+        claim.projectId,
+        entry.id,
+        actorUserId
+      );
       await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
       return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus, replayed: false };
     });
@@ -1123,6 +1164,14 @@ export class ExpenseClaimService {
           occurredAt: paidAt,
           actorUserId
         });
+        if (claim.projectId) {
+          await this.appendOperatingExpenseClaimPaymentExecution(
+            tx,
+            claim.projectId,
+            existingExecution.id,
+            actorUserId
+          );
+        }
         return {
           id: existingExecution.id,
           expenseClaimId: claim.id,
@@ -1163,6 +1212,14 @@ export class ExpenseClaimService {
       const fundedAmountCents = claim.fundedAmountCents + amountCents;
       const status = fundedAmountCents === claim.companyPayableAmountCents ? "paid" : "partially_paid";
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents, status } });
+      if (claim.projectId) {
+        await this.appendOperatingExpenseClaimPaymentExecution(
+          tx,
+          claim.projectId,
+          execution.id,
+          actorUserId
+        );
+      }
       await this.audit.record(tx, { actorUserId, action: claim.claimType === "incidental_expense" ? "incidental_expense.payment.record" : "expense_claim.reimbursement.payment.record", businessType, businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
       return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false };
     });
@@ -1229,6 +1286,12 @@ export class ExpenseClaimService {
       const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "repayment", amountCents: repayment.amountCents, balanceDeltaCents: -repayment.amountCents, sourceRepaymentId: repayment.id, occurredAt: new Date(), createdByUserId: actorUserId } });
       await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { repaidAmountCents: account.repaidAmountCents + repayment.amountCents, balanceAmountCents: account.balanceAmountCents - repayment.amountCents } });
       const confirmed = await tx.employeeLoanRepayment.update({ where: { id: repayment.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date(), confirmationNote: optionalText(input.confirmationNote) } });
+      await this.appendOperatingEmployeeLoanEntry(
+        tx,
+        claim.projectId,
+        entry.id,
+        actorUserId
+      );
       await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.confirm", businessType: "expense_claim", businessId: claimId, metadata: { repaymentId: repayment.id, loanEntryId: entry.id, amountCents: repayment.amountCents.toString() } });
       return { id: confirmed.id, status: confirmed.status, amountCents: moneyCentsToApi(repayment.amountCents) };
     });
@@ -1255,6 +1318,12 @@ export class ExpenseClaimService {
       const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "reversal", amountCents: repayment.amountCents, balanceDeltaCents: repayment.amountCents, reversalOfEntryId: original.id, occurredAt: new Date(), createdByUserId: actorUserId, note: reason } });
       await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { repaidAmountCents: account.repaidAmountCents - repayment.amountCents, balanceAmountCents: account.balanceAmountCents + repayment.amountCents } });
       const reversed = await tx.employeeLoanRepayment.update({ where: { id: repayment.id }, data: { status: "reversed", reversedAt: new Date(), reversedByUserId: actorUserId, reversalReason: reason } });
+      await this.appendOperatingEmployeeLoanEntry(
+        tx,
+        claim.projectId,
+        entry.id,
+        actorUserId
+      );
       await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.reverse", businessType: "expense_claim", businessId: claim.id, metadata: { repaymentId: repayment.id, loanEntryId: entry.id, reversalOfEntryId: original.id, amountCents: repayment.amountCents.toString(), reason } });
       return { id: reversed.id, status: reversed.status, amountCents: moneyCentsToApi(repayment.amountCents) };
     });
@@ -1480,6 +1549,57 @@ export class ExpenseClaimService {
     return amountCents;
   }
 
+  private async appendOperatingExpenseClaimApproval(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    expenseClaimId: string,
+    actorUserId: string
+  ): Promise<void> {
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      tx,
+      {
+        projectId,
+        sourceType: EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE,
+        sourceBusinessId: expenseClaimId
+      },
+      actorUserId
+    );
+  }
+
+  private async appendOperatingExpenseClaimPaymentExecution(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    paymentExecutionId: string,
+    actorUserId: string
+  ): Promise<void> {
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      tx,
+      {
+        projectId,
+        sourceType: EXPENSE_CLAIM_PAYMENT_EXECUTION_SOURCE_TYPE,
+        sourceBusinessId: paymentExecutionId
+      },
+      actorUserId
+    );
+  }
+
+  private async appendOperatingEmployeeLoanEntry(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    loanEntryId: string,
+    actorUserId: string
+  ): Promise<void> {
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      tx,
+      {
+        projectId,
+        sourceType: EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE,
+        sourceBusinessId: loanEntryId
+      },
+      actorUserId
+    );
+  }
+
   private async postLoanOffsetReservations(
     tx: Prisma.TransactionClient,
     claim: { id: string; claimType: string; projectId: string | null; applicantUserId: string | null; loanOffsetAmountCents: bigint },
@@ -1495,7 +1615,15 @@ export class ExpenseClaimService {
       const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
       const accountReservations = reservations.filter((item) => item.loanAccountId === account.id);
       for (const reservation of accountReservations) {
-        await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo + BigInt(accountReservations.indexOf(reservation)), entryType: "offset", amountCents: reservation.amountCents, balanceDeltaCents: -reservation.amountCents, sourceExpenseClaimId: claim.id, sourceReservationId: reservation.id, occurredAt: new Date(), createdByUserId: actorUserId } });
+        const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo + BigInt(accountReservations.indexOf(reservation)), entryType: "offset", amountCents: reservation.amountCents, balanceDeltaCents: -reservation.amountCents, sourceExpenseClaimId: claim.id, sourceReservationId: reservation.id, occurredAt: new Date(), createdByUserId: actorUserId } });
+        if (claim.projectId) {
+          await this.appendOperatingEmployeeLoanEntry(
+            tx,
+            claim.projectId,
+            entry.id,
+            actorUserId
+          );
+        }
       }
       await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { offsetAmountCents: account.offsetAmountCents + amountCents, reservedOffsetAmountCents: account.reservedOffsetAmountCents - amountCents, balanceAmountCents: account.balanceAmountCents - amountCents } });
     }

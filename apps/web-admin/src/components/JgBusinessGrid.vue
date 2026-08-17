@@ -2,14 +2,21 @@
 import { ref } from "vue";
 import Grid, {
   type AfterEditEvent,
-  type ColumnRegular,
-  type FocusAfterRenderEvent
+  type Editors,
+  type FocusAfterRenderEvent,
+  VGridVueEditor
 } from "@revolist/vue3-datagrid";
-import { applyJgBusinessGridEdit, type JgBusinessGridRow } from "./jg-business-grid.config";
+import JgBusinessGridSelectEditor from "./JgBusinessGridSelectEditor.vue";
+import {
+  applyJgBusinessGridEdit,
+  JG_BUSINESS_SEARCH_SELECT_EDITOR,
+  type JgBusinessGridColumn,
+  type JgBusinessGridRow
+} from "./jg-business-grid.config";
 
 const props = withDefaults(defineProps<{
   source: JgBusinessGridRow[];
-  columns: ColumnRegular[];
+  columns: JgBusinessGridColumn[];
   readonly?: boolean;
   minHeight?: number;
 }>(), {
@@ -21,6 +28,9 @@ const emit = defineEmits<{
   "update:source": [value: JgBusinessGridRow[]];
   "focus-row": [rowIndex: number];
 }>();
+const gridEditors: Editors = {
+  [JG_BUSINESS_SEARCH_SELECT_EDITOR]: VGridVueEditor(JgBusinessGridSelectEditor)
+};
 
 interface RevoGridElement extends HTMLElement {
   scrollToRow(rowIndex: number): Promise<void>;
@@ -90,6 +100,7 @@ defineExpose({ focusCell });
     <Grid
       ref="gridRef"
       :columns="columns"
+      :editors="gridEditors"
       :source="source"
       :readonly="readonly"
       :can-focus="true"

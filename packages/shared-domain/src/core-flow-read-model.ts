@@ -572,6 +572,7 @@ export interface ContractBusinessOptionReadModel {
   versionLabel: string;
   contractStatus: string;
   contractStatusLabel: string;
+  paymentSubjectType?: "our_company" | "affiliate";
   source: ContractBusinessOptionSource;
   sourceLabel: string;
   takeoverLevel: string | null;

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 
-const { randomUUID } = require("node:crypto");
-const { mkdtemp, rm } = require("node:fs/promises");
+const { createHash, randomUUID } = require("node:crypto");
+const { readFileSync } = require("node:fs");
+const { cp, mkdir, mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
@@ -13,9 +14,31 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 125;
+const EXPECTED_MIGRATION_COUNT = 136;
+const prismaRoot = path.join(root, "services", "api", "prisma");
+const PROJECT_OPERATING_PROFILE_MIGRATION =
+  "20260814010000_project_operating_profile";
 const TERMINAL_MIGRATION =
-  "20260811090000_contract_document_content_revision";
+  "20260816120000_pol08_contract_lineage_operating_sources";
+const sourceTerminalMigrationChecksum = createHash("sha256")
+  .update(readFileSync(path.join(
+    prismaRoot,
+    "migrations",
+    TERMINAL_MIGRATION,
+    "migration.sql"
+  )))
+  .digest("hex");
+const manifest = JSON.parse(readFileSync(
+  path.join(prismaRoot, "database-dynamic-gate-manifest.json"),
+  "utf8"
+));
+const TERMINAL_MIGRATION_CHECKSUM = manifest.migrationBaseline?.terminalMigrationChecksum;
+if (
+  manifest.migrationBaseline?.terminalMigration !== TERMINAL_MIGRATION ||
+  sourceTerminalMigrationChecksum !== TERMINAL_MIGRATION_CHECKSUM
+) {
+  throw new Error("remaining runner 的终点迁移 checksum 未与 canonical manifest 和源码对齐");
+}
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
 const GROUPS = [
@@ -114,6 +137,17 @@ const GROUPS = [
     pendingTests: 1
   },
   {
+    id: "project_operating_profile_upgrade",
+    database: "jiangkong_project_operating_profile_upgrade_test",
+    files: ["src/database/project-operating-profile-upgrade.spec.ts"],
+    flags: {
+      DATABASE_URL: "databaseUrl",
+      RUN_PROJECT_OPERATING_PROFILE_UPGRADE: "1"
+    },
+    pendingTests: 2,
+    preTerminalMigrationFixture: true
+  },
+  {
     id: "generic_database_constraints",
     database: "jiangkong_database_dynamic_misc",
     files: [
@@ -123,6 +157,11 @@ const GROUPS = [
       "src/database/approval-review-concurrency.spec.ts",
       "src/database/contract-change-baseline-concurrency.spec.ts",
       "src/database/project-upstream-fund-fact-db.spec.ts",
+      "src/database/project-operating-profile-db.spec.ts",
+      "src/database/business-entry-definition-postgres.spec.ts",
+      "src/database/operating-ledger-concurrency.spec.ts",
+      "src/database/operating-source-replay-consistency.spec.ts",
+      "src/database/pol05-operating-source-facts.spec.ts",
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
       "src/database/project-affiliate-subject-db.spec.ts"
@@ -135,18 +174,66 @@ const GROUPS = [
       RUN_APPROVAL_REVIEW_CONCURRENCY: "1",
       RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY: "1",
       RUN_PROJECT_UPSTREAM_FUND_DB_TESTS: "1",
+      RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
+      RUN_OPERATING_LEDGER_DATABASE: "1",
+      RUN_OPERATING_SOURCE_REPLAY_DATABASE: "1",
+      RUN_POL05_OPERATING_SOURCE_DATABASE: "1",
+      OPERATING_LEDGER_DATABASE_URL: "databaseUrl",
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 14
+    pendingTests: 40,
+    requiresOperatingLedgerWriteSecret: true
   }
 ];
+
+function assertManifestMatchesGroups() {
+  const manifestGroup = manifest.coveredGroups?.find(
+    (group) => group.id === "remaining_dynamic_postgresql16"
+  );
+  if (!manifestGroup) fail("remaining runner 未在 canonical manifest 中登记");
+  const runnerFiles = GROUPS.flatMap((group) => group.files).sort();
+  const manifestFiles = manifestGroup.testFiles
+    .map((file) => file.path.replace(/^services\/api\//u, ""))
+    .sort();
+  if (
+    manifestGroup.pendingTests !== GROUPS.reduce((sum, group) => sum + group.pendingTests, 0) ||
+    JSON.stringify(manifestFiles) !== JSON.stringify(runnerFiles)
+  ) {
+    fail("remaining runner 的 GROUPS 与 canonical manifest 不一致");
+  }
+}
+
+assertManifestMatchesGroups();
 
 const ALLOWED_DATABASE_NAMES = new Set(GROUPS.map((group) => group.database));
 
 function fail(message) {
   throw new Error(message);
+}
+
+function selectGroups(args = []) {
+  const requested = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== "--group" || !args[index + 1]) {
+      fail("剩余数据库动态门只接受 --group <子组名称>");
+    }
+    requested.push(args[index + 1]);
+    index += 1;
+  }
+  if (new Set(requested).size !== requested.length) {
+    fail("剩余数据库动态门子组不能重复");
+  }
+  if (requested.length === 0) return GROUPS;
+  const requestedSet = new Set(requested);
+  const selected = GROUPS.filter((group) => requestedSet.has(group.id));
+  if (selected.length !== requested.length) {
+    const known = new Set(GROUPS.map((group) => group.id));
+    const unknown = requested.filter((id) => !known.has(id));
+    fail(`未知剩余数据库动态门子组：${unknown.join(", ")}`);
+  }
+  return selected;
 }
 
 function isLocalHostName(hostname) {
@@ -287,7 +374,13 @@ async function waitForPostgres(containerName, database) {
   fail("剩余数据库动态门临时 PostgreSQL 16 在 30 秒内未就绪");
 }
 
-function createRuntimeEnvironment(base, temporaryRoot, databaseUrl, group) {
+function createRuntimeEnvironment(
+  base,
+  temporaryRoot,
+  databaseUrl,
+  group,
+  operatingLedgerWriteSecret
+) {
   const environment = {
     PATH: base.PATH ?? "",
     HOME: base.HOME ?? temporaryRoot,
@@ -297,6 +390,9 @@ function createRuntimeEnvironment(base, temporaryRoot, databaseUrl, group) {
   };
   for (const [key, value] of Object.entries(group.flags)) {
     environment[key] = value === "databaseUrl" ? databaseUrl : value;
+  }
+  if (group.requiresOperatingLedgerWriteSecret) {
+    environment.OPERATING_LEDGER_DB_WRITE_SECRET = operatingLedgerWriteSecret ?? randomUUID();
   }
   return environment;
 }
@@ -314,8 +410,85 @@ async function migrate(databaseUrl, environment) {
   );
 }
 
-async function main(sourceEnv = process.env) {
+async function assertTerminalMigrationProof(containerName, database, dockerEnv) {
+  const result = await run(
+    docker,
+    [
+      "exec",
+      containerName,
+      "psql",
+      "-U",
+      "jiangkong",
+      "-d",
+      database,
+      "-X",
+      "-A",
+      "-t",
+      "-F",
+      "|",
+      "-c",
+      `SELECT count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
+        `count(*) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
+        `max(checksum) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)` +
+        ` FROM _prisma_migrations;`
+    ],
+    { env: dockerEnv }
+  );
+  const [migrationCount, terminalCount, terminalChecksum] = result.stdout.trim().split("|");
+  if (
+    Number(migrationCount) !== EXPECTED_MIGRATION_COUNT ||
+    Number(terminalCount) !== 1 ||
+    terminalChecksum !== TERMINAL_MIGRATION_CHECKSUM
+  ) {
+    fail(
+      `迁移终点证明不完整：count=${migrationCount} terminal=${terminalCount} checksum=${terminalChecksum}`
+    );
+  }
+}
+
+async function prepareProjectOperatingProfileUpgrade(
+  databaseUrl,
+  environment,
+  temporaryRoot,
+  containerName,
+  dockerEnv,
+  database
+) {
+  const fixturePrismaRoot = path.join(temporaryRoot, "project-operating-profile-upgrade-prisma");
+  await mkdir(fixturePrismaRoot, { recursive: true });
+  await cp(path.join(prismaRoot, "schema.prisma"), path.join(fixturePrismaRoot, "schema.prisma"));
+  await cp(path.join(prismaRoot, "migrations"), path.join(fixturePrismaRoot, "migrations"), {
+    recursive: true,
+    filter: (source) => {
+      const relativePath = path.relative(path.join(prismaRoot, "migrations"), source);
+      if (!relativePath || relativePath === "migration_lock.toml") return true;
+      const [migrationName] = relativePath.split(path.sep);
+      return migrationName < PROJECT_OPERATING_PROFILE_MIGRATION;
+    }
+  });
+  await run(
+    pnpm,
+    ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy", "--schema", path.join(fixturePrismaRoot, "schema.prisma")],
+    { env: { ...environment, DATABASE_URL: databaseUrl }, forwardOutput: true }
+  );
+  const fixtureSql = [
+    `INSERT INTO "Project" ("id", "code", "name", "updatedAt") VALUES ('profile-upgrade-project', 'POL02-UPGRADE', '迁移升级锁定验证', '2026-08-01');`,
+    `INSERT INTO "ProjectAffiliateAssignment" ("id", "projectId", "businessPartyId", "businessPartyVersionId", "affiliateNameSnapshot", "effectiveFrom", "changeReason", "assignedByUserId", "updatedAt") VALUES ('profile-upgrade-assignment', 'profile-upgrade-project', 'profile-upgrade-party', 'profile-upgrade-party-version', '升级前施工企业', '2026-07-01', '升级前存量映射', 'profile-upgrade-user', '2026-07-01');`,
+    `INSERT INTO "ProjectReceipt" ("id", "projectId", "receivedAt", "amountCents", "payerName", "sourceType", "voucherFileId", "recordedByUserId", "updatedAt") VALUES ('profile-upgrade-receipt', 'profile-upgrade-project', '2026-08-01', 100, '升级前业主', 'owner_direct_payment', 'profile-upgrade-voucher', 'profile-upgrade-user', '2026-08-01');`,
+    `INSERT INTO "Project" ("id", "code", "name", "updatedAt") VALUES ('profile-upgrade-uncovered-project', 'POL02-UPGRADE-UNCOVERED', '迁移升级不覆盖验证', '2026-08-01');`,
+    `INSERT INTO "ProjectAffiliateAssignment" ("id", "projectId", "businessPartyId", "businessPartyVersionId", "affiliateNameSnapshot", "effectiveFrom", "changeReason", "assignedByUserId", "updatedAt") VALUES ('profile-upgrade-uncovered-assignment', 'profile-upgrade-uncovered-project', 'profile-upgrade-uncovered-party', 'profile-upgrade-uncovered-party-version', '晚生效施工企业', '2026-07-15', '升级前晚生效映射', 'profile-upgrade-user', '2026-07-15');`,
+    `INSERT INTO "ProjectProxyPayment" ("id", "projectId", "paidAt", "amountCents", "generalContractorName", "paidTargetName", "paymentType", "voucherFileId", "recordedByUserId", "createdAt", "updatedAt") VALUES ('profile-upgrade-uncovered-proxy-payment', 'profile-upgrade-uncovered-project', '2026-07-01', 100, '升级前总包', '升级前收款单位', 'other', 'profile-upgrade-uncovered-voucher', 'profile-upgrade-user', '2026-08-01', '2026-08-01');`
+  ].join("\n");
+  await run(
+    docker,
+    ["exec", containerName, "psql", "-U", "jiangkong", "-d", database, "-v", "ON_ERROR_STOP=1", "--command", fixtureSql],
+    { env: dockerEnv, forwardOutput: true }
+  );
+}
+
+async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
   assertSafeEnvironment(sourceEnv);
+  const selectedGroups = selectGroups(args);
   const candidateSha = sourceEnv.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA;
   await assertRepositoryState(candidateSha);
   const temporaryRoot = await mkdtemp(
@@ -323,7 +496,7 @@ async function main(sourceEnv = process.env) {
   );
   const port = await freePort();
   const password = randomUUID();
-  const initialDatabase = GROUPS[0].database;
+  const initialDatabase = selectedGroups[0].database;
   const containerName = `jiangkong-database-dynamic-remaining-${Date.now()}-${process.pid}`;
   const dockerEnv = {
     PATH: sourceEnv.PATH ?? "",
@@ -388,7 +561,7 @@ async function main(sourceEnv = process.env) {
     containerRunAttempted = true;
     await waitForPostgres(containerName, initialDatabase);
 
-    for (const group of GROUPS) {
+    for (const group of selectedGroups) {
       const groupStartedAt = Date.now();
       const databaseUrl = databaseUrlFor(password, port, group.database);
       if (group.database !== initialDatabase) {
@@ -400,12 +573,24 @@ async function main(sourceEnv = process.env) {
         sourceEnv,
         temporaryRoot,
         databaseUrl,
-        group
+        group,
+        randomUUID()
       );
       process.stdout.write(
         `[database-dynamic-remaining] start ${group.id} (${group.pendingTests} pending tests)\n`
       );
+      if (group.preTerminalMigrationFixture) {
+        await prepareProjectOperatingProfileUpgrade(
+          databaseUrl,
+          environment,
+          temporaryRoot,
+          containerName,
+          dockerEnv,
+          group.database
+        );
+      }
       await migrate(databaseUrl, environment);
+      await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
       await run(
         pnpm,
         ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...group.files],
@@ -436,7 +621,7 @@ async function main(sourceEnv = process.env) {
       terminalMigration: TERMINAL_MIGRATION,
       containerImage: IMAGE,
       containerImageId: imageId,
-      executedTests: GROUPS.reduce((sum, group) => sum + group.pendingTests, 0),
+      executedTests: selectedGroups.reduce((sum, group) => sum + group.pendingTests, 0),
       groups: receipts
     };
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
@@ -450,7 +635,7 @@ async function main(sourceEnv = process.env) {
 }
 
 if (require.main === module) {
-  main().catch((error) => {
+  main(process.env, process.argv.slice(2)).catch((error) => {
     process.stderr.write(
       `剩余数据库动态门失败：${error instanceof Error ? error.message : String(error)}\n`
     );
@@ -466,5 +651,6 @@ module.exports = {
   assertSafeEnvironment,
   createRuntimeEnvironment,
   databaseUrlFor,
-  main
+  main,
+  selectGroups
 };

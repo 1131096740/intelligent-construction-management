@@ -22,6 +22,10 @@ const seedPaymentFundingAllocationId =
   "seed-project-funding-allocation-fk-2026-006-001";
 const seedPaymentExecutionAuditId =
   "seed-audit-payment-execution-fk-2026-006-001";
+const seedConstructionEnterpriseId = "seed-construction-enterprise-jgxm-001";
+const seedConstructionEnterpriseVersionId = "seed-construction-enterprise-version-jgxm-001";
+const seedConstructionEnterpriseAssignmentId = "seed-construction-enterprise-assignment-jgxm-001";
+const seedParticipatingCompanyId = "seed-project-participating-company-jgxm-001";
 const positions = [
   ["chairman", "董事长"],
   ["general_manager", "总经理"],
@@ -759,6 +763,106 @@ async function main() {
       id: seed.project.id,
       code: seed.project.code,
       name: seed.project.name
+    }
+  });
+
+  await prisma.companyEntity.upsert({
+    where: { id: seed.companyEntity.id },
+    update: {
+      name: seed.companyEntity.name,
+      unifiedSocialCreditCode: seed.companyEntity.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntity.registeredAddress,
+      dataStatus: seed.companyEntity.dataStatus,
+      currentVersionNo: seed.companyEntity.currentVersionNo,
+      isActive: seed.companyEntity.isActive
+    },
+    create: {
+      id: seed.companyEntity.id,
+      name: seed.companyEntity.name,
+      unifiedSocialCreditCode: seed.companyEntity.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntity.registeredAddress,
+      dataStatus: seed.companyEntity.dataStatus,
+      currentVersionNo: seed.companyEntity.currentVersionNo,
+      isActive: seed.companyEntity.isActive
+    }
+  });
+  await prisma.companyEntityVersion.upsert({
+    where: { id: seed.companyEntityVersion.id },
+    update: {
+      companyEntityId: seed.companyEntityVersion.companyEntityId,
+      versionNo: seed.companyEntityVersion.versionNo,
+      name: seed.companyEntityVersion.name,
+      unifiedSocialCreditCode: seed.companyEntityVersion.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntityVersion.registeredAddress,
+      isActive: seed.companyEntityVersion.isActive,
+      action: seed.companyEntityVersion.action
+    },
+    create: {
+      id: seed.companyEntityVersion.id,
+      companyEntityId: seed.companyEntityVersion.companyEntityId,
+      versionNo: seed.companyEntityVersion.versionNo,
+      name: seed.companyEntityVersion.name,
+      unifiedSocialCreditCode: seed.companyEntityVersion.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntityVersion.registeredAddress,
+      isActive: seed.companyEntityVersion.isActive,
+      action: seed.companyEntityVersion.action
+    }
+  });
+  await prisma.businessParty.upsert({
+    where: { id: seedConstructionEnterpriseId },
+    update: { name: "示例施工企业", status: "active" },
+    create: {
+      id: seedConstructionEnterpriseId,
+      name: "示例施工企业",
+      unifiedSocialCreditCode: "91310000SEEDBUILD01",
+      status: "active",
+      createdByUserId: seed.users.contractStaff.id
+    }
+  });
+  await prisma.businessPartyVersion.upsert({
+    where: { id: seedConstructionEnterpriseVersionId },
+    update: {
+      snapshot: { name: "示例施工企业", unifiedSocialCreditCode: "91310000SEEDBUILD01", attachments: [] }
+    },
+    create: {
+      id: seedConstructionEnterpriseVersionId,
+      businessPartyId: seedConstructionEnterpriseId,
+      versionNo: 1,
+      snapshot: { name: "示例施工企业", unifiedSocialCreditCode: "91310000SEEDBUILD01", attachments: [] },
+      createdByUserId: seed.users.contractStaff.id
+    }
+  });
+  await prisma.projectAffiliateAssignment.upsert({
+    where: { id: seedConstructionEnterpriseAssignmentId },
+    update: {
+      affiliateNameSnapshot: "示例施工企业",
+      affiliateCreditCodeSnapshot: "91310000SEEDBUILD01"
+    },
+    create: {
+      id: seedConstructionEnterpriseAssignmentId,
+      projectId: seed.project.id,
+      businessPartyId: seedConstructionEnterpriseId,
+      businessPartyVersionId: seedConstructionEnterpriseVersionId,
+      affiliateNameSnapshot: "示例施工企业",
+      affiliateCreditCodeSnapshot: "91310000SEEDBUILD01",
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      changeReason: "本地示例数据前置条件",
+      assignedByUserId: seed.users.contractStaff.id
+    }
+  });
+  await prisma.projectParticipatingCompany.upsert({
+    where: { id: seedParticipatingCompanyId },
+    update: { endedAt: null, endedByUserId: null },
+    create: {
+      id: seedParticipatingCompanyId,
+      projectId: seed.project.id,
+      companyEntityId: seed.companyEntity.id,
+      companyEntityVersionId: seed.companyEntityVersion.id,
+      companyNameSnapshot: seed.companyEntityVersion.name,
+      companyCreditCodeSnapshot: seed.companyEntityVersion.unifiedSocialCreditCode,
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      changeReason: "本地示例数据前置条件",
+      addedByUserId: seed.users.cashier.id
     }
   });
 

@@ -185,6 +185,18 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             name: "合同生命周期路由测试项目"
           }
         });
+        await prisma.projectAffiliateAssignment.create({
+          data: {
+            id: `lifecycle-route-construction-enterprise-${suffix}`,
+            projectId,
+            businessPartyId: `lifecycle-route-party-${suffix}`,
+            businessPartyVersionId: `lifecycle-route-party-version-${suffix}`,
+            affiliateNameSnapshot: "合同生命周期测试施工企业",
+            effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+            changeReason: "数据库测试夹具",
+            assignedByUserId: ownerId
+          }
+        });
         await prisma.userPosition.createMany({
           data: [
             {

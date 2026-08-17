@@ -13,6 +13,10 @@ export class CreatePaymentRequestDto {
   })
   sourceType?: "settlement" | "contract_advance" | "contract_due";
 
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["our_company", "affiliate"], { message: "付款主体类型不正确" })
+  paymentSubjectType?: "our_company" | "affiliate";
+
   @IsOptionalNonBlankText({
     typeMessage: "结算单编号必须是文字",
     blankMessage: "结算单编号不能为空白"

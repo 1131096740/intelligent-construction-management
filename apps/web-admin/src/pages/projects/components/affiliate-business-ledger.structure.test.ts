@@ -6,7 +6,7 @@ const page = readFileSync(new URL("../ProjectOperatingOverviewPage.vue", import.
 
 describe("affiliate downstream business ledger structure", () => {
   it("mounts a dedicated contract, settlement and payment takeover tab", () => {
-    expect(page).toContain('label="挂靠业务接管"');
+    expect(page).toContain('label="施工企业业务接管"');
     expect(page).toContain("<AffiliateBusinessLedgerPanel");
     expect(panel).toContain('value="contract"');
     expect(panel).toContain('value="settlement"');
@@ -28,5 +28,20 @@ describe("affiliate downstream business ledger structure", () => {
     expect(panel).toContain('"correction"');
     expect(panel).toContain('"reversal"');
     expect(panel).toContain("supplementProjectAffiliateBusinessEvidence");
+  });
+
+  it("keeps database ids hidden behind Chinese business references", () => {
+    expect(panel).toContain("fetchProjectAffiliateCompanyContracts");
+    expect(panel).toMatch(
+      /<t-select\s+[^>]*v-model="settlementForm\.affiliateCompanyContractId"[^>]*:options="affiliateCompanyContractOptions"[^>]*\/>/
+    );
+    expect(panel).not.toMatch(
+      /<t-input\s+[^>]*v-model="settlementForm\.affiliateCompanyContractId"/
+    );
+    expect(panel).not.toContain("拨款链路的施工企业—我方合同档案编号");
+    expect(panel).toContain("paymentRequestCode: fact.paymentRequestCode ?? \"\"");
+    expect(panel).toContain('v-model="paymentForm.paymentRequestCode"');
+    expect(panel).not.toContain('v-model="paymentForm.paymentRequestId"');
+    expect(panel).toContain("已发生的紧急或漏录付款不得补造审批");
   });
 });

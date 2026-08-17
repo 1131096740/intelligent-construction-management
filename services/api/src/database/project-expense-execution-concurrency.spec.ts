@@ -256,6 +256,18 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
         name: `项目支出实付并发验收 ${scenario.label}`
       }
     });
+    await client.projectAffiliateAssignment.create({
+      data: {
+        id: `${scenario.projectId}_construction_enterprise`,
+        projectId: scenario.projectId,
+        businessPartyId: `${scenario.projectId}_party`,
+        businessPartyVersionId: `${scenario.projectId}_party_version`,
+        affiliateNameSnapshot: "项目支出实付并发验收施工企业",
+        effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+        changeReason: "数据库测试夹具",
+        assignedByUserId: fixture.actorUserId
+      }
+    });
     await client.projectMember.create({
       data: {
         projectId: scenario.projectId,

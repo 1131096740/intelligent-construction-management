@@ -3,8 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 125,
-    "terminalMigration": "20260811090000_contract_document_content_revision",
+    "expectedDirectoryCount": 136,
+    "terminalMigration": "20260816120000_pol08_contract_lineage_operating_sources",
+    "terminalMigrationChecksum": "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -25,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 32,
-    "fullyPendingSuites": 23,
-    "partiallyPendingSuites": 9,
-    "pendingTests": 66,
-    "coveredFiles": 32,
-    "coveredTests": 66,
+    "pendingFiles": 38,
+    "fullyPendingSuites": 28,
+    "partiallyPendingSuites": 10,
+    "pendingTests": 94,
+    "coveredFiles": 38,
+    "coveredTests": 94,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,7 +175,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-    "pendingTests": 42,
+      "pendingTests": 70,
       "testFiles": [
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
@@ -203,7 +204,7 @@
         },
         {
           "path": "services/api/src/database/contract-ended-application-purge.spec.ts",
-          "pendingTests": 5,
+          "pendingTests": 6,
           "suiteStatus": "fully_pending"
         },
         {
@@ -274,6 +275,36 @@
         {
           "path": "services/api/src/database/project-upstream-fund-fact-db.spec.ts",
           "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-operating-profile-upgrade.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-operating-profile-db.spec.ts",
+          "pendingTests": 17,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/business-entry-definition-postgres.spec.ts",
+          "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/operating-ledger-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/operating-source-replay-consistency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/pol05-operating-source-facts.spec.ts",
+          "pendingTests": 1,
           "suiteStatus": "fully_pending"
         },
         {

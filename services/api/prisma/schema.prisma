@@ -21,6 +21,7 @@ model User {
   signatureFileId              String?
   handwrittenSignatureVersions HandwrittenSignatureVersion[]
   handwrittenSignatureHandoffs HandwrittenSignatureHandoff[]
+  businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
   createdAt                    DateTime                      @default(now())
   updatedAt                    DateTime                      @updatedAt
 
@@ -138,12 +139,17 @@ model UserPosition {
 }
 
 model Project {
-  id        String   @id @default(uuid())
-  code      String   @unique
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                           String    @id @default(uuid())
+  code                         String    @unique
+  name                         String
+  operatingLedgerEffectiveDate DateTime? @db.Date
+  takeoverCompletedDate        DateTime? @db.Date
+  takeoverStatus               String    @default("preparing")
+  constructionEnterpriseLockedAt DateTime?
+  businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
+  isActive                     Boolean   @default(true)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 }
 
 // 项目挂靠企业只通过显式映射生效；变更时结束旧行并新增快照，不覆盖历史事实。
@@ -165,6 +171,244 @@ model ProjectAffiliateAssignment {
   @@index([projectId, effectiveFrom])
   @@index([businessPartyId])
   @@index([businessPartyVersionId])
+}
+
+// 项目参与公司按生效期间追加；已有正式事实的历史行不得覆盖。
+model ProjectParticipatingCompany {
+  id                        String    @id @default(uuid())
+  projectId                 String
+  companyEntityId           String
+  companyEntityVersionId    String
+  companyNameSnapshot       String
+  companyCreditCodeSnapshot String?
+  effectiveFrom             DateTime  @db.Date
+  endedAt                   DateTime? @db.Date
+  changeReason              String
+  addedByUserId             String
+  endedByUserId             String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([projectId, effectiveFrom])
+  @@index([companyEntityId])
+  @@index([companyEntityVersionId])
+}
+
+// 正式经营事实信封只允许追加；更正和冲销通过新增事实引用原事实。
+model OperatingFact {
+  id                                   String                 @id @default(uuid())
+  projectId                            String
+  sourceType                           String
+  sourceBusinessId                     String
+  sourceVersion                        Int
+  sourceBusinessCode                   String
+  occurredAt                           DateTime
+  recordedAt                           DateTime               @default(now())
+  confirmedAt                          DateTime
+  affiliateAssignmentId                String
+  affiliateBusinessPartyVersionId      String
+  affiliateNameSnapshot                String
+  affiliateCreditCodeSnapshot          String?
+  operatingLedgerEffectiveDateSnapshot DateTime               @db.Date
+  isBeforeOperatingLedgerEffectiveDate Boolean
+  historicalTakeoverBatchId            String?
+  factKind                             String
+  operatingLevel                       String
+  evidenceLevel                        String
+  amountCents                          BigInt
+  currencyCode                         String                 @default("CNY")
+  direction                            String
+  debtorSubjectKind                    String?
+  debtorSubjectId                      String?
+  creditorSubjectKind                  String?
+  creditorSubjectId                    String?
+  approvedPayerSubjectKind             String?
+  approvedPayerSubjectId               String?
+  actualPayerSubjectKind               String?
+  actualPayerSubjectId                 String?
+  payeeSubjectKind                     String?
+  payeeSubjectId                       String?
+  costBearingCompanySubjectKind        String?
+  costBearingCompanySubjectId          String?
+  subjectSnapshot                      Json
+  sourceSnapshot                       Json
+  basisSnapshot                        Json?
+  entryKind                            String                 @default("original")
+  adjustsFactId                        String?
+  idempotencyKey                       String                 @unique
+  recordedByUserId                     String
+  confirmedByUserId                    String
+  status                               String                 @default("confirmed")
+  createdAt                            DateTime               @default(now())
+  impacts                              OperatingImpactEntry[] @relation("OperatingFactImpacts")
+  originalFact                         OperatingFact?         @relation("OperatingFactAdjustments", fields: [adjustsFactId], references: [id], onDelete: Restrict)
+  adjustments                          OperatingFact[]         @relation("OperatingFactAdjustments")
+
+  @@unique([sourceType, sourceBusinessId])
+  @@unique([id, projectId], map: "OperatingFact_id_projectId_key")
+  @@index([projectId, occurredAt])
+  @@index([projectId, status, occurredAt])
+  @@index([adjustsFactId])
+  @@index([affiliateAssignmentId])
+  @@index([historicalTakeoverBatchId])
+}
+
+model OperatingImpactEntry {
+  id               String       @id @default(uuid())
+  factId           String
+  projectId        String
+  sourceType       String
+  sourceBusinessId String
+  sourceImpactKey  String
+  idempotencyKey   String       @unique
+  impactKind       String
+  amountCents      BigInt
+  direction        String
+  subjectRole      String?
+  subjectKind      String?
+  subjectId        String?
+  costCategoryCode String?
+  fundPurpose      String?
+  description      String?
+  impactSnapshot   Json
+  createdAt        DateTime     @default(now())
+  fact             OperatingFact @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+
+  @@unique([factId, sourceImpactKey])
+  @@unique([sourceType, sourceBusinessId, sourceImpactKey], map: "OperatingImpactEntry_source_impact_key")
+  @@index([projectId, impactKind, createdAt])
+  @@index([factId])
+}
+
+// 通用历史经营接管与合同接管分离；批次只保存草稿、复核和激活坐标，正式事实仍写入 OperatingFact。
+model OperatingTakeoverBatch {
+  id                    String   @id @default(uuid())
+  projectId             String
+  batchNo               String
+  sourceFileId          String?
+  sourceFileName        String?
+  sceneKeys             Json
+  status                String   @default("draft")
+  revision              Int      @default(1)
+  importFingerprint     String
+  totalRows             Int      @default(0)
+  readyRows             Int      @default(0)
+  blockedRows           Int      @default(0)
+  warningRows           Int      @default(0)
+  createdByUserId       String
+  activatedAt           DateTime?
+  activatedByUserId     String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  rows                  OperatingTakeoverRow[]
+  issues                OperatingTakeoverIssue[]
+  attachmentGroups      OperatingTakeoverAttachmentGroup[]
+  confirmations         OperatingTakeoverConfirmation[]
+  activation            OperatingTakeoverActivation?
+
+  @@unique([projectId, batchNo])
+  @@unique([projectId, importFingerprint])
+  @@index([projectId, status])
+  @@index([projectId, createdAt])
+}
+
+model OperatingTakeoverRow {
+  id                String   @id @default(uuid())
+  batchId           String
+  rowNo             Int
+  sceneKey          String
+  definitionVersion Int
+  businessRef       String?
+  occurredAt        DateTime? @db.Date
+  periodLabel       String?
+  amountCents       BigInt?
+  valuesSnapshot    Json
+  evidenceLevel     String
+  reviewStatus      String   @default("pending")
+  duplicateStatus   String   @default("none")
+  duplicateNote     String?
+  reviewConclusion  String?
+  revision          Int      @default(1)
+  generatedFactId   String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  batch             OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  issues            OperatingTakeoverIssue[]
+  attachmentGroups  OperatingTakeoverAttachmentGroup[]
+
+  @@unique([batchId, rowNo])
+  @@index([batchId, reviewStatus])
+  @@index([batchId, duplicateStatus])
+  @@index([sceneKey])
+}
+
+model OperatingTakeoverIssue {
+  id             String   @id @default(uuid())
+  batchId        String
+  rowId          String?
+  code           String
+  severity       String
+  fieldKey       String?
+  message        String
+  suggestion     String?
+  status         String   @default("open")
+  createdAt      DateTime @default(now())
+  batch          OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  row            OperatingTakeoverRow? @relation(fields: [rowId], references: [id], onDelete: Restrict)
+
+  @@index([batchId, severity, status])
+  @@index([rowId, status])
+}
+
+model OperatingTakeoverAttachmentGroup {
+  id          String   @id @default(uuid())
+  batchId     String
+  rowId       String?
+  purpose     String
+  createdByUserId String
+  createdAt   DateTime @default(now())
+  batch       OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  row         OperatingTakeoverRow? @relation(fields: [rowId], references: [id], onDelete: Restrict)
+  links       OperatingTakeoverAttachmentLink[]
+
+  @@index([batchId, rowId])
+}
+
+model OperatingTakeoverAttachmentLink {
+  id        String   @id @default(uuid())
+  groupId   String
+  fileId    String
+  createdAt DateTime @default(now())
+  group     OperatingTakeoverAttachmentGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, fileId])
+  @@index([fileId])
+}
+
+model OperatingTakeoverConfirmation {
+  idempotencyKey String   @id
+  batchId        String
+  profession     String
+  revision       Int
+  confirmedByUserId String
+  snapshot       Json
+  confirmedAt    DateTime @default(now())
+  batch           OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, profession, revision])
+  @@index([batchId, profession, confirmedAt])
+}
+
+model OperatingTakeoverActivation {
+  idempotencyKey String   @id
+  batchId        String   @unique
+  revision       Int
+  status         String
+  generatedFactIds Json
+  gapRowIds      Json
+  activatedByUserId String
+  activatedAt    DateTime @default(now())
+  batch          OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
 }
 
 model ProjectMember {
@@ -2346,6 +2590,10 @@ model ProjectUpstreamFundFact {
   basisType                       String
   deductionCategory               String?
   upstreamSettlementId            String?
+  companyEntityId                 String?
+  affiliateCompanyContractId      String?
+  affiliateSettlementFactId       String?
+  invoiceRecordId                 String?
   affiliateAssignmentId           String
   affiliateBusinessPartyVersionId String
   affiliateNameSnapshot           String
@@ -2370,6 +2618,10 @@ model ProjectUpstreamFundFact {
   @@index([projectId, factType, status, occurredAt])
   @@index([adjustsFactId])
   @@index([upstreamSettlementId])
+  @@index([companyEntityId])
+  @@index([affiliateCompanyContractId])
+  @@index([affiliateSettlementFactId])
+  @@index([invoiceRecordId])
   @@index([evidenceFileId])
 }
 
@@ -2422,6 +2674,7 @@ model ProjectAffiliateSettlementFact {
   ledgerId                        String
   projectId                       String
   contractLedgerId                String
+  affiliateCompanyContractId      String?
   entryKind                       String    @default("original")
   adjustsFactId                   String?
   effectDirection                 String    @default("increase")
@@ -2453,6 +2706,7 @@ model ProjectAffiliateSettlementFact {
 
   @@index([projectId, ledgerId, status])
   @@index([contractLedgerId])
+  @@index([affiliateCompanyContractId])
   @@index([adjustsFactId])
   @@index([evidenceFileId])
 }
@@ -2463,6 +2717,7 @@ model ProjectAffiliatePaymentFact {
   projectId                       String
   contractLedgerId                String
   settlementLedgerId              String?
+  paymentRequestId                String?
   entryKind                       String    @default("original")
   adjustsFactId                   String?
   effectDirection                 String    @default("increase")
@@ -2496,6 +2751,7 @@ model ProjectAffiliatePaymentFact {
   @@index([projectId, ledgerId, status])
   @@index([contractLedgerId])
   @@index([settlementLedgerId])
+  @@index([paymentRequestId])
   @@index([adjustsFactId])
   @@index([evidenceFileId])
   @@index([externalPaymentReference])
@@ -3410,4 +3666,26 @@ model ContractDocumentDifference {
   @@unique([comparisonId, differenceKey])
   @@index([comparisonId, sortOrder])
   @@index([comparisonId, disposition])
+}
+
+// 统一业务入口提交后保存不可变的字段定义和值快照，确保后续定义变更不改写历史含义。
+model BusinessEntrySubmissionSnapshot {
+  id                 String   @id @default(uuid())
+  projectId          String
+  sceneKey           String
+  entityType         String
+  entityId           String
+  revision           Int
+  definitionVersion  Int
+  definitionSnapshot Json
+  valuesSnapshot     Json
+  frozenAt           DateTime
+  frozenByUserId     String
+  createdAt          DateTime @default(now())
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  frozenByUser  User    @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, sceneKey, entityType, entityId, revision], map: "BusinessEntrySubmissionSnapshot_target_revision_key")
+  @@index([projectId, sceneKey, frozenAt])
 }

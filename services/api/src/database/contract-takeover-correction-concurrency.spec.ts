@@ -267,6 +267,18 @@ async function seedCorrectionFacts(
       name: "历史更正并发测试项目"
     }
   });
+  await client.projectAffiliateAssignment.create({
+    data: {
+      id: `correction-construction-enterprise-${suffix}`,
+      projectId: ids.project,
+      businessPartyId: `correction-party-${suffix}`,
+      businessPartyVersionId: `correction-party-version-${suffix}`,
+      affiliateNameSnapshot: "历史更正测试施工企业",
+      effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+      changeReason: "数据库测试夹具",
+      assignedByUserId: ids.submitter
+    }
+  });
   await client.projectMember.createMany({
     data: [
       {

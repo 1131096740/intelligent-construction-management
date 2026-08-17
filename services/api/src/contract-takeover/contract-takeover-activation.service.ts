@@ -1,7 +1,15 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { dbMoneyToBigInt } from "../money/decimal-money";
+import {
+  OperatingSourceReplayService,
+  missingOperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
+import {
+  CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE
+} from "./contract-takeover-operating-source.adapter";
 import {
   allocateHistoricalTakeoverPayments,
   type HistoricalTakeoverExcessTreatment
@@ -20,6 +28,7 @@ interface PreparedTakeover {
   contractId: string;
   contractVersionId: string;
   paymentTermsVersionId: string;
+  takeoverLevel: string;
 }
 
 interface PreparedContractFacts {
@@ -78,7 +87,12 @@ export interface ContractTakeoverActivationResult {
 
 @Injectable()
 export class ContractTakeoverActivationService {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
+  ) {}
 
   async executePreparedActivation(
     tx: Prisma.TransactionClient,
@@ -92,11 +106,18 @@ export class ContractTakeoverActivationService {
       financeFacts,
       payments,
       vouchers,
-      contract,
-      contractVersion
+      contract
     } = prepared;
     if (!financeFacts) {
       throw new ConflictException("财务侧资料尚未保存，不能激活");
+    }
+    if (takeover.takeoverLevel === "C") {
+      throw new ConflictException(
+        "C级历史接管只能进入资料缺口，不能激活正式合同接管"
+      );
+    }
+    if (takeover.takeoverLevel !== "A" && takeover.takeoverLevel !== "B") {
+      throw new ConflictException("历史接管等级不在正式经营账支持范围内");
     }
     const takeoverId = takeover.id;
     if (payments.some((payment) => payment.status !== "draft")) {
@@ -147,22 +168,15 @@ export class ContractTakeoverActivationService {
       }
     }
 
-    const isUnlimitedDirectContract =
-      !isSettlementContract &&
-      contractVersion.amountLimitType === "unlimited";
-    const capacityCents = isSettlementContract
-      ? historicalSettledCents
-      : isUnlimitedDirectContract
-        ? null
-        : dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
+    const capacityCents = isSettlementContract ? historicalSettledCents : 0n;
     const requestedExcessTreatment =
       financeFacts.excessTreatment === "historical_advance" ||
       financeFacts.excessTreatment === "abnormal_overpay"
         ? financeFacts.excessTreatment
         : undefined;
     const excessTreatment: HistoricalTakeoverExcessTreatment | undefined =
-      !isSettlementContract && !isUnlimitedDirectContract
-        ? "abnormal_overpay"
+      !isSettlementContract
+        ? requestedExcessTreatment ?? "historical_advance"
         : requestedExcessTreatment;
     const allocation = allocateHistoricalTakeoverPayments({
       payments: payments.map((payment) => ({
@@ -186,7 +200,7 @@ export class ContractTakeoverActivationService {
 
     const activatedAt = new Date();
     let historicalInitialSettlementId: string | null = null;
-    if (isSettlementContract) {
+    if (isSettlementContract && historicalSettledCents > 0n) {
       const settlement = await tx.settlement.create({
         data: {
           projectId: takeover.projectId,
@@ -323,6 +337,29 @@ export class ContractTakeoverActivationService {
     if (activated.count !== 1) {
       throw new ConflictException(
         "历史接管激活状态并发变化，请刷新后重试"
+      );
+    }
+
+    if (historicalInitialSettlementId) {
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+        tx,
+        {
+          projectId: takeover.projectId,
+          sourceType: "settlement",
+          sourceBusinessId: historicalInitialSettlementId
+        },
+        actorUserId
+      );
+    }
+    for (const payment of payments) {
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+        tx,
+        {
+          projectId: takeover.projectId,
+          sourceType: CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
+          sourceBusinessId: payment.id
+        },
+        actorUserId
       );
     }
 

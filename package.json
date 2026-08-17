@@ -25,6 +25,7 @@
     "preinspect:contract-mutation-authority": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:contract-mutation-authority": "node scripts/inspect-contract-mutation-authority-manifest.mjs --check",
     "inspect:whole-site-capability-matrix": "node scripts/inspect-whole-site-capability-matrix.mjs --check",
+    "check:business-language": "node scripts/check-business-language.mjs",
     "preinspect:whole-site-capability-matrix:ready": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:whole-site-capability-matrix:ready": "node scripts/inspect-whole-site-capability-matrix.mjs --check --require-ready",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
@@ -48,10 +49,12 @@
       "brace-expansion@1.1.15": "1.1.18",
       "brace-expansion@2.1.1": "2.1.4",
       "body-parser@1.20.4": "1.20.6",
+      "file-type": "21.3.2",
       "multer": "2.2.0",
-      "nanoid@3.3.12": "3.3.17",
-      "postcss@8.5.15": "8.5.18",
-      "qs@6.14.2": "6.15.2"
+      "nanoid@3.3.12": "3.3.18",
+      "postcss": "8.5.26",
+      "qs@6.14.2": "6.15.2",
+      "uuid": "11.1.1"
     }
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
+const { createHash } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const {
   existsSync,
@@ -59,6 +60,11 @@ function listMigrationDirectories() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
+}
+
+function migrationChecksum(migrationName) {
+  const migrationPath = path.join(migrationRoot, migrationName, "migration.sql");
+  return createHash("sha256").update(readFileSync(migrationPath)).digest("hex");
 }
 
 function validateRunner(runner, groupId, rootPackage, apiPackage) {
@@ -147,14 +153,16 @@ function validateManifest(manifest) {
   }
 
   const migrations = listMigrationDirectories();
+  const terminalMigrationChecksum = migrationChecksum(migrations.at(-1));
   if (
     migrations.length !== migrationBaseline.expectedDirectoryCount ||
-    migrations.at(-1) !== migrationBaseline.terminalMigration
+    migrations.at(-1) !== migrationBaseline.terminalMigration ||
+    terminalMigrationChecksum !== migrationBaseline.terminalMigrationChecksum
   ) {
     fail(
       `迁移基线漂移：manifest=${migrationBaseline.expectedDirectoryCount}/` +
-        `${migrationBaseline.terminalMigration}，source=${migrations.length}/` +
-        `${migrations.at(-1) ?? "none"}`
+        `${migrationBaseline.terminalMigration}/${migrationBaseline.terminalMigrationChecksum}，source=${migrations.length}/` +
+        `${migrations.at(-1) ?? "none"}/${terminalMigrationChecksum}`
     );
   }
 
@@ -237,7 +245,12 @@ function validateManifest(manifest) {
   if (inventory.fullyPendingSuites + inventory.partiallyPendingSuites !== inventory.pendingFiles) {
     fail("pending suite 分类总数与 pendingFiles 不一致");
   }
-  return { ...derived, migrationCount: migrations.length, terminalMigration: migrations.at(-1) };
+  return {
+    ...derived,
+    migrationCount: migrations.length,
+    terminalMigration: migrations.at(-1),
+    terminalMigrationChecksum
+  };
 }
 
 function parseArguments(argv) {
@@ -560,6 +573,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       durationMs: finishedAt.getTime() - startedAt.getTime(),
       migrationCount: manifest.migrationBaseline.expectedDirectoryCount,
       terminalMigration: manifest.migrationBaseline.terminalMigration,
+      terminalMigrationChecksum: manifest.migrationBaseline.terminalMigrationChecksum,
       containerImage: manifest.migrationBaseline.containerImage,
       containerImageId: dockerReceipt.imageId,
       coveredTests: coverage.coveredTests,
@@ -586,6 +600,7 @@ function preview(manifest, validation, options) {
     manifestValid: true,
     migrationCount: validation.migrationCount,
     terminalMigration: validation.terminalMigration,
+    terminalMigrationChecksum: validation.terminalMigrationChecksum,
     pendingFiles: coverage.pendingFiles,
     pendingTests: coverage.pendingTests,
     coveredFiles: coverage.coveredFiles,

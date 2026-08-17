@@ -4702,6 +4702,9 @@ describe("SettlementService", () => {
     };
     const recoveries = { ensureBalanceForEffectiveSettlement: jest.fn() };
     const processes = { completeSettlement: jest.fn() };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
     const settlementService = new SettlementService(
       prisma as never,
       audit as never,
@@ -4712,7 +4715,8 @@ describe("SettlementService", () => {
       undefined,
       undefined,
       recoveries as never,
-      processes as never
+      processes as never,
+      operatingSources as never
     );
 
     const result = await settlementService.confirmArchiveFile(
@@ -4725,6 +4729,17 @@ describe("SettlementService", () => {
     );
 
     expect(result.status).toBe("effective");
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "settlement",
+        sourceBusinessId: "settlement-1"
+      },
+      "user-contract-director"
+    );
     expect(processes.completeSettlement).toHaveBeenCalledWith(
       tx,
       "process-1",
@@ -5063,7 +5078,7 @@ describe("SettlementService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
 
     expect(result.fileName).toBe("JS-2026-019-结算单-草稿.xlsx");
-    expect(workbook.getWorksheet("结算单")?.getCell("A2").value).toBe("草稿 DRAFT");
+    expect(workbook.getWorksheet("结算单")?.getCell("A2").value).toBe("草稿");
     expect(workbook.getWorksheet("结算单")?.pageSetup.orientation).toBe("landscape");
     expect(workbook.getWorksheet("结算单")?.getRow(10).values).toEqual([
       undefined,

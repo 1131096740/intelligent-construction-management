@@ -51,9 +51,11 @@ const REQUEST_MIGRATION =
   "20260802010000_project_financing_quota_request_idempotency";
 const REQUEST_MIGRATION_CHECKSUM =
   "d3d0d07a6cc9a49da1cca1478822a873fad7c7324b9d189e2a55a4d3f57bfe61";
-const EXPECTED_MIGRATION_COUNT = 125;
+const EXPECTED_MIGRATION_COUNT = 136;
 const CURRENT_TERMINAL_MIGRATION =
-  "20260811090000_contract_document_content_revision";
+  "20260816120000_pol08_contract_lineage_operating_sources";
+const CURRENT_TERMINAL_MIGRATION_CHECKSUM =
+  "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0";
 const TERMINAL_MIGRATION =
   "20260802020000_project_financing_quota_termination_idempotency";
 const TERMINAL_MIGRATION_CHECKSUM =
@@ -195,6 +197,15 @@ async function assertMigrationSource() {
     throw new Error(
       `项目垫资额度并发门要求 ${EXPECTED_MIGRATION_COUNT} 个迁移且终点为 ${CURRENT_TERMINAL_MIGRATION}`
     );
+  }
+  const currentTerminalSql = await readFile(
+    path.join(migrationsRoot, CURRENT_TERMINAL_MIGRATION, "migration.sql")
+  );
+  const currentTerminalChecksum = createHash("sha256")
+    .update(currentTerminalSql)
+    .digest("hex");
+  if (currentTerminalChecksum !== CURRENT_TERMINAL_MIGRATION_CHECKSUM) {
+    throw new Error(`POL-17 迁移 checksum 漂移：${currentTerminalChecksum}`);
   }
   const migrationSql = await readFile(
     path.join(migrationsRoot, TERMINAL_MIGRATION, "migration.sql")

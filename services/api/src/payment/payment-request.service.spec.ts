@@ -171,6 +171,9 @@ describe("PaymentRequestService", () => {
         contract: {
           findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "equipment_rental" })
         },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
+        },
         $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: true }]),
         projectReceipt: {
           findMany: jest.fn().mockResolvedValue(
@@ -559,6 +562,51 @@ describe("PaymentRequestService", () => {
         paidAmountCents: 0n
       }
     });
+  });
+
+  it("rejects a payment subject that differs from the contract signing subject at creation", async () => {
+    const cashPool = projectCashPoolTables();
+    const tx = {
+      ...cashPool.tables,
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "affiliate" })
+      },
+      paymentRequest: {
+        findMany: jest.fn(),
+        create: jest.fn()
+      },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        paymentSubjectType: "our_company",
+        code: "FK-SUBJECT-MISMATCH-001",
+        requestedAmountCents: "50000"
+      })
+    ).rejects.toThrow("付款主体必须与合同签约主体一致");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it.each(["generic_contract", "machinery_rental", null, "unknown_contract_type"])(
@@ -2832,6 +2880,9 @@ describe("PaymentRequestService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
       },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
+      },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -3207,6 +3258,9 @@ describe("PaymentRequestService", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       contract: {
         findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
       },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -5107,12 +5161,20 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
     const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
       undefined,
-      auth as never
+      auth as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      operatingSources as never
     );
 
     const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
@@ -5125,6 +5187,17 @@ describe("PaymentRequestService", () => {
 
     expect(execution.id).toBe("execution-1");
     expect(execution.amountCents).toBe("30000");
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        projectId: "project-1",
+        sourceType: "payment_execution",
+        sourceBusinessId: "execution-1"
+      },
+      "cashier-1"
+    );
     expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
@@ -5591,7 +5664,7 @@ describe("PaymentRequestService", () => {
     [
       "non-company payment request",
       { paymentSubjectType: "affiliate" },
-      "付款申请或合同版本不是我方付款主体，不能登记实际付款"
+      "施工企业付款申请不得登记我方实际付款，请登记施工企业外部付款事实"
     ],
     [
       "incomplete company snapshot",

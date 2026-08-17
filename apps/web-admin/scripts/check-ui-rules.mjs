@@ -91,7 +91,11 @@ const businessLanguagePatterns = [
   { pattern: /\bsnapshot\b/i, message: "用户可见文案不得出现 snapshot，请改为审批稿" },
   { pattern: /\bworkflow\b/i, message: "用户可见文案不得出现 workflow，请改为审批进度" },
   { pattern: /\bforceSave\b/i, message: "用户可见文案不得出现 forceSave，请改为保存当前正文" },
-  { pattern: /\bbillItem\b/i, message: "用户可见文案不得出现 billItem，请改为合同清单项" }
+  { pattern: /\bbillItem\b/i, message: "用户可见文案不得出现 billItem，请改为合同清单项" },
+  { pattern: /草稿 DRAFT/, message: "用户可见制品不得出现英文草稿标记" },
+  { pattern: /文件 revision/i, message: "用户可见制品不得出现英文版本字段" },
+  { pattern: /后台金额\(分\)/, message: "用户可见制品不得暴露后台金额分值" },
+  { pattern: /__系统清单项标识/, message: "用户可见制品不得包含隐藏系统标识列" }
 ];
 
 const p0VisualFiles = new Set([
