@@ -8,7 +8,9 @@ const protectedTables = Object.freeze({
   AuditLog: "系统与安全审计",
   ContractEndedApplicationRetentionPolicy: "合同结束申请保留策略",
   ContractEndedApplicationPurgeReceipt: "合同结束申请清理审计",
-  ContractPristineDraftDeletionReceipt: "原始合同草稿删除审计"
+  ContractPristineDraftDeletionReceipt: "原始合同草稿删除审计",
+  OperatingLedgerWriteContext: "经营账事务写入授权上下文",
+  OperatingLedgerWriteSecret: "经营账写入授权密钥摘要"
 });
 
 const reviewedFoundationTables = Object.freeze({

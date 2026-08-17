@@ -938,6 +938,10 @@ test("真实 Prisma 正式聚合关系必须全部登记父生命周期保护", 
 });
 
 test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", () => {
+  const runtimeControlTables = [
+    "OperatingLedgerWriteContext",
+    "OperatingLedgerWriteSecret"
+  ];
   const schema = readFileSync(
     path.resolve(__dirname, "../prisma/schema.prisma"),
     "utf8"
@@ -947,10 +951,20 @@ test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", 
     .sort();
   const policyTables = BUSINESS_ZEROING_POLICY.tables
     .map((item) => item.name)
-    .filter((name) => name !== "_prisma_migrations")
+    .filter(
+      (name) =>
+        name !== "_prisma_migrations" && !runtimeControlTables.includes(name)
+    )
     .sort();
 
   assert.deepEqual(policyTables, schemaTables);
+  assert.deepEqual(
+    BUSINESS_ZEROING_POLICY.tables
+      .map((item) => item.name)
+      .filter((name) => runtimeControlTables.includes(name))
+      .sort(),
+    runtimeControlTables
+  );
   assert.equal(
     BUSINESS_ZEROING_POLICY.tables.find(
       (item) => item.name === "_prisma_migrations"
@@ -985,6 +999,68 @@ test("新增主线 Prisma 模型均有唯一显式中文归类", () => {
   for (const [name, [disposition, chineseName]] of Object.entries(expected)) {
     assert.deepEqual(policyByName.get(name), { name, chineseName, disposition });
   }
+});
+
+test("经营账写入运行控制表有唯一中文保护策略且其他未知表继续阻断", () => {
+  const runtimeControlTables = [
+    {
+      name: "OperatingLedgerWriteContext",
+      primaryKey: ["backendPid", "transactionId"],
+      rows: []
+    },
+    {
+      name: "OperatingLedgerWriteSecret",
+      primaryKey: ["id"],
+      rows: []
+    }
+  ];
+  const policyTableNames = new Set([
+    ...smallPolicy.tables.map((item) => item.name),
+    ...runtimeControlTables.map((item) => item.name)
+  ]);
+  const policy = {
+    ...smallPolicy,
+    tables: BUSINESS_ZEROING_POLICY.tables.filter((item) =>
+      policyTableNames.has(item.name)
+    )
+  };
+  const report = buildPreflightReport({
+    policy,
+    inventory: inventory({
+      tables: [
+        ...inventory().tables,
+        ...runtimeControlTables,
+        {
+          name: "FutureOperatingLedgerRuntimeControl",
+          primaryKey: ["id"],
+          rows: []
+        }
+      ]
+    }),
+    decisions: decisionManifest([]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  assert.deepEqual(
+    report.blockers
+      .filter((item) => item.code === "UNKNOWN_TABLE")
+      .map((item) => item.details.table),
+    ["FutureOperatingLedgerRuntimeControl"]
+  );
+
+  const policyByName = new Map(policy.tables.map((item) => [item.name, item]));
+  assert.deepEqual(policyByName.get("OperatingLedgerWriteContext"), {
+    name: "OperatingLedgerWriteContext",
+    chineseName: "经营账事务写入授权上下文",
+    disposition: "protected"
+  });
+  assert.deepEqual(policyByName.get("OperatingLedgerWriteSecret"), {
+    name: "OperatingLedgerWriteSecret",
+    chineseName: "经营账写入授权密钥摘要",
+    disposition: "protected"
+  });
 });
 
 test("基础资料无外键逻辑关联有显式注册且触发器函数进入 Schema 指纹", () => {
