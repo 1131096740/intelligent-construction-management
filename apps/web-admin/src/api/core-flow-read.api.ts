@@ -1799,6 +1799,43 @@ export interface ConfirmProjectUpstreamFundFactPayload {
   confirmationActionId: string;
 }
 
+export interface ProjectUpstreamFundReferenceOptionsReadModel {
+  projectId: string;
+  affiliateCompanyContracts: Array<{
+    id: string;
+    contractReference: string;
+    contractName: string;
+    companyEntityId: string;
+    companyEntityNameSnapshot: string;
+  }>;
+  affiliateSettlements: Array<{
+    id: string;
+    ledgerId: string;
+    affiliateCompanyContractId: string;
+    periodLabel: string;
+    counterpartyName: string;
+    effectDirection: "increase" | "decrease";
+    amountCents: string;
+  }>;
+  invoices: Array<{
+    id: string;
+    invoiceCode: string | null;
+    invoiceNumber: string | null;
+    externalIdentifier: string | null;
+    issueDate: string;
+    sellerName: string;
+    buyerName: string;
+    totalAmountCents: string;
+  }>;
+  upstreamSettlements: Array<{
+    id: string;
+    periodLabel: string;
+    approvingPartyName: string;
+    approvedAmountCents: string;
+    settledAt: string;
+  }>;
+}
+
 export type ProjectAffiliateBusinessFactType = "contract" | "settlement" | "payment";
 export type ProjectAffiliateBasisType = "written" | "oral";
 export type ProjectAffiliateEntryKind = "original" | "correction" | "reversal";
@@ -2565,6 +2602,12 @@ export function fetchProjectExpenseRequests(
 export function fetchProjectUpstreamFundRecordCapability(projectId: string) {
   return readJson<ProjectActionCapabilityReadModel>(
     `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/record-capability`
+  );
+}
+
+export function fetchProjectUpstreamFundReferenceOptions(projectId: string) {
+  return readJson<ProjectUpstreamFundReferenceOptionsReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/reference-options`
   );
 }
 

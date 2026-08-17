@@ -423,7 +423,8 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
           where: {
             projectId: row.projectId,
             ledgerId: remittanceSettlement.ledgerId,
-            status: "confirmed"
+            status: "confirmed",
+            confirmedAt: { lte: row.confirmedAt }
           },
           select: { effectDirection: true, amountCents: true }
         })
@@ -678,11 +679,61 @@ export class ProjectAffiliateSettlementFactOperatingSourceAdapter
     if (amountCents <= 0n) throw new BadRequestException("施工企业结算正式金额必须大于 0");
     const entryKind = sourceEntryKind(requiredJsonText(source, "entryKind", "施工企业结算"));
     const effectDirection = sourceDirection(requiredJsonText(source, "effectDirection", "施工企业结算"));
+    const affiliateCompanyContractId = optionalJsonText(
+      source,
+      "affiliateCompanyContractId"
+    );
     const debtor = { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId };
-    const creditor = {
-      kind: "downstream_counterparty" as const,
-      id: stableNamedSubjectId("downstream", requiredJsonText(source, "counterpartyName", "施工企业结算"))
-    };
+    const creditor = affiliateCompanyContractId
+      ? {
+          kind: "participating_company" as const,
+          id: requiredJsonText(source, "companyEntityId", "施工企业—我方结算")
+        }
+      : {
+          kind: "downstream_counterparty" as const,
+          id: stableNamedSubjectId(
+            "downstream",
+            requiredJsonText(source, "counterpartyName", "施工企业结算")
+          )
+        };
+    const impacts: AppendOperatingFactInput["impacts"] = affiliateCompanyContractId
+      ? [
+          {
+            idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:internal-settlement-reference`,
+            sourceImpactKey: "contract_commitment_reference",
+            impactKind: "contract_commitment_reference",
+            amountCents: 0n,
+            direction: "notice",
+            subjectRole: "creditor",
+            subject: creditor,
+            description: "施工企业与我方公司的内部结算仅保留业务链路，不形成项目成本或应付"
+          }
+        ]
+      : [
+          {
+            idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:cost`,
+            sourceImpactKey: "confirmed_cost",
+            impactKind: "confirmed_cost",
+            amountCents,
+            direction: effectDirection,
+            subjectRole: "debtor",
+            subject: debtor,
+            costCategoryCode: settlementCostCategory(
+              requiredJsonText(source, "contractType", "施工企业结算")
+            ),
+            description: "施工企业下游结算确认项目成本"
+          },
+          {
+            idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
+            sourceImpactKey: "payable_increase",
+            impactKind: "payable_increase",
+            amountCents,
+            direction: effectDirection,
+            subjectRole: "creditor",
+            subject: creditor,
+            description: "施工企业下游结算形成下游应付"
+          }
+        ];
     const input = sourceCore(
       snapshot,
       source,
@@ -693,30 +744,20 @@ export class ProjectAffiliateSettlementFactOperatingSourceAdapter
         direction: "neutral",
         amountCents,
         subjects: { debtor, creditor },
-        impacts: [
-          {
-            idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:cost`,
-            sourceImpactKey: "confirmed_cost",
-            impactKind: "confirmed_cost",
-            amountCents,
-            direction: effectDirection,
-            subjectRole: "debtor",
-            subject: debtor,
-            costCategoryCode: settlementCostCategory(requiredJsonText(source, "contractType", "施工企业结算")),
-            description: "施工企业下游结算确认项目成本"
-          },
-          {
-            idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
-            sourceImpactKey: effectDirection === "increase" ? "payable_increase" : "payable_decrease",
-            impactKind: effectDirection === "increase" ? "payable_increase" : "payable_decrease",
-            amountCents,
-            direction: effectDirection,
-            subjectRole: "creditor",
-            subject: creditor,
-            description: "施工企业下游结算形成下游应付"
-          }
-        ],
-        basisSnapshot: sourceJson({ authority: "confirmed_project_affiliate_settlement_fact" })
+        impacts,
+        basisSnapshot: sourceJson({
+          authority: "confirmed_project_affiliate_settlement_fact",
+          ...(affiliateCompanyContractId
+            ? {
+                affiliateCompanyContractId,
+                companyEntityId: requiredJsonText(
+                  source,
+                  "companyEntityId",
+                  "施工企业—我方结算"
+                )
+              }
+            : {})
+        })
       },
       "施工企业结算"
     );
@@ -739,15 +780,28 @@ export class ProjectAffiliateSettlementFactOperatingSourceAdapter
       select: { contractType: true }
     });
     if (!contract) throw new BadRequestException("施工企业结算缺少已确认的下游合同");
-    const [effectiveDate, affiliate] = await Promise.all([
+    const [effectiveDate, affiliate, companyContract] = await Promise.all([
       readOperatingLedgerEffectiveDate(tx, row.projectId),
       readAffiliateSnapshot(tx, {
         projectId: row.projectId,
         occurredAt: row.settledAt,
         assignmentId: row.affiliateAssignmentId,
         businessPartyVersionId: row.affiliateBusinessPartyVersionId
-      })
+      }),
+      row.affiliateCompanyContractId
+        ? tx.projectAffiliateCompanyContract.findFirst({
+            where: {
+              id: row.affiliateCompanyContractId,
+              projectId: row.projectId,
+              status: "confirmed"
+            },
+            select: { companyEntityId: true }
+          })
+        : Promise.resolve(null)
     ]);
+    if (row.affiliateCompanyContractId && !companyContract) {
+      throw new BadRequestException("施工企业—我方结算缺少已确认的内部合同链路");
+    }
     return sourceSnapshot(
       { ...row, occurredAt: row.settledAt, factType: undefined },
       this.sourceType,
@@ -757,7 +811,9 @@ export class ProjectAffiliateSettlementFactOperatingSourceAdapter
       {
         contractLedgerId: row.contractLedgerId,
         contractType: contract.contractType,
-        settledAt: row.settledAt.toISOString()
+        settledAt: row.settledAt.toISOString(),
+        affiliateCompanyContractId: row.affiliateCompanyContractId,
+        companyEntityId: companyContract?.companyEntityId
       }
     );
   }

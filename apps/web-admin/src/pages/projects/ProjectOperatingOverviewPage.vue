@@ -355,37 +355,41 @@
                   v-model="receiptForm.companyEntityId"
                   :options="participatingCompanySelectOptions"
                   placeholder="请选择我方参与公司"
+                  @change="handleRemittanceCompanyChange"
                 />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>施工企业—我方合同档案编号</span>
-                <t-input
+                <span>施工企业—我方合同</span>
+                <t-select
                   v-model="receiptForm.affiliateCompanyContractId"
-                  placeholder="请输入已确认合同档案编号"
-                  :required="true"
+                  :options="affiliateCompanyContractSelectOptions"
+                  placeholder="请选择已确认合同"
+                  @change="handleAffiliateCompanyContractChange"
                 />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>施工企业结算档案编号</span>
-                <t-input
+                <span>施工企业—我方结算</span>
+                <t-select
                   v-model="receiptForm.affiliateSettlementFactId"
-                  placeholder="请输入已确认结算档案编号"
-                  :required="true"
+                  :options="affiliateSettlementSelectOptions"
+                  placeholder="请选择已确认结算"
                 />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>我方开票档案编号</span>
-                <t-input
+                <span>我方开具发票</span>
+                <t-select
                   v-model="receiptForm.invoiceRecordId"
-                  placeholder="请输入有效发票档案编号"
-                  :required="true"
+                  :options="invoiceRecordSelectOptions"
+                  placeholder="请选择有效发票"
                 />
               </label>
               <label v-if="receiptForm.factType === 'owner_payment_to_affiliate'">
-                <span>业主结算档案编号（选填）</span>
-                <t-input
+                <span>对应业主结算（选填）</span>
+                <t-select
                   v-model="receiptForm.upstreamSettlementId"
-                  placeholder="有对应业主结算时填写"
+                  :options="upstreamSettlementSelectOptions"
+                  placeholder="请选择已确认业主结算"
+                  clearable
                 />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_deduction'">
@@ -418,6 +422,12 @@
               theme="error"
               title="我方参与公司读取失败"
               :message="participatingCompanyError"
+            />
+            <t-alert
+              v-if="upstreamFundReferenceOptionsError"
+              theme="error"
+              title="业务关联选项读取失败"
+              :message="upstreamFundReferenceOptionsError"
             />
             <div
               v-if="receiptMessage"
@@ -867,6 +877,7 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjectUpstreamFundConfirmationCapability,
+  fetchProjectUpstreamFundReferenceOptions,
   fetchProjectUpstreamFundRecordCapability,
   fetchProjectUpdateCapability,
   fetchProjects,
@@ -882,6 +893,7 @@ import {
   type ProjectOperatingOverviewReadModel,
   type ProjectUpstreamFundBasisType,
   type ProjectUpstreamFundFactReadModel,
+  type ProjectUpstreamFundReferenceOptionsReadModel,
   type ProjectUpstreamFundFactType,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
@@ -1010,6 +1022,8 @@ const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
 const participatingCompanyOptions = ref<ProjectParticipatingCompanyOption[]>([]);
 const participatingCompanyError = ref("");
+const upstreamFundReferenceOptions = ref<ProjectUpstreamFundReferenceOptionsReadModel | null>(null);
+const upstreamFundReferenceOptionsError = ref("");
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
 const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(null);
 const upstreamFundConfirmationVisible = ref(false);
@@ -1067,6 +1081,60 @@ const participatingCompanySelectOptions = computed(() =>
     label: company.name,
     value: company.id
   }))
+);
+
+const affiliateCompanyContractSelectOptions = computed(() =>
+  (upstreamFundReferenceOptions.value?.affiliateCompanyContracts ?? [])
+    .filter(
+      (contract) =>
+        !receiptForm.value.companyEntityId ||
+        contract.companyEntityId === receiptForm.value.companyEntityId
+    )
+    .map((contract) => ({
+      label: `${contract.contractReference} · ${contract.contractName} · ${contract.companyEntityNameSnapshot}`,
+      value: contract.id
+    }))
+);
+
+const affiliateSettlementSelectOptions = computed(() =>
+  (upstreamFundReferenceOptions.value?.affiliateSettlements ?? [])
+    .filter(
+      (settlement) =>
+        !receiptForm.value.affiliateCompanyContractId ||
+        settlement.affiliateCompanyContractId ===
+          receiptForm.value.affiliateCompanyContractId
+    )
+    .map((settlement) => ({
+      label: `${settlement.periodLabel} · ${settlement.counterpartyName} · ${formatCents(settlement.amountCents)}`,
+      value: settlement.id
+    }))
+);
+
+const invoiceRecordSelectOptions = computed(() => {
+  const selectedContract = upstreamFundReferenceOptions.value?.affiliateCompanyContracts.find(
+    (contract) => contract.id === receiptForm.value.affiliateCompanyContractId
+  );
+  return (upstreamFundReferenceOptions.value?.invoices ?? [])
+    .filter(
+      (invoice) =>
+        !selectedContract ||
+        invoice.sellerName === selectedContract.companyEntityNameSnapshot
+    )
+    .map((invoice) => ({
+      label: `${[invoice.invoiceCode, invoice.invoiceNumber]
+        .filter(Boolean)
+        .join("/") || invoice.externalIdentifier || "未标注票号"} · ${invoice.sellerName} → ${invoice.buyerName} · ${formatCents(invoice.totalAmountCents)}`,
+      value: invoice.id
+    }));
+});
+
+const upstreamSettlementSelectOptions = computed(() =>
+  (upstreamFundReferenceOptions.value?.upstreamSettlements ?? []).map(
+    (settlement) => ({
+      label: `${settlement.periodLabel} · ${settlement.approvingPartyName} · ${formatCents(settlement.approvedAmountCents)}`,
+      value: settlement.id
+    })
+  )
 );
 
 const projectBusinessEntries = computed(() =>
@@ -1425,12 +1493,14 @@ async function loadOverview() {
   const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
   participatingCompanyOptions.value = [];
+  upstreamFundReferenceOptions.value = null;
   projectExpenses.value = null;
   financingQuotaWorkbench.value = null;
   financingQuotaError.value = "";
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
   participatingCompanyError.value = "";
+  upstreamFundReferenceOptionsError.value = "";
   expenseMessage.value = "";
   expenseActionMessage.value = "";
   if (!projectId) {
@@ -1443,7 +1513,14 @@ async function loadOverview() {
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [nextOverview, nextExpenses, spotCapability, nextFinancingQuota, nextParticipatingCompanies] = await Promise.all([
+    const [
+      nextOverview,
+      nextExpenses,
+      spotCapability,
+      nextFinancingQuota,
+      nextParticipatingCompanies,
+      nextUpstreamFundReferenceOptions
+    ] = await Promise.all([
       canReadProjectOverview.value
         ? fetchProjectOperatingOverview(projectId)
         : Promise.resolve(null),
@@ -1471,7 +1548,15 @@ async function loadOverview() {
         .catch((error: unknown) => ({
           options: [],
           error: formatUnknownApiError(error, "读取我方参与公司失败")
-        }))
+        })),
+      canRecordUpstreamFunds.value
+        ? fetchProjectUpstreamFundReferenceOptions(projectId)
+            .then((options) => ({ options, error: "" }))
+            .catch((error: unknown) => ({
+              options: null,
+              error: formatUnknownApiError(error, "读取上游资金业务关联选项失败")
+            }))
+        : Promise.resolve({ options: null, error: "" })
     ]);
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
@@ -1480,6 +1565,10 @@ async function loadOverview() {
       overview.value = nextOverview;
       participatingCompanyOptions.value = nextParticipatingCompanies.options;
       participatingCompanyError.value = nextParticipatingCompanies.error;
+      upstreamFundReferenceOptions.value = nextUpstreamFundReferenceOptions.options;
+      upstreamFundReferenceOptionsError.value =
+        nextUpstreamFundReferenceOptions.error;
+      normalizeReceiptReferenceSelections();
       projectExpenses.value = nextExpenses;
       financingQuotaWorkbench.value = nextFinancingQuota.workbench;
       financingQuotaError.value = nextFinancingQuota.error;
@@ -1716,13 +1805,13 @@ async function submitReceipt() {
         ? {
             affiliateCompanyContractId: requiredText(
               form.affiliateCompanyContractId,
-              "施工企业—我方合同档案编号"
+              "施工企业—我方合同"
             ),
             affiliateSettlementFactId: requiredText(
               form.affiliateSettlementFactId,
-              "施工企业结算档案编号"
+              "施工企业—我方结算"
             ),
-            invoiceRecordId: requiredText(form.invoiceRecordId, "我方开票档案编号")
+            invoiceRecordId: requiredText(form.invoiceRecordId, "我方开具发票")
           }
         : {}),
       ...(form.factType === "affiliate_deduction"
@@ -1746,6 +1835,64 @@ async function submitReceipt() {
     setReceiptError(formatUnknownApiError(error, "登记上游资金事实失败"));
   } finally {
     receiptSubmitting.value = false;
+  }
+}
+
+function handleRemittanceCompanyChange() {
+  receiptForm.value.affiliateCompanyContractId = "";
+  receiptForm.value.affiliateSettlementFactId = "";
+  receiptForm.value.invoiceRecordId = "";
+  const company = participatingCompanyOptions.value.find(
+    (option) => option.id === receiptForm.value.companyEntityId
+  );
+  receiptForm.value.counterpartyName = company?.name ?? "";
+}
+
+function handleAffiliateCompanyContractChange() {
+  receiptForm.value.affiliateSettlementFactId = "";
+  receiptForm.value.invoiceRecordId = "";
+  const contract = upstreamFundReferenceOptions.value?.affiliateCompanyContracts.find(
+    (option) => option.id === receiptForm.value.affiliateCompanyContractId
+  );
+  if (!contract) return;
+  receiptForm.value.companyEntityId = contract.companyEntityId;
+  receiptForm.value.counterpartyName = contract.companyEntityNameSnapshot;
+}
+
+function normalizeReceiptReferenceSelections() {
+  const options = upstreamFundReferenceOptions.value;
+  if (!options) {
+    receiptForm.value.affiliateCompanyContractId = "";
+    receiptForm.value.affiliateSettlementFactId = "";
+    receiptForm.value.invoiceRecordId = "";
+    receiptForm.value.upstreamSettlementId = "";
+    return;
+  }
+  if (
+    !options.affiliateCompanyContracts.some(
+      (contract) => contract.id === receiptForm.value.affiliateCompanyContractId
+    )
+  ) {
+    receiptForm.value.affiliateCompanyContractId = "";
+    receiptForm.value.affiliateSettlementFactId = "";
+    receiptForm.value.invoiceRecordId = "";
+  }
+  if (
+    !options.affiliateSettlements.some(
+      (settlement) => settlement.id === receiptForm.value.affiliateSettlementFactId
+    )
+  ) {
+    receiptForm.value.affiliateSettlementFactId = "";
+  }
+  if (!options.invoices.some((invoice) => invoice.id === receiptForm.value.invoiceRecordId)) {
+    receiptForm.value.invoiceRecordId = "";
+  }
+  if (
+    !options.upstreamSettlements.some(
+      (settlement) => settlement.id === receiptForm.value.upstreamSettlementId
+    )
+  ) {
+    receiptForm.value.upstreamSettlementId = "";
   }
 }
 

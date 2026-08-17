@@ -95,6 +95,17 @@ describe("project operating overview structure", () => {
     expect(source).not.toContain('value="owner_direct_payment"');
   });
 
+  it("uses readable business selectors instead of editable internal identifiers", () => {
+    expect(source).toContain(':options="affiliateCompanyContractSelectOptions"');
+    expect(source).toContain(':options="affiliateSettlementSelectOptions"');
+    expect(source).toContain(':options="invoiceRecordSelectOptions"');
+    expect(source).toContain(':options="upstreamSettlementSelectOptions"');
+    expect(source).toContain("fetchProjectUpstreamFundReferenceOptions");
+    expect(source).not.toMatch(
+      /<t-input[\s\S]*?v-model="receiptForm\.(?:affiliateCompanyContractId|affiliateSettlementFactId|invoiceRecordId|upstreamSettlementId)"/
+    );
+  });
+
   it("routes pilot projects away from the legacy spot-purchase create option", () => {
     expect(source).toContain("fetchSpotProcurementCapabilities");
     expect(source).toContain("visibleExpenseTypeOptions");

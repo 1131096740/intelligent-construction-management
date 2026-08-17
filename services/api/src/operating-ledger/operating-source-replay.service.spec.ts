@@ -223,6 +223,83 @@ describe("OperatingSourceReplayService", () => {
     expect(harness.ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
   });
 
+  it("materializes a confirmed reclassification of an unreconciled difference without requiring the original to be in the ledger", async () => {
+    const reclassificationSourceSnapshot = {
+      entryKind: "reclassification",
+      factType: "affiliate_deduction",
+      adjustsFactId: "difference-1"
+    };
+    const snapshot = sourceSnapshot({
+      sourceType: "project_upstream_fund_fact",
+      sourceBusinessId: "reclassification-1",
+      sourceBusinessCode: "到账差额重分类一号",
+      sourceSnapshot: reclassificationSourceSnapshot
+    });
+    const input = {
+      ...factInput(),
+      sourceType: snapshot.sourceType,
+      sourceBusinessId: snapshot.sourceBusinessId,
+      sourceBusinessCode: snapshot.sourceBusinessCode,
+      idempotencyKey: snapshot.sourceBusinessId,
+      adjustsFactId: "difference-1",
+      sourceSnapshot: reclassificationSourceSnapshot
+    };
+    const harness = createHarness({
+      adapter: createAdapter(snapshot, mappedFact("correction", input))
+    });
+    harness.tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+    const originalDifference = { id: "difference-1" };
+    (harness.tx as typeof harness.tx & {
+      projectUpstreamFundFact: { findFirst: jest.Mock };
+      operatingFact: { findUnique: jest.Mock };
+    }).projectUpstreamFundFact = {
+      findFirst: jest.fn().mockResolvedValue(originalDifference)
+    };
+    (harness.tx as typeof harness.tx & {
+      operatingFact: { findUnique: jest.Mock };
+    }).operatingFact = {
+      findUnique: jest.fn().mockResolvedValue(null)
+    };
+    harness.ledger.appendConfirmedSourceInTransaction.mockResolvedValue(
+      writeResult(true)
+    );
+
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(snapshot),
+        "finance-director"
+      )
+    ).resolves.toEqual(writeResult(true));
+    expect(
+      (harness.tx as typeof harness.tx & {
+        projectUpstreamFundFact: { findFirst: jest.Mock };
+      }).projectUpstreamFundFact.findFirst
+    ).toHaveBeenCalledWith({
+      where: {
+        id: "difference-1",
+        projectId: "project-1",
+        factType: "unreconciled_receipt_difference",
+        status: "pending_reconciliation"
+      },
+      select: { id: true }
+    });
+    expect(harness.ledger.appendConfirmedSourceInTransaction).toHaveBeenCalledWith(
+      harness.tx,
+      expect.objectContaining({
+        sourceBusinessId: "reclassification-1",
+        adjustsFactId: undefined,
+        sourceSnapshot: expect.objectContaining({
+          entryKind: "reclassification",
+          adjustsFactId: "difference-1"
+        })
+      }),
+      "finance-director"
+    );
+  });
+
   it("continues to reject every other correction or reversal from the business confirmation entry point", async () => {
     const adapter = createAdapter(
       sourceSnapshot(),

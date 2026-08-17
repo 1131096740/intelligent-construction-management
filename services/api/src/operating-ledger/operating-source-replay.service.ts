@@ -265,6 +265,39 @@ export class OperatingSourceReplayService {
     if (!sourceBusinessId) {
       throw new BadRequestException("来源更正或冲销缺少原始来源编号");
     }
+    const sourceSnapshot = mapped.input.sourceSnapshot;
+    const sourceEntryKind =
+      !Array.isArray(sourceSnapshot) &&
+      typeof sourceSnapshot === "object" &&
+      sourceSnapshot !== null
+        ? sourceSnapshot.entryKind
+        : undefined;
+    if (
+      mapped.input.sourceType === "project_upstream_fund_fact" &&
+      sourceEntryKind === "reclassification"
+    ) {
+      const upstreamFundFactClient = (tx as unknown as {
+        projectUpstreamFundFact?: typeof tx.projectUpstreamFundFact;
+      }).projectUpstreamFundFact;
+      const target = upstreamFundFactClient
+        ? await upstreamFundFactClient.findFirst({
+            where: {
+              id: sourceBusinessId,
+              projectId: mapped.input.projectId,
+              factType: "unreconciled_receipt_difference",
+              status: "pending_reconciliation"
+            },
+            select: { id: true }
+          })
+        : null;
+      if (!target) {
+        throw new BadRequestException("上游资金重分类必须关联待核对到账差额原记录");
+      }
+      return {
+        entryKind: "original",
+        input: { ...mapped.input, adjustsFactId: undefined }
+      };
+    }
     const operatingFactClient = (tx as unknown as {
       operatingFact?: typeof tx.operatingFact;
     }).operatingFact;

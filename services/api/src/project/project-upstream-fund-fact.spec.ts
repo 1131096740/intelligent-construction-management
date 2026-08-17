@@ -52,6 +52,100 @@ function roleTables(roleKey: "finance_staff" | "finance_director") {
 }
 
 describe("ProjectService upstream fund facts", () => {
+  it("lists only confirmed readable references for upstream fund entry", async () => {
+    const prisma = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectAffiliateCompanyContract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "company-contract-1",
+            contractReference: "GL-2026-001",
+            contractName: "项目管理协议",
+            companyEntityId: "company-1",
+            companyEntityNameSnapshot: "我方公司"
+          }
+        ])
+      },
+      projectAffiliateSettlementFact: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-fact-1",
+            ledgerId: "settlement-ledger-1",
+            affiliateCompanyContractId: "company-contract-1",
+            periodLabel: "2026-07",
+            counterpartyName: "我方公司",
+            effectDirection: "increase",
+            amountCents: 12000n
+          }
+        ])
+      },
+      invoiceRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "invoice-1",
+            invoiceCode: "FP-2026",
+            invoiceNumber: "001",
+            externalIdentifier: null,
+            issueDate: new Date("2026-07-28T00:00:00.000Z"),
+            sellerName: "我方公司",
+            buyerName: "挂靠建设集团",
+            totalAmountCents: 12000n
+          }
+        ])
+      },
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "upstream-settlement-1",
+            periodLabel: "2026-07",
+            approvingPartyName: "建设单位",
+            approvedAmountCents: 50000n,
+            settledAt: new Date("2026-07-31T00:00:00.000Z")
+          }
+        ])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.getUpstreamFundReferenceOptions("project-1")
+    ).resolves.toEqual({
+      projectId: "project-1",
+      affiliateCompanyContracts: [
+        expect.objectContaining({
+          id: "company-contract-1",
+          contractReference: "GL-2026-001",
+          companyEntityNameSnapshot: "我方公司"
+        })
+      ],
+      affiliateSettlements: [
+        expect.objectContaining({
+          id: "settlement-fact-1",
+          affiliateCompanyContractId: "company-contract-1",
+          amountCents: "12000"
+        })
+      ],
+      invoices: [
+        expect.objectContaining({
+          id: "invoice-1",
+          issueDate: "2026-07-28T00:00:00.000Z",
+          totalAmountCents: "12000"
+        })
+      ],
+      upstreamSettlements: [
+        expect.objectContaining({
+          id: "upstream-settlement-1",
+          approvedAmountCents: "50000"
+        })
+      ]
+    });
+    expect(prisma.invoiceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: "project-1", status: "active", invalidatedAt: null }
+      })
+    );
+  });
+
   it.each([
     ["finance_staff", "oral", []],
     ["finance_director", "oral", ["confirm_upstream_fund_fact"]],

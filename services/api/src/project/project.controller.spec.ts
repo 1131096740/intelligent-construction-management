@@ -914,6 +914,12 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
+        ProjectController.prototype.upstreamFundReferenceOptions
+      )
+    ).toBe("project.upstream_fund_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
         ProjectController.prototype.confirmUpstreamFundFact
       )
     ).toBe("project.upstream_fund_fact.confirm");
@@ -1235,7 +1241,8 @@ describe("ProjectController authorization wiring", () => {
   it("forwards upstream fund fact recording and confirmation with authenticated user id", async () => {
     const projects = {
       recordUpstreamFundFact: jest.fn(),
-      confirmUpstreamFundFact: jest.fn()
+      confirmUpstreamFundFact: jest.fn(),
+      getUpstreamFundReferenceOptions: jest.fn()
     };
     const controller = new ProjectController(projects as never);
     const recordBody = {
@@ -1263,6 +1270,7 @@ describe("ProjectController authorization wiring", () => {
       { id: "director-1" } as never,
       confirmBody
     );
+    await controller.upstreamFundReferenceOptions("project-1");
 
     expect(projects.recordUpstreamFundFact).toHaveBeenCalledWith(
       "project-1",
@@ -1274,6 +1282,9 @@ describe("ProjectController authorization wiring", () => {
       "fact-1",
       "director-1",
       confirmBody
+    );
+    expect(projects.getUpstreamFundReferenceOptions).toHaveBeenCalledWith(
+      "project-1"
     );
   });
 

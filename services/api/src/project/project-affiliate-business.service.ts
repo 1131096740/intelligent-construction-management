@@ -1190,7 +1190,10 @@ export class ProjectAffiliateBusinessService {
         await assertSettlementEffectiveAmountCoversExistingPayments(
           tx,
           projectId,
-          settlementFact.ledgerId
+          settlementFact.ledgerId,
+          undefined,
+          0n,
+          settlementFact.id
         );
       }
       const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
@@ -1418,13 +1421,19 @@ async function assertAffiliatePaymentRequestMatchesDebt(
   const contract = version
     ? await tx.contract.findUnique({
         where: { id: version.contractId },
-        select: { projectId: true, counterparty: true }
+        select: { projectId: true, counterparty: true, code: true }
       })
     : null;
   const requestSettlement = input.paymentRequest.settlementId
     ? await tx.settlement.findUnique({
         where: { id: input.paymentRequest.settlementId },
-        select: { id: true, projectId: true, contractVersionId: true, status: true }
+        select: {
+          id: true,
+          projectId: true,
+          contractVersionId: true,
+          status: true,
+          periodLabel: true
+        }
       })
     : null;
   const contractRequest = ["contract_advance", "contract_due"].includes(
@@ -1443,6 +1452,9 @@ async function assertAffiliatePaymentRequestMatchesDebt(
     throw new BadRequestException(
       "施工企业付款申请必须与当前合同、结算、相对方和施工企业主体一致"
     );
+  }
+  if (contract.code !== input.contract.externalContractReference) {
+    throw new BadRequestException("施工企业付款申请必须与外部合同台账一致");
   }
   if (contractRequest) {
     if (input.paymentRequest.settlementId || input.settlement) {
@@ -1463,6 +1475,9 @@ async function assertAffiliatePaymentRequestMatchesDebt(
       input.contract.affiliateBusinessPartyVersionId
   ) {
     throw new BadRequestException("施工企业正常付款申请必须关联有效施工企业结算");
+  }
+  if (requestSettlement.periodLabel !== input.settlement.periodLabel) {
+    throw new BadRequestException("施工企业正常付款申请必须与外部结算台账一致");
   }
 }
 
@@ -1720,8 +1735,17 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
   projectId: string,
   settlementLedgerId: string,
   proposedNetAmountCents?: bigint,
-  additionalRemittanceAmountCents = 0n
+  additionalRemittanceAmountCents = 0n,
+  confirmingSettlementFactId?: string
 ) {
+  const settlementFactStatusFilter = confirmingSettlementFactId
+    ? {
+        OR: [
+          { status: "confirmed" },
+          { id: confirmingSettlementFactId, status: "pending_confirm" }
+        ]
+      }
+    : { status: { in: ["pending_confirm", "confirmed"] } };
   const effectiveAmountCents =
     proposedNetAmountCents ??
     netMoneyFacts(
@@ -1729,7 +1753,7 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
         where: {
           projectId,
           ledgerId: settlementLedgerId,
-          status: { in: ["pending_confirm", "confirmed"] }
+          ...settlementFactStatusFilter
         },
         select: { effectDirection: true, amountCents: true }
       })
@@ -1751,7 +1775,7 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
     where: {
       projectId,
       ledgerId: settlementLedgerId,
-      status: { in: ["pending_confirm", "confirmed"] }
+      ...settlementFactStatusFilter
     },
     select: { id: true }
   });

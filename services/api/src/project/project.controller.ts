@@ -396,6 +396,12 @@ export class ProjectController {
     return { projectId, availableActions: ["record_upstream_fund_fact"] };
   }
 
+  @Get(":projectId/upstream-fund-facts/reference-options")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  upstreamFundReferenceOptions(@Param("projectId") projectId: string) {
+    return this.projects.getUpstreamFundReferenceOptions(projectId);
+  }
+
   @Post(":projectId/upstream-fund-facts/file-uploads")
   @RequireProjectRole("project.upstream_fund_fact.record")
   @UseInterceptors(

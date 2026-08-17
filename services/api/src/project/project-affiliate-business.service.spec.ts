@@ -567,7 +567,8 @@ describe("ProjectAffiliateBusinessService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           projectId: "project-1",
-          counterparty: "材料供应商"
+          counterparty: "材料供应商",
+          code: "GK-HT-2026-001"
         })
       },
       settlement: {
@@ -575,7 +576,8 @@ describe("ProjectAffiliateBusinessService", () => {
           id: "internal-settlement-1",
           projectId: "project-1",
           contractVersionId: "internal-contract-version-1",
-          status: "effective"
+          status: "effective",
+          periodLabel: "2026-07"
         })
       },
       projectAffiliateContractFact: {
@@ -629,6 +631,53 @@ describe("ProjectAffiliateBusinessService", () => {
         amountCents: 5000n
       })
     });
+
+    tx.contract.findUnique.mockResolvedValueOnce({
+      projectId: "project-1",
+      counterparty: "材料供应商",
+      code: "GK-HT-OTHER"
+    });
+    await expect(
+      service.recordPaymentFact("project-1", "finance-1", {
+        contractLedgerId: "contract-ledger-1",
+        settlementLedgerId: "settlement-ledger-1",
+        counterpartyName: "材料供应商",
+        paidAt: "2026-08-02",
+        amountCents: "5000",
+        paymentKind: "normal",
+        externalPaymentReference: "BANK-CROSS-CONTRACT",
+        paymentRequestId: "payment-request-1",
+        basisType: "oral",
+        idempotencyKey: "payment-cross-contract"
+      })
+    ).rejects.toThrow("施工企业付款申请必须与外部合同台账一致");
+
+    tx.contract.findUnique.mockResolvedValueOnce({
+      projectId: "project-1",
+      counterparty: "材料供应商",
+      code: "GK-HT-2026-001"
+    });
+    tx.settlement.findUnique.mockResolvedValueOnce({
+      id: "internal-settlement-1",
+      projectId: "project-1",
+      contractVersionId: "internal-contract-version-1",
+      status: "effective",
+      periodLabel: "2026-06"
+    });
+    await expect(
+      service.recordPaymentFact("project-1", "finance-1", {
+        contractLedgerId: "contract-ledger-1",
+        settlementLedgerId: "settlement-ledger-1",
+        counterpartyName: "材料供应商",
+        paidAt: "2026-08-02",
+        amountCents: "5000",
+        paymentKind: "normal",
+        externalPaymentReference: "BANK-CROSS-SETTLEMENT",
+        paymentRequestId: "payment-request-1",
+        basisType: "oral",
+        idempotencyKey: "payment-cross-settlement"
+      })
+    ).rejects.toThrow("施工企业正常付款申请必须与外部结算台账一致");
   });
 
   it("permits a pre-settlement advance only when frozen contract terms allow it", async () => {
@@ -732,7 +781,8 @@ describe("ProjectAffiliateBusinessService", () => {
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             projectId: "project-1",
-            counterparty: "材料供应商"
+            counterparty: "材料供应商",
+            code: "GK-HT-2026-001"
           })
         },
         projectAffiliateContractFact: {
@@ -810,6 +860,112 @@ describe("ProjectAffiliateBusinessService", () => {
         idempotencyKey: "fc09b6c6-f1d2-44e1-af8b-688042ed980b"
       })
     ).rejects.toThrow("付款对象必须与施工企业对下合同相对方完全一致");
+  });
+
+  it("does not let another pending settlement increase mask the decrease being confirmed", async () => {
+    const confirmedAt = new Date("2026-07-29T04:00:00.000Z");
+    const pendingDecrease = settlementFact({
+      id: "settlement-decrease-1",
+      entryKind: "correction",
+      adjustsFactId: "settlement-fact-1",
+      effectDirection: "decrease",
+      amountCents: 80000n,
+      status: "pending_confirm",
+      confirmedByUserId: null,
+      confirmedAt: null,
+      confirmationActionId: null
+    });
+    const confirmed = {
+      ...pendingDecrease,
+      status: "confirmed",
+      confirmedByUserId: "budget-1",
+      confirmedAt,
+      confirmationActionId: "settlement-confirm-decrease",
+      confirmationSignatureVersionId: "signature-version-2",
+      confirmationSignatureFileId: "signature-file-2",
+      confirmationSignatureSha256: "f".repeat(64)
+    };
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "settlement-decrease-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-ledger-1" }])
+        .mockResolvedValueOnce([{ id: "budget-1", isActive: true }])
+        .mockResolvedValueOnce([
+          {
+            id: "signature-version-2",
+            fileId: "signature-file-2",
+            contentSha256: "f".repeat(64)
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "signature-file-2",
+            contentSha256: "f".repeat(64),
+            storageStatus: "active"
+          }
+        ]),
+      ...roleTables("budget_staff"),
+      projectAffiliateSettlementFact: {
+        findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(confirmed),
+        findFirst: jest.fn().mockResolvedValue(pendingDecrease),
+        findMany: jest.fn().mockImplementation(
+          async (args: { where?: { OR?: unknown[] }; select?: { id?: boolean } }) =>
+            args.select?.id
+              ? [
+                  { id: "settlement-fact-1" },
+                  { id: "settlement-decrease-1" }
+                ]
+              : args.where?.OR
+                ? [
+                    { effectDirection: "increase", amountCents: 100000n },
+                    { effectDirection: "decrease", amountCents: 80000n }
+                  ]
+                : [
+                    { effectDirection: "increase", amountCents: 100000n },
+                    { effectDirection: "decrease", amountCents: 80000n },
+                    { effectDirection: "increase", amountCents: 100000n }
+                  ]
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 90000n }
+        ])
+      },
+      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
+    const service = new ProjectAffiliateBusinessService(
+      prisma as never,
+      undefined,
+      auth as never,
+      operatingSources as never
+    );
+
+    await expect(
+      service.confirmSettlementFact(
+        "project-1",
+        "settlement-decrease-1",
+        "budget-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: "settlement-confirm-decrease"
+        },
+        confirmedAt
+      )
+    ).rejects.toThrow("施工企业结算有效金额不能低于已登记付款金额");
+    expect(tx.projectAffiliateSettlementFact.updateMany).not.toHaveBeenCalled();
   });
 
   it("requires a finance director to confirm an oral payment and freezes the signature", async () => {

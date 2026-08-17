@@ -158,6 +158,41 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     );
   });
 
+  it("freezes the settlement payable at the remittance confirmation time", async () => {
+    const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
+    const tx = remittanceFundTx();
+    tx.projectAffiliateSettlementFact.findMany.mockImplementation(
+      async (args: { where?: { confirmedAt?: { lte?: Date } } }) =>
+        args.where?.confirmedAt?.lte
+          ? [{ effectDirection: "increase", amountCents: 12000n }]
+          : [
+              { effectDirection: "increase", amountCents: 12000n },
+              { effectDirection: "decrease", amountCents: 2000n }
+            ]
+    );
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "fund-fact-remittance-1"
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(tx.projectAffiliateSettlementFact.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          confirmedAt: { lte: new Date("2026-08-12T01:00:00.000Z") }
+        })
+      })
+    );
+    expect(input.basisSnapshot).toEqual(
+      expect.objectContaining({
+        payableAmountCents: "12000",
+        companyUnpaidAmountCents: "2000"
+      })
+    );
+  });
+
   it("keeps construction-enterprise deductions out of final cost impacts", async () => {
     const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
     const tx = upstreamFundTx();
@@ -235,6 +270,76 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
       })
     ]);
     expect(payment.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
+  });
+
+  it("keeps an internal construction-enterprise-to-company settlement out of project cost and payable", async () => {
+    const adapter = new ProjectAffiliateSettlementFactOperatingSourceAdapter();
+    const tx = affiliateFactTx();
+    tx.projectAffiliateSettlementFact.findFirst.mockResolvedValue({
+      ...(await tx.projectAffiliateSettlementFact.findFirst()),
+      affiliateCompanyContractId: "company-contract-1",
+      counterpartyName: "我方公司"
+    });
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "settlement-fact-1"
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.sourceSnapshot).toEqual(
+      expect.objectContaining({ affiliateCompanyContractId: "company-contract-1" })
+    );
+    expect(input.basisSnapshot).toEqual(
+      expect.objectContaining({ affiliateCompanyContractId: "company-contract-1" })
+    );
+    expect(input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "contract_commitment_reference",
+        amountCents: 0n,
+        direction: "notice"
+      })
+    ]);
+    expect(
+      input.impacts.some((impact) =>
+        ["confirmed_cost", "payable_increase", "payable_decrease"].includes(
+          impact.impactKind
+        )
+      )
+    ).toBe(false);
+  });
+
+  it("keeps a settlement reversal impact in the original cost and payable categories", async () => {
+    const adapter = new ProjectAffiliateSettlementFactOperatingSourceAdapter();
+    const tx = affiliateFactTx();
+    tx.projectAffiliateSettlementFact.findFirst.mockResolvedValue({
+      ...(await tx.projectAffiliateSettlementFact.findFirst()),
+      id: "settlement-reversal-1",
+      entryKind: "reversal",
+      adjustsFactId: "settlement-fact-1",
+      effectDirection: "decrease"
+    });
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "settlement-reversal-1"
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "confirmed_cost",
+        sourceImpactKey: "confirmed_cost",
+        direction: "decrease"
+      }),
+      expect.objectContaining({
+        impactKind: "payable_increase",
+        sourceImpactKey: "payable_increase",
+        direction: "decrease"
+      })
+    ]);
   });
 
   it.each(["advance", "direct_contract"])(
@@ -630,6 +735,9 @@ function affiliateFactTx() {
     },
     projectAffiliateContractFact: {
       findFirst: jest.fn().mockResolvedValue({ contractType: "labor_subcontract" })
+    },
+    projectAffiliateCompanyContract: {
+      findFirst: jest.fn().mockResolvedValue({ companyEntityId: "company-1" })
     },
     projectAffiliateSettlementFact: {
       findFirst: jest.fn().mockResolvedValue({

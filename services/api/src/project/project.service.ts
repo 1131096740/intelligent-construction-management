@@ -1045,6 +1045,90 @@ export class ProjectService {
     );
   }
 
+  async getUpstreamFundReferenceOptions(projectId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, isActive: true },
+      select: { id: true }
+    });
+    if (!project) {
+      throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+    }
+    const [affiliateCompanyContracts, affiliateSettlements, invoices, upstreamSettlements] =
+      await Promise.all([
+        this.prisma.projectAffiliateCompanyContract.findMany({
+          where: { projectId, status: "confirmed" },
+          select: {
+            id: true,
+            contractReference: true,
+            contractName: true,
+            companyEntityId: true,
+            companyEntityNameSnapshot: true
+          },
+          orderBy: [{ signedAt: "desc" }, { id: "asc" }]
+        }),
+        this.prisma.projectAffiliateSettlementFact.findMany({
+          where: {
+            projectId,
+            status: "confirmed",
+            affiliateCompanyContractId: { not: null }
+          },
+          select: {
+            id: true,
+            ledgerId: true,
+            affiliateCompanyContractId: true,
+            periodLabel: true,
+            counterpartyName: true,
+            effectDirection: true,
+            amountCents: true
+          },
+          orderBy: [{ settledAt: "desc" }, { id: "asc" }]
+        }),
+        this.prisma.invoiceRecord.findMany({
+          where: { projectId, status: "active", invalidatedAt: null },
+          select: {
+            id: true,
+            invoiceCode: true,
+            invoiceNumber: true,
+            externalIdentifier: true,
+            issueDate: true,
+            sellerName: true,
+            buyerName: true,
+            totalAmountCents: true
+          },
+          orderBy: [{ issueDate: "desc" }, { id: "asc" }]
+        }),
+        this.prisma.projectUpstreamSettlement.findMany({
+          where: { projectId, status: "confirmed", voidedAt: null },
+          select: {
+            id: true,
+            periodLabel: true,
+            approvingPartyName: true,
+            approvedAmountCents: true,
+            settledAt: true
+          },
+          orderBy: [{ settledAt: "desc" }, { id: "asc" }]
+        })
+      ]);
+    return {
+      projectId,
+      affiliateCompanyContracts,
+      affiliateSettlements: affiliateSettlements.map((settlement) => ({
+        ...settlement,
+        amountCents: moneyCentsToApi(settlement.amountCents)
+      })),
+      invoices: invoices.map((invoice) => ({
+        ...invoice,
+        issueDate: invoice.issueDate.toISOString(),
+        totalAmountCents: moneyCentsToApi(invoice.totalAmountCents)
+      })),
+      upstreamSettlements: upstreamSettlements.map((settlement) => ({
+        ...settlement,
+        settledAt: settlement.settledAt.toISOString(),
+        approvedAmountCents: moneyCentsToApi(settlement.approvedAmountCents)
+      }))
+    };
+  }
+
   async recordUpstreamFundFact(
     projectId: string,
     actorUserId: string,
