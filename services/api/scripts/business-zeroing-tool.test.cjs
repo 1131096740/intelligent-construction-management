@@ -4,7 +4,7 @@
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const { createHash, generateKeyPairSync, sign } = require("node:crypto");
-const { readFileSync } = require("node:fs");
+const { readFileSync, readdirSync } = require("node:fs");
 const {
   chmod,
   mkdir,
@@ -83,6 +83,7 @@ const SHA_64 = "b".repeat(64);
 const EXECUTION_SHA_64 = "f".repeat(64);
 const DEPLOYMENT_SHA_64 = "9".repeat(64);
 const EXECUTOR_IDENTITY = "pol22-isolated-runner";
+const MIGRATION_ROOT = path.resolve(__dirname, "../prisma/migrations");
 const FILE_SNAPSHOT_BODY = {
   kind: "local_file",
   contentSha256: "7".repeat(64),
@@ -91,6 +92,24 @@ const FILE_SNAPSHOT_BODY = {
   deviceId: 1,
   inodeId: 2
 };
+
+function successfulMigrationRecords() {
+  return readdirSync(MIGRATION_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+    .map((migrationName) => ({
+      migrationName,
+      checksum: createHash("sha256")
+        .update(readFileSync(path.join(MIGRATION_ROOT, migrationName, "migration.sql")))
+        .digest("hex"),
+      startedAt: new Date("2026-08-18T00:00:00.000Z"),
+      finishedAt: new Date("2026-08-18T00:00:01.000Z"),
+      rolledBackAt: null,
+      appliedStepsCount: 1,
+      logs: null
+    }));
+}
 const FILE_SNAPSHOT = {
   ...FILE_SNAPSHOT_BODY,
   snapshotSha256: sha256(FILE_SNAPSHOT_BODY)
@@ -2387,11 +2406,12 @@ test("隔离 PostgreSQL 必须同时通过容器内和宿主 Prisma 协议 readi
 });
 
 test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输出", async () => {
+  const migrationRecords = successfulMigrationRecords();
   const completeReceipt = {
     mode: "isolated_postgresql16_and_local_private_files",
     status: "passed",
-    migrationCount: 125,
-    migrationHead: "20260811090000_contract_document_content_revision",
+    migrationCount: 136,
+    migrationHead: "20260816120000_pol08_contract_lineage_operating_sources",
     productionAccessed: false,
     dryRunSteps: 4,
     executionSteps: {
@@ -2421,8 +2441,8 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
         format: "postgresql_custom",
         restoreEvidence: {
           status: "passed",
-          migrationCount: 125,
-          migrationHead: "20260811090000_contract_document_content_revision"
+          migrationCount: 136,
+          migrationHead: "20260816120000_pol08_contract_lineage_operating_sources"
         }
       },
       privateFiles: {
@@ -2444,10 +2464,75 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
     () =>
       writeFinalDynamicReceipt(
         { ...completeReceipt, unknownOwnershipBlockers: undefined },
-        { cleanup: async () => {}, write: () => {} }
+        { cleanup: async () => {}, migrationRecords, write: () => {} }
       ),
     /unknown ownership/u
   );
+
+  await assert.rejects(
+    () =>
+      writeFinalDynamicReceipt(completeReceipt, {
+        cleanup: async () => {},
+        migrationRecords: migrationRecords.slice(1),
+        write: () => {}
+      }),
+    /迁移收据/u
+  );
+  await assert.rejects(
+    () =>
+      writeFinalDynamicReceipt(completeReceipt, {
+        cleanup: async () => {},
+        migrationRecords: [
+          ...migrationRecords,
+          { ...migrationRecords[0], migrationName: "20990101000000_uncontrolled_extra" }
+        ],
+        write: () => {}
+      }),
+    /额外/u
+  );
+  await assert.rejects(
+    () =>
+      writeFinalDynamicReceipt(completeReceipt, {
+        cleanup: async () => {},
+        migrationRecords: [
+          ...migrationRecords.slice(0, -1),
+          migrationRecords[0]
+        ],
+        write: () => {}
+      }),
+    /重复/u
+  );
+  await assert.rejects(
+    () =>
+      writeFinalDynamicReceipt(completeReceipt, {
+        cleanup: async () => {},
+        migrationRecords: [
+          { ...migrationRecords[0], checksum: "0".repeat(64) },
+          ...migrationRecords.slice(1)
+        ],
+        write: () => {}
+      }),
+    /checksum/u
+  );
+  for (const invalidStatus of [
+    { finishedAt: null },
+    { rolledBackAt: new Date("2026-08-18T00:00:02.000Z") },
+    { appliedStepsCount: 0 },
+    { logs: "migration failed" }
+  ]) {
+    await assert.rejects(
+      () =>
+        writeFinalDynamicReceipt(completeReceipt, {
+          cleanup: async () => {},
+          migrationRecords: [
+            { ...migrationRecords[0], ...invalidStatus },
+            ...migrationRecords.slice(1)
+          ],
+          write: () => {}
+        }),
+      /未成功/u
+    );
+  }
 
   let cleanupCompleted = false;
   let output = "";
@@ -2455,6 +2540,7 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
     cleanup: async () => {
       cleanupCompleted = true;
     },
+    migrationRecords,
     write: (chunk) => {
       assert.equal(cleanupCompleted, true);
       output += chunk;
@@ -2463,6 +2549,19 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
   const parsed = JSON.parse(output);
   assert.equal(parsed.containerRemoved, true);
   assert.equal(parsed.temporaryFilesRemoved, true);
+  assert.equal(parsed.migrationReceipt.status, "passed");
+  assert.equal(parsed.migrationReceipt.expectedDirectoryCount, 136);
+  assert.equal(parsed.migrationReceipt.appliedMigrationCount, 136);
+  assert.equal(
+    parsed.migrationReceipt.migrationHead,
+    "20260816120000_pol08_contract_lineage_operating_sources"
+  );
+  assert.equal(parsed.migrationReceipt.successfulMigrations.length, 136);
+  assert.ok(
+    parsed.migrationReceipt.successfulMigrations.every(
+      (migration) => migration.status === "applied" && /^[0-9a-f]{64}$/u.test(migration.checksum)
+    )
+  );
   assert.deepEqual(parsed.unknownOwnershipBlockers.blockers, ["UNKNOWN_FILE_OWNER"]);
   assert.deepEqual(parsed.mixedOwnershipBlockers.blockers, ["MIXED_FILE_OWNERSHIP"]);
 
@@ -2473,6 +2572,7 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
         cleanup: async () => {
           throw new Error("cleanup failed");
         },
+        migrationRecords,
         write: () => {
           wroteAfterCleanupFailure = true;
         }

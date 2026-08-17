@@ -92,7 +92,7 @@
     "format": "postgresql_custom",
     "restoreEvidence": {
       "status": "passed",
-      "migrationCount": 125,
+      "migrationCount": "<与 migrationReceipt.expectedDirectoryCount 一致>",
       "migrationHead": "<迁移 head>",
       "tableCounts": { "<核心表>": 0 },
       "commands": ["pg_dump -Fc", "createdb", "pg_restore --exit-on-error"]
@@ -267,4 +267,4 @@ env -u DATABASE_URL -u CONTRACT_DATABASE_URL -u SHADOW_DATABASE_URL \
   sh services/api/scripts/run-business-zeroing-cli.sh dynamic
 ```
 
-运行器在迁移前同时等待容器内 `pg_isready` 和宿主通过同一随机 `127.0.0.1:<port>` URL 执行 Prisma `SELECT 1`；任一条件未满足都在有限次数内共同重试，宿主探测客户端每次都断连，30 秒后仍不满足则失败并触发同一容器/临时目录 cleanup，不得把仅容器内 ready 当作可迁移证明。该门随后临时应用全部迁移，通过 `pg_dump -Fc` 产生真实备份并在同容器独立恢复库执行 `pg_restore --exit-on-error`，同时将私有文件归档恢复到独立目录逐 object key/sha256/size 比对。未知/混合归属场景直接在隔离 PostgreSQL 创建可扫描关系，收据保存原始 inventory 绑定证据，不使用内存 transform 注入。只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。运行器只在 cleanup 成功后输出一个最终 JSON；cleanup 失败时不得先输出通过收据，JSON 之后也不得用文本补写字段。无完整 JSON 收据不得判为通过；收据必须内含 `migrationCount=125`、`migrationHead`、`status`、`productionAccessed=false`、`dryRunSteps`、`executionSteps`、`formalRecordProtection`、`unknownOwnershipBlockers`、`mixedOwnershipBlockers`、真实备份恢复验证以及 `containerRemoved=true`、`temporaryFilesRemoved=true`；未知/混合归属必须由真实 fail-closed 预检生成非空 blocker 清单、原始 inventory 证据和零候选证据。
+运行器在迁移前同时等待容器内 `pg_isready` 和宿主通过同一随机 `127.0.0.1:<port>` URL 执行 Prisma `SELECT 1`；任一条件未满足都在有限次数内共同重试，宿主探测客户端每次都断连，30 秒后仍不满足则失败并触发同一容器/临时目录 cleanup，不得把仅容器内 ready 当作可迁移证明。该门随后临时应用全部迁移，通过 `pg_dump -Fc` 产生真实备份并在同容器独立恢复库执行 `pg_restore --exit-on-error`，同时将私有文件归档恢复到独立目录逐 object key/sha256/size 比对。未知/混合归属场景直接在隔离 PostgreSQL 创建可扫描关系，收据保存原始 inventory 绑定证据，不使用内存 transform 注入。只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。运行器只在 cleanup 成功后输出一个最终 JSON；cleanup 失败时不得先输出通过收据，JSON 之后也不得用文本补写字段。无完整 JSON 收据不得判为通过；收据必须内含 `migrationReceipt.status=passed`，并证明受控 database dynamic gate manifest、当前 migration 目录与 `_prisma_migrations` 成功记录双向一一对应：`expectedDirectoryCount=appliedMigrationCount=migrationCount`、`migrationHead` 与 terminal checksum 一致，完整集合摘要存在，且逐条迁移名称/checksum 均标记为成功应用。任一缺失、额外、重复、失败、回滚、异常日志、异常应用步数或 checksum 漂移都必须失败关闭。收据还必须内含 `status`、`productionAccessed=false`、`dryRunSteps`、`executionSteps`、`formalRecordProtection`、`unknownOwnershipBlockers`、`mixedOwnershipBlockers`、真实备份恢复验证以及 `containerRemoved=true`、`temporaryFilesRemoved=true`；未知/混合归属必须由真实 fail-closed 预检生成非空 blocker 清单、原始 inventory 证据和零候选证据。

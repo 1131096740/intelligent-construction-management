@@ -7,7 +7,7 @@ if (require.main === module) {
 
 const { createHash, randomUUID } = require("node:crypto");
 const { createReadStream } = require("node:fs");
-const { mkdir, mkdtemp, readdir, rm, stat } = require("node:fs/promises");
+const { lstat, mkdir, mkdtemp, readdir, rm, stat } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
@@ -21,7 +21,9 @@ const {
   assertLocalDockerEndpoint,
   assertSafeExecutionEnvironment,
   createChildEnvironment,
-  createProbeEnvironment
+  createProbeEnvironment,
+  loadManifest,
+  validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
 const { verifyBusinessZeroing } = require("./verify-business-zeroing.cjs");
 const {
@@ -31,6 +33,7 @@ const {
 
 const root = path.resolve(__dirname, "../../..");
 const databaseName = "jiangkong_pol22_zeroing_local";
+const migrationRoot = path.join(__dirname, "migrations");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const prismaCli = require.resolve("prisma/build/index.js");
@@ -139,14 +142,89 @@ async function listPrivateObjects(rootDirectory) {
   return objects;
 }
 
+async function verifyAppliedMigrationReceipt(migrationRecords) {
+  const migrationBaseline = validateManifest(loadManifest());
+  const migrationNames = (await readdir(migrationRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  const expectedMigrations = [];
+  for (const migrationName of migrationNames) {
+    const migrationPath = path.join(migrationRoot, migrationName, "migration.sql");
+    const metadata = await lstat(migrationPath);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      throw new Error(`POL-22 迁移权威来源不是普通文件：${migrationName}`);
+    }
+    expectedMigrations.push({
+      migrationName,
+      checksum: await fileSha256(migrationPath)
+    });
+  }
+  if (
+    !Array.isArray(migrationRecords) ||
+    migrationRecords.length !== expectedMigrations.length
+  ) {
+    throw new Error("POL-22 动态迁移收据缺失或包含额外记录");
+  }
+  const recordsByName = new Map();
+  for (const record of migrationRecords) {
+    if (typeof record?.migrationName !== "string" || !record.migrationName) {
+      throw new Error("POL-22 动态迁移收据包含无效迁移名");
+    }
+    if (recordsByName.has(record.migrationName)) {
+      throw new Error(`POL-22 动态迁移收据包含重复记录：${record.migrationName}`);
+    }
+    recordsByName.set(record.migrationName, record);
+  }
+  for (const expected of expectedMigrations) {
+    const actual = recordsByName.get(expected.migrationName);
+    if (!actual) {
+      throw new Error(`POL-22 动态迁移收据缺失：${expected.migrationName}`);
+    }
+    if (actual.checksum !== expected.checksum) {
+      throw new Error(`POL-22 动态迁移收据 checksum 漂移：${expected.migrationName}`);
+    }
+    if (
+      !(actual.startedAt instanceof Date) ||
+      Number.isNaN(actual.startedAt.getTime()) ||
+      !(actual.finishedAt instanceof Date) ||
+      Number.isNaN(actual.finishedAt.getTime()) ||
+      actual.rolledBackAt !== null ||
+      actual.appliedStepsCount !== 1 ||
+      actual.logs !== null
+    ) {
+      throw new Error(`POL-22 动态迁移未成功应用：${expected.migrationName}`);
+    }
+  }
+  return {
+    status: "passed",
+    source: "database-dynamic-gate-manifest+prisma-migrations+_prisma_migrations",
+    expectedDirectoryCount: migrationBaseline.migrationCount,
+    appliedMigrationCount: migrationRecords.length,
+    migrationHead: migrationBaseline.terminalMigration,
+    terminalMigrationChecksum: migrationBaseline.terminalMigrationChecksum,
+    migrationSetSha256: createHash("sha256")
+      .update(JSON.stringify(expectedMigrations))
+      .digest("hex"),
+    successfulMigrations: expectedMigrations.map((migration) => ({
+      ...migration,
+      status: "applied"
+    }))
+  };
+}
+
 async function writeFinalDynamicReceipt(
   receipt,
-  { cleanup, write = (chunk) => process.stdout.write(chunk) }
+  { cleanup, migrationRecords, write = (chunk) => process.stdout.write(chunk) }
 ) {
   if (receipt?.status !== "passed" || receipt.productionAccessed !== false) {
     throw new Error("POL-22 动态收据最终状态或生产隔离标记无效");
   }
-  if (receipt.migrationCount !== 125 || typeof receipt.migrationHead !== "string") {
+  const migrationReceipt = await verifyAppliedMigrationReceipt(migrationRecords);
+  if (
+    receipt.migrationCount !== migrationReceipt.appliedMigrationCount ||
+    receipt.migrationHead !== migrationReceipt.migrationHead
+  ) {
     throw new Error("POL-22 动态收据迁移坐标无效");
   }
   if (!Number.isInteger(receipt.dryRunSteps) || !receipt.executionSteps) {
@@ -165,6 +243,7 @@ async function writeFinalDynamicReceipt(
   await cleanup();
   const finalReceipt = {
     ...receipt,
+    migrationReceipt,
     containerRemoved: true,
     temporaryFilesRemoved: true
   };
@@ -217,6 +296,7 @@ async function main() {
   process.once("SIGTERM", onSigterm);
 
   let finalReceipt;
+  let migrationRecords;
   try {
     const probeEnvironment = createProbeEnvironment(process.env, temporaryRoot);
     const context = await command(
@@ -287,6 +367,18 @@ async function main() {
     process.env.DATABASE_URL = databaseUrl;
     const prisma = new PrismaClient();
     try {
+      migrationRecords = await prisma.$queryRawUnsafe(
+        `SELECT
+           migration_name AS "migrationName",
+           checksum,
+           started_at AS "startedAt",
+           finished_at AS "finishedAt",
+           rolled_back_at AS "rolledBackAt",
+           applied_steps_count AS "appliedStepsCount",
+           logs
+         FROM "_prisma_migrations"
+         ORDER BY migration_name, started_at`
+      );
       finalReceipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity, {
         trustedRunner: true,
         createVerifiedBackupRestore: async ({
@@ -408,7 +500,7 @@ async function main() {
       if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = previousDatabaseUrl;
     }
-    await writeFinalDynamicReceipt(finalReceipt, { cleanup });
+    await writeFinalDynamicReceipt(finalReceipt, { cleanup, migrationRecords });
   } finally {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
