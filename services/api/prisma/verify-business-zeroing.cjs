@@ -43,6 +43,11 @@ const ATTACHMENT_ID = "00000000-0000-4000-8000-000000000006";
 const GUARDED_FACT_ID = "00000000-0000-4000-8000-000000000007";
 const BILL_ID = "00000000-0000-4000-8000-000000000008";
 const MIXED_FILE_ID = "00000000-0000-4000-8000-000000000009";
+const AFFILIATE_PARTY_ID = "isolated-party";
+const AFFILIATE_PARTY_VERSION_ID = "isolated-party-version";
+const AFFILIATE_ASSIGNMENT_ID = "isolated-assignment";
+const AFFILIATE_NAME = "隔离施工企业";
+const AFFILIATE_EFFECTIVE_FROM = "2026-01-01T00:00:00.000Z";
 const OBJECT_KEY = "uploads/pol22-isolated-fixture.txt";
 const MIXED_OBJECT_KEY = "uploads/pol22-isolated-preserved-file.txt";
 const ENVIRONMENT = "pol22-isolated-postgresql16";
@@ -229,6 +234,38 @@ async function insertFixture(prisma, storageRoot) {
     `INSERT INTO "Project" ("id", "code", "name", "isActive", "updatedAt")
      VALUES ($1, 'POL22-ISOLATED', '归零工具隔离测试项目', true, NOW())`,
     PROJECT_ID
+  );
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "BusinessParty" (
+       "id", "name", "status", "createdByUserId", "updatedAt"
+     ) VALUES ($1, $2, 'active', $3, NOW())`,
+    AFFILIATE_PARTY_ID,
+    AFFILIATE_NAME,
+    ACTOR_ID
+  );
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "BusinessPartyVersion" (
+       "id", "businessPartyId", "versionNo", "snapshot", "createdByUserId"
+     ) VALUES ($1, $2, 1, $3::jsonb, $4)`,
+    AFFILIATE_PARTY_VERSION_ID,
+    AFFILIATE_PARTY_ID,
+    JSON.stringify({ name: AFFILIATE_NAME }),
+    ACTOR_ID
+  );
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ProjectAffiliateAssignment" (
+       "id", "projectId", "businessPartyId", "businessPartyVersionId",
+       "affiliateNameSnapshot", "effectiveFrom", "changeReason",
+       "assignedByUserId", "updatedAt"
+     ) VALUES ($1, $2, $3, $4, $5, $6::TIMESTAMP(3),
+       '隔离正式经营事实夹具', $7, NOW())`,
+    AFFILIATE_ASSIGNMENT_ID,
+    PROJECT_ID,
+    AFFILIATE_PARTY_ID,
+    AFFILIATE_PARTY_VERSION_ID,
+    AFFILIATE_NAME,
+    AFFILIATE_EFFECTIVE_FROM,
+    ACTOR_ID
   );
   await prisma.$executeRawUnsafe(
     `INSERT INTO "Contract" (
@@ -856,6 +893,24 @@ async function verifyBusinessZeroing(
     { status: "passed", objectScopeCount: 1 }
   );
   const afterCounts = await counts(prisma);
+  const afterZeroingProfileRows = await prisma.$queryRawUnsafe(
+    `SELECT
+       (SELECT COUNT(*)::int FROM "Project" WHERE "id" = $1) AS "projectCount",
+       (SELECT COUNT(*)::int FROM "ProjectAffiliateAssignment"
+         WHERE "projectId" = $1) AS "assignmentCount",
+       (SELECT COUNT(*)::int FROM "ProjectAffiliateAssignment"
+         WHERE "id" = $2
+           AND "projectId" = $1
+           AND "effectiveFrom" <= NOW()
+           AND "endedAt" IS NULL) AS "activeAssignmentCount"`,
+    PROJECT_ID,
+    AFFILIATE_ASSIGNMENT_ID
+  );
+  assert.deepEqual(afterZeroingProfileRows[0], {
+    projectCount: 1,
+    assignmentCount: 1,
+    activeAssignmentCount: 1
+  });
   assert.deepEqual(
     { users: afterCounts.users, projects: afterCounts.projects },
     { users: 1, projects: 1 }
@@ -929,12 +984,15 @@ async function verifyBusinessZeroing(
        "recordedByRoleKey", "updatedAt"
      ) VALUES (
        $1, $2, 'owner_payment_to_affiliate', NOW(), 100,
-       '隔离触发器测试相对方', 'oral', 'isolated-assignment',
-       'isolated-party-version', '隔离施工企业',
-       'pol22-guarded-fact', $3, $4, 'super_admin', NOW()
+       '隔离触发器测试相对方', 'oral', $3,
+       $4, $5,
+       'pol22-guarded-fact', $6, $7, 'super_admin', NOW()
      )`,
     GUARDED_FACT_ID,
     PROJECT_ID,
+    AFFILIATE_ASSIGNMENT_ID,
+    AFFILIATE_PARTY_VERSION_ID,
+    AFFILIATE_NAME,
     "1".repeat(64),
     ACTOR_ID
   );
@@ -1047,4 +1105,4 @@ async function verifyBusinessZeroing(
   };
 }
 
-module.exports = { setFixtureSignatureBinding, verifyBusinessZeroing };
+module.exports = { insertFixture, setFixtureSignatureBinding, verifyBusinessZeroing };
