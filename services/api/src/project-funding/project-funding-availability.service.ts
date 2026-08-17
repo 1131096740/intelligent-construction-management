@@ -182,11 +182,11 @@ export class ProjectFundingAvailabilityService {
             fact.effectDirection !== "increase" &&
             fact.effectDirection !== "decrease"
           ) {
-            throw new ConflictException("挂靠企业向我方拨款方向无效");
+            throw new ConflictException("施工企业向我方拨款方向无效");
           }
           return total +
             (fact.effectDirection === "decrease" ? -1n : 1n) *
-              dbMoneyToBigInt(fact.amountCents, "挂靠企业向我方拨款");
+              dbMoneyToBigInt(fact.amountCents, "施工企业向我方拨款");
         },
         0n
       );

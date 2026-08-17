@@ -56,7 +56,7 @@ describe("ProjectService affiliate payment subject", () => {
         confirmationPassword: "current-password",
         contractId: "contract-1"
       })
-    ).rejects.toThrow("该合同冻结为我方签约，不能登记挂靠企业付款");
+    ).rejects.toThrow("该合同冻结为我方签约，不能登记施工企业付款");
 
     expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
   });

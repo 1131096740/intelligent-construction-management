@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `fa4eda2d50d86e3b201cd64a589752815755e880e63a433409a7b43af19f89aa` |
-| webApiWrappers | ready | `8a8787a00e8020e15c645246b999b837e1ea1e16c47efd1830735c0cdb5dc80e` |
-| webPageActions | ready | `bad36a058b07095fcc064dcce8a4d95eb987588ba32d7da6b0118e9eed5c9fae` |
-| routeUsage | ready | `e7bd3b7471aeb4f8d5ab2bb3efc1032af156abe5de5f01159c2e9c30b89043b6` |
+| nestRoutes | ready | `39750fce234e4a273f287d8e5424945ec1a00e3d5825a7c490b28eae377a651d` |
+| webApiWrappers | ready | `2eda73b8d112af56f1a31c88134a41af38d15a42b8fe5b50b380854ba20a1867` |
+| webPageActions | ready | `5f9e163e90c1488a282f5cdf9951b8d06887ab82bc21e6c5bc63ac89ea460df6` |
+| routeUsage | ready | `d805790cd5b240ae39bd3adf28dbce4a34a6ac58b27f3677644934032dc42b2d` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 478 |
-| pageRouteCount | 298 |
+| routeCount | 479 |
+| pageRouteCount | 299 |
 | externalTakeoverRouteCount | 68 |
 | exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 486 |
+| mainRequestBindingCount | 487 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -151,6 +151,7 @@
 | GET | /projects/:projectId/update-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpdateCapability | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundConfirmationCapability | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundRecordCapability | — | not_applicable | — |
+| GET | /projects/:projectId/upstream-fund-facts/reference-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundReferenceOptions | — | not_applicable | — |
 | GET | /projects/affiliate-mapping-report | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateMappingReport | — | not_applicable | — |
 | GET | /projects/contract-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractCreateProjects | — | not_applicable | — |
 | GET | /projects/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectCreateCapability | — | not_applicable | — |

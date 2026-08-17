@@ -1159,6 +1159,8 @@ export class ContractReadService {
         versionLabel: effectiveVersion ? `合同 v${effectiveVersion.versionNo}` : "-",
         contractStatus: effectiveVersion?.status ?? latestVersion?.status ?? "draft",
         contractStatusLabel: this.statusView(effectiveVersion?.status ?? latestVersion?.status ?? "draft").label,
+        paymentSubjectType:
+          effectiveVersion?.signingSubjectType === "affiliate" ? "affiliate" : "our_company",
         source,
         sourceLabel:
           source === "historical_takeover"

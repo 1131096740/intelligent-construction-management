@@ -27,15 +27,19 @@ export type ProjectAffiliatePaymentKind =
 
 export class RecordProjectAffiliatePaymentFactDto {
   @IsRequiredText({
-    requiredMessage: "关联挂靠合同账本编号不能为空",
-    typeMessage: "关联挂靠合同账本编号必须是文字",
-    blankMessage: "关联挂靠合同账本编号不能为空白"
+    requiredMessage: "关联施工企业合同账本编号不能为空",
+    typeMessage: "关联施工企业合同账本编号必须是文字",
+    blankMessage: "关联施工企业合同账本编号不能为空白"
   })
   contractLedgerId!: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "关联挂靠结算账本编号必须是文字" })
+  @IsString({ message: "关联施工企业结算账本编号必须是文字" })
   settlementLedgerId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "已审批付款申请业务单号必须是文字" })
+  paymentRequestId?: string;
 
   @IsRequiredText({
     requiredMessage: "付款相对方不能为空",
@@ -53,7 +57,7 @@ export class RecordProjectAffiliatePaymentFactDto {
   })
   amountCents!: string;
 
-  @IsIn(PROJECT_AFFILIATE_PAYMENT_KINDS, { message: "挂靠付款类型不正确" })
+  @IsIn(PROJECT_AFFILIATE_PAYMENT_KINDS, { message: "施工企业付款类型不正确" })
   paymentKind!: ProjectAffiliatePaymentKind;
 
   @ValidateIf((_object, value) => value !== undefined)
@@ -67,22 +71,22 @@ export class RecordProjectAffiliatePaymentFactDto {
   @IsString({ message: "外部付款依据文件编号必须是文字" })
   evidenceFileId?: string;
 
-  @IsUUID("4", { message: "挂靠付款登记幂等键必须是 UUID" })
+  @IsUUID("4", { message: "施工企业付款登记幂等键必须是 UUID" })
   idempotencyKey!: string;
 
   @IsOptional()
-  @IsIn(PROJECT_AFFILIATE_ENTRY_KINDS, { message: "挂靠付款追加类型不正确" })
+  @IsIn(PROJECT_AFFILIATE_ENTRY_KINDS, { message: "施工企业付款追加类型不正确" })
   entryKind?: ProjectAffiliateEntryKind;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "被调整挂靠付款事实编号必须是文字" })
+  @IsString({ message: "被调整施工企业付款事实编号必须是文字" })
   adjustsFactId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsIn(["increase", "decrease"], { message: "挂靠付款金额调整方向不正确" })
+  @IsIn(["increase", "decrease"], { message: "施工企业付款金额调整方向不正确" })
   effectDirection?: "increase" | "decrease";
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "挂靠付款说明必须是文字" })
+  @IsString({ message: "施工企业付款说明必须是文字" })
   description?: string;
 }

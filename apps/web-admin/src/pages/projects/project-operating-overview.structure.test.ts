@@ -24,7 +24,7 @@ describe("project operating overview structure", () => {
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {
-    expect(source).toContain('label="挂靠业务接管"');
+    expect(source).toContain('label="施工企业业务接管"');
     expect(source).toContain("<AffiliateCompanyContractPanel");
     expect(source).toContain("<AffiliateBusinessLedgerPanel");
     expect(source).not.toContain("recordProjectProxyPayment");
@@ -93,6 +93,17 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<SensitiveActionDialog");
     expect(source).not.toContain("recordProjectReceipt");
     expect(source).not.toContain('value="owner_direct_payment"');
+  });
+
+  it("uses readable business selectors instead of editable internal identifiers", () => {
+    expect(source).toContain(':options="affiliateCompanyContractSelectOptions"');
+    expect(source).toContain(':options="affiliateSettlementSelectOptions"');
+    expect(source).toContain(':options="invoiceRecordSelectOptions"');
+    expect(source).toContain(':options="upstreamSettlementSelectOptions"');
+    expect(source).toContain("fetchProjectUpstreamFundReferenceOptions");
+    expect(source).not.toMatch(
+      /<t-input[\s\S]*?v-model="receiptForm\.(?:affiliateCompanyContractId|affiliateSettlementFactId|invoiceRecordId|upstreamSettlementId)"/
+    );
   });
 
   it("routes pilot projects away from the legacy spot-purchase create option", () => {

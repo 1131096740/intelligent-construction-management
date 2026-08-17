@@ -14,12 +14,12 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 133;
+const EXPECTED_MIGRATION_COUNT = 136;
 const prismaRoot = path.join(root, "services", "api", "prisma");
 const PROJECT_OPERATING_PROFILE_MIGRATION =
   "20260814010000_project_operating_profile";
 const TERMINAL_MIGRATION =
-  "20260816110000_pol10_operating_takeover";
+  "20260816120000_pol08_contract_lineage_operating_sources";
 const sourceTerminalMigrationChecksum = createHash("sha256")
   .update(readFileSync(path.join(
     prismaRoot,

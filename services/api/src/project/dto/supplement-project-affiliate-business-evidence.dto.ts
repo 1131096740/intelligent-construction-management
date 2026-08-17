@@ -11,7 +11,7 @@ export type ProjectAffiliateBusinessFactType =
 
 export class SupplementProjectAffiliateBusinessEvidenceDto {
   @IsIn(PROJECT_AFFILIATE_BUSINESS_FACT_TYPES, {
-    message: "挂靠外部事实类型不正确"
+    message: "施工企业外部事实类型不正确"
   })
   businessType!: ProjectAffiliateBusinessFactType;
 

@@ -16,6 +16,12 @@ import {
 } from "./operating-source-adapter";
 
 const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
+const POL08_ENTRY_SOURCE_TYPES = new Set([
+  "project_upstream_fund_fact",
+  "project_affiliate_contract_fact",
+  "project_affiliate_settlement_fact",
+  "project_affiliate_payment_fact"
+]);
 
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<{
   include: { impacts: true };
@@ -69,7 +75,7 @@ export function missingOperatingSourceReplayService(): OperatingSourceAppendPort
           project?: typeof tx.project;
         }
       ).project;
-      if (!projectClient) return null;
+      if (!projectClient || typeof projectClient.findUnique !== "function") return null;
       const project = await projectClient.findUnique({
         where: { id: locator.projectId },
         select: { operatingLedgerEffectiveDate: true }
@@ -102,7 +108,10 @@ export class OperatingSourceReplayService {
         await adapter.readSourceSnapshot(tx, locator),
         locator
       );
-      const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+      const mapped = await this.resolveMappedSourceInput(
+        tx,
+        mapOperatingSourceSnapshot(adapter, snapshot, locator)
+      );
       return this.operatingLedger.replayFromSourceInTransaction(
         tx,
         mapped.input,
@@ -128,7 +137,10 @@ export class OperatingSourceReplayService {
       await adapter.readSourceSnapshot(tx, locator),
       locator
     );
-    const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+    const mapped = await this.resolveMappedSourceInput(
+      tx,
+      mapOperatingSourceSnapshot(adapter, snapshot, locator)
+    );
     if (mapped.entryKind === "original") {
       return this.operatingLedger.appendConfirmedSourceInTransaction(
         tx,
@@ -144,6 +156,14 @@ export class OperatingSourceReplayService {
         tx,
         mapped.input,
         actorUserId
+      );
+    }
+    if (POL08_ENTRY_SOURCE_TYPES.has(locator.sourceType)) {
+      return this.operatingLedger.appendConfirmedSourceInTransaction(
+        tx,
+        mapped.input,
+        actorUserId,
+        mapped.entryKind
       );
     }
     throw new BadRequestException("正式业务来源写入只接受原始经营事实");
@@ -200,7 +220,10 @@ export class OperatingSourceReplayService {
     for (const adapter of this.registry.list()) {
       const snapshots = await adapter.readProjectSnapshots(tx, projectId);
       for (const snapshot of snapshots) {
-        const mapped = mapOperatingSourceSnapshot(adapter, snapshot);
+        const mapped = await this.resolveMappedSourceInput(
+          tx,
+          mapOperatingSourceSnapshot(adapter, snapshot)
+        );
         const input = mapped.input;
         if (input.projectId !== projectId) {
           throw new BadRequestException("来源适配器返回了其他项目的冻结快照");
@@ -226,6 +249,77 @@ export class OperatingSourceReplayService {
         sourceKey(right.input.sourceType, right.input.sourceBusinessId)
       )
     );
+  }
+
+  private async resolveMappedSourceInput(
+    tx: OperatingLedgerTransaction,
+    mapped: ReturnType<typeof mapOperatingSourceSnapshot>
+  ): Promise<ReturnType<typeof mapOperatingSourceSnapshot>> {
+    if (
+      mapped.entryKind === "original" ||
+      !POL08_ENTRY_SOURCE_TYPES.has(mapped.input.sourceType)
+    ) {
+      return mapped;
+    }
+    const sourceBusinessId = mapped.input.adjustsFactId?.trim();
+    if (!sourceBusinessId) {
+      throw new BadRequestException("来源更正或冲销缺少原始来源编号");
+    }
+    const sourceSnapshot = mapped.input.sourceSnapshot;
+    const sourceEntryKind =
+      !Array.isArray(sourceSnapshot) &&
+      typeof sourceSnapshot === "object" &&
+      sourceSnapshot !== null
+        ? sourceSnapshot.entryKind
+        : undefined;
+    if (
+      mapped.input.sourceType === "project_upstream_fund_fact" &&
+      sourceEntryKind === "reclassification"
+    ) {
+      const upstreamFundFactClient = (tx as unknown as {
+        projectUpstreamFundFact?: typeof tx.projectUpstreamFundFact;
+      }).projectUpstreamFundFact;
+      const target = upstreamFundFactClient
+        ? await upstreamFundFactClient.findFirst({
+            where: {
+              id: sourceBusinessId,
+              projectId: mapped.input.projectId,
+              factType: "unreconciled_receipt_difference",
+              status: "pending_reconciliation"
+            },
+            select: { id: true }
+          })
+        : null;
+      if (!target) {
+        throw new BadRequestException("上游资金重分类必须关联待核对到账差额原记录");
+      }
+      return {
+        entryKind: "original",
+        input: { ...mapped.input, adjustsFactId: undefined }
+      };
+    }
+    const operatingFactClient = (tx as unknown as {
+      operatingFact?: typeof tx.operatingFact;
+    }).operatingFact;
+    if (!operatingFactClient) return mapped;
+    const target = await operatingFactClient.findUnique({
+      where: {
+        sourceType_sourceBusinessId: {
+          sourceType: mapped.input.sourceType,
+          sourceBusinessId
+        }
+      },
+      select: { id: true }
+    });
+    if (!target) {
+      throw new BadRequestException(
+        "来源更正或冲销引用的原始来源尚未进入经营事实账"
+      );
+    }
+    return {
+      ...mapped,
+      input: { ...mapped.input, adjustsFactId: target.id }
+    };
   }
 }
 

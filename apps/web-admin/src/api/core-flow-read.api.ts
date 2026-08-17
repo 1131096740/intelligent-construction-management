@@ -1754,6 +1754,14 @@ export interface ProjectUpstreamFundFactReadModel {
   basisType: ProjectUpstreamFundBasisType;
   deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other" | null;
   upstreamSettlementId: string | null;
+  companyEntityId: string | null;
+  affiliateCompanyContractId: string | null;
+  affiliateSettlementFactId: string | null;
+  invoiceRecordId: string | null;
+  payableAmountCents: string | null;
+  actualPaymentAmountCents: string | null;
+  companyUnpaidAmountCents: string | null;
+  companyDifferenceAmountCents: string | null;
   affiliateNameSnapshot: string;
   description: string | null;
   evidenceFileId: string | null;
@@ -1774,6 +1782,10 @@ export interface RecordProjectUpstreamFundFactPayload {
   counterpartyName: string;
   deductionCategory?: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   upstreamSettlementId?: string;
+  companyEntityId?: string;
+  affiliateCompanyContractId?: string;
+  affiliateSettlementFactId?: string;
+  invoiceRecordId?: string;
   evidenceFileId?: string;
   idempotencyKey: string;
   entryKind?: "original" | "correction" | "reversal" | "reclassification";
@@ -1785,6 +1797,43 @@ export interface RecordProjectUpstreamFundFactPayload {
 export interface ConfirmProjectUpstreamFundFactPayload {
   confirmationPassword: string;
   confirmationActionId: string;
+}
+
+export interface ProjectUpstreamFundReferenceOptionsReadModel {
+  projectId: string;
+  affiliateCompanyContracts: Array<{
+    id: string;
+    contractReference: string;
+    contractName: string;
+    companyEntityId: string;
+    companyEntityNameSnapshot: string;
+  }>;
+  affiliateSettlements: Array<{
+    id: string;
+    ledgerId: string;
+    affiliateCompanyContractId: string;
+    periodLabel: string;
+    counterpartyName: string;
+    effectDirection: "increase" | "decrease";
+    amountCents: string;
+  }>;
+  invoices: Array<{
+    id: string;
+    invoiceCode: string | null;
+    invoiceNumber: string | null;
+    externalIdentifier: string | null;
+    issueDate: string;
+    sellerName: string;
+    buyerName: string;
+    totalAmountCents: string;
+  }>;
+  upstreamSettlements: Array<{
+    id: string;
+    periodLabel: string;
+    approvingPartyName: string;
+    approvedAmountCents: string;
+    settledAt: string;
+  }>;
 }
 
 export type ProjectAffiliateBusinessFactType = "contract" | "settlement" | "payment";
@@ -1858,6 +1907,7 @@ export interface ProjectAffiliateContractFactReadModel
 export interface ProjectAffiliateSettlementFactReadModel
   extends ProjectAffiliateFactReadModelBase {
   contractLedgerId: string;
+  affiliateCompanyContractId: string | null;
   settledAt: string;
   periodLabel: string;
   amountCents: string;
@@ -1872,6 +1922,8 @@ export interface ProjectAffiliatePaymentFactReadModel
   extends ProjectAffiliateFactReadModelBase {
   contractLedgerId: string;
   settlementLedgerId: string | null;
+  paymentRequestId: string | null;
+  paymentRequestCode: string | null;
   paidAt: string;
   amountCents: string;
   paymentKind: ProjectAffiliatePaymentKind;
@@ -1908,6 +1960,7 @@ export interface RecordProjectAffiliateContractFactPayload {
 
 export interface RecordProjectAffiliateSettlementFactPayload {
   contractLedgerId: string;
+  affiliateCompanyContractId?: string;
   counterpartyName: string;
   settledAt: string;
   periodLabel: string;
@@ -1924,6 +1977,7 @@ export interface RecordProjectAffiliateSettlementFactPayload {
 export interface RecordProjectAffiliatePaymentFactPayload {
   contractLedgerId: string;
   settlementLedgerId?: string;
+  paymentRequestId?: string;
   counterpartyName: string;
   paidAt: string;
   amountCents: string;
@@ -2549,6 +2603,12 @@ export function fetchProjectExpenseRequests(
 export function fetchProjectUpstreamFundRecordCapability(projectId: string) {
   return readJson<ProjectActionCapabilityReadModel>(
     `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/record-capability`
+  );
+}
+
+export function fetchProjectUpstreamFundReferenceOptions(projectId: string) {
+  return readJson<ProjectUpstreamFundReferenceOptionsReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/reference-options`
   );
 }
 

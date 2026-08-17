@@ -90,11 +90,11 @@ export class ProjectAffiliateCompanyContractService {
   ) {
     const contractReference = requiredTrimmed(
       input.contractReference,
-      "请填写挂靠企业与我方线下合同编号"
+      "请填写施工企业与我方线下合同编号"
     );
     const contractName = requiredTrimmed(
       input.contractName,
-      "请填写挂靠企业与我方线下合同名称"
+      "请填写施工企业与我方线下合同名称"
     );
     const signedAt = strictDateOnly(
       input.signedAt,
@@ -102,7 +102,7 @@ export class ProjectAffiliateCompanyContractService {
     );
     const rightsObligationsSummary = requiredTrimmed(
       input.rightsObligationsSummary,
-      "请填写挂靠企业与我方双方权利义务摘要"
+      "请填写施工企业与我方双方权利义务摘要"
     );
     const companyEntityId = requiredTrimmed(
       input.companyEntityId,
@@ -141,7 +141,7 @@ export class ProjectAffiliateCompanyContractService {
         const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roles.includes("contract_staff")) {
           throw new ForbiddenException(
-            "只有合同人员可以登记挂靠企业与我方已签线下合同"
+            "只有合同人员可以登记施工企业与我方已签线下合同"
           );
         }
         const affiliate = await resolveCurrentProjectAffiliate(tx, projectId);
@@ -251,7 +251,7 @@ export class ProjectAffiliateCompanyContractService {
       const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
       if (!roles.includes("contract_director")) {
         throw new ForbiddenException(
-          "只有合同主管可以确认挂靠企业与我方已签线下合同"
+          "只有合同主管可以确认施工企业与我方已签线下合同"
         );
       }
     });
@@ -303,7 +303,7 @@ export class ProjectAffiliateCompanyContractService {
           where: { id: contractId, projectId }
         });
         if (!contract) {
-          throw new NotFoundException("待确认的挂靠企业与我方线下合同不存在");
+          throw new NotFoundException("待确认的施工企业与我方线下合同不存在");
         }
         if (contract.status !== "pending_confirm") {
           throw new BadRequestException("当前线下合同状态不可确认");
@@ -311,7 +311,7 @@ export class ProjectAffiliateCompanyContractService {
         const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roles.includes("contract_director")) {
           throw new ForbiddenException(
-            "只有合同主管可以确认挂靠企业与我方已签线下合同"
+            "只有合同主管可以确认施工企业与我方已签线下合同"
           );
         }
         const signature = await snapshotApprovalSignature(tx, actorUserId, {

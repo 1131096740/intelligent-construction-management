@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 478,
-    "exactRouteCount": 478,
-    "normalizedRouteCount": 478,
+    "routeCount": 479,
+    "exactRouteCount": 479,
+    "normalizedRouteCount": 479,
     "classificationOverrideCount": 181,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "0df26d55d654883c3e394895d625fd8d25ab56e6d6d52081673001b24a24fdb3",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 297,
-    "pageRouteCount": 298,
+    "derivedProductionPageCount": 298,
+    "pageRouteCount": 299,
     "externalTakeoverCount": 68,
     "exitCandidateCount": 109,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 348,
+      "web_api_wrapper": 349,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 348,
+    "productionWrapperRouteCount": 349,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -2500,7 +2500,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5234,
+            "sourceLine": 5294,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
@@ -3444,6 +3444,7 @@
             "normalizedPath": "/projects/:param/affiliate-company-contracts",
             "normalizedKey": "GET /projects/:param/affiliate-company-contracts",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
               "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
             ]
           }
@@ -4650,6 +4651,7 @@
             "normalizedPath": "/projects/:param/participating-company-options",
             "normalizedKey": "GET /projects/:param/participating-company-options",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
             ]
           }
@@ -4992,6 +4994,47 @@
             "method": "GET",
             "normalizedPath": "/projects/:param/upstream-fund-facts/record-capability",
             "normalizedKey": "GET /projects/:param/upstream-fund-facts/record-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/upstream-fund-facts/reference-options",
+      "normalizedKey": "GET /projects/:param/upstream-fund-facts/reference-options",
+      "controller": "ProjectController",
+      "handler": "upstreamFundReferenceOptions",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectUpstreamFundReferenceOptions",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/upstream-fund-facts/reference-options",
+            "normalizedKey": "GET /projects/:param/upstream-fund-facts/reference-options",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]

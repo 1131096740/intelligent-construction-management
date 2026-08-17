@@ -86,7 +86,7 @@ describe("PaymentRequestService execution subject", () => {
         voucherFileId: "voucher-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("该合同冻结为挂靠企业签约，不能创建或登记我方付款");
+    ).rejects.toThrow("施工企业付款申请不得登记我方实际付款，请登记施工企业外部付款事实");
 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });

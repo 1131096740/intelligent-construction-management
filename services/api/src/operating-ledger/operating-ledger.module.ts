@@ -13,8 +13,16 @@ import {
   PAYMENT_EXECUTION_SOURCE_TYPE
 } from "../payment/payment-operating-source.adapter";
 import {
+  ProjectAffiliatePaymentFactOperatingSourceAdapter,
+  PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
+  ProjectAffiliateContractFactOperatingSourceAdapter,
+  PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
+  ProjectAffiliateSettlementFactOperatingSourceAdapter,
+  PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
   ProjectProxyPaymentOperatingSourceAdapter,
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
+  ProjectUpstreamFundFactOperatingSourceAdapter,
+  PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
   ProjectUpstreamSettlementOperatingSourceAdapter,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "../project/project-operating-source.adapter";
@@ -43,6 +51,10 @@ import { OperatingSourceReplayService } from "./operating-source-replay.service"
 
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
+  PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+  PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
+  PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
+  PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
   "settlement",
   PAYMENT_EXECUTION_SOURCE_TYPE,
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
@@ -61,6 +73,10 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
   return new OperatingSourceAdapterRegistry(
     [
       new ProjectUpstreamSettlementOperatingSourceAdapter(),
+      new ProjectUpstreamFundFactOperatingSourceAdapter(),
+      new ProjectAffiliateContractFactOperatingSourceAdapter(),
+      new ProjectAffiliateSettlementFactOperatingSourceAdapter(),
+      new ProjectAffiliatePaymentFactOperatingSourceAdapter(),
       new SettlementOperatingSourceAdapter(),
       new PaymentExecutionOperatingSourceAdapter(),
       new ProjectProxyPaymentOperatingSourceAdapter(),

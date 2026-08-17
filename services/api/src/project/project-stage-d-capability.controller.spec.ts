@@ -75,7 +75,7 @@ describe("project stage D capability controller wiring", () => {
   });
 
   it("rejects affiliate evidence upload before the file service stores anything", async () => {
-    const denied = new Error("当前岗位不能为该挂靠外部事实补充依据");
+    const denied = new Error("当前岗位不能为该施工企业外部事实补充依据");
     const affiliateBusiness = {
       assertEvidenceUploadAllowed: jest.fn().mockRejectedValue(denied)
     };

@@ -216,7 +216,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordReceipt("project-1", "finance-1", {} as never)
     ).rejects.toThrow(
-      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+      "旧项目收款入口已停止新增；请分别登记业主付款、施工企业向我方拨款、施工企业扣款或待核对到账差额"
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });

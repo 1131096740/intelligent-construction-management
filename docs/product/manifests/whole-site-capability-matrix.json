@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "fa4eda2d50d86e3b201cd64a589752815755e880e63a433409a7b43af19f89aa",
+      "sha256": "39750fce234e4a273f287d8e5424945ec1a00e3d5825a7c490b28eae377a651d",
       "status": "ready",
       "summary": {
-        "routeCount": 478
+        "routeCount": 479
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8a8787a00e8020e15c645246b999b837e1ea1e16c47efd1830735c0cdb5dc80e",
+      "sha256": "2eda73b8d112af56f1a31c88134a41af38d15a42b8fe5b50b380854ba20a1867",
       "status": "ready",
       "summary": {
         "apiModuleCount": 19,
-        "exportedFunctionCount": 484,
-        "transportWrapperCount": 464,
+        "exportedFunctionCount": 485,
+        "transportWrapperCount": 465,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 486,
+        "mainRequestBindingCount": 487,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 486,
-        "productionConsumerCount": 357,
+        "requestEdgeCount": 487,
+        "productionConsumerCount": 358,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "bad36a058b07095fcc064dcce8a4d95eb987588ba32d7da6b0118e9eed5c9fae",
+      "sha256": "5f9e163e90c1488a282f5cdf9951b8d06887ab82bc21e6c5bc63ac89ea460df6",
       "status": "ready",
       "summary": {
         "registeredActionCount": 250,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 153,
         "parsedVueFileCount": 153,
         "reachableProductionModuleCount": 230,
-        "templateEventDirectiveCount": 860,
+        "templateEventDirectiveCount": 862,
         "propCallbackDirectiveCount": 7,
         "coveredProductionMutationConsumerCount": 241,
         "candidateProductionMutationConsumerCount": 241,
@@ -64,24 +64,24 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "e7bd3b7471aeb4f8d5ab2bb3efc1032af156abe5de5f01159c2e9c30b89043b6",
+      "sha256": "d805790cd5b240ae39bd3adf28dbce4a34a6ac58b27f3677644934032dc42b2d",
       "status": "ready",
       "summary": {
-        "routeCount": 478,
-        "exactRouteCount": 478,
-        "normalizedRouteCount": 478,
+        "routeCount": 479,
+        "exactRouteCount": 479,
+        "normalizedRouteCount": 479,
         "classificationOverrideCount": 181,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "0df26d55d654883c3e394895d625fd8d25ab56e6d6d52081673001b24a24fdb3",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 297,
-        "pageRouteCount": 298,
+        "derivedProductionPageCount": 298,
+        "pageRouteCount": 299,
         "externalTakeoverCount": 68,
         "exitCandidateCount": 109,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 348,
+          "web_api_wrapper": 349,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,13 +93,13 @@
     }
   },
   "summary": {
-    "routeCount": 478,
-    "pageRouteCount": 298,
+    "routeCount": 479,
+    "pageRouteCount": 299,
     "externalTakeoverRouteCount": 68,
     "exitCandidateRouteCount": 109,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 486,
+    "mainRequestBindingCount": 487,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
@@ -3971,6 +3971,7 @@
           "normalizedKey": "GET /projects/:param/affiliate-company-contracts",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
           ],
           "testConsumers": [
@@ -5485,6 +5486,7 @@
           "normalizedKey": "GET /projects/:param/participating-company-options",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
           ],
           "testConsumers": [
@@ -5888,6 +5890,48 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/upstream-fund-facts/reference-options",
+        "normalizedKey": "GET /projects/:param/upstream-fund-facts/reference-options",
+        "controller": "ProjectController",
+        "handler": "upstreamFundReferenceOptions",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.upstream_fund_fact.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectUpstreamFundReferenceOptions",
+          "method": "GET",
+          "path": "/projects/:param/upstream-fund-facts/reference-options",
+          "normalizedKey": "GET /projects/:param/upstream-fund-facts/reference-options",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
