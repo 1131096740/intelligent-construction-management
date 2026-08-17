@@ -398,41 +398,65 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
     if (!row.occurredAt) {
       throw new BadRequestException("上游资金缺少业务发生时间");
     }
-    const [effectiveDate, affiliate, remittanceSettlement] = await Promise.all([
-      readOperatingLedgerEffectiveDate(tx, row.projectId),
-      readAffiliateSnapshot(tx, {
-        projectId: row.projectId,
-        occurredAt: row.occurredAt,
-        assignmentId: row.affiliateAssignmentId,
-        businessPartyVersionId: row.affiliateBusinessPartyVersionId
-      }),
-      row.factType === "affiliate_remittance_to_company" &&
-        row.affiliateSettlementFactId
-        ? tx.projectAffiliateSettlementFact.findFirst({
+    const [effectiveDate, affiliate, remittanceSettlement, frozenRemittanceFact] =
+      await Promise.all([
+        readOperatingLedgerEffectiveDate(tx, row.projectId),
+        readAffiliateSnapshot(tx, {
+          projectId: row.projectId,
+          occurredAt: row.occurredAt,
+          assignmentId: row.affiliateAssignmentId,
+          businessPartyVersionId: row.affiliateBusinessPartyVersionId
+        }),
+        row.factType === "affiliate_remittance_to_company" &&
+          row.affiliateSettlementFactId
+          ? tx.projectAffiliateSettlementFact.findFirst({
+              where: {
+                id: row.affiliateSettlementFactId,
+                projectId: row.projectId,
+                status: "confirmed"
+              },
+              select: { ledgerId: true }
+            })
+          : Promise.resolve(null),
+        row.factType === "affiliate_remittance_to_company"
+          ? tx.operatingFact.findUnique({
+              where: {
+                sourceType_sourceBusinessId: {
+                  sourceType: this.sourceType,
+                  sourceBusinessId: row.id
+                }
+              },
+              select: { sourceSnapshot: true }
+            })
+          : Promise.resolve(null)
+      ]);
+    const frozenRemittancePayableAmountCents = frozenRemittanceFact
+      ? requiredJsonMoney(
+          requiredJsonRecord(
+            frozenRemittanceFact.sourceSnapshot as Prisma.InputJsonValue,
+            "施工企业向我方公司拨款"
+          ),
+          "payableAmountCents",
+          "施工企业向我方公司拨款"
+        )
+      : null;
+    const remittanceSettlementFacts =
+      remittanceSettlement && frozenRemittancePayableAmountCents === null
+        ? await tx.projectAffiliateSettlementFact.findMany({
             where: {
-              id: row.affiliateSettlementFactId,
               projectId: row.projectId,
+              ledgerId: remittanceSettlement.ledgerId,
               status: "confirmed"
             },
-            select: { ledgerId: true }
+            select: { effectDirection: true, amountCents: true }
           })
-        : Promise.resolve(null)
-    ]);
-    const remittanceSettlementFacts = remittanceSettlement
-      ? await tx.projectAffiliateSettlementFact.findMany({
-          where: {
-            projectId: row.projectId,
-            ledgerId: remittanceSettlement.ledgerId,
-            status: "confirmed",
-            confirmedAt: { lte: row.confirmedAt }
-          },
-          select: { effectDirection: true, amountCents: true }
-        })
-      : [];
-    const remittancePayableAmountCents = remittanceSettlementFacts.reduce(
-      (total, fact) => total + signedSettlementAmount(fact),
-      0n
-    );
+        : [];
+    const remittancePayableAmountCents =
+      frozenRemittancePayableAmountCents ??
+      remittanceSettlementFacts.reduce(
+        (total, fact) => total + signedSettlementAmount(fact),
+        0n
+      );
     if (
       row.factType === "affiliate_remittance_to_company" &&
       (!row.affiliateCompanyContractId ||

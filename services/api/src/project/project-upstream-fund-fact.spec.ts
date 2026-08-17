@@ -271,6 +271,52 @@ describe("ProjectService upstream fund facts", () => {
     });
   });
 
+  it("rejects an owner payment whose counterparty differs from the linked upstream settlement", async () => {
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectAffiliateAssignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
+      },
+      projectUpstreamFundFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(async ({ data }) =>
+          fundFact({ ...data, id: "owner-payment-mismatch-1" })
+        )
+      },
+      projectUpstreamSettlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "upstream-settlement-1",
+          approvingPartyName: "建设单位"
+        })
+      },
+      ...roleTables("finance_staff"),
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.recordUpstreamFundFact("project-1", "finance-1", {
+        factType: "owner_payment_to_affiliate",
+        basisType: "oral",
+        occurredAt: "2026-07-29T00:00:00.000Z",
+        amountCents: "10000",
+        counterpartyName: "另一建设单位",
+        upstreamSettlementId: "upstream-settlement-1",
+        idempotencyKey: "owner-payment-counterparty-mismatch"
+      })
+    ).rejects.toThrow("业主付款对象必须与关联上游结算的审批单位完全一致");
+    expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it("inherits the upstream settlement link when reversing an owner payment", async () => {
     let created: Record<string, unknown> | null = null;
     const tx = {
@@ -301,7 +347,10 @@ describe("ProjectService upstream fund facts", () => {
         })
       },
       projectUpstreamSettlement: {
-        findFirst: jest.fn().mockResolvedValue({ id: "upstream-settlement-1" })
+        findFirst: jest.fn().mockResolvedValue({
+          id: "upstream-settlement-1",
+          approvingPartyName: "建设单位"
+        })
       },
       auditLog: { create: jest.fn() },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "owner-payment-1" }])
@@ -325,9 +374,24 @@ describe("ProjectService upstream fund facts", () => {
 
     expect(created).toEqual(expect.objectContaining({
       upstreamSettlementId: "upstream-settlement-1",
+      counterpartyName: "建设单位",
       adjustsFactId: "owner-payment-1",
       entryKind: "reversal"
     }));
+
+    const createCount = tx.projectUpstreamFundFact.create.mock.calls.length;
+    await expect(service.recordUpstreamFundFact("project-1", "finance-1", {
+      factType: "owner_payment_to_affiliate",
+      basisType: "oral",
+      occurredAt: "2026-07-29T00:00:00.000Z",
+      amountCents: "10000",
+      counterpartyName: "另一建设单位",
+      entryKind: "correction",
+      effectDirection: "decrease",
+      adjustsFactId: "owner-payment-1",
+      idempotencyKey: "owner-payment-different-counterparty-idempotency"
+    })).rejects.toThrow("业主付款更正不得改变原交易对方");
+    expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(createCount);
 
     await expect(service.recordUpstreamFundFact("project-1", "finance-1", {
       factType: "owner_payment_to_affiliate",
@@ -567,6 +631,86 @@ describe("ProjectService upstream fund facts", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it("does not let a pending settlement increase authorize remittance confirmation", async () => {
+    const pendingRemittance = fundFact({
+      factType: "affiliate_remittance_to_company",
+      affiliateSettlementFactId: "settlement-fact-1",
+      amountCents: 20000n
+    });
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "fund-fact-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-fact-1" }])
+        .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
+        .mockResolvedValueOnce([{
+          id: "signature-version-1",
+          fileId: "signature-file-1",
+          contentSha256: "c".repeat(64)
+        }])
+        .mockResolvedValueOnce([{
+          id: "signature-file-1",
+          contentSha256: "c".repeat(64),
+          storageStatus: "active"
+        }]),
+      ...roleTables("finance_staff"),
+      projectUpstreamFundFact: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(fundFact({
+            ...pendingRemittance,
+            status: "confirmed",
+            confirmedByUserId: "finance-1",
+            confirmedAt,
+            confirmationActionId: "remittance-pending-settlement-mask-confirm",
+            confirmationSignatureVersionId: "signature-version-1",
+            confirmationSignatureFileId: "signature-file-1",
+            confirmationSignatureSha256: "c".repeat(64)
+          })),
+        findFirst: jest.fn().mockResolvedValue(pendingRemittance),
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 90000n },
+          { effectDirection: "increase", amountCents: 20000n }
+        ]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      projectAffiliateSettlementFact: {
+        findFirst: jest.fn().mockResolvedValue({ ledgerId: "settlement-ledger-1" }),
+        findMany: jest.fn().mockImplementation(
+          async (args: { where?: { status?: unknown }; select?: { id?: boolean } }) => {
+            if (args.select?.id) return [{ id: "settlement-fact-1" }];
+            return args.where?.status === "confirmed"
+              ? [{ effectDirection: "increase", amountCents: 100000n }]
+              : [
+                  { effectDirection: "increase", amountCents: 100000n },
+                  { effectDirection: "increase", amountCents: 100000n }
+                ];
+          }
+        )
+      },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      service.confirmUpstreamFundFact(
+        "project-1",
+        "fund-fact-1",
+        "finance-1",
+        {
+          confirmationPassword: "current-password",
+          confirmationActionId: "remittance-pending-settlement-mask-confirm"
+        },
+        confirmedAt
+      )
+    ).rejects.toThrow("施工企业结算有效金额不能低于已登记拨款金额");
+    expect(tx.projectUpstreamFundFact.updateMany).not.toHaveBeenCalled();
+  });
+
   it("requires a finance director to confirm oral notification facts", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "fund-fact-1" }]),
@@ -665,6 +809,101 @@ describe("ProjectService upstream fund facts", () => {
       confirmedByUserId: "finance-director-1"
     });
     expect(tx.projectUpstreamFundFact.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a pending settlement increase authorize remittance registration", async () => {
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectAffiliateAssignment: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "assignment-1",
+          businessPartyId: "party-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE",
+          effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
+        }]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
+      },
+      ...roleTables("finance_staff"),
+      projectUpstreamFundFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 90000n }
+        ]),
+        create: jest.fn().mockImplementation(async ({ data }) =>
+          fundFact({ ...data, id: "remittance-pending-mask-1" })
+        )
+      },
+      projectAffiliateCompanyContract: {
+        findFirst: jest.fn().mockResolvedValue({
+          companyEntityId: "company-1",
+          companyEntityNameSnapshot: "我方公司",
+          affiliateAssignmentId: "assignment-1",
+          affiliateBusinessPartyVersionId: "party-version-1"
+        })
+      },
+      projectAffiliateSettlementFact: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-fact-1",
+          ledgerId: "settlement-ledger-1",
+          counterpartyName: "我方公司",
+          affiliateCompanyContractId: "company-contract-1",
+          affiliateAssignmentId: "assignment-1",
+          affiliateBusinessPartyVersionId: "party-version-1"
+        }),
+        findMany: jest.fn().mockImplementation(
+          async (args: { where?: { status?: unknown }; select?: { id?: boolean } }) => {
+            if (args.select?.id) return [{ id: "settlement-fact-1" }];
+            return args.where?.status === "confirmed"
+              ? [{ effectDirection: "increase", amountCents: 100000n }]
+              : [
+                  { effectDirection: "increase", amountCents: 100000n },
+                  { effectDirection: "increase", amountCents: 100000n }
+                ];
+          }
+        )
+      },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          sellerName: "我方公司",
+          buyerName: "施工企业甲"
+        })
+      },
+      projectParticipatingCompany: {
+        findFirst: jest.fn().mockResolvedValue({ companyEntityId: "company-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-fact-1" }]),
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.recordUpstreamFundFact("project-1", "finance-1", {
+        factType: "affiliate_remittance_to_company",
+        basisType: "oral",
+        occurredAt: "2026-07-29T00:00:00.000Z",
+        amountCents: "20000",
+        counterpartyName: "我方公司",
+        companyEntityId: "company-1",
+        affiliateCompanyContractId: "company-contract-1",
+        affiliateSettlementFactId: "settlement-fact-1",
+        invoiceRecordId: "invoice-1",
+        idempotencyKey: "remittance-pending-settlement-mask-record"
+      })
+    ).rejects.toThrow("施工企业结算有效金额不能低于已登记拨款金额");
+    expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled();
+    expect(tx.projectParticipatingCompany.findFirst).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("replays an identical recording idempotently and rejects key reuse with a changed amount", async () => {

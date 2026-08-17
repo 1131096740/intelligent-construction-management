@@ -476,6 +476,73 @@ describe("ProjectAffiliateBusinessService", () => {
     expect(tx.projectAffiliateSettlementFact.create).not.toHaveBeenCalled();
   });
 
+  it("does not let another pending settlement increase mask a decrease being recorded", async () => {
+    const target = settlementFact({ amountCents: 100000n });
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: target.id }]),
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      ...roleTables("budget_staff"),
+      projectAffiliateContractFact: {
+        findMany: jest.fn().mockResolvedValue([contractFact()])
+      },
+      projectAffiliateSettlementFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(target),
+        findMany: jest.fn().mockImplementation(
+          async (args: { where?: { status?: unknown }; select?: { id?: boolean } }) => {
+            if (args.select?.id) return [{ id: target.id }];
+            return args.where?.status === "confirmed"
+              ? [{ effectDirection: "increase", amountCents: 100000n }]
+              : [
+                  { effectDirection: "increase", amountCents: 100000n },
+                  { effectDirection: "increase", amountCents: 100000n }
+                ];
+          }
+        ),
+        create: jest.fn().mockResolvedValue(settlementFact({
+          id: "settlement-pending-decrease-1",
+          entryKind: "correction",
+          effectDirection: "decrease",
+          amountCents: 50000n,
+          status: "pending_confirm",
+          confirmedByUserId: null,
+          confirmedAt: null
+        }))
+      },
+      projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 80000n }
+        ])
+      },
+      projectUpstreamFundFact: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    await expect(
+      service.recordSettlementFact("project-1", "budget-1", {
+        contractLedgerId: "contract-ledger-1",
+        counterpartyName: "材料供应商",
+        settledAt: "2026-07-28",
+        periodLabel: "2026-07",
+        amountCents: "50000",
+        entryKind: "correction",
+        effectDirection: "decrease",
+        adjustsFactId: target.id,
+        basisType: "oral",
+        idempotencyKey: "settlement-pending-increase-must-not-mask-decrease"
+      })
+    ).rejects.toThrow("施工企业结算有效金额不能低于已登记付款金额");
+    expect(tx.projectAffiliateSettlementFact.create).not.toHaveBeenCalled();
+  });
+
   it("aggregates remittances linked to any fact in the settlement ledger", async () => {
     const target = settlementFact({ amountCents: 100000n });
     const tx = {

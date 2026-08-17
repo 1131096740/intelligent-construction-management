@@ -158,18 +158,16 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     );
   });
 
-  it("freezes the settlement payable at the remittance confirmation time", async () => {
+  it("reuses the remittance operating snapshot instead of guessing same-millisecond order", async () => {
     const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
     const tx = remittanceFundTx();
-    tx.projectAffiliateSettlementFact.findMany.mockImplementation(
-      async (args: { where?: { confirmedAt?: { lte?: Date } } }) =>
-        args.where?.confirmedAt?.lte
-          ? [{ effectDirection: "increase", amountCents: 12000n }]
-          : [
-              { effectDirection: "increase", amountCents: 12000n },
-              { effectDirection: "decrease", amountCents: 2000n }
-            ]
-    );
+    tx.projectAffiliateSettlementFact.findMany.mockResolvedValue([
+      { effectDirection: "increase", amountCents: 12000n },
+      { effectDirection: "decrease", amountCents: 2000n }
+    ]);
+    tx.operatingFact.findUnique.mockResolvedValue({
+      sourceSnapshot: { payableAmountCents: "12000" }
+    });
 
     const snapshot = await adapter.readSourceSnapshot(tx as never, {
       projectId: "project-1",
@@ -178,11 +176,14 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     });
     const { input } = adapter.toOperatingFactInput(snapshot!);
 
-    expect(tx.projectAffiliateSettlementFact.findMany).toHaveBeenCalledWith(
+    expect(tx.operatingFact.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          confirmedAt: { lte: new Date("2026-08-12T01:00:00.000Z") }
-        })
+        where: {
+          sourceType_sourceBusinessId: {
+            sourceType: "project_upstream_fund_fact",
+            sourceBusinessId: "fund-fact-remittance-1"
+          }
+        }
       })
     );
     expect(input.basisSnapshot).toEqual(
@@ -706,6 +707,9 @@ function remittanceFundTx() {
         { effectDirection: "increase", amountCents: 12000n },
         { effectDirection: "decrease", amountCents: 2000n }
       ])
+    },
+    operatingFact: {
+      findUnique: jest.fn().mockResolvedValue(null)
     },
     projectAffiliateAssignment: {
       findFirst: jest.fn().mockResolvedValue({

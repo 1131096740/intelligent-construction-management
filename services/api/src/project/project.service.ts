@@ -1258,6 +1258,8 @@ export class ProjectService {
         }
 
         let adjustmentTarget: {
+          factType: string;
+          counterpartyName: string;
           affiliateAssignmentId: string;
           affiliateBusinessPartyVersionId: string;
           upstreamSettlementId: string | null;
@@ -1281,6 +1283,8 @@ export class ProjectService {
             throw new NotFoundException("被调整的上游资金事实不存在");
           }
           adjustmentTarget = {
+            factType: target.factType,
+            counterpartyName: target.counterpartyName,
             affiliateAssignmentId: target.affiliateAssignmentId,
             affiliateBusinessPartyVersionId: target.affiliateBusinessPartyVersionId,
             upstreamSettlementId: target.upstreamSettlementId,
@@ -1289,6 +1293,13 @@ export class ProjectService {
             affiliateSettlementFactId: target.affiliateSettlementFactId,
             invoiceRecordId: target.invoiceRecordId
           };
+          if (
+            factType === "owner_payment_to_affiliate" &&
+            target.factType === "owner_payment_to_affiliate" &&
+            counterpartyName !== target.counterpartyName
+          ) {
+            throw new BadRequestException("业主付款更正不得改变原交易对方");
+          }
           const existingAdjustments = await tx.projectUpstreamFundFact.findMany({
             where: {
               adjustsFactId,
@@ -1315,6 +1326,10 @@ export class ProjectService {
 
         const resolvedUpstreamSettlementId =
           upstreamSettlementId ?? adjustmentTarget?.upstreamSettlementId ?? undefined;
+        const resolvedCounterpartyName =
+          factType === "owner_payment_to_affiliate" && adjustmentTarget
+            ? adjustmentTarget.counterpartyName
+            : counterpartyName;
         if (resolvedUpstreamSettlementId && factType !== "owner_payment_to_affiliate") {
           throw new BadRequestException("上游结算只能关联业主向施工企业付款事实");
         }
@@ -1326,10 +1341,15 @@ export class ProjectService {
               status: "confirmed",
               voidedAt: null
             },
-            select: { id: true }
+            select: { id: true, approvingPartyName: true }
           });
           if (!settlement) {
             throw new BadRequestException("关联上游结算不存在、未确认或不属于当前项目");
+          }
+          if (settlement.approvingPartyName !== resolvedCounterpartyName) {
+            throw new BadRequestException(
+              "业主付款对象必须与关联上游结算的审批单位完全一致"
+            );
           }
         }
 
@@ -1458,7 +1478,7 @@ export class ProjectService {
             effectDirection,
             occurredAt,
             amountCents,
-            counterpartyName,
+            counterpartyName: resolvedCounterpartyName,
             basisType,
             deductionCategory,
             upstreamSettlementId: resolvedUpstreamSettlementId,

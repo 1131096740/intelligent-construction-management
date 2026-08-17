@@ -1710,7 +1710,7 @@ async function assertSettlementAdjustmentCapacity(
     where: {
       projectId: input.projectId,
       ledgerId: input.settlementLedgerId,
-      status: { in: ["pending_confirm", "confirmed"] }
+      status: "confirmed"
     },
     select: { effectDirection: true, amountCents: true }
   });
@@ -1745,7 +1745,7 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
           { id: confirmingSettlementFactId, status: "pending_confirm" }
         ]
       }
-    : { status: { in: ["pending_confirm", "confirmed"] } };
+    : { status: "confirmed" };
   const effectiveAmountCents =
     proposedNetAmountCents ??
     netMoneyFacts(
