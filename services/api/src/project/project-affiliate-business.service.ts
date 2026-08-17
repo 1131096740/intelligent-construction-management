@@ -819,6 +819,9 @@ export class ProjectAffiliateBusinessService {
           paidAt >= projectProfile.operatingLedgerEffectiveDate;
         const isPostEffectiveException =
           isPostEffectivePayment && !paymentRequestReference;
+        if (isPostEffectiveException && paidAt.getTime() > Date.now()) {
+          throw new BadRequestException("施工企业付款日期不能晚于当前时间");
+        }
         if (isPostEffectiveException && !description) {
           throw new BadRequestException(
             "经营账生效日后的例外付款必须填写事后补录原因；正常付款请关联已审批付款申请"

@@ -405,6 +405,67 @@ describe("ProjectAffiliateBusinessService", () => {
     }
   );
 
+  it("rejects a future post-effective exceptional payment", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-17T00:00:00.000Z"));
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked-row" }]),
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
+        findUnique: jest.fn().mockResolvedValue({
+          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+        })
+      },
+      ...roleTables("finance_staff"),
+      projectAffiliateContractFact: {
+        findMany: jest.fn().mockResolvedValue([contractFact()])
+      },
+      projectAffiliateSettlementFact: {
+        findMany: jest.fn().mockResolvedValue([settlementFact()])
+      },
+      projectAffiliatePaymentFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue(
+          paymentFact({
+            paidAt: new Date("2026-08-18T00:00:00.000Z"),
+            paymentRequestId: null,
+            description: "抢险付款事后据实补录"
+          })
+        )
+      },
+      fileObject: { findUnique: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    try {
+      await expect(
+        service.recordPaymentFact("project-1", "finance-1", {
+          contractLedgerId: "contract-ledger-1",
+          settlementLedgerId: "settlement-ledger-1",
+          counterpartyName: "材料供应商",
+          paidAt: "2026-08-18",
+          amountCents: "5000",
+          paymentKind: "normal",
+          externalPaymentReference: "BANK-FUTURE-EXCEPTION-001",
+          basisType: "oral",
+          description: "抢险付款事后据实补录",
+          idempotencyKey: "18e5064b-8082-4669-b745-56215c47aa2a"
+        })
+      ).rejects.toThrow("施工企业付款日期不能晚于当前时间");
+    } finally {
+      jest.useRealTimers();
+    }
+
+    expect(tx.projectAffiliatePaymentFact.create).not.toHaveBeenCalled();
+  });
+
   it("records a post-effective exceptional payment for review without fabricating approval", async () => {
     const created = paymentFact({
       paidAt: new Date("2026-08-02T00:00:00.000Z"),
