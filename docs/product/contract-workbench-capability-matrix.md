@@ -170,7 +170,7 @@
 | GET | `/draft-retention/preview` | fetchDraftRetentionPreview | apps/web-admin/src/pages/settings/SettingsPage.vue | matched | 保留 | 否 | — |
 | GET | `/me/workbench-summary` | fetchWorkbenchSummary |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/payments/contract-application` | fetchContractPaymentApplication | apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue | matched | 保留 | 否 | — |
-| GET | `/projects/:param/affiliate-company-contracts` | fetchProjectAffiliateCompanyContracts | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | 否 | — |
+| GET | `/projects/:param/affiliate-company-contracts` | fetchProjectAffiliateCompanyContracts | apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue<br>apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/affiliate-company-contracts` | recordProjectAffiliateCompanyContractWithUpload | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/affiliate-company-contracts/:param/confirmation` | confirmProjectAffiliateCompanyContract | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/affiliate-company-contracts/file-uploads` | recordProjectAffiliateCompanyContractWithUpload | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | 否 | — |

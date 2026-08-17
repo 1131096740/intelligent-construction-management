@@ -239,6 +239,39 @@ describe("ProjectAffiliateBusinessService", () => {
     expect(result.contracts[0].availableActions).toEqual(["supplement_evidence"]);
   });
 
+  it("returns a payment request business code for correction receipts without replacing the hidden id", async () => {
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      ...roleTables("finance_staff"),
+      projectAffiliateContractFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliateSettlementFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([
+          paymentFact({ paymentRequestId: "payment-request-uuid-1" })
+        ])
+      },
+      projectAffiliateBusinessEvidence: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "payment-request-uuid-1", code: "FK-2026-001" }
+        ])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    const result = await service.listFacts("project-1", "finance-1");
+
+    expect(result.payments[0]).toMatchObject({
+      paymentRequestId: "payment-request-uuid-1",
+      paymentRequestCode: "FK-2026-001"
+    });
+  });
+
   it("does not create company approval work when recording an external affiliate contract", async () => {
     const tx = {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
@@ -366,9 +399,77 @@ describe("ProjectAffiliateBusinessService", () => {
         basisType: "oral",
         idempotencyKey: "a87e7a4f-57c7-4c75-8a75-702d02b5d90a"
         })
-      ).rejects.toThrow("经营账生效日后的施工企业付款必须关联已审批付款申请");
+      ).rejects.toThrow(
+        "经营账生效日后的例外付款必须填写事后补录原因；正常付款请关联已审批付款申请"
+      );
     }
   );
+
+  it("records a post-effective exceptional payment for review without fabricating approval", async () => {
+    const created = paymentFact({
+      paidAt: new Date("2026-08-02T00:00:00.000Z"),
+      paymentRequestId: null,
+      description: "抢险当日已付，事后据实补录"
+    });
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked-row" }]),
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
+        findUnique: jest.fn().mockResolvedValue({
+          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+        })
+      },
+      ...roleTables("finance_staff"),
+      projectAffiliateContractFact: {
+        findMany: jest.fn().mockResolvedValue([contractFact()])
+      },
+      projectAffiliateSettlementFact: {
+        findMany: jest.fn().mockResolvedValue([settlementFact()])
+      },
+      projectAffiliatePaymentFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue(created)
+      },
+      fileObject: { findUnique: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    const result = await service.recordPaymentFact("project-1", "finance-1", {
+      contractLedgerId: "contract-ledger-1",
+      settlementLedgerId: "settlement-ledger-1",
+      counterpartyName: "材料供应商",
+      paidAt: "2026-08-02",
+      amountCents: "5000",
+      paymentKind: "normal",
+      externalPaymentReference: "BANK-EXCEPTION-001",
+      basisType: "oral",
+      description: "抢险当日已付，事后据实补录",
+      idempotencyKey: "fb4155df-2a44-48c6-a728-55fd10e59f9d"
+    });
+
+    expect(result).toMatchObject({
+      status: "pending_confirm",
+      paymentRequestId: null,
+      description: "抢险当日已付，事后据实补录"
+    });
+    expect(tx.projectAffiliatePaymentFact.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        paymentRequestId: null,
+        status: "pending_confirm",
+        description: "抢险当日已付，事后据实补录"
+      })
+    });
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalled();
+  });
 
   it("records an external settlement without creating company approval work", async () => {
     const created = settlementFact({
@@ -745,6 +846,42 @@ describe("ProjectAffiliateBusinessService", () => {
         idempotencyKey: "payment-cross-settlement"
       })
     ).rejects.toThrow("施工企业正常付款申请必须与外部结算台账一致");
+
+    tx.contract.findUnique.mockResolvedValueOnce({
+      projectId: "project-1",
+      counterparty: "材料供应商",
+      code: "GK-HT-2026-001"
+    });
+    tx.settlement.findUnique.mockResolvedValueOnce({
+      id: "internal-settlement-1",
+      projectId: "project-1",
+      contractVersionId: "internal-contract-version-1",
+      status: "effective",
+      periodLabel: "2026-07"
+    });
+    tx.projectAffiliateSettlementFact.findMany
+      .mockResolvedValueOnce([settlementFact()])
+      .mockResolvedValueOnce([
+        settlementFact(),
+        settlementFact({
+          id: "settlement-fact-2",
+          ledgerId: "settlement-ledger-2"
+        })
+      ]);
+    await expect(
+      service.recordPaymentFact("project-1", "finance-1", {
+        contractLedgerId: "contract-ledger-1",
+        settlementLedgerId: "settlement-ledger-1",
+        counterpartyName: "材料供应商",
+        paidAt: "2026-08-02",
+        amountCents: "5000",
+        paymentKind: "normal",
+        externalPaymentReference: "BANK-AMBIGUOUS-SETTLEMENT",
+        paymentRequestId: "payment-request-1",
+        basisType: "oral",
+        idempotencyKey: "payment-ambiguous-settlement"
+      })
+    ).rejects.toThrow("同一合同和期间存在多笔外部结算，请先明确付款申请对应的债务");
   });
 
   it("permits a pre-settlement advance only when frozen contract terms allow it", async () => {

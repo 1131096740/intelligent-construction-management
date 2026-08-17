@@ -1923,6 +1923,7 @@ export interface ProjectAffiliatePaymentFactReadModel
   contractLedgerId: string;
   settlementLedgerId: string | null;
   paymentRequestId: string | null;
+  paymentRequestCode: string | null;
   paidAt: string;
   amountCents: string;
   paymentKind: ProjectAffiliatePaymentKind;

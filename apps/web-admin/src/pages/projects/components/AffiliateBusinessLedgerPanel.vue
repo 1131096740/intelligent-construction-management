@@ -6,6 +6,7 @@ import {
   confirmProjectAffiliatePaymentFact,
   confirmProjectAffiliateSettlementFact,
   fetchProjectAffiliateBusinessFacts,
+  fetchProjectAffiliateCompanyContracts,
   fetchProjectAffiliateFactCapability,
   fetchProjectAffiliateRecordCapability,
   recordProjectAffiliateContractFact,
@@ -18,6 +19,7 @@ import {
   uploadProjectAffiliateSettlementPrivateFile,
   type ProjectAffiliateBusinessFactType,
   type ProjectAffiliateBusinessFactsReadModel,
+  type ProjectAffiliateCompanyContractsReadModel,
   type ProjectAffiliateContractFactReadModel,
   type ProjectAffiliateContractType,
   type ProjectAffiliateEntryKind,
@@ -39,6 +41,7 @@ type ConfirmTarget =
   | { businessType: "payment"; fact: ProjectAffiliatePaymentFactReadModel };
 
 const data = ref<ProjectAffiliateBusinessFactsReadModel | null>(null);
+const referenceOptions = ref<ProjectAffiliateCompanyContractsReadModel | null>(null);
 const loading = ref(false);
 const loadError = ref("");
 const notice = ref("");
@@ -155,6 +158,14 @@ const paymentSettlementOptions = computed(() =>
       value: fact.ledgerId
     }))
 );
+const affiliateCompanyContractOptions = computed(() =>
+  (referenceOptions.value?.contracts ?? [])
+    .filter((contract) => contract.status === "confirmed")
+    .map((contract) => ({
+      label: `${contract.contractReference} · ${contract.contractName} · ${contract.companyEntityNameSnapshot}`,
+      value: contract.id
+    }))
+);
 const drawerTitle = computed(() => {
   const typeLabel = { contract: "合同", settlement: "结算", payment: "付款" }[recordType.value];
   const modeLabel = {
@@ -171,6 +182,7 @@ watch(
   () => props.projectId,
   () => {
     data.value = null;
+    referenceOptions.value = null;
     void load();
   }
 );
@@ -180,7 +192,12 @@ async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    data.value = await fetchProjectAffiliateBusinessFacts(props.projectId);
+    const [facts, options] = await Promise.all([
+      fetchProjectAffiliateBusinessFacts(props.projectId),
+      fetchProjectAffiliateCompanyContracts(props.projectId)
+    ]);
+    data.value = facts;
+    referenceOptions.value = options;
   } catch (error) {
     loadError.value = errorMessage(error, "施工企业业务持续接管台账读取失败");
   } finally {
@@ -243,6 +260,7 @@ function openAdjustment(target: ConfirmTarget, mode: "correction" | "reversal") 
       contractLedgerId: fact.contractLedgerId,
       settlementLedgerId: fact.settlementLedgerId ?? "",
       paymentRequestId: fact.paymentRequestId ?? "",
+      paymentRequestCode: fact.paymentRequestCode ?? "",
       counterpartyName: fact.counterpartyName,
       paidAt: dateText(fact.paidAt),
       amountYuan: centsTextToYuanText(fact.amountCents),
@@ -372,8 +390,15 @@ async function submitRecord() {
         ...(form.settlementLedgerId
           ? { settlementLedgerId: form.settlementLedgerId }
           : {}),
-        ...(form.paymentRequestId
-          ? { paymentRequestId: form.paymentRequestId }
+        ...((recordMode.value === "original"
+          ? form.paymentRequestCode
+          : form.paymentRequestId)
+          ? {
+              paymentRequestId:
+                recordMode.value === "original"
+                  ? form.paymentRequestCode
+                  : form.paymentRequestId
+            }
           : {}),
         counterpartyName: required(form.counterpartyName, "付款相对方"),
         paidAt: required(form.paidAt, "外部付款日期"),
@@ -764,6 +789,7 @@ function syncPaymentContract() {
   paymentForm.value.counterpartyName = fact?.counterpartyName ?? "";
   paymentForm.value.settlementLedgerId = "";
   paymentForm.value.paymentRequestId = "";
+  paymentForm.value.paymentRequestCode = "";
   paymentForm.value.paymentKind =
     fact?.contractType === "general_direct_payment"
       ? "direct_contract"
@@ -815,6 +841,7 @@ function createPaymentForm() {
     contractLedgerId: "",
     settlementLedgerId: "",
     paymentRequestId: "",
+    paymentRequestCode: "",
     counterpartyName: "",
     paidAt: todayText(),
     amountYuan: "",
@@ -1221,11 +1248,14 @@ function errorMessage(error: unknown, fallback: string) {
             :disabled="recordMode !== 'original'"
             @change="syncSettlementContract"
           />
-          <t-input
+          <t-select
             v-model="settlementForm.affiliateCompanyContractId"
-            label="拨款链路的施工企业—我方合同档案编号（选填）"
-            placeholder="仅在该结算用于拨款链路时填写"
+            label="拨款链路的施工企业—我方合同（选填）"
+            placeholder="请按合同编号或名称选择"
+            :options="affiliateCompanyContractOptions"
             :disabled="recordMode !== 'original'"
+            clearable
+            filterable
           />
           <t-input
             v-model="settlementForm.counterpartyName"
@@ -1269,10 +1299,15 @@ function errorMessage(error: unknown, fallback: string) {
             :disabled="recordMode !== 'original'"
           />
           <t-input
-            v-model="paymentForm.paymentRequestId"
+            v-model="paymentForm.paymentRequestCode"
             label="已审批付款申请业务单号"
-            placeholder="请输入付款申请业务单号"
+            placeholder="正常付款请输入业务单号"
             :disabled="recordMode !== 'original'"
+          />
+          <t-alert
+            v-if="recordMode === 'original'"
+            theme="info"
+            message="已发生的紧急或漏录付款不得补造审批；留空业务单号并在说明中填写事后补录原因，提交后进入付款事实复核。"
           />
           <t-input
             v-model="paymentForm.counterpartyName"

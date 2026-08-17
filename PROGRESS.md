@@ -212,6 +212,8 @@
 - [~] Issue #101 第二次独立复审修复严格只处理候选 `83946975e1274e24cc231f72f9e128b7acb2bd73` 的 3 个 P1：结算容量仅以已确认净额为权威并在当前确认场景单独纳入当前事实，其他 pending 增额不能掩护减额或拨款；历史拨款首次物化时冻结事务内真实可见的已确认结算净额，后续 replay 复用既有经营事实快照，不再用 `confirmedAt` 猜测同毫秒先后；业主付款创建必须与上游结算审批单位一致，更正继承原交易对方且不得换主体。TDD 先得到 API 6 项 RED，最小修复后定向 API 3 suites / 54 tests，候选原定向 API 5 suites / 188 tests、Web 2 files / 152 tests；全量 API 341 suites / 6251 tests（29 suites / 103 tests 按既有配置跳过），全量 Web 190 files / 1986 tests；workspace typecheck/lint（0 errors；30 条既有 takeover 页面 warning）、API/Web build、`check:ui`、business-language、`check:business-errors`、聚合 release manifests（479 routes、465 wrappers / 487 bindings、250 actions、0 blockers）、CI 编排 51/51、动态门静态 runner 13/13 与 `git diff --check` 均通过。未改 Schema/Prisma migration，未访问或修改生产数据库/COS；本次最终精确 SHA PostgreSQL 16 门、Standards/Spec 双轴独立复审与 GitHub 收口仍待完成。
 - [ ] 待完成 Standards/Spec 双轴独立复审、push、PR、CI、merge、远端 main SHA 与 Issue 关闭核验；未部署、未执行生产迁移、未写入生产数据库/COS、未执行真实归零或正式开放。
 
+- [~] Issue #101 / POL-08 第三轮 Spec 复审的 3 个 P1 已从完整候选 `0d7e712ea8e3f2d8ec6411b3d328083ca3adf62d` 定点修复：生效日后例外付款复用既有待复核事实与确认审计链且不伪造审批；页面仅展示中文合同/付款业务引用并隐藏传输 UUID；付款申请在同合同同期间存在多笔有效外部结算时 fail-closed。TDD 取得 API 3 项与 Web 1 项行为 RED；修复后 API 服务 24/24、Web 结构 4/4，全量 shared-domain 18 files / 176 tests、Web 190 files / 1987 tests、API 341 suites / 6253 tests（29 suites / 103 tests 按既有配置跳过），workspace typecheck/lint（0 errors；30 条既有 takeover 页面 warning）、API/Web build、`check:ui`、business-language、business-errors、聚合 release manifests（479 routes、465 wrappers / 487 bindings、250 actions、0 blockers）、CI 编排 51/51、动态门静态 runner 13/13 与 `git diff --check` 均通过。最终精确 SHA 的全量复跑、PostgreSQL 16 canonical 动态门、Standards/Spec 双轴独立复审与 GitHub 收口待执行。未改 Schema，未执行部署、生产迁移、生产数据库/COS 写入、真实归零或正式开放。
+
 ## 生产与运维边界
 
 - 生产业务写入、账号/权限变更、数据库修复、COS 对象删除或生命周期变更必须获得单独明确授权。

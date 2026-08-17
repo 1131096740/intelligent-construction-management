@@ -214,6 +214,22 @@ export class ProjectAffiliateBusinessService {
         const key = `${item.businessType}:${item.businessFactId}`;
         evidenceByFact.set(key, [...(evidenceByFact.get(key) ?? []), item]);
       }
+      const paymentRequestIds = [
+        ...new Set(
+          payments
+            .map((fact) => fact.paymentRequestId)
+            .filter((id): id is string => !!id)
+        )
+      ];
+      const paymentRequests = paymentRequestIds.length
+        ? await tx.paymentRequest.findMany({
+            where: { projectId, id: { in: paymentRequestIds } },
+            select: { id: true, code: true }
+          })
+        : [];
+      const paymentRequestCodeById = new Map(
+        paymentRequests.map((request) => [request.id, request.code])
+      );
       return {
         availableActions: [
           ...(roleKeys.includes("contract_staff")
@@ -236,7 +252,13 @@ export class ProjectAffiliateBusinessService {
           supplementalEvidence: evidenceByFact.get(`settlement:${fact.id}`) ?? []
         })),
         payments: payments.map((fact) => ({
-          ...toPaymentReadModel(fact, roleKeys),
+          ...toPaymentReadModel(
+            fact,
+            roleKeys,
+            fact.paymentRequestId
+              ? paymentRequestCodeById.get(fact.paymentRequestId) ?? null
+              : null
+          ),
           supplementalEvidence: evidenceByFact.get(`payment:${fact.id}`) ?? []
         }))
       };
@@ -795,9 +817,11 @@ export class ProjectAffiliateBusinessService {
         const isPostEffectivePayment =
           !!projectProfile?.operatingLedgerEffectiveDate &&
           paidAt >= projectProfile.operatingLedgerEffectiveDate;
-        if (isPostEffectivePayment && !paymentRequestReference) {
+        const isPostEffectiveException =
+          isPostEffectivePayment && !paymentRequestReference;
+        if (isPostEffectiveException && !description) {
           throw new BadRequestException(
-            "经营账生效日后的施工企业付款必须关联已审批付款申请"
+            "经营账生效日后的例外付款必须填写事后补录原因；正常付款请关联已审批付款申请"
           );
         }
         if (paymentRequestReference) {
@@ -976,7 +1000,9 @@ export class ProjectAffiliateBusinessService {
             basisType,
             evidenceFileId,
             paymentSubjectType: "affiliate",
-            paymentRequestId: resolvedPaymentRequestId
+            paymentRequestId: resolvedPaymentRequestId,
+            postEffectiveException: isPostEffectiveException,
+            exceptionReason: isPostEffectiveException ? description : null
           }
         });
         return toPaymentReadModel(created, roleKeys);
@@ -1477,6 +1503,48 @@ async function assertAffiliatePaymentRequestMatchesDebt(
     throw new BadRequestException("施工企业正常付款申请必须关联有效施工企业结算");
   }
   if (requestSettlement.periodLabel !== input.settlement.periodLabel) {
+    throw new BadRequestException("施工企业正常付款申请必须与外部结算台账一致");
+  }
+  const matchingSettlementFacts =
+    await tx.projectAffiliateSettlementFact.findMany({
+      where: {
+        projectId: input.projectId,
+        contractLedgerId: input.contract.ledgerId,
+        counterpartyName: input.counterpartyName,
+        affiliateAssignmentId: input.contract.affiliateAssignmentId,
+        affiliateBusinessPartyVersionId:
+          input.contract.affiliateBusinessPartyVersionId,
+        periodLabel: requestSettlement.periodLabel,
+        status: "confirmed"
+      },
+      select: {
+        ledgerId: true,
+        effectDirection: true,
+        amountCents: true
+      }
+    });
+  const amountBySettlementLedger = new Map<string, bigint>();
+  for (const fact of matchingSettlementFacts) {
+    amountBySettlementLedger.set(
+      fact.ledgerId,
+      (amountBySettlementLedger.get(fact.ledgerId) ?? 0n) +
+        (fact.effectDirection === "decrease"
+          ? -BigInt(fact.amountCents)
+          : BigInt(fact.amountCents))
+    );
+  }
+  const effectiveSettlementLedgerIds = [...amountBySettlementLedger.entries()]
+    .filter(([, amountCents]) => amountCents > 0n)
+    .map(([ledgerId]) => ledgerId);
+  if (effectiveSettlementLedgerIds.length > 1) {
+    throw new BadRequestException(
+      "同一合同和期间存在多笔外部结算，请先明确付款申请对应的债务"
+    );
+  }
+  if (
+    effectiveSettlementLedgerIds.length !== 1 ||
+    effectiveSettlementLedgerIds[0] !== input.settlement.ledgerId
+  ) {
     throw new BadRequestException("施工企业正常付款申请必须与外部结算台账一致");
   }
 }
@@ -2176,7 +2244,8 @@ function toSettlementReadModel(
 
 function toPaymentReadModel(
   fact: AffiliatePaymentFactRow,
-  roleKeys: readonly RoleKey[]
+  roleKeys: readonly RoleKey[],
+  paymentRequestCode: string | null = null
 ) {
   const actions = availableActions(
     "payment",
@@ -2187,6 +2256,7 @@ function toPaymentReadModel(
   return {
     ...fact,
     amountCents: moneyCentsToApi(fact.amountCents),
+    paymentRequestCode,
     paymentSubjectType: "affiliate" as const,
     companyCashExecutionAllowed: false,
     availableActions:
