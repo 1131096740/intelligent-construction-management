@@ -198,6 +198,76 @@ describe("BusinessEntryDefinitionService", () => {
     expect(snapshots.saveStandalone).not.toHaveBeenCalled();
   });
 
+  it("fails closed in role-based validation when domain authorization is missing", async () => {
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([companyDefinition]),
+      accessRegistry([companyDefinition]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshotStoreMock(),
+      projectPrisma() as never,
+      undefined as never
+    );
+
+    await expect(service.validateDraftWithRoles(
+      "company_profile",
+      undefined,
+      [],
+      {
+        definitionVersion: 1,
+        target: companyTarget,
+        values: { name: "上海示例建设有限公司" }
+      }
+    )).rejects.toThrow("业务场景缺少领域授权服务");
+  });
+
+  it("fails closed in batch validation when domain authorization is missing", async () => {
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([definition]),
+      accessRegistry([definition]),
+      projectVisibility(["finance_staff"]),
+      snapshotStoreMock(),
+      projectPrisma() as never,
+      undefined as never
+    );
+
+    await expect(service.validateDraftBatch(
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      [{
+        definitionVersion: 3,
+        target: projectTarget,
+        values: { takeoverStatus: "operating_with_takeover" },
+        operation: "import"
+      }]
+    )).rejects.toThrow("业务场景缺少领域授权服务");
+  });
+
+  it("fails closed in transaction freeze when domain authorization is missing", async () => {
+    const snapshots = snapshotStoreMock();
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([definition]),
+      accessRegistry([definition]),
+      projectVisibility(["finance_staff"]),
+      snapshots,
+      projectPrisma() as never,
+      undefined as never
+    );
+
+    await expect(service.freezeSubmissionSnapshotInTransaction(
+      {} as Prisma.TransactionClient,
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      {
+        definitionVersion: 3,
+        target: projectTarget,
+        values: { takeoverStatus: "operating_with_takeover" }
+      }
+    )).rejects.toThrow("业务场景缺少领域授权服务");
+    expect(snapshots.saveInTransaction).not.toHaveBeenCalled();
+  });
+
   it("freezes and persists through the caller's existing Prisma transaction client", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
     const tx = {} as Prisma.TransactionClient;
