@@ -80,8 +80,8 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
 
   await expect(page.locator(".table-shell .settlement-bill-grid revo-grid")).toBeVisible();
   await expect(page.locator(".workbench-footer .total-metric strong")).toHaveText("¥100.00");
-  await page.getByRole("button", { name: "生成当前修订版", exact: true }).click();
-  await expect(page.getByText("R3 · 2 页", { exact: true })).toBeVisible();
+  await participant.getByRole("button", { name: "生成冻结结算单", exact: true }).click();
+  await expect(participant.getByText("2 页", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "下载冻结结算单" })).toBeEnabled();
   await expect(page.getByText(/请下载后交乙方完成线下签章/)).toBeVisible();
 
@@ -96,7 +96,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
   await page.getByRole("button", { name: "核对通过并关联扫描件" }).click();
-  await expect(page.getByText("当前修订版已关联", { exact: true })).toBeVisible();
+  await expect(page.getByText("系统已校验并关联当前结算单原件。", { exact: true })).toBeVisible();
   await expect(page.getByText(/可以提交审批/)).toBeVisible();
   expect(requests.frozen).toEqual([{ expectedRevision: 3 }]);
   expect(requests.linked).toEqual([{
@@ -111,9 +111,9 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
     }
   }]);
 
-  await page.getByRole("button", { name: "重新生成当前修订版", exact: true }).click();
+  await participant.getByRole("button", { name: "重新生成冻结结算单", exact: true }).click();
   await expect.poll(() => requests.frozen).toHaveLength(2);
-  await expect(page.getByText("当前修订版已关联", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("系统已校验并关联当前结算单原件。", { exact: true })).toHaveCount(0);
   await page.locator(".signed-pdf-panel input[type=file]").setInputFiles({
     name: "乙方签章替换件.pdf",
     mimeType: "application/pdf",
