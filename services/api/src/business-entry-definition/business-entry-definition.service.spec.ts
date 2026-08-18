@@ -134,6 +134,13 @@ function snapshotStoreMock(saveStandalone = jest.fn()) {
   };
 }
 
+const projectTarget = { entityType: "project", entityId: "project-1" } as const;
+const ownerSettlementTarget = {
+  entityType: "operating_takeover_row",
+  entityId: "project-1"
+} as const;
+const companyTarget = { entityType: "company_entity", entityId: "company-1" } as const;
+
 describe("BusinessEntryDefinitionService", () => {
   it("freezes and persists through the caller's existing Prisma transaction client", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
@@ -351,7 +358,7 @@ describe("BusinessEntryDefinitionService", () => {
     );
 
     await expect(
-      service.getSceneDefinition("project_operating_profile", "project-1", "user-1")
+      service.getSceneDefinition("project_operating_profile", "project-1", "user-1", projectTarget)
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -374,7 +381,8 @@ describe("BusinessEntryDefinitionService", () => {
     await expect(service.getSceneDefinition(
       "project_operating_profile",
       "project-1",
-      "user-1"
+      "user-1",
+      projectTarget
     )).rejects.toThrow(ForbiddenException);
   });
 
@@ -396,7 +404,8 @@ describe("BusinessEntryDefinitionService", () => {
       "owner_settlement",
       "project-1",
       "user-1",
-      "import"
+      "import",
+      ownerSettlementTarget
     )).rejects.toThrow(ForbiddenException);
   });
 
@@ -417,7 +426,8 @@ describe("BusinessEntryDefinitionService", () => {
         "owner_settlement",
         "project-1",
         "user-1",
-        "import"
+        "import",
+        ownerSettlementTarget
       )).resolves.toMatchObject({ key: "owner_settlement" });
     }
   });
@@ -448,7 +458,8 @@ describe("BusinessEntryDefinitionService", () => {
       "project_operating_profile",
       "project-1",
       "user-1",
-      "import"
+      "import",
+      projectTarget
     )).resolves.toMatchObject({ key: "project_operating_profile", version: 3 });
 
     const results = await service.validateDraftBatch(
@@ -475,7 +486,7 @@ describe("BusinessEntryDefinitionService", () => {
     expect(visibility.effectiveRoleScopes).toHaveBeenCalledTimes(2);
   });
 
-  it("authorizes a registered global scene from global positions across definition, validation and freeze", async () => {
+  it("fails closed instead of returning an unpersisted global freeze snapshot", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition, companyDefinition]);
     const visibility = { effectiveRoleScopes: jest.fn() };
     const snapshots = snapshotStoreMock();
@@ -505,7 +516,8 @@ describe("BusinessEntryDefinitionService", () => {
       "company_profile",
       undefined,
       "user-1",
-      "import"
+      "import",
+      companyTarget
     )).resolves.toMatchObject({ key: "company_profile" });
     await expect(service.validateDraft(
       "company_profile",
@@ -519,10 +531,7 @@ describe("BusinessEntryDefinitionService", () => {
       "user-1",
       input,
       "2026-08-16T10:00:00.000Z"
-    )).resolves.toMatchObject({
-      sceneKey: "company_profile",
-      target: { entityType: "company_entity", entityId: "company-1" }
-    });
+    )).rejects.toThrow("全局业务场景须由所属领域在同一事务中持久化正式快照");
 
     expect(prisma.project.findUnique).not.toHaveBeenCalled();
     expect(prisma.userPosition.findMany).toHaveBeenCalledWith({
@@ -631,7 +640,8 @@ describe("BusinessEntryDefinitionService", () => {
     await expect(service.getSceneDefinition(
       "company_profile",
       undefined,
-      "user-1"
+      "user-1",
+      companyTarget
     )).rejects.toThrow(ForbiddenException);
   });
 
@@ -664,6 +674,12 @@ describe("BusinessEntryDefinitionService", () => {
     )).rejects.toThrow(BadRequestException);
     await expect(service.validateDraft(
       "company_profile",
+      "",
+      "user-1",
+      { ...input, target: { entityType: "company_entity", entityId: "company-1" } }
+    )).rejects.toThrow(BadRequestException);
+    await expect(service.validateDraft(
+      "company_profile",
       undefined,
       "user-1",
       input
@@ -690,7 +706,8 @@ describe("BusinessEntryDefinitionService", () => {
     await expect(service.getSceneDefinition(
       "not_registered",
       "project-1",
-      "user-1"
+      "user-1",
+      projectTarget
     )).rejects.toThrow(NotFoundException);
     expect(visibility.effectiveRoleScopes).not.toHaveBeenCalled();
   });

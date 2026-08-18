@@ -4,6 +4,7 @@ import {
   PROJECT_OPERATING_TAKEOVER_STATUS_LABELS,
   PROJECT_OPERATING_TAKEOVER_STATUSES,
   type BusinessEntrySceneDefinition,
+  type BusinessEntryOperation,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import {
@@ -83,6 +84,10 @@ const globalTarget = (
   resolve: NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>
 ) => ({ scope: "global" as const, entityType, resolve });
 
+function editableStatus(operation: BusinessEntryOperation) {
+  return operation === "view" || operation === "export" ? undefined : "draft";
+}
+
 const resolveUser = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
   const id = existingTargetId(target);
   if (!id) return false;
@@ -115,28 +120,44 @@ const resolveParty = async ({ target, prisma }: Parameters<NonNullable<BusinessE
   return Boolean(await prisma.businessParty.findUnique({ where: { id, status: "active" }, select: { id: true } }));
 };
 
-const resolveContractBusinessTemplate = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+const resolveContractBusinessTemplate = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
   const id = existingTargetId(target);
   if (!id) return false;
-  return Boolean(await prisma.contractBusinessTemplate.findUnique({ where: { id }, select: { id: true } }));
+  const status = editableStatus(operation);
+  return Boolean(await prisma.contractBusinessTemplate.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
 };
 
-const resolveLayoutVersion = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+const resolveLayoutVersion = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
   const id = existingTargetId(target);
   if (!id) return false;
-  return Boolean(await prisma.contractLayoutTemplateVersion.findUnique({ where: { id }, select: { id: true } }));
+  const status = editableStatus(operation);
+  return Boolean(await prisma.contractLayoutTemplateVersion.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
 };
 
-const resolveClauseVersion = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+const resolveClauseVersion = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
   const id = existingTargetId(target);
   if (!id) return false;
-  return Boolean(await prisma.standardClauseVersion.findUnique({ where: { id }, select: { id: true } }));
+  const status = editableStatus(operation);
+  return Boolean(await prisma.standardClauseVersion.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
 };
 
-const resolveSettlementVersion = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+const resolveSettlementVersion = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
   const id = existingTargetId(target);
   if (!id) return false;
-  return Boolean(await prisma.settlementTemplateVersion.findUnique({ where: { id }, select: { id: true } }));
+  const status = editableStatus(operation);
+  return Boolean(await prisma.settlementTemplateVersion.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
 };
 
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [

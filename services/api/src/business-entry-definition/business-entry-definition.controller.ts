@@ -40,6 +40,17 @@ function normalizeTarget(
   } as BusinessEntrySubmissionTarget;
 }
 
+function normalizeQueryTarget(
+  entityType: string | undefined,
+  entityId: string | undefined,
+  createTarget: string | undefined
+): BusinessEntrySubmissionTarget | undefined {
+  if (entityType === undefined) return undefined;
+  return createTarget !== undefined
+    ? { entityType, createTarget }
+    : { entityType, entityId: entityId ?? "" };
+}
+
 @Controller("business-entry-definitions")
 export class BusinessEntryDefinitionController {
   constructor(
@@ -51,10 +62,18 @@ export class BusinessEntryDefinitionController {
   async downloadExcelTemplate(
     @Param("sceneKey") sceneKey: string,
     @Query("projectId") projectId: string | undefined,
+    @Query("targetEntityType") targetEntityType: string | undefined,
+    @Query("targetEntityId") targetEntityId: string | undefined,
+    @Query("targetCreateTarget") targetCreateTarget: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
-    const result = await this.excel.exportTemplate(sceneKey, projectId, user.id);
+    const result = await this.excel.exportTemplate(
+      sceneKey,
+      projectId,
+      user.id,
+      normalizeQueryTarget(targetEntityType, targetEntityId, targetCreateTarget) as BusinessEntrySubmissionTarget
+    );
     response.set({
       "Content-Type": BUSINESS_ENTRY_XLSX_MIME,
       "Content-Length": String(result.buffer.length),
@@ -96,6 +115,9 @@ export class BusinessEntryDefinitionController {
     @Param("sceneKey") sceneKey: string,
     @Query("projectId") projectId: string | undefined,
     @Query("operation") operation: string | undefined,
+    @Query("targetEntityType") targetEntityType: string | undefined,
+    @Query("targetEntityId") targetEntityId: string | undefined,
+    @Query("targetCreateTarget") targetCreateTarget: string | undefined,
     @CurrentUser() user: AuthenticatedUser
   ) {
     if (operation && !BUSINESS_ENTRY_OPERATIONS.includes(operation as BusinessEntryOperation)) {
@@ -105,7 +127,8 @@ export class BusinessEntryDefinitionController {
       sceneKey,
       projectId,
       user.id,
-      (operation as BusinessEntryOperation | undefined) ?? "view"
+      (operation as BusinessEntryOperation | undefined) ?? "view",
+      normalizeQueryTarget(targetEntityType, targetEntityId, targetCreateTarget) as BusinessEntrySubmissionTarget
     );
   }
 

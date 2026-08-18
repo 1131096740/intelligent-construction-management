@@ -45,4 +45,37 @@ describe("POL-19P3 explicit scene contract", () => {
       roleScope: "global"
     });
   });
+
+  it("rejects non-draft template targets for editable operations", async () => {
+    const templateTargets = [
+      ["contract_business_template", "contractBusinessTemplate"],
+      ["contract_layout_template_version", "contractLayoutTemplateVersion"],
+      ["standard_clause_version", "standardClauseVersion"],
+      ["settlement_template_version", "settlementTemplateVersion"]
+    ] as const;
+
+    for (const [sceneKey, model] of templateTargets) {
+      const policy = BUSINESS_ENTRY_SCENE_ACCESS_POLICIES.find((item) => item.sceneKey === sceneKey)!;
+      const resolver = policy.target.resolve!;
+      const findUnique = jest.fn().mockResolvedValue(null);
+      const prisma = {
+        [model]: {
+          findUnique
+        }
+      };
+
+      await expect(resolver({
+        target: { entityType: policy.target.entityType, entityId: "target-1" },
+        actorUserId: "actor-1",
+        operation: "edit",
+        scene: sceneKey,
+        scope: "global",
+        prisma: prisma as never
+      })).resolves.toBe(false);
+      expect(findUnique).toHaveBeenCalledWith({
+        where: { id: "target-1", status: "draft" },
+        select: { id: true }
+      });
+    }
+  });
 });

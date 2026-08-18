@@ -35,12 +35,16 @@ describe("business entry API", () => {
         headers: { "Content-Type": "application/json" }
       }));
 
-    await fetchBusinessEntryDefinition("expense/line", "project/1");
-    await validateBusinessEntryDraft("project/1", payload, "edit");
+    await fetchBusinessEntryDefinition(
+      "expense/line",
+      { scope: "project", projectId: "project/1" },
+      payload.target!
+    );
+    await validateBusinessEntryDraft({ scope: "project", projectId: "project/1" }, payload, "edit");
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/business-entry-definitions/expense%2Fline?projectId=project%2F1&operation=edit"
+      "/business-entry-definitions/expense%2Fline?projectId=project%2F1&targetEntityType=operating_takeover_row&targetEntityId=project%2F1&operation=edit"
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -64,7 +68,7 @@ describe("business entry API", () => {
     }));
     const file = new File(["xlsx"], "费用.xlsx", { type: "application/octet-stream" });
 
-    await expect(previewBusinessEntryExcel("project/1", payload, file)).resolves.toMatchObject({
+    await expect(previewBusinessEntryExcel({ scope: "project", projectId: "project/1" }, payload, file)).resolves.toMatchObject({
       zeroWrites: true
     });
 
@@ -91,13 +95,17 @@ describe("business entry API", () => {
         headers: { "Content-Type": "application/json" }
       }));
 
-    await expect(downloadBusinessEntryExcelTemplate(payload.sceneKey, "project/1"))
+    await expect(downloadBusinessEntryExcelTemplate(
+      payload.sceneKey,
+      { scope: "project", projectId: "project/1" },
+      payload.target!
+    ))
       .resolves.toBeInstanceOf(Blob);
-    await freezeBusinessEntrySnapshot("project/1", payload, "import");
+    await freezeBusinessEntrySnapshot({ scope: "project", projectId: "project/1" }, payload, "import");
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/business-entry-definitions/expense%2Fline/excel-template?projectId=project%2F1"
+      "/business-entry-definitions/expense%2Fline/excel-template?projectId=project%2F1&targetEntityType=operating_takeover_row&targetEntityId=project%2F1"
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -127,16 +135,33 @@ describe("business entry API", () => {
       }));
     const file = new File(["xlsx"], "公司.xlsx", { type: "application/octet-stream" });
 
-    await fetchBusinessEntryDefinition("company_entity", undefined);
-    await previewBusinessEntryExcel(undefined, globalPayload, file);
+    await fetchBusinessEntryDefinition(
+      "company_entity",
+      { scope: "global" },
+      globalPayload.target!
+    );
+    await previewBusinessEntryExcel({ scope: "global" }, globalPayload, file);
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/business-entry-definitions/company_entity?operation=edit"
+      "/business-entry-definitions/company_entity?targetEntityType=company_entity&targetCreateTarget=signed-create-target&operation=edit"
     );
     const [requestPath, init] = mockApiFetch.mock.calls[1]!;
     expect(requestPath).toBe("/business-entry-definitions/company_entity/excel-preview");
     expect((init?.body as FormData).get("targetCreateTarget")).toBe("signed-create-target");
     expect((init?.body as FormData).get("targetEntityId")).toBeNull();
+  });
+
+  it("rejects blank project scopes and project context attached to global scopes", async () => {
+    await expect(fetchBusinessEntryDefinition(
+      "expense/line",
+      { scope: "project", projectId: "" },
+      payload.target!
+    )).rejects.toThrow("项目业务场景必须绑定项目");
+    await expect(fetchBusinessEntryDefinition(
+      "company_entity",
+      { scope: "global", projectId: "project/1" } as never,
+      { entityType: "company_entity", entityId: "company-1" }
+    )).rejects.toThrow("全局业务场景不得携带项目上下文");
   });
 });

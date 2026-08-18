@@ -219,6 +219,7 @@
 ## 生产与运维边界
 
 - [~] Issue #146 / POL-19P3 正在独立分支 `codex/issue-146-pol19p3-20260818` 实施，基线与 `origin/main` 均为 `8829d0bdbf92efb40fe3d3087782397d93fd4b07`。已登记十个显式全局统一录入场景、actor-aware target resolver、`authenticated_self`、签名短期 create-target、领域授权复用入口及全局 Web adapter；TDD 定向 API/Web 测试和 API typecheck 已通过。当前仍待完整门禁、双轴复审、GitHub PR/CI/合并/Issue 收口；不代表已部署或已完成生产验证。
+- [~] Issue #163 / POL-19P4 已在独立分支 `codex/issue-163-pol19p4-20260818` 基于候选 `2aaeb6f040052316932d5adff91308c70399f360` 修复四项统一录入复审 finding：全局 freeze 无领域事务持久化时 fail-closed；模板目标 resolver 统一校验 `draft` 可编辑状态；定义/Excel/create-target/validate/freeze 复用目标与授权边界；全局/项目 scope、空白 `projectId` 与 Web adapter 组装 fail-closed。TDD RED→GREEN、定向 API 32 tests、Web 5 tests、shared/API/Web typecheck、API/Web lint、`check:ui` 已通过；最终门禁、双轴复审与 GitHub 收口待执行，不代表部署或生产验证。
 
 - 生产业务写入、账号/权限变更、数据库修复、COS 对象删除或生命周期变更必须获得单独明确授权。
 - 日常备份巡检默认只读，只验证自然 Cron 产物、checksum、`pg_restore --list`、异机回执、日志/进程和公共健康状态。

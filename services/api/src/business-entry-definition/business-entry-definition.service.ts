@@ -80,18 +80,34 @@ export class BusinessEntryDefinitionService {
   async getSceneDefinition(
     sceneKey: string,
     projectId: string | undefined,
-    actorUserId: string
+    actorUserId: string,
+    target: BusinessEntrySubmissionTarget
   ): Promise<BusinessEntrySceneDefinition> {
-    return this.getSceneDefinitionForOperation(sceneKey, projectId, actorUserId, "view");
+    return this.getSceneDefinitionForOperation(
+      sceneKey,
+      projectId,
+      actorUserId,
+      "view",
+      target
+    );
   }
 
   async getSceneDefinitionForOperation(
     sceneKey: string,
     projectId: string | undefined,
     actorUserId: string,
-    operation: BusinessEntryOperation
+    operation: BusinessEntryOperation,
+    target: BusinessEntrySubmissionTarget
   ): Promise<BusinessEntrySceneDefinition> {
-    const { roleKeys } = await this.authorizeScene(sceneKey, projectId, actorUserId);
+    const { access, roleKeys } = await this.authorizeScene(sceneKey, projectId, actorUserId);
+    await this.assertTargetScope(
+      sceneKey,
+      projectId,
+      actorUserId,
+      access,
+      target,
+      operation
+    );
     try {
       return this.registry.getSceneDefinitionForRoles(
         sceneKey,
@@ -182,6 +198,17 @@ export class BusinessEntryDefinitionService {
       entityType,
       scope: access.target.scope
     });
+    if (this.authorization) {
+      await this.authorization.assertAuthorized({
+        sceneKey,
+        actorUserId,
+        projectId,
+        operation: "edit",
+        scope: access.target.scope,
+        target: { entityType, createTarget: issued.createTarget },
+        values: {}
+      });
+    }
     return {
       ...issued,
       entityType,
@@ -259,12 +286,9 @@ export class BusinessEntryDefinitionService {
       // Global owning domains persist this immutable snapshot in their own transaction.
       // The project-bound store cannot satisfy that contract, so the joined API must fail closed.
       if (access.target.scope === "global") {
-        if (tx) {
-          throw new BadRequestException(
-            "全局业务场景须由所属领域在同一事务中持久化正式快照"
-          );
-        }
-        return snapshot;
+        throw new BadRequestException(
+          "全局业务场景须由所属领域在同一事务中持久化正式快照"
+        );
       }
       if (tx) {
         return await this.snapshots.saveInTransaction(
@@ -348,7 +372,7 @@ export class BusinessEntryDefinitionService {
     let roleKeys: readonly BusinessEntryPermissionKey[];
 
     if (access.target.scope === "global") {
-      if (projectId?.trim()) throw new BadRequestException("全局业务场景不得携带项目上下文");
+      if (projectId !== undefined) throw new BadRequestException("全局业务场景不得携带项目上下文");
       roleKeys = access.permission.kind === "authenticated_self"
         ? [BUSINESS_ENTRY_AUTHENTICATED_SELF]
         : await this.loadGlobalRoleKeys(actorUserId);
@@ -418,7 +442,7 @@ export class BusinessEntryDefinitionService {
     target: BusinessEntrySubmissionTarget | undefined,
     operation: BusinessEntryOperation
   ) {
-    if (access.target.scope === "global" && projectId?.trim()) {
+    if (access.target.scope === "global" && projectId !== undefined) {
       throw new BadRequestException("全局业务场景不得携带项目上下文");
     }
     if (access.target.scope === "project" && !projectId?.trim()) {

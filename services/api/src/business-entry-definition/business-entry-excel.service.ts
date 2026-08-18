@@ -181,13 +181,15 @@ export class BusinessEntryExcelService {
   async exportTemplate(
     sceneKey: string,
     projectId: string | undefined,
-    actorUserId: string
+    actorUserId: string,
+    target: BusinessEntrySubmissionTarget
   ): Promise<{ buffer: Buffer; fileName: string }> {
     const definition = await this.definitions.getSceneDefinitionForOperation(
       sceneKey,
       projectId,
       actorUserId,
-      "import"
+      "import",
+      target
     );
     const fields = importableFields(definition);
     if (!fields.length) throw new BadRequestException("当前岗位没有可导入的业务字段");
@@ -253,7 +255,8 @@ export class BusinessEntryExcelService {
       sceneKey,
       projectId,
       actorUserId,
-      "import"
+      "import",
+      input.target
     );
     const fields = importableFields(definition);
     const buffer = file.buffer;
