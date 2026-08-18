@@ -2,6 +2,7 @@ import {
   BUSINESS_ACTIONS,
   ROLE_KEYS,
   type BusinessAction,
+  type BusinessEntryOperation,
   type BusinessEntrySceneDefinition,
   type BusinessEntrySubmissionTarget,
   type RoleKey
@@ -17,6 +18,10 @@ export type BusinessEntryRoleScope = "global" | "effective" | "project";
 
 export interface BusinessEntryGlobalTargetResolverContext {
   readonly target: BusinessEntrySubmissionTarget;
+  readonly actorUserId: string;
+  readonly operation: BusinessEntryOperation;
+  readonly scene: string;
+  readonly scope: BusinessEntryTargetScope;
   readonly prisma: PrismaService;
 }
 
@@ -34,6 +39,10 @@ export type BusinessEntryScenePermission =
       readonly kind: "role_keys";
       readonly roleKeys: readonly RoleKey[];
       readonly roleScope: BusinessEntryRoleScope;
+    }
+  | {
+      readonly kind: "authenticated_self";
+      readonly roleScope: "global";
     };
 
 export interface BusinessEntrySceneAccessPolicy {
@@ -85,7 +94,8 @@ export class BusinessEntrySceneAccessRegistry {
       }
       if (
         policy.permission.kind !== "business_action" &&
-        policy.permission.kind !== "role_keys"
+        policy.permission.kind !== "role_keys" &&
+        policy.permission.kind !== "authenticated_self"
       ) {
         throw new Error(`业务场景权限类型未登记：${policy.sceneKey}`);
       }
@@ -101,7 +111,8 @@ export class BusinessEntrySceneAccessRegistry {
       if (
         !["global", "effective", "project"].includes(policy.permission.roleScope) ||
         (policy.target.scope === "global" && policy.permission.roleScope !== "global") ||
-        (policy.target.scope === "project" && policy.permission.roleScope === "global")
+        (policy.target.scope === "project" && policy.permission.roleScope === "global") ||
+        (policy.permission.kind === "authenticated_self" && policy.target.scope !== "global")
       ) {
         throw new Error(`业务场景目标范围与岗位范围不兼容：${policy.sceneKey}`);
       }
@@ -119,6 +130,9 @@ export class BusinessEntrySceneAccessRegistry {
         )
       ) {
         throw new Error(`业务场景岗位权限未登记：${policy.sceneKey}`);
+      }
+      if (policy.permission.kind === "authenticated_self" && !policy.target.resolve) {
+        throw new Error(`本人业务场景缺少目标解析器：${policy.sceneKey}`);
       }
       policyByKey.set(policy.sceneKey, freezePolicy(policy));
     }

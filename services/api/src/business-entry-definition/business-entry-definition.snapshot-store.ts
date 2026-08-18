@@ -1,5 +1,8 @@
 import { ConflictException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import {
+  isBusinessEntryExistingTarget
+} from "@jiangkong/shared-domain";
 import type {
   BusinessEntryFrozenSnapshot,
   BusinessEntrySceneDefinition
@@ -83,6 +86,9 @@ function sameImmutableContent(
   left: BusinessEntryFrozenSnapshot,
   right: BusinessEntryFrozenSnapshot
 ) {
+  if (!isBusinessEntryExistingTarget(left.target) || !isBusinessEntryExistingTarget(right.target)) {
+    return false;
+  }
   return (
     left.sceneKey === right.sceneKey &&
     left.target.entityType === right.target.entityType &&
@@ -159,6 +165,9 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
     expectedRevision: number | undefined,
     attempt: number
   ): Promise<BusinessEntryFrozenSnapshot> {
+    if (!isBusinessEntryExistingTarget(snapshot.target)) {
+      throw new ConflictException("项目业务快照必须绑定已存在的正式业务对象");
+    }
     const where = {
       projectId,
       sceneKey: snapshot.sceneKey,
@@ -200,6 +209,9 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
     snapshot: BusinessEntryFrozenSnapshot,
     expectedRevision: number | undefined
   ): Promise<BusinessEntryFrozenSnapshot> {
+    if (!isBusinessEntryExistingTarget(snapshot.target)) {
+      throw new ConflictException("项目业务快照必须绑定已存在的正式业务对象");
+    }
     const where = {
       projectId,
       sceneKey: snapshot.sceneKey,

@@ -15,7 +15,8 @@ import type { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import {
   canManageRole,
   ORGANIZATION_MANAGER_ROLE_KEYS,
-  requiresDepartmentBoundary
+  requiresDepartmentBoundary,
+  roleScope
 } from "./organization-management-policy";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 
@@ -45,6 +46,47 @@ export class OrganizationRoleService {
     private readonly audit: AuditService,
     private readonly permissionImpacts: PermissionImpactService
   ) {}
+
+  async assertCanMaintainBusinessEntryRole(
+    actorUserId: string,
+    targetUserId: string,
+    values: Record<string, unknown>
+  ) {
+    const roleKey = values.roleKey;
+    const operation = values.operation;
+    const scope = values.scope;
+    const projectId = values.projectId;
+    if (
+      typeof roleKey !== "string" ||
+      !ROLE_KEY_SET.has(roleKey) ||
+      typeof operation !== "string" ||
+      !["grant", "revoke"].includes(operation) ||
+      (scope !== "global" && scope !== "project")
+    ) {
+      throw new ConflictException("岗位命令必须明确授予或撤销的岗位及授权范围");
+    }
+    const expectedScope = roleScope(roleKey as RoleKey);
+    if (expectedScope === "global" && (scope !== "global" || projectId !== undefined)) {
+      throw new ConflictException("全局岗位命令不得携带项目范围");
+    }
+    if (expectedScope === "project") {
+      if (scope !== "project" || typeof projectId !== "string" || !projectId.trim()) {
+        throw new ConflictException("项目岗位命令必须绑定项目");
+      }
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId, isActive: true },
+        select: { id: true }
+      });
+      if (!project) throw new ConflictException("项目不存在或已停用");
+    }
+    await this.assertCanManageTargetRole(
+      this.prisma,
+      actorUserId,
+      targetUserId,
+      roleKey as RoleKey,
+      operation === "grant" ? "新增" : "撤销"
+    );
+  }
 
   async previewRoleAddition(actorUserId: string, input: PreviewRoleAdditionDto) {
     await this.assertCanManageTargetRole(this.prisma, actorUserId, input.userId, input.roleKey);

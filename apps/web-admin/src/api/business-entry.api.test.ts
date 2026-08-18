@@ -108,4 +108,35 @@ describe("business entry API", () => {
       })
     );
   });
+
+  it("omits projectId for global scenes and carries a signed create target through Excel", async () => {
+    const globalPayload: BusinessEntryDraftPayload = {
+      sceneKey: "company_entity",
+      definitionVersion: 1,
+      target: { entityType: "company_entity", createTarget: "signed-create-target" },
+      values: { name: "测试公司" }
+    };
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ key: "company_entity", fields: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ zeroWrites: true, rows: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+    const file = new File(["xlsx"], "公司.xlsx", { type: "application/octet-stream" });
+
+    await fetchBusinessEntryDefinition("company_entity", undefined);
+    await previewBusinessEntryExcel(undefined, globalPayload, file);
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/business-entry-definitions/company_entity?operation=edit"
+    );
+    const [requestPath, init] = mockApiFetch.mock.calls[1]!;
+    expect(requestPath).toBe("/business-entry-definitions/company_entity/excel-preview");
+    expect((init?.body as FormData).get("targetCreateTarget")).toBe("signed-create-target");
+    expect((init?.body as FormData).get("targetEntityId")).toBeNull();
+  });
 });

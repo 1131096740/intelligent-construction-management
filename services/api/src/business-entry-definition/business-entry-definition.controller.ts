@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   BUSINESS_ENTRY_OPERATIONS,
+  type BusinessEntrySubmissionTarget,
   type BusinessEntryOperation
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -26,6 +27,18 @@ import {
 import { BusinessEntryDefinitionService } from "./business-entry-definition.service";
 import { BusinessEntryDraftRequestDto } from "./dto/business-entry-draft-request.dto";
 import { BusinessEntryExcelPreviewDto } from "./dto/business-entry-excel-preview.dto";
+import { BusinessEntryCreateTargetDto } from "./dto/business-entry-create-target.dto";
+
+function normalizeTarget(
+  target: BusinessEntryDraftRequestDto["target"]
+): BusinessEntrySubmissionTarget | undefined {
+  if (!target) return undefined;
+  return {
+    entityType: target.entityType,
+    ...(target.entityId !== undefined ? { entityId: target.entityId } : {}),
+    ...(target.createTarget !== undefined ? { createTarget: target.createTarget } : {})
+  } as BusinessEntrySubmissionTarget;
+}
 
 @Controller("business-entry-definitions")
 export class BusinessEntryDefinitionController {
@@ -70,10 +83,9 @@ export class BusinessEntryDefinitionController {
       user.id,
       {
         definitionVersion: body.definitionVersion,
-        target: {
-          entityType: body.targetEntityType,
-          entityId: body.targetEntityId
-        }
+        target: body.targetCreateTarget
+          ? { entityType: body.targetEntityType, createTarget: body.targetCreateTarget }
+          : { entityType: body.targetEntityType, entityId: body.targetEntityId ?? "" }
       },
       file
     );
@@ -104,7 +116,10 @@ export class BusinessEntryDefinitionController {
     @Body() body: BusinessEntryDraftRequestDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.definitions.validateDraft(sceneKey, projectId, user.id, body);
+    return this.definitions.validateDraft(sceneKey, projectId, user.id, {
+      ...body,
+      target: normalizeTarget(body.target)
+    });
   }
 
   @Post(":sceneKey/freeze")
@@ -114,6 +129,19 @@ export class BusinessEntryDefinitionController {
     @Body() body: BusinessEntryDraftRequestDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.definitions.freezeSubmissionSnapshot(sceneKey, projectId, user.id, body);
+    return this.definitions.freezeSubmissionSnapshot(sceneKey, projectId, user.id, {
+      ...body,
+      target: normalizeTarget(body.target)
+    });
+  }
+
+  @Post(":sceneKey/create-target")
+  issueCreateTarget(
+    @Param("sceneKey") sceneKey: string,
+    @Query("projectId") projectId: string | undefined,
+    @Body() body: BusinessEntryCreateTargetDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.definitions.issueCreateTarget(sceneKey, projectId, user.id, body.entityType);
   }
 }

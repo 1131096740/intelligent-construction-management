@@ -1,3 +1,4 @@
+import { isBusinessEntryCreateTarget } from "@jiangkong/shared-domain";
 import type {
   BusinessEntryDraftPayload,
   BusinessEntryFrozenSnapshot,
@@ -22,13 +23,18 @@ export interface BusinessEntryExcelPreviewResult {
 
 function path(
   sceneKey: string,
-  projectId: string,
+  projectId: string | undefined,
   suffix = "",
   operation?: BusinessEntryOperation
 ) {
-  const query = new URLSearchParams({ projectId });
+  const query = new URLSearchParams();
+  if (projectId !== undefined) {
+    if (!projectId.trim()) throw new Error("项目业务场景必须绑定项目");
+    query.set("projectId", projectId);
+  }
   if (operation) query.set("operation", operation);
-  return `/business-entry-definitions/${encodeURIComponent(sceneKey)}${suffix}?${query.toString()}`;
+  const queryString = query.toString();
+  return `/business-entry-definitions/${encodeURIComponent(sceneKey)}${suffix}${queryString ? `?${queryString}` : ""}`;
 }
 
 async function ensureOk(response: Response, fallback: string) {
@@ -73,7 +79,7 @@ async function postJson<T>(requestPath: string, body: unknown, fallback: string)
 
 export async function fetchBusinessEntryDefinition(
   sceneKey: string,
-  projectId: string,
+  projectId: string | undefined,
   operation: BusinessEntryOperation = "edit"
 ) {
   const response = await apiFetch(path(sceneKey, projectId, "", operation));
@@ -82,7 +88,7 @@ export async function fetchBusinessEntryDefinition(
 }
 
 export function validateBusinessEntryDraft(
-  projectId: string,
+  projectId: string | undefined,
   payload: BusinessEntryDraftPayload,
   operation: BusinessEntryOperation = "edit"
 ) {
@@ -94,7 +100,7 @@ export function validateBusinessEntryDraft(
 }
 
 export function freezeBusinessEntrySnapshot(
-  projectId: string,
+  projectId: string | undefined,
   payload: BusinessEntryDraftPayload,
   operation: "edit" | "import" = "edit"
 ) {
@@ -107,7 +113,7 @@ export function freezeBusinessEntrySnapshot(
 
 export async function downloadBusinessEntryExcelTemplate(
   sceneKey: string,
-  projectId: string
+  projectId: string | undefined
 ) {
   const response = await apiFetch(path(sceneKey, projectId, "/excel-template"));
   await ensureOk(response, "下载中文 Excel 模板失败");
@@ -115,7 +121,7 @@ export async function downloadBusinessEntryExcelTemplate(
 }
 
 export async function previewBusinessEntryExcel(
-  projectId: string,
+  projectId: string | undefined,
   payload: BusinessEntryDraftPayload,
   file: File
 ) {
@@ -126,11 +132,35 @@ export async function previewBusinessEntryExcel(
   formData.append("file", file);
   formData.append("definitionVersion", String(payload.definitionVersion));
   formData.append("targetEntityType", payload.target.entityType);
-  formData.append("targetEntityId", payload.target.entityId);
+  if (isBusinessEntryCreateTarget(payload.target)) {
+    formData.append("targetCreateTarget", payload.target.createTarget);
+  } else {
+    formData.append("targetEntityId", payload.target.entityId);
+  }
   const response = await apiFetch(path(payload.sceneKey, projectId, "/excel-preview"), {
     method: "POST",
     body: formData
   });
   await ensureOk(response, "预检业务 Excel 失败");
   return response.json() as Promise<BusinessEntryExcelPreviewResult>;
+}
+
+export interface BusinessEntryCreateTargetResponse {
+  createTarget: string;
+  entityType: string;
+  scope: "global" | "project";
+  projectId?: string;
+  expiresAt: string;
+}
+
+export function issueBusinessEntryCreateTarget(
+  sceneKey: string,
+  entityType: string,
+  projectId?: string
+) {
+  return postJson<BusinessEntryCreateTargetResponse>(
+    path(sceneKey, projectId, "/create-target"),
+    { entityType },
+    "申请新建业务对象令牌失败"
+  );
 }

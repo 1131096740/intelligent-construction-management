@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { PrismaBusinessEntrySnapshotStore } from "./business-entry-definition.snapshot-store";
-import type { BusinessEntryFrozenSnapshot } from "@jiangkong/shared-domain";
+import { isBusinessEntryExistingTarget, type BusinessEntryFrozenSnapshot } from "@jiangkong/shared-domain";
 
 const snapshot: BusinessEntryFrozenSnapshot = {
   sceneKey: "project_operating_profile",
@@ -25,7 +25,7 @@ const record = {
   id: "snapshot-1",
   sceneKey: snapshot.sceneKey,
   entityType: snapshot.target.entityType,
-  entityId: snapshot.target.entityId,
+  entityId: isBusinessEntryExistingTarget(snapshot.target) ? snapshot.target.entityId : "",
   revision: snapshot.revision,
   definitionVersion: snapshot.definitionVersion,
   definitionSnapshot: snapshot.definition,

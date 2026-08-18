@@ -218,6 +218,8 @@
 
 ## 生产与运维边界
 
+- [~] Issue #146 / POL-19P3 正在独立分支 `codex/issue-146-pol19p3-20260818` 实施，基线与 `origin/main` 均为 `8829d0bdbf92efb40fe3d3087782397d93fd4b07`。已登记十个显式全局统一录入场景、actor-aware target resolver、`authenticated_self`、签名短期 create-target、领域授权复用入口及全局 Web adapter；TDD 定向 API/Web 测试和 API typecheck 已通过。当前仍待完整门禁、双轴复审、GitHub PR/CI/合并/Issue 收口；不代表已部署或已完成生产验证。
+
 - 生产业务写入、账号/权限变更、数据库修复、COS 对象删除或生命周期变更必须获得单独明确授权。
 - 日常备份巡检默认只读，只验证自然 Cron 产物、checksum、`pg_restore --list`、异机回执、日志/进程和公共健康状态。
 - 发生发布异常时先停写、确认当前运行 SHA 与最新可恢复备份，再按 runbook 回滚；不得在证据不完整时继续迁移或写入。

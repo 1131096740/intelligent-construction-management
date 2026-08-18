@@ -48,6 +48,10 @@ export class LayoutTemplateService {
     private readonly files: FileService
   ) {}
 
+  async assertCanMaintainBusinessEntry(actorUserId: string) {
+    await this.assertTemplateMaintenanceRole(this.prisma, actorUserId);
+  }
+
   async listPublishedLayouts(contractTypeKey?: string) {
     const versions = await this.prisma.contractLayoutTemplateVersion.findMany({
       where: { status: "published" },

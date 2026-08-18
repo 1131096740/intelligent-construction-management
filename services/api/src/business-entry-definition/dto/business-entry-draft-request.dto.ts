@@ -18,7 +18,13 @@ class BusinessEntrySubmissionTargetDto {
 
   @IsString()
   @IsNotEmpty()
-  entityId!: string;
+  @IsOptional()
+  entityId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsOptional()
+  createTarget?: string;
 }
 
 export class BusinessEntryDraftRequestDto {
