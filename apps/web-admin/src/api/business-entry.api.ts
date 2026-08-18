@@ -183,23 +183,3 @@ export async function previewBusinessEntryExcel(
   await ensureOk(response, "预检业务 Excel 失败");
   return response.json() as Promise<BusinessEntryExcelPreviewResult>;
 }
-
-export interface BusinessEntryCreateTargetResponse {
-  createTarget: string;
-  entityType: string;
-  scope: "global" | "project";
-  projectId?: string;
-  expiresAt: string;
-}
-
-export function issueBusinessEntryCreateTarget(
-  sceneKey: string,
-  entityType: string,
-  scope: BusinessEntryRequestScope
-) {
-  return postJson<BusinessEntryCreateTargetResponse>(
-    path(sceneKey, scope, "/create-target"),
-    { entityType },
-    "申请新建业务对象令牌失败"
-  );
-}

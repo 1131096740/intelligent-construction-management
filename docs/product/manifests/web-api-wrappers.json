@@ -34,9 +34,9 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 112,
+          "sourceLine": 157,
           "method": "GET",
-          "path": "/business-entry-definitions/:param/excel-template?:param",
+          "path": "/business-entry-definitions/:param/excel-template",
           "normalizedPath": "/business-entry-definitions/:param/excel-template",
           "normalizedKey": "GET /business-entry-definitions/:param/excel-template",
           "bodyKind": "none",
@@ -61,9 +61,9 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 79,
+          "sourceLine": 122,
           "method": "GET",
-          "path": "/business-entry-definitions/:param?:param",
+          "path": "/business-entry-definitions/:param",
           "normalizedPath": "/business-entry-definitions/:param",
           "normalizedKey": "GET /business-entry-definitions/:param",
           "bodyKind": "none",
@@ -88,9 +88,9 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 65,
+          "sourceLine": 106,
           "method": "POST",
-          "path": "/business-entry-definitions/:param/freeze?:param",
+          "path": "/business-entry-definitions/:param/freeze",
           "normalizedPath": "/business-entry-definitions/:param/freeze",
           "normalizedKey": "POST /business-entry-definitions/:param/freeze",
           "bodyKind": "json",
@@ -116,9 +116,9 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 130,
+          "sourceLine": 179,
           "method": "POST",
-          "path": "/business-entry-definitions/:param/excel-preview?:param",
+          "path": "/business-entry-definitions/:param/excel-preview",
           "normalizedPath": "/business-entry-definitions/:param/excel-preview",
           "normalizedKey": "POST /business-entry-definitions/:param/excel-preview",
           "bodyKind": "form_data",
@@ -143,9 +143,9 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 65,
+          "sourceLine": 106,
           "method": "POST",
-          "path": "/business-entry-definitions/:param/validate?:param",
+          "path": "/business-entry-definitions/:param/validate",
           "normalizedPath": "/business-entry-definitions/:param/validate",
           "normalizedKey": "POST /business-entry-definitions/:param/validate",
           "bodyKind": "json",

@@ -20,6 +20,10 @@ const EXCEPTION_KINDS = new Set([...NEST_EXCEPTION_KINDS, "Error"]);
 const OUTPUT_KINDS = new Set([...EXCEPTION_KINDS, "AmbiguousConstructorAlias"]);
 
 const ALLOWED_INTERNAL_ERRORS = [
+  { file: "src/business-entry-definition/business-entry-create-target.service.ts", kind: "Error", message: "invalid token", expectedOccurrences: 2, reason: "新建目标令牌结构校验的内部哨兵" },
+  { file: "src/business-entry-definition/business-entry-create-target.service.ts", kind: "Error", message: "invalid signature", expectedOccurrences: 1, reason: "新建目标令牌签名校验的内部哨兵" },
+  { file: "src/business-entry-definition/business-entry-create-target.service.ts", kind: "Error", message: "invalid token lifetime", expectedOccurrences: 1, reason: "新建目标令牌时效校验的内部哨兵" },
+  { file: "src/business-entry-definition/business-entry-create-target.service.ts", kind: "Error", message: "target binding mismatch", expectedOccurrences: 1, reason: "新建目标令牌绑定校验的内部哨兵" },
   { file: "src/approval/approval-delegation.service.ts", kind: "Error", message: "Prisma service is required to create approval delegation", expectedOccurrences: 1, reason: "可选依赖注入缺失时的内部构造保护" },
   { file: "src/approval/approval-delegation.service.ts", kind: "Error", message: "Prisma service is required to list approval delegations", expectedOccurrences: 1, reason: "可选依赖注入缺失时的内部查询保护" },
   { file: "src/approval/approval-delegation.service.ts", kind: "Error", message: "Prisma service is required to list active users", expectedOccurrences: 1, reason: "可选依赖注入缺失时的内部查询保护" },

@@ -6,19 +6,19 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `39750fce234e4a273f287d8e5424945ec1a00e3d5825a7c490b28eae377a651d` |
-| webApiWrappers | ready | `2eda73b8d112af56f1a31c88134a41af38d15a42b8fe5b50b380854ba20a1867` |
+| nestRoutes | ready | `569d1931db3a1096f24eccbfb7382c14534192a4c23c711f66a5d09541f7fb2b` |
+| webApiWrappers | ready | `0a21c6104b8bbe12164bcc4ad0a540a9a5f7f30270102115166db65c25541a2b` |
 | webPageActions | ready | `5f9e163e90c1488a282f5cdf9951b8d06887ab82bc21e6c5bc63ac89ea460df6` |
-| routeUsage | ready | `d805790cd5b240ae39bd3adf28dbce4a34a6ac58b27f3677644934032dc42b2d` |
+| routeUsage | ready | `20fb8465d4893fd5313a89135d91e3fcc478f817a063accd19c4a46ece57d386` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 479 |
+| routeCount | 480 |
 | pageRouteCount | 299 |
 | externalTakeoverRouteCount | 68 |
-| exitCandidateRouteCount | 109 |
+| exitCandidateRouteCount | 110 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 487 |
@@ -218,6 +218,7 @@
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/refresh | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/wx-login | exit_candidate | none | — | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/create-target | exit_candidate | none | — | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/excel-preview | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#previewBusinessEntryExcel | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#freezeBusinessEntrySnapshot | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | — | not_applicable | — |
