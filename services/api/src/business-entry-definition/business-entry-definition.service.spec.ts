@@ -134,6 +134,10 @@ function snapshotStoreMock(saveStandalone = jest.fn()) {
   };
 }
 
+function authorizationMock() {
+  return { assertAuthorized: jest.fn() } as never;
+}
+
 const projectTarget = { entityType: "project", entityId: "project-1" } as const;
 const ownerSettlementTarget = {
   entityType: "operating_takeover_row",
@@ -142,6 +146,58 @@ const ownerSettlementTarget = {
 const companyTarget = { entityType: "company_entity", entityId: "company-1" } as const;
 
 describe("BusinessEntryDefinitionService", () => {
+  it("fails closed across create-target, validation, and freeze when domain authorization is missing", async () => {
+    const snapshots = snapshotStoreMock(
+      jest.fn().mockImplementation(async (_projectId, _userId, snapshot) => snapshot)
+    );
+    const createTargets = {
+      issue: jest.fn().mockReturnValue({ createTarget: "signed-create-target" })
+    };
+    const prisma = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+    };
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([definition, companyDefinition]),
+      accessRegistry([definition, companyDefinition]),
+      projectVisibility(["finance_staff"]),
+      snapshots,
+      prisma as never,
+      undefined as never,
+      createTargets as never
+    );
+    const input = {
+      definitionVersion: 3,
+      target: projectTarget,
+      values: { takeoverStatus: "operating_with_takeover" }
+    };
+
+    await expect(service.issueCreateTarget(
+      "company_profile",
+      undefined,
+      "user-1",
+      "company_entity"
+    )).rejects.toThrow("业务场景缺少领域授权服务");
+    await expect(service.validateDraft(
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      input
+    )).rejects.toThrow("业务场景缺少领域授权服务");
+    await expect(service.freezeSubmissionSnapshot(
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      input
+    )).rejects.toThrow("业务场景缺少领域授权服务");
+
+    expect(createTargets.issue).not.toHaveBeenCalled();
+    expect(snapshots.saveStandalone).not.toHaveBeenCalled();
+  });
+
   it("freezes and persists through the caller's existing Prisma transaction client", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
     const tx = {} as Prisma.TransactionClient;
@@ -156,7 +212,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       projectVisibility(["finance_staff"]),
       snapshots,
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(service.freezeSubmissionSnapshotInTransaction(
@@ -201,7 +258,8 @@ describe("BusinessEntryDefinitionService", () => {
           findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
         },
         position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
-      } as never
+      } as never,
+      authorizationMock()
     );
 
     await expect(service.freezeSubmissionSnapshotInTransaction(
@@ -232,7 +290,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshots,
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     const result = await service.validateDraft(
@@ -279,7 +338,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshotStoreMock(),
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(
@@ -307,7 +367,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshots,
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     const wrongDomainInput = {
@@ -354,7 +415,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshotStoreMock(),
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(
@@ -375,7 +437,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshotStoreMock(),
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(service.getSceneDefinition(
@@ -397,7 +460,8 @@ describe("BusinessEntryDefinitionService", () => {
         })
       },
       snapshotStoreMock(),
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(service.getSceneDefinitionForOperation(
@@ -419,7 +483,8 @@ describe("BusinessEntryDefinitionService", () => {
         registeredAccess,
         { effectiveRoleScopes: jest.fn().mockResolvedValue(scopes) },
         snapshotStoreMock(),
-        projectPrisma() as never
+        projectPrisma() as never,
+        authorizationMock()
       );
 
       await expect(service.getSceneDefinitionForOperation(
@@ -451,7 +516,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshotStoreMock(),
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(service.getSceneDefinitionForOperation(
@@ -504,7 +570,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition, companyDefinition]),
       visibility,
       snapshots,
-      prisma as never
+      prisma as never,
+      authorizationMock()
     );
     const input = {
       definitionVersion: 1,
@@ -555,7 +622,8 @@ describe("BusinessEntryDefinitionService", () => {
           findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
         },
         position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
-      } as never
+      } as never,
+      authorizationMock()
     );
     const input = {
       definitionVersion: 1,
@@ -634,7 +702,8 @@ describe("BusinessEntryDefinitionService", () => {
         project: { findUnique: jest.fn() },
         userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "finance" }]) },
         position: { findMany: jest.fn().mockResolvedValue([{ key: "finance_staff" }]) }
-      } as never
+      } as never,
+      authorizationMock()
     );
 
     await expect(service.getSceneDefinition(
@@ -658,7 +727,8 @@ describe("BusinessEntryDefinitionService", () => {
           findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
         },
         position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
-      } as never
+      } as never,
+      authorizationMock()
     );
     const input = {
       definitionVersion: 1,
@@ -700,7 +770,8 @@ describe("BusinessEntryDefinitionService", () => {
       accessRegistry([definition]),
       visibility,
       snapshotStoreMock(),
-      projectPrisma() as never
+      projectPrisma() as never,
+      authorizationMock()
     );
 
     await expect(service.getSceneDefinition(

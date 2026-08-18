@@ -73,8 +73,8 @@ export class BusinessEntryDefinitionService {
     @Inject(BUSINESS_ENTRY_SNAPSHOT_STORE)
     private readonly snapshots: BusinessEntrySnapshotStore,
     private readonly prisma: PrismaService,
-    @Optional() private readonly createTargets?: BusinessEntryCreateTargetService,
-    @Optional() private readonly authorization?: BusinessEntrySceneAuthorizationService
+    private readonly authorization: BusinessEntrySceneAuthorizationService,
+    @Optional() private readonly createTargets?: BusinessEntryCreateTargetService
   ) {}
 
   async getSceneDefinition(
@@ -142,6 +142,7 @@ export class BusinessEntryDefinitionService {
     roleKeys: readonly RoleKey[],
     input: BusinessEntryDraftRequest
   ): Promise<BusinessEntryValidationResult> {
+    this.requireAuthorization();
     const access = this.registeredAccess(sceneKey);
     this.assertPermission(access.permission, roleKeys);
     return this.validateDraftWithAuthorizedRoles(
@@ -198,17 +199,15 @@ export class BusinessEntryDefinitionService {
       entityType,
       scope: access.target.scope
     });
-    if (this.authorization) {
-      await this.authorization.assertAuthorized({
-        sceneKey,
-        actorUserId,
-        projectId,
-        operation: "edit",
-        scope: access.target.scope,
-        target: { entityType, createTarget: issued.createTarget },
-        values: {}
-      });
-    }
+    await this.authorization.assertAuthorized({
+      sceneKey,
+      actorUserId,
+      projectId,
+      operation: "edit",
+      scope: access.target.scope,
+      target: { entityType, createTarget: issued.createTarget },
+      values: {}
+    });
     return {
       ...issued,
       entityType,
@@ -266,17 +265,15 @@ export class BusinessEntryDefinitionService {
     if (operation !== "edit" && operation !== "import") {
       throw new BadRequestException("正式提交只允许录入或受控导入");
     }
-    if (this.authorization) {
-      await this.authorization.assertAuthorized({
-        sceneKey,
-        actorUserId,
-        projectId,
-        operation,
-        scope: access.target.scope,
-        target: payload.target!,
-        values: input.values
-      });
-    }
+    await this.authorization.assertAuthorized({
+      sceneKey,
+      actorUserId,
+      projectId,
+      operation,
+      scope: access.target.scope,
+      target: payload.target!,
+      values: input.values
+    });
     try {
       const snapshot = this.registry.freezeSubmissionSnapshot(
         payload,
@@ -344,17 +341,15 @@ export class BusinessEntryDefinitionService {
       payload.target,
       input.operation ?? "edit"
     );
-    if (this.authorization) {
-      await this.authorization.assertAuthorized({
-        sceneKey,
-        actorUserId,
-        projectId,
-        operation: input.operation ?? "edit",
-        scope: access.target.scope,
-        target: payload.target!,
-        values: input.values
-      });
-    }
+    await this.authorization.assertAuthorized({
+      sceneKey,
+      actorUserId,
+      projectId,
+      operation: input.operation ?? "edit",
+      scope: access.target.scope,
+      target: payload.target!,
+      values: input.values
+    });
     return this.registry.validateDraft(
       payload,
       roleKeys as readonly RoleKey[],
@@ -367,6 +362,7 @@ export class BusinessEntryDefinitionService {
     projectId: string | undefined,
     actorUserId: string
   ) {
+    this.requireAuthorization();
     const access = this.registeredAccess(sceneKey);
     if (!actorUserId?.trim()) throw new BadRequestException("未获取到登录用户");
     let roleKeys: readonly BusinessEntryPermissionKey[];
@@ -387,6 +383,13 @@ export class BusinessEntryDefinitionService {
 
     this.assertPermission(access.permission, roleKeys);
     return { access, roleKeys };
+  }
+
+  private requireAuthorization() {
+    if (!this.authorization) {
+      throw new BadRequestException("业务场景缺少领域授权服务");
+    }
+    return this.authorization;
   }
 
   private async assertActiveProject(projectId: string) {
