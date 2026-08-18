@@ -130,7 +130,12 @@ function upload(buffer: Buffer, overrides: Partial<{
 describe("BusinessEntryExcelService", () => {
   it("generates one visible Chinese-only worksheet without a hidden technical layer", async () => {
     const service = new BusinessEntryExcelService(definitions() as never);
-    const result = await service.exportTemplate("expense_line", "project-1", "user-1");
+    const result = await service.exportTemplate(
+      "expense_line",
+      "project-1",
+      "user-1",
+      { entityType: "operating_takeover_row", entityId: "project-1" }
+    );
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
 
@@ -166,7 +171,12 @@ describe("BusinessEntryExcelService", () => {
       }))
     };
     const service = new BusinessEntryExcelService(definitions(singleOnlyDefinition) as never);
-    const result = await service.exportTemplate("expense_line", "project-1", "user-1");
+    const result = await service.exportTemplate(
+      "expense_line",
+      "project-1",
+      "user-1",
+      { entityType: "operating_takeover_row", entityId: "project-1" }
+    );
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
     const worksheet = workbook.worksheets[0]!;

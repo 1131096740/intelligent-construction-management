@@ -3,15 +3,15 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 479,
-    "classificationOverrideCount": 181,
+    "routeCount": 480,
+    "classificationOverrideCount": 182,
     "derivedProductionPageCount": 298,
-    "classificationOverrideSha256": "0df26d55d654883c3e394895d625fd8d25ab56e6d6d52081673001b24a24fdb3",
+    "classificationOverrideSha256": "f7ed671972da42649f6fa67e5c020dc2ddcffd88b092c971716d159903ac81cd",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
       "page": 299,
       "external_takeover": 68,
-      "exit_candidate": 109,
+      "exit_candidate": 110,
       "internal_task": 3,
       "unclassified": 0
     },
@@ -21,7 +21,7 @@
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 121
+      "none": 122
     }
   },
   "overrides": [
@@ -1068,6 +1068,12 @@
       "path": "/business-entry-definitions/:sceneKey",
       "usage": "external_takeover",
       "reason": "controlled_business_entry_definition_backend_surface"
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/:sceneKey/create-target",
+      "usage": "exit_candidate",
+      "reason": "pol_19_business_entry_create_target_backend_contract_pending_pol_19_page_migration_candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",

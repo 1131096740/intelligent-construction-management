@@ -43,6 +43,13 @@ export class BusinessPartyService {
     private readonly audit: AuditService
   ) {}
 
+  async assertCanMaintainBusinessEntry(actorUserId: string) {
+    await this.assertGlobalContractRole(
+      this.prisma as unknown as Prisma.TransactionClient,
+      actorUserId
+    );
+  }
+
   async replaceContractPartiesInTransaction(
     tx: Prisma.TransactionClient,
     contractVersionId: string,

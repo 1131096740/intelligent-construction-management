@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsInt, IsNotEmpty, IsString, Min } from "class-validator";
+import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from "class-validator";
 
 export class BusinessEntryExcelPreviewDto {
   @Type(() => Number)
@@ -13,5 +13,11 @@ export class BusinessEntryExcelPreviewDto {
 
   @IsString()
   @IsNotEmpty()
-  targetEntityId!: string;
+  @IsOptional()
+  targetEntityId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsOptional()
+  targetCreateTarget?: string;
 }

@@ -10,17 +10,17 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 479,
-    "exactRouteCount": 479,
-    "normalizedRouteCount": 479,
-    "classificationOverrideCount": 181,
+    "routeCount": 480,
+    "exactRouteCount": 480,
+    "normalizedRouteCount": 480,
+    "classificationOverrideCount": 182,
     "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "0df26d55d654883c3e394895d625fd8d25ab56e6d6d52081673001b24a24fdb3",
+    "classificationOverrideSha256": "f7ed671972da42649f6fa67e5c020dc2ddcffd88b092c971716d159903ac81cd",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "derivedProductionPageCount": 298,
     "pageRouteCount": 299,
     "externalTakeoverCount": 68,
-    "exitCandidateCount": 109,
+    "exitCandidateCount": 110,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
@@ -29,7 +29,7 @@
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 121
+      "none": 122
     },
     "blockerCount": 0
   },
@@ -7702,6 +7702,36 @@
       "usage": "exit_candidate",
       "classificationSource": "registry_override",
       "classificationReason": "native_miniprogram_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
+      "consumerEvidence": {
+        "webApiWrappers": [],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/:sceneKey/create-target",
+      "normalizedKey": "POST /business-entry-definitions/:param/create-target",
+      "controller": "BusinessEntryDefinitionController",
+      "handler": "issueCreateTarget",
+      "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "pol_19_business_entry_create_target_backend_contract_pending_pol_19_page_migration_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],

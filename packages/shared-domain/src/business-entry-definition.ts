@@ -19,6 +19,8 @@ export type BusinessEntryFieldType = (typeof BUSINESS_ENTRY_FIELD_TYPES)[number]
 
 export const BUSINESS_ENTRY_OPERATIONS = ["view", "edit", "import", "export"] as const;
 export type BusinessEntryOperation = (typeof BUSINESS_ENTRY_OPERATIONS)[number];
+export const BUSINESS_ENTRY_AUTHENTICATED_SELF = "authenticated_self" as const;
+export type BusinessEntryPermissionKey = RoleKey | typeof BUSINESS_ENTRY_AUTHENTICATED_SELF;
 
 export interface BusinessEntryOption {
   value: string;
@@ -128,9 +130,36 @@ export interface BusinessEntryDraftPayload {
   values: Record<string, unknown>;
 }
 
-export interface BusinessEntrySubmissionTarget {
-  entityType: string;
-  entityId: string;
+export type BusinessEntrySubmissionTarget =
+  | {
+      entityType: string;
+      entityId: string;
+    }
+  | {
+      entityType: string;
+      createTarget: string;
+    };
+
+export function isBusinessEntryExistingTarget(
+  target: BusinessEntrySubmissionTarget | undefined
+): target is Extract<BusinessEntrySubmissionTarget, { entityId: string }> {
+  return Boolean(
+    target &&
+    "entityId" in target &&
+    typeof target.entityId === "string" &&
+    !Object.prototype.hasOwnProperty.call(target, "createTarget")
+  );
+}
+
+export function isBusinessEntryCreateTarget(
+  target: BusinessEntrySubmissionTarget | undefined
+): target is Extract<BusinessEntrySubmissionTarget, { createTarget: string }> {
+  return Boolean(
+    target &&
+    "createTarget" in target &&
+    typeof target.createTarget === "string" &&
+    !Object.prototype.hasOwnProperty.call(target, "entityId")
+  );
 }
 
 export type BusinessEntryValidationErrorCode =
@@ -218,7 +247,10 @@ function isPresent(value: unknown): boolean {
   return value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "");
 }
 
-function hasAnyRole(required: readonly RoleKey[] | undefined, effectiveRoleKeys: readonly RoleKey[]) {
+function hasAnyRole(
+  required: readonly RoleKey[] | undefined,
+  effectiveRoleKeys: readonly RoleKey[]
+) {
   return required === undefined
     ? true
     : required.length > 0 && effectiveRoleKeys.some((role) => required.includes(role));
@@ -543,7 +575,11 @@ export class BusinessEntryDefinitionRegistry {
       });
     }
     if (operation !== "view") {
-      if (!payload.target?.entityType.trim() || !payload.target.entityId.trim()) {
+      if (
+        !payload.target?.entityType.trim() ||
+        (!isBusinessEntryExistingTarget(payload.target) &&
+          !isBusinessEntryCreateTarget(payload.target))
+      ) {
         errors.push({ code: "invalid_target", message: "录入和导入必须绑定正式业务对象" });
       } else if (payload.target.entityType !== definition.entityType) {
         errors.push({ code: "invalid_target", message: "提交业务对象类型与场景不匹配" });
@@ -670,7 +706,12 @@ export class BusinessEntryDefinitionRegistry {
     options: { frozenAt?: string; operation?: "edit" | "import" } = {}
   ): BusinessEntryFrozenSnapshot {
     const result = this.validateDraft(payload, effectiveRoleKeys, options.operation ?? "edit");
-    if (!payload.target || !payload.target.entityType.trim() || !payload.target.entityId.trim()) {
+    if (
+      !payload.target ||
+      !payload.target.entityType.trim() ||
+      (!isBusinessEntryExistingTarget(payload.target) &&
+        !isBusinessEntryCreateTarget(payload.target))
+    ) {
       result.errors.push({ code: "invalid_target", message: "提交必须绑定正式业务对象" });
     } else if (payload.target.entityType !== this.getSceneDefinition(payload.sceneKey).entityType) {
       result.errors.push({ code: "invalid_target", message: "提交业务对象类型与场景不匹配" });

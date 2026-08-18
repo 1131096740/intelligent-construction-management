@@ -155,6 +155,10 @@ export class SettlementTemplateService {
     private readonly files: FileService
   ) {}
 
+  async assertCanMaintainBusinessEntry(actorUserId: string) {
+    await this.assertGovernance(this.prisma, actorUserId);
+  }
+
   async listGovernance(actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
       const roles = await this.assertGovernance(tx, actorUserId);

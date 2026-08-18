@@ -3,7 +3,9 @@ import {
   OPERATING_TAKEOVER_SCENE_DEFINITIONS,
   PROJECT_OPERATING_TAKEOVER_STATUS_LABELS,
   PROJECT_OPERATING_TAKEOVER_STATUSES,
-  type BusinessEntrySceneDefinition
+  type BusinessEntrySceneDefinition,
+  type BusinessEntryOperation,
+  type RoleKey
 } from "@jiangkong/shared-domain";
 import {
   createBusinessEntrySceneAccessRegistry,
@@ -11,6 +13,152 @@ import {
 } from "./business-entry-scene-access";
 
 const projectFinanceRoles = ["finance_staff", "finance_director"] as const;
+const organizationRoles = [
+  "chairman",
+  "general_manager",
+  "engineering_department_director",
+  "finance_director",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director",
+  "super_admin"
+] as const;
+const companyRoles = ["comprehensive_director", "contract_staff", "contract_director"] as const;
+const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
+const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
+const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
+
+function textField(
+  key: string,
+  label: string,
+  roles: readonly RoleKey[],
+  options: Partial<BusinessEntrySceneDefinition["fields"][number]> = {}
+) {
+  return {
+    key,
+    label,
+    description: `${label}的统一录入元数据。`,
+    example: "示例",
+    type: "text" as const,
+    scope: "header" as const,
+    unit: "",
+    precision: 0,
+    required: false,
+    permissions: { view: roles, edit: roles, import: roles },
+    display: {
+      formHint: `请填写${label}`,
+      gridColumn: label,
+      mobilePriority: 1,
+      readonlyText: `以冻结快照中的${label}为准`
+    },
+    excel: { column: label, paste: "single" as const, errorLocation: "cell" as const },
+    bulk: { enabled: true, maxRows: 100, strategy: "append" as const },
+    ...options
+  };
+}
+
+function globalDefinition(
+  key: string,
+  entityType: string,
+  name: string,
+  fields: readonly BusinessEntrySceneDefinition["fields"][number][]
+): BusinessEntrySceneDefinition {
+  return {
+    key,
+    entityType,
+    name,
+    description: `${name}的统一录入场景。`,
+    version: 1,
+    fields,
+    rules: []
+  };
+}
+
+function existingTargetId(target: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]["target"]) {
+  return "entityId" in target && typeof target.entityId === "string" ? target.entityId : undefined;
+}
+
+const globalTarget = (
+  entityType: string,
+  resolve: NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>
+) => ({ scope: "global" as const, entityType, resolve });
+
+function editableStatus(operation: BusinessEntryOperation) {
+  return operation === "view" || operation === "export" ? undefined : "draft";
+}
+
+const resolveUser = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  const user = await prisma.user.findUnique({ where: { id, isActive: true }, select: { id: true } });
+  return Boolean(user);
+};
+
+const resolveSelf = async ({ target, actorUserId, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id || id !== actorUserId) return false;
+  const user = await prisma.user.findUnique({ where: { id, isActive: true }, select: { id: true } });
+  return Boolean(user);
+};
+
+const resolveDepartment = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  return Boolean(await prisma.department.findUnique({ where: { id, isActive: true }, select: { id: true } }));
+};
+
+const resolveCompany = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  return Boolean(await prisma.companyEntity.findUnique({ where: { id, isActive: true }, select: { id: true } }));
+};
+
+const resolveParty = async ({ target, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  return Boolean(await prisma.businessParty.findUnique({ where: { id, status: "active" }, select: { id: true } }));
+};
+
+const resolveContractBusinessTemplate = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  const status = editableStatus(operation);
+  return Boolean(await prisma.contractBusinessTemplate.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
+};
+
+const resolveLayoutVersion = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  const status = editableStatus(operation);
+  return Boolean(await prisma.contractLayoutTemplateVersion.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
+};
+
+const resolveClauseVersion = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  const status = editableStatus(operation);
+  return Boolean(await prisma.standardClauseVersion.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
+};
+
+const resolveSettlementVersion = async ({ target, operation, prisma }: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id) return false;
+  const status = editableStatus(operation);
+  return Boolean(await prisma.settlementTemplateVersion.findUnique({
+    where: { id, ...(status ? { status } : {}) },
+    select: { id: true }
+  }));
+};
 
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
   {
@@ -106,7 +254,59 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
       }
     ]
   },
-  ...OPERATING_TAKEOVER_SCENE_DEFINITIONS
+  ...OPERATING_TAKEOVER_SCENE_DEFINITIONS,
+  globalDefinition("department", "department", "部门", [
+    textField("name", "部门名称", organizationRoles),
+    textField("parentId", "上级部门", organizationRoles)
+  ]),
+  globalDefinition("organization_user", "organization_user", "组织用户", [
+    textField("name", "姓名", organizationRoles),
+    textField("phone", "手机号", organizationRoles),
+    textField("departmentId", "所属部门", organizationRoles)
+  ]),
+  globalDefinition("user_role_assignment_command", "user_role_assignment_command", "用户岗位命令", [
+    textField("operation", "操作", organizationRoles),
+    textField("roleKey", "岗位", organizationRoles),
+    textField("scope", "授权范围", organizationRoles),
+    textField("projectId", "项目", organizationRoles)
+  ]),
+  globalDefinition("company_entity", "company_entity", "我方公司主体", [
+    textField("name", "公司名称", companyRoles),
+    textField("unifiedSocialCreditCode", "统一社会信用代码", companyRoles),
+    textField("registeredAddress", "注册地址", companyRoles)
+  ]),
+  globalDefinition("business_party", "business_party", "合作单位", [
+    textField("name", "单位名称", contractTemplateRoles),
+    textField("unifiedSocialCreditCode", "统一社会信用代码", contractTemplateRoles)
+  ]),
+  globalDefinition("contract_business_template", "contract_business_template", "合同业务模板", [
+    textField("code", "模板编码", contractTemplateRoles),
+    textField("businessCode", "业务编码", contractTemplateRoles),
+    textField("name", "模板名称", contractTemplateRoles),
+    textField("contractTypeKey", "合同类型", contractTemplateRoles),
+    textField("changeSummary", "变更摘要", contractTemplateRoles)
+  ]),
+  globalDefinition("contract_layout_template_version", "contract_layout_template_version", "合同版式模板版本", [
+    textField("name", "版式名称", contractTemplateRoles),
+    textField("contractTypeKey", "合同类型", contractTemplateRoles)
+  ]),
+  globalDefinition("standard_clause_version", "standard_clause_version", "标准条款版本", [
+    textField("code", "条款编码", contractTemplateRoles),
+    textField("category", "条款分类", contractTemplateRoles),
+    textField("name", "条款名称", contractTemplateRoles),
+    textField("title", "条款标题", contractTemplateRoles)
+  ]),
+  globalDefinition("settlement_template_version", "settlement_template_version", "结算模板版本", [
+    textField("name", "模板名称", settlementTemplateRoles),
+    textField("code", "模板编码", settlementTemplateRoles)
+  ]),
+  {
+    ...globalDefinition("user_self_profile", "user_self_profile", "本人资料", [
+      textField("name", "姓名", authenticatedSelf),
+      textField("phone", "手机号", authenticatedSelf)
+    ]),
+    description: "仅允许已认证本人维护姓名和手机号；当前密码由最终提交控件专用校验。"
+  }
 ];
 
 export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionRegistry(
@@ -132,7 +332,57 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
         action: "operating_takeover.manage" as const,
         roleScope: "effective" as const
       }
-    }))
+    })),
+    {
+      sceneKey: "department",
+      target: globalTarget("department", resolveDepartment),
+      permission: { kind: "role_keys", roleKeys: organizationRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "organization_user",
+      target: globalTarget("organization_user", resolveUser),
+      permission: { kind: "role_keys", roleKeys: organizationRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "user_role_assignment_command",
+      target: globalTarget("user_role_assignment_command", resolveUser),
+      permission: { kind: "role_keys", roleKeys: organizationRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "company_entity",
+      target: globalTarget("company_entity", resolveCompany),
+      permission: { kind: "role_keys", roleKeys: companyRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "business_party",
+      target: globalTarget("business_party", resolveParty),
+      permission: { kind: "role_keys", roleKeys: contractTemplateRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "contract_business_template",
+      target: globalTarget("contract_business_template", resolveContractBusinessTemplate),
+      permission: { kind: "role_keys", roleKeys: contractTemplateRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "contract_layout_template_version",
+      target: globalTarget("contract_layout_template_version", resolveLayoutVersion),
+      permission: { kind: "role_keys", roleKeys: contractTemplateRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "standard_clause_version",
+      target: globalTarget("standard_clause_version", resolveClauseVersion),
+      permission: { kind: "role_keys", roleKeys: contractTemplateRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "settlement_template_version",
+      target: globalTarget("settlement_template_version", resolveSettlementVersion),
+      permission: { kind: "role_keys", roleKeys: settlementTemplateRoles, roleScope: "global" }
+    },
+    {
+      sceneKey: "user_self_profile",
+      target: globalTarget("user_self_profile", resolveSelf),
+      permission: { kind: "authenticated_self", roleScope: "global" }
+    }
   ]);
 
 export const BUSINESS_ENTRY_ACCESS_REGISTRY = createBusinessEntrySceneAccessRegistry(

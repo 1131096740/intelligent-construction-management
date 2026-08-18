@@ -62,6 +62,10 @@ export class ContractTemplateService {
     private readonly audit: AuditService
   ) {}
 
+  async assertCanMaintainBusinessEntry(actorUserId: string) {
+    await this.assertTemplateMaintenanceRole(this.prisma, actorUserId);
+  }
+
   // ---------------------------------------------------------------------------
   // Global role check
   // ---------------------------------------------------------------------------

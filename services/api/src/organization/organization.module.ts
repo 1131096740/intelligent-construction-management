@@ -10,6 +10,7 @@ import { PermissionImpactService } from "./permission-impact.service";
 @Module({
   imports: [DatabaseModule, AuthModule, AuditModule],
   controllers: [OrganizationController],
-  providers: [OrganizationService, PermissionImpactService, OrganizationRoleService]
+  providers: [OrganizationService, PermissionImpactService, OrganizationRoleService],
+  exports: [OrganizationService, OrganizationRoleService]
 })
 export class OrganizationModule {}

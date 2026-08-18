@@ -1,7 +1,12 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
+import { BusinessPartyModule } from "../business-party/business-party.module";
+import { CompanyEntityModule } from "../company-entity/company-entity.module";
+import { ContractTemplateModule } from "../contract-template/contract-template.module";
+import { OrganizationModule } from "../organization/organization.module";
 import { ProjectModule } from "../project/project.module";
+import { SettlementModule } from "../settlement/settlement.module";
 import {
   BUSINESS_ENTRY_DEFINITION_REGISTRY,
   BusinessEntryDefinitionService
@@ -17,14 +22,27 @@ import {
 } from "./business-entry-definition.scene-registry";
 import { BUSINESS_ENTRY_SCENE_ACCESS_REGISTRY } from "./business-entry-scene-access";
 import { BusinessEntryExcelService } from "./business-entry-excel.service";
+import { BusinessEntryCreateTargetService } from "./business-entry-create-target.service";
+import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
 
 @Module({
-  imports: [AuthModule, AuditModule, ProjectModule],
+  imports: [
+    AuthModule,
+    AuditModule,
+    BusinessPartyModule,
+    CompanyEntityModule,
+    ContractTemplateModule,
+    OrganizationModule,
+    ProjectModule,
+    SettlementModule
+  ],
   controllers: [BusinessEntryDefinitionController],
   providers: [
     { provide: BUSINESS_ENTRY_DEFINITION_REGISTRY, useValue: registry },
     { provide: BUSINESS_ENTRY_SCENE_ACCESS_REGISTRY, useValue: accessRegistry },
     { provide: BUSINESS_ENTRY_SNAPSHOT_STORE, useClass: PrismaBusinessEntrySnapshotStore },
+    BusinessEntryCreateTargetService,
+    BusinessEntrySceneAuthorizationService,
     BusinessEntryDefinitionService,
     BusinessEntryExcelService
   ],

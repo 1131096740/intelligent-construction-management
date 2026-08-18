@@ -17,15 +17,33 @@ const globalDefinition: BusinessEntrySceneDefinition = {
   name: "我方公司资料"
 };
 
+const POL19P3_SCENE_KEYS = [
+  "department",
+  "organization_user",
+  "user_role_assignment_command",
+  "company_entity",
+  "business_party",
+  "contract_business_template",
+  "contract_layout_template_version",
+  "standard_clause_version",
+  "settlement_template_version",
+  "user_self_profile"
+] as const;
+
 describe("BusinessEntrySceneAccessRegistry", () => {
   it("binds every production scene to its backend target and domain action", () => {
     for (const definition of BUSINESS_ENTRY_SCENE_DEFINITIONS) {
       const access = BUSINESS_ENTRY_ACCESS_REGISTRY.get(definition.key);
 
-      expect(access.target).toEqual({
-        scope: "project",
-        entityType: definition.entityType
-      });
+      expect(access.target.scope).toBe(
+        POL19P3_SCENE_KEYS.includes(definition.key as typeof POL19P3_SCENE_KEYS[number])
+          ? "global"
+          : "project"
+      );
+      expect(access.target.entityType).toBe(definition.entityType);
+      if (access.target.scope === "global") {
+        expect(access.target.resolve).toEqual(expect.any(Function));
+      }
       expect(access.permission).toEqual(
         definition.key === "project_operating_profile"
           ? {
@@ -33,11 +51,15 @@ describe("BusinessEntrySceneAccessRegistry", () => {
               action: "project.operating_profile.manage",
               roleScope: "project"
             }
-          : {
+          : OPERATING_TAKEOVER_SCENE_DEFINITIONS.some((item) => item.key === definition.key)
+            ? {
               kind: "business_action",
               action: "operating_takeover.manage",
               roleScope: "effective"
             }
+            : definition.key === "user_self_profile"
+              ? { kind: "authenticated_self", roleScope: "global" }
+              : expect.objectContaining({ kind: "role_keys", roleScope: "global" })
       );
     }
   });
@@ -45,7 +67,8 @@ describe("BusinessEntrySceneAccessRegistry", () => {
   it("registers production access only from the explicit profile and takeover scene families", () => {
     expect(BUSINESS_ENTRY_SCENE_ACCESS_POLICIES.map((policy) => policy.sceneKey)).toEqual([
       "project_operating_profile",
-      ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key)
+      ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key),
+      ...POL19P3_SCENE_KEYS
     ]);
 
     expect(() => createBusinessEntrySceneAccessRegistry(
@@ -60,6 +83,39 @@ describe("BusinessEntrySceneAccessRegistry", () => {
     expect(Object.isFrozen(access)).toBe(true);
     expect(Object.isFrozen(access.target)).toBe(true);
     expect(Object.isFrozen(access.permission)).toBe(true);
+  });
+
+  it("passes the actor-aware resolver context instead of a static target only", async () => {
+    const resolver = jest.fn().mockResolvedValue(true);
+    const definition = BUSINESS_ENTRY_SCENE_DEFINITIONS[0]!;
+    const registry = createBusinessEntrySceneAccessRegistry(
+      [{ ...definition, key: "resolver_context", entityType: "company_entity" }],
+      [{
+        sceneKey: "resolver_context",
+        target: { scope: "global", entityType: "company_entity", resolve: resolver },
+        permission: {
+          kind: "role_keys",
+          roleKeys: COMPANY_ENTITY_MAINTAINER_ROLES,
+          roleScope: "global"
+        }
+      }]
+    );
+
+    await registry.get("resolver_context").target.resolve!({
+      target: { entityType: "company_entity", entityId: "company-1" },
+      actorUserId: "actor-1",
+      operation: "edit",
+      scene: "resolver_context",
+      scope: "global",
+      prisma: {} as never
+    });
+
+    expect(resolver).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: "actor-1",
+      operation: "edit",
+      scene: "resolver_context",
+      scope: "global"
+    }));
   });
 
   it("fails closed when a registered scene has no access policy", () => {

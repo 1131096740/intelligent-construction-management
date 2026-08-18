@@ -65,6 +65,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
   ],
   exports: [
     SettlementService,
+    SettlementTemplateService,
     SettlementSubmissionService,
     SettlementReadService,
     SettlementSignedDocumentService

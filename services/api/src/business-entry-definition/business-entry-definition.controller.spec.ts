@@ -41,10 +41,21 @@ describe("BusinessEntryDefinitionController", () => {
     await controller.downloadExcelTemplate(
       "company_profile",
       undefined,
+      "company_entity",
+      "company-1",
+      undefined,
       user,
       { set: jest.fn() }
     );
-    await controller.getSceneDefinition("company_profile", undefined, "edit", user);
+    await controller.getSceneDefinition(
+      "company_profile",
+      undefined,
+      "edit",
+      "company_entity",
+      "company-1",
+      undefined,
+      user
+    );
     await controller.validateDraft("company_profile", undefined, target, user);
     await controller.freezeSubmissionSnapshot("company_profile", undefined, target, user);
     const file = {
@@ -65,12 +76,18 @@ describe("BusinessEntryDefinitionController", () => {
       file
     );
 
-    expect(excel.exportTemplate).toHaveBeenCalledWith("company_profile", undefined, "user-1");
+    expect(excel.exportTemplate).toHaveBeenCalledWith(
+      "company_profile",
+      undefined,
+      "user-1",
+      { entityType: "company_entity", entityId: "company-1" }
+    );
     expect(definitions.getSceneDefinitionForOperation).toHaveBeenCalledWith(
       "company_profile",
       undefined,
       "user-1",
-      "edit"
+      "edit",
+      { entityType: "company_entity", entityId: "company-1" }
     );
     expect(definitions.validateDraft).toHaveBeenCalledWith(
       "company_profile",

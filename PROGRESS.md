@@ -229,6 +229,12 @@
 
 ## 生产与运维边界
 
+- [~] Issue #146 / POL-19P3 正在独立分支 `codex/issue-146-pol19p3-20260818` 实施，基线与 `origin/main` 均为 `8829d0bdbf92efb40fe3d3087782397d93fd4b07`。已登记十个显式全局统一录入场景、actor-aware target resolver、`authenticated_self`、签名短期 create-target、领域授权复用入口及全局 Web adapter；TDD 定向 API/Web 测试和 API typecheck 已通过。当前仍待完整门禁、双轴复审、GitHub PR/CI/合并/Issue 收口；不代表已部署或已完成生产验证。
+- [~] Issue #163 / POL-19P4 已在独立分支 `codex/issue-163-pol19p4-20260818` 基于候选 `2aaeb6f040052316932d5adff91308c70399f360` 修复四项统一录入复审 finding：全局 freeze 无领域事务持久化时 fail-closed；模板目标 resolver 统一校验 `draft` 可编辑状态；定义/Excel/create-target/validate/freeze 复用目标与授权边界；全局/项目 scope、空白 `projectId` 与 Web adapter 组装 fail-closed。TDD RED→GREEN、定向 API 32 tests、Web 5 tests、shared/API/Web typecheck、API/Web lint、`check:ui` 已通过；最终门禁、双轴复审与 GitHub 收口待执行，不代表部署或生产验证。
+- [~] Issue #164 / POL-19P5 已从精确候选 `54985701c4187aba8e0d1bc1adefbc8fcc0cddf7` 修复统一录入授权服务缺失时的 fail-open：`BusinessEntrySceneAuthorizationService` 改为 Nest 必需依赖，create-target、validate、freeze 统一调用领域授权，缺失 provider 稳定返回中文错误且不签发目标令牌/保存快照；保留并核验 `BusinessEntryDefinitionModule` provider wiring。TDD RED→GREEN、API 8 suites / 56 tests、Web 4 files / 24 tests、shared/API/Web typecheck、lint、build 与 `check:ui` 通过；最终双轴复审、PR/CI/merge 与 #164/#163/#146 收口待执行，不代表部署或生产验证。
+- [~] Issue #165 / POL-19P6 从精确候选 `89188cefbcfd69ec1f80eeefc02512f89c4476e7` 补齐四类授权 fail-closed 直接证据：`validateDraftWithRoles`、批量 `validateDraftBatch`、事务 `freezeSubmissionSnapshotInTransaction` 缺失授权 provider 测试，以及导入生产 `BusinessEntryDefinitionModule` 的可执行 Nest wiring 测试。临时移除检查/provider 的 TDD 变异使 5 项测试失败，恢复既有最小实现后 2 suites / 22 tests 通过；未改生产行为、Schema/migration、页面或生产环境。最终完整门禁、双轴复审、PR/CI/merge 与 #165/#164/#163/#146 收口待执行，不代表部署或生产验证。
+- [~] Issue #172 / POL-19P12 当前候选从 PR #166 精确 head `a039397ef28b88e0c6e11fe6269c94ee8579bb96` 独立重做 #167–#171 已验证的清单治理：业务错误 62 处、合同能力矩阵/Nest route 480、Web API 465/487、route-usage 480/0 unclassified，并仅用官方 whole-site capability matrix generator 刷新为 480 routes/0 blockers。当前待最终精确 SHA 的全量门禁、双轴复审、focused commit、PR #166 CI/merge 与 Issue 收口；未改 Schema/migration、未部署、未执行生产写入、真实归零或正式开放。
+
 - 生产业务写入、账号/权限变更、数据库修复、COS 对象删除或生命周期变更必须获得单独明确授权。
 - 日常备份巡检默认只读，只验证自然 Cron 产物、checksum、`pg_restore --list`、异机回执、日志/进程和公共健康状态。
 - 发生发布异常时先停写、确认当前运行 SHA 与最新可恢复备份，再按 runbook 回滚；不得在证据不完整时继续迁移或写入。

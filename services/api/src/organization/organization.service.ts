@@ -373,6 +373,40 @@ export class OrganizationService {
     }
   }
 
+  async assertCanMaintainBusinessEntryOrganization(
+    actorUserId: string,
+    sceneKey: "department" | "organization_user",
+    targetId: string | undefined,
+    values: Record<string, unknown>
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const actorRoles = await this.assertOrganizationManager(tx, actorUserId);
+      if (sceneKey === "department") {
+        const departmentId = targetId ?? this.optionalString(values.parentId);
+        if (departmentId) {
+          await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
+        }
+        return;
+      }
+      const departmentId = this.optionalString(values.departmentId);
+      if (departmentId) {
+        await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
+      }
+      if (!targetId) return;
+      if (targetId === actorUserId) {
+        throw new ForbiddenException("不能通过组织管理入口修改或停用自己");
+      }
+      const target = await tx.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, departmentId: true, isActive: true }
+      });
+      if (!target) throw new NotFoundException("人员不存在，请刷新后重试");
+      if (target.departmentId) {
+        await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, target.departmentId);
+      }
+    });
+  }
+
   async createDepartment(actorUserId: string, input: CreateDepartmentDto) {
     const name = requiredTrimmed(input.name, "请填写部门名称");
     const parentId = normalizedNullableId(input.parentId);
@@ -768,6 +802,10 @@ export class OrganizationService {
     if (!allowed.has(targetDepartmentId)) {
       throw new ForbiddenException("只能管理本部门及下属部门人员");
     }
+  }
+
+  private optionalString(value: unknown) {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
   }
 
   getPermissionIntegrity(): Promise<PermissionIntegrityReadModel> {
