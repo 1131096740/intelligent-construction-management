@@ -1634,6 +1634,190 @@ test("fails closed for missing wrappers and missing Nest routes", async () => {
   );
 });
 
+test("consumes the exact registered self-profile facade auth transport exception", async () => {
+  const root = await fixture({
+    actions: [
+      registryAction({
+        id: "user-self-profile.update",
+        routePaths: ["/example"],
+        trigger: {
+          element: "t-button",
+          event: "click",
+          handler: "submitProfile"
+        },
+        wrappers: [
+          {
+            apiFile: "apps/web-admin/src/lib/user-self-profile.ts",
+            name: "updateProfile"
+          }
+        ]
+      })
+    ],
+    wrappers: [capabilityReadWrapper()],
+    routes: [route("PATCH /auth/profile")],
+    page: `<script setup lang="ts">
+import { getExample } from "../api/example.api";
+import { updateProfile } from "../lib/user-self-profile";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submitProfile() {
+  await updateProfile();
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submitProfile">保存</t-button>
+</template>
+`,
+    extraFiles: {
+      "apps/web-admin/src/lib/user-self-profile.ts": `export async function updateProfile() { return undefined; }\n`,
+      "apps/web-admin/src/auth/auth.store.ts": `export async function updateProfile() { return undefined; }\n`
+    },
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 7,
+        reachableProductionModuleCount: 6
+      },
+      authTransportExceptions: [
+        {
+          method: "PATCH",
+          normalizedPath: "/auth/profile",
+          normalizedKey: "PATCH /auth/profile",
+          sourceFile: "apps/web-admin/src/auth/auth.store.ts",
+          transport: "auth_store_exception"
+        }
+      ]
+    }
+  });
+
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready");
+  assert.equal(manifest.blockers.unresolvedWrappers.length, 0);
+  assert.deepEqual(
+    manifest.actions.find((action) => action.id === "user-self-profile.update")
+      ?.bindings[0]?.normalizedKey,
+    "PATCH /auth/profile"
+  );
+});
+
+test("fails closed for unregistered or mismatched self-profile auth exception evidence", async () => {
+  const exactWrapper = {
+    apiFile: "apps/web-admin/src/lib/user-self-profile.ts",
+    name: "updateProfile"
+  };
+  const exactException = {
+    method: "PATCH",
+    normalizedPath: "/auth/profile",
+    normalizedKey: "PATCH /auth/profile",
+    sourceFile: "apps/web-admin/src/auth/auth.store.ts",
+    transport: "auth_store_exception"
+  };
+  const createRoot = async ({
+    actionWrapper = exactWrapper,
+    authTransportExceptions = [exactException]
+  } = {}) =>
+    fixture({
+      actions: [
+        registryAction({
+          id: "user-self-profile.update",
+          routePaths: ["/example"],
+          trigger: {
+            element: "t-button",
+            event: "click",
+            handler: "submitProfile"
+          },
+          wrappers: [actionWrapper]
+        })
+      ],
+      wrappers: [capabilityReadWrapper()],
+      routes: [route("PATCH /auth/profile")],
+      page: `<script setup lang="ts">
+import { getExample } from "../api/example.api";
+import { updateProfile } from "../lib/user-self-profile";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submitProfile() {
+  await updateProfile();
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submitProfile">保存</t-button>
+</template>
+`,
+      extraFiles: {
+        "apps/web-admin/src/lib/user-self-profile.ts": `export async function updateProfile() { return undefined; }\n`,
+        "apps/web-admin/src/auth/auth.store.ts": `export async function updateProfile() { return undefined; }\n`
+      },
+      webManifestOverrides: {
+        evidence: {
+          productionModuleCount: 7,
+          reachableProductionModuleCount: 6
+        },
+        authTransportExceptions
+      }
+    });
+
+  const cases = [
+    {
+      name: "unregistered exception",
+      authTransportExceptions: []
+    },
+    {
+      name: "facade file mismatch",
+      actionWrapper: {
+        ...exactWrapper,
+        apiFile: "apps/web-admin/src/lib/other-profile.ts"
+      }
+    },
+    {
+      name: "facade function mismatch",
+      actionWrapper: {
+        ...exactWrapper,
+        name: "saveProfile"
+      }
+    },
+    {
+      name: "method mismatch",
+      authTransportExceptions: [
+        { ...exactException, method: "POST", normalizedKey: "POST /auth/profile" }
+      ]
+    },
+    {
+      name: "route mismatch",
+      authTransportExceptions: [
+        { ...exactException, normalizedPath: "/auth/other", normalizedKey: "PATCH /auth/other" }
+      ]
+    },
+    {
+      name: "transport owner mismatch",
+      authTransportExceptions: [
+        { ...exactException, sourceFile: "apps/web-admin/src/auth/other.store.ts" }
+      ]
+    },
+    {
+      name: "transport kind mismatch",
+      authTransportExceptions: [
+        { ...exactException, transport: "generic_exception" }
+      ]
+    }
+  ];
+
+  for (const testCase of cases) {
+    const root = await createRoot(testCase);
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", testCase.name);
+    assert.ok(
+      manifest.blockers.unresolvedWrappers.some(
+        (entry) => entry.code === "WRAPPER_NOT_IN_MANIFEST"
+      ),
+      testCase.name
+    );
+  }
+});
+
 test("reports a production mutation wrapper with no action or background classification", async () => {
   const uncovered = wrapper({
     name: "backgroundWrite",
