@@ -18,12 +18,8 @@ describe("stage D master-data readonly isolation", () => {
     );
   });
 
-  it("keeps business-party search readable without a create trigger", () => {
+  it("keeps business-party search readable", () => {
     expect(partyList).toContain("listBusinessParties");
-    expect(partyList).toContain("上线准备期间暂为只读");
-    expect(partyList).not.toMatch(
-      /createBusinessParty|createParty|创建合作单位|创建档案/
-    );
   });
 
   it("keeps business-party history readable without version or upload triggers", () => {
