@@ -14435,6 +14435,73 @@ function normalizeRouteIdentityPath(path) {
     .replace(/:[^/]+/g, ":param");
 }
 
+function nestRouteIdentity(route) {
+  if (
+    !isNonEmptyString(route?.method) ||
+    !isNonEmptyString(route?.path) ||
+    !isNonEmptyString(route?.normalizedKey)
+  ) {
+    return null;
+  }
+  const expectedKey = `${route.method.toUpperCase()} ${normalizeRouteIdentityPath(
+    route.path
+  )}`;
+  return {
+    declaredKey: route.normalizedKey,
+    expectedKey,
+    valid:
+      route.method === route.method.toUpperCase() &&
+      route.normalizedKey === expectedKey
+  };
+}
+
+function buildNestRouteIndex(routes) {
+  const records = (Array.isArray(routes) ? routes : [])
+    .map((route) => {
+      const identity = nestRouteIdentity(route);
+      return identity ? { route, ...identity } : null;
+    })
+    .filter(Boolean);
+  const blockedKeys = new Set();
+  const groups = new Map();
+
+  for (const record of records) {
+    if (!record.valid) {
+      blockedKeys.add(record.declaredKey);
+      blockedKeys.add(record.expectedKey);
+    }
+    for (const key of new Set([
+      record.declaredKey,
+      record.expectedKey
+    ])) {
+      const group = groups.get(key) ?? [];
+      group.push(record);
+      groups.set(key, group);
+    }
+  }
+  for (const [key, group] of groups) {
+    if (group.length > 1) {
+      blockedKeys.add(key);
+      for (const record of group) {
+        blockedKeys.add(record.declaredKey);
+        blockedKeys.add(record.expectedKey);
+      }
+    }
+  }
+
+  const index = new Map();
+  for (const record of records) {
+    if (
+      record.valid &&
+      !blockedKeys.has(record.declaredKey) &&
+      !blockedKeys.has(record.expectedKey)
+    ) {
+      index.set(record.declaredKey, record.route);
+    }
+  }
+  return index;
+}
+
 function validateUpstreamWebManifest({
   manifest,
   sourceFiles,
@@ -14832,11 +14899,10 @@ function nestRouteAssociationIsTrusted(
   ) {
     return false;
   }
-  const matches = manifest.routes.filter(
-    (route) => route?.normalizedKey === normalizedKey
+  const route = buildNestRouteIndex(manifest.routes).get(
+    normalizedKey
   );
-  if (matches.length !== 1) return false;
-  const route = matches[0];
+  if (!route) return false;
   if (
     !isNonEmptyString(route.method) ||
     !isNonEmptyString(route.path) ||
@@ -15218,14 +15284,15 @@ function effectiveMutationActorPositions({
     return null;
   }
   let effective = UNRESTRICTED_ACTOR_POSITIONS;
+  const nestRouteIndex = buildNestRouteIndex(
+    nestManifest.routes
+  );
   for (const binding of mutationBindings) {
     if (!isNonEmptyString(binding?.normalizedKey)) return null;
-    const routes = nestManifest.routes.filter(
-      (route) => route?.normalizedKey === binding.normalizedKey
-    );
-    if (routes.length !== 1) return null;
+    const route = nestRouteIndex.get(binding.normalizedKey);
+    if (!route) return null;
     const positions = actorPositionsForRoute(
-      routes[0],
+      route,
       rolesByAction
     );
     if (!positions) return null;
@@ -15267,13 +15334,14 @@ function capabilitySourceAuthorizationIsCompatible({
   if (candidates.length !== 1) return false;
   const requests = normalizedMainRequests(candidates[0]);
   if (requests.length === 0) return false;
+  const nestRouteIndex = buildNestRouteIndex(
+    nestManifest.routes
+  );
   return requests.every((request) => {
-    const routes = nestManifest.routes.filter(
-      (route) => route?.normalizedKey === request.normalizedKey
-    );
-    if (routes.length !== 1) return false;
+    const route = nestRouteIndex.get(request.normalizedKey);
+    if (!route) return false;
     const actorPositions = actorPositionsForRoute(
-      routes[0],
+      route,
       rolesByAction
     );
     return actorPositionsCover(
@@ -15597,12 +15665,7 @@ export async function inspectWholeSitePageActionManifest({
       );
     }
   }
-  const nestRouteIndex = new Map();
-  for (const route of nestManifest.routes) {
-    if (isNonEmptyString(route?.normalizedKey)) {
-      nestRouteIndex.set(route.normalizedKey, route);
-    }
-  }
+  const nestRouteIndex = buildNestRouteIndex(nestManifest.routes);
 
   const manifestActions = [];
   const candidateConsumerPairs = new Set();

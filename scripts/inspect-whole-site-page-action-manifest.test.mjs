@@ -3250,6 +3250,174 @@ test("validates request identities, rejects duplicates, and rejects mutating tic
   );
 });
 
+test("rejects-invalid-upstream-nest-route-identities", async () => {
+  const pageSourceFile = "apps/web-admin/src/pages/ExamplePage.vue";
+  const apiFile = "apps/web-admin/src/api/example.api.ts";
+  const businessRoutes = [
+    {
+      key: "GET /business-entry-definitions/:param",
+      wrapper: "fetchBusinessEntryDefinition",
+      handler: "readBusinessEntryDefinition",
+      action: "business-entry-definition.read"
+    },
+    {
+      key: "POST /business-entry-definitions/:param/create-target",
+      wrapper: "issueBusinessEntryCreateTarget",
+      handler: "createBusinessEntryTarget",
+      action: "business-entry-definition.create-target"
+    },
+    {
+      key: "POST /business-entry-definitions/:param/validate",
+      wrapper: "validateBusinessEntryDraft",
+      handler: "runValidateBusinessEntryDraft",
+      action: "business-entry-definition.validate"
+    }
+  ];
+  const actionFor = ({ wrapper: wrapperName, handler, action }) =>
+    registryAction({
+      id: action,
+      trigger: {
+        element: "t-button",
+        event: "click",
+        handler
+      },
+      capability: {
+        kind: "detail_action",
+        source: "detail.availableActions",
+        key: action
+      },
+      wrappers: [{ apiFile, name: wrapperName }],
+      routePaths: ["/example"]
+    });
+  const wrapperFor = ({ key, wrapper: wrapperName }) =>
+    wrapper({
+      name: wrapperName,
+      normalizedKey: key,
+      productionConsumers: [pageSourceFile]
+    });
+  const routePairFor = ({ key }, invalidFirst) => {
+    const path = key.replace(":param", ":sceneKey");
+    const valid = {
+      ...route(key),
+      path,
+      normalizedKey: key
+    };
+    const invalid = {
+      ...valid,
+      normalizedKey: key.replace(":param", ":sceneKey")
+    };
+    return invalidFirst ? [invalid, valid] : [valid, invalid];
+  };
+
+  for (const invalidFirst of [true, false]) {
+    const root = await fixture({
+      actions: [
+        registryAction({
+          id: "example.submit",
+          capability: {
+            kind: "detail_action",
+            source: "detail.availableActions",
+            key: "example.submit"
+          }
+        }),
+        ...businessRoutes.map(actionFor)
+      ],
+      wrappers: [
+        wrapper(),
+        capabilityReadWrapper(),
+        ...businessRoutes.map(wrapperFor)
+      ],
+      routes: [
+        route(),
+        ...businessRoutes.flatMap((businessRoute) =>
+          routePairFor(businessRoute, invalidFirst)
+        )
+      ],
+      extraFiles: {
+        "apps/web-admin/src/api/example.api.ts": `export async function getExample() {
+  return {
+    availableActions: [
+      { key: "example.submit", enabled: true },
+      { key: "business-entry-definition.read", enabled: true },
+      { key: "business-entry-definition.create-target", enabled: true },
+      { key: "business-entry-definition.validate", enabled: true }
+    ]
+  };
+}
+export async function submitExample() { return undefined; }
+export async function fetchBusinessEntryDefinition() { return undefined; }
+export async function issueBusinessEntryCreateTarget() { return undefined; }
+export async function validateBusinessEntryDraft() { return undefined; }
+`,
+        "apps/web-admin/src/pages/ExamplePage.vue": `<script setup lang="ts">
+import {
+  getExample,
+  submitExample,
+  fetchBusinessEntryDefinition,
+  issueBusinessEntryCreateTarget,
+  validateBusinessEntryDraft
+} from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+async function submit() { await submitExample("example-1"); }
+async function readBusinessEntryDefinition() {
+  await fetchBusinessEntryDefinition("business_party");
+}
+async function createBusinessEntryTarget() {
+  await issueBusinessEntryCreateTarget("business_party");
+}
+async function runValidateBusinessEntryDraft() {
+  await validateBusinessEntryDraft("business_party");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('example.submit')" @click="submit">提交</t-button>
+  <t-button v-if="actionEnabled('business-entry-definition.read')" @click="readBusinessEntryDefinition">读取</t-button>
+  <t-button v-if="actionEnabled('business-entry-definition.create-target')" @click="createBusinessEntryTarget">创建目标</t-button>
+  <t-button v-if="actionEnabled('business-entry-definition.validate')" @click="runValidateBusinessEntryDraft">校验</t-button>
+</template>
+`
+      }
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked");
+    assert.ok(
+      manifest.blockers.upstreamManifestIssues.some(
+        (issue) => issue.code === "UPSTREAM_NEST_ROUTE_IDENTITY_INVALID"
+      )
+    );
+    assert.deepEqual(
+      manifest.actions
+        .filter((action) => action.id.startsWith("business-entry-definition."))
+        .map((action) => ({
+          id: action.id,
+          nestRoute: action.bindings[0].nestRoute,
+          acceptedProductionConsumers:
+            action.bindings[0].acceptedProductionConsumers
+        })),
+      businessRoutes
+        .map(({ action }) => action)
+        .sort()
+        .map((action) => ({
+          id: action,
+          nestRoute: null,
+          acceptedProductionConsumers: []
+        }))
+    );
+
+    const validAction = manifest.actions.find(
+      (action) => action.id === "example.submit"
+    );
+    assert.deepEqual(
+      validAction.bindings[0].acceptedProductionConsumers,
+      [pageSourceFile]
+    );
+  }
+});
+
 test("anchors routes to webAdminRoutes, rejects duplicate paths, and requires background ownership", async () => {
   const rogueAction = registryAction({
     id: "rogue.submit",
