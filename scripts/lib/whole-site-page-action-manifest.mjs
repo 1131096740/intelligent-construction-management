@@ -28,6 +28,15 @@ const WEB_MANIFEST_PATH =
   "docs/product/manifests/web-api-wrappers.json";
 const NEST_MANIFEST_PATH =
   "docs/product/manifests/nest-business-routes.json";
+const SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION = Object.freeze({
+  facadeApiFile: `${WEB_SOURCE_ROOT}/lib/user-self-profile.ts`,
+  facadeName: "updateProfile",
+  transportSourceFile: `${WEB_SOURCE_ROOT}/auth/auth.store.ts`,
+  method: "PATCH",
+  normalizedPath: "/auth/profile",
+  normalizedKey: "PATCH /auth/profile",
+  transport: "auth_store_exception"
+});
 const CONTRACT_WORKBENCH_PAGE_PATH =
   `${WEB_SOURCE_ROOT}/pages/contracts/ContractWorkbenchPage.vue`;
 const CONTRACT_DRAFT_COMPOSABLE_PATH =
@@ -10451,6 +10460,71 @@ function wrapperIdentity(apiFile, name) {
   return `${apiFile}\u0000${name}`;
 }
 
+function isSelfProfileFacadeCandidate(declared) {
+  return (
+    posixPath(declared?.apiFile ?? "") ===
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile ||
+    declared?.name === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName
+  );
+}
+
+function registeredSelfProfileAuthTransportWrapper({
+  declared,
+  action,
+  webManifest,
+  graph
+}) {
+  if (
+    posixPath(declared?.apiFile ?? "") !==
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile ||
+    declared?.name !== SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName
+  ) {
+    return null;
+  }
+  const exceptions = Array.isArray(
+    webManifest?.authTransportExceptions
+  )
+    ? webManifest.authTransportExceptions
+    : [];
+  const matches = exceptions.filter(
+    (exception) =>
+      posixPath(exception?.sourceFile ?? "") ===
+        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transportSourceFile &&
+      exception?.transport ===
+        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transport &&
+      exception?.method ===
+        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method &&
+      exception?.normalizedPath ===
+        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath &&
+      exception?.normalizedKey ===
+        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey
+  );
+  if (matches.length !== 1) return null;
+  const dependencies = dependencyClosure(action.sourceFile, graph);
+  if (!dependencies.has(SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile)) {
+    return null;
+  }
+  return {
+    apiFile: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile,
+    name: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName,
+    kind: "transport",
+    requests: [
+      {
+        kind: "main",
+        sourceLine: null,
+        method: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method,
+        path: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath,
+        normalizedPath: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath,
+        normalizedKey: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey,
+        bodyKind: "json"
+      }
+    ],
+    testConsumers: [],
+    productionConsumers: [action.sourceFile],
+    unreachableConsumers: []
+  };
+}
+
 function sourceTriggerCandidate(action, ast, source) {
   if (
     action.usage !== "background" ||
@@ -14113,6 +14187,7 @@ function triggerCandidates(action, templateActions) {
 function actionBindings({
   action,
   wrapperIndex,
+  webManifest,
   nestRouteIndex,
   blockers,
   graph,
@@ -14127,7 +14202,14 @@ function actionBindings({
       declared.apiFile,
       declared.name
     );
-    const wrapper = wrapperIndex.get(identity);
+    const wrapper = isSelfProfileFacadeCandidate(declared)
+      ? registeredSelfProfileAuthTransportWrapper({
+          declared,
+          action,
+          webManifest,
+          graph
+        })
+      : wrapperIndex.get(identity);
     if (!wrapper) {
       blockers.unresolvedWrappers.push({
         code: "WRAPPER_NOT_IN_MANIFEST",
@@ -15617,6 +15699,7 @@ export async function inspectWholeSitePageActionManifest({
     const bindings = actionBindings({
       action,
       wrapperIndex,
+      webManifest,
       nestRouteIndex,
       blockers,
       graph: ownershipGraph,

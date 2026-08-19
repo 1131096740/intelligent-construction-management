@@ -22,6 +22,9 @@
 
 ## 当前正在推进
 
+- [~] POL-19A-P15（Issue #188，2026-08-19）：从 fresh `origin/main@0af9ad9fe306ec8b41b36965c668a333f99c6c77` 的独立 worktree 仅修 page-action 检查器对已登记本人资料 facade `apps/web-admin/src/lib/user-self-profile.ts#updateProfile` 与既有 `PATCH /auth/profile` auth transport exception 的精确映射；未修改业务页面/API、auth transport、`services/api`、`packages/shared-domain`、Schema/迁移或派生 manifest。TDD、page-action 聚焦/CLI `83/83`、Web API 聚焦 `32/32`、Web API `465 wrappers/487 bindings`、page-action `250 actions/0 blockers`、route usage `480/0`、capability matrix `480/0`、authority `80/22`、typecheck、lint、Web build、UI/中文业务语言/API 业务错误检查均通过；lint 保留 30 个既有 Web warning，0 errors。未部署、未访问生产、未写入生产数据库/COS。
+- [ ] #188 的 focused conventional commit、push、单一 PR `Closes #188`、精确 head CI、merge/main SHA 与 Issue CLOSE 待完成；合并不代表 #187/#113 完成。
+
 - [x] 依赖审计安全维护（2026-08-16）：从 `origin/main@bd1b414981328458246699fe9653cd66d0570c54` 在独立分支复核原 5 个 moderate advisory。以最小 pnpm overrides/lockfile 升级 `postcss` 8.5.18→8.5.26、`file-type` 20.4.1→21.3.2（覆盖两条 advisory）、`uuid` 8.3.2→11.1.1；重新审计仅剩 `@nestjs/core` 10.4.22 的 SSE advisory。静态复核确认项目无 `@Sse`/SSE 路由，升级要求 Nest 11 major，未强行迁移；该项记录为当前代码路径 not_actionable，后续纳入 Nest major maintenance。全量测试 shared 176、Web 1957、API 6177 passed/100 skipped，typecheck/lint/build/UI 规则通过；真实 ExcelJS 写缓冲和 Nest FileTypeValidator smoke 通过。未部署、未访问生产、未执行生产数据/数据库写入。
 
 ### P0：仓库与协作控制面收敛
