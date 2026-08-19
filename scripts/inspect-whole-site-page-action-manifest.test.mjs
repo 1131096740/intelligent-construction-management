@@ -94,6 +94,83 @@ function capabilityReadWrapper() {
   });
 }
 
+function definitionReadWrapper({
+  normalizedKey = "GET /examples/:param"
+} = {}) {
+  return wrapper({
+    name: "fetchBusinessEntryDefinition",
+    normalizedKey,
+    returnProvenance: "transparent_main_response"
+  });
+}
+
+function serverDefinitionAction(overrides = {}) {
+  return registryAction({
+    trigger: {
+      element: "t-button",
+      event: "click",
+      handler: "submit"
+    },
+    capability: {
+      kind: "server_definition",
+      source: "definition.key"
+    },
+    ...overrides
+  });
+}
+
+function serverDefinitionPage({
+  gate = "definition?.key",
+  handlerRead = true,
+  readExpression = `fetchBusinessEntryDefinition(
+    "example",
+    { scope: "global" },
+    { entityType: "example", entityId: "example-1" }
+  )`
+} = {}) {
+  return `<script setup lang="ts">
+import { ref } from "vue";
+import {
+  fetchBusinessEntryDefinition,
+  submitExample
+} from "../api/example.api";
+const definition = ref(null);
+async function load() {
+  definition.value = await ${readExpression};
+}
+void load();
+async function submit() {
+  ${handlerRead ? `await ${readExpression};` : ""}
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="${gate}" @click="submit">提交</t-button>
+</template>
+`;
+}
+
+async function serverDefinitionFixture(options = {}) {
+  return fixture({
+    actions: [serverDefinitionAction()],
+    wrappers: [
+      wrapper(),
+      definitionReadWrapper()
+    ],
+    routes: [route()],
+    extraFiles: {
+      "apps/web-admin/src/api/example.api.ts": `export async function fetchBusinessEntryDefinition() {
+  return { key: "example", version: 1, fields: [], rules: [] };
+}
+export async function submitExample() { return undefined; }
+`,
+      ...(options.extraFiles ?? {})
+    },
+    page: serverDefinitionPage(options),
+    ...options.fixtureOverrides
+  });
+}
+
 function registryAction(overrides = {}) {
   return {
     id: "example.submit",
@@ -5161,6 +5238,188 @@ async function submit() { await submitExample("example-1"); }
     JSON.stringify(manifest.blockers)
   );
   assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+});
+
+test("proves server_definition only from the exact definition key and fresh GET", async () => {
+  const root = await serverDefinitionFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify({ action: manifest.actions[0], blockers: manifest.blockers })
+  );
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+
+  const ancestorRoot = await serverDefinitionFixture({
+    fixtureOverrides: {
+      page: serverDefinitionPage().replace(
+        `<t-button v-if="definition?.key" @click="submit">提交</t-button>`,
+        `<div v-if="definition?.key"><t-button @click="submit">提交</t-button></div>`
+      )
+    }
+  });
+  const ancestorManifest = await inspectWholeSitePageActionManifest({
+    root: ancestorRoot
+  });
+  assert.equal(
+    ancestorManifest.status,
+    "ready",
+    JSON.stringify({
+      action: ancestorManifest.actions[0],
+      blockers: ancestorManifest.blockers
+    })
+  );
+  assert.equal(ancestorManifest.actions[0].capability.dominatesTrigger, true);
+
+  const rejects = [
+    [
+      "unknown kind",
+      { capability: { kind: "server_unknown", source: "definition.key" } },
+      {},
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "arbitrary object key",
+      {},
+      {
+        gate: "other?.key === 'example'",
+        extraFiles: {
+          "apps/web-admin/src/api/example.api.ts": `export async function fetchBusinessEntryDefinition() {
+  return { key: "example", version: 1, fields: [], rules: [] };
+}
+export async function submitExample() { return undefined; }
+export const other = { key: "example" };
+`
+        }
+      },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "version source",
+      { capability: { kind: "server_definition", source: "definition.version" } },
+      {},
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "static string gate",
+      {},
+      { gate: `"example" === "example"` },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "static object ref",
+      {},
+      {
+        readExpression: `{ key: "example", version: 1, fields: [], rules: [] }`
+      },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "different ref",
+      {},
+      {
+        gate: "otherDefinition?.key === 'example'",
+        extraFiles: {
+          "apps/web-admin/src/api/example.api.ts": `export async function fetchBusinessEntryDefinition() {
+  return { key: "example", version: 1, fields: [], rules: [] };
+}
+export async function submitExample() { return undefined; }
+`
+        }
+      },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "no v-if",
+      {},
+      {
+        fixtureOverrides: {
+          page: serverDefinitionPage().replace(/ v-if="[^"]+"/u, "")
+        }
+      },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "disabled only",
+      {},
+      { gate: "true", fixtureOverrides: { page: serverDefinitionPage({ gate: "true" }).replace(
+        `v-if="true"`,
+        `:disabled="!definition?.key"`
+      ) } },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "client boolean",
+      {},
+      {
+        fixtureOverrides: {
+          page: serverDefinitionPage({ gate: "canSubmit" }).replace(
+            "</script>",
+            "const canSubmit = true;\n</script>"
+          )
+        }
+      },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "role gate",
+      {},
+      { gate: `currentRole === "contract_director"` },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "wrong transport",
+      {},
+      {
+        fixtureOverrides: {
+          wrappers: [
+            wrapper(),
+            definitionReadWrapper({ normalizedKey: "POST /examples/:param/definition" })
+          ],
+          routes: [
+            route(),
+            route("POST /examples/:param/definition")
+          ]
+        }
+      },
+      "WRITE_WITHOUT_SERVER_CAPABILITY"
+    ],
+    [
+      "handler without fresh GET",
+      {},
+      { handlerRead: false },
+      "SERVER_DEFINITION_HANDLER_FRESH_READ_UNVERIFIED"
+    ]
+  ];
+
+  for (const [label, actionOverrides, pageOptions, expectedCode] of rejects) {
+    const fixtureOverrides = pageOptions.fixtureOverrides ?? {};
+    const candidateRoot = await fixture({
+      actions: [serverDefinitionAction(actionOverrides)],
+      wrappers: fixtureOverrides.wrappers ?? [wrapper(), definitionReadWrapper()],
+      routes: fixtureOverrides.routes ?? [route()],
+      extraFiles: {
+        "apps/web-admin/src/api/example.api.ts": `export async function fetchBusinessEntryDefinition() {
+  return { key: "example", version: 1, fields: [], rules: [] };
+}
+export async function submitExample() { return undefined; }
+`,
+        ...(pageOptions.extraFiles ?? {})
+      },
+      page: fixtureOverrides.page ?? serverDefinitionPage(pageOptions)
+    });
+    const candidate = await inspectWholeSitePageActionManifest({
+      root: candidateRoot
+    });
+    assert.equal(candidate.status, "blocked", label);
+    assert.ok(
+      blockerCodes(candidate).has(expectedCode),
+      `${label}: ${JSON.stringify(candidate.blockers)}`
+    );
+  }
 });
 
 test("rejects mixed or non-GET sources for a capability ref", async () => {

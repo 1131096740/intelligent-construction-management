@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-08-14）
+## 当前结论（更新至 2026-08-19）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -22,6 +22,7 @@
 
 ## 当前正在推进
 
+- [x] POL-19A-P17（Issue #191，2026-08-19）：从 fresh `origin/main@ecf1b65dae366eb517675a460d32295e2583a047` 的独立 clean worktree 仅修 page-action 检查器的严格 `server_definition` 服务端能力证明；registry 固定为 `kind=server_definition`、`source=definition.key` 且拒绝 `key`，同页同一 `fetchBusinessEntryDefinition` GET provenance 必须写入同一 ref，trigger 必须由该 ref `.key` 的 `v-if`/祖先 `v-if` 支配，handler 必须 fresh GET 并保留既有 wrapper causal chain。未知 kind、`.version`、任意对象 key、静态/不同 ref、无 v-if/仅 disabled、客户端 boolean、角色判断、错误 transport、缺 fresh GET 均 fail-closed。仅修改 `scripts/lib/whole-site-page-action-manifest.mjs` 与其最窄 Node 测试，未修改业务页面/API/auth transport、shared-domain、Schema/迁移、权限或派生 manifest。验证：page-action Node 全量 81/81、CLI 3/3、Web API manifest 32/32、官方 release manifests（API build、480 routes、465 wrappers/487 bindings、250 actions、capability matrix）通过；workspace typecheck、lint（0 errors，30 个未改动 takeover 页面 warning）、API/Web build、中文业务语言、API 业务错误检查与 `git diff --check` 通过。未部署、未访问生产、未写入生产数据库/COS；focused commit/push、单一 PR `Closes #191`、精确 head CI、merge 与 Issue 关闭待收口。
 - [~] POL-19A-P15（Issue #188，2026-08-19）：从 fresh `origin/main@0af9ad9fe306ec8b41b36965c668a333f99c6c77` 的独立 worktree 仅修 page-action 检查器对已登记本人资料 facade `apps/web-admin/src/lib/user-self-profile.ts#updateProfile` 与既有 `PATCH /auth/profile` auth transport exception 的精确映射；未修改业务页面/API、auth transport、`services/api`、`packages/shared-domain`、Schema/迁移或派生 manifest。TDD、page-action 聚焦/CLI `83/83`、Web API 聚焦 `32/32`、Web API `465 wrappers/487 bindings`、page-action `250 actions/0 blockers`、route usage `480/0`、capability matrix `480/0`、authority `80/22`、typecheck、lint、Web build、UI/中文业务语言/API 业务错误检查均通过；lint 保留 30 个既有 Web warning，0 errors。未部署、未访问生产、未写入生产数据库/COS。
 - [ ] #188 的 focused conventional commit、push、单一 PR `Closes #188`、精确 head CI、merge/main SHA 与 Issue CLOSE 待完成；合并不代表 #187/#113 完成。
 
