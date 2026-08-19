@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-08-19）
+## 当前结论（更新至 2026-08-20）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -29,6 +29,8 @@
 - [x] POL-19A-P27（Issue #202，2026-08-19）：从 fresh `origin/main@46973e4a559579437f07a1cf1e87ea802712f776` 的独立 clean worktree 仅新增 `apps/web-admin/src/pages/business-parties/business-party-p22-governance.structure.test.ts`；JSON helper 使用显式最小 `RetirementManifest`/`WebApiManifest` 类型，断言七项冻结 wrapper 保持 `test_only`、默认关闭/未挂载 Drawer 与内部测试调用不形成 production consumer、真实 business-party 读取链保持 production。TDD 先以唯一 `no-explicit-any` 得到 lint RED，再以显式类型 GREEN；窄测 3/3，官方 Web API generator/check/ready `465 wrappers / 487 bindings`，Prisma generate、workspace typecheck、lint（0 errors，30 条既有 takeover 页面 warning）、`check:ui` 和 `git diff --check` 通过。未改生产源码、API、Schema、权限、manifest 分类或生产状态；focused commit、push、PR `Closes #202`、精确 head CI、merge 与 Issue CLOSED 待收口。
 
 - [x] POL-19A-P28（Issue #204，2026-08-19）：从 fresh `origin/main@7108dea64a9eafc29c9198476f96c1046e0d7f00` 的独立 clean worktree，仅收窄 `master-data-readonly-isolation.structure.test.ts` 对 business-party 的旧“不可创建”断言，保留 business-party 查询与历史读取证明，以及 CompanyEntity/Organization 只读和 #202 七项 wrapper `test_only` 治理边界。TDD 以 test-only fixture 重放 `createBusinessParty`/“创建合作单位”导致旧正则 RED，再最小 GREEN；本票窄测 3/3、#202 P22 回归 3/3、组织只读结构 4/4、主数据响应式 3/3、改动文件 lint、Web typecheck 和 `git diff --check` 通过。仅改测试与本登记，未改页面、组件、API、shared-domain、Schema、权限、resolver、生成器、派生 manifest 或生产状态；focused commit、push、仅 `Closes #204` 的 PR、固定 head CI、merge 与 Issue CLOSED 待收口。
+
+- [x] POL-19A-P21（Issue #207，2026-08-20）：从 fresh `origin/main@ad8e82d27f92393d7e0da73ac7629f6fba297072` 的独立 clean worktree，仅修改 `scripts/lib/whole-site-page-action-manifest.mjs` 与 `scripts/inspect-whole-site-page-action-manifest.test.mjs`；`buildNestRouteIndex` 对 declared/expected identity 冲突的三条既有 business-entry route（GET definition、POST create-target、POST validate）整体 fail-closed，trust、actor、capability authorization、association、coverage 与 accepted consumers 均不再使用冲突 key，非冲突 valid key 保持可用。TDD 先以 `rejects-invalid-upstream-nest-route-identities` 精确负例 RED，覆盖 invalid-first/valid-first 两种顺序，再 GREEN；环境前置 Node 20.20.2、pnpm 9.15.9、frozen install、Prisma 5.22.0 均通过。验证：page-action scanner 82/82、精确 test-name pattern、go-live/CLI/release/fast Node tests 49/49、官方 `inspect:release-manifests`（480 routes、465 wrappers/487 bindings、250 actions/0 blockers、480 route usage/0 unclassified、480 capability/0 blockers）、workspace typecheck、lint 0 errors（30 条未改动 Web warnings）、`node --check`、`git diff --check`、独立 Standards/Spec P0/P1/P2=0 均通过；未修改业务页面/API、registry capability、权限、Schema、生成 manifest 或生产状态。focused commit、push、仅 `Closes #207` 的 PR、固定 head CI、merge 与 Issue CLOSED 待收口。
 
 - [x] 依赖审计安全维护（2026-08-16）：从 `origin/main@bd1b414981328458246699fe9653cd66d0570c54` 在独立分支复核原 5 个 moderate advisory。以最小 pnpm overrides/lockfile 升级 `postcss` 8.5.18→8.5.26、`file-type` 20.4.1→21.3.2（覆盖两条 advisory）、`uuid` 8.3.2→11.1.1；重新审计仅剩 `@nestjs/core` 10.4.22 的 SSE advisory。静态复核确认项目无 `@Sse`/SSE 路由，升级要求 Nest 11 major，未强行迁移；该项记录为当前代码路径 not_actionable，后续纳入 Nest major maintenance。全量测试 shared 176、Web 1957、API 6177 passed/100 skipped，typecheck/lint/build/UI 规则通过；真实 ExcelJS 写缓冲和 Nest FileTypeValidator smoke 通过。未部署、未访问生产、未执行生产数据/数据库写入。
 
