@@ -67,6 +67,7 @@ const ACTION_USAGES = new Set(["page_action", "background"]);
 const CAPABILITY_KINDS = new Set([
   "detail_action",
   "available_action_string",
+  "server_definition",
   "server_boolean",
   "server_lease",
   "authenticated_self_exception",
@@ -76,6 +77,7 @@ const CAPABILITY_KINDS = new Set([
 const SERVER_CAPABILITY_KINDS = new Set([
   "detail_action",
   "available_action_string",
+  "server_definition",
   "server_boolean",
   "server_lease"
 ]);
@@ -242,6 +244,13 @@ function registryEntryIssue(entry) {
       !isNonEmptyString(entry.capability.key))
   ) {
     return "capability_invalid";
+  }
+  if (
+    entry.capability.kind === "server_definition" &&
+    (entry.capability.source !== "definition.key" ||
+      entry.capability.key !== undefined)
+  ) {
+    return "server_definition_invalid";
   }
   if (
     !Array.isArray(entry.wrappers) ||
@@ -8694,6 +8703,50 @@ function capabilityServerProvenance(capability, context) {
   );
 }
 
+function serverDefinitionHandlerFreshRead({
+  action,
+  symbols,
+  capabilityContext
+}) {
+  if (action.capability.kind !== "server_definition") {
+    return true;
+  }
+  const provenance = capabilityServerProvenance(
+    action.capability,
+    capabilityContext
+  );
+  if (provenance?.sources?.size !== 1) return false;
+  const sourceIdentity = [...provenance.sources][0];
+  const separator = sourceIdentity.indexOf("\u0000");
+  if (separator < 1) return false;
+  const readWrapper = {
+    apiFile: sourceIdentity.slice(0, separator),
+    name: sourceIdentity.slice(separator + 1)
+  };
+  const handlerBindings = topLevelScopeVariables(
+    symbols.scopeManager,
+    action.trigger.handler
+  );
+  if (handlerBindings.length !== 1) return false;
+  const handlerDefinition = uniqueIndexedNode(
+    symbols.definitionsByBinding,
+    handlerBindings[0]
+  );
+  if (!handlerDefinition) return false;
+  const analysis = directCallTargets(
+    handlerDefinition,
+    symbols.declarations,
+    symbols,
+    true
+  );
+  return (
+    analysis.reliable &&
+    analysis.calls.some((call) =>
+      importedCallMatchesWrapper(call, readWrapper, symbols)
+    )
+  );
+}
+
 function capabilityHasServerProvenance(capability, context) {
   return (
     capabilityServerProvenance(capability, context)
@@ -15757,6 +15810,12 @@ export async function inspectWholeSitePageActionManifest({
           nestManifest
         })
       );
+    const serverDefinitionFreshReadVerified =
+      serverDefinitionHandlerFreshRead({
+        action,
+        symbols,
+        capabilityContext
+      });
     const mutationBindings = bindings.filter(isMutationRequest);
     const effectiveMutationActors =
       effectiveMutationActorPositions({
@@ -15785,7 +15844,19 @@ export async function inspectWholeSitePageActionManifest({
     let capabilityAccepted =
       !writes ||
       (dominatesTrigger &&
-        capabilityUpstreamAssociationTrusted);
+        capabilityUpstreamAssociationTrusted &&
+        serverDefinitionFreshReadVerified);
+    if (
+      action.capability.kind === "server_definition" &&
+      !serverDefinitionFreshReadVerified
+    ) {
+      capabilityAccepted = false;
+      blockers.writeWithoutServerCapability.push({
+        code: "SERVER_DEFINITION_HANDLER_FRESH_READ_UNVERIFIED",
+        actionId: action.id,
+        sourceFile: action.sourceFile
+      });
+    }
     if (action.capability.kind === "client_role_or_status") {
       capabilityAccepted = false;
       blockers.clientRoleOrStatusGates.push({
