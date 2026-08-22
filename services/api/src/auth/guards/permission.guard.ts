@@ -22,6 +22,7 @@ import {
   type FrozenApprovalNode
 } from "../../approval/approval-review-identity";
 import { PrismaService } from "../../database/prisma.service";
+import { CompanyRoleResolverService } from "../company-role-resolver.service";
 import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import { resolveGovernedFinalArchiveAccess } from "../../contract/contract-final-archive-access";
 import type { AuthenticatedRequest } from "../auth.types";
@@ -37,7 +38,9 @@ export class PermissionGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
     private readonly spotAccess: SpotProcurementAccessService =
-      new SpotProcurementAccessService(prisma)
+      new SpotProcurementAccessService(prisma),
+    private readonly companyRoles: CompanyRoleResolverService =
+      new CompanyRoleResolverService(prisma)
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -76,12 +79,16 @@ export class PermissionGuard implements CanActivate {
     const roleScopes = await this.loadRoleScopes(
       request.user.id,
       projectId,
-      includeAnyProjectRole
+      includeAnyProjectRole,
+      requiredAction === "business_party.create"
     );
     const effectiveRoleKeys = resolveEffectiveRoleKeys(
       roleScopes.globalRoleKeys,
       roleScopes.projectRoleKeys
     );
+    const actionRoleKeys = requiredAction === "business_party.create"
+      ? roleScopes.globalRoleKeys
+      : effectiveRoleKeys;
 
     if (requiredPositions?.length) {
       const allowed = requiredPositions.some((position) =>
@@ -117,7 +124,7 @@ export class PermissionGuard implements CanActivate {
       if (governedApprovalAccess === false) {
         throw new ForbiddenException("当前账号不是该审批节点冻结的处理人");
       }
-      if (!canPerform(requiredAction, effectiveRoleKeys)) {
+      if (!canPerform(requiredAction, actionRoleKeys)) {
         const delegatedApprovalAllowed =
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&
@@ -150,8 +157,15 @@ export class PermissionGuard implements CanActivate {
   private async loadRoleScopes(
     userId: string,
     projectId?: string,
-    includeAnyProjectRole = false
+    includeAnyProjectRole = false,
+    useCanonicalCompanyScope = false
   ) {
+    if (useCanonicalCompanyScope) {
+      return {
+        globalRoleKeys: await this.companyRoles.resolveActiveRoleScopes(userId),
+        projectRoleKeys: [] as RoleKey[]
+      };
+    }
     const [globalPositions, userProjectPositions, projectMemberPositions] = await Promise.all([
       this.prisma.userPosition.findMany({
         where: { userId, projectId: null }

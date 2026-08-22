@@ -87,8 +87,17 @@ export function operationalWriteActionKey(
   return `${controllerName}.${handlerName}`;
 }
 
-export function operationalWriteModuleFor(controller: object) {
+export function operationalWriteModuleFor(
+  controller: object,
+  request?: { params?: Record<string, string | undefined> }
+) {
   const controllerName =
     typeof controller === "function" ? controller.name : controller.constructor.name;
+  if (
+    controllerName === "BusinessEntryDefinitionController" &&
+    request?.params?.sceneKey === "business_party"
+  ) {
+    return "master_data" as const;
+  }
   return OPERATIONAL_WRITE_CONTROLLER_MODULES[controllerName];
 }

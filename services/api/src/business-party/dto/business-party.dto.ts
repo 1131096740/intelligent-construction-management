@@ -13,13 +13,14 @@ export type BusinessPartyAttachmentCategory =
   | "other";
 
 export interface BusinessPartySnapshotDto {
+  type?: "organization";
   name: string;
   unifiedSocialCreditCode?: string;
   legalRepresentative?: string;
   address?: string;
   contactName?: string;
   contactPhone?: string;
-  attachments: Array<{
+  attachments?: Array<{
     category: BusinessPartyAttachmentCategory;
     fileId: string;
     name: string;
@@ -28,6 +29,14 @@ export interface BusinessPartySnapshotDto {
 }
 
 export interface CreateBusinessPartyDto extends BusinessPartySnapshotDto {}
+
+export interface BusinessPartyCreateIntentDto {
+  target: { entityType: string; createTarget: string };
+  definitionKey: string;
+  definitionVersion: number;
+  idempotencyKey: string;
+  values: CreateBusinessPartyDto;
+}
 
 export interface AddContractPartyDto {
   roleKey:

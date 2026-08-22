@@ -6,29 +6,23 @@ import {
 } from "@nestjs/common";
 import {
   OPERATIONAL_WRITE_ALLOWED_ACTIONS,
-  OPERATIONAL_WRITE_MODULES,
   operationalWriteActionKey,
-  operationalWriteModuleFor,
-  type OperationalWriteModule
+  operationalWriteModuleFor
 } from "./operational-write-freeze.registry";
-
-type OperationalWriteFreezeMode = "off" | "all" | "modules";
-
-interface OperationalWriteFreezeConfig {
-  mode: OperationalWriteFreezeMode;
-  modules: ReadonlySet<OperationalWriteModule>;
-}
+import { OperationalWriteFreezeService } from "./operational-write-freeze.service";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const MODES = new Set<OperationalWriteFreezeMode>(["off", "all", "modules"]);
-const MODULES = new Set<OperationalWriteModule>(OPERATIONAL_WRITE_MODULES);
 
 @Injectable()
 export class OperationalWriteFreezeGuard implements CanActivate {
+  constructor(
+    private readonly writeFreeze = new OperationalWriteFreezeService()
+  ) {}
+
   canActivate(context: ExecutionContext): boolean {
     const request = context
       .switchToHttp()
-      .getRequest<{ method?: string }>();
+      .getRequest<{ method?: string; params?: Record<string, string | undefined> }>();
     if (SAFE_METHODS.has((request.method ?? "GET").toUpperCase())) return true;
 
     const actionKey = operationalWriteActionKey(
@@ -37,7 +31,7 @@ export class OperationalWriteFreezeGuard implements CanActivate {
     );
     if (OPERATIONAL_WRITE_ALLOWED_ACTIONS.has(actionKey)) return true;
 
-    const module = operationalWriteModuleFor(context.getClass());
+    const module = operationalWriteModuleFor(context.getClass(), request);
     if (!module) {
       throw this.exception(
         "OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED",
@@ -45,18 +39,7 @@ export class OperationalWriteFreezeGuard implements CanActivate {
       );
     }
 
-    const config = this.configuration();
-    if (!config) {
-      throw this.exception(
-        "OPERATIONAL_WRITE_FREEZE_CONFIGURATION_INVALID",
-        "系统运行控制配置无效，请联系管理员"
-      );
-    }
-
-    if (
-      config.mode === "all" ||
-      (config.mode === "modules" && config.modules.has(module))
-    ) {
+    if (this.writeFreeze.isFrozen(module)) {
       throw this.exception(
         "OPERATIONAL_WRITE_FREEZE_ACTIVE",
         "系统当前仅开放安全查询，请稍后刷新重试"
@@ -65,38 +48,6 @@ export class OperationalWriteFreezeGuard implements CanActivate {
 
     return true;
   }
-
-  private configuration(): OperationalWriteFreezeConfig | null {
-    const rawMode =
-      process.env.OPERATIONAL_WRITE_FREEZE_MODE?.trim() || "off";
-    if (!MODES.has(rawMode as OperationalWriteFreezeMode)) return null;
-
-    const rawModules =
-      process.env.OPERATIONAL_WRITE_FREEZE_MODULES?.trim() ?? "";
-    const values = rawModules === "" ? [] : rawModules.split(",");
-    if (values.some((value) => value.trim() !== value || value === "")) {
-      return null;
-    }
-    if (new Set(values).size !== values.length) return null;
-    if (
-      values.some(
-        (value) => !MODULES.has(value as OperationalWriteModule)
-      )
-    ) {
-      return null;
-    }
-
-    const mode = rawMode as OperationalWriteFreezeMode;
-    if (mode === "modules" ? values.length === 0 : values.length > 0) {
-      return null;
-    }
-
-    return {
-      mode,
-      modules: new Set(values as OperationalWriteModule[])
-    };
-  }
-
   private exception(code: string, message: string) {
     return new HttpException({ statusCode: 503, code, message }, 503);
   }

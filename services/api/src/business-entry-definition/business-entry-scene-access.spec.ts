@@ -59,6 +59,12 @@ describe("BusinessEntrySceneAccessRegistry", () => {
             }
             : definition.key === "user_self_profile"
               ? { kind: "authenticated_self", roleScope: "global" }
+              : definition.key === "business_party"
+                ? {
+                    kind: "business_action",
+                    action: "business_party.create",
+                    roleScope: "global"
+                  }
               : expect.objectContaining({ kind: "role_keys", roleScope: "global" })
       );
     }
