@@ -1,18 +1,30 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { assertValidUnifiedSocialCreditCode } from "../company-entity/unified-social-credit-code";
 import { AuditService } from "../audit/audit.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { bumpContractAggregateRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
+import { canPerform, type RoleKey } from "@jiangkong/shared-domain";
+import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
+import { BusinessEntryCreateTargetService } from "../business-entry-definition/business-entry-create-target.service";
+import {
+  OperationalWriteFreezeService
+} from "../operational-write-freeze/operational-write-freeze.service";
 import type {
   AddContractPartyDto,
   BusinessPartyAttachmentCategory,
+  BusinessPartyCreateIntentDto,
   BusinessPartySnapshotDto,
   CreateBusinessPartyDto,
   SaveContractDraftPartyDto
@@ -36,18 +48,41 @@ const CONTRACT_PARTY_ROLES = new Set<AddContractPartyDto["roleKey"]>([
   "other"
 ]);
 
+const BUSINESS_PARTY_ACTION = "business_party.create" as const;
+const BUSINESS_PARTY_TYPE = "organization" as const;
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>).sort().map((key) =>
+      `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`
+    ).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function isUuidV4(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function prismaErrorCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
 @Injectable()
 export class BusinessPartyService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly companyRoles = new CompanyRoleResolverService(prisma),
+    @Optional() private readonly createTargets = new BusinessEntryCreateTargetService(),
+    @Optional() private readonly writeFreeze = new OperationalWriteFreezeService()
   ) {}
 
   async assertCanMaintainBusinessEntry(actorUserId: string) {
-    await this.assertGlobalContractRole(
-      this.prisma as unknown as Prisma.TransactionClient,
-      actorUserId
-    );
+    await this.assertGlobalContractRole(actorUserId);
   }
 
   async replaceContractPartiesInTransaction(
@@ -154,36 +189,191 @@ export class BusinessPartyService {
   }
 
   async createParty(actorUserId: string, input: CreateBusinessPartyDto) {
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalContractRole(tx, actorUserId);
-      const snapshot = this.normalizeSnapshot(input);
-      await this.assertCreditCodeAvailable(tx, snapshot.unifiedSocialCreditCode);
+    const roleKeys = await this.assertGlobalContractRole(actorUserId);
+    const snapshot = this.normalizeSnapshot(input, true);
+    return this.createPartyRecord(actorUserId, roleKeys, snapshot);
+  }
 
-      const party = await tx.businessParty.create({
-        data: {
-          name: snapshot.name,
-          unifiedSocialCreditCode: snapshot.unifiedSocialCreditCode ?? null,
-          createdByUserId: actorUserId
-        }
-      });
-      const version = await tx.businessPartyVersion.create({
-        data: {
-          businessPartyId: party.id,
-          versionNo: 1,
-          snapshot: this.copySnapshot(snapshot),
-          createdByUserId: actorUserId
-        }
-      });
-
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "business_party.create",
-        businessType: "business_party",
-        businessId: party.id,
-        metadata: { versionId: version.id, versionNo: 1 }
-      });
-      return { party, version };
+  async createPartyWithIntent(
+    actorUserId: string,
+    request: BusinessPartyCreateIntentDto
+  ) {
+    const definition = BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("business_party");
+    if (
+      request.definitionKey !== definition.key ||
+      request.definitionVersion !== definition.version ||
+      !isUuidV4(request.idempotencyKey)
+    ) {
+      throw new BadRequestException("合作单位创建定义或幂等参数已失效，请刷新后重试");
+    }
+    const snapshot = this.normalizeSnapshot(request.values, true);
+    const fingerprint = this.snapshotFingerprint(snapshot);
+    const target = request.target;
+    if (
+      !target ||
+      target.entityType !== "business_party" ||
+      typeof target.createTarget !== "string"
+    ) {
+      throw new BadRequestException("合作单位创建意图无效，请刷新后重试");
+    }
+    this.createTargets.verify(target.createTarget, {
+      actorUserId,
+      action: BUSINESS_PARTY_ACTION,
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      definitionKey: definition.key,
+      definitionVersion: definition.version,
+      idempotencyKey: request.idempotencyKey,
+      fingerprint
     });
+
+    const existing = await this.findIdempotentResult(request.idempotencyKey, fingerprint);
+    const roleKeys = await this.assertGlobalContractRole(actorUserId);
+    if (existing) return existing;
+    this.writeFreeze.assertCanWrite("master_data");
+    return this.createPartyRecord(actorUserId, roleKeys, snapshot, {
+      idempotencyKey: request.idempotencyKey,
+      fingerprint,
+      definitionKey: definition.key,
+      definitionVersion: definition.version,
+      roleKeys
+    });
+  }
+
+  private async findIdempotentResult(idempotencyKey: string, fingerprint: string) {
+    const idempotency = await this.prisma.businessPartyCreateIdempotency?.findUnique({
+      where: { idempotencyKey }
+    });
+    if (!idempotency) return null;
+    if (idempotency.fingerprint !== fingerprint) {
+      throw new ConflictException("该幂等键已用于另一份合作单位资料");
+    }
+    if (!idempotency.businessPartyId || !idempotency.completedAt) return null;
+    const party = await this.prisma.businessParty.findUnique({
+      where: { id: idempotency.businessPartyId }
+    });
+    const version = await this.prisma.businessPartyVersion.findFirst({
+      where: { businessPartyId: idempotency.businessPartyId, versionNo: 1 }
+    });
+    if (!party || !version) {
+      throw new BadRequestException("合作单位创建结果不完整，请联系管理员");
+    }
+    return { party, version, replayed: true };
+  }
+
+  private async createPartyRecord(
+    actorUserId: string,
+    roleKeys: readonly RoleKey[],
+    snapshot: BusinessPartySnapshotDto,
+    idempotency?: {
+      idempotencyKey: string;
+      fingerprint: string;
+      definitionKey: string;
+      definitionVersion: number;
+      roleKeys: readonly RoleKey[];
+    }
+  ) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (idempotency) {
+          const existing = await tx.businessPartyCreateIdempotency.findUnique({
+            where: { idempotencyKey: idempotency.idempotencyKey }
+          });
+          if (existing) {
+            if (existing.fingerprint !== idempotency.fingerprint) {
+              throw new ConflictException("该幂等键已用于另一份合作单位资料");
+            }
+            if (!existing.businessPartyId || !existing.completedAt) {
+              throw new ConflictException("该合作单位创建请求正在处理中，请稍后重试");
+            }
+            const party = await tx.businessParty.findUnique({
+              where: { id: existing.businessPartyId }
+            });
+            const version = await tx.businessPartyVersion.findFirst({
+              where: { businessPartyId: existing.businessPartyId, versionNo: 1 }
+            });
+            if (!party || !version) {
+              throw new BadRequestException("合作单位创建结果不完整，请联系管理员");
+            }
+            return { party, version, replayed: true };
+          }
+        }
+
+        await this.assertIdentityAvailable(tx, snapshot);
+        const party = await tx.businessParty.create({
+          data: {
+            type: BUSINESS_PARTY_TYPE,
+            name: snapshot.name,
+            normalizedName: snapshot.name,
+            unifiedSocialCreditCode: snapshot.unifiedSocialCreditCode ?? null,
+            createdByUserId: actorUserId
+          }
+        });
+        const version = await tx.businessPartyVersion.create({
+          data: {
+            businessPartyId: party.id,
+            versionNo: 1,
+            snapshot: this.copySnapshot(snapshot),
+            createdByUserId: actorUserId
+          }
+        });
+
+        if (idempotency) {
+          await tx.businessPartyCreateIdempotency.create({
+            data: {
+              idempotencyKey: idempotency.idempotencyKey,
+              actorUserId,
+              action: BUSINESS_PARTY_ACTION,
+              definitionKey: idempotency.definitionKey,
+              definitionVersion: idempotency.definitionVersion,
+              fingerprint: idempotency.fingerprint,
+              normalizedSnapshot: this.copySnapshot(snapshot),
+              businessPartyId: party.id,
+              completedAt: new Date()
+            }
+          });
+        }
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: BUSINESS_PARTY_ACTION,
+          businessType: "business_party",
+          businessId: party.id,
+          metadata: {
+            versionId: version.id,
+            versionNo: 1,
+            action: BUSINESS_PARTY_ACTION,
+            actorRoleKeys: [...roleKeys],
+            ...(idempotency
+              ? {
+                  idempotencyKey: idempotency.idempotencyKey,
+                  definitionKey: idempotency.definitionKey,
+                  definitionVersion: idempotency.definitionVersion,
+                  fingerprint: idempotency.fingerprint,
+                  normalizedSnapshot: this.copySnapshot(snapshot)
+                }
+              : {})
+          }
+        });
+        return { party, version, replayed: false };
+      });
+    } catch (error) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) {
+        throw error;
+      }
+      if (prismaErrorCode(error) === "P2002") {
+        if (idempotency) {
+          const replay = await this.findIdempotentResult(
+            idempotency.idempotencyKey,
+            idempotency.fingerprint
+          );
+          if (replay) return replay;
+        }
+        throw new ConflictException("合作单位名称或统一社会信用代码已存在，请核对既有档案");
+      }
+      throw error;
+    }
   }
 
   async createVersion(
@@ -191,17 +381,13 @@ export class BusinessPartyService {
     actorUserId: string,
     input: CreateBusinessPartyDto
   ) {
+    await this.assertGlobalContractRole(actorUserId);
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalContractRole(tx, actorUserId);
       const party = await tx.businessParty.findUnique({ where: { id: partyId } });
       if (!party) throw new NotFoundException("合作单位不存在");
 
-      const snapshot = this.normalizeSnapshot(input);
-      await this.assertCreditCodeAvailable(
-        tx,
-        snapshot.unifiedSocialCreditCode,
-        partyId
-      );
+      const snapshot = this.normalizeSnapshot(input, false);
+      await this.assertIdentityAvailable(tx, snapshot, partyId);
       const latestVersion = await tx.businessPartyVersion.findFirst({
         where: { businessPartyId: partyId },
         orderBy: { versionNo: "desc" }
@@ -220,6 +406,7 @@ export class BusinessPartyService {
         where: { id: partyId },
         data: {
           name: snapshot.name,
+          normalizedName: snapshot.name,
           unifiedSocialCreditCode: snapshot.unifiedSocialCreditCode ?? null
         }
       });
@@ -261,9 +448,9 @@ export class BusinessPartyService {
           where: { id: input.businessPartyVersionId }
         });
         if (!version) throw new NotFoundException("合作单位版本不存在");
-        snapshot = this.normalizeSnapshot(version.snapshot as unknown as BusinessPartySnapshotDto);
+        snapshot = this.normalizeSnapshot(version.snapshot as unknown as BusinessPartySnapshotDto, false);
       } else {
-        snapshot = this.normalizeSnapshot(input.snapshot as BusinessPartySnapshotDto);
+        snapshot = this.normalizeSnapshot(input.snapshot as BusinessPartySnapshotDto, false);
       }
       const newRevision = await this.lockDraftMutation(
         tx,
@@ -383,33 +570,114 @@ export class BusinessPartyService {
     });
   }
 
-  private normalizeSnapshot(input: BusinessPartySnapshotDto): BusinessPartySnapshotDto {
-    const name = input?.name?.trim();
+  private normalizeSnapshot(
+    input: BusinessPartySnapshotDto,
+    serverOwnedAttachments: boolean
+  ): BusinessPartySnapshotDto {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new BadRequestException("合作单位信息格式不正确");
+    }
+    let rawName: unknown;
+    let rawCode: unknown;
+    let rawAttachments: unknown;
+    try {
+      const record = input as unknown as Record<string, unknown>;
+      rawName = record.name;
+      rawCode = record.unifiedSocialCreditCode;
+      rawAttachments = record.attachments;
+    } catch {
+      throw new BadRequestException("合作单位信息格式不正确");
+    }
+    if (typeof rawName !== "string") {
+      throw new BadRequestException("合作单位名称必须是文字");
+    }
+    const name = this.normalizeName(rawName);
     if (!name) throw new BadRequestException("请填写合作单位名称");
-    if (!Array.isArray(input.attachments)) {
+    if (typeof rawCode !== "undefined" && rawCode !== null && typeof rawCode !== "string") {
+      throw new BadRequestException("统一社会信用代码必须是文字");
+    }
+    const codeText = typeof rawCode === "string" ? rawCode.trim() : "";
+    const unifiedSocialCreditCode = codeText
+      ? assertValidUnifiedSocialCreditCode(codeText)
+      : undefined;
+    const attachments = serverOwnedAttachments
+      ? this.serverOwnedAttachments(rawAttachments)
+      : this.normalizeAttachments(rawAttachments);
+    const record = input as unknown as Record<string, unknown>;
+    const snapshot: BusinessPartySnapshotDto = {
+      ...(serverOwnedAttachments ? { type: BUSINESS_PARTY_TYPE } : {}),
+      name,
+      ...(unifiedSocialCreditCode ? { unifiedSocialCreditCode } : {}),
+      ...(!serverOwnedAttachments && typeof record.legalRepresentative === "string"
+        ? { legalRepresentative: record.legalRepresentative.trim() }
+        : {}),
+      ...(!serverOwnedAttachments && typeof record.address === "string"
+        ? { address: record.address.trim() }
+        : {}),
+      ...(!serverOwnedAttachments && typeof record.contactName === "string"
+        ? { contactName: record.contactName.trim() }
+        : {}),
+      ...(!serverOwnedAttachments && typeof record.contactPhone === "string"
+        ? { contactPhone: record.contactPhone.trim() }
+        : {}),
+      attachments
+    };
+    return snapshot;
+  }
+
+  private normalizeName(value: string) {
+    const normalized = value.normalize("NFC").trim().replace(/\s+/gu, " ");
+    if (Array.from(normalized).length > 100) {
+      throw new BadRequestException("合作单位名称不能超过 100 个字符");
+    }
+    for (const character of normalized) {
+      if (/\p{Cc}/u.test(character) && !/\s/u.test(character)) {
+        throw new BadRequestException("合作单位名称包含不受支持的控制字符");
+      }
+    }
+    return normalized;
+  }
+
+  private serverOwnedAttachments(rawAttachments: unknown) {
+    if (rawAttachments !== undefined && !Array.isArray(rawAttachments)) {
       throw new BadRequestException("合作单位附件必须是数组");
     }
-    const attachments = input.attachments.map((attachment) => {
+    if (Array.isArray(rawAttachments)) this.normalizeAttachments(rawAttachments);
+    return [];
+  }
+
+  private normalizeAttachments(rawAttachments: unknown) {
+    if (!Array.isArray(rawAttachments)) {
+      throw new BadRequestException("合作单位附件必须是数组");
+    }
+    return rawAttachments.map((attachment) => {
+      if (!attachment || typeof attachment !== "object") {
+        throw new BadRequestException("合作单位附件信息不正确");
+      }
+      const record = attachment as Record<string, unknown>;
+      const category = record.category;
+      const fileId = record.fileId;
+      const attachmentName = record.name;
       if (
-        !ATTACHMENT_CATEGORIES.has(attachment.category) ||
-        !attachment.fileId?.trim() ||
-        !attachment.name?.trim()
+        typeof category !== "string" || !ATTACHMENT_CATEGORIES.has(category as BusinessPartyAttachmentCategory) ||
+        typeof fileId !== "string" || !fileId.trim() ||
+        typeof attachmentName !== "string" || !attachmentName.trim()
       ) {
         throw new BadRequestException("合作单位附件信息不正确");
       }
       return {
-        ...attachment,
-        fileId: attachment.fileId.trim(),
-        name: attachment.name.trim()
+        category: category as BusinessPartyAttachmentCategory,
+        fileId: fileId.trim(),
+        name: attachmentName.trim(),
+        ...(typeof record.validUntil === "string" && record.validUntil.trim()
+          ? { validUntil: record.validUntil.trim() }
+          : {})
       };
     });
-    const unifiedSocialCreditCode = input.unifiedSocialCreditCode?.trim().toUpperCase();
-    return {
-      ...input,
-      name,
-      unifiedSocialCreditCode: unifiedSocialCreditCode || undefined,
-      attachments
-    };
+  }
+
+  private snapshotFingerprint(snapshot: BusinessPartySnapshotDto) {
+    return createHash("sha256").update(stableJson(snapshot)).digest("hex");
   }
 
   private copySnapshot(snapshot: BusinessPartySnapshotDto): Prisma.InputJsonValue {
@@ -448,28 +716,32 @@ export class BusinessPartyService {
     }
   }
 
-  private async assertGlobalContractRole(
+  private async assertIdentityAvailable(
     tx: Prisma.TransactionClient,
-    actorUserId: string
+    snapshot: BusinessPartySnapshotDto,
+    excludedPartyId?: string
   ) {
-    const assignments = await tx.userPosition.findMany({
-      where: { userId: actorUserId, projectId: null }
+    await this.assertCreditCodeAvailable(
+      tx,
+      snapshot.unifiedSocialCreditCode,
+      excludedPartyId
+    );
+    const duplicateName = await tx.businessParty.findUnique({
+      where: { normalizedName: snapshot.name }
     });
-    const positions = assignments.length
-      ? await tx.position.findMany({
-          where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
-        })
-      : [];
-    if (
-      !positions.some(
-        (position) =>
-          position.key === "contract_staff" || position.key === "contract_director"
-      )
-    ) {
+    if (duplicateName && duplicateName.id !== excludedPartyId) {
+      throw new ConflictException("合作单位名称已存在，请核对既有档案");
+    }
+  }
+
+  private async assertGlobalContractRole(actorUserId: string) {
+    const roleKeys: RoleKey[] = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+    if (!canPerform("business_party.create", roleKeys)) {
       throw new ForbiddenException(
         "只有公司级合同人员可以维护合作单位档案"
       );
     }
+    return roleKeys;
   }
 
   private async assertDraftOwner(

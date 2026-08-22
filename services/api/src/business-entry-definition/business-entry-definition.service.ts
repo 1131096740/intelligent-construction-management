@@ -26,6 +26,7 @@ import {
   type BusinessEntryValidationResult,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import {
@@ -41,6 +42,7 @@ import {
 } from "./business-entry-scene-access";
 import { BusinessEntryCreateTargetService } from "./business-entry-create-target.service";
 import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
 export const BUSINESS_ENTRY_DEFINITION_REGISTRY = Symbol(
   "BUSINESS_ENTRY_DEFINITION_REGISTRY"
@@ -74,7 +76,9 @@ export class BusinessEntryDefinitionService {
     private readonly snapshots: BusinessEntrySnapshotStore,
     private readonly prisma: PrismaService,
     private readonly authorization: BusinessEntrySceneAuthorizationService,
-    @Optional() private readonly createTargets?: BusinessEntryCreateTargetService
+    @Optional() private readonly createTargets?: BusinessEntryCreateTargetService,
+    @Optional() private readonly companyRoles?: CompanyRoleResolverService,
+    @Optional() private readonly writeFreeze?: OperationalWriteFreezeService
   ) {}
 
   async getSceneDefinition(
@@ -178,7 +182,13 @@ export class BusinessEntryDefinitionService {
     sceneKey: string,
     projectId: string | undefined,
     actorUserId: string,
-    entityType: string
+    entityType: string,
+    intent?: {
+      idempotencyKey?: string;
+      fingerprint?: string;
+      definitionKey?: string;
+      definitionVersion?: number;
+    }
   ) {
     const { access } = await this.authorizeScene(sceneKey, projectId, actorUserId);
     if (entityType !== access.target.entityType) {
@@ -190,6 +200,21 @@ export class BusinessEntryDefinitionService {
     if (!this.createTargets) {
       throw new BadRequestException("新建目标令牌服务未启用");
     }
+    const definition = this.registry.getSceneDefinition(sceneKey);
+    const action = sceneKey === "business_party" ? "business_party.create" : undefined;
+    if (action) {
+      (this.writeFreeze ?? new OperationalWriteFreezeService()).assertCanWrite("master_data");
+      const verifiedIntent = intent;
+      if (
+        !verifiedIntent?.idempotencyKey ||
+        !verifiedIntent.fingerprint ||
+        verifiedIntent.definitionKey !== definition.key ||
+        verifiedIntent.definitionVersion !== definition.version
+      ) {
+        throw new BadRequestException("合作单位创建意图参数不完整，请刷新后重试");
+      }
+      intent = verifiedIntent;
+    }
     if (access.target.scope !== "global") {
       throw new BadRequestException("项目业务场景暂不允许使用新建目标令牌");
     }
@@ -197,7 +222,14 @@ export class BusinessEntryDefinitionService {
       actorUserId,
       scene: sceneKey,
       entityType,
-      scope: access.target.scope
+      scope: access.target.scope,
+      ...(action ? {
+        action,
+        definitionKey: definition.key,
+        definitionVersion: definition.version,
+        idempotencyKey: intent!.idempotencyKey,
+        fingerprint: intent!.fingerprint
+      } : {})
     });
     await this.authorization.assertAuthorized({
       sceneKey,
@@ -371,7 +403,7 @@ export class BusinessEntryDefinitionService {
       if (projectId !== undefined) throw new BadRequestException("全局业务场景不得携带项目上下文");
       roleKeys = access.permission.kind === "authenticated_self"
         ? [BUSINESS_ENTRY_AUTHENTICATED_SELF]
-        : await this.loadGlobalRoleKeys(actorUserId);
+        : await this.loadGlobalRoleKeys(actorUserId, sceneKey);
     } else {
       if (!projectId?.trim()) throw new BadRequestException("请选择项目");
       await this.assertActiveProject(projectId);
@@ -400,7 +432,14 @@ export class BusinessEntryDefinitionService {
     if (!project) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
   }
 
-  private async loadGlobalRoleKeys(actorUserId: string): Promise<RoleKey[]> {
+  private async loadGlobalRoleKeys(
+    actorUserId: string,
+    sceneKey: string
+  ): Promise<RoleKey[]> {
+    if (sceneKey === "business_party") {
+      const resolver = this.companyRoles ?? new CompanyRoleResolverService(this.prisma);
+      return resolver.resolveActiveRoleScopes(actorUserId);
+    }
     const assignments = await this.prisma.userPosition.findMany({
       where: { userId: actorUserId, projectId: null },
       select: { positionId: true }

@@ -8,8 +8,29 @@ import {
   missingRolesFor,
   resolveEffectiveRoleKeys
 } from "./permissions";
+import { ROLE_KEYS, type RoleKey } from "./roles";
+import type { BusinessAction } from "./permissions";
 
 describe("permission policy table", () => {
+  it("limits business-party creation to the approved company roles", () => {
+    const action = "business_party.create" as BusinessAction;
+    const expectedRoles = [
+      "contract_staff",
+      "contract_director",
+      "finance_staff",
+      "finance_director",
+      "chairman",
+      "general_manager"
+    ] as const satisfies readonly RoleKey[];
+
+    expect(ACTION_REQUIRED_ROLES[action]).toEqual(expectedRoles);
+
+    const allowedRoles = new Set<string>(expectedRoles);
+    for (const role of ROLE_KEYS) {
+      expect(canPerform(action, [role])).toBe(allowedRoles.has(role));
+    }
+  });
+
   it("limits operating takeover work to contract and finance roles", () => {
     expect(canPerform("operating_takeover.manage", ["contract_staff"])).toBe(true);
     expect(canPerform("operating_takeover.confirm", ["contract_staff"])).toBe(false);

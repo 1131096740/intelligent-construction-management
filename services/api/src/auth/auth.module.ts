@@ -10,6 +10,8 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { PermissionGuard } from "./guards/permission.guard";
 import { JwtTokenService } from "./jwt-token.service";
 import { ProjectVisibilityService } from "./project-visibility.service";
+import { CompanyRoleResolverService } from "./company-role-resolver.service";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
 @Module({
   imports: [AuditModule, SpotProcurementAccessModule],
@@ -17,12 +19,20 @@ import { ProjectVisibilityService } from "./project-visibility.service";
   providers: [
     AuthService,
     JwtTokenService,
+    CompanyRoleResolverService,
+    OperationalWriteFreezeService,
     ProjectVisibilityService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: OperationalWriteFreezeGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_GUARD, useClass: ContractCutoverGuard }
   ],
-  exports: [AuthService, JwtTokenService, ProjectVisibilityService]
+  exports: [
+    AuthService,
+    JwtTokenService,
+    ProjectVisibilityService,
+    CompanyRoleResolverService,
+    OperationalWriteFreezeService
+  ]
 })
 export class AuthModule {}

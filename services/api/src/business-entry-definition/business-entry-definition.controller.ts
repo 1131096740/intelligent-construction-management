@@ -165,6 +165,17 @@ export class BusinessEntryDefinitionController {
     @Body() body: BusinessEntryCreateTargetDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.definitions.issueCreateTarget(sceneKey, projectId, user.id, body.entityType);
+    return this.definitions.issueCreateTarget(
+      sceneKey,
+      projectId,
+      user.id,
+      body.entityType,
+      {
+        idempotencyKey: body.idempotencyKey,
+        fingerprint: body.fingerprint,
+        definitionKey: body.definitionKey,
+        definitionVersion: body.definitionVersion
+      }
+    );
   }
 }

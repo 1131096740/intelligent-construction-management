@@ -23,16 +23,24 @@ class AuthController {
   updateMyProfile() {}
 }
 
+class BusinessEntryDefinitionController {
+  freeze() {}
+}
+
 function contextFor(input: {
   controller: object;
   handler: object;
   method?: string;
+  params?: Record<string, string>;
 }): ExecutionContext {
   return {
     getClass: () => input.controller,
     getHandler: () => input.handler,
     switchToHttp: () => ({
-      getRequest: () => ({ method: input.method ?? "POST" })
+      getRequest: () => ({
+        method: input.method ?? "POST",
+        params: input.params
+      })
     })
   } as unknown as ExecutionContext;
 }
@@ -189,5 +197,24 @@ describe("OperationalWriteFreezeGuard", () => {
       503,
       "OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED"
     );
+  });
+
+  it("maps only the business-party definition scene to master-data freeze", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "master_data";
+    expectHttpFailure(
+      () => guard.canActivate(contextFor({
+        controller: BusinessEntryDefinitionController,
+        handler: BusinessEntryDefinitionController.prototype.freeze,
+        params: { sceneKey: "business_party" }
+      })),
+      503,
+      "OPERATIONAL_WRITE_FREEZE_ACTIVE"
+    );
+    expect(guard.canActivate(contextFor({
+      controller: BusinessEntryDefinitionController,
+      handler: BusinessEntryDefinitionController.prototype.freeze,
+      params: { sceneKey: "company_profile" }
+    }))).toBe(true);
   });
 });

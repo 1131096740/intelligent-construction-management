@@ -146,6 +146,57 @@ const ownerSettlementTarget = {
 const companyTarget = { entityType: "company_entity", entityId: "company-1" } as const;
 
 describe("BusinessEntryDefinitionService", () => {
+  it("uses the canonical company-role resolver for business-party scenes", async () => {
+    const partyDefinition = {
+      ...definition,
+      key: "business_party",
+      entityType: "business_party",
+      fields: definition.fields.map((field) => ({
+        ...field,
+        permissions: {
+          view: ["contract_staff"] as const,
+          edit: ["contract_staff"] as const,
+          import: ["contract_staff"] as const
+        }
+      }))
+    };
+    const resolver = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"])
+    };
+    const targetResolver = jest.fn().mockResolvedValue(true);
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([partyDefinition]),
+      createBusinessEntrySceneAccessRegistry([partyDefinition], [{
+        sceneKey: "business_party",
+        target: {
+          scope: "global",
+          entityType: "business_party",
+          resolve: targetResolver
+        },
+        permission: {
+          kind: "role_keys",
+          roleKeys: ["contract_staff"],
+          roleScope: "global"
+        }
+      }]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshotStoreMock(),
+      { project: { findUnique: jest.fn() } } as never,
+      authorizationMock(),
+      undefined,
+      resolver as never
+    );
+
+    await expect(service.getSceneDefinition(
+      "business_party",
+      undefined,
+      "user-1",
+      { entityType: "business_party", entityId: "party-1" }
+    )).resolves.toMatchObject({ key: "business_party" });
+    expect(resolver.resolveActiveRoleScopes).toHaveBeenCalledWith("user-1");
+    expect(targetResolver).toHaveBeenCalled();
+  });
+
   it("fails closed across create-target, validation, and freeze when domain authorization is missing", async () => {
     const snapshots = snapshotStoreMock(
       jest.fn().mockImplementation(async (_projectId, _userId, snapshot) => snapshot)
