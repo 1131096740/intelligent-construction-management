@@ -219,6 +219,30 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
   });
 });
 
+test("child runner preserves explicitly configured task-local Prisma engines", () => {
+  const child = createChildEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/tmp/local-home",
+      PRISMA_QUERY_ENGINE_LIBRARY: "/tmp/dynamic-gate/libquery-engine",
+      PRISMA_SCHEMA_ENGINE_BINARY: "/tmp/dynamic-gate/schema-engine",
+      PRISMA_GENERATE_NO_ENGINE: "1"
+    },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+
+  assert.equal(
+    child.PRISMA_QUERY_ENGINE_LIBRARY,
+    "/tmp/dynamic-gate/libquery-engine"
+  );
+  assert.equal(
+    child.PRISMA_SCHEMA_ENGINE_BINARY,
+    "/tmp/dynamic-gate/schema-engine"
+  );
+  assert.equal(child.PRISMA_GENERATE_NO_ENGINE, "1");
+});
+
 test("preserves an explicitly configured Corepack cache location", () => {
   const child = createChildEnvironment(
     {
