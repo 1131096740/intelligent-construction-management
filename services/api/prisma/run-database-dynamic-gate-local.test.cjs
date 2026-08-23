@@ -15,6 +15,7 @@ const {
   parseArguments,
   validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
+const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
 const {
   GROUPS: remainingGroups,
   selectGroups: selectRemainingGroups
@@ -28,6 +29,7 @@ const runnerPath = path.join(
 test("manifest derives all 94 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
+  const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
     pendingFiles: 38,
@@ -38,11 +40,9 @@ test("manifest derives all 94 pending tests as executable local coverage", () =>
     coveredTests: 94,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 136,
-    terminalMigration:
-      "20260816120000_pol08_contract_lineage_operating_sources",
-    terminalMigrationChecksum:
-      "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0"
+    migrationCount: baseline.expectedDirectoryCount,
+    terminalMigration: baseline.terminalMigration,
+    terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
 });
 

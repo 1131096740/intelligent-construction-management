@@ -11,6 +11,11 @@ const runnerPath = resolve(
 
 describe("settlement draft lifecycle PostgreSQL concurrency runner", () => {
   it("pins a dedicated local PostgreSQL database and the complete migration set", () => {
+    const baseline = localRequire(
+      resolve(prismaRoot, "migration-baseline.cjs")
+    ).loadCanonicalMigrationBaseline() as {
+      expectedDirectoryCount: number;
+    };
     const runner = localRequire(runnerPath) as {
       DATABASE_NAME: string;
       EXPECTED_MIGRATION_COUNT: number;
@@ -20,7 +25,9 @@ describe("settlement draft lifecycle PostgreSQL concurrency runner", () => {
     expect(runner.DATABASE_NAME).toBe(
       "jiangkong_settlement_draft_lifecycle_concurrency"
     );
-    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(136);
+    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(
+      baseline.expectedDirectoryCount
+    );
     expect(runner.EXPECTED_MIGRATION_COUNT).toBe(
       readdirSync(resolve(prismaRoot, "migrations"), {
         withFileTypes: true

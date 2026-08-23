@@ -1,10 +1,26 @@
 # 本机 PostgreSQL 16 动态门
 
-本入口把当前 91 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
+本入口把当前受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
 `database-dynamic-gate-manifest.json` 为机器真相；可编排不等于已经通过，必须以执行收据为准。
 
-当前迁移基线是 132 个目录，终点为
-`20260816100000_pol17_business_entry_submission_snapshots`。
+当前迁移基线由 `migrations/` 实际目录确定，目前是 136 个目录，终点为
+`20260816120000_pol08_contract_lineage_operating_sources`。
+
+## 迁移基线检查与同步
+
+基线由 `generate-database-migration-baseline.cjs` 从迁移目录排序、计数并计算终点
+`migration.sql` 的 SHA-256 后派生。默认检查和预览均为只读；只有显式 `--sync` 才会
+以同目录临时文件原子更新 canonical manifest。同步前后都不得修改业务迁移目录。
+
+```bash
+pnpm check:migration-baseline
+pnpm preview:migration-baseline
+pnpm sync:migration-baseline
+```
+
+`check`/`validate` 在 source-directory drift 时以非零退出；`preview` 报告 drift 但不写入；
+`sync` 仅允许 canonical manifest 目标，重复执行幂等。动态门 validator 与所有受控 runner
+复用同一 `migration-baseline.cjs` 派生接口。
 
 ## 只读检查
 
@@ -29,7 +45,7 @@ node --test services/api/prisma/run-database-dynamic-gate-local.test.cjs
 - 进程没有继承 `DATABASE_URL` 或任何 `*_DATABASE_URL`；
 - Docker context 解析为本机 Unix socket 或 Windows named pipe；
 - 本机已经缓存 `postgres:16`，入口不会拉取镜像；
-- 源码仍精确包含 132 个迁移目录及当前终点迁移。
+- 源码仍精确包含 136 个迁移目录及当前终点迁移。
 
 执行格式如下，`<CURRENT_40_CHAR_SHA>` 必须手工替换为已核验候选：
 
@@ -79,7 +95,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | settlement draft lifecycle | 1 | 1 |
 | 合计 | 24 | 9 |
 
-## 新增编排的 67 条
+## 新增编排的 70 条
 
 | 测试文件 | pending tests | RUN 开关 |
 | --- | ---: | --- |
@@ -105,7 +121,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | project-upstream-fund-fact-db.spec.ts | 2 | `RUN_PROJECT_UPSTREAM_FUND_DB_TESTS` |
 | project-operating-profile-upgrade.spec.ts | 2 | `RUN_PROJECT_OPERATING_PROFILE_UPGRADE` |
 | project-operating-profile-db.spec.ts | 17 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
-| business-entry-definition-postgres.spec.ts | 2 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
+| business-entry-definition-postgres.spec.ts | 5 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
 | operating-ledger-concurrency.spec.ts | 1 | `RUN_OPERATING_LEDGER_DATABASE` |
 | operating-source-replay-consistency.spec.ts | 1 | `RUN_OPERATING_SOURCE_REPLAY_DATABASE` |
 | pol05-operating-source-facts.spec.ts | 1 | `RUN_POL05_OPERATING_SOURCE_DATABASE` |
@@ -114,4 +130,4 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | project-affiliate-subject-db.spec.ts | 2 | `RUN_PROJECT_AFFILIATE_DB_TESTS` |
 | 合计 | 67 | 29 个文件 |
 
-这 67 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。
+这 70 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。当前清单合计 94 条 pending tests、38 个文件，remaining=0。

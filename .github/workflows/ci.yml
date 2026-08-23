@@ -40,6 +40,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @jiangkong/api exec prisma generate
 
+      - name: Verify migration baseline
+        run: pnpm check:migration-baseline
+
       - name: Verify CI orchestration contract
         run: pnpm test:ci-orchestration
 
@@ -156,6 +159,9 @@ jobs:
 
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
+
+      - name: Verify migration baseline
+        run: pnpm check:migration-baseline
 
       - name: Prepare PostgreSQL 16 dynamic gate image
         run: docker pull postgres:16

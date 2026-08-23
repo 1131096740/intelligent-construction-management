@@ -19,10 +19,10 @@ const {
   runInterruption,
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
+const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME =
   "jiangkong_project_expense_receipt_concurrency";
-const EXPECTED_MIGRATION_COUNT = 136;
 const LATEST_MIGRATION =
   "20260728160000_project_expense_receipt_confirmation";
 const PRE160_TEMPLATE_DATABASE =
@@ -45,6 +45,8 @@ const RETAINED_DATABASES = {
 };
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
+const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
+const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
 const pnpm =
   process.env.PNPM_BIN?.trim() ||
   (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
