@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "569d1931db3a1096f24eccbfb7382c14534192a4c23c711f66a5d09541f7fb2b",
+      "sha256": "007dd7279bf96375ad1681ba4bbe52c4dc80fa41c32a6bdab30433b9a3dfac09",
       "status": "ready",
       "summary": {
         "routeCount": 480
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "20fb8465d4893fd5313a89135d91e3fcc478f817a063accd19c4a46ece57d386",
+      "sha256": "828d28fc3772c42a81d69d802af6ab14099741554e95440c4d8dd847519c5592",
       "status": "ready",
       "summary": {
         "routeCount": 480,
@@ -9468,10 +9468,10 @@
         "sourceFile": "services/api/src/business-party/business-party.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "business_party.create",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,
@@ -9508,10 +9508,10 @@
         "sourceFile": "services/api/src/business-party/business-party.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "business_party.create",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,

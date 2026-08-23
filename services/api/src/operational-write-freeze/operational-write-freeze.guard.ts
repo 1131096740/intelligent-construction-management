@@ -15,9 +15,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 @Injectable()
 export class OperationalWriteFreezeGuard implements CanActivate {
-  constructor(
-    private readonly writeFreeze = new OperationalWriteFreezeService()
-  ) {}
+  constructor(private readonly writeFreeze: OperationalWriteFreezeService) {}
 
   canActivate(context: ExecutionContext): boolean {
     const request = context

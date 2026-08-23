@@ -3,8 +3,8 @@
 本入口把当前受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
 `database-dynamic-gate-manifest.json` 为机器真相；可编排不等于已经通过，必须以执行收据为准。
 
-当前迁移基线由 `migrations/` 实际目录确定，目前是 136 个目录，终点为
-`20260816120000_pol08_contract_lineage_operating_sources`。
+当前迁移基线由 `migrations/` 实际目录确定，目前是 137 个目录，终点为
+`20260823090000_business_party_creation_contract`。
 
 ## 迁移基线检查与同步
 
@@ -45,7 +45,7 @@ node --test services/api/prisma/run-database-dynamic-gate-local.test.cjs
 - 进程没有继承 `DATABASE_URL` 或任何 `*_DATABASE_URL`；
 - Docker context 解析为本机 Unix socket 或 Windows named pipe；
 - 本机已经缓存 `postgres:16`，入口不会拉取镜像；
-- 源码仍精确包含 136 个迁移目录及当前终点迁移。
+- 源码仍精确包含 137 个迁移目录及当前终点迁移。
 
 执行格式如下，`<CURRENT_40_CHAR_SHA>` 必须手工替换为已核验候选：
 
@@ -71,7 +71,7 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 9 组 runner。已有 8 组保持独立收据；第 9 组由
-`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 10 个子组，覆盖原先缺少编排及后续新增的 67 条。
+`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 10 个子组，覆盖原先缺少编排及后续新增的 70 条。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
 

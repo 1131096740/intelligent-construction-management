@@ -76,9 +76,9 @@ export class BusinessPartyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly companyRoles = new CompanyRoleResolverService(prisma),
-    @Optional() private readonly createTargets = new BusinessEntryCreateTargetService(),
-    @Optional() private readonly writeFreeze = new OperationalWriteFreezeService()
+    private readonly companyRoles: CompanyRoleResolverService = new CompanyRoleResolverService(prisma),
+    @Optional() private readonly createTargets: BusinessEntryCreateTargetService = new BusinessEntryCreateTargetService(),
+    @Optional() private readonly writeFreeze: OperationalWriteFreezeService = new OperationalWriteFreezeService()
   ) {}
 
   async assertCanMaintainBusinessEntry(actorUserId: string) {

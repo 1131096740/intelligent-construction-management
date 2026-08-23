@@ -1,6 +1,7 @@
 import type { ExecutionContext } from "@nestjs/common";
 import { HttpException } from "@nestjs/common";
 import { OperationalWriteFreezeGuard } from "./operational-write-freeze.guard";
+import { OperationalWriteFreezeService } from "./operational-write-freeze.service";
 
 const originalMode = process.env.OPERATIONAL_WRITE_FREEZE_MODE;
 const originalModules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
@@ -66,7 +67,7 @@ function expectHttpFailure(action: () => unknown, status: number, code: string) 
 }
 
 describe("OperationalWriteFreezeGuard", () => {
-  const guard = new OperationalWriteFreezeGuard();
+  const guard = new OperationalWriteFreezeGuard(new OperationalWriteFreezeService());
 
   afterEach(() => restoreEnvironment());
 
