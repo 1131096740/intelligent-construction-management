@@ -113,7 +113,21 @@ function serverDefinitionAction(overrides = {}) {
     },
     capability: {
       kind: "server_definition",
-      source: "definition.key"
+      source: "definition.key",
+      freshRead: {
+        apiFile: "apps/web-admin/src/api/example.api.ts",
+        name: "fetchBusinessEntryDefinition",
+        method: "GET",
+        mode: "read_only_probe",
+        binding: {
+          actor: "actor",
+          company: "company",
+          scene: "scene",
+          action: "action",
+          definitionRevision: "definitionRevision"
+        },
+        submissionTarget: "independent"
+      }
     },
     ...overrides
   });
@@ -5578,6 +5592,85 @@ export async function submitExample() { return undefined; }
         ...(pageOptions.extraFiles ?? {})
       },
       page: fixtureOverrides.page ?? serverDefinitionPage(pageOptions)
+    });
+    const candidate = await inspectWholeSitePageActionManifest({
+      root: candidateRoot
+    });
+    assert.equal(candidate.status, "blocked", label);
+    assert.ok(
+      blockerCodes(candidate).has(expectedCode),
+      `${label}: ${JSON.stringify(candidate.blockers)}`
+    );
+  }
+});
+
+test("requires an explicit GET-only fresh-read binding separate from submission targets", async () => {
+  const root = await serverDefinitionFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.deepEqual(
+    manifest.actions[0].capability.freshRead,
+    {
+      apiFile: "apps/web-admin/src/api/example.api.ts",
+      name: "fetchBusinessEntryDefinition",
+      method: "GET",
+      mode: "read_only_probe",
+      binding: {
+        actor: "actor",
+        company: "company",
+        scene: "scene",
+        action: "action",
+        definitionRevision: "definitionRevision"
+      },
+      submissionTarget: "independent"
+    }
+  );
+
+  const rejects = [
+    ["probe mutation", { method: "POST" }, "FRESH_READ_BINDING_NOT_GET"],
+    [
+      "probe shares submission target",
+      { submissionTarget: "create_target" },
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "probe binding missing company",
+      {
+        binding: {
+          actor: "actor",
+          scene: "scene",
+          action: "action",
+          definitionRevision: "definitionRevision"
+        }
+      },
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "probe wrapper is not the fresh read",
+      { name: "otherDefinitionRead" },
+      "FRESH_READ_BINDING_UNVERIFIED"
+    ]
+  ];
+
+  for (const [label, freshReadOverrides, expectedCode] of rejects) {
+    const base = serverDefinitionAction().capability.freshRead;
+    const candidateRoot = await serverDefinitionFixture({
+      fixtureOverrides: {
+        actions: [
+          serverDefinitionAction({
+            capability: {
+              ...serverDefinitionAction().capability,
+              freshRead: {
+                ...base,
+                ...freshReadOverrides,
+                ...(freshReadOverrides.binding
+                  ? { binding: freshReadOverrides.binding }
+                  : {})
+              }
+            }
+          })
+        ]
+      }
     });
     const candidate = await inspectWholeSitePageActionManifest({
       root: candidateRoot

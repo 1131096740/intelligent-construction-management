@@ -661,6 +661,64 @@ test("builds a ready GET route matrix", () => {
   assert.equal(matrix.routes[0].mutationCoverage, "not_applicable");
 });
 
+test("carries a GET-only fresh-read binding without classifying it as a mutation", () => {
+  const input = fixture();
+  const action = actionFor(
+    input.nestManifest.routes[0],
+    input.webManifest.wrappers[0],
+    { accepted: true }
+  );
+  action.id = "fixture.definition";
+  action.semantic = "business_write";
+  action.capability = {
+    kind: "server_definition",
+    source: "definition.key",
+    serverDerived: true,
+    dominatesTrigger: true,
+    freshRead: {
+      apiFile: input.webManifest.wrappers[0].apiFile,
+      name: input.webManifest.wrappers[0].name,
+      method: "GET",
+      mode: "read_only_probe",
+      binding: {
+        actor: "actor",
+        company: "company",
+        scene: "scene",
+        action: "action",
+        definitionRevision: "definitionRevision"
+      },
+      submissionTarget: "independent"
+    }
+  };
+  input.pageManifest = pageManifest(input.webManifest, [action]);
+
+  const matrix = build(input);
+  assert.equal(matrix.status, "ready");
+  assert.deepEqual(
+    matrix.routes[0].actions[0].capability.freshRead,
+    action.capability.freshRead
+  );
+  assert.equal(matrix.routes[0].actions[0].accepted, false);
+  assert.equal(matrix.routes[0].mutationCoverage, "not_applicable");
+  assert.equal(
+    matrix.summary.coveredProductionMutationConsumerPairCount,
+    0
+  );
+
+  for (const freshRead of [
+    { ...action.capability.freshRead, method: "POST" },
+    { ...action.capability.freshRead, submissionTarget: "create_target" }
+  ]) {
+    const invalid = clone(input);
+    invalid.pageManifest.actions[0].capability.freshRead = freshRead;
+    assert.throws(
+      () => build(invalid),
+      (error) =>
+        error?.code === "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+  }
+});
+
 test("accepts a causally verified server-capability mutation", () => {
   const matrix = build(fixture({ mutation: "accepted" }));
   assert.equal(matrix.status, "ready");

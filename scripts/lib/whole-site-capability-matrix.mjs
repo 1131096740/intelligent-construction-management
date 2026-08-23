@@ -958,7 +958,8 @@ function validateCapability(capability) {
     "kind",
     "serverDerived",
     "source",
-    ...(Object.hasOwn(capability, "key") ? ["key"] : [])
+    ...(Object.hasOwn(capability, "key") ? ["key"] : []),
+    ...(Object.hasOwn(capability, "freshRead") ? ["freshRead"] : [])
   ];
   assertExactKeys(
     capability,
@@ -981,6 +982,61 @@ function validateCapability(capability) {
   if (Object.hasOwn(capability, "key")) {
     assertString(
       capability.key,
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+  }
+  if (Object.hasOwn(capability, "freshRead")) {
+    assert(
+      capability.kind === "server_definition",
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    assertExactKeys(
+      capability.freshRead,
+      [
+        "apiFile",
+        "name",
+        "method",
+        "mode",
+        "binding",
+        "submissionTarget"
+      ],
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    assertString(
+      capability.freshRead.apiFile,
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    assertString(
+      capability.freshRead.name,
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    assert(
+      capability.freshRead.method === "GET",
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    assert(
+      capability.freshRead.mode === "read_only_probe",
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    assertExactKeys(
+      capability.freshRead.binding,
+      [
+        "actor",
+        "company",
+        "scene",
+        "action",
+        "definitionRevision"
+      ],
+      "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+    );
+    for (const value of Object.values(capability.freshRead.binding)) {
+      assertString(
+        value,
+        "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
+      );
+    }
+    assert(
+      capability.freshRead.submissionTarget === "independent",
       "CAPABILITY_MATRIX_INVALID_ACTION_CAPABILITY"
     );
   }
@@ -1666,14 +1722,19 @@ function actionBindingReasons(
   { hasMutationBinding }
 ) {
   const reasons = [];
+  const hasFreshRead = Object.hasOwn(action.capability, "freshRead");
   if (
     !MUTATION_METHODS.has(binding.method) &&
-    !hasMutationBinding
+    !hasMutationBinding &&
+    !hasFreshRead
   ) {
     reasons.push("binding_not_mutation");
   }
   if (!binding.causalVerified) reasons.push("causal_unverified");
-  if (binding.acceptedProductionConsumers.length === 0) {
+  if (
+    binding.acceptedProductionConsumers.length === 0 &&
+    !hasFreshRead
+  ) {
     reasons.push("no_accepted_consumer");
   }
   if (!action.capability.serverDerived) {
