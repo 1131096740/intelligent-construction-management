@@ -333,12 +333,14 @@ async function seedFixture(
       {
         id: fixture.affiliatePartyId,
         name: "POL-05 施工企业",
+        normalizedName: "POL-05 施工企业",
         unifiedSocialCreditCode: `${fixture.prefix}AFF`,
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyId,
         name: "POL-05 下游供应商",
+        normalizedName: "POL-05 下游供应商",
         unifiedSocialCreditCode: `${fixture.prefix}PAYEE`,
         createdByUserId: fixture.financeUserId
       }

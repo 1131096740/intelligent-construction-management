@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -10,6 +11,7 @@ import {
 } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractCutoverTombstoneWrite } from "../contract-cutover/contract-cutover.decorators";
 import { BusinessPartyService } from "./business-party.service";
 import type {
@@ -32,14 +34,19 @@ export class BusinessPartyController {
   }
 
   @Post("business-parties")
+  @RequireProjectRole("business_party.create")
   create(
     @Body() body: CreateBusinessPartyDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.businessParties.createParty(user.id, body);
+    if (!body || typeof body !== "object" || !("values" in body)) {
+      throw new BadRequestException("合作单位创建必须携带受控创建意图");
+    }
+    return this.businessParties.createPartyWithIntent(user.id, body as never);
   }
 
   @Post("business-parties/:partyId/versions")
+  @RequireProjectRole("business_party.create")
   createVersion(
     @Param("partyId") partyId: string,
     @Body() body: CreateBusinessPartyDto,

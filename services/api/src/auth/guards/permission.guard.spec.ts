@@ -128,6 +128,36 @@ describe("PermissionGuard", () => {
     });
   }
 
+  it("uses the canonical active company-role resolver for business-party creation", async () => {
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "position-contract-staff",
+          key: "contract_staff"
+        }])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest.fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("business_party.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(guard.canActivate(contextWithRequest({ user: { id: "user-1" } })))
+      .resolves.toBe(true);
+    expect(prisma.userPosition.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: null },
+      select: { positionId: true }
+    });
+  });
+
   it("blocks a project-scoped director from the governed final-file routes before the service, without tightening ordinary archive-file confirmation", async () => {
     const prisma = {
       contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1", contractGovernanceVersion: 1 }) },

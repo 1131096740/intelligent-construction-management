@@ -11,6 +11,11 @@ interface BusinessEntryCreateTargetClaims {
   scene: string;
   entityType: string;
   scope: BusinessEntryTargetScope;
+  action?: string;
+  definitionKey?: string;
+  definitionVersion?: number;
+  idempotencyKey?: string;
+  fingerprint?: string;
   projectId?: string;
   iat: number;
   exp: number;
@@ -41,6 +46,14 @@ export class BusinessEntryCreateTargetService {
   }
 
   issue(input: Omit<BusinessEntryCreateTargetClaims, "v" | "iat" | "exp">) {
+    if (
+      (input.idempotencyKey !== undefined && !this.isUuidV4(input.idempotencyKey)) ||
+      (input.fingerprint !== undefined && !/^[0-9a-f]{64}$/iu.test(input.fingerprint)) ||
+      (input.definitionVersion !== undefined &&
+        (!Number.isSafeInteger(input.definitionVersion) || input.definitionVersion <= 0))
+    ) {
+      throw new BadRequestException("新建目标意图参数无效");
+    }
     const now = Math.floor(Date.now() / 1000);
     const claims: BusinessEntryCreateTargetClaims = {
       ...input,
@@ -91,11 +104,22 @@ export class BusinessEntryCreateTargetService {
         expiresAt <= issuedAt ||
         (claims.scope === "project" && typeof claims.projectId !== "string") ||
         (claims.scope === "global" && claims.projectId !== undefined) ||
+        (claims.action !== undefined && typeof claims.action !== "string") ||
+        (claims.definitionKey !== undefined && typeof claims.definitionKey !== "string") ||
+        (claims.definitionVersion !== undefined &&
+          (!Number.isSafeInteger(claims.definitionVersion) || claims.definitionVersion <= 0)) ||
+        (claims.idempotencyKey !== undefined && !this.isUuidV4(claims.idempotencyKey)) ||
+        (claims.fingerprint !== undefined && !/^[0-9a-f]{64}$/iu.test(claims.fingerprint)) ||
         claims.actorUserId !== expected.actorUserId ||
         claims.scene !== expected.scene ||
         claims.entityType !== expected.entityType ||
         claims.scope !== expected.scope ||
-        claims.projectId !== expected.projectId
+        claims.projectId !== expected.projectId ||
+        (expected.action !== undefined && claims.action !== expected.action) ||
+        (expected.definitionKey !== undefined && claims.definitionKey !== expected.definitionKey) ||
+        (expected.definitionVersion !== undefined && claims.definitionVersion !== expected.definitionVersion) ||
+        (expected.idempotencyKey !== undefined && claims.idempotencyKey !== expected.idempotencyKey) ||
+        (expected.fingerprint !== undefined && claims.fingerprint !== expected.fingerprint)
       ) {
         throw new Error("target binding mismatch");
       }
@@ -107,5 +131,9 @@ export class BusinessEntryCreateTargetService {
 
   private sign(payload: string) {
     return createHmac("sha256", this.secret).update(payload).digest("base64url");
+  }
+
+  private isUuidV4(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
   }
 }

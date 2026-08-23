@@ -395,6 +395,7 @@ async function createFixture(prisma: PrismaClient) {
     data: {
       id: partyId,
       name: "挂靠建设集团",
+      normalizedName: `挂靠建设集团-${suffix}`,
       unifiedSocialCreditCode: affiliateCreditCode,
       createdByUserId: recorderId
     }

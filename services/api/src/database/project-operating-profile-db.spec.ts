@@ -524,6 +524,7 @@ async function createFixture(
     data: {
       id: partyId,
       name: "施工企业",
+      normalizedName: `施工企业-${suffix}`,
       unifiedSocialCreditCode: `BUILD-${suffix}`,
       createdByUserId: financeUserId
     }
@@ -585,6 +586,7 @@ async function createConstructionAssignment(
     data: {
       id: partyId,
       name,
+      normalizedName: `${name}-${suffix}`,
       unifiedSocialCreditCode: `BUILD-${suffix}`,
       createdByUserId: actorUserId
     }

@@ -370,6 +370,13 @@ function createProbeEnvironment(sourceEnv, temporaryRoot) {
 
 function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
   const corepackHome = resolveCorepackHome(sourceEnv, temporaryRoot);
+  const prismaEngineEnvironment = {};
+  for (const key of [
+    "PRISMA_QUERY_ENGINE_LIBRARY",
+    "PRISMA_SCHEMA_ENGINE_BINARY"
+  ]) {
+    if (sourceEnv[key]) prismaEngineEnvironment[key] = sourceEnv[key];
+  }
   return {
     PATH: sourceEnv.PATH ?? "",
     HOME: sourceEnv.HOME ?? temporaryRoot,
@@ -377,6 +384,7 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
     NODE_ENV: "test",
     CI: "true",
     DOCKER_HOST: dockerEndpoint,
+    ...prismaEngineEnvironment,
     ...(corepackHome ? { COREPACK_HOME: corepackHome } : {})
   };
 }

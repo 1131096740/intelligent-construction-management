@@ -1,6 +1,8 @@
 import { PrismaService } from "../database/prisma.service";
 import { BusinessPartyService } from "./business-party.service";
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
+import { BusinessEntryCreateTargetService } from "../business-entry-definition/business-entry-create-target.service";
 
 describe("BusinessPartyService", () => {
   const audit = { record: jest.fn() };
@@ -15,7 +17,7 @@ describe("BusinessPartyService", () => {
         findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: roleKey }])
+        findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: roleKey }])
       }
     };
   }
@@ -68,6 +70,12 @@ describe("BusinessPartyService", () => {
   function prismaWithTransaction<T extends object>(tx: T) {
     const client = tx as T & {
       $queryRaw?: jest.Mock;
+      userPosition?: { findMany: jest.Mock };
+      position?: { findMany: jest.Mock };
+      businessPartyCreateIdempotency?: {
+        findUnique: jest.Mock;
+        create: jest.Mock;
+      };
       contractVersion?: { updateMany?: jest.Mock };
       contract?: { updateMany?: jest.Mock };
       contractGeneratedDocument?: { updateMany: jest.Mock };
@@ -85,6 +93,10 @@ describe("BusinessPartyService", () => {
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     };
     return {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      userPosition: client.userPosition,
+      position: client.position,
+      businessPartyCreateIdempotency: client.businessPartyCreateIdempotency,
       $transaction: jest.fn(async (callback: (client: T) => unknown) => callback(tx))
     } as unknown as PrismaService;
   }
@@ -160,7 +172,7 @@ describe("BusinessPartyService", () => {
 
   const snapshot = {
     name: "  华东建设有限公司  ",
-    unifiedSocialCreditCode: " 91310000abc123 ",
+    unifiedSocialCreditCode: " 91350211m000100y46 ",
     legalRepresentative: "张三",
     address: "上海市",
     contactName: "李四",
@@ -183,7 +195,7 @@ describe("BusinessPartyService", () => {
         create: jest.fn().mockResolvedValue({
           id: "party-1",
           name: "华东建设有限公司",
-          unifiedSocialCreditCode: "91310000ABC123"
+          unifiedSocialCreditCode: "91350211M000100Y46"
         })
       },
       businessPartyVersion: {
@@ -198,7 +210,7 @@ describe("BusinessPartyService", () => {
     expect(tx.businessParty.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: "华东建设有限公司",
-        unifiedSocialCreditCode: "91310000ABC123",
+        unifiedSocialCreditCode: "91350211M000100Y46",
         createdByUserId: "staff-1"
       })
     });
@@ -207,10 +219,81 @@ describe("BusinessPartyService", () => {
         businessPartyId: "party-1",
         versionNo: 1,
         snapshot: expect.objectContaining({
-          unifiedSocialCreditCode: "91310000ABC123"
+          unifiedSocialCreditCode: "91350211M000100Y46"
         })
       })
     });
+  });
+
+  it("requires a bound create intent and records the idempotent creation fact atomically", async () => {
+    const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify({
+        attachments: [],
+        name: "受控单位",
+        type: "organization",
+        unifiedSocialCreditCode: "91350211M000100Y46"
+      }))
+      .digest("hex");
+    const tx = {
+      ...globalRole(),
+      businessParty: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "party-intent-1",
+          name: "受控单位",
+          normalizedName: "受控单位",
+          unifiedSocialCreditCode: "91350211M000100Y46"
+        })
+      },
+      businessPartyVersion: {
+        create: jest.fn().mockResolvedValue({ id: "party-intent-version-1", versionNo: 1 })
+      },
+      businessPartyCreateIdempotency: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ idempotencyKey })
+      }
+    };
+    const prisma = prismaWithTransaction(tx);
+    const service = new BusinessPartyService(prisma, audit as never);
+    const targetService = new BusinessEntryCreateTargetService();
+    const target = targetService.issue({
+      actorUserId: "staff-1",
+      action: "business_party.create",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      idempotencyKey,
+      fingerprint
+    });
+
+    const result = await service.createPartyWithIntent("staff-1", {
+      target: { entityType: "business_party", createTarget: target.createTarget },
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      idempotencyKey,
+      values: {
+        name: "受控单位",
+        unifiedSocialCreditCode: "91350211m000100y46",
+        attachments: []
+      }
+    });
+
+    expect(result).toMatchObject({ party: { id: "party-intent-1" }, version: { versionNo: 1 } });
+    expect(tx.businessPartyCreateIdempotency.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey,
+        action: "business_party.create",
+        fingerprint,
+        businessPartyId: "party-intent-1"
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "business_party.create",
+      metadata: expect.objectContaining({ idempotencyKey, fingerprint })
+    }));
   });
 
   it("rejects duplicate unified social credit code", async () => {
@@ -236,7 +319,7 @@ describe("BusinessPartyService", () => {
       businessParty: {
         findUnique: jest.fn().mockResolvedValue({
           id: "party-1",
-          unifiedSocialCreditCode: "91310000ABC123"
+          unifiedSocialCreditCode: "91350211M000100Y46"
         }),
         update: jest.fn().mockResolvedValue({ id: "party-1", name: "华东建设集团有限公司" })
       },
@@ -379,7 +462,7 @@ describe("BusinessPartyService", () => {
     expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
   });
 
-  it("keeps qualification attachment file ids in version snapshot", async () => {
+  it("derives empty attachments for a newly created business-party version", async () => {
     const tx = {
       ...globalRole(),
       businessParty: {
@@ -397,12 +480,7 @@ describe("BusinessPartyService", () => {
     expect(tx.businessPartyVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         snapshot: expect.objectContaining({
-          attachments: [
-            expect.objectContaining({
-              category: "qualification",
-              fileId: "file-qualification-1"
-            })
-          ]
+          attachments: []
         })
       })
     });
@@ -696,7 +774,7 @@ describe("BusinessPartyService", () => {
     const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
 
     await expect(service.createParty("employee-1", snapshot)).rejects.toThrow(
-      "只有公司级合同人员可以维护合作单位档案"
+      "当前账号不可用或岗位数据异常"
     );
     expect(tx.businessParty.create).not.toHaveBeenCalled();
   });

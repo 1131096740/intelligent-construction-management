@@ -26,6 +26,14 @@ const organizationRoles = [
 ] as const;
 const companyRoles = ["comprehensive_director", "contract_staff", "contract_director"] as const;
 const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
+const businessPartyCreateRoles = [
+  "contract_staff",
+  "contract_director",
+  "finance_staff",
+  "finance_director",
+  "chairman",
+  "general_manager"
+] as const;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
 
@@ -276,8 +284,8 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     textField("registeredAddress", "注册地址", companyRoles)
   ]),
   globalDefinition("business_party", "business_party", "合作单位", [
-    textField("name", "单位名称", contractTemplateRoles),
-    textField("unifiedSocialCreditCode", "统一社会信用代码", contractTemplateRoles)
+    textField("name", "单位名称", businessPartyCreateRoles),
+    textField("unifiedSocialCreditCode", "统一社会信用代码", businessPartyCreateRoles)
   ]),
   globalDefinition("contract_business_template", "contract_business_template", "合同业务模板", [
     textField("code", "模板编码", contractTemplateRoles),
@@ -356,7 +364,11 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
     {
       sceneKey: "business_party",
       target: globalTarget("business_party", resolveParty),
-      permission: { kind: "role_keys", roleKeys: contractTemplateRoles, roleScope: "global" }
+      permission: {
+        kind: "business_action",
+        action: "business_party.create",
+        roleScope: "global"
+      }
     },
     {
       sceneKey: "contract_business_template",

@@ -810,10 +810,15 @@ async function main() {
   });
   await prisma.businessParty.upsert({
     where: { id: seedConstructionEnterpriseId },
-    update: { name: "示例施工企业", status: "active" },
+    update: {
+      name: "示例施工企业",
+      normalizedName: "示例施工企业",
+      status: "active"
+    },
     create: {
       id: seedConstructionEnterpriseId,
       name: "示例施工企业",
+      normalizedName: "示例施工企业",
       unifiedSocialCreditCode: "91310000SEEDBUILD01",
       status: "active",
       createdByUserId: seed.users.contractStaff.id

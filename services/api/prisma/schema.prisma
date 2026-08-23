@@ -3249,7 +3249,9 @@ model StandardClauseVersion {
 
 model BusinessParty {
   id                      String   @id @default(uuid())
+  type                    String   @default("organization")
   name                    String
+  normalizedName          String   @unique
   unifiedSocialCreditCode String?  @unique
   status                  String   @default("active")
   createdByUserId         String
@@ -3266,6 +3268,22 @@ model BusinessPartyVersion {
   createdAt       DateTime @default(now())
 
   @@unique([businessPartyId, versionNo])
+}
+
+model BusinessPartyCreateIdempotency {
+  idempotencyKey  String   @id
+  actorUserId     String
+  action          String
+  definitionKey   String
+  definitionVersion Int
+  fingerprint     String
+  normalizedSnapshot Json
+  businessPartyId String?
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  @@index([businessPartyId])
+  @@index([actorUserId, createdAt])
 }
 
 model ContractPartySnapshot {
