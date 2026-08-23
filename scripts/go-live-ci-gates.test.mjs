@@ -105,6 +105,7 @@ test("CI fans out independent static and database gates behind one stable summar
   }
 
   assert.match(quality, /pnpm test:ci-orchestration/u);
+  assert.match(quality, /pnpm check:migration-baseline/u);
   assert.match(quality, /pnpm audit --prod --audit-level high/u);
   assert.match(quality, /pnpm typecheck/u);
   assert.match(quality, /pnpm lint/u);
@@ -123,6 +124,7 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(dynamic, /--group "\$DYNAMIC_GROUP"/u);
   assert.match(dynamic, /--candidate-sha "\$candidate_sha"/u);
   assert.match(dynamic, /--confirm LOCAL_PG16_DYNAMIC_GATE/u);
+  assert.match(dynamic, /pnpm check:migration-baseline/u);
 
   assert.match(summary, /name: Release gates/u);
   assert.match(summary, /if: \$\{\{ always\(\) \}\}/u);

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
 import {
   ConflictException,
   type HttpException
@@ -13,7 +15,12 @@ import { SettlementSubmissionService } from "../settlement/settlement-submission
 
 const DATABASE_NAME =
   "jiangkong_settlement_draft_lifecycle_concurrency";
-const EXPECTED_MIGRATION_COUNT = 136;
+const localRequire = createRequire(__filename);
+const EXPECTED_MIGRATION_COUNT = (
+  localRequire(resolve(__dirname, "../../prisma/migration-baseline.cjs")) as {
+    loadCanonicalMigrationBaseline: () => { expectedDirectoryCount: number };
+  }
+).loadCanonicalMigrationBaseline().expectedDirectoryCount;
 
 describe("settlement draft lifecycle database concurrency", () => {
   const integrationTest =

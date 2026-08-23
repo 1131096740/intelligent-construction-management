@@ -11,6 +11,12 @@ const runnerPath = join(
 
 describe("project financing quota PostgreSQL runner", () => {
   it("pins the exact local database, migration count, terminal migration and checksum", () => {
+    const baseline = localRequire(
+      join(process.cwd(), "prisma/migration-baseline.cjs")
+    ).loadCanonicalMigrationBaseline() as {
+      expectedDirectoryCount: number;
+      terminalMigration: string;
+    };
     const runner = localRequire(runnerPath) as {
       DATABASE_NAME: string;
       CURRENT_TERMINAL_MIGRATION: string;
@@ -43,9 +49,11 @@ describe("project financing quota PostgreSQL runner", () => {
     expect(runner.DATABASE_NAME).toBe(
       "jiangkong_project_financing_quota_concurrency"
     );
-    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(136);
+    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(
+      baseline.expectedDirectoryCount
+    );
     expect(runner.CURRENT_TERMINAL_MIGRATION).toBe(
-      "20260816120000_pol08_contract_lineage_operating_sources"
+      baseline.terminalMigration
     );
     expect(runner.PRE115_MIGRATION_COUNT).toBe(114);
     expect(runner.PRE115_TERMINAL_MIGRATION).toBe(

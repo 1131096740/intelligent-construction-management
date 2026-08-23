@@ -4,6 +4,7 @@ const requiredChecks = Object.freeze([
   "ci-orchestration",
   "frozen-dependency-install",
   "prisma-client-generation",
+  "migration-baseline",
   "production-dependency-audit",
   "workspace-typecheck",
   "web-e2e-typecheck",

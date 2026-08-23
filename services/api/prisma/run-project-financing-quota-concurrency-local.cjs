@@ -21,6 +21,7 @@ const {
   runInterruption,
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
+const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME = "jiangkong_project_financing_quota_concurrency";
 const LEGACY_DATABASE_NAME =
@@ -51,11 +52,6 @@ const REQUEST_MIGRATION =
   "20260802010000_project_financing_quota_request_idempotency";
 const REQUEST_MIGRATION_CHECKSUM =
   "d3d0d07a6cc9a49da1cca1478822a873fad7c7324b9d189e2a55a4d3f57bfe61";
-const EXPECTED_MIGRATION_COUNT = 136;
-const CURRENT_TERMINAL_MIGRATION =
-  "20260816120000_pol08_contract_lineage_operating_sources";
-const CURRENT_TERMINAL_MIGRATION_CHECKSUM =
-  "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0";
 const TERMINAL_MIGRATION =
   "20260802020000_project_financing_quota_termination_idempotency";
 const TERMINAL_MIGRATION_CHECKSUM =
@@ -84,6 +80,11 @@ const PRE115_CONFLICT_SCENARIOS = [
 ];
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
+const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
+const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
+const CURRENT_TERMINAL_MIGRATION = migrationBaseline.terminalMigration;
+const CURRENT_TERMINAL_MIGRATION_CHECKSUM =
+  migrationBaseline.terminalMigrationChecksum;
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });

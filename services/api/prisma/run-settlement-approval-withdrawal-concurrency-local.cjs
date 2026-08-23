@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-const { createHash, randomUUID } = require("node:crypto");
+const { randomUUID } = require("node:crypto");
 const {
   mkdtemp,
   readFile,
@@ -22,14 +22,15 @@ const {
   VERIFICATION_SCOPE,
   assertVerificationScope
 } = require("./settlement-approval-withdrawal-concurrency-fixtures.cjs");
+const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
-const EXPECTED_MIGRATION_COUNT = 136;
-const TERMINAL_MIGRATION =
-  "20260816120000_pol08_contract_lineage_operating_sources";
-const TERMINAL_MIGRATION_CHECKSUM =
-  "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0";
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
+const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
+const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
+const TERMINAL_MIGRATION = migrationBaseline.terminalMigration;
+const TERMINAL_MIGRATION_CHECKSUM =
+  migrationBaseline.terminalMigrationChecksum;
 const pnpm =
   process.env.PNPM_BIN?.trim() ||
   (process.platform === "win32" ? "pnpm.cmd" : "pnpm");

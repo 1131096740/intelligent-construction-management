@@ -1,5 +1,4 @@
-const { createHash, randomUUID } = require("node:crypto");
-const { readFileSync } = require("node:fs");
+const { randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
@@ -9,28 +8,18 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME =
   "jiangkong_spot_procurement_concurrency_verify";
-const EXPECTED_MIGRATION_COUNT = 136;
 const root = path.resolve(__dirname, "../../..");
+const migrationsRoot = path.join(root, "services/api/prisma/migrations");
+const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
+const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
 const TERMINAL_MIGRATION =
-  "20260816120000_pol08_contract_lineage_operating_sources";
-const TERMINAL_MIGRATION_CHECKSUM = createHash("sha256")
-  .update(readFileSync(path.join(
-    root,
-    "services/api/prisma/migrations",
-    TERMINAL_MIGRATION,
-    "migration.sql"
-  )))
-  .digest("hex");
-const manifest = JSON.parse(readFileSync(path.join(
-  root,
-  "services/api/prisma/database-dynamic-gate-manifest.json"
-), "utf8"));
-if (manifest.migrationBaseline?.terminalMigrationChecksum !== TERMINAL_MIGRATION_CHECKSUM) {
-  throw new Error("spot procurement runner 的终点迁移 checksum 未与 canonical manifest 对齐");
-}
+  migrationBaseline.terminalMigration;
+const TERMINAL_MIGRATION_CHECKSUM =
+  migrationBaseline.terminalMigrationChecksum;
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
