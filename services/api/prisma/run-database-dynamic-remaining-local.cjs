@@ -1,44 +1,32 @@
 #!/usr/bin/env node
 "use strict";
 
-const { createHash, randomUUID } = require("node:crypto");
+const { randomUUID } = require("node:crypto");
 const { readFileSync } = require("node:fs");
 const { cp, mkdir, mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 136;
 const prismaRoot = path.join(root, "services", "api", "prisma");
+const migrationsRoot = path.join(prismaRoot, "migrations");
+const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
+const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
 const PROJECT_OPERATING_PROFILE_MIGRATION =
   "20260814010000_project_operating_profile";
-const TERMINAL_MIGRATION =
-  "20260816120000_pol08_contract_lineage_operating_sources";
-const sourceTerminalMigrationChecksum = createHash("sha256")
-  .update(readFileSync(path.join(
-    prismaRoot,
-    "migrations",
-    TERMINAL_MIGRATION,
-    "migration.sql"
-  )))
-  .digest("hex");
+const TERMINAL_MIGRATION = migrationBaseline.terminalMigration;
 const manifest = JSON.parse(readFileSync(
   path.join(prismaRoot, "database-dynamic-gate-manifest.json"),
   "utf8"
 ));
-const TERMINAL_MIGRATION_CHECKSUM = manifest.migrationBaseline?.terminalMigrationChecksum;
-if (
-  manifest.migrationBaseline?.terminalMigration !== TERMINAL_MIGRATION ||
-  sourceTerminalMigrationChecksum !== TERMINAL_MIGRATION_CHECKSUM
-) {
-  throw new Error("remaining runner 的终点迁移 checksum 未与 canonical manifest 和源码对齐");
-}
+const TERMINAL_MIGRATION_CHECKSUM = migrationBaseline.terminalMigrationChecksum;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
 const GROUPS = [

@@ -172,6 +172,7 @@ run_playwright_p0() {
 run_check ci-orchestration "$PNPM_BIN" test:ci-orchestration
 run_check frozen-dependency-install env CI=true "$PNPM_BIN" install --frozen-lockfile
 run_check prisma-client-generation "$PNPM_BIN" --filter @jiangkong/api exec prisma generate
+run_check migration-baseline "$PNPM_BIN" check:migration-baseline
 run_check production-dependency-audit "$PNPM_BIN" audit --prod --audit-level high
 run_check workspace-typecheck "$PNPM_BIN" typecheck
 run_check web-e2e-typecheck "$PNPM_BIN" --filter @jiangkong/web-admin typecheck:e2e

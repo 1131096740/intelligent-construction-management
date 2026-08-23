@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 "use strict";
 
-const { createHash } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const {
   existsSync,
   readFileSync,
-  readdirSync,
   statSync
 } = require("node:fs");
 const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const {
+  assertManifestBaseline,
+  deriveMigrationBaseline
+} = require("./migration-baseline.cjs");
 const { resolveCorepackHome } = require("./money-bigint-runner-runtime.cjs");
 
 const root = path.resolve(__dirname, "../../..");
@@ -53,18 +55,6 @@ function loadJson(filePath) {
 
 function loadManifest(filePath = manifestPath) {
   return loadJson(filePath);
-}
-
-function listMigrationDirectories() {
-  return readdirSync(migrationRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-}
-
-function migrationChecksum(migrationName) {
-  const migrationPath = path.join(migrationRoot, migrationName, "migration.sql");
-  return createHash("sha256").update(readFileSync(migrationPath)).digest("hex");
 }
 
 function validateRunner(runner, groupId, rootPackage, apiPackage) {
@@ -152,19 +142,8 @@ function validateManifest(manifest) {
     fail("manifest 必须固定为不拉取镜像的本机 PostgreSQL 16 动态门");
   }
 
-  const migrations = listMigrationDirectories();
-  const terminalMigrationChecksum = migrationChecksum(migrations.at(-1));
-  if (
-    migrations.length !== migrationBaseline.expectedDirectoryCount ||
-    migrations.at(-1) !== migrationBaseline.terminalMigration ||
-    terminalMigrationChecksum !== migrationBaseline.terminalMigrationChecksum
-  ) {
-    fail(
-      `迁移基线漂移：manifest=${migrationBaseline.expectedDirectoryCount}/` +
-        `${migrationBaseline.terminalMigration}/${migrationBaseline.terminalMigrationChecksum}，source=${migrations.length}/` +
-        `${migrations.at(-1) ?? "none"}/${terminalMigrationChecksum}`
-    );
-  }
+  const sourceBaseline = deriveMigrationBaseline(migrationRoot);
+  assertManifestBaseline(manifest, sourceBaseline);
 
   const rootPackage = loadJson(path.join(root, "package.json"));
   const apiPackage = loadJson(path.join(root, "services/api/package.json"));
@@ -247,9 +226,9 @@ function validateManifest(manifest) {
   }
   return {
     ...derived,
-    migrationCount: migrations.length,
-    terminalMigration: migrations.at(-1),
-    terminalMigrationChecksum
+    migrationCount: sourceBaseline.expectedDirectoryCount,
+    terminalMigration: sourceBaseline.terminalMigration,
+    terminalMigrationChecksum: sourceBaseline.terminalMigrationChecksum
   };
 }
 

@@ -20,6 +20,12 @@ const fixturesPath = resolve(
 
 describe("settlement approval withdrawal PostgreSQL runner", () => {
   it("pins the exact local database, explicit scope and migration terminal", () => {
+    const baseline = localRequire(
+      resolve(prismaRoot, "migration-baseline.cjs")
+    ).loadCanonicalMigrationBaseline() as {
+      expectedDirectoryCount: number;
+      terminalMigration: string;
+    };
     const runner = localRequire(runnerPath) as {
       DATABASE_NAME: string;
       VERIFICATION_SCOPE: string;
@@ -46,10 +52,10 @@ describe("settlement approval withdrawal PostgreSQL runner", () => {
     expect(runner.VERIFICATION_SCOPE).toBe(
       "settlement-approval-withdrawal"
     );
-    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(136);
-    expect(runner.TERMINAL_MIGRATION).toBe(
-      "20260816120000_pol08_contract_lineage_operating_sources"
+    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(
+      baseline.expectedDirectoryCount
     );
+    expect(runner.TERMINAL_MIGRATION).toBe(baseline.terminalMigration);
     expect(runner.TERMINAL_MIGRATION_CHECKSUM).toBe(
       createHash("sha256").update(migration).digest("hex")
     );

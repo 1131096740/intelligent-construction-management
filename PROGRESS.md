@@ -237,6 +237,11 @@
 
 - [~] Issue #101 / POL-08 第三轮 Standards 复审固定点仅修复未来例外付款：生效日后未关联付款申请的事后补录在服务端拒绝晚于当前时间的 `paidAt`，避免尚未发生的付款进入 `pending_confirm`；已发生例外付款和关联已审批申请的普通施工企业付款行为保持不变。最窄 Jest 先证明未来付款会被错误接受为待复核事实，再转为 GREEN；完整 `project-affiliate-business.service.spec.ts` 25/25 通过。未改 Schema、迁移、状态、权限、业务 ownership 或 resolver；最终精确 SHA 的全量门、PostgreSQL 16、Standards/Spec 双轴独立复审及 GitHub 收口待执行。
 
+## Issue #226 PostgreSQL 16 migration baseline generator（2026-08-23）
+
+- [~] 在 fresh `origin/main@334ac7d8a50830a02a40ac83c7c36cc68dc116df` 的独立候选分支实现官方迁移基线 generator/sync：从实际 `services/api/prisma/migrations` 排序、计数并计算终点 `migration.sql` SHA-256；默认 check/preview 只读，显式 sync 对 canonical manifest 同目录原子替换且幂等，并由 dynamic-gate validator 与受控 runners 共用单一派生模块。测试以真实 fixture 实际新增、删除 migration directory 证明 source-directory drift，覆盖 hash/sort/非法目标/preview 无写/sync 幂等/validator 一致性；CI、local release gate 与文档已接线。未修改业务 Schema、权限或 tracked migrations，未执行数据库/迁移/生产/COS/部署操作。
+- [~] 当前本地证据：Node `v20.20.2`、pnpm `9.15.9`、冻结安装；API Jest `345 suites passed / 29 skipped`, `6267 passed / 103 skipped`，workspace typecheck/lint、API/Web build、Web `check:ui`、CI 编排 `71/71`、migration baseline check、dynamic manifest validate、release manifests 全部通过。baseline 为 136 directories，terminal `20260816120000_pol08_contract_lineage_operating_sources`，checksum `1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0`；动态执行与数据库迁移明确未运行，待最终提交后的固定 HEAD CI 及双轴复审。
+
 ## 生产与运维边界
 
 - [x] Issue #146 / POL-19P3 已由 PR #166 完成并合并：最终 head `e21958251482122c62501fcf7a6cd60ac8976341`，merge/main SHA `784b4e49f2b0374e7a7af20b35086dcd92cc3e20`；PR CI `32129951815` 与精确 main CI `32130537748` 全绿。合并链覆盖显式基础资料统一录入场景、actor-aware target resolver、`authenticated_self`、签名短期 create-target、领域授权复用入口及全局 Web adapter；#163/#164/#165/#167/#168/#169/#170/#171/#172 均已 CLOSED（completed；#166 为 PR，不存在同号 Issue）。未部署、未生产验证，未执行生产数据库/COS/权限/业务数据写入、真实归零或正式开放。
