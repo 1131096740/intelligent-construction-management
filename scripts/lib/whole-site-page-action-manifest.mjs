@@ -252,6 +252,44 @@ function registryEntryIssue(entry) {
   ) {
     return "server_definition_invalid";
   }
+  if (entry.capability.freshRead !== undefined) {
+    const freshRead = entry.capability.freshRead;
+    const expectedFreshReadKeys = [
+      "apiFile",
+      "name",
+      "method",
+      "mode",
+      "binding",
+      "submissionTarget"
+    ];
+    const expectedBindingKeys = [
+      "actor",
+      "company",
+      "scene",
+      "action",
+      "definitionRevision"
+    ];
+    if (
+      entry.capability.kind !== "server_definition" ||
+      !isRecord(freshRead) ||
+      JSON.stringify(Object.keys(freshRead).sort()) !==
+        JSON.stringify(expectedFreshReadKeys.sort()) ||
+      !isNonEmptyString(freshRead.apiFile) ||
+      !isNonEmptyString(freshRead.name) ||
+      !isNonEmptyString(freshRead.method) ||
+      !isNonEmptyString(freshRead.mode) ||
+      freshRead.mode !== "read_only_probe" ||
+      !isRecord(freshRead.binding) ||
+      JSON.stringify(Object.keys(freshRead.binding).sort()) !==
+        JSON.stringify(expectedBindingKeys.sort()) ||
+      expectedBindingKeys.some(
+        (key) => !isNonEmptyString(freshRead.binding[key])
+      ) ||
+      freshRead.submissionTarget !== "independent"
+    ) {
+      return "fresh_read_binding_invalid";
+    }
+  }
   if (
     !Array.isArray(entry.wrappers) ||
     entry.wrappers.length === 0 ||
@@ -308,6 +346,26 @@ function normalizeRegistry(registry) {
         source: entry.capability.source,
         ...(entry.capability.key
           ? { key: entry.capability.key }
+          : {}),
+        ...(entry.capability.freshRead
+          ? {
+              freshRead: {
+                apiFile: posixPath(entry.capability.freshRead.apiFile),
+                name: entry.capability.freshRead.name,
+                method: entry.capability.freshRead.method.toUpperCase(),
+                mode: entry.capability.freshRead.mode,
+                binding: {
+                  actor: entry.capability.freshRead.binding.actor,
+                  company: entry.capability.freshRead.binding.company,
+                  scene: entry.capability.freshRead.binding.scene,
+                  action: entry.capability.freshRead.binding.action,
+                  definitionRevision:
+                    entry.capability.freshRead.binding.definitionRevision
+                },
+                submissionTarget:
+                  entry.capability.freshRead.submissionTarget
+              }
+            }
           : {})
       },
       wrappers: entry.wrappers
@@ -8747,6 +8805,51 @@ function serverDefinitionHandlerFreshRead({
   );
 }
 
+function freshReadBindingVerified({
+  action,
+  wrapperIndex,
+  graph,
+  capabilityContext,
+  handlerFreshReadVerified
+}) {
+  const freshRead = action.capability.freshRead;
+  if (!freshRead) return true;
+  const wrapper = wrapperIndex.get(
+    wrapperIdentity(freshRead.apiFile, freshRead.name)
+  );
+  if (!wrapper || wrapper.kind !== "transport") return false;
+  if (wrapper.returnProvenance !== "transparent_main_response") {
+    return false;
+  }
+  const requests = normalizedMainRequests(wrapper);
+  if (
+    requests.length !== 1 ||
+    requests[0].method.toUpperCase() !== "GET" ||
+    freshRead.method !== "GET"
+  ) {
+    return false;
+  }
+  if (
+    wrapperReferencedFromAction({
+      wrapper,
+      action,
+      graph
+    }).length === 0
+  ) {
+    return false;
+  }
+  const provenance = capabilityServerProvenance(
+    action.capability,
+    capabilityContext
+  );
+  if (provenance?.sources?.size !== 1) return false;
+  return (
+    [...provenance.sources][0] ===
+    wrapperIdentity(freshRead.apiFile, freshRead.name) &&
+    handlerFreshReadVerified
+  );
+}
+
 function capabilityHasServerProvenance(capability, context) {
   return (
     capabilityServerProvenance(capability, context)
@@ -15879,6 +15982,14 @@ export async function inspectWholeSitePageActionManifest({
         symbols,
         capabilityContext
       });
+    const freshReadBindingIsVerified =
+      freshReadBindingVerified({
+        action,
+        wrapperIndex,
+        graph: ownershipGraph,
+        capabilityContext,
+        handlerFreshReadVerified: serverDefinitionFreshReadVerified
+      });
     const mutationBindings = bindings.filter(isMutationRequest);
     const effectiveMutationActors =
       effectiveMutationActorPositions({
@@ -15908,7 +16019,8 @@ export async function inspectWholeSitePageActionManifest({
       !writes ||
       (dominatesTrigger &&
         capabilityUpstreamAssociationTrusted &&
-        serverDefinitionFreshReadVerified);
+        serverDefinitionFreshReadVerified &&
+        freshReadBindingIsVerified);
     if (
       action.capability.kind === "server_definition" &&
       !serverDefinitionFreshReadVerified
@@ -15916,6 +16028,17 @@ export async function inspectWholeSitePageActionManifest({
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
         code: "SERVER_DEFINITION_HANDLER_FRESH_READ_UNVERIFIED",
+        actionId: action.id,
+        sourceFile: action.sourceFile
+      });
+    }
+    if (action.capability.freshRead && !freshReadBindingIsVerified) {
+      capabilityAccepted = false;
+      blockers.writeWithoutServerCapability.push({
+        code:
+          action.capability.freshRead.method !== "GET"
+            ? "FRESH_READ_BINDING_NOT_GET"
+            : "FRESH_READ_BINDING_UNVERIFIED",
         actionId: action.id,
         sourceFile: action.sourceFile
       });
