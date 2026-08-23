@@ -373,8 +373,7 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
   const prismaEngineEnvironment = {};
   for (const key of [
     "PRISMA_QUERY_ENGINE_LIBRARY",
-    "PRISMA_SCHEMA_ENGINE_BINARY",
-    "PRISMA_GENERATE_NO_ENGINE"
+    "PRISMA_SCHEMA_ENGINE_BINARY"
   ]) {
     if (sourceEnv[key]) prismaEngineEnvironment[key] = sourceEnv[key];
   }
