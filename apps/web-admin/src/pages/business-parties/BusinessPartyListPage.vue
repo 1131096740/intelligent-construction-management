@@ -70,6 +70,7 @@ import {
   fetchBusinessEntryCreateCapability,
 } from "../../api/business-entry.api";
 import { listBusinessParties } from "../../api/contract-workbench.api";
+import { formatUnknownApiError } from "../../api/error-message";
 
 interface PartyRow {
   id: string;
@@ -107,7 +108,7 @@ async function loadParties() {
   try {
     parties.value = (await listBusinessParties(query.value.trim() || undefined)) as PartyRow[];
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合作单位失败";
+    message.value = formatUnknownApiError(error, "加载合作单位失败");
     tone.value = "danger";
   } finally {
     loading.value = false;

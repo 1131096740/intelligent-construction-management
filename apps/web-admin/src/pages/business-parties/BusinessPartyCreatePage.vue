@@ -200,6 +200,7 @@ import {
   issueBusinessEntryCreateTarget,
   validateBusinessEntryDraft
 } from "../../api/business-entry.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   clearBusinessPartyPendingRecovery,
   businessPartyCreateIdempotencyKey,
@@ -256,7 +257,7 @@ function errorStatus(error: unknown) {
 }
 
 function isPermissionError(error: unknown) {
-  return errorStatus(error) === 403 || (error instanceof Error && /权限|无权|Forbidden|403/i.test(error.message));
+  return errorStatus(error) === 403;
 }
 
 async function loadAccess() {
@@ -292,9 +293,7 @@ async function loadAccess() {
       showNoPermission();
       return;
     }
-    accessError.value = error instanceof Error
-      ? error.message
-      : "当前无法确认创建权限，请刷新后重试。";
+    accessError.value = formatUnknownApiError(error, "当前无法确认创建权限，请刷新后重试。");
   } finally {
     loadingAccess.value = false;
   }
@@ -355,7 +354,7 @@ function checkDraft() {
   return Promise.all([currentDefinition, payload, validation])
     .then(([currentSceneDefinition, preparedPayload, result]) => {
       if (!result.valid) {
-        fieldError.value = result.errors.map((error) => error.message).join("；") || "请修正表单后再试。";
+        fieldError.value = result.errors.map((validationError) => validationError.message).join("；") || "请修正表单后再试。";
         return;
       }
       confirmation.value = {
@@ -370,7 +369,7 @@ function checkDraft() {
         showNoPermission();
         return;
       }
-      message.value = error instanceof Error ? error.message : "检查业务资料失败，请刷新后重试。";
+      message.value = formatUnknownApiError(error, "检查业务资料失败，请刷新后重试。");
       tone.value = "danger";
     })
     .finally(() => {
