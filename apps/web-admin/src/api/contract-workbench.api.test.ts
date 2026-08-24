@@ -1366,18 +1366,32 @@ describe("contract workbench API client", () => {
     mockApiFetch.mockReturnValue(makeOkJson({ id: "party-1" }));
 
     await createBusinessParty({
-      name: "云南示例供应商有限公司",
-      unifiedSocialCreditCode: "91530000EXAMPLE01",
-      attachments: []
+      target: { entityType: "business_party", createTarget: "signed-target" },
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      values: {
+        type: "organization",
+        name: "云南示例供应商有限公司",
+        unifiedSocialCreditCode: "91530000EXAMPLE01",
+        attachments: []
+      }
     });
 
     expect(mockApiFetch).toHaveBeenCalledWith("/business-parties", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "云南示例供应商有限公司",
-        unifiedSocialCreditCode: "91530000EXAMPLE01",
-        attachments: []
+        target: { entityType: "business_party", createTarget: "signed-target" },
+        definitionKey: "business_party",
+        definitionVersion: 1,
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+        values: {
+          type: "organization",
+          name: "云南示例供应商有限公司",
+          unifiedSocialCreditCode: "91530000EXAMPLE01",
+          attachments: []
+        }
       })
     });
   });

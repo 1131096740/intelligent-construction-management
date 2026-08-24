@@ -4,6 +4,7 @@ import {
   downloadBusinessEntryExcelTemplate,
   fetchBusinessEntryDefinition,
   freezeBusinessEntrySnapshot,
+  issueBusinessEntryCreateTarget,
   previewBusinessEntryExcel,
   validateBusinessEntryDraft
 } from "./business-entry.api";
@@ -58,6 +59,34 @@ describe("business entry API", () => {
           operation: "edit"
         })
       })
+    );
+  });
+
+  it("issues an independent global create target with its bound intent", async () => {
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      createTarget: "probe-or-submission-target",
+      expiresAt: "2026-08-24T00:05:00.000Z",
+      entityType: "business_party",
+      scope: "global"
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    await expect(issueBusinessEntryCreateTarget(
+      "business_party",
+      { scope: "global" },
+      {
+        entityType: "business_party",
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+        fingerprint: "a".repeat(64),
+        definitionKey: "business_party",
+        definitionVersion: 1
+      }
+    )).resolves.toMatchObject({ entityType: "business_party", scope: "global" });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/business-entry-definitions/business_party/create-target?entityType=business_party&idempotencyKey=11111111-1111-4111-8111-111111111111&fingerprint=" + "a".repeat(64) + "&definitionKey=business_party&definitionVersion=1"
     );
   });
 

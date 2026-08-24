@@ -58,7 +58,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { getBusinessParty } from "../../api/contract-workbench.api";
 
 interface AttachmentDraft {
@@ -76,11 +76,12 @@ interface PartyVersionRow {
 }
 
 const route = useRoute();
+const router = useRouter();
 const party = ref<Record<string, unknown> | null>(null);
 const versions = ref<PartyVersionRow[]>([]);
 const loading = ref(false);
 const message = ref("");
-const tone = ref<"danger">("danger");
+const tone = ref<"success" | "danger">("danger");
 const columns = [
   { colKey: "versionNo", title: "版本", width: 80 },
   { colKey: "summary", title: "档案快照", minWidth: 220 },
@@ -105,15 +106,22 @@ async function loadParty() {
     };
     party.value = data.party;
     versions.value = data.versions;
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合作单位失败";
+  } catch {
+    message.value = "加载合作单位失败，请稍后重试。";
     tone.value = "danger";
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(loadParty);
+onMounted(() => {
+  if (route.query.created === "1") {
+    message.value = "合作单位已创建，当前页面为只读详情。";
+    tone.value = "success";
+    void router.replace({ query: {} });
+  }
+  void loadParty();
+});
 </script>
 
 <style scoped>
@@ -124,6 +132,7 @@ onMounted(loadParty);
 .panel { margin-bottom: 16px; border-radius: 3px; }
 .attachment-line, .message { font-size: 12px; }
 .danger { color: #b51d2a; }
+.success { color: var(--jg-color-success); }
 @container jg-page (max-width: 620px) {
   .page-head { display: grid; grid-template-columns: 1fr; }
 }

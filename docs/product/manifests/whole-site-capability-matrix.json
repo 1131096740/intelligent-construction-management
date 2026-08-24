@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "007dd7279bf96375ad1681ba4bbe52c4dc80fa41c32a6bdab30433b9a3dfac09",
+      "sha256": "2165188c402990ba5d7b3eba8831a05b85c7d8d3b913af1fdfc01c738e8452d8",
       "status": "ready",
       "summary": {
-        "routeCount": 480
+        "routeCount": 481
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "0a21c6104b8bbe12164bcc4ad0a540a9a5f7f30270102115166db65c25541a2b",
+      "sha256": "b2dff138ab9799eaf48b4650b02429db633e7422d045c8d0efefcd8ec4bc3b30",
       "status": "ready",
       "summary": {
         "apiModuleCount": 19,
-        "exportedFunctionCount": 485,
-        "transportWrapperCount": 465,
+        "exportedFunctionCount": 486,
+        "transportWrapperCount": 466,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 487,
+        "mainRequestBindingCount": 488,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 487,
-        "productionConsumerCount": 358,
+        "requestEdgeCount": 488,
+        "productionConsumerCount": 362,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,74 +42,74 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "5f9e163e90c1488a282f5cdf9951b8d06887ab82bc21e6c5bc63ac89ea460df6",
+      "sha256": "f6303a30c0911ecd12bccc27f49a7e823d79a8d7a96fc39ed5427a0ed4c48f79",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 250,
-        "pageActionCount": 51,
+        "registeredActionCount": 251,
+        "pageActionCount": 52,
         "backgroundActionCount": 199,
-        "reachableVueFileCount": 129,
-        "routeRootCount": 48,
-        "totalVueFileCount": 153,
-        "parsedVueFileCount": 153,
-        "reachableProductionModuleCount": 230,
-        "templateEventDirectiveCount": 862,
+        "reachableVueFileCount": 130,
+        "routeRootCount": 49,
+        "totalVueFileCount": 154,
+        "parsedVueFileCount": 154,
+        "reachableProductionModuleCount": 233,
+        "templateEventDirectiveCount": 875,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 241,
-        "candidateProductionMutationConsumerCount": 241,
-        "acceptedProductionMutationConsumerCount": 241,
-        "productionMutationConsumerPairCount": 241,
+        "coveredProductionMutationConsumerCount": 243,
+        "candidateProductionMutationConsumerCount": 243,
+        "acceptedProductionMutationConsumerCount": 243,
+        "productionMutationConsumerPairCount": 243,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "828d28fc3772c42a81d69d802af6ab14099741554e95440c4d8dd847519c5592",
+      "sha256": "394cc1cbd4d330cc4a225edb1435d51bb308137133d65f34bfb3ea002100daa6",
       "status": "ready",
       "summary": {
-        "routeCount": 480,
-        "exactRouteCount": 480,
-        "normalizedRouteCount": 480,
-        "classificationOverrideCount": 182,
+        "routeCount": 481,
+        "exactRouteCount": 481,
+        "normalizedRouteCount": 481,
+        "classificationOverrideCount": 181,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "f7ed671972da42649f6fa67e5c020dc2ddcffd88b092c971716d159903ac81cd",
+        "classificationOverrideSha256": "50e62622848894cc70814d0b3ab0d9149cbc6cf6a9c197234840de598c9bc952",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 298,
-        "pageRouteCount": 299,
+        "derivedProductionPageCount": 300,
+        "pageRouteCount": 301,
         "externalTakeoverCount": 68,
-        "exitCandidateCount": 110,
+        "exitCandidateCount": 109,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 349,
+          "web_api_wrapper": 353,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 1,
-          "none": 122
+          "none": 119
         },
         "blockerCount": 0
       }
     }
   },
   "summary": {
-    "routeCount": 480,
-    "pageRouteCount": 299,
+    "routeCount": 481,
+    "pageRouteCount": 301,
     "externalTakeoverRouteCount": 68,
-    "exitCandidateRouteCount": 110,
+    "exitCandidateRouteCount": 109,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 487,
+    "mainRequestBindingCount": 488,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 250,
-    "actionBindingCount": 281,
-    "acceptedActionBindingCount": 261,
+    "registeredActionCount": 251,
+    "actionBindingCount": 283,
+    "acceptedActionBindingCount": 263,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 241,
-    "coveredProductionMutationConsumerPairCount": 241,
+    "productionMutationConsumerPairCount": 243,
+    "coveredProductionMutationConsumerPairCount": 243,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -838,7 +838,7 @@
         "contractCutoverTombstoneWrite": false
       },
       "usage": "external_takeover",
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
@@ -847,7 +847,53 @@
           "path": "/business-entry-definitions/:param",
           "normalizedKey": "GET /business-entry-definitions/:param",
           "bodyKind": "none",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+            "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/business-entry.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/business-entry-definitions/:sceneKey/create-target",
+        "normalizedKey": "GET /business-entry-definitions/:param/create-target",
+        "controller": "BusinessEntryDefinitionController",
+        "handler": "issueCreateTargetGet",
+        "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "issueBusinessEntryCreateTarget",
+          "method": "GET",
+          "path": "/business-entry-definitions/:param/create-target?:param",
+          "normalizedKey": "GET /business-entry-definitions/:param/create-target",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+            "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/business-entry.api.test.ts"
           ]
@@ -970,6 +1016,7 @@
           "normalizedKey": "GET /business-parties",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
             "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
           ],
           "testConsumers": [
@@ -9438,7 +9485,7 @@
         "contractCutoverTombstoneWrite": false
       },
       "usage": "external_takeover",
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
@@ -9447,15 +9494,57 @@
           "path": "/business-entry-definitions/:param/validate",
           "normalizedKey": "POST /business-entry-definitions/:param/validate",
           "bodyKind": "json",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/business-entry.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "business-party-create.confirm",
+          "bindingIndex": 0,
+          "identity": "business-party-create.confirm\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+          "capability": {
+            "kind": "server_definition",
+            "source": "definition.key",
+            "freshRead": {
+              "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+              "name": "fetchBusinessEntryDefinition",
+              "method": "GET",
+              "mode": "read_only_probe",
+              "binding": {
+                "actor": "request.actor",
+                "company": "scope.company",
+                "scene": "sceneKey",
+                "action": "business_party.create",
+                "definitionRevision": "definition.version"
+              },
+              "submissionTarget": "independent"
+            },
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -9517,8 +9606,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "exit_candidate",
-      "consumerSurface": "none",
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -9527,15 +9616,57 @@
           "path": "/business-parties",
           "normalizedKey": "POST /business-parties",
           "bodyKind": "json",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "business-party-create.confirm",
+          "bindingIndex": 1,
+          "identity": "business-party-create.confirm\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000createBusinessParty\u0000POST\u0000POST /business-parties\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+          "capability": {
+            "kind": "server_definition",
+            "source": "definition.key",
+            "freshRead": {
+              "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+              "name": "fetchBusinessEntryDefinition",
+              "method": "GET",
+              "mode": "read_only_probe",
+              "binding": {
+                "actor": "request.actor",
+                "company": "scope.company",
+                "scene": "sceneKey",
+                "action": "business_party.create",
+                "definitionRevision": "definition.version"
+              },
+              "submissionTarget": "independent"
+            },
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "createBusinessParty",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `007dd7279bf96375ad1681ba4bbe52c4dc80fa41c32a6bdab30433b9a3dfac09` |
-| webApiWrappers | ready | `0a21c6104b8bbe12164bcc4ad0a540a9a5f7f30270102115166db65c25541a2b` |
-| webPageActions | ready | `5f9e163e90c1488a282f5cdf9951b8d06887ab82bc21e6c5bc63ac89ea460df6` |
-| routeUsage | ready | `828d28fc3772c42a81d69d802af6ab14099741554e95440c4d8dd847519c5592` |
+| nestRoutes | ready | `2165188c402990ba5d7b3eba8831a05b85c7d8d3b913af1fdfc01c738e8452d8` |
+| webApiWrappers | ready | `b2dff138ab9799eaf48b4650b02429db633e7422d045c8d0efefcd8ec4bc3b30` |
+| webPageActions | ready | `f6303a30c0911ecd12bccc27f49a7e823d79a8d7a96fc39ed5427a0ed4c48f79` |
+| routeUsage | ready | `394cc1cbd4d330cc4a225edb1435d51bb308137133d65f34bfb3ea002100daa6` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 480 |
-| pageRouteCount | 299 |
+| routeCount | 481 |
+| pageRouteCount | 301 |
 | externalTakeoverRouteCount | 68 |
-| exitCandidateRouteCount | 110 |
+| exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 487 |
+| mainRequestBindingCount | 488 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 250 |
-| actionBindingCount | 281 |
-| acceptedActionBindingCount | 261 |
+| registeredActionCount | 251 |
+| actionBindingCount | 283 |
+| acceptedActionBindingCount | 263 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 241 |
-| coveredProductionMutationConsumerPairCount | 241 |
+| productionMutationConsumerPairCount | 243 |
+| coveredProductionMutationConsumerPairCount | 243 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -52,7 +52,8 @@
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
-| GET | /business-entry-definitions/:sceneKey | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#fetchBusinessEntryDefinition | — | not_applicable | — |
+| GET | /business-entry-definitions/:sceneKey | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#fetchBusinessEntryDefinition | — | not_applicable | — |
+| GET | /business-entry-definitions/:sceneKey/create-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntryCreateTarget | — | not_applicable | — |
 | GET | /business-entry-definitions/:sceneKey/excel-template | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#downloadBusinessEntryExcelTemplate | — | not_applicable | — |
 | GET | /business-parties/:partyId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessParty | — | not_applicable | — |
 | GET | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listBusinessParties | — | not_applicable | — |
@@ -221,9 +222,9 @@
 | POST | /business-entry-definitions/:sceneKey/create-target | exit_candidate | none | — | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/excel-preview | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#previewBusinessEntryExcel | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#freezeBusinessEntrySnapshot | — | not_applicable | — |
-| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | business-party-create.confirm | covered | — |
 | POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | — |
-| POST | /business-parties | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | — | not_applicable | — |
+| POST | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | business-party-create.confirm | covered | — |
 | POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | — |
 | POST | /company-entities | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | not_applicable | — |
 | POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |

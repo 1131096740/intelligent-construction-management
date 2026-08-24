@@ -113,6 +113,37 @@ describe("BusinessEntryDefinitionController", () => {
     );
   });
 
+  it("forwards the GET-only create-target probe without inventing a project scope", async () => {
+    const definitions = {
+      issueCreateTarget: jest.fn().mockResolvedValue({ createTarget: "probe" })
+    };
+    const controller = new BusinessEntryDefinitionController(definitions as never, {} as never);
+
+    await controller.issueCreateTargetGet(
+      "business_party",
+      undefined,
+      "business_party",
+      "11111111-1111-4111-8111-111111111111",
+      "a".repeat(64),
+      "business_party",
+      "1",
+      { id: "user-1" } as never
+    );
+
+    expect(definitions.issueCreateTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      "business_party",
+      {
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+        fingerprint: "a".repeat(64),
+        definitionKey: "business_party",
+        definitionVersion: 1
+      }
+    );
+  });
+
   it("passes trusted upload metadata with the buffer to the Excel safety boundary", () => {
     const excel = { preview: jest.fn().mockReturnValue({ zeroWrites: true, rows: [] }) };
     const controller = new BusinessEntryDefinitionController({} as never, excel as never);

@@ -307,6 +307,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/business-parties/BusinessPartyListPage.vue")
       },
       {
+        path: "合作单位档案/新建",
+        component: () => import("../pages/business-parties/BusinessPartyCreatePage.vue"),
+        meta: { title: "新建合作单位" }
+      },
+      {
         path: "合作单位档案/:partyId",
         component: () => import("../pages/business-parties/BusinessPartyEditorPage.vue")
       },
@@ -496,6 +501,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "standard-clauses", redirect: "/合同模板库/标准条款" },
       { path: "contract-number-rules", redirect: "/合同模板库/编号规则" },
       { path: "business-parties", redirect: "/合作单位档案" },
+      { path: "business-parties/new", redirect: "/合作单位档案/新建" },
       { path: "business-parties/:partyId", redirect: partyRedirect },
       { path: "settlement-templates", redirect: "/结算模板库" },
       { path: "settlement-templates/new", redirect: "/结算模板库/新建" },

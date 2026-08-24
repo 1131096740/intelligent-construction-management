@@ -99,6 +99,7 @@ async function ensureOk(
   }
 
   const error = new Error(message) as Error & {
+    status?: number;
     code?: string;
     conflictReason?: string;
     projectId?: string;
@@ -112,6 +113,7 @@ async function ensureOk(
       status: "document_invalidated" | "unchanged" | "refresh_required";
     };
   };
+  error.status = response.status;
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
   if (projectId) error.projectId = projectId;
@@ -1315,21 +1317,34 @@ export function listBusinessParties(query?: string) {
 }
 
 export interface CreateBusinessPartyPayload {
-  name: string;
-  unifiedSocialCreditCode?: string;
-  attachments?: unknown[];
-  [key: string]: unknown;
+  target: { entityType: "business_party"; createTarget: string };
+  definitionKey: "business_party";
+  definitionVersion: number;
+  idempotencyKey: string;
+  values: {
+    type: "organization";
+    name: string;
+    unifiedSocialCreditCode?: string;
+    attachments: readonly [];
+  };
 }
 
 export function createBusinessParty(body: CreateBusinessPartyPayload) {
-  return postJson<unknown>("/business-parties", body);
+  return postJsonWithHeaders<unknown>("/business-parties", body, {});
 }
 
 export function getBusinessParty(partyId: string) {
   return readJson<unknown>(`/business-parties/${partyId}`);
 }
 
-export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload) {
+export interface CreateBusinessPartyVersionPayload {
+  name: string;
+  unifiedSocialCreditCode?: string;
+  attachments?: unknown[];
+  [key: string]: unknown;
+}
+
+export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyVersionPayload) {
   return postJson<unknown>(`/business-parties/${partyId}/versions`, body);
 }
 

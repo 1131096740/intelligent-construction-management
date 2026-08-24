@@ -512,6 +512,9 @@ export class BusinessEntryDefinitionService {
       if (access.target.scope !== "global" || !this.createTargets) {
         throw new BadRequestException("新建目标令牌仅适用于已登记的全局业务场景");
       }
+      if (sceneKey === "business_party") {
+        (this.writeFreeze ?? new OperationalWriteFreezeService()).assertCanWrite("master_data");
+      }
       this.createTargets.verify(target.createTarget, {
         actorUserId,
         scene: sceneKey,

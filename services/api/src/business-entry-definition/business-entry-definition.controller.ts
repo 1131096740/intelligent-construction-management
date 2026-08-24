@@ -178,4 +178,27 @@ export class BusinessEntryDefinitionController {
       }
     );
   }
+
+  @Get(":sceneKey/create-target")
+  issueCreateTargetGet(
+    @Param("sceneKey") sceneKey: string,
+    @Query("projectId") projectId: string | undefined,
+    @Query("entityType") entityType: string,
+    @Query("idempotencyKey") idempotencyKey: string | undefined,
+    @Query("fingerprint") fingerprint: string | undefined,
+    @Query("definitionKey") definitionKey: string | undefined,
+    @Query("definitionVersion") definitionVersionText: string | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const definitionVersion = definitionVersionText === undefined
+      ? undefined
+      : Number(definitionVersionText);
+    return this.definitions.issueCreateTarget(
+      sceneKey,
+      projectId,
+      user.id,
+      entityType,
+      { idempotencyKey, fingerprint, definitionKey, definitionVersion }
+    );
+  }
 }

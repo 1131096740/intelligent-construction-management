@@ -26,6 +26,14 @@ export type BusinessEntryRequestScope =
   | { scope: "global"; projectId?: never }
   | { scope: "project"; projectId: string };
 
+export interface BusinessEntryCreateTargetIntent {
+  entityType: string;
+  idempotencyKey?: string;
+  fingerprint?: string;
+  definitionKey?: string;
+  definitionVersion?: number;
+}
+
 function projectIdForScope(scope: BusinessEntryRequestScope) {
   if (!scope || typeof scope !== "object") throw new Error("业务场景 scope 无效");
   if (scope.scope === "project") {
@@ -84,7 +92,11 @@ async function ensureOk(response: Response, fallback: string) {
   } catch {
     detail = "";
   }
-  throw new Error(formatApiErrorMessage(detail, response.status, fallback));
+  const error = new Error(formatApiErrorMessage(detail, response.status, fallback)) as Error & {
+    status?: number;
+  };
+  error.status = response.status;
+  throw error;
 }
 
 function requestBody(payload: BusinessEntryDraftPayload, operation?: BusinessEntryOperation) {
@@ -122,6 +134,30 @@ export async function fetchBusinessEntryDefinition(
   const response = await apiFetch(path(sceneKey, scope, "", operation, target));
   await ensureOk(response, "加载业务字段失败");
   return response.json() as Promise<BusinessEntrySceneDefinition>;
+}
+
+export function issueBusinessEntryCreateTarget(
+  sceneKey: string,
+  scope: BusinessEntryRequestScope,
+  intent: BusinessEntryCreateTargetIntent
+) {
+  const query = new URLSearchParams({ entityType: intent.entityType });
+  for (const key of ["idempotencyKey", "fingerprint", "definitionKey"] as const) {
+    const value = intent[key];
+    if (value !== undefined) query.set(key, value);
+  }
+  if (intent.definitionVersion !== undefined) {
+    query.set("definitionVersion", String(intent.definitionVersion));
+  }
+  return apiFetch(`${path(sceneKey, scope, "/create-target")}?${query.toString()}`).then(async (response) => {
+    await ensureOk(response, "获取新建业务目标失败");
+    return response.json() as Promise<{
+      createTarget: string;
+      expiresAt: string;
+      entityType: string;
+      scope: "global" | "project";
+    }>;
+  });
 }
 
 export function validateBusinessEntryDraft(

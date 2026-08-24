@@ -3,6 +3,7 @@ import { BusinessPartyService } from "./business-party.service";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { BusinessEntryCreateTargetService } from "../business-entry-definition/business-entry-create-target.service";
+import type { RoleKey } from "@jiangkong/shared-domain";
 
 describe("BusinessPartyService", () => {
   const audit = { record: jest.fn() };
@@ -11,7 +12,7 @@ describe("BusinessPartyService", () => {
     audit.record.mockReset();
   });
 
-  function globalRole(roleKey: "contract_staff" | "contract_director" = "contract_staff") {
+  function globalRole(roleKey: RoleKey = "contract_staff") {
     return {
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }])
@@ -775,6 +776,26 @@ describe("BusinessPartyService", () => {
 
     await expect(service.createParty("employee-1", snapshot)).rejects.toThrow(
       "当前账号不可用或岗位数据异常"
+    );
+    expect(tx.businessParty.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "finance_staff",
+    "finance_director",
+    "chairman",
+    "general_manager",
+    "super_admin"
+  ] as const)("denies %s from creating a business-party", async (roleKey) => {
+    const tx = {
+      ...globalRole(roleKey),
+      businessParty: { create: jest.fn() },
+      businessPartyVersion: { create: jest.fn() }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(service.createParty("non-contract-actor", snapshot)).rejects.toThrow(
+      "只有公司级合同人员可以维护合作单位档案"
     );
     expect(tx.businessParty.create).not.toHaveBeenCalled();
   });

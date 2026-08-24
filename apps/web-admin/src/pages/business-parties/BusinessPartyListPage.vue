@@ -1,31 +1,45 @@
 <template>
   <section class="page jg-responsive-ledger">
-    <div class="page-head">
-      <div>
-        <h1>合作单位档案</h1>
-        <p>按名称或统一社会信用代码检索；档案变更进入新版本，不覆盖历史</p>
-      </div>
-      <t-space class="query-actions">
-        <t-input
-          v-model="query"
-          placeholder="名称 / 统一社会信用代码"
-        />
-        <t-button @click="loadParties">
-          查询
-        </t-button>
-      </t-space>
-    </div>
+    <BusinessPageHeader
+      title="合作单位档案"
+      description="按名称或统一社会信用代码检索；档案变更进入新版本，不覆盖历史"
+    >
+      <template #actions>
+        <t-space>
+          <t-button
+            v-if="definition?.key"
+            theme="primary"
+            @click="goCreate"
+          >
+            新建合作单位
+          </t-button>
+          <t-input
+            v-model="query"
+            placeholder="名称 / 统一社会信用代码"
+          />
+          <t-button @click="loadParties">
+            查询
+          </t-button>
+        </t-space>
+      </template>
+    </BusinessPageHeader>
 
-    <t-alert
-      theme="info"
-      title="上线准备期间暂为只读"
-      message="当前可查询合作单位及版本历史；新增档案入口将在主数据治理完成后重新开放。"
-      class="panel"
+    <BusinessFeedback
+      v-if="message"
+      :state="tone === 'danger' ? 'permission' : 'success'"
+      title="合作单位档案"
+      :description="message"
+    />
+
+    <BusinessFeedback
+      state="info"
+      title="档案读取"
+      description="所有已登录用户可查询合作单位及版本历史；仅服务端确认具备公司级合同岗位的用户可以新建档案。"
     />
 
     <t-card
       :bordered="true"
-      class="panel jg-table-region jg-table-region--standard"
+      class="jg-table-region jg-table-region--standard"
     >
       <t-table
         row-key="id"
@@ -48,18 +62,29 @@
     </t-card>
 
     <p
-      v-if="message"
-      :class="['message', tone]"
+      v-if="loadError"
+      class="message danger"
     >
-      {{ message }}
+      {{ loadError }}
     </p>
   </section>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import {
+  fetchBusinessEntryDefinition,
+  issueBusinessEntryCreateTarget
+} from "../../api/business-entry.api";
 import { listBusinessParties } from "../../api/contract-workbench.api";
+import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
+import {
+  createBusinessPartyIdempotencyKey,
+  fingerprintBusinessPartyValues
+} from "./business-party-create.config";
 
 interface PartyRow {
   id: string;
@@ -69,6 +94,7 @@ interface PartyRow {
 }
 
 const router = useRouter();
+const route = useRoute();
 const columns = [
   { colKey: "name", title: "名称", minWidth: 180 },
   { colKey: "unifiedSocialCreditCode", title: "统一社会信用代码", minWidth: 180 },
@@ -78,36 +104,84 @@ const columns = [
 const query = ref("");
 const parties = ref<PartyRow[]>([]);
 const loading = ref(false);
+const loadError = ref("");
 const message = ref("");
-const tone = ref<"danger">("danger");
+const tone = ref<"success" | "danger">("success");
+const createCapability = ref<"checking" | "allowed" | "denied">("checking");
+const definition = ref<BusinessEntrySceneDefinition | null>(null);
 
 function go(id: string) {
   void router.push(`/business-parties/${id}`);
 }
 
+function goCreate() {
+  void router.push("/合作单位档案/新建");
+}
+
 async function loadParties() {
   loading.value = true;
+  loadError.value = "";
   try {
     parties.value = (await listBusinessParties(query.value.trim() || undefined)) as PartyRow[];
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合作单位失败";
-    tone.value = "danger";
+  } catch {
+    parties.value = [];
+    loadError.value = "加载合作单位失败，请稍后重试。";
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(loadParties);
+async function loadCreateCapability() {
+  const values = { type: "organization" as const, name: "", attachments: [] as const };
+  const fingerprint = await fingerprintBusinessPartyValues(values);
+  const probe = await issueBusinessEntryCreateTarget("business_party", { scope: "global" }, {
+    entityType: "business_party",
+    idempotencyKey: createBusinessPartyIdempotencyKey(),
+    fingerprint,
+    definitionKey: "business_party",
+    definitionVersion: 1
+  });
+  definition.value = await fetchBusinessEntryDefinition(
+    "business_party",
+    { scope: "global" },
+    { entityType: "business_party", createTarget: probe.createTarget },
+    "edit"
+  );
+  createCapability.value = "allowed";
+}
+
+onMounted(() => {
+  if (route.query.notice === "permission") {
+    message.value = "当前岗位无权新建合作单位";
+    tone.value = "danger";
+    void router.replace({ query: {} });
+  }
+  void loadParties();
+  void loadCreateCapability().catch(() => {
+    createCapability.value = "denied";
+  });
+});
 </script>
 
 <style scoped>
-.page { min-width: 0; color: #151922; }
-.page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
-.page-head p { margin: 0; color: #767f8d; font-size: 12px; }
-.panel { margin-bottom: 16px; border-radius: 3px; }
-.query-actions { flex-wrap: wrap; }
-.message { font-size: 12px; }
-.danger { color: #b51d2a; }
-@container jg-page (max-width: 620px) { .page-head { display: grid; grid-template-columns: 1fr; } }
+.page {
+  display: grid;
+  gap: var(--jg-space-lg);
+  min-width: 0;
+  color: var(--jg-color-text-primary);
+  font-size: var(--jg-font-size-body);
+}
+
+.page :deep(.t-space) {
+  flex-wrap: wrap;
+}
+
+.message {
+  margin: 0;
+  font-size: var(--jg-font-size-meta);
+}
+
+.danger {
+  color: var(--jg-color-danger);
+}
 </style>
