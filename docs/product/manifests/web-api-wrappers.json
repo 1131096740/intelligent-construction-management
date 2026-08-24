@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 19,
-    "exportedFunctionCount": 485,
-    "transportWrapperCount": 465,
+    "apiModuleCount": 20,
+    "exportedFunctionCount": 487,
+    "transportWrapperCount": 467,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 487,
+    "mainRequestBindingCount": 489,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 487,
-    "productionConsumerCount": 358,
+    "requestEdgeCount": 489,
+    "productionConsumerCount": 363,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 264,
-    "reachableProductionModuleCount": 230
+    "productionModuleCount": 267,
+    "reachableProductionModuleCount": 234
   },
   "wrappers": [
     {
@@ -34,7 +34,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 157,
+          "sourceLine": 203,
           "method": "GET",
           "path": "/business-entry-definitions/:param/excel-template",
           "normalizedPath": "/business-entry-definitions/:param/excel-template",
@@ -54,6 +54,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchBusinessEntryCreateCapability",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 146,
+          "method": "GET",
+          "path": "/business-entry-definitions/:param/create-capability",
+          "normalizedPath": "/business-entry-definitions/:param/create-capability",
+          "normalizedKey": "GET /business-entry-definitions/:param/create-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchBusinessEntryCreateCapability"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchBusinessEntryDefinition",
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "kind": "transport",
@@ -61,7 +90,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 122,
+          "sourceLine": 136,
           "method": "GET",
           "path": "/business-entry-definitions/:param",
           "normalizedPath": "/business-entry-definitions/:param",
@@ -77,7 +106,9 @@
       "testConsumers": [
         "apps/web-admin/src/api/business-entry.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -88,7 +119,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 106,
+          "sourceLine": 119,
           "method": "POST",
           "path": "/business-entry-definitions/:param/freeze",
           "normalizedPath": "/business-entry-definitions/:param/freeze",
@@ -109,6 +140,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "issueBusinessEntryCreateTarget",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 119,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/create-target",
+          "normalizedPath": "/business-entry-definitions/:param/create-target",
+          "normalizedKey": "POST /business-entry-definitions/:param/create-target",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "issueBusinessEntryCreateTarget",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "previewBusinessEntryExcel",
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "kind": "transport",
@@ -116,7 +175,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 179,
+          "sourceLine": 225,
           "method": "POST",
           "path": "/business-entry-definitions/:param/excel-preview",
           "normalizedPath": "/business-entry-definitions/:param/excel-preview",
@@ -139,11 +198,11 @@
       "name": "validateBusinessEntryDraft",
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "kind": "transport",
-      "returnProvenance": "transparent_main_response",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 106,
+          "sourceLine": 119,
           "method": "POST",
           "path": "/business-entry-definitions/:param/validate",
           "normalizedPath": "/business-entry-definitions/:param/validate",
@@ -160,7 +219,38 @@
       "testConsumers": [
         "apps/web-admin/src/api/business-entry.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createBusinessPartyWithIntent",
+      "apiFile": "apps/web-admin/src/api/business-party.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 43,
+          "method": "POST",
+          "path": "/business-parties",
+          "normalizedPath": "/business-parties",
+          "normalizedKey": "POST /business-parties",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createBusinessPartyWithIntent"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-party.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -1405,34 +1495,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createBusinessParty",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 132,
-          "method": "POST",
-          "path": "/business-parties",
-          "normalizedPath": "/business-parties",
-          "normalizedKey": "POST /business-parties",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "createBusinessParty",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "createBusinessPartyVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -1823,7 +1885,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2219,
+          "sourceLine": 2215,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1853,7 +1915,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2219,
+          "sourceLine": 2215,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1950,7 +2012,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1784,
+          "sourceLine": 1780,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -2452,6 +2514,7 @@
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
         "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
       ],
       "unreachableConsumers": []
@@ -14565,12 +14628,6 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-      "wrapper": "fetchBusinessEntryDefinition",
-      "classification": "test_only",
-      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "wrapper": "freezeBusinessEntrySnapshot",
       "classification": "test_only",
       "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
@@ -14578,12 +14635,6 @@
     {
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "wrapper": "previewBusinessEntryExcel",
-      "classification": "test_only",
-      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-      "wrapper": "validateBusinessEntryDraft",
       "classification": "test_only",
       "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
     },
@@ -14698,12 +14749,6 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "cloneLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "createBusinessParty",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },

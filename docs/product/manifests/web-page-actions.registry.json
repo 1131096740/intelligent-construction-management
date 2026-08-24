@@ -2,6 +2,132 @@
   "schemaVersion": 1,
   "actions": [
     {
+      "id": "business-party.definition-probe",
+      "usage": "background",
+      "routePaths": [
+        "/合作单位档案"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "loadCreateCapability"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryCreateCapability",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "actor",
+            "company": "company",
+            "scene": "scene",
+            "action": "action",
+            "definitionRevision": "definitionRevision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryCreateCapability"
+        }
+      ]
+    },
+    {
+      "id": "business-party.definition-check",
+      "usage": "page_action",
+      "routePaths": [
+        "/合作单位档案/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "checkDraft"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "actor",
+            "company": "company",
+            "scene": "scene",
+            "action": "action",
+            "definitionRevision": "definitionRevision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "issueBusinessEntryCreateTarget"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "validateBusinessEntryDraft"
+        }
+      ]
+    },
+    {
+      "id": "business-party.create",
+      "usage": "page_action",
+      "routePaths": [
+        "/合作单位档案/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submitConfirmed"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "actor",
+            "company": "company",
+            "scene": "scene",
+            "action": "action",
+            "definitionRevision": "definitionRevision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-party.api.ts",
+          "name": "createBusinessPartyWithIntent"
+        }
+      ]
+    },
+    {
       "id": "archive.create-private-file-download-ticket",
       "usage": "page_action",
       "routePaths": [

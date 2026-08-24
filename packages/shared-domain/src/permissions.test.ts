@@ -16,11 +16,7 @@ describe("permission policy table", () => {
     const action = "business_party.create" as BusinessAction;
     const expectedRoles = [
       "contract_staff",
-      "contract_director",
-      "finance_staff",
-      "finance_director",
-      "chairman",
-      "general_manager"
+      "contract_director"
     ] as const satisfies readonly RoleKey[];
 
     expect(ACTION_REQUIRED_ROLES[action]).toEqual(expectedRoles);

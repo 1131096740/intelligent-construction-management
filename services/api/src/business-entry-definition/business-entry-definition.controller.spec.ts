@@ -11,7 +11,8 @@ describe("BusinessEntryDefinitionController", () => {
       BusinessEntryDefinitionController.prototype.validateDraft,
       BusinessEntryDefinitionController.prototype.freezeSubmissionSnapshot,
       BusinessEntryDefinitionController.prototype.downloadExcelTemplate,
-      BusinessEntryDefinitionController.prototype.previewExcel
+      BusinessEntryDefinitionController.prototype.previewExcel,
+      BusinessEntryDefinitionController.prototype.getCreateCapability
     ]) {
       expect(reflector.get(
         REQUIRED_PROJECT_ACTION_KEY,
@@ -23,6 +24,7 @@ describe("BusinessEntryDefinitionController", () => {
   it("passes a global target without inventing a project scope", async () => {
     const definitions = {
       getSceneDefinitionForOperation: jest.fn().mockResolvedValue({ key: "company_profile" }),
+      getSceneDefinitionForCapability: jest.fn().mockResolvedValue({ key: "business_party", version: 1 }),
       validateDraft: jest.fn().mockResolvedValue({ valid: true }),
       freezeSubmissionSnapshot: jest.fn().mockResolvedValue({ sceneKey: "company_profile" })
     };
@@ -54,6 +56,12 @@ describe("BusinessEntryDefinitionController", () => {
       "company_entity",
       "company-1",
       undefined,
+      user
+    );
+    await controller.getCreateCapability(
+      "business_party",
+      undefined,
+      "edit",
       user
     );
     await controller.validateDraft("company_profile", undefined, target, user);
@@ -88,6 +96,12 @@ describe("BusinessEntryDefinitionController", () => {
       "user-1",
       "edit",
       { entityType: "company_entity", entityId: "company-1" }
+    );
+    expect(definitions.getSceneDefinitionForCapability).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      "edit"
     );
     expect(definitions.validateDraft).toHaveBeenCalledWith(
       "company_profile",

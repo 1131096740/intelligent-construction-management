@@ -132,6 +132,24 @@ export class BusinessEntryDefinitionController {
     );
   }
 
+  @Get(":sceneKey/create-capability")
+  getCreateCapability(
+    @Param("sceneKey") sceneKey: string,
+    @Query("projectId") projectId: string | undefined,
+    @Query("operation") operation: string | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (operation && !BUSINESS_ENTRY_OPERATIONS.includes(operation as BusinessEntryOperation)) {
+      throw new BadRequestException("业务字段用途不受支持");
+    }
+    return this.definitions.getSceneDefinitionForCapability(
+      sceneKey,
+      projectId,
+      user.id,
+      (operation as BusinessEntryOperation | undefined) ?? "edit"
+    );
+  }
+
   @Post(":sceneKey/validate")
   validateDraft(
     @Param("sceneKey") sceneKey: string,

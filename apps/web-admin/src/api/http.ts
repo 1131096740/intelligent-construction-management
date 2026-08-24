@@ -18,6 +18,11 @@ export interface AuthBridge {
   onPasswordChangeRequired?(): void;
 }
 
+export interface ApiFetchOptions {
+  /** A write with a stable idempotency key may opt out of automatic 401 replay. */
+  retryUnauthorized?: boolean;
+}
+
 export function withAuth(init: RequestInit, token: string | null): RequestInit {
   if (!token) {
     return init;
@@ -32,7 +37,7 @@ export function withAuth(init: RequestInit, token: string | null): RequestInit {
 export function createApiFetch(
   bridge: AuthBridge,
   fetchImpl?: typeof fetch
-): (path: string, init?: RequestInit) => Promise<Response> {
+): (path: string, init?: RequestInit, options?: ApiFetchOptions) => Promise<Response> {
   let refreshInFlight: Promise<boolean> | null = null;
 
   const refreshOnce = () => {
@@ -44,7 +49,11 @@ export function createApiFetch(
     return refreshInFlight;
   };
 
-  return async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return async function apiFetch(
+    path: string,
+    init: RequestInit = {},
+    options: ApiFetchOptions = {}
+  ): Promise<Response> {
     const accessToken = bridge.getAccessToken();
     const send = async (token: string | null = bridge.getAccessToken()) => {
       try {
@@ -56,7 +65,7 @@ export function createApiFetch(
 
     let response = await send(accessToken);
 
-    if (response.status === 401) {
+    if (response.status === 401 && options.retryUnauthorized !== false) {
       const currentAccessToken = bridge.getAccessToken();
       const sessionWasAlreadyRefreshed = Boolean(
         currentAccessToken && currentAccessToken !== accessToken
@@ -70,6 +79,10 @@ export function createApiFetch(
       if (response.status === 401) {
         bridge.onUnauthorized();
       }
+    }
+
+    if (response.status === 401 && options.retryUnauthorized === false) {
+      bridge.onUnauthorized();
     }
 
     if (response.status === 403 && (await isPasswordChangeRequired(response))) {

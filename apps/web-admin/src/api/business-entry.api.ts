@@ -26,6 +26,15 @@ export type BusinessEntryRequestScope =
   | { scope: "global"; projectId?: never }
   | { scope: "project"; projectId: string };
 
+export interface BusinessEntryCreateTargetResponse {
+  createTarget: string;
+  expiresAt: string;
+  entityType?: string;
+  scope?: string;
+}
+
+type MaybePromise<T> = T | PromiseLike<T>;
+
 function projectIdForScope(scope: BusinessEntryRequestScope) {
   if (!scope || typeof scope !== "object") throw new Error("业务场景 scope 无效");
   if (scope.scope === "project") {
@@ -84,7 +93,11 @@ async function ensureOk(response: Response, fallback: string) {
   } catch {
     detail = "";
   }
-  throw new Error(formatApiErrorMessage(detail, response.status, fallback));
+  const error = new Error(formatApiErrorMessage(detail, response.status, fallback)) as Error & {
+    status?: number;
+  };
+  error.status = response.status;
+  throw error;
 }
 
 function requestBody(payload: BusinessEntryDraftPayload, operation?: BusinessEntryOperation) {
@@ -115,24 +128,57 @@ async function postJson<T>(requestPath: string, body: unknown, fallback: string)
 export async function fetchBusinessEntryDefinition(
   sceneKey: string,
   scope: BusinessEntryRequestScope,
-  target: BusinessEntrySubmissionTarget,
+  target: MaybePromise<BusinessEntrySubmissionTarget>,
   operation: BusinessEntryOperation = "edit"
 ) {
-  if (!target) throw new Error("加载业务字段需要正式业务对象");
-  const response = await apiFetch(path(sceneKey, scope, "", operation, target));
+  const resolvedTarget = await target;
+  if (!resolvedTarget) throw new Error("加载业务字段需要正式业务对象");
+  const response = await apiFetch(path(sceneKey, scope, "", operation, resolvedTarget));
   await ensureOk(response, "加载业务字段失败");
+  return response.json() as Promise<BusinessEntrySceneDefinition>;
+}
+
+export async function fetchBusinessEntryCreateCapability(
+  sceneKey: string,
+  scope: BusinessEntryRequestScope,
+  operation: BusinessEntryOperation = "edit"
+) {
+  const response = await apiFetch(path(sceneKey, scope, "/create-capability", operation));
+  await ensureOk(response, "加载业务创建能力失败");
   return response.json() as Promise<BusinessEntrySceneDefinition>;
 }
 
 export function validateBusinessEntryDraft(
   scope: BusinessEntryRequestScope,
-  payload: BusinessEntryDraftPayload,
+  payload: MaybePromise<BusinessEntryDraftPayload>,
   operation: BusinessEntryOperation = "edit"
 ) {
-  return postJson<BusinessEntryValidationResult>(
-    path(payload.sceneKey, scope, "/validate"),
-    requestBody(payload, operation),
-    "检查业务草稿失败"
+  return Promise.resolve(payload).then((resolvedPayload) =>
+    postJson<BusinessEntryValidationResult>(
+      path(resolvedPayload.sceneKey, scope, "/validate"),
+      requestBody(resolvedPayload, operation),
+      "检查业务草稿失败"
+    )
+  );
+}
+
+export function issueBusinessEntryCreateTarget(
+  sceneKey: string,
+  scope: BusinessEntryRequestScope,
+  input: {
+    entityType: string;
+    definitionKey: string;
+    definitionVersion: number;
+    idempotencyKey: string;
+    fingerprint: MaybePromise<string>;
+  }
+) {
+  return Promise.resolve(input.fingerprint).then((fingerprint) =>
+    postJson<BusinessEntryCreateTargetResponse>(
+      path(sceneKey, scope, "/create-target"),
+      { ...input, fingerprint },
+      "获取业务创建权限失败"
+    )
   );
 }
 

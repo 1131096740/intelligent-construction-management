@@ -13,13 +13,20 @@
         <t-button @click="loadParties">
           查询
         </t-button>
+        <t-button
+          v-if="canCreate && definition && definition.key"
+          theme="primary"
+          @click="goCreate"
+        >
+          新建合作单位
+        </t-button>
       </t-space>
     </div>
 
     <t-alert
       theme="info"
-      title="上线准备期间暂为只读"
-      message="当前可查询合作单位及版本历史；新增档案入口将在主数据治理完成后重新开放。"
+      title="合作单位档案"
+      message="当前可查询合作单位及版本历史；新建入口仅在服务端确认当前岗位能力后显示。"
       class="panel"
     />
 
@@ -58,7 +65,10 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import {
+  fetchBusinessEntryCreateCapability,
+} from "../../api/business-entry.api";
 import { listBusinessParties } from "../../api/contract-workbench.api";
 
 interface PartyRow {
@@ -69,6 +79,7 @@ interface PartyRow {
 }
 
 const router = useRouter();
+const route = useRoute();
 const columns = [
   { colKey: "name", title: "名称", minWidth: 180 },
   { colKey: "unifiedSocialCreditCode", title: "统一社会信用代码", minWidth: 180 },
@@ -80,9 +91,15 @@ const parties = ref<PartyRow[]>([]);
 const loading = ref(false);
 const message = ref("");
 const tone = ref<"danger">("danger");
+const canCreate = ref(false);
+const definition = ref<{ key: string } | null>(null);
 
 function go(id: string) {
   void router.push(`/business-parties/${id}`);
+}
+
+function goCreate() {
+  void router.push("/business-parties/new");
 }
 
 async function loadParties() {
@@ -97,7 +114,29 @@ async function loadParties() {
   }
 }
 
-onMounted(loadParties);
+async function loadCreateCapability() {
+  const probeDefinition = await fetchBusinessEntryCreateCapability(
+    "business_party",
+    { scope: "global" },
+    "edit"
+  );
+  const definitionKey = probeDefinition.key;
+  if (!definitionKey) throw new Error("业务字段定义无效");
+  definition.value = probeDefinition;
+  canCreate.value = true;
+}
+
+onMounted(() => {
+  if (route.query.notice === "no-create-permission") {
+    message.value = "当前岗位无权创建合作单位。";
+    tone.value = "danger";
+    void router.replace({ path: route.path, query: {} });
+  }
+  void loadParties();
+  void loadCreateCapability().catch(() => {
+    canCreate.value = false;
+  });
+});
 </script>
 
 <style scoped>

@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 250,
-    "pageActionCount": 51,
-    "backgroundActionCount": 199,
-    "reachableVueFileCount": 129,
-    "routeRootCount": 48,
-    "totalVueFileCount": 153,
-    "parsedVueFileCount": 153,
-    "reachableProductionModuleCount": 230,
-    "templateEventDirectiveCount": 862,
+    "registeredActionCount": 253,
+    "pageActionCount": 53,
+    "backgroundActionCount": 200,
+    "reachableVueFileCount": 130,
+    "routeRootCount": 49,
+    "totalVueFileCount": 154,
+    "parsedVueFileCount": 154,
+    "reachableProductionModuleCount": 234,
+    "templateEventDirectiveCount": 873,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 241,
-    "candidateProductionMutationConsumerCount": 241,
-    "acceptedProductionMutationConsumerCount": 241,
-    "productionMutationConsumerPairCount": 241,
+    "coveredProductionMutationConsumerCount": 244,
+    "candidateProductionMutationConsumerCount": 244,
+    "acceptedProductionMutationConsumerCount": 244,
+    "productionMutationConsumerPairCount": 244,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 264,
-    "reachableProductionModuleCount": 230,
-    "totalVueFileCount": 153,
-    "parsedVueFileCount": 153
+    "totalProductionModuleCount": 267,
+    "reachableProductionModuleCount": 234,
+    "totalVueFileCount": 154,
+    "parsedVueFileCount": 154
   },
   "actions": [
     {
@@ -257,6 +257,342 @@
             "localCallChain": [
               "confirmDownload",
               "createPrivateFileDownloadTicket"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "business-party.create",
+      "usage": "page_action",
+      "routePaths": [
+        "/合作单位档案/新建"
+      ],
+      "ownerRoutePaths": [
+        "/合作单位档案/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submitConfirmed",
+        "kind": "event",
+        "sourceLine": 158,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "actor",
+            "company": "company",
+            "scene": "scene",
+            "action": "action",
+            "definitionRevision": "definitionRevision"
+          },
+          "submissionTarget": "independent"
+        },
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "path": "/business-entry-definitions/:param",
+          "normalizedKey": "GET /business-entry-definitions/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/business-entry-definitions/:sceneKey",
+            "normalizedKey": "GET /business-entry-definitions/:param",
+            "controller": "BusinessEntryDefinitionController",
+            "handler": "getSceneDefinition",
+            "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitConfirmed",
+              "fetchBusinessEntryDefinition"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-party.api.ts",
+          "wrapper": "createBusinessPartyWithIntent",
+          "method": "POST",
+          "path": "/business-parties",
+          "normalizedKey": "POST /business-parties",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/business-parties",
+            "normalizedKey": "POST /business-parties",
+            "controller": "BusinessPartyController",
+            "handler": "create",
+            "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "business_party.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitConfirmed",
+              "createBusinessPartyWithIntent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "business-party.definition-check",
+      "usage": "page_action",
+      "routePaths": [
+        "/合作单位档案/新建"
+      ],
+      "ownerRoutePaths": [
+        "/合作单位档案/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "checkDraft",
+        "kind": "event",
+        "sourceLine": 109,
+        "sourceColumn": 14
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "actor",
+            "company": "company",
+            "scene": "scene",
+            "action": "action",
+            "definitionRevision": "definitionRevision"
+          },
+          "submissionTarget": "independent"
+        },
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "path": "/business-entry-definitions/:param",
+          "normalizedKey": "GET /business-entry-definitions/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/business-entry-definitions/:sceneKey",
+            "normalizedKey": "GET /business-entry-definitions/:param",
+            "controller": "BusinessEntryDefinitionController",
+            "handler": "getSceneDefinition",
+            "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "checkDraft",
+              "fetchBusinessEntryDefinition"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "issueBusinessEntryCreateTarget",
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/create-target",
+          "normalizedKey": "POST /business-entry-definitions/:param/create-target",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/business-entry-definitions/:sceneKey/create-target",
+            "normalizedKey": "POST /business-entry-definitions/:param/create-target",
+            "controller": "BusinessEntryDefinitionController",
+            "handler": "issueCreateTarget",
+            "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "checkDraft",
+              "issueBusinessEntryCreateTarget"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/validate",
+          "normalizedKey": "POST /business-entry-definitions/:param/validate",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/business-entry-definitions/:sceneKey/validate",
+            "normalizedKey": "POST /business-entry-definitions/:param/validate",
+            "controller": "BusinessEntryDefinitionController",
+            "handler": "validateDraft",
+            "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "checkDraft",
+              "validateBusinessEntryDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "business-party.definition-probe",
+      "usage": "background",
+      "routePaths": [
+        "/合作单位档案"
+      ],
+      "ownerRoutePaths": [
+        "/合作单位档案"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "loadCreateCapability",
+        "kind": "background_call",
+        "sourceLine": 117,
+        "sourceColumn": 0
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryCreateCapability",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "actor",
+            "company": "company",
+            "scene": "scene",
+            "action": "action",
+            "definitionRevision": "definitionRevision"
+          },
+          "submissionTarget": "independent"
+        },
+        "serverDerived": true,
+        "dominatesTrigger": false
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "fetchBusinessEntryCreateCapability",
+          "method": "GET",
+          "path": "/business-entry-definitions/:param/create-capability",
+          "normalizedKey": "GET /business-entry-definitions/:param/create-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/business-entry-definitions/:sceneKey/create-capability",
+            "normalizedKey": "GET /business-entry-definitions/:param/create-capability",
+            "controller": "BusinessEntryDefinitionController",
+            "handler": "getCreateCapability",
+            "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "loadCreateCapability",
+              "fetchBusinessEntryCreateCapability"
             ]
           },
           "ticketFollowups": []

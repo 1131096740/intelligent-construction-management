@@ -1321,10 +1321,6 @@ export interface CreateBusinessPartyPayload {
   [key: string]: unknown;
 }
 
-export function createBusinessParty(body: CreateBusinessPartyPayload) {
-  return postJson<unknown>("/business-parties", body);
-}
-
 export function getBusinessParty(partyId: string) {
   return readJson<unknown>(`/business-parties/${partyId}`);
 }

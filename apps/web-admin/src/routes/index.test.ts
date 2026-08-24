@@ -496,6 +496,7 @@ describe("web admin routes", () => {
       "合同模板库",
       "结算模板库",
       "合作单位档案",
+      "合作单位档案/新建",
       "委托台账",
       "组织权限",
       "系统配置",
@@ -545,6 +546,7 @@ describe("web admin routes", () => {
     expect(redirectOf("audit")).toBe("/审计日志");
     expect(redirectOf("contract-templates")).toBe("/合同模板库");
     expect(redirectOf("business-parties")).toBe("/合作单位档案");
+    expect(redirectOf("business-parties/new")).toBe("/合作单位档案/新建");
     expect(redirectOf("delegations")).toBe("/委托台账");
     expect(redirectOf("settings")).toBe("/系统配置");
     expect(redirectOf("organization")).toBe("/组织权限");
@@ -582,7 +584,6 @@ describe("web admin routes", () => {
       { label: "合同工作台", path: "/合同工作台" },
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
-      { label: "合作单位档案", path: "/合作单位档案" },
       { label: "结算工作台", path: "/结算工作台" },
       { label: "资金办理工作台", path: "/统一资金办理工作台" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
@@ -595,6 +596,7 @@ describe("web admin routes", () => {
       { label: "资料库", path: "/资料库" },
       { label: "审计日志", path: "/审计日志" },
       { label: "我方公司主体", path: "/我方公司主体" },
+      { label: "合作单位档案", path: "/合作单位档案" },
       { label: "组织权限", path: "/组织权限" },
       { label: "系统配置", path: "/系统配置" }
     ]);

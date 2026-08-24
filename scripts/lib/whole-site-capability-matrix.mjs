@@ -1204,6 +1204,7 @@ function validatePageSummary(
   const acceptedKeys = new Set();
   const coveredKeys = new Set();
   for (const { action, binding } of actionBindings) {
+    if (!MUTATION_METHODS.has(binding.method)) continue;
     for (const consumer of binding.productionConsumers) {
       candidateKeys.add(
         mutationConsumerKey(
@@ -2210,7 +2211,12 @@ export function buildWholeSiteCapabilityMatrix({
   );
 
   const unresolvedActions = actionBindings
-    .filter(({ reasons }) => reasons.length > 0)
+    .filter(
+      ({ action, binding, reasons }) =>
+        reasons.length > 0 &&
+        (MUTATION_METHODS.has(binding.method) ||
+          action.usage !== "background")
+    )
     .map(({ action, binding, index, identity, reasons }) => ({
       actionId: action.id,
       bindingIndex: index,

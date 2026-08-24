@@ -9,7 +9,6 @@ import {
   cloneLayoutTemplateVersion,
   createBusinessPartyVersion,
   createContractTemplate,
-  createBusinessParty,
   createContractNumberRule,
   createDraftCheckpoint,
   checkContractSubmissionReadiness,
@@ -1360,26 +1359,6 @@ describe("contract workbench API client", () => {
     await listBusinessParties("云南");
 
     expect(mockApiFetch).toHaveBeenCalledWith("/business-parties?query=%E4%BA%91%E5%8D%97");
-  });
-
-  it("createBusinessParty – POST /business-parties", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ id: "party-1" }));
-
-    await createBusinessParty({
-      name: "云南示例供应商有限公司",
-      unifiedSocialCreditCode: "91530000EXAMPLE01",
-      attachments: []
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "云南示例供应商有限公司",
-        unifiedSocialCreditCode: "91530000EXAMPLE01",
-        attachments: []
-      })
-    });
   });
 
   it("getBusinessParty – GET /business-parties/:partyId", async () => {

@@ -159,6 +159,22 @@ describe("createApiFetch", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("can leave a 401 unreplayed for an idempotent write", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(401));
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    const apiFetch = createApiFetch(bridge({ refresh, onUnauthorized }), fetchImpl);
+
+    const response = await apiFetch("/business-parties", { method: "POST" }, {
+      retryUnauthorized: false
+    });
+
+    expect(response.status).toBe(401);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("clears the session when the retry after refresh still returns 401", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(401));
     const refresh = vi.fn(async () => true);

@@ -193,6 +193,12 @@ describe("BusinessEntryDefinitionService", () => {
       "user-1",
       { entityType: "business_party", entityId: "party-1" }
     )).resolves.toMatchObject({ key: "business_party" });
+    await expect(service.getSceneDefinitionForCapability(
+      "business_party",
+      undefined,
+      "user-1",
+      "edit"
+    )).resolves.toMatchObject({ key: "business_party" });
     expect(resolver.resolveActiveRoleScopes).toHaveBeenCalledWith("user-1");
     expect(targetResolver).toHaveBeenCalled();
   });

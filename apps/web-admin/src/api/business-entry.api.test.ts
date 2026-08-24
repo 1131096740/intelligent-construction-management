@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BusinessEntryDraftPayload } from "@jiangkong/shared-domain";
 import {
   downloadBusinessEntryExcelTemplate,
+  fetchBusinessEntryCreateCapability,
   fetchBusinessEntryDefinition,
   freezeBusinessEntrySnapshot,
   previewBusinessEntryExcel,
@@ -58,6 +59,26 @@ describe("business entry API", () => {
           operation: "edit"
         })
       })
+    );
+  });
+
+  it("reads global create capability without issuing a submission target", async () => {
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      key: "business_party",
+      version: 1,
+      fields: []
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    await expect(fetchBusinessEntryCreateCapability(
+      "business_party",
+      { scope: "global" },
+      "edit"
+    )).resolves.toMatchObject({ key: "business_party", version: 1 });
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/business-entry-definitions/business_party/create-capability?operation=edit"
     );
   });
 

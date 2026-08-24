@@ -8,10 +8,8 @@
       "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111.",
       "wrappers": [
         "downloadBusinessEntryExcelTemplate",
-        "fetchBusinessEntryDefinition",
         "freezeBusinessEntrySnapshot",
-        "previewBusinessEntryExcel",
-        "validateBusinessEntryDraft"
+        "previewBusinessEntryExcel"
       ]
     },
     {
@@ -59,7 +57,6 @@
         "addBillRow",
         "cloneContractTemplateVersion",
         "cloneLayoutTemplateVersion",
-        "createBusinessParty",
         "createBusinessPartyVersion",
         "createContractNumberRule",
         "createContractTemplate",

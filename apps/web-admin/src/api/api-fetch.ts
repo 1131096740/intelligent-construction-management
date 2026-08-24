@@ -28,3 +28,9 @@ export const apiFetch = createApiFetch({
     }
   }
 });
+
+/** Writes whose idempotency key must not be replayed after a 401. */
+export const apiFetchNoUnauthorizedRetry = (
+  path: string,
+  init?: RequestInit
+) => apiFetch(path, init, { retryUnauthorized: false });

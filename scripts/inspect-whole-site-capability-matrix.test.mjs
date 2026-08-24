@@ -352,6 +352,7 @@ function pageManifest(web, actions, { unresolved = false } = {}) {
   const candidates = new Set();
   for (const action of actions) {
     for (const binding of action.bindings) {
+      if (!MUTATIONS.has(binding.method)) continue;
       for (const consumer of binding.productionConsumers) {
         candidates.add(
           `${binding.apiFile}\u0000${binding.wrapper}\u0000${consumer}`
@@ -813,7 +814,7 @@ test("keeps a composite GET preflight as non-blocking causal evidence", () => {
   assert.deepEqual(mutationRoute.blockerCodes, []);
 });
 
-test("rejects GET action coverage for a mutation on the same wrapper", () => {
+test("does not treat GET action coverage as mutation coverage on the same wrapper", () => {
   const input = fixture();
   const postRoute = route("POST", "/fixtures", "SaveFixture");
   input.nestManifest.routes.push(postRoute);
@@ -842,12 +843,9 @@ test("rejects GET action coverage for a mutation on the same wrapper", () => {
     input.webManifest
   );
 
-  assert.throws(
-    () => build(input),
-    (error) =>
-      error?.code ===
-      "CAPABILITY_MATRIX_PAGE_UNCOVERED_BLOCKER_DRIFT"
-  );
+  const matrix = build(input);
+  assert.equal(matrix.status, "blocked");
+  assert.equal(matrix.summary.uncoveredProductionMutationConsumerPairCount, 1);
 });
 
 test("rejects an auth transport whose route is absent from Nest", () => {

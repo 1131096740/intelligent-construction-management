@@ -99,8 +99,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/合同工作台"
       },
       { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
-      { label: "合同模板库", path: "/合同模板库" },
-      { label: "合作单位档案", path: "/合作单位档案" }
+      { label: "合同模板库", path: "/合同模板库" }
     ]
   },
   {
@@ -150,6 +149,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/我方公司主体",
         requiredGlobalRoleKeys: companyEntityReaderRoleKeys
       },
+      { label: "合作单位档案", path: "/合作单位档案" },
       {
         label: "组织权限",
         path: "/组织权限",
@@ -305,6 +305,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "合作单位档案",
         component: () => import("../pages/business-parties/BusinessPartyListPage.vue")
+      },
+      {
+        path: "合作单位档案/新建",
+        component: () => import("../pages/business-parties/BusinessPartyCreatePage.vue"),
+        meta: { title: "新建合作单位" }
       },
       {
         path: "合作单位档案/:partyId",
@@ -496,6 +501,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "standard-clauses", redirect: "/合同模板库/标准条款" },
       { path: "contract-number-rules", redirect: "/合同模板库/编号规则" },
       { path: "business-parties", redirect: "/合作单位档案" },
+      { path: "business-parties/new", redirect: "/合作单位档案/新建" },
       { path: "business-parties/:partyId", redirect: partyRedirect },
       { path: "settlement-templates", redirect: "/结算模板库" },
       { path: "settlement-templates/new", redirect: "/结算模板库/新建" },

@@ -123,6 +123,27 @@ export class BusinessEntryDefinitionService {
     }
   }
 
+  async getSceneDefinitionForCapability(
+    sceneKey: string,
+    projectId: string | undefined,
+    actorUserId: string,
+    operation: BusinessEntryOperation = "edit"
+  ): Promise<BusinessEntrySceneDefinition> {
+    const { access, roleKeys } = await this.authorizeScene(sceneKey, projectId, actorUserId);
+    if (access.target.scope !== "global") {
+      throw new BadRequestException("创建能力探针仅适用于全局业务场景");
+    }
+    try {
+      return this.registry.getSceneDefinitionForRoles(
+        sceneKey,
+        roleKeys as readonly RoleKey[],
+        operation
+      );
+    } catch (error) {
+      this.rethrowDefinitionError(error);
+    }
+  }
+
   async validateDraft(
     sceneKey: string,
     projectId: string | undefined,
