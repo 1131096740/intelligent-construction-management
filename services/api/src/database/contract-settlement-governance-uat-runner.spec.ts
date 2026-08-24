@@ -11,6 +11,11 @@ const browserRunner = createRequire(__filename)("../../prisma/run-real-role-brow
     runId: string;
     candidateSha: string;
   }): string;
+  resolveSelfArchiveContractIds(input: {
+    governanceEvidencePath: string;
+    runId: string;
+    candidateSha: string;
+  }): Record<string, string>;
   writeFailedBrowserEvidence(input: { evidenceFiles: string[]; candidateSha: string }): void;
 };
 
@@ -61,6 +66,25 @@ function writeGovernanceEvidence(
     runId: browserRunId,
     candidateSha,
     cases: [{ id: "contract_director_handler_self_archive", passed, evidenceIds }]
+  })}\n`);
+}
+
+function writeDualBrowserGovernanceEvidence(
+  file: string,
+  browserContractIds: { chromium: string; webkit: string },
+  candidateSha = browserCandidateSha
+) {
+  writeFileSync(file, `${JSON.stringify({
+    runId: browserRunId,
+    candidateSha,
+    cases: [{
+      id: "contract_director_handler_self_archive",
+      passed: true,
+      browserContractIds: {
+        chromium: `${browserRunId}:${browserContractIds.chromium}`,
+        webkit: `${browserRunId}:${browserContractIds.webkit}`
+      }
+    }]
   })}\n`);
 }
 
@@ -212,6 +236,22 @@ describe("contract settlement governance UAT runners", () => {
         runId: browserRunId,
         candidateSha: browserCandidateSha
       })).toThrow("未通过");
+    });
+  });
+
+  it("rejects a duplicate UUID reused by both browser self-archive fixtures", () => {
+    withBrowserRunnerDirectory((directory) => {
+      const governanceEvidencePath = join(directory, "governance.json");
+      writeDualBrowserGovernanceEvidence(governanceEvidencePath, {
+        chromium: selfArchiveContractId,
+        webkit: selfArchiveContractId
+      });
+
+      expect(() => browserRunner.resolveSelfArchiveContractIds({
+        governanceEvidencePath,
+        runId: browserRunId,
+        candidateSha: browserCandidateSha
+      })).toThrow("必须使用不同 UUID");
     });
   });
 

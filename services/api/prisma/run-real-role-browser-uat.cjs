@@ -27,6 +27,34 @@ function writeEvidence(file, evidence) {
   fs.chmodSync(file, 0o600);
 }
 
+function resolveSelfArchiveContractIds({ governanceEvidencePath, runId, candidateSha }) {
+  assert(path.isAbsolute(governanceEvidencePath), "真实岗位浏览器 UAT 缺少绝对治理证据路径");
+  let governance;
+  try {
+    governance = JSON.parse(fs.readFileSync(governanceEvidencePath, "utf8"));
+  } catch {
+    throw new Error("真实岗位浏览器 UAT 无法读取治理证据");
+  }
+  assert(governance?.runId === runId, "真实岗位浏览器 UAT 治理证据 runId 不一致");
+  assert(governance?.candidateSha === candidateSha, "真实岗位浏览器 UAT 治理证据 SHA 不一致");
+  const selfArchiveCase = governance?.cases?.find(
+    (item) => item?.id === "contract_director_handler_self_archive"
+  );
+  assert(selfArchiveCase?.passed === true, "真实岗位浏览器 UAT 自归档治理用例未通过");
+  const browserContractIds = selfArchiveCase?.browserContractIds;
+  const prefix = `${runId}:`;
+  assert(browserContractIds && typeof browserContractIds === "object", "真实岗位浏览器 UAT 自归档证据缺少双浏览器合同夹具");
+  const resolved = Object.fromEntries(["chromium", "webkit"].map((browser) => {
+    const evidenceId = browserContractIds[browser];
+    assert(typeof evidenceId === "string" && evidenceId.startsWith(prefix), `真实岗位浏览器 UAT ${browser} 自归档证据 runId 不一致`);
+    const contractId = evidenceId.slice(prefix.length);
+    assert(contractIdPattern.test(contractId), `真实岗位浏览器 UAT ${browser} 自归档证据缺少合同 UUID`);
+    return [browser, contractId];
+  }));
+  assert(resolved.chromium !== resolved.webkit, "真实岗位浏览器 UAT 双浏览器合同夹具必须使用不同 UUID");
+  return resolved;
+}
+
 function resolveSelfArchiveContractId({ governanceEvidencePath, runId, candidateSha }) {
   assert(path.isAbsolute(governanceEvidencePath), "真实岗位浏览器 UAT 缺少绝对治理证据路径");
   let governance;
@@ -99,7 +127,7 @@ async function main() {
   assert(/^[0-9a-f]{40}$/.test(candidateSha), "真实岗位浏览器 UAT 缺少 40 位候选 SHA");
   assert(path.isAbsolute(evidencePath), "真实岗位浏览器 UAT 证据路径必须是绝对路径");
   assert(evidencePath.endsWith(".json"), "真实岗位浏览器 UAT 证据路径必须以 .json 结尾");
-  const selfArchiveContractId = resolveSelfArchiveContractId({
+  const selfArchiveContractIds = resolveSelfArchiveContractIds({
     governanceEvidencePath,
     runId,
     candidateSha
@@ -119,7 +147,7 @@ async function main() {
         REAL_BROWSER_CANDIDATE_SHA: candidateSha,
         REAL_BROWSER_EVIDENCE_PATH: path.resolve(evidencePath),
         REAL_BROWSER_OUTPUT_DIR: path.resolve(`${evidencePath}.artifacts`),
-        REAL_BROWSER_SELF_ARCHIVE_CONTRACT_ID: selfArchiveContractId
+        REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS: JSON.stringify(selfArchiveContractIds)
       },
       forwardOutput: true,
       timeoutMs: 30 * 60 * 1000
@@ -144,5 +172,6 @@ module.exports = {
   finalizeBrowserEvidence,
   main,
   resolveSelfArchiveContractId,
+  resolveSelfArchiveContractIds,
   writeFailedBrowserEvidence
 };
