@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { randomUUID } = require("node:crypto");
 const { PDFDocument } = require("pdf-lib");
 const { PrismaClient } = require("@prisma/client");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
@@ -41,6 +42,7 @@ const contractCases = [
 ];
 
 const evidence = new Map();
+const browserContractIds = new Map();
 
 const expectedContractRoutes = {
   material_purchase: [["contract_director"], ["material_director"], ["project_manager"], ["finance_director"], ["chairman", "general_manager"]],
@@ -82,12 +84,13 @@ function guard() {
   assert(String(env.FILE_STORAGE_DRIVER || "local").toLowerCase() === "local", "UAT 必须使用 local 文件存储");
 }
 
-async function request(method, urlPath, token, body, expectedStatus) {
+async function request(method, urlPath, token, body, expectedStatus, extraHeaders = {}) {
   const response = await fetch(`${baseUrl}${urlPath}`, {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body === undefined ? {} : { "Content-Type": "application/json" })
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...extraHeaders
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
@@ -315,6 +318,11 @@ async function createContractFixture(config, shared, tokens, applicantRole = "co
           name: shared.entity.name,
           unifiedSocialCreditCode: shared.entity.unifiedSocialCreditCode,
           registeredAddress: shared.entity.registeredAddress
+        },
+        myCompanyEntity: shared.entity.name,
+        fieldValues: {
+          invoiceType: "增值税专用发票",
+          taxRatePercent: "9"
         }
       },
       templateSnapshot,
@@ -386,6 +394,155 @@ async function setAuthorization(fixture, side, required, tokens) {
   return request("POST", `/contracts/${fixture.version.id}/authorizations`, tokens[fixture.applicantRole], body);
 }
 
+async function establishContractDocumentContent(fixture, tokens) {
+  const actorToken = tokens[fixture.applicantRole];
+  const versionId = fixture.version.id;
+  const lease = await request("POST", `/contract-drafts/${fixture.version.id}/edit-lease`, actorToken);
+  assert(lease?.token, `${fixture.config.type} 合同草稿编辑权获取失败`);
+  try {
+    const workbench = await request("GET", `/contract-drafts/${fixture.version.id}/workbench`, actorToken);
+    const version = workbench?.version;
+    assert(version, `${fixture.config.type} 合同草稿工作台读取失败`);
+    const draftData = version.draftData && typeof version.draftData === "object"
+      ? version.draftData
+      : {};
+    const companyEntityId = draftData.companyEntitySelection?.id;
+    const taxFacts = version.taxFacts;
+    const isChangeVersion = version.changeType === "change" ||
+      version.changeType === "supplement" ||
+      workbench.change?.isChange === true;
+    const draftDataForSave = { ...draftData };
+    if (isChangeVersion) {
+      delete draftDataForSave.companyEntitySelection;
+      delete draftDataForSave.myCompanyEntity;
+    }
+    assert(typeof companyEntityId === "string" && companyEntityId, `${fixture.config.type} 合同主体快照缺失`);
+    assert(taxFacts && typeof taxFacts === "object", `${fixture.config.type} 合同税务事实缺失`);
+
+    const paymentTermsVersion = await prisma.paymentTermsVersion.findFirst({
+      where: { contractVersionId: versionId },
+      select: { originalText: true, id: true }
+    });
+    const paymentStages = paymentTermsVersion
+      ? await prisma.paymentTermsStage.findMany({
+          where: { paymentTermsVersionId: paymentTermsVersion.id },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+        })
+      : [];
+
+    const saved = await request(
+      "PUT",
+      `/contract-drafts/${fixture.version.id}`,
+      actorToken,
+      {
+        idempotencyKey: randomUUID(),
+        saveKind: "manual",
+        expectedRevision: version.draftRevision,
+        changedSections: ["draft"],
+        draft: {
+          draftData: draftDataForSave,
+          clauses: Array.isArray(version.clauseSnapshot) ? version.clauseSnapshot : [],
+          pricingNature: version.pricingNature,
+          amountSource: version.amountSource,
+          ...(version.amountSource === "manual"
+            ? { manualAmountCents: String(version.amountCents) }
+            : {}),
+          ...(version.amountAdjustmentReason
+            ? { amountAdjustmentReason: version.amountAdjustmentReason }
+            : {}),
+          ...(version.layoutTemplateVersionId
+            ? { layoutTemplateVersionId: version.layoutTemplateVersionId }
+            : {}),
+          taxFacts: {
+            invoiceType: taxFacts.invoiceType,
+            taxMode: taxFacts.taxMode,
+            defaultTaxRatePercent: taxFacts.defaultTaxRatePercent,
+            source: taxFacts.source
+          }
+        },
+        parties: (workbench.parties ?? []).map((party) => ({
+          roleKey: party.roleKey,
+          displayOrder: party.displayOrder,
+          ...(party.businessPartyVersionId
+            ? { businessPartyVersionId: party.businessPartyVersionId }
+            : {}),
+          snapshot: party.snapshot
+        })),
+        bills: (workbench.bills ?? []).map((bill) => ({
+          billKey: bill.billKey,
+          expectedRevision: bill.revision,
+          rows: (bill.rows ?? []).map((row, index) => ({
+            clientRowKey: row.clientRowKey ?? row.rowKey ?? row.id ?? `uat-row-${index}`,
+            ...(row.rowKey ? { rowKey: row.rowKey } : {}),
+            sortOrder: row.sortOrder ?? index,
+            ...(row.itemCode ? { itemCode: row.itemCode } : {}),
+            itemName: row.itemName,
+            ...(row.specification ? { specification: row.specification } : {}),
+            unit: row.unit,
+            ...(row.quantity === null || row.quantity === undefined
+              ? {}
+              : { quantity: String(row.quantity) }),
+            unitPrice: String(row.unitPrice),
+            ...(row.taxRatePercent ? { taxRatePercent: row.taxRatePercent } : {}),
+            ...(row.taxRateSource ? { taxRateSource: row.taxRateSource } : {}),
+            ...(row.isProvisional === undefined ? {} : { isProvisional: row.isProvisional }),
+            ...(row.settlementBasis ? { settlementBasis: row.settlementBasis } : {}),
+            customData: row.customData && typeof row.customData === "object" ? row.customData : {}
+          }))
+        })),
+        paymentTerms: paymentTermsVersion
+          ? {
+              originalText: paymentTermsVersion.originalText,
+              stages: paymentStages.map((stage) => ({
+                name: stage.name,
+                stageType: stage.stageType,
+                basis: stage.basis,
+                ...(stage.ratioBps === null ? {} : { ratioBps: stage.ratioBps }),
+                ...(stage.fixedAmountCents === null
+                  ? {}
+                  : { fixedAmountCents: String(stage.fixedAmountCents) }),
+                triggerAnchor: stage.triggerAnchor,
+                triggerEvent: stage.triggerEvent,
+                dueDays: stage.dueDays,
+                ...(stage.advanceDeductionMode === null
+                  ? {}
+                  : { advanceDeductionMode: stage.advanceDeductionMode }),
+                ...(stage.advanceDeductionRatioBps === null
+                  ? {}
+                  : { advanceDeductionRatioBps: stage.advanceDeductionRatioBps }),
+                ...(stage.advanceDeductionStartRatioBps === null
+                  ? {}
+                  : { advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps }),
+                requiresInvoice: stage.requiresInvoice,
+                allowsEarlyPayment: stage.allowsEarlyPayment,
+                allowsInstallments: stage.allowsInstallments,
+                ...(stage.retentionBps === null ? {} : { retentionBps: stage.retentionBps }),
+                originalText: stage.originalText
+              }))
+            }
+          : null,
+        attachments: [],
+        negotiationDocuments: { referencedGeneratedDocumentIds: [] }
+      },
+      undefined,
+      { "x-contract-draft-lease": lease.token }
+    );
+    assert(/^[a-f0-9]{64}$/.test(saved?.documentContentFingerprint ?? ""),
+      `${fixture.config.type} 合同文书内容摘要未通过公开草稿保存流程建立`);
+    fixture.version = await prisma.contractVersion.findUnique({ where: { id: versionId } });
+    return saved;
+  } finally {
+    await request(
+      "DELETE",
+      `/contract-drafts/${fixture.version.id}/edit-lease`,
+      actorToken,
+      undefined,
+      undefined,
+      { "x-contract-draft-lease": lease.token }
+    );
+  }
+}
+
 async function prepareAndSubmitContract(fixture, tokens) {
   const [firstRequired, counterpartyRequired] = fixture.config.auth;
   await setAuthorization(fixture, "first_party", firstRequired, tokens);
@@ -408,20 +565,8 @@ async function prepareAndSubmitContract(fixture, tokens) {
       current.settlementModeConfirmedAt,
     `${fixture.config.type} 结算方式确认未持久化`
   );
-  await prisma.contractGeneratedDocument.create({
-    data: {
-      contractVersionId: fixture.version.id,
-      layoutTemplateVersionId: fixture.layoutVersion.id,
-      purpose: "internal_review",
-      status: "success",
-      sourceRevision: current.draftRevision,
-      inputSnapshot: {},
-      idempotencyKey: `UAT-${runId}-${fixture.version.id}-internal-review`,
-      engineVersion: "uat-fixture-v1",
-      createdByUserId: users[fixture.applicantRole].id,
-      completedAt: new Date()
-    }
-  });
+  await establishContractDocumentContent(fixture, tokens);
+  current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   const counterpartySignedPdf = await uploadContractDraftPdf(
     tokens[fixture.applicantRole],
     fixture.version.id,
@@ -656,34 +801,48 @@ async function assertDirectorInitiatorSelfReview(shared, tokens) {
 
 async function assertDirectorHandlerSelfArchive(shared, tokens) {
   const config = { id: "contract_director_handler_self_archive", type: "material_purchase", auth: [false, false] };
-  const fixture = await createContractFixture(config, shared, tokens, "contractDirector");
-  await prepareAndSubmitContract(fixture, tokens);
-  await approveContract(fixture, tokens);
+  const preparePendingArchive = async (browserKey) => {
+    const fixture = await createContractFixture({ ...config, id: `${config.id}_${browserKey}` }, shared, tokens, "contractDirector");
+    await prepareAndSubmitContract(fixture, tokens);
+    await approveContract(fixture, tokens);
 
-  await request("POST", `/contracts/${fixture.version.id}/seal/approve`, tokens.comprehensiveDirector, {
-    confirmationPassword: password
-  });
-  const completion = {
-    firstPartySignedOrStamped: true,
-    companySealCompleted: true,
-    crossPageSealCompleted: true,
-    signingDateCompleted: true
+    await request("POST", `/contracts/${fixture.version.id}/seal/approve`, tokens.comprehensiveDirector, {
+      confirmationPassword: password
+    });
+    const completion = {
+      firstPartySignedOrStamped: true,
+      companySealCompleted: true,
+      crossPageSealCompleted: true,
+      signingDateCompleted: true
+    };
+    await request("POST", `/contracts/${fixture.version.id}/seal/complete`, tokens.contractDirector, completion);
+    const finalPdf = await uploadPdf(
+      tokens.contractDirector,
+      `UAT-${runId}-contract-director-handler-self-archive-${browserKey}-final.pdf`
+    );
+    const final = await request("POST", `/contracts/${fixture.version.id}/formal-files/final`, tokens.contractDirector, {
+      ...completion,
+      fileId: finalPdf.id,
+      sourceRevision: (await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } })).draftRevision,
+      onlyPermittedSignatureChanges: true,
+      documentOrderConfirmed: true
+    });
+    const pending = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+    assert(pending?.status === "pending_archive_confirm", "合同部主管经办人的最终版上传后未进入待归档确认");
+    return { fixture, final };
   };
-  await request("POST", `/contracts/${fixture.version.id}/seal/complete`, tokens.contractDirector, completion);
-  const finalPdf = await uploadPdf(
-    tokens.contractDirector,
-    `UAT-${runId}-contract-director-handler-self-archive-final.pdf`
+
+  const chromium = await preparePendingArchive("chromium");
+  const webkit = await preparePendingArchive("webkit");
+  assert(
+    chromium.fixture.contract.id !== webkit.fixture.contract.id,
+    "治理 UAT 双浏览器合同夹具必须使用不同 UUID"
   );
-  const final = await request("POST", `/contracts/${fixture.version.id}/formal-files/final`, tokens.contractDirector, {
-    ...completion,
-    fileId: finalPdf.id,
-    sourceRevision: (await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } })).draftRevision,
-    onlyPermittedSignatureChanges: true,
-    documentOrderConfirmed: true
+  browserContractIds.set(config.id, {
+    chromium: chromium.fixture.contract.id,
+    webkit: webkit.fixture.contract.id
   });
-  const pending = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
-  assert(pending?.status === "pending_archive_confirm", "合同部主管经办人的最终版上传后未进入待归档确认");
-  evidence.set(config.id, [fixture.contract.id, fixture.version.id, final.id]);
+  evidence.set(config.id, [chromium.fixture.contract.id, chromium.fixture.version.id, chromium.final.id, webkit.fixture.contract.id, webkit.fixture.version.id, webkit.final.id]);
 }
 
 async function createEffectiveBoundaryBase(type, suffix, shared, tokens) {
@@ -737,20 +896,8 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
     { expectedRevision: current.draftRevision, settlementMode: "settlement_required" }
   );
   current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
-  await prisma.contractGeneratedDocument.create({
-    data: {
-      contractVersionId: draft.id,
-      layoutTemplateVersionId: current.layoutTemplateVersionId,
-      purpose: "internal_review",
-      status: "success",
-      sourceRevision: current.draftRevision,
-      inputSnapshot: {},
-      idempotencyKey: `UAT-${runId}-${draft.id}-change-review`,
-      engineVersion: "uat-fixture-v1",
-      createdByUserId: users.contractStaff.id,
-      completedAt: new Date()
-    }
-  });
+  await establishContractDocumentContent(changeFixture, tokens);
+  current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
   const changeCounterpartySignedPdf = await uploadContractDraftPdf(
     tokens.contractStaff,
     draft.id,
@@ -947,7 +1094,14 @@ function writeEvidence() {
     cases: required.map((id) => ({
       id,
       passed: true,
-      evidenceIds: evidence.get(id).map((value, index) => index === 0 ? `${runId}:${value}` : value)
+      evidenceIds: evidence.get(id).map((value, index) => index === 0 ? `${runId}:${value}` : value),
+      ...(browserContractIds.has(id)
+        ? {
+            browserContractIds: Object.fromEntries(
+              Object.entries(browserContractIds.get(id)).map(([browser, value]) => [browser, `${runId}:${value}`])
+            )
+          }
+        : {})
     }))
   };
   const output = path.resolve(evidencePath);

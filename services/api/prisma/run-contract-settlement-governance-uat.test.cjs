@@ -17,6 +17,14 @@ const sealDtoSource = fs.readFileSync(
   path.join(__dirname, "..", "src", "contract", "dto", "contract-seal.dto.ts"),
   "utf8"
 );
+const browserTestSource = fs.readFileSync(
+  path.join(__dirname, "../../../apps/web-admin/e2e/real-role-browser-uat.e2e.ts"),
+  "utf8"
+);
+const browserRunnerSource = fs.readFileSync(
+  path.join(__dirname, "run-real-role-browser-uat.cjs"),
+  "utf8"
+);
 function controllerPostSource(route) {
   const start = contractControllerSource.indexOf(`@Post(":contractVersionId/${route}")`);
   return contractControllerSource.slice(
@@ -123,6 +131,26 @@ test("governance UAT confirms the current counterparty-signed file before contra
   );
 });
 
+test("governance UAT establishes document content through the public draft flow before counterparty upload", () => {
+  const preparationStart = runnerSource.indexOf("async function establishContractDocumentContent");
+  const preparationEnd = runnerSource.indexOf("\nasync function prepareAndSubmitContract", preparationStart);
+  assert.ok(preparationStart >= 0, "runner must establish document content through a named fixture seam");
+  assert.ok(preparationEnd > preparationStart, "document content preparation seam must end before submission");
+  const preparationSource = runnerSource.slice(preparationStart, preparationEnd);
+
+  assert.match(preparationSource, /\/contract-drafts\/\$\{fixture\.version\.id\}\/edit-lease/u);
+  assert.match(preparationSource, /\/contract-drafts\/\$\{fixture\.version\.id\}\/workbench/u);
+  assert.match(preparationSource, /request\(\s*"PUT",\s*`\/contract-drafts\//u);
+  assert.match(preparationSource, /x-contract-draft-lease/u);
+  assert.match(preparationSource, /documentContentFingerprint/u);
+  assert.doesNotMatch(preparationSource, /contractGeneratedDocument\.create/u);
+
+  const counterpartyUploadIndex = submitSource.indexOf("/formal-files/counterparty`");
+  const preparationCallIndex = submitSource.indexOf("establishContractDocumentContent(fixture, tokens)");
+  assert.ok(preparationCallIndex >= 0, "submission must call the public-flow content preparation seam");
+  assert.ok(preparationCallIndex < counterpartyUploadIndex, "content preparation must precede counterparty upload");
+});
+
 test("governance UAT confirms counterparty files before every operational contract submission", () => {
   const contractSubmissionRoutes = [...runnerSource.matchAll(/`(\/contracts\/\$\{[^`]+?\/approval-submission)`/gu)]
     .map((match) => match[1]);
@@ -191,10 +219,29 @@ test("post-approval final files use the non-draft upload route", () => {
 });
 
 test("global director handler fixture leaves its own final archive pending for the real browser confirmation", () => {
-  assert.match(selfArchiveSource, /createContractFixture\(config, shared, tokens, "contractDirector"\)/u);
+  assert.match(selfArchiveSource, /createContractFixture\(\{ \.\.\.config, id: `\$\{config\.id\}_\$\{browserKey\}` \}, shared, tokens, "contractDirector"\)/u);
   assert.match(selfArchiveSource, /\/formal-files\/final`, tokens\.contractDirector/u);
   assert.doesNotMatch(selfArchiveSource, /formal-files\/final\/confirmation/u);
   assert.match(selfArchiveSource, /await approveContract\(fixture, tokens\);/u);
   assert.doesNotMatch(selfArchiveSource, /roleSequenceForType\(config\.type\)\.slice\(1\)/u);
   assert.match(runnerSource, /"contract_director_handler_self_archive"/u);
+});
+
+test("dual-browser self-archive fixtures fail closed on duplicate contract UUIDs", () => {
+  assert.match(
+    selfArchiveSource,
+    /assert\(\s*chromium\.fixture\.contract\.id !== webkit\.fixture\.contract\.id,\s*[^\n]+双浏览器[^\n]+不同/u
+  );
+  assert.match(
+    browserRunnerSource,
+    /assert\(resolved\.chromium !== resolved\.webkit, [^\n]+双浏览器[^\n]+不同/u
+  );
+  assert.match(browserTestSource, /expect\(selfArchiveContractIds\.chromium\)\.not\.toBe\(selfArchiveContractIds\.webkit\)/u);
+});
+
+test("real browser acceptance completes the self-archive assertion in both browser projects", () => {
+  assert.doesNotMatch(browserTestSource, /test\.skip\(/u);
+  assert.match(runnerSource, /browserContractIds/u);
+  assert.match(browserRunnerSource, /REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS/u);
+  assert.match(browserTestSource, /REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS/u);
 });

@@ -12,7 +12,13 @@ type RoleCase = {
 const initialPassword = process.env.REAL_ROLE_PASSWORD;
 const evidencePath = process.env.REAL_BROWSER_EVIDENCE_PATH;
 const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL;
-const selfArchiveContractId = process.env.REAL_BROWSER_SELF_ARCHIVE_CONTRACT_ID;
+const selfArchiveContractIdsRaw = process.env.REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS;
+let selfArchiveContractIds: Record<string, unknown> = {};
+try {
+  selfArchiveContractIds = JSON.parse(selfArchiveContractIdsRaw ?? "{}") as Record<string, unknown>;
+} catch {
+  selfArchiveContractIds = {};
+}
 
 const roleCases: RoleCase[] = [
   {
@@ -79,10 +85,13 @@ function assertRuntimeConfiguration() {
   expect(freezeApiBaseUrl, "REAL_FREEZE_API_BASE_URL 必须由隔离 UAT runner 注入").toMatch(
     /^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u
   );
-  expect(
-    selfArchiveContractId,
-    "REAL_BROWSER_SELF_ARCHIVE_CONTRACT_ID 必须由治理证据解析后注入"
-  ).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  for (const browser of ["chromium", "webkit"]) {
+    expect(
+      selfArchiveContractIds[browser],
+      `REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS.${browser} 必须由治理证据解析后注入`
+    ).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  }
+  expect(selfArchiveContractIds.chromium).not.toBe(selfArchiveContractIds.webkit);
 }
 
 function normalizedPath(url: string) {
@@ -250,11 +259,11 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
   });
 
   test("current global director handler self-confirms final archive after the real UAT contract-director self-review", async ({ browser }, testInfo) => {
-    test.skip(
-      testInfo.project.name.includes("webkit"),
-      "该隔离夹具在 Chromium 真实浏览器旅程中一次性归档，避免跨浏览器共享写入状态"
-    );
-    const viewport = { width: 1366, height: 768 };
+    const browserKey = testInfo.project.name.includes("webkit") ? "webkit" : "chromium";
+    const selfArchiveContractId = selfArchiveContractIds[browserKey] as string;
+    const viewport = browserKey === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 };
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     await captureApiResponses(page, "contract_director_self_archive");
