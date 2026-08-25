@@ -22,6 +22,35 @@ export interface BusinessEntryExcelPreviewResult {
   rows: BusinessEntryExcelPreviewRow[];
 }
 
+export interface BusinessEntryCreateTargetReceipt {
+  createTarget: string;
+  expiresAt: string;
+  entityType: string;
+  scope: "global" | "project";
+}
+
+export interface BusinessEntrySubmissionTargetReceipt extends BusinessEntryCreateTargetReceipt {
+  target: Extract<BusinessEntrySubmissionTarget, { createTarget: string }>;
+  action: string;
+  definitionKey: string;
+  definitionVersion: number;
+}
+
+export interface BusinessEntryTargetIntent {
+  idempotencyKey: string;
+  fingerprint: string;
+  definitionKey: string;
+  definitionVersion: number;
+}
+
+export interface BusinessPartySubmissionPayload {
+  target: Extract<BusinessEntrySubmissionTarget, { createTarget: string }>;
+  definitionKey: string;
+  definitionVersion: number;
+  idempotencyKey: string;
+  values: Record<string, unknown>;
+}
+
 export type BusinessEntryRequestScope =
   | { scope: "global"; projectId?: never }
   | { scope: "project"; projectId: string };
@@ -110,6 +139,35 @@ async function postJson<T>(requestPath: string, body: unknown, fallback: string)
   });
   await ensureOk(response, fallback);
   return response.json() as Promise<T>;
+}
+
+export function issueBusinessEntryCreateTarget(
+  sceneKey: string,
+  scope: BusinessEntryRequestScope,
+  entityType: string,
+  intent: BusinessEntryTargetIntent
+) {
+  return postJson<BusinessEntryCreateTargetReceipt>(
+    path(sceneKey, scope, "/create-target"),
+    { entityType, ...intent },
+    "获取业务定义探针失败"
+  );
+}
+
+export function issueBusinessEntrySubmissionTarget(
+  sceneKey: string,
+  scope: BusinessEntryRequestScope,
+  input: BusinessEntryTargetIntent & { entityType: string; probe: string }
+) {
+  return postJson<BusinessEntrySubmissionTargetReceipt>(
+    path(sceneKey, scope, "/submission-target"),
+    input,
+    "获取独立提交授权失败"
+  );
+}
+
+export function submitBusinessPartyCreation(body: BusinessPartySubmissionPayload) {
+  return postJson<unknown>("/business-parties", body, "创建合作单位失败");
 }
 
 export async function fetchBusinessEntryDefinition(

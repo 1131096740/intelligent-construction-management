@@ -2,6 +2,60 @@
   "schemaVersion": 1,
   "actions": [
     {
+      "id": "business-party.create",
+      "usage": "page_action",
+      "routePaths": [
+        "/business-parties/new"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "runCreate"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "fresh actor",
+            "company": "fresh company",
+            "scene": "fresh scene",
+            "action": "fresh action",
+            "definitionRevision": "fresh definition revision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "issueBusinessEntryCreateTarget"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "issueBusinessEntrySubmissionTarget"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "validateBusinessEntryDraft"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "freezeBusinessEntrySnapshot"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "submitBusinessPartyCreation"
+        }
+      ]
+    },
+    {
       "id": "archive.create-private-file-download-ticket",
       "usage": "page_action",
       "routePaths": [

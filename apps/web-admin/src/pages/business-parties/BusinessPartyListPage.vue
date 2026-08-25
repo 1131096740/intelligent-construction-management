@@ -13,13 +13,20 @@
         <t-button @click="loadParties">
           查询
         </t-button>
+        <t-button
+          v-if="canCreate"
+          theme="primary"
+          @click="goCreate"
+        >
+          新建合作单位
+        </t-button>
       </t-space>
     </div>
 
     <t-alert
       theme="info"
       title="上线准备期间暂为只读"
-      message="当前可查询合作单位及版本历史；新增档案入口将在主数据治理完成后重新开放。"
+      message="当前可查询合作单位及版本历史；新建档案仅通过受控业务入口提交。"
       class="panel"
     />
 
@@ -59,7 +66,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
+import { computed } from "vue";
+import { useAuthStore } from "../../auth/auth.store";
 import { listBusinessParties } from "../../api/contract-workbench.api";
+import { businessPartyCreateRoleKeys } from "../../routes/route-records";
 
 interface PartyRow {
   id: string;
@@ -69,6 +80,10 @@ interface PartyRow {
 }
 
 const router = useRouter();
+const auth = useAuthStore();
+const canCreate = computed(() => businessPartyCreateRoleKeys.some(
+  (role) => auth.user?.globalRoleKeys.includes(role)
+));
 const columns = [
   { colKey: "name", title: "名称", minWidth: 180 },
   { colKey: "unifiedSocialCreditCode", title: "统一社会信用代码", minWidth: 180 },
@@ -85,12 +100,16 @@ function go(id: string) {
   void router.push(`/business-parties/${id}`);
 }
 
+function goCreate() {
+  void router.push("/business-parties/new");
+}
+
 async function loadParties() {
   loading.value = true;
   try {
     parties.value = (await listBusinessParties(query.value.trim() || undefined)) as PartyRow[];
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合作单位失败";
+    message.value = formatUnknownApiError(error, "加载合作单位失败");
     tone.value = "danger";
   } finally {
     loading.value = false;

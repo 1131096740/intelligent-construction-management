@@ -28,6 +28,7 @@ import { BusinessEntryDefinitionService } from "./business-entry-definition.serv
 import { BusinessEntryDraftRequestDto } from "./dto/business-entry-draft-request.dto";
 import { BusinessEntryExcelPreviewDto } from "./dto/business-entry-excel-preview.dto";
 import { BusinessEntryCreateTargetDto } from "./dto/business-entry-create-target.dto";
+import { BusinessEntrySubmissionTargetDto } from "./dto/business-entry-submission-target.dto";
 
 function normalizeTarget(
   target: BusinessEntryDraftRequestDto["target"]
@@ -177,5 +178,15 @@ export class BusinessEntryDefinitionController {
         definitionVersion: body.definitionVersion
       }
     );
+  }
+
+  @Post(":sceneKey/submission-target")
+  issueSubmissionTarget(
+    @Param("sceneKey") sceneKey: string,
+    @Query("projectId") projectId: string | undefined,
+    @Body() body: BusinessEntrySubmissionTargetDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.definitions.issueSubmissionTarget(sceneKey, projectId, user.id, body);
   }
 }

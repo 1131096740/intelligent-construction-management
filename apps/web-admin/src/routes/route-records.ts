@@ -41,6 +41,8 @@ export const settlementMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["settlement.create"];
 export const operatingTakeoverRoleKeys =
   ACTION_REQUIRED_ROLES["operating_takeover.manage"];
+export const businessPartyCreateRoleKeys =
+  ACTION_REQUIRED_ROLES["business_party.create"];
 
 export const organizationAdminRoleKeys = [
   "chairman",
@@ -99,8 +101,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/合同工作台"
       },
       { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
-      { label: "合同模板库", path: "/合同模板库" },
-      { label: "合作单位档案", path: "/合作单位档案" }
+      { label: "合同模板库", path: "/合同模板库" }
     ]
   },
   {
@@ -145,6 +146,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "系统配置",
     items: [
+      {
+        label: "合作单位档案",
+        path: "/business-parties",
+        requiredGlobalRoleKeys: businessPartyCreateRoleKeys
+      },
       {
         label: "我方公司主体",
         path: "/我方公司主体",
@@ -203,7 +209,6 @@ const contractDetailRedirect = (to: RedirectTarget) => `/合同管理/${String(t
 const contractWorkbenchRedirect = (to: RedirectTarget) => `/合同工作台/${String(to.params.contractId)}`;
 const templateRedirect = (to: RedirectTarget) => `/合同模板库/${String(to.params.templateId)}`;
 const layoutTemplateRedirect = (to: RedirectTarget) => `/合同模板库/版式/${String(to.params.layoutTemplateId)}`;
-const partyRedirect = (to: RedirectTarget) => `/合作单位档案/${String(to.params.partyId)}`;
 const settlementRedirect = (to: RedirectTarget) => `/结算管理/${String(to.params.settlementId)}`;
 const settlementTemplateRedirect = (to: RedirectTarget) =>
   `/结算模板库/${String(to.params.templateId)}`;
@@ -309,6 +314,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "合作单位档案/:partyId",
         component: () => import("../pages/business-parties/BusinessPartyEditorPage.vue")
+      },
+      {
+        path: "business-parties/new",
+        component: () => import("../pages/business-parties/BusinessPartyCreatePage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: businessPartyCreateRoleKeys,
+          title: "新建合作单位"
+        }
       },
       {
         path: "项目经营",
@@ -495,8 +508,19 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "contract-layout-templates/:layoutTemplateId", redirect: layoutTemplateRedirect },
       { path: "standard-clauses", redirect: "/合同模板库/标准条款" },
       { path: "contract-number-rules", redirect: "/合同模板库/编号规则" },
-      { path: "business-parties", redirect: "/合作单位档案" },
-      { path: "business-parties/:partyId", redirect: partyRedirect },
+      {
+        path: "business-parties",
+        component: () => import("../pages/business-parties/BusinessPartyListPage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: businessPartyCreateRoleKeys,
+          title: "合作单位档案"
+        }
+      },
+      {
+        path: "business-parties/:partyId",
+        component: () => import("../pages/business-parties/BusinessPartyEditorPage.vue"),
+        meta: { title: "合作单位详情" }
+      },
       { path: "settlement-templates", redirect: "/结算模板库" },
       { path: "settlement-templates/new", redirect: "/结算模板库/新建" },
       { path: "settlement-templates/:templateId", redirect: settlementTemplateRedirect },

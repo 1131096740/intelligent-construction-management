@@ -10,6 +10,7 @@
     "playwright.config.ts",
     "playwright.rc06.config.ts",
     "playwright.rc06-real.config.ts",
-    "playwright.project-financing-quota-termination.config.ts"
+    "playwright.project-financing-quota-termination.config.ts",
+    "playwright.issue210.config.ts"
   ]
 }

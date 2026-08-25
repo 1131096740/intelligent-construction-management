@@ -9,6 +9,7 @@ import type {
   DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import type { PrivateFileReadModel } from "./core-flow-read.api";
+import { submitBusinessPartyCreation } from "./business-entry.api";
 
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
@@ -1321,9 +1322,9 @@ export interface CreateBusinessPartyPayload {
   [key: string]: unknown;
 }
 
-export function createBusinessParty(body: CreateBusinessPartyPayload) {
-  return postJson<unknown>("/business-parties", body);
-}
+export const createBusinessParty = submitBusinessPartyCreation as unknown as (
+  body: CreateBusinessPartyPayload
+) => ReturnType<typeof submitBusinessPartyCreation>;
 
 export function getBusinessParty(partyId: string) {
   return readJson<unknown>(`/business-parties/${partyId}`);

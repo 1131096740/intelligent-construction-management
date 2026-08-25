@@ -997,7 +997,7 @@ test("renders deterministically without wall-clock evidence", () => {
   assert.doesNotMatch(rendered, /generatedAt|timestamp/i);
 });
 
-test("locks the repository baseline to 442 routes and no route-usage blockers", async () => {
+test("locks the repository baseline to 481 routes and no route-usage blockers", async () => {
   const manifest = await inspectWholeSiteRouteUsageManifest({
     root: REPOSITORY_ROOT
   });
@@ -1025,7 +1025,9 @@ test("locks the repository baseline to 442 routes and no route-usage blockers", 
 
   assert.equal(manifest.status, "ready");
   assert.deepEqual(externalByController, {
+    BusinessEntryDefinitionController: 5,
     ContractTakeoverController: 41,
+    OperatingTakeoverController: 3,
     ProjectController: 19
   });
   assert.deepEqual(
@@ -1062,6 +1064,9 @@ test("locks the repository baseline to 442 routes and no route-usage blockers", 
   assert.deepEqual(
     Object.fromEntries(
       [
+        ["POST", "/business-entry-definitions/:sceneKey/create-target"],
+        ["POST", "/business-entry-definitions/:sceneKey/submission-target"],
+        ["POST", "/business-parties"],
         ["GET", "/projects/affiliate-mapping-report"],
         ["GET", "/contract-workbench/:contractVersionId/offline-revisions"],
         ["GET", "/contracts/:contractVersionId/authorizations/readiness"],
@@ -1096,8 +1101,11 @@ test("locks the repository baseline to 442 routes and no route-usage blockers", 
       })
     ),
     {
+      "POST /business-entry-definitions/:sceneKey/create-target": "page",
+      "POST /business-entry-definitions/:sceneKey/submission-target": "page",
+      "POST /business-parties": "page",
       "GET /projects/affiliate-mapping-report": "external_takeover",
-      "GET /contract-workbench/:contractVersionId/offline-revisions": "page",
+      "GET /contract-workbench/:contractVersionId/offline-revisions": "exit_candidate",
       "GET /contracts/:contractVersionId/authorizations/readiness": "exit_candidate",
       "GET /vat-rate-options": "exit_candidate",
       "DELETE /contract-workbench/:contractVersionId/parties/:partySnapshotId": "exit_candidate",
@@ -1123,29 +1131,29 @@ test("locks the repository baseline to 442 routes and no route-usage blockers", 
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 446);
-  assert.equal(manifest.summary.classificationOverrideCount, 165);
+  assert.equal(manifest.summary.routeCount, 481);
+  assert.equal(manifest.summary.classificationOverrideCount, 183);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "93861177f13d95f7c180f317086ab252409b8397e2a4871c860a9c160d5f1bba"
+    "f725a11156b8a7ccf0bf6c8cffce18e9c167ad5c18eec361b80d8eaa0b88fb0a"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
     "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 281);
-  assert.equal(manifest.summary.pageRouteCount, 282);
-  assert.equal(manifest.summary.externalTakeoverCount, 61);
-  assert.equal(manifest.summary.exitCandidateCount, 100);
+  assert.equal(manifest.summary.derivedProductionPageCount, 298);
+  assert.equal(manifest.summary.pageRouteCount, 302);
+  assert.equal(manifest.summary.externalTakeoverCount, 68);
+  assert.equal(manifest.summary.exitCandidateCount, 108);
   assert.equal(manifest.summary.internalTaskCount, 3);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 331,
+    web_api_wrapper: 355,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 2,
     operator_endpoint: 1,
-    none: 106
+    none: 117
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>
@@ -1162,7 +1170,7 @@ test("locks the repository baseline to 442 routes and no route-usage blockers", 
         `${followup.apiFile}#${followup.wrapper}#${followup.method}#${followup.ticketField}`
     ),
     [
-      "apps/web-admin/src/api/contract-negotiation.api.ts#openContractRevisionPreview#GET#downloadPath"
+      "apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket#GET#downloadUrl"
     ]
   );
   assert.deepEqual(nonZeroBlockers, {});

@@ -4,7 +4,10 @@ import {
   downloadBusinessEntryExcelTemplate,
   fetchBusinessEntryDefinition,
   freezeBusinessEntrySnapshot,
+  issueBusinessEntryCreateTarget,
+  issueBusinessEntrySubmissionTarget,
   previewBusinessEntryExcel,
+  submitBusinessPartyCreation,
   validateBusinessEntryDraft
 } from "./business-entry.api";
 
@@ -163,5 +166,77 @@ describe("business entry API", () => {
       { scope: "global", projectId: "project/1" } as never,
       { entityType: "company_entity", entityId: "company-1" }
     )).rejects.toThrow("全局业务场景不得携带项目上下文");
+  });
+
+  it("keeps probe and submission target calls independent and never accepts a client purpose", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        createTarget: "probe-token",
+        expiresAt: "2026-08-25T10:00:00.000Z",
+        entityType: "business_party",
+        scope: "global"
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        target: { entityType: "business_party", createTarget: "submission-token" },
+        createTarget: "submission-token",
+        expiresAt: "2026-08-25T10:00:00.000Z",
+        entityType: "business_party",
+        scope: "global",
+        action: "business_party.create",
+        definitionKey: "business_party",
+        definitionVersion: 1
+      }), { status: 200 }));
+    const intent = {
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      fingerprint: "a".repeat(64),
+      definitionKey: "business_party",
+      definitionVersion: 1
+    };
+
+    await issueBusinessEntryCreateTarget("business_party", { scope: "global" }, "business_party", intent);
+    await issueBusinessEntrySubmissionTarget("business_party", { scope: "global" }, {
+      entityType: "business_party",
+      probe: "probe-token",
+      ...intent
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/business-entry-definitions/business_party/create-target",
+      expect.objectContaining({ body: JSON.stringify({ entityType: "business_party", ...intent }) })
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/business-entry-definitions/business_party/submission-target",
+      expect.objectContaining({
+        body: JSON.stringify({ entityType: "business_party", probe: "probe-token", ...intent })
+      })
+    );
+    expect(mockApiFetch.mock.calls[0]?.[1]?.body as string).not.toContain("purpose");
+    expect(mockApiFetch.mock.calls[1]?.[1]?.body as string).not.toContain("purpose");
+  });
+
+  it("submits the server-issued target and frozen values to the create seam", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ party: { id: "party-1" } }), { status: 201 }));
+
+    await submitBusinessPartyCreation({
+      target: { entityType: "business_party", createTarget: "submission-token" },
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      values: { name: "受控单位" }
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target: { entityType: "business_party", createTarget: "submission-token" },
+        definitionKey: "business_party",
+        definitionVersion: 1,
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+        values: { name: "受控单位" }
+      })
+    });
   });
 });

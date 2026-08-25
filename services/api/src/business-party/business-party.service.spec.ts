@@ -266,7 +266,8 @@ describe("BusinessPartyService", () => {
       definitionKey: "business_party",
       definitionVersion: 1,
       idempotencyKey,
-      fingerprint
+      fingerprint,
+      purpose: "submission"
     });
 
     const result = await service.createPartyWithIntent("staff-1", {
@@ -294,6 +295,51 @@ describe("BusinessPartyService", () => {
       action: "business_party.create",
       metadata: expect.objectContaining({ idempotencyKey, fingerprint })
     }));
+  });
+
+  it("rejects a definition probe when the request reaches the create write seam", async () => {
+    const idempotencyKey = "22222222-2222-4222-8222-222222222222";
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify({
+        attachments: [],
+        name: "探针单位",
+        type: "organization",
+        unifiedSocialCreditCode: "91350211M000100Y46"
+      }))
+      .digest("hex");
+    const tx = {
+      ...globalRole(),
+      businessParty: { findUnique: jest.fn(), create: jest.fn() },
+      businessPartyVersion: { create: jest.fn() },
+      businessPartyCreateIdempotency: { findUnique: jest.fn(), create: jest.fn() }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+    const targetService = new BusinessEntryCreateTargetService();
+    const probe = targetService.issue({
+      actorUserId: "staff-1",
+      action: "business_party.create",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      idempotencyKey,
+      fingerprint,
+      purpose: "definition_probe"
+    });
+
+    await expect(service.createPartyWithIntent("staff-1", {
+      target: { entityType: "business_party", createTarget: probe.createTarget },
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      idempotencyKey,
+      values: {
+        name: "探针单位",
+        unifiedSocialCreditCode: "91350211M000100Y46",
+        attachments: []
+      }
+    })).rejects.toThrow("新建目标令牌无效");
+    expect(tx.businessParty.create).not.toHaveBeenCalled();
   });
 
   it("rejects duplicate unified social credit code", async () => {

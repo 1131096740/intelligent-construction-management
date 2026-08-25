@@ -24,7 +24,10 @@ describe("BusinessEntryDefinitionController", () => {
     const definitions = {
       getSceneDefinitionForOperation: jest.fn().mockResolvedValue({ key: "company_profile" }),
       validateDraft: jest.fn().mockResolvedValue({ valid: true }),
-      freezeSubmissionSnapshot: jest.fn().mockResolvedValue({ sceneKey: "company_profile" })
+      freezeSubmissionSnapshot: jest.fn().mockResolvedValue({ sceneKey: "company_profile" }),
+      issueSubmissionTarget: jest.fn().mockResolvedValue({
+        target: { entityType: "business_party", createTarget: "submission-target" }
+      })
     };
     const excel = {
       exportTemplate: jest.fn().mockResolvedValue({ buffer: Buffer.from("xlsx"), fileName: "我方公司.xlsx" }),
@@ -145,5 +148,39 @@ describe("BusinessEntryDefinitionController", () => {
       },
       file
     );
+  });
+
+  it("uses a dedicated server submission-target path without accepting a client purpose", async () => {
+    const definitions = {
+      issueSubmissionTarget: jest.fn().mockResolvedValue({
+        target: { entityType: "business_party", createTarget: "submission-target" }
+      })
+    };
+    const controller = new BusinessEntryDefinitionController(
+      definitions as never,
+      {} as never
+    );
+
+    await controller.issueSubmissionTarget(
+      "business_party",
+      undefined,
+      {
+        entityType: "business_party",
+        probe: "probe-target",
+        idempotencyKey: "55555555-5555-4555-8555-555555555555",
+        fingerprint: "c".repeat(64),
+        definitionKey: "business_party",
+        definitionVersion: 1
+      },
+      { id: "user-1" } as never
+    );
+
+    expect(definitions.issueSubmissionTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      expect.objectContaining({ probe: "probe-target" })
+    );
+    expect(definitions.issueSubmissionTarget.mock.calls[0]![3]).not.toHaveProperty("purpose");
   });
 });

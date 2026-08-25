@@ -225,7 +225,8 @@ export class BusinessPartyService {
       definitionKey: definition.key,
       definitionVersion: definition.version,
       idempotencyKey: request.idempotencyKey,
-      fingerprint
+      fingerprint,
+      purpose: "submission"
     });
 
     const existing = await this.findIdempotentResult(request.idempotencyKey, fingerprint);

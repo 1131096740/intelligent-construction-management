@@ -40,7 +40,10 @@ import {
   type BusinessEntrySceneAccessRegistry,
   type BusinessEntryScenePermission
 } from "./business-entry-scene-access";
-import { BusinessEntryCreateTargetService } from "./business-entry-create-target.service";
+import {
+  BusinessEntryCreateTargetService,
+  type BusinessEntryCreateTargetPurpose
+} from "./business-entry-create-target.service";
 import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 
@@ -54,6 +57,15 @@ export interface BusinessEntryDraftRequest {
   target?: BusinessEntrySubmissionTarget;
   values: Record<string, unknown>;
   operation?: BusinessEntryOperation;
+}
+
+export interface BusinessEntrySubmissionTargetRequest {
+  entityType: string;
+  probe: string;
+  idempotencyKey: string;
+  fingerprint: string;
+  definitionKey: string;
+  definitionVersion: number;
 }
 
 export interface BusinessEntryRoleResolver {
@@ -110,7 +122,8 @@ export class BusinessEntryDefinitionService {
       actorUserId,
       access,
       target,
-      operation
+      operation,
+      sceneKey === "business_party" ? "definition_probe" : undefined
     );
     try {
       return this.registry.getSceneDefinitionForRoles(
@@ -228,7 +241,8 @@ export class BusinessEntryDefinitionService {
         definitionKey: definition.key,
         definitionVersion: definition.version,
         idempotencyKey: intent!.idempotencyKey,
-        fingerprint: intent!.fingerprint
+        fingerprint: intent!.fingerprint,
+        purpose: "definition_probe" as const
       } : {})
     });
     await this.authorization.assertAuthorized({
@@ -243,6 +257,77 @@ export class BusinessEntryDefinitionService {
     return {
       ...issued,
       entityType,
+      scope: access.target.scope
+    };
+  }
+
+  async issueSubmissionTarget(
+    sceneKey: string,
+    projectId: string | undefined,
+    actorUserId: string,
+    input: BusinessEntrySubmissionTargetRequest
+  ) {
+    const { access } = await this.authorizeScene(sceneKey, projectId, actorUserId);
+    if (sceneKey !== "business_party" || access.target.entityType !== "business_party") {
+      throw new BadRequestException("该业务场景不支持独立提交目标");
+    }
+    if (projectId !== undefined || access.target.scope !== "global") {
+      throw new BadRequestException("新建合作单位必须使用公司级业务范围");
+    }
+    if (!this.createTargets) {
+      throw new BadRequestException("新建目标令牌服务未启用");
+    }
+    const definition = this.registry.getSceneDefinition(sceneKey);
+    if (
+      input.entityType !== definition.entityType ||
+      input.definitionKey !== definition.key ||
+      input.definitionVersion !== definition.version
+    ) {
+      throw new BadRequestException("合作单位创建定义或幂等参数已失效，请刷新后重试");
+    }
+
+    this.createTargets.verify(input.probe, {
+      actorUserId,
+      scene: sceneKey,
+      entityType: access.target.entityType,
+      scope: access.target.scope,
+      action: "business_party.create",
+      definitionKey: definition.key,
+      definitionVersion: definition.version,
+      idempotencyKey: input.idempotencyKey,
+      fingerprint: input.fingerprint,
+      purpose: "definition_probe"
+    });
+    await this.authorization.assertAuthorized({
+      sceneKey,
+      actorUserId,
+      projectId,
+      operation: "edit",
+      scope: access.target.scope,
+      target: { entityType: access.target.entityType, createTarget: input.probe },
+      values: {}
+    });
+    (this.writeFreeze ?? new OperationalWriteFreezeService()).assertCanWrite("master_data");
+
+    const issued = this.createTargets.issue({
+      actorUserId,
+      scene: sceneKey,
+      entityType: access.target.entityType,
+      scope: access.target.scope,
+      action: "business_party.create",
+      definitionKey: definition.key,
+      definitionVersion: definition.version,
+      idempotencyKey: input.idempotencyKey,
+      fingerprint: input.fingerprint,
+      purpose: "submission"
+    });
+    return {
+      ...issued,
+      target: { entityType: access.target.entityType, createTarget: issued.createTarget },
+      action: "business_party.create" as const,
+      definitionKey: definition.key,
+      definitionVersion: definition.version,
+      entityType: access.target.entityType,
       scope: access.target.scope
     };
   }
@@ -292,7 +377,15 @@ export class BusinessEntryDefinitionService {
   ): Promise<BusinessEntryFrozenSnapshot> {
     const { access, roleKeys } = await this.authorizeScene(sceneKey, projectId, actorUserId);
     const payload = this.payload(sceneKey, input);
-    await this.assertTargetScope(sceneKey, projectId, actorUserId, access, payload.target, input.operation ?? "edit");
+    await this.assertTargetScope(
+      sceneKey,
+      projectId,
+      actorUserId,
+      access,
+      payload.target,
+      input.operation ?? "edit",
+      sceneKey === "business_party" ? "submission" : undefined
+    );
     const operation = input.operation ?? "edit";
     if (operation !== "edit" && operation !== "import") {
       throw new BadRequestException("正式提交只允许录入或受控导入");
@@ -312,6 +405,9 @@ export class BusinessEntryDefinitionService {
         roleKeys as readonly RoleKey[],
         { frozenAt, operation }
       );
+      if (sceneKey === "business_party" && isBusinessEntryCreateTarget(payload.target)) {
+        return snapshot;
+      }
       // Global owning domains persist this immutable snapshot in their own transaction.
       // The project-bound store cannot satisfy that contract, so the joined API must fail closed.
       if (access.target.scope === "global") {
@@ -371,7 +467,8 @@ export class BusinessEntryDefinitionService {
       actorUserId,
       access,
       payload.target,
-      input.operation ?? "edit"
+      input.operation ?? "edit",
+      sceneKey === "business_party" ? "submission" : undefined
     );
     await this.authorization.assertAuthorized({
       sceneKey,
@@ -482,7 +579,8 @@ export class BusinessEntryDefinitionService {
     actorUserId: string,
     access: BusinessEntrySceneAccessPolicy,
     target: BusinessEntrySubmissionTarget | undefined,
-    operation: BusinessEntryOperation
+    operation: BusinessEntryOperation,
+    purpose?: BusinessEntryCreateTargetPurpose
   ) {
     if (access.target.scope === "global" && projectId !== undefined) {
       throw new BadRequestException("全局业务场景不得携带项目上下文");
@@ -512,11 +610,23 @@ export class BusinessEntryDefinitionService {
       if (access.target.scope !== "global" || !this.createTargets) {
         throw new BadRequestException("新建目标令牌仅适用于已登记的全局业务场景");
       }
+      if (sceneKey === "business_party") {
+        (this.writeFreeze ?? new OperationalWriteFreezeService()).assertCanWrite("master_data");
+      }
+      const definition = sceneKey === "business_party"
+        ? this.registry.getSceneDefinition(sceneKey)
+        : undefined;
       this.createTargets.verify(target.createTarget, {
         actorUserId,
         scene: sceneKey,
         entityType: access.target.entityType,
-        scope: access.target.scope
+        scope: access.target.scope,
+        ...(definition ? {
+          action: "business_party.create",
+          definitionKey: definition.key,
+          definitionVersion: definition.version
+        } : {}),
+        ...(purpose !== undefined ? { purpose } : {})
       });
       return;
     }

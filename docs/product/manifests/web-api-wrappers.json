@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 19,
-    "exportedFunctionCount": 485,
-    "transportWrapperCount": 465,
+    "exportedFunctionCount": 487,
+    "transportWrapperCount": 467,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 487,
+    "mainRequestBindingCount": 489,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 487,
-    "productionConsumerCount": 358,
+    "requestEdgeCount": 489,
+    "productionConsumerCount": 364,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 264,
-    "reachableProductionModuleCount": 230
+    "productionModuleCount": 266,
+    "reachableProductionModuleCount": 233
   },
   "wrappers": [
     {
@@ -34,7 +34,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 157,
+          "sourceLine": 215,
           "method": "GET",
           "path": "/business-entry-definitions/:param/excel-template",
           "normalizedPath": "/business-entry-definitions/:param/excel-template",
@@ -61,7 +61,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 122,
+          "sourceLine": 180,
           "method": "GET",
           "path": "/business-entry-definitions/:param",
           "normalizedPath": "/business-entry-definitions/:param",
@@ -77,7 +77,9 @@
       "testConsumers": [
         "apps/web-admin/src/api/business-entry.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -88,7 +90,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 106,
+          "sourceLine": 135,
           "method": "POST",
           "path": "/business-entry-definitions/:param/freeze",
           "normalizedPath": "/business-entry-definitions/:param/freeze",
@@ -105,7 +107,69 @@
       "testConsumers": [
         "apps/web-admin/src/api/business-entry.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "issueBusinessEntryCreateTarget",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 135,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/create-target",
+          "normalizedPath": "/business-entry-definitions/:param/create-target",
+          "normalizedKey": "POST /business-entry-definitions/:param/create-target",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "issueBusinessEntryCreateTarget",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "issueBusinessEntrySubmissionTarget",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 135,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/submission-target",
+          "normalizedPath": "/business-entry-definitions/:param/submission-target",
+          "normalizedKey": "POST /business-entry-definitions/:param/submission-target",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "issueBusinessEntrySubmissionTarget",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -116,7 +180,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 179,
+          "sourceLine": 237,
           "method": "POST",
           "path": "/business-entry-definitions/:param/excel-preview",
           "normalizedPath": "/business-entry-definitions/:param/excel-preview",
@@ -136,6 +200,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "submitBusinessPartyCreation",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 135,
+          "method": "POST",
+          "path": "/business-parties",
+          "normalizedPath": "/business-parties",
+          "normalizedKey": "POST /business-parties",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitBusinessPartyCreation",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "validateBusinessEntryDraft",
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "kind": "transport",
@@ -143,7 +237,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 106,
+          "sourceLine": 135,
           "method": "POST",
           "path": "/business-entry-definitions/:param/validate",
           "normalizedPath": "/business-entry-definitions/:param/validate",
@@ -160,7 +254,9 @@
       "testConsumers": [
         "apps/web-admin/src/api/business-entry.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -1117,7 +1213,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/abandonment",
           "normalizedPath": "/contracts/:param/abandonment",
@@ -1145,7 +1241,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-drafts/:param/edit-lease",
           "normalizedPath": "/contract-drafts/:param/edit-lease",
@@ -1176,7 +1272,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-bills/:param/rows",
           "normalizedPath": "/contract-bills/:param/rows",
@@ -1204,7 +1300,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/type-change",
           "normalizedPath": "/contract-workbench/:param/type-change",
@@ -1234,7 +1330,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/readiness",
           "normalizedPath": "/contracts/:param/readiness",
@@ -1264,7 +1360,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-template-versions/:param/clone",
           "normalizedPath": "/contract-template-versions/:param/clone",
@@ -1294,7 +1390,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/clone",
           "normalizedPath": "/contract-layout-template-versions/:param/clone",
@@ -1324,7 +1420,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-versions/:param/bill-transitions/confirm",
           "normalizedPath": "/contract-versions/:param/bill-transitions/confirm",
@@ -1354,7 +1450,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/settlement-mode/confirm",
           "normalizedPath": "/contract-workbench/:param/settlement-mode/confirm",
@@ -1384,7 +1480,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/formal-files/counterparty/confirmation",
           "normalizedPath": "/contracts/:param/formal-files/counterparty/confirmation",
@@ -1405,34 +1501,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createBusinessParty",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 132,
-          "method": "POST",
-          "path": "/business-parties",
-          "normalizedPath": "/business-parties",
-          "normalizedKey": "POST /business-parties",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "createBusinessParty",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "createBusinessPartyVersion",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -1440,7 +1508,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/business-parties/:param/versions",
           "normalizedPath": "/business-parties/:param/versions",
@@ -1468,7 +1536,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-number-rules",
           "normalizedPath": "/contract-number-rules",
@@ -1498,7 +1566,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-templates",
           "normalizedPath": "/contract-templates",
@@ -1528,7 +1596,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/checkpoints",
           "normalizedPath": "/contract-workbench/:param/checkpoints",
@@ -1556,7 +1624,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-templates",
           "normalizedPath": "/contract-layout-templates",
@@ -1586,7 +1654,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/standard-clauses",
           "normalizedPath": "/standard-clauses",
@@ -1616,7 +1684,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts",
           "normalizedPath": "/contracts",
@@ -1647,7 +1715,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 199,
+          "sourceLine": 200,
           "method": "DELETE",
           "path": "/contract-bills/:param/rows/:param",
           "normalizedPath": "/contract-bills/:param/rows/:param",
@@ -1675,7 +1743,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 199,
+          "sourceLine": 200,
           "method": "DELETE",
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
@@ -1703,7 +1771,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 199,
+          "sourceLine": 200,
           "method": "DELETE",
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
@@ -1733,7 +1801,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-template-versions/:param/discard",
           "normalizedPath": "/contract-template-versions/:param/discard",
@@ -1763,7 +1831,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/discard",
           "normalizedPath": "/contract-layout-template-versions/:param/discard",
@@ -1793,7 +1861,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/standard-clause-versions/:param/discard",
           "normalizedPath": "/standard-clause-versions/:param/discard",
@@ -1823,7 +1891,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2219,
+          "sourceLine": 2220,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1853,7 +1921,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2219,
+          "sourceLine": 2220,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1883,7 +1951,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedPath": "/contract-drafts/:param/workbench",
@@ -1901,7 +1969,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/abandonment",
           "normalizedPath": "/contracts/:param/abandonment",
@@ -1934,7 +2002,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedPath": "/contract-drafts/:param/workbench",
@@ -1950,7 +2018,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1784,
+          "sourceLine": 1785,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -1980,7 +2048,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 199,
+          "sourceLine": 200,
           "method": "DELETE",
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
@@ -1997,7 +2065,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedPath": "/contract-drafts/:param/workbench",
@@ -2031,7 +2099,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-versions/:param/bill-transitions/options",
           "normalizedPath": "/contract-versions/:param/bill-transitions/options",
@@ -2061,7 +2129,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
@@ -2091,7 +2159,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contracts/create-capability?projectId=:param",
           "normalizedPath": "/contracts/create-capability",
@@ -2121,7 +2189,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedPath": "/contract-drafts/:param/workbench",
@@ -2162,7 +2230,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-workbench/:param/transfer-capability",
           "normalizedPath": "/contract-workbench/:param/transfer-capability",
@@ -2190,7 +2258,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedPath": "/contract-drafts/:param/workbench",
@@ -2221,7 +2289,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-workbench/:param",
           "normalizedPath": "/contract-workbench/:param",
@@ -2249,7 +2317,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/business-parties/:param",
           "normalizedPath": "/business-parties/:param",
@@ -2279,7 +2347,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-templates/:param",
           "normalizedPath": "/contract-templates/:param",
@@ -2311,7 +2379,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
@@ -2341,7 +2409,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-layout-templates/:param",
           "normalizedPath": "/contract-layout-templates/:param",
@@ -2373,7 +2441,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 155,
+          "sourceLine": 156,
           "method": "POST",
           "path": "/contract-drafts/:param/edit-lease/heartbeat",
           "normalizedPath": "/contract-drafts/:param/edit-lease/heartbeat",
@@ -2404,7 +2472,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/inspection",
           "normalizedPath": "/contract-layout-template-versions/:param/inspection",
@@ -2434,7 +2502,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/business-parties",
           "normalizedPath": "/business-parties",
@@ -2464,7 +2532,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-workbench/:param/documents",
           "normalizedPath": "/contract-workbench/:param/documents",
@@ -2494,7 +2562,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-workbench?scope=my",
           "normalizedPath": "/contract-workbench",
@@ -2522,7 +2590,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-number-rules",
           "normalizedPath": "/contract-number-rules",
@@ -2554,7 +2622,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contracts/:param/formal-files/counterparty",
           "normalizedPath": "/contracts/:param/formal-files/counterparty",
@@ -2582,7 +2650,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-templates",
           "normalizedPath": "/contract-templates",
@@ -2617,7 +2685,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/contract-layout-templates",
           "normalizedPath": "/contract-layout-templates",
@@ -2647,7 +2715,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/standard-clauses",
           "normalizedPath": "/standard-clauses",
@@ -2681,7 +2749,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 126,
+          "sourceLine": 127,
           "method": "GET",
           "path": "/standard-clauses/history",
           "normalizedPath": "/standard-clauses/history",
@@ -2711,7 +2779,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-drafts/:param/bills/:param/import-preview",
           "normalizedPath": "/contract-drafts/:param/bills/:param/import-preview",
@@ -2741,7 +2809,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/type-change-preview",
           "normalizedPath": "/contract-workbench/:param/type-change-preview",
@@ -2771,7 +2839,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-template-versions/:param/publication",
           "normalizedPath": "/contract-template-versions/:param/publication",
@@ -2801,7 +2869,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/publication",
           "normalizedPath": "/contract-layout-template-versions/:param/publication",
@@ -2831,7 +2899,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/standard-clause-versions/:param/publication",
           "normalizedPath": "/standard-clause-versions/:param/publication",
@@ -2861,7 +2929,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/documents",
           "normalizedPath": "/contract-workbench/:param/documents",
@@ -2891,7 +2959,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-drafts/:param/preview-generation",
           "normalizedPath": "/contract-drafts/:param/preview-generation",
@@ -2922,7 +2990,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
@@ -2952,7 +3020,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 213,
+          "sourceLine": 214,
           "method": "DELETE",
           "path": "/contract-drafts/:param/edit-lease",
           "normalizedPath": "/contract-drafts/:param/edit-lease",
@@ -2983,7 +3051,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-bills/:param/rows/reorder",
           "normalizedPath": "/contract-bills/:param/rows/reorder",
@@ -3011,7 +3079,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/restore",
           "normalizedPath": "/contract-workbench/:param/restore",
@@ -3037,7 +3105,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/checkpoints/:param/restore",
           "normalizedPath": "/contract-workbench/:param/checkpoints/:param/restore",
@@ -3065,7 +3133,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-documents/:param/retry",
           "normalizedPath": "/contract-documents/:param/retry",
@@ -3095,7 +3163,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-template-versions/:param/revoke",
           "normalizedPath": "/contract-template-versions/:param/revoke",
@@ -3123,7 +3191,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/revoke",
           "normalizedPath": "/contract-layout-template-versions/:param/revoke",
@@ -3151,7 +3219,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 175,
+          "sourceLine": 176,
           "method": "PUT",
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
@@ -3181,7 +3249,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 166,
           "method": "PATCH",
           "path": "/contract-workbench/:param",
           "normalizedPath": "/contract-workbench/:param",
@@ -3209,7 +3277,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 189,
+          "sourceLine": 190,
           "method": "PUT",
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
@@ -3240,7 +3308,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/authorizations",
           "normalizedPath": "/contracts/:param/authorizations",
@@ -3270,7 +3338,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-number-rules/:param/stop",
           "normalizedPath": "/contract-number-rules/:param/stop",
@@ -3300,7 +3368,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-template-versions/:param/stop",
           "normalizedPath": "/contract-template-versions/:param/stop",
@@ -3330,7 +3398,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/stop",
           "normalizedPath": "/contract-layout-template-versions/:param/stop",
@@ -3360,7 +3428,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 155,
+          "sourceLine": 156,
           "method": "POST",
           "path": "/contract-drafts/:param/submission",
           "normalizedPath": "/contract-drafts/:param/submission",
@@ -3391,7 +3459,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-template-versions/:param/submission",
           "normalizedPath": "/contract-template-versions/:param/submission",
@@ -3421,7 +3489,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-layout-template-versions/:param/submission",
           "normalizedPath": "/contract-layout-template-versions/:param/submission",
@@ -3451,7 +3519,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/standard-clause-versions/:param/submission",
           "normalizedPath": "/standard-clause-versions/:param/submission",
@@ -3481,7 +3549,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-drafts/:param/edit-lease/takeover",
           "normalizedPath": "/contract-drafts/:param/edit-lease/takeover",
@@ -3512,7 +3580,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/transfer",
           "normalizedPath": "/contract-workbench/:param/transfer",
@@ -3542,7 +3610,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 166,
           "method": "PATCH",
           "path": "/contract-bills/:param/rows/:param",
           "normalizedPath": "/contract-bills/:param/rows/:param",
@@ -3570,7 +3638,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 166,
           "method": "PATCH",
           "path": "/contract-number-rules/:param",
           "normalizedPath": "/contract-number-rules/:param",
@@ -3600,7 +3668,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 166,
           "method": "PATCH",
           "path": "/contract-template-versions/:param",
           "normalizedPath": "/contract-template-versions/:param",
@@ -3630,7 +3698,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 166,
           "method": "PATCH",
           "path": "/contract-layout-template-versions/:param",
           "normalizedPath": "/contract-layout-template-versions/:param",
@@ -3660,7 +3728,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/formal-files/approval",
           "normalizedPath": "/contracts/:param/formal-files/approval",
@@ -3690,7 +3758,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 142,
+          "sourceLine": 143,
           "method": "POST",
           "path": "/contract-drafts/:param/files",
           "normalizedPath": "/contract-drafts/:param/files",
@@ -3727,7 +3795,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contracts/:param/formal-files/counterparty",
           "normalizedPath": "/contracts/:param/formal-files/counterparty",
@@ -3755,7 +3823,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 132,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/contract-workbench/:param/void",
           "normalizedPath": "/contract-workbench/:param/void",
@@ -14565,25 +14633,7 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-      "wrapper": "fetchBusinessEntryDefinition",
-      "classification": "test_only",
-      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-      "wrapper": "freezeBusinessEntrySnapshot",
-      "classification": "test_only",
-      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
       "wrapper": "previewBusinessEntryExcel",
-      "classification": "test_only",
-      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-      "wrapper": "validateBusinessEntryDraft",
       "classification": "test_only",
       "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
     },
@@ -14698,12 +14748,6 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "cloneLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "createBusinessParty",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
