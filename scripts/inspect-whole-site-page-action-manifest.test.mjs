@@ -5604,6 +5604,217 @@ export async function submitExample() { return undefined; }
   }
 });
 
+test("accepts a handler-local capability source with a guarded independent submission", async () => {
+  const root = await serverDefinitionFixture({
+    fixtureOverrides: {
+      page: `<script setup lang="ts">
+import {
+  fetchBusinessEntryDefinition,
+  submitExample
+} from "../api/example.api";
+async function readFreshDefinition() {
+  try {
+    return await fetchBusinessEntryDefinition(
+      "example",
+      { scope: "global" },
+      { entityType: "example", entityId: "example-1" }
+    );
+  } catch (error) {
+    throw error;
+  }
+}
+function assertFreshDefinition(
+  candidate: { key: string; entityId: string; revision: number },
+  entityId: string,
+  revision: number
+) {
+  if (
+    candidate.key !== "example" ||
+    candidate.entityId !== entityId ||
+    candidate.revision !== revision
+  ) {
+    throw new Error("definition changed");
+  }
+}
+async function submit() {
+  const definition = await readFreshDefinition();
+  assertFreshDefinition(definition, "example-1", 1);
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button @click="submit">提交</t-button>
+</template>
+`
+    }
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+test("rejects unsafe handler-local capability source bindings", async () => {
+  const safePage = `<script setup lang="ts">
+import {
+  fetchBusinessEntryDefinition,
+  submitExample
+} from "../api/example.api";
+async function readFreshDefinition() {
+  try {
+    return await fetchBusinessEntryDefinition(
+      "example",
+      { scope: "global" },
+      { entityType: "example", entityId: "example-1" }
+    );
+  } catch (error) {
+    throw error;
+  }
+}
+function assertFreshDefinition(
+  candidate: { key: string; entityId: string; revision: number },
+  entityId: string,
+  revision: number
+) {
+  if (
+    candidate.key !== "example" ||
+    candidate.entityId !== entityId ||
+    candidate.revision !== revision
+  ) {
+    throw new Error("definition changed");
+  }
+}
+async function submit() {
+  const definition = await readFreshDefinition();
+  assertFreshDefinition(definition, "example-1", 1);
+  await submitExample("example-1");
+}
+</script>
+<template>
+  <t-button @click="submit">提交</t-button>
+</template>
+`;
+  const cases = [
+    [
+      "multiple bindings",
+      safePage.replace(
+        `  assertFreshDefinition(definition, "example-1", 1);`,
+        `  {
+    const definition = await readFreshDefinition();
+    assertFreshDefinition(definition, "example-1", 1);
+  }
+  assertFreshDefinition(definition, "example-1", 1);`
+      )
+    ],
+    [
+      "reassigned binding",
+      safePage.replace(
+        "  const definition = await readFreshDefinition();",
+        `  let definition = await readFreshDefinition();
+  definition = await readFreshDefinition();`
+      )
+    ],
+    [
+      "cross-handler binding",
+      safePage.replace(
+        `async function submit() {
+  const definition = await readFreshDefinition();
+  assertFreshDefinition(definition, "example-1", 1);
+  await submitExample("example-1");
+}`,
+        `async function load() {
+  const definition = await readFreshDefinition();
+  assertFreshDefinition(definition, "example-1", 1);
+}
+void load();
+async function submit() {
+  await submitExample("example-1");
+}`
+      )
+    ],
+    [
+      "guard after write",
+      safePage.replace(
+        `  assertFreshDefinition(definition, "example-1", 1);
+  await submitExample("example-1");`,
+        `  await submitExample("example-1");
+  assertFreshDefinition(definition, "example-1", 1);`
+      )
+    ],
+    [
+      "swallowed error or fallback",
+      safePage.replace(
+        "    throw error;",
+        `    return {
+      key: "example",
+      entityId: "example-1",
+      revision: 1
+    };`
+      )
+    ],
+    [
+      "dynamic property",
+      safePage.replace(
+        `  assertFreshDefinition(definition, "example-1", 1);`,
+        `  const field = "key";
+  if (definition[field] !== "example") {
+    throw new Error("definition changed");
+  }
+  await submitExample("example-1");`
+      )
+    ],
+    [
+      "opaque alias",
+      safePage.replace(
+        `  assertFreshDefinition(definition, "example-1", 1);`,
+        `  function passThrough(value: unknown) {
+    return value;
+  }
+  const alias = passThrough(definition);
+  assertFreshDefinition(alias, "example-1", 1);
+  await submitExample("example-1");`
+      )
+    ],
+    [
+      "detached async read",
+      safePage.replace(
+        `    return await fetchBusinessEntryDefinition(
+      "example",
+      { scope: "global" },
+      { entityType: "example", entityId: "example-1" }
+    );`,
+        `    const request = fetchBusinessEntryDefinition(
+      "example",
+      { scope: "global" },
+      { entityType: "example", entityId: "example-1" }
+    );
+    return await request;`
+      )
+    ]
+  ];
+
+  for (const [label, page] of cases) {
+    const root = await serverDefinitionFixture({
+      fixtureOverrides: { page }
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", label);
+    assert.ok(
+      blockerCodes(manifest).has("WRITE_WITHOUT_SERVER_CAPABILITY") ||
+        blockerCodes(manifest).has("FRESH_READ_BINDING_UNVERIFIED") ||
+        blockerCodes(manifest).has("SERVER_DEFINITION_HANDLER_FRESH_READ_UNVERIFIED") ||
+        blockerCodes(manifest).has("ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"),
+      `${label}: ${JSON.stringify(manifest.blockers)}`
+    );
+  }
+});
+
 test("requires an explicit GET-only fresh-read binding separate from submission targets", async () => {
   const root = await serverDefinitionFixture();
   const manifest = await inspectWholeSitePageActionManifest({ root });
@@ -5641,6 +5852,54 @@ test("requires an explicit GET-only fresh-read binding separate from submission 
           scene: "scene",
           action: "action",
           definitionRevision: "definitionRevision"
+        }
+      },
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "probe binding missing actor",
+      {
+        binding: {
+          company: "company",
+          scene: "scene",
+          action: "action",
+          definitionRevision: "definitionRevision"
+        }
+      },
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "probe binding missing scene",
+      {
+        binding: {
+          actor: "actor",
+          company: "company",
+          action: "action",
+          definitionRevision: "definitionRevision"
+        }
+      },
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "probe binding missing action",
+      {
+        binding: {
+          actor: "actor",
+          company: "company",
+          scene: "scene",
+          definitionRevision: "definitionRevision"
+        }
+      },
+      "REGISTRY_ENTRY_INVALID"
+    ],
+    [
+      "probe binding missing revision",
+      {
+        binding: {
+          actor: "actor",
+          company: "company",
+          scene: "scene",
+          action: "action"
         }
       },
       "REGISTRY_ENTRY_INVALID"

@@ -2921,6 +2921,40 @@ function expressionServerReadSources(
       seen
     );
   }
+  if (
+    value.type === "CallExpression" &&
+    value.callee?.type === "Identifier"
+  ) {
+    const binding = context.symbols.scopeBindings?.get(
+      value.callee
+    );
+    const definition = binding
+      ? uniqueIndexedNode(
+          context.symbols.definitionsByBinding,
+          binding
+        )
+      : null;
+    if (!definition || seen.has(binding)) return null;
+    const analysis = directCallTargets(
+      definition,
+      context.symbols.declarations,
+      context.symbols,
+      false
+    );
+    if (!analysis.reliable || analysis.calls.length !== 1) {
+      return null;
+    }
+    const [call] = analysis.calls;
+    if (!freshReadCallIsPropagated(call, definition)) {
+      return null;
+    }
+    const source = importedReadSource(
+      call.callNode,
+      context.serverReadImports,
+      context.symbols
+    );
+    return source ? new Set([source]) : null;
+  }
   if (value.type !== "Identifier") {
     return null;
   }
@@ -6417,7 +6451,8 @@ function capabilityRefUsageIsSafe(
   {
     originExpressions = [],
     vueRefRoot = true,
-    rootBinding: explicitRootBinding = null
+    rootBinding: explicitRootBinding = null,
+    allowHandlerLocalGuardHelper = false
   } = {}
 ) {
   const ast = context.symbols.ast;
@@ -8168,6 +8203,63 @@ function capabilityRefUsageIsSafe(
       unwrapValueExpression(node.callee).name ===
         "structuredClone" &&
       !scopeBindings.get(unwrapValueExpression(node.callee));
+    const isAllowedHandlerLocalGuardArgument = (
+      call,
+      argument,
+      index
+    ) => {
+      if (
+        !allowHandlerLocalGuardHelper ||
+        index !== 0 ||
+        argument?.type !== "Identifier"
+      ) {
+        return false;
+      }
+      const localSource =
+        context.handlerLocalCapabilitySource;
+      if (
+        !localSource?.valid ||
+        scopeBindings.get(argument) !== localSource.binding ||
+        call.callee?.type !== "Identifier"
+      ) {
+        return false;
+      }
+      const statement = parentByNode.get(call);
+      if (
+        statement?.type !== "ExpressionStatement" ||
+        parentByNode.get(statement) !==
+          localSource.definition?.body
+      ) {
+        return false;
+      }
+      const mutationStarts = handlerLocalMutationStarts(
+        localSource.definition,
+        context.mutationBindings,
+        context.symbols
+      );
+      const firstMutation = Math.min(...mutationStarts);
+      if (
+        !Number.isFinite(firstMutation) ||
+        (call.range?.[0] ?? Number.POSITIVE_INFINITY) >=
+          firstMutation
+      ) {
+        return false;
+      }
+      const guardBinding = scopeBindings.get(call.callee);
+      const guardDefinition = guardBinding
+        ? uniqueIndexedNode(
+            context.symbols.definitionsByBinding,
+            guardBinding
+          )
+        : null;
+      return Boolean(
+        guardDefinition &&
+        failClosedGuardHelperIsSafe(
+          guardDefinition,
+          context.symbols
+        )
+      );
+    };
     const collectionCallbackMethod =
       node.type === "CallExpression" &&
       node.callee?.type === "MemberExpression"
@@ -8226,6 +8318,15 @@ function capabilityRefUsageIsSafe(
         node.type === "NewExpression") &&
       (node.arguments ?? []).some((argument, index) => {
         if (isTrustedStructuredClone && index === 0) {
+          return false;
+        }
+        if (
+          isAllowedHandlerLocalGuardArgument(
+            node,
+            argument,
+            index
+          )
+        ) {
           return false;
         }
         const value =
@@ -8438,6 +8539,12 @@ function capabilityServerProvenanceSources(
   ) {
     return null;
   }
+  if (
+    context.handlerLocalCapabilitySource &&
+    !context.handlerLocalCapabilitySource.valid
+  ) {
+    return null;
+  }
   const discoveredBindings =
     context.capabilitySourceBindings ??
     context.discoveredCapabilitySourceBindings;
@@ -8466,7 +8573,9 @@ function capabilityServerProvenanceSources(
       {
         originExpressions: [declaration],
         vueRefRoot: false,
-        rootBinding
+        rootBinding,
+        allowHandlerLocalGuardHelper:
+          Boolean(context.handlerLocalCapabilitySource?.valid)
       }
     )
       ? directSources
@@ -8848,6 +8957,229 @@ function serverDefinitionFreshReadCausalProof(
     return false;
   };
   return prove(handlerBindings[0], true);
+}
+
+function handlerLocalCapabilitySourceBinding({
+  handler,
+  capability,
+  context
+}) {
+  const root = capabilitySourceRoot(capability.source);
+  const handlerBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    handler
+  );
+  const definition = handlerBindings.length === 1
+    ? uniqueIndexedNode(
+        context.symbols.definitionsByBinding,
+        handlerBindings[0]
+      )
+    : null;
+  if (!root || !definition) return null;
+  const matches = new Set();
+  directCallableNodes(definition, (node) => {
+    if (
+      node.type === "Identifier" &&
+      node.name === root
+    ) {
+      const binding = resolvedReferenceBinding(
+        node,
+        context.symbols
+      );
+      if (binding) matches.add(binding);
+    }
+    if (
+      canonicalExpression(node) !==
+      normalizedExpression(capability.source)
+    ) {
+      return;
+    }
+    const rootIdentifier = referenceRootIdentifier(node);
+    const binding = resolvedReferenceBinding(
+      rootIdentifier,
+      context.symbols
+    );
+    if (binding) matches.add(binding);
+  });
+  if (matches.size === 0) return null;
+
+  const bodyRange = definition.body?.range;
+  const localMatches = [...matches].filter((binding) =>
+    (binding.identifiers ?? []).some((identifier) =>
+      identifier.range?.[0] >= (bodyRange?.[0] ?? Number.POSITIVE_INFINITY) &&
+      identifier.range?.[1] <= (bodyRange?.[1] ?? Number.NEGATIVE_INFINITY)
+    )
+  );
+  if (localMatches.length === 0) return null;
+  if (localMatches.length !== 1) {
+    return { bindings: new Set(localMatches), valid: false };
+  }
+
+  const [binding] = localMatches;
+  const declaration = uniqueIndexedNode(
+    context.symbols.declarationsByBinding,
+    binding
+  );
+  const declarationIdentifiers = (binding.identifiers ?? []).filter(
+    (identifier) => identifier.range?.[0] >= (bodyRange?.[0] ?? Number.POSITIVE_INFINITY) &&
+      identifier.range?.[1] <= (bodyRange?.[1] ?? Number.NEGATIVE_INFINITY)
+  );
+  const declarationIdentifier = declarationIdentifiers.length === 1
+    ? declarationIdentifiers[0]
+    : null;
+  const declarationNode = declarationIdentifier?.parent?.type ===
+    "VariableDeclarator"
+    ? declarationIdentifier.parent
+    : null;
+  const declarationStatement = declarationNode?.parent?.type ===
+    "VariableDeclaration"
+    ? declarationNode.parent
+    : null;
+  const hasPostInitializationWrite = (binding.references ?? []).some(
+    (reference) =>
+      typeof reference.isWrite === "function" &&
+      reference.isWrite() &&
+      reference.init !== true
+  );
+  const sourceBindings = declaration
+    ? expressionServerReadSources(declaration, context)
+    : null;
+  const safe = Boolean(
+    declaration &&
+    declarationNode?.init === declaration &&
+    declarationStatement?.kind === "const" &&
+    declarationIdentifiers.length === 1 &&
+    !hasPostInitializationWrite &&
+    sourceBindings?.size === 1
+  );
+  return {
+    bindings: new Set([binding]),
+    valid: safe,
+    binding,
+    definition,
+    sourceBindings
+  };
+}
+
+function handlerLocalMutationStarts(
+  definition,
+  mutationBindings,
+  symbols
+) {
+  if (!definition || !Array.isArray(mutationBindings)) {
+    return [];
+  }
+  const mutationStarts = [];
+  for (const mutation of mutationBindings) {
+    const wrapper = {
+      apiFile: mutation.apiFile,
+      name: mutation.wrapper
+    };
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type === "CallExpression" &&
+        callExpressionMatchesWrapper(node, wrapper, symbols)
+      ) {
+        mutationStarts.push(
+          node.range?.[0] ?? Number.POSITIVE_INFINITY
+        );
+      }
+    });
+  }
+  return mutationStarts;
+}
+
+function handlerLocalCapabilityGuardProof({
+  definition,
+  capabilityBinding,
+  mutationBindings,
+  symbols
+}) {
+  if (
+    !definition ||
+    definition.body?.type !== "BlockStatement" ||
+    !capabilityBinding ||
+    !Array.isArray(mutationBindings) ||
+    mutationBindings.length === 0
+  ) {
+    return false;
+  }
+  const mutationStarts = handlerLocalMutationStarts(
+    definition,
+    mutationBindings,
+    symbols
+  );
+  const firstMutation = Math.min(...mutationStarts);
+  if (!Number.isFinite(firstMutation)) return false;
+  const guardedFields = new Set();
+  for (const statement of definition.body.body ?? []) {
+    if ((statement.range?.[0] ?? Number.POSITIVE_INFINITY) >= firstMutation) {
+      break;
+    }
+    if (
+      statement.type === "ExpressionStatement" &&
+      statement.expression?.type === "CallExpression" &&
+      statement.expression.callee?.type === "Identifier"
+    ) {
+      const guardBinding = symbols.scopeBindings?.get(
+        statement.expression.callee
+      );
+      const guardDefinition = guardBinding
+        ? uniqueIndexedNode(
+            symbols.definitionsByBinding,
+            guardBinding
+          )
+        : null;
+      const argument = statement.expression.arguments?.[0];
+      const argumentBinding = argument?.type === "Identifier"
+        ? symbols.scopeBindings?.get(argument)
+        : null;
+      if (
+        guardDefinition &&
+        failClosedGuardHelperIsSafe(guardDefinition, symbols) &&
+        argumentBinding === capabilityBinding
+      ) {
+        guardedFields.add("key");
+        guardedFields.add("entityId");
+        guardedFields.add("revision");
+        continue;
+      }
+    }
+    if (
+      statement.type !== "IfStatement" ||
+      statement.alternate ||
+      !preflightExpressionIsPure(statement.test, symbols) ||
+      !preflightExpressionHasRuntimeDependency(
+        statement.test,
+        symbols,
+        new Set(),
+        new Map()
+      ) ||
+      !preflightThrowBranchIsSafe(
+        statement.consequent,
+        symbols,
+        new Set()
+      )
+    ) {
+      continue;
+    }
+    walkEstree(statement.test, (node) => {
+      if (
+        node.type !== "MemberExpression" ||
+        node.computed ||
+        node.object?.type !== "Identifier" ||
+        node.property?.type !== "Identifier" ||
+        symbols.scopeBindings?.get(node.object) !== capabilityBinding ||
+        !["key", "entityId", "revision"].includes(node.property.name)
+      ) {
+        return;
+      }
+      guardedFields.add(node.property.name);
+    });
+  }
+  return ["key", "entityId", "revision"].every((field) =>
+    guardedFields.has(field)
+  );
 }
 
 function serverDefinitionHandlerFreshRead({
@@ -9870,6 +10202,18 @@ function backgroundCapabilityDominates(
 
 function capabilityDominates(candidate, capability, context) {
   if (!SERVER_CAPABILITY_KINDS.has(capability.kind)) return false;
+  if (
+    capability.kind === "server_definition" &&
+    context.handlerLocalCapabilitySource?.valid &&
+    handlerLocalCapabilityGuardProof({
+      definition: context.handlerLocalCapabilitySource.definition,
+      capabilityBinding: context.handlerLocalCapabilitySource.binding,
+      mutationBindings: context.mutationBindings,
+      symbols: context.symbols
+    })
+  ) {
+    return true;
+  }
   if (
     conditionalEvidence(candidate.elementNode).some(({ expression, truthy }) =>
       capabilityRequired(
@@ -16158,6 +16502,20 @@ export async function inspectWholeSitePageActionManifest({
       registryVariant: action.trigger.variant,
       businessDraftActionTrusted
     };
+    const localCapabilitySource =
+      action.capability.kind === "server_definition"
+        ? handlerLocalCapabilitySourceBinding({
+            handler: action.trigger.handler,
+            capability: action.capability,
+            context: capabilityContext
+          })
+        : null;
+    if (localCapabilitySource) {
+      capabilityContext.handlerLocalCapabilitySource =
+        localCapabilitySource;
+      capabilityContext.capabilitySourceBindings =
+        localCapabilitySource.bindings;
+    }
     const bindings = actionBindings({
       action,
       wrapperIndex,
@@ -16189,6 +16547,8 @@ export async function inspectWholeSitePageActionManifest({
         );
       }
     }
+    const mutationBindings = bindings.filter(isMutationRequest);
+    capabilityContext.mutationBindings = mutationBindings;
     const writes = bindings.some((binding) =>
       isMutationRequest(binding)
     );
@@ -16233,7 +16593,6 @@ export async function inspectWholeSitePageActionManifest({
         capabilityContext,
         handlerFreshReadVerified: serverDefinitionFreshReadVerified
       });
-    const mutationBindings = bindings.filter(isMutationRequest);
     const effectiveMutationActors =
       effectiveMutationActorPositions({
         mutationBindings,
