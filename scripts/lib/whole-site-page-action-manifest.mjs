@@ -8761,6 +8761,95 @@ function capabilityServerProvenance(capability, context) {
   );
 }
 
+function astAncestorChain(root, target) {
+  const visit = (node, chain = []) => {
+    if (!node || typeof node !== "object") return null;
+    const nextChain = [...chain, node];
+    if (node === target) return nextChain;
+    for (const [key, value] of Object.entries(node)) {
+      if (
+        ["parent", "tokens", "comments", "loc", "range"].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            const result = visit(child, nextChain);
+            if (result) return result;
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        const result = visit(value, nextChain);
+        if (result) return result;
+      }
+    }
+    return null;
+  };
+  return visit(root);
+}
+
+function freshReadCallIsPropagated(call, definition) {
+  const chain = astAncestorChain(definition, call.callNode);
+  const parent = chain?.at(-2);
+  return ["AwaitExpression", "ReturnStatement"].includes(parent?.type);
+}
+
+function serverDefinitionFreshReadCausalProof(
+  handler,
+  readWrapper,
+  symbols
+) {
+  const handlerBindings = topLevelScopeVariables(
+    symbols.scopeManager,
+    handler
+  );
+  if (handlerBindings.length !== 1) return false;
+  const visited = new Set();
+  const prove = (binding, allowFailClosedEarlyReturns) => {
+    if (visited.has(binding)) return false;
+    visited.add(binding);
+    const definition = uniqueIndexedNode(
+      symbols.definitionsByBinding,
+      binding
+    );
+    if (!definition) return false;
+    const analysis = directCallTargets(
+      definition,
+      symbols.declarations,
+      symbols,
+      allowFailClosedEarlyReturns
+    );
+    if (!analysis.reliable) return false;
+    const calls = [...analysis.calls].sort(
+      (left, right) =>
+        (left.callNode?.range?.[0] ?? Number.POSITIVE_INFINITY) -
+        (right.callNode?.range?.[0] ?? Number.POSITIVE_INFINITY)
+    );
+    for (const call of calls) {
+      if (importedCallMatchesWrapper(call, readWrapper, symbols)) {
+        return freshReadCallIsPropagated(call, definition);
+      }
+      const binding = call.bindingIdentifier
+        ? symbols.scopeBindings?.get(call.bindingIdentifier)
+        : null;
+      const imported = binding
+        ? symbols.importsByBinding?.get(binding)
+        : null;
+      if (imported) return false;
+      if (call.kind !== "identifier" || !binding) return false;
+      if (
+        uniqueIndexedNode(symbols.definitionsByBinding, binding)
+      ) {
+        if (!prove(binding, false)) return false;
+        return true;
+      }
+    }
+    return false;
+  };
+  return prove(handlerBindings[0], true);
+}
+
 function serverDefinitionHandlerFreshRead({
   action,
   symbols,
@@ -8781,27 +8870,10 @@ function serverDefinitionHandlerFreshRead({
     apiFile: sourceIdentity.slice(0, separator),
     name: sourceIdentity.slice(separator + 1)
   };
-  const handlerBindings = topLevelScopeVariables(
-    symbols.scopeManager,
-    action.trigger.handler
-  );
-  if (handlerBindings.length !== 1) return false;
-  const handlerDefinition = uniqueIndexedNode(
-    symbols.definitionsByBinding,
-    handlerBindings[0]
-  );
-  if (!handlerDefinition) return false;
-  const analysis = directCallTargets(
-    handlerDefinition,
-    symbols.declarations,
-    symbols,
-    true
-  );
-  return (
-    analysis.reliable &&
-    analysis.calls.some((call) =>
-      importedCallMatchesWrapper(call, readWrapper, symbols)
-    )
+  return serverDefinitionFreshReadCausalProof(
+    action.trigger.handler,
+    readWrapper,
+    symbols
   );
 }
 
@@ -10879,6 +10951,31 @@ function staticNullishness(node) {
   return { known: false, value: false };
 }
 
+function transparentTryCatchIsSafe(statement, symbols) {
+  if (
+    statement?.type !== "TryStatement" ||
+    statement.finalizer ||
+    statement.handler?.param?.type !== "Identifier"
+  ) {
+    return false;
+  }
+  const catchBinding = symbols?.scopeBindings?.get(
+    statement.handler.param
+  );
+  const catchStatements = statement.handler.body?.body ?? [];
+  const terminal = catchStatements.length === 1
+    ? catchStatements[0]
+    : null;
+  const thrown = terminal?.type === "ThrowStatement"
+    ? terminal.argument
+    : null;
+  return Boolean(
+    catchBinding &&
+    thrown?.type === "Identifier" &&
+    symbols.scopeBindings?.get(thrown) === catchBinding
+  );
+}
+
 function directCallTargets(
   node,
   definitions = indexedCompletionDefinitions(node),
@@ -11075,7 +11172,6 @@ function directCallTargets(
     if (
       [
         "SwitchStatement",
-        "TryStatement",
         "DoWhileStatement",
         "ForInStatement",
         "ForOfStatement",
@@ -11088,6 +11184,13 @@ function directCallTargets(
     ) {
       reliable = false;
       return false;
+    }
+    if (candidate.type === "TryStatement") {
+      if (!transparentTryCatchIsSafe(candidate, symbols)) {
+        reliable = false;
+        return false;
+      }
+      return visit(candidate.block, false);
     }
     if (candidate.type === "CallExpression") {
       if (candidate.callee?.type === "Identifier") {
@@ -12090,6 +12193,138 @@ function safeWrapperArgumentPreflightHelpers(
   );
 }
 
+function failClosedGuardHelperIsSafe(definition, symbols) {
+  const body = preflightFunctionBody(definition);
+  if (
+    body?.type !== "BlockStatement" ||
+    (definition.params ?? []).some(
+      (parameter) => parameter?.type !== "Identifier"
+    )
+  ) {
+    return false;
+  }
+  const candidateBinding = symbols.scopeBindings?.get(
+    definition.params?.[0]
+  );
+  const guardedFields = new Set();
+  let guardCount = 0;
+  for (const statement of body.body ?? []) {
+    if (
+      statement.type === "VariableDeclaration" &&
+      statement.kind === "const" &&
+      (statement.declarations ?? []).every(
+        (declaration) =>
+          declaration.id?.type === "Identifier" &&
+          declaration.init &&
+          preflightExpressionIsPure(
+            declaration.init,
+            symbols
+          )
+      )
+    ) {
+      continue;
+    }
+    if (
+      statement.type === "IfStatement" &&
+      !statement.alternate &&
+      !staticTruthiness(statement.test).known &&
+      preflightExpressionIsPure(
+        statement.test,
+        symbols
+      ) &&
+      preflightExpressionHasRuntimeDependency(
+        statement.test,
+        symbols,
+        new Set(),
+        new Map()
+      ) &&
+      preflightThrowBranchIsSafe(
+        statement.consequent,
+        symbols,
+        new Set()
+      )
+    ) {
+      walkEstree(statement.test, (node) => {
+        if (
+          node.type !== "MemberExpression" ||
+          node.computed ||
+          node.object?.type !== "Identifier" ||
+          node.property?.type !== "Identifier" ||
+          symbols.scopeBindings?.get(node.object) !== candidateBinding
+        ) {
+          return;
+        }
+        guardedFields.add(node.property.name);
+      });
+      guardCount += 1;
+      continue;
+    }
+    if (
+      statement.type === "ReturnStatement" &&
+      preflightExpressionIsPure(
+        statement.argument,
+        symbols
+      )
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return (
+    guardCount > 0 &&
+    ["key", "entityId", "revision"].every((field) =>
+      guardedFields.has(field)
+    )
+  );
+}
+
+function safeGuardHelperCallsBeforeWrapper(
+  definition,
+  calls,
+  wrapper,
+  symbols
+) {
+  const wrapperStarts = calls
+    .filter((call) => importedCallMatchesWrapper(call, wrapper, symbols))
+    .map((call) => call.callNode?.range?.[0] ?? Number.POSITIVE_INFINITY);
+  if (wrapperStarts.length === 0) return new Set();
+  const firstWrapperStart = Math.min(...wrapperStarts);
+  const candidates = new Map();
+  for (const call of calls) {
+    if (
+      call.kind !== "identifier" ||
+      !call.bindingIdentifier
+    ) {
+      continue;
+    }
+    const binding = symbols.scopeBindings?.get(
+      call.bindingIdentifier
+    );
+    const definitionForCall = binding
+      ? uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          binding
+        )
+      : null;
+    if (!binding || !definitionForCall) continue;
+    const callStart = call.callNode?.range?.[0] ?? Number.POSITIVE_INFINITY;
+    const entry = candidates.get(binding) ?? {
+      before: true,
+      definition: definitionForCall
+    };
+    entry.before &&= callStart < firstWrapperStart;
+    candidates.set(binding, entry);
+  }
+  return new Set(
+    [...candidates]
+      .filter(([, entry]) =>
+        entry.before &&
+        failClosedGuardHelperIsSafe(entry.definition, symbols)
+      )
+      .map(([binding]) => binding)
+  );
+}
+
 function variantEventCall(node, handler) {
   const expression = unwrapValueExpression(node);
   if (!expression) return null;
@@ -12986,6 +13221,13 @@ function wrapperCausalProof(
         wrapper,
         symbols
       );
+    const safeGuardHelpers =
+      safeGuardHelperCallsBeforeWrapper(
+        definition,
+        analysis.calls,
+        wrapper,
+        symbols
+      );
     const delegatedPreflight =
       capability && capabilityContext &&
       current.binding === handlerBinding
@@ -13040,6 +13282,7 @@ function wrapperCausalProof(
         call.kind === "identifier" &&
         callBinding &&
         !safePreflightHelpers.has(callBinding) &&
+        !safeGuardHelpers.has(callBinding) &&
         callBinding !== delegatedPreflight?.helperBinding &&
         uniqueIndexedNode(
           symbols.definitionsByBinding,
