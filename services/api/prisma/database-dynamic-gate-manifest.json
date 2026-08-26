@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 141,
-    "terminalMigration": "20260827114000_pol11b_global_invoice_idempotency",
-    "terminalMigrationChecksum": "1f4aa43816d44d4814d9e179e6303ef0cd11bd41e1c494ea14bc02261ca9af14",
+    "expectedDirectoryCount": 142,
+    "terminalMigration": "20260827115000_pol11b_invoice_lifecycle",
+    "terminalMigrationChecksum": "156b225335f8a943b054477e18ca3ab0542cd4ea4e56c54da0981b11dffba15c",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

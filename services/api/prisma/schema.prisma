@@ -2380,6 +2380,35 @@ model InvoiceClearingAllocation {
   @@index([clearingEventVersionId, requestFingerprint])
 }
 
+model InvoiceLifecycleEvent {
+  id                    String   @id @default(uuid())
+  invoiceRecordId       String
+  relatedInvoiceRecordId String?
+  kind                  String
+  reasonCode            String
+  createdByUserId       String
+  idempotencyKey        String   @unique
+  requestFingerprint    String
+  createdAt             DateTime @default(now())
+
+  @@index([invoiceRecordId, createdAt])
+  @@index([relatedInvoiceRecordId])
+  @@index([kind, createdAt])
+}
+
+model InvoiceRedAllocationReference {
+  id                       String   @id @default(uuid())
+  lifecycleEventId          String
+  redInvoiceRecordId        String
+  blueInvoiceAllocationId   String
+  amountCents               BigInt
+  createdAt                 DateTime @default(now())
+
+  @@unique([lifecycleEventId, blueInvoiceAllocationId])
+  @@index([redInvoiceRecordId])
+  @@index([blueInvoiceAllocationId])
+}
+
 model NoInvoiceConfirmation {
   id                   String    @id @default(uuid())
   projectId            String

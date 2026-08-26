@@ -365,6 +365,7 @@ function createHarness(options?: {
   const allocations: TestAllocation[] = [];
   const noInvoices: TestConfirmation[] = [];
   const exceptions: TestConfirmation[] = [];
+  const lifecycleEvents: Array<Record<string, unknown>> = [];
   let invoiceSequence = 0;
   let invoiceLineSequence = 0;
   let allocationSequence = 0;
@@ -653,6 +654,10 @@ function createHarness(options?: {
     invoiceAllocation: invoiceAllocationModel,
     noInvoiceConfirmation: noInvoiceModel,
     invoiceExceptionConfirmation: exceptionModel,
+    invoiceLifecycleEvent: {
+      findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey: string } }) => Promise.resolve(lifecycleEvents.find((event) => event.idempotencyKey === where.idempotencyKey) ?? null)),
+      create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { const event = { id: `invoice-lifecycle-${lifecycleEvents.length + 1}`, ...data }; lifecycleEvents.push(event); return Promise.resolve(event); })
+    },
     user: {
       findUnique: jest.fn().mockImplementation(
         ({ where }: { where: { id: string } }) =>
@@ -789,7 +794,8 @@ function createHarness(options?: {
     invoiceLines,
     allocations,
     noInvoices,
-    exceptions
+    exceptions,
+    lifecycleEvents
   };
 }
 
@@ -1341,6 +1347,20 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       fileOwners: { "global-invoice-file-1": ACTORS.financeStaff }
     });
     await expect(harness.service.createGlobalInvoice(ACTORS.financeStaff, createGlobalInvoiceInput())).rejects.toThrow("只有全局财务人员可以登记全局发票");
+  });
+
+  it("voids a global invoice only by appending a replay-safe lifecycle fact", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const created = await harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
+    const command = { reasonCode: "invoice_voided", idempotencyKey: "global-void-key-1" };
+    await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.globalFinanceStaff, command)).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.globalFinanceStaff, command)).resolves.toMatchObject({ replayed: true });
+    expect(harness.lifecycleEvents).toHaveLength(1);
+    expect(harness.lifecycleEvents[0]).toMatchObject({ invoiceRecordId: created.id, kind: "void" });
+    await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.globalFinanceStaff, { ...command, reasonCode: "another_reason" })).rejects.toThrow("幂等键已用于不同的发票作废请求");
   });
 
   it("allocates a global invoice only to a confirmed clearing version, replays its idempotency key, and caps total evidence", async () => {

@@ -41,6 +41,7 @@ import type {
 import type { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocation.dto";
 import type { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-clearing-allocation.dto";
 import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
+import type { VoidGlobalInvoiceDto } from "./dto/void-global-invoice.dto";
 import type { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import type { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
 
@@ -587,6 +588,33 @@ export class InvoiceLedgerService {
       } });
       await this.audit.record(tx, { actorUserId, action: "invoice.global.create", businessType: "invoice_record", businessId: invoice.id, metadata: { owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, totalAmountCents: header.totalAmountCents.toString() } });
       return { id: invoice.id, replayed: false };
+    }));
+  }
+
+  async voidGlobalInvoice(invoiceRecordId: string, actorUserId: string, input: VoidGlobalInvoiceDto) {
+    const normalizedInvoiceRecordId = requiredId(invoiceRecordId, "请选择需要作废的全局发票");
+    const reasonCode = requiredText(input.reasonCode, "作废原因", 100);
+    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const requestFingerprint = createHash("sha256").update(JSON.stringify([
+      "global-invoice-void", 1, actorUserId, normalizedInvoiceRecordId, reasonCode
+    ]), "utf8").digest("hex");
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      await this.requireGlobalInvoiceManager(tx, actorUserId);
+      const replay = await tx.invoiceLifecycleEvent.findUnique({ where: { idempotencyKey } });
+      if (replay) {
+        if (replay.requestFingerprint !== requestFingerprint) throw new ConflictException("幂等键已用于不同的发票作废请求");
+        return { id: replay.id, replayed: true };
+      }
+      const invoice = await tx.invoiceRecord.findUnique({ where: { id: normalizedInvoiceRecordId } });
+      if (!invoice || invoice.projectId !== null || invoice.sourceBusinessType !== "global_clearing_invoice") {
+        throw new NotFoundException("可作废的全局发票不存在");
+      }
+      const event = await tx.invoiceLifecycleEvent.create({ data: {
+        invoiceRecordId: invoice.id, kind: "void", reasonCode, createdByUserId: actorUserId,
+        idempotencyKey, requestFingerprint
+      } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.void", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { invoiceRecordId: invoice.id, reasonCode } });
+      return { id: event.id, replayed: false };
     }));
   }
 
