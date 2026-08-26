@@ -16,6 +16,12 @@ export interface AuthBridge {
   onUnauthorized(): void;
   /** 后端发现当前用户仍需强制改密。 */
   onPasswordChangeRequired?(): void;
+  /** 只读通知最终失败；不得自动重放业务请求。 */
+  onRequestFailure?(path: string, error: unknown): void;
+}
+
+export interface ApiFetchInit extends RequestInit {
+  retryUnauthorized?: boolean;
 }
 
 export function withAuth(init: RequestInit, token: string | null): RequestInit {
@@ -32,7 +38,7 @@ export function withAuth(init: RequestInit, token: string | null): RequestInit {
 export function createApiFetch(
   bridge: AuthBridge,
   fetchImpl?: typeof fetch
-): (path: string, init?: RequestInit) => Promise<Response> {
+): (path: string, init?: ApiFetchInit) => Promise<Response> {
   let refreshInFlight: Promise<boolean> | null = null;
 
   const refreshOnce = () => {
@@ -44,19 +50,48 @@ export function createApiFetch(
     return refreshInFlight;
   };
 
-  return async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return async function apiFetch(path: string, init: ApiFetchInit = {}): Promise<Response> {
+    const { retryUnauthorized = true, ...requestInit } = init;
     const accessToken = bridge.getAccessToken();
     const send = async (token: string | null = bridge.getAccessToken()) => {
       try {
-        return await (fetchImpl ?? fetch)(`/api${path}`, withAuth(init, token));
+        return await (fetchImpl ?? fetch)(`/api${path}`, withAuth(requestInit, token));
       } catch (error) {
-        throw new Error(formatUnknownApiError(error, "网络请求失败"));
+        const failure = new Error(formatUnknownApiError(error, "网络请求失败"));
+        bridge.onRequestFailure?.(path, failure);
+        throw failure;
       }
+    };
+
+    const reportFailedResponse = (response: Response) => {
+      if (response.ok) return;
+      const failure = new Error(`HTTP ${response.status}`) as Error & { status: number };
+      failure.status = response.status;
+      bridge.onRequestFailure?.(path, failure);
+    };
+
+    const reportSuccessfulJsonFailure = (response: Response) => {
+      if (!response.ok || typeof response.json !== "function") return response;
+      const parseJson = response.json.bind(response);
+      response.json = async () => {
+        try {
+          return await parseJson();
+        } catch (error) {
+          bridge.onRequestFailure?.(path, error);
+          throw error;
+        }
+      };
+      return response;
     };
 
     let response = await send(accessToken);
 
     if (response.status === 401) {
+      if (!retryUnauthorized) {
+        reportFailedResponse(response);
+        bridge.onUnauthorized();
+        return response;
+      }
       const currentAccessToken = bridge.getAccessToken();
       const sessionWasAlreadyRefreshed = Boolean(
         currentAccessToken && currentAccessToken !== accessToken
@@ -76,7 +111,8 @@ export function createApiFetch(
       bridge.onPasswordChangeRequired?.();
     }
 
-    return response;
+    reportFailedResponse(response);
+    return reportSuccessfulJsonFailure(response);
   };
 }
 

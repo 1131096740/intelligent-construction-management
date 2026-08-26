@@ -24,7 +24,10 @@ describe("BusinessEntryDefinitionController", () => {
     const definitions = {
       getSceneDefinitionForOperation: jest.fn().mockResolvedValue({ key: "company_profile" }),
       validateDraft: jest.fn().mockResolvedValue({ valid: true }),
-      freezeSubmissionSnapshot: jest.fn().mockResolvedValue({ sceneKey: "company_profile" })
+      freezeSubmissionSnapshot: jest.fn().mockResolvedValue({ sceneKey: "company_profile" }),
+      issueSubmissionTarget: jest.fn().mockResolvedValue({
+        target: { entityType: "business_party", createTarget: "submission-target" }
+      })
     };
     const excel = {
       exportTemplate: jest.fn().mockResolvedValue({ buffer: Buffer.from("xlsx"), fileName: "我方公司.xlsx" }),
@@ -145,5 +148,95 @@ describe("BusinessEntryDefinitionController", () => {
       },
       file
     );
+  });
+
+  it("uses a dedicated server submission-target path without accepting a client purpose", async () => {
+    const definitions = {
+      issueSubmissionTarget: jest.fn().mockResolvedValue({
+        target: { entityType: "business_party", createTarget: "submission-target" }
+      })
+    };
+    const controller = new BusinessEntryDefinitionController(
+      definitions as never,
+      {} as never
+    );
+
+    await controller.issueSubmissionTarget(
+      "business_party",
+      undefined,
+      {
+        entityType: "business_party",
+        probe: "probe-target",
+        idempotencyKey: "55555555-5555-4555-8555-555555555555",
+        fingerprint: "c".repeat(64),
+        definitionKey: "business_party",
+        definitionVersion: 1
+      },
+      { id: "user-1" } as never
+    );
+
+    expect(definitions.issueSubmissionTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      expect.objectContaining({ probe: "probe-target" })
+    );
+    expect(definitions.issueSubmissionTarget.mock.calls[0]![3]).not.toHaveProperty("purpose");
+  });
+
+  it("fixes business-party preparation to guarded server-owned scene semantics", async () => {
+    const definitions = {
+      issueBusinessPartyDefinitionProbe: jest.fn().mockResolvedValue({ createTarget: "probe" }),
+      issueBusinessPartySubmissionTarget: jest.fn().mockResolvedValue({ createTarget: "submission" }),
+      validateDraft: jest.fn().mockResolvedValue({ valid: true, errors: [] })
+    };
+    const controller = new BusinessEntryDefinitionController(definitions as never, {} as never);
+    const user = { id: "contract-user" } as never;
+
+    await controller.issueBusinessPartyDefinitionProbe(
+      { idempotencyKey: "55555555-5555-4555-8555-555555555555", fingerprint: "c".repeat(64) },
+      user
+    );
+    await controller.issueBusinessPartySubmissionTarget(
+      {
+        probe: "probe",
+        idempotencyKey: "55555555-5555-4555-8555-555555555555",
+        fingerprint: "c".repeat(64)
+      },
+      user
+    );
+    await controller.validateBusinessPartyDraft(
+      {
+        definitionVersion: 1,
+        target: { entityType: "business_party", createTarget: "submission" },
+        values: { name: "受控单位" },
+        operation: "import"
+      },
+      user
+    );
+
+    expect(definitions.issueBusinessPartyDefinitionProbe).toHaveBeenCalledWith(
+      "contract-user",
+      { idempotencyKey: "55555555-5555-4555-8555-555555555555", fingerprint: "c".repeat(64) }
+    );
+    expect(definitions.issueBusinessPartySubmissionTarget).toHaveBeenCalledWith(
+      "contract-user",
+      expect.objectContaining({ probe: "probe" })
+    );
+    expect(definitions.validateDraft).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "contract-user",
+      expect.objectContaining({ operation: "edit" })
+    );
+    for (const handler of [
+      BusinessEntryDefinitionController.prototype.issueBusinessPartyDefinitionProbe,
+      BusinessEntryDefinitionController.prototype.issueBusinessPartySubmissionTarget,
+      BusinessEntryDefinitionController.prototype.validateBusinessPartyDraft
+    ]) {
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(
+        "business_party.create"
+      );
+    }
   });
 });

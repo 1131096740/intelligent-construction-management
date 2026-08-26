@@ -178,12 +178,19 @@ function fieldForError(
 export class BusinessEntryExcelService {
   constructor(private readonly definitions: BusinessEntryDefinitionService) {}
 
+  private assertDefinitionProbeOnly(sceneKey: string) {
+    if (sceneKey === "business_party") {
+      throw new BadRequestException("合作单位定义探针仅可用于读取最新字段定义");
+    }
+  }
+
   async exportTemplate(
     sceneKey: string,
     projectId: string | undefined,
     actorUserId: string,
     target: BusinessEntrySubmissionTarget
   ): Promise<{ buffer: Buffer; fileName: string }> {
+    this.assertDefinitionProbeOnly(sceneKey);
     const definition = await this.definitions.getSceneDefinitionForOperation(
       sceneKey,
       projectId,
@@ -250,6 +257,7 @@ export class BusinessEntryExcelService {
     input: BusinessEntryExcelPreviewInput,
     file: BusinessEntryExcelUpload
   ): Promise<BusinessEntryExcelPreviewResult> {
+    this.assertDefinitionProbeOnly(sceneKey);
     this.assertExcelUpload(file);
     const definition = await this.definitions.getSceneDefinitionForOperation(
       sceneKey,

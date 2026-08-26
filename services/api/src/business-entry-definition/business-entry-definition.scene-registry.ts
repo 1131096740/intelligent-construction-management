@@ -28,11 +28,7 @@ const companyRoles = ["comprehensive_director", "contract_staff", "contract_dire
 const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
 const businessPartyCreateRoles = [
   "contract_staff",
-  "contract_director",
-  "finance_staff",
-  "finance_director",
-  "chairman",
-  "general_manager"
+  "contract_director"
 ] as const;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];

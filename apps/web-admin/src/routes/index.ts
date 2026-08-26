@@ -248,6 +248,7 @@ interface RouteAccessTarget {
     passwordChange?: unknown;
     requiredRoleKeys?: readonly RoleKey[];
     requiredGlobalRoleKeys?: readonly RoleKey[];
+    requiredServerAction?: "business_party.create";
     title?: unknown;
   };
 }
@@ -319,6 +320,23 @@ export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth)
   return true;
 }
 
+export async function resolveServerRouteAccess(
+  to: RouteAccessTarget,
+  verify: (action: "business_party.create") => Promise<boolean>
+) {
+  const action = to.meta.requiredServerAction;
+  if (!action) return true;
+  try {
+    if (await verify(action)) return true;
+  } catch {
+    // Any transport or authorization ambiguity remains fail-closed.
+  }
+  return {
+    path: "/business-parties",
+    query: { notice: "create-forbidden" }
+  };
+}
+
 export function resolveRouteNavigation(
   to: RouteNavigationTarget,
   _from: RouteNavigationSource,
@@ -345,14 +363,30 @@ export function focusMainContent(documentRef: Pick<Document, "querySelector">) {
   documentRef.querySelector<HTMLElement>("#main-content")?.focus({ preventScroll: true });
 }
 
-router.beforeEach((to, from) => {
+router.beforeEach(async (to, from) => {
   const auth = useAuthStore();
-  return resolveRouteNavigation(to, from, {
+  const routeAuth = {
     isAuthenticated: auth.isAuthenticated,
     mustChangePassword: Boolean(auth.user?.mustChangePassword),
     roleKeys: auth.user?.roleKeys,
     globalRoleKeys: auth.user?.globalRoleKeys
-  });
+  };
+  if (to.meta.requiredServerAction) {
+    const authentication = resolveRouteAccess(
+      { ...to, meta: { ...to.meta, requiredGlobalRoleKeys: undefined } },
+      routeAuth
+    );
+    if (authentication !== true) return authentication;
+    const serverAccess = await resolveServerRouteAccess(to, async (action) => {
+      const { getBusinessPartyCreateCapability } = await import(
+        "../api/contract-workbench.api"
+      );
+      const capability = await getBusinessPartyCreateCapability();
+      return capability.availableActions.includes(action);
+    });
+    if (serverAccess !== true) return serverAccess;
+  }
+  return resolveRouteNavigation(to, from, routeAuth);
 });
 
 router.afterEach((to, _from, failure) => {

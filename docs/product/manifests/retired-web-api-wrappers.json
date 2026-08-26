@@ -8,10 +8,17 @@
       "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111.",
       "wrappers": [
         "downloadBusinessEntryExcelTemplate",
-        "fetchBusinessEntryDefinition",
-        "freezeBusinessEntrySnapshot",
         "previewBusinessEntryExcel",
         "validateBusinessEntryDraft"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "classification": "unreferenced",
+      "reason": "Issue #210 uses dedicated server-owned business-party probe and submission paths; these generic create adapters have no active production or test consumer.",
+      "wrappers": [
+        "issueBusinessEntryCreateTarget",
+        "issueBusinessEntrySubmissionTarget"
       ]
     },
     {
@@ -59,7 +66,6 @@
         "addBillRow",
         "cloneContractTemplateVersion",
         "cloneLayoutTemplateVersion",
-        "createBusinessParty",
         "createBusinessPartyVersion",
         "createContractNumberRule",
         "createContractTemplate",

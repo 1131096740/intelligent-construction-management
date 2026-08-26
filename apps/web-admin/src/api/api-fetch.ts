@@ -1,6 +1,7 @@
 import { useAuthStore } from "../auth/auth.store";
 import { router } from "../routes";
 import { createApiFetch } from "./http";
+import { publishApiRequestFailure } from "./api-request-failure";
 
 /**
  * 接入 Pinia 登录态与路由的默认鉴权 fetch。
@@ -26,5 +27,6 @@ export const apiFetch = createApiFetch({
     if (current.path !== "/change-password") {
       void router.push({ path: "/change-password", query: { redirect: current.fullPath } });
     }
-  }
+  },
+  onRequestFailure: publishApiRequestFailure
 });

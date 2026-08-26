@@ -1314,15 +1314,19 @@ export function listBusinessParties(query?: string) {
   return readJson<unknown[]>(`/business-parties${qs}`);
 }
 
+export async function getBusinessPartyCreateCapability() {
+  const response = await apiFetch("/business-parties/create-capability", {
+    retryUnauthorized: false
+  });
+  await ensureOk(response, "读取失败");
+  return response.json() as Promise<{ availableActions: string[] }>;
+}
+
 export interface CreateBusinessPartyPayload {
   name: string;
   unifiedSocialCreditCode?: string;
   attachments?: unknown[];
   [key: string]: unknown;
-}
-
-export function createBusinessParty(body: CreateBusinessPartyPayload) {
-  return postJson<unknown>("/business-parties", body);
 }
 
 export function getBusinessParty(partyId: string) {

@@ -13,13 +13,20 @@
         <t-button @click="loadParties">
           查询
         </t-button>
+        <t-button
+          v-if="canCreate"
+          theme="primary"
+          @click="goCreate"
+        >
+          新建合作单位
+        </t-button>
       </t-space>
     </div>
 
     <t-alert
       theme="info"
       title="上线准备期间暂为只读"
-      message="当前可查询合作单位及版本历史；新增档案入口将在主数据治理完成后重新开放。"
+      message="当前可查询合作单位及版本历史；新建档案仅通过受控业务入口提交。"
       class="panel"
     />
 
@@ -57,9 +64,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { listBusinessParties } from "../../api/contract-workbench.api";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
+import {
+  getBusinessPartyCreateCapability,
+  listBusinessParties
+} from "../../api/contract-workbench.api";
 
 interface PartyRow {
   id: string;
@@ -69,6 +80,7 @@ interface PartyRow {
 }
 
 const router = useRouter();
+const route = useRoute();
 const columns = [
   { colKey: "name", title: "名称", minWidth: 180 },
   { colKey: "unifiedSocialCreditCode", title: "统一社会信用代码", minWidth: 180 },
@@ -79,10 +91,16 @@ const query = ref("");
 const parties = ref<PartyRow[]>([]);
 const loading = ref(false);
 const message = ref("");
-const tone = ref<"danger">("danger");
+const tone = ref<"danger" | "warning">("danger");
+const createActions = ref<string[]>([]);
+const canCreate = computed(() => createActions.value.includes("business_party.create"));
 
 function go(id: string) {
   void router.push(`/business-parties/${id}`);
+}
+
+function goCreate() {
+  void router.push("/business-parties/new");
 }
 
 async function loadParties() {
@@ -90,14 +108,31 @@ async function loadParties() {
   try {
     parties.value = (await listBusinessParties(query.value.trim() || undefined)) as PartyRow[];
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合作单位失败";
+    message.value = formatUnknownApiError(error, "加载合作单位失败");
     tone.value = "danger";
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(loadParties);
+async function loadCreateCapability() {
+  try {
+    const capability = await getBusinessPartyCreateCapability();
+    createActions.value = capability.availableActions;
+  } catch {
+    createActions.value = [];
+  }
+}
+
+onMounted(() => {
+  if (route.query.notice === "create-forbidden") {
+    message.value = "当前账号没有创建合作单位的服务端授权。";
+    tone.value = "warning";
+    void router.replace({ path: "/business-parties" });
+  }
+  void loadParties();
+  void loadCreateCapability();
+});
 </script>
 
 <style scoped>
@@ -109,5 +144,6 @@ onMounted(loadParties);
 .query-actions { flex-wrap: wrap; }
 .message { font-size: 12px; }
 .danger { color: #b51d2a; }
+.warning { color: #9a6700; }
 @container jg-page (max-width: 620px) { .page-head { display: grid; grid-template-columns: 1fr; } }
 </style>

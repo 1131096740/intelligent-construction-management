@@ -5,6 +5,8 @@ import type { BusinessEntryTargetScope } from "./business-entry-scene-access";
 const CREATE_TARGET_TTL_SECONDS = 5 * 60;
 const CREATE_TARGET_VERSION = 1;
 
+export type BusinessEntryCreateTargetPurpose = "definition_probe" | "submission";
+
 interface BusinessEntryCreateTargetClaims {
   v: typeof CREATE_TARGET_VERSION;
   actorUserId: string;
@@ -16,6 +18,7 @@ interface BusinessEntryCreateTargetClaims {
   definitionVersion?: number;
   idempotencyKey?: string;
   fingerprint?: string;
+  purpose?: BusinessEntryCreateTargetPurpose;
   projectId?: string;
   iat: number;
   exp: number;
@@ -110,6 +113,9 @@ export class BusinessEntryCreateTargetService {
           (!Number.isSafeInteger(claims.definitionVersion) || claims.definitionVersion <= 0)) ||
         (claims.idempotencyKey !== undefined && !this.isUuidV4(claims.idempotencyKey)) ||
         (claims.fingerprint !== undefined && !/^[0-9a-f]{64}$/iu.test(claims.fingerprint)) ||
+        (claims.purpose !== undefined &&
+          claims.purpose !== "definition_probe" &&
+          claims.purpose !== "submission") ||
         claims.actorUserId !== expected.actorUserId ||
         claims.scene !== expected.scene ||
         claims.entityType !== expected.entityType ||
@@ -119,7 +125,8 @@ export class BusinessEntryCreateTargetService {
         (expected.definitionKey !== undefined && claims.definitionKey !== expected.definitionKey) ||
         (expected.definitionVersion !== undefined && claims.definitionVersion !== expected.definitionVersion) ||
         (expected.idempotencyKey !== undefined && claims.idempotencyKey !== expected.idempotencyKey) ||
-        (expected.fingerprint !== undefined && claims.fingerprint !== expected.fingerprint)
+        (expected.fingerprint !== undefined && claims.fingerprint !== expected.fingerprint) ||
+        (expected.purpose !== undefined && claims.purpose !== expected.purpose)
       ) {
         throw new Error("target binding mismatch");
       }

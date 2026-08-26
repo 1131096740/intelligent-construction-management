@@ -130,11 +130,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
   "business_party.create": [
     "contract_staff",
-    "contract_director",
-    "finance_staff",
-    "finance_director",
-    "chairman",
-    "general_manager"
+    "contract_director"
   ],
   "contract.create": ["contract_staff", "contract_director"],
   "contract.draft.delete": ["contract_staff", "contract_director"],

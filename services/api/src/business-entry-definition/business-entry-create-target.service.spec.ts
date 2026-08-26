@@ -53,4 +53,57 @@ describe("BusinessEntryCreateTargetService", () => {
       projectId: "project-1"
     })).toThrow("新建目标令牌无效");
   });
+
+  it("binds a business-party target to its server-owned purpose", () => {
+    const service = new BusinessEntryCreateTargetService();
+    const probe = service.issue({
+      actorUserId: "actor-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      action: "business_party.create",
+      definitionKey: "business_party",
+      definitionVersion: 1,
+      purpose: "definition_probe"
+    });
+    const expected = {
+      actorUserId: "actor-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global" as const,
+      action: "business_party.create",
+      definitionKey: "business_party",
+      definitionVersion: 1
+    };
+
+    expect(service.verify(probe.createTarget, {
+      ...expected,
+      purpose: "definition_probe"
+    })).toMatchObject({ purpose: "definition_probe" });
+    expect(() => service.verify(probe.createTarget, {
+      ...expected,
+      purpose: "submission"
+    })).toThrow("新建目标令牌无效");
+  });
+
+  it("keeps probe and submission targets mutually exclusive", () => {
+    const service = new BusinessEntryCreateTargetService();
+    const claims = {
+      actorUserId: "actor-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global" as const,
+      action: "business_party.create",
+      definitionKey: "business_party",
+      definitionVersion: 1
+    };
+    const probe = service.issue({ ...claims, purpose: "definition_probe" });
+    const submission = service.issue({ ...claims, purpose: "submission" });
+
+    expect(submission.createTarget).not.toBe(probe.createTarget);
+    expect(() => service.verify(probe.createTarget, { ...claims, purpose: "submission" }))
+      .toThrow("新建目标令牌无效");
+    expect(() => service.verify(submission.createTarget, { ...claims, purpose: "definition_probe" }))
+      .toThrow("新建目标令牌无效");
+  });
 });

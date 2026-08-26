@@ -8,6 +8,7 @@ import {
   focusMainContent,
   resolveRouteAccess,
   resolveRouteNavigation,
+  resolveServerRouteAccess,
   resolveRouteScrollPosition
 } from "./index";
 import {
@@ -56,6 +57,36 @@ describe("web admin routes", () => {
     const redirect = childRoute(path)?.redirect;
     return typeof redirect === "function" ? redirect({ params } as never, {} as never) : redirect;
   }
+
+  it("allows the business-party create route only when its server action is present", async () => {
+    const route = {
+      fullPath: "/business-parties/new",
+      meta: { requiredServerAction: "business_party.create" as const }
+    };
+
+    await expect(resolveServerRouteAccess(route, async () => true)).resolves.toBe(true);
+    await expect(resolveServerRouteAccess(route, async () => false)).resolves.toEqual({
+      path: "/business-parties",
+      query: { notice: "create-forbidden" }
+    });
+  });
+
+  it("fails the business-party create route closed when capability verification errors", async () => {
+    await expect(
+      resolveServerRouteAccess(
+        {
+          fullPath: "/business-parties/new",
+          meta: { requiredServerAction: "business_party.create" }
+        },
+        async () => {
+          throw new Error("capability unavailable");
+        }
+      )
+    ).resolves.toEqual({
+      path: "/business-parties",
+      query: { notice: "create-forbidden" }
+    });
+  });
 
   it("defines a public login route", () => {
     const loginRoute = webAdminRoutes.find((route) => route.path === "/login");
@@ -544,7 +575,8 @@ describe("web admin routes", () => {
     expect(redirectOf("approval-center")).toBe("/审批中心");
     expect(redirectOf("audit")).toBe("/审计日志");
     expect(redirectOf("contract-templates")).toBe("/合同模板库");
-    expect(redirectOf("business-parties")).toBe("/合作单位档案");
+    expect(childRoute("business-parties")?.component).toBeDefined();
+    expect(childRoute("business-parties")?.meta?.requiredGlobalRoleKeys).toBeUndefined();
     expect(redirectOf("delegations")).toBe("/委托台账");
     expect(redirectOf("settings")).toBe("/系统配置");
     expect(redirectOf("organization")).toBe("/组织权限");
@@ -582,7 +614,6 @@ describe("web admin routes", () => {
       { label: "合同工作台", path: "/合同工作台" },
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
-      { label: "合作单位档案", path: "/合作单位档案" },
       { label: "结算工作台", path: "/结算工作台" },
       { label: "资金办理工作台", path: "/统一资金办理工作台" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
@@ -595,6 +626,7 @@ describe("web admin routes", () => {
       { label: "资料库", path: "/资料库" },
       { label: "审计日志", path: "/审计日志" },
       { label: "我方公司主体", path: "/我方公司主体" },
+      { label: "合作单位档案", path: "/business-parties" },
       { label: "组织权限", path: "/组织权限" },
       { label: "系统配置", path: "/系统配置" }
     ]);
@@ -610,10 +642,13 @@ describe("web admin routes", () => {
       expect(route?.redirect, `${item.path} 不应仅指向兼容重定向`).toBeUndefined();
       expect(route?.meta?.requiredRoleKeys).toEqual(item.requiredRoleKeys);
       expect(route?.meta?.requiredGlobalRoleKeys).toEqual(item.requiredGlobalRoleKeys);
-      expect(
-        buildEncodedRouteRedirect({ path: encodeURI(item.path), query: {}, hash: "" })?.path,
-        `${item.path} 硬刷新后必须回到规范路由`
-      ).toBe(item.path);
+      const redirect = buildEncodedRouteRedirect({ path: encodeURI(item.path), query: {}, hash: "" });
+      if (item.path === "/business-parties") {
+        expect(item.requiredGlobalRoleKeys).toBeUndefined();
+        expect(redirect, `${item.path} 已是规范英文路由`).toBeNull();
+      } else {
+        expect(redirect?.path, `${item.path} 硬刷新后必须回到规范路由`).toBe(item.path);
+      }
     }
   });
 

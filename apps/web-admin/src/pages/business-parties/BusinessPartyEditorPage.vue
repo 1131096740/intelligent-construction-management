@@ -18,6 +18,17 @@
     />
 
     <t-card
+      title="档案创建信息"
+      :bordered="true"
+      class="panel"
+    >
+      <t-space direction="vertical">
+        <span>创建人：{{ creatorName(party) }}</span>
+        <span>创建时间：{{ dateLabel(party?.createdAt) }}</span>
+      </t-space>
+    </t-card>
+
+    <t-card
       title="版本历史"
       :bordered="true"
       class="panel jg-table-region jg-table-region--standard"
@@ -44,6 +55,10 @@
             {{ file.category }} · {{ file.name }} · {{ file.validUntil || "无有效期" }}
           </div>
         </template>
+        <template #createdAt="{ row }">
+          <div>{{ dateLabel(row.createdAt) }}</div>
+          <small>创建人：{{ creatorName(row) }}</small>
+        </template>
       </t-table>
     </t-card>
 
@@ -59,6 +74,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import { getBusinessParty } from "../../api/contract-workbench.api";
 
 interface AttachmentDraft {
@@ -72,6 +88,7 @@ interface PartyVersionRow {
   id: string;
   versionNo: number;
   snapshot: Record<string, unknown>;
+  createdByName?: string;
   createdAt?: string;
 }
 
@@ -85,7 +102,7 @@ const columns = [
   { colKey: "versionNo", title: "版本", width: 80 },
   { colKey: "summary", title: "档案快照", minWidth: 220 },
   { colKey: "attachments", title: "附件分类 / 有效期", minWidth: 260 },
-  { colKey: "createdAt", title: "创建时间", width: 180 }
+  { colKey: "createdAt", title: "创建信息", width: 220 }
 ];
 
 function snapshot(row: PartyVersionRow) {
@@ -94,6 +111,18 @@ function snapshot(row: PartyVersionRow) {
     unifiedSocialCreditCode?: string;
     attachments?: AttachmentDraft[];
   };
+}
+
+function dateLabel(value: unknown) {
+  if (typeof value !== "string" || !value) return "未记录";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN");
+}
+
+function creatorName(value: { createdByName?: unknown } | null | undefined) {
+  return typeof value?.createdByName === "string" && value.createdByName.trim()
+    ? value.createdByName
+    : "未记录";
 }
 
 async function loadParty() {
@@ -106,7 +135,7 @@ async function loadParty() {
     party.value = data.party;
     versions.value = data.versions;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合作单位失败";
+    message.value = formatUnknownApiError(error, "加载合作单位失败");
     tone.value = "danger";
   } finally {
     loading.value = false;

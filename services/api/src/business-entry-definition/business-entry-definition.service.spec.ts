@@ -20,6 +20,7 @@ import {
   BUSINESS_ENTRY_XLSX_MIME,
   BusinessEntryExcelService
 } from "./business-entry-excel.service";
+import { BusinessEntryCreateTargetService } from "./business-entry-create-target.service";
 
 const definition: BusinessEntrySceneDefinition = {
   key: "project_operating_profile",
@@ -195,6 +196,277 @@ describe("BusinessEntryDefinitionService", () => {
     )).resolves.toMatchObject({ key: "business_party" });
     expect(resolver.resolveActiveRoleScopes).toHaveBeenCalledWith("user-1");
     expect(targetResolver).toHaveBeenCalled();
+  });
+
+  it("issues an independent submission target after a fresh probe and capability check", async () => {
+    const partyDefinition = {
+      ...definition,
+      key: "business_party",
+      entityType: "business_party",
+      fields: definition.fields.map((field) => ({
+        ...field,
+        permissions: {
+          view: ["contract_staff"] as const,
+          edit: ["contract_staff"] as const,
+          import: ["contract_staff"] as const
+        }
+      }))
+    };
+    const resolver = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"])
+    };
+    const authorization = { assertAuthorized: jest.fn() };
+    const createTargets = new BusinessEntryCreateTargetService();
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([partyDefinition]),
+      createBusinessEntrySceneAccessRegistry([partyDefinition], [{
+        sceneKey: "business_party",
+        target: {
+          scope: "global",
+          entityType: "business_party",
+          resolve: jest.fn().mockResolvedValue(true)
+        },
+        permission: {
+          kind: "business_action",
+          action: "business_party.create",
+          roleScope: "global"
+        }
+      }]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshotStoreMock(),
+      {
+        project: { findUnique: jest.fn() }
+      } as never,
+      authorization as never,
+      createTargets,
+      resolver as never,
+      { assertCanWrite: jest.fn() } as never
+    );
+    const intent = {
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      fingerprint: "a".repeat(64),
+      definitionKey: "business_party",
+      definitionVersion: partyDefinition.version
+    };
+    const probe = createTargets.issue({
+      actorUserId: "user-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      action: "business_party.create",
+      ...intent,
+      purpose: "definition_probe"
+    });
+
+    const submission = await service.issueSubmissionTarget(
+      "business_party",
+      undefined,
+      "user-1",
+      { entityType: "business_party", probe: probe.createTarget, ...intent }
+    );
+
+    expect(submission.target.createTarget).not.toBe(probe.createTarget);
+    expect(createTargets.verify(submission.target.createTarget, {
+      actorUserId: "user-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      action: "business_party.create",
+      ...intent,
+      purpose: "submission"
+    })).toMatchObject({ purpose: "submission" });
+    expect(authorization.assertAuthorized).toHaveBeenCalledWith(expect.objectContaining({
+      sceneKey: "business_party",
+      actorUserId: "user-1",
+      operation: "edit",
+      target: { entityType: "business_party", createTarget: probe.createTarget }
+    }));
+  });
+
+  it("derives the business-party probe and submission contracts from the server registry", async () => {
+    const partyDefinition = {
+      ...definition,
+      key: "business_party",
+      entityType: "business_party",
+      version: 7
+    };
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([partyDefinition]),
+      createBusinessEntrySceneAccessRegistry([partyDefinition], [{
+        sceneKey: "business_party",
+        target: {
+          scope: "global",
+          entityType: "business_party",
+          resolve: jest.fn().mockResolvedValue(true)
+        },
+        permission: {
+          kind: "business_action",
+          action: "business_party.create",
+          roleScope: "global"
+        }
+      }]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshotStoreMock(),
+      { project: { findUnique: jest.fn() } } as never,
+      authorizationMock()
+    );
+    const issueCreateTarget = jest.spyOn(service, "issueCreateTarget")
+      .mockResolvedValue({ createTarget: "probe" } as never);
+    const issueSubmissionTarget = jest.spyOn(service, "issueSubmissionTarget")
+      .mockResolvedValue({ createTarget: "submission" } as never);
+    const intent = {
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      fingerprint: "a".repeat(64)
+    };
+
+    await service.issueBusinessPartyDefinitionProbe("user-1", intent);
+    await service.issueBusinessPartySubmissionTarget("user-1", {
+      ...intent,
+      probe: "probe"
+    });
+
+    expect(issueCreateTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      "business_party",
+      {
+        ...intent,
+        definitionKey: "business_party",
+        definitionVersion: 7
+      }
+    );
+    expect(issueSubmissionTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      {
+        ...intent,
+        probe: "probe",
+        entityType: "business_party",
+        definitionKey: "business_party",
+        definitionVersion: 7
+      }
+    );
+  });
+
+  it("rejects a submission target for definition reads and a probe for validation", async () => {
+    const partyDefinition = {
+      ...definition,
+      key: "business_party",
+      entityType: "business_party",
+      fields: definition.fields.map((field) => ({
+        ...field,
+        permissions: {
+          view: ["contract_staff"] as const,
+          edit: ["contract_staff"] as const,
+          import: ["contract_staff"] as const
+        }
+      }))
+    };
+    const resolver = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"]) };
+    const createTargets = new BusinessEntryCreateTargetService();
+    const writeFreeze = { assertCanWrite: jest.fn() };
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([partyDefinition]),
+      createBusinessEntrySceneAccessRegistry([partyDefinition], [{
+        sceneKey: "business_party",
+        target: {
+          scope: "global",
+          entityType: "business_party",
+          resolve: jest.fn().mockResolvedValue(true)
+        },
+        permission: {
+          kind: "business_action",
+          action: "business_party.create",
+          roleScope: "global"
+        }
+      }]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshotStoreMock(),
+      { project: { findUnique: jest.fn() } } as never,
+      { assertAuthorized: jest.fn() } as never,
+      createTargets,
+      resolver as never,
+      writeFreeze as never
+    );
+    const intent = {
+      idempotencyKey: "44444444-4444-4444-8444-444444444444",
+      fingerprint: "b".repeat(64),
+      definitionKey: "business_party",
+      definitionVersion: partyDefinition.version
+    };
+    const probe = createTargets.issue({
+      actorUserId: "user-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      action: "business_party.create",
+      ...intent,
+      purpose: "definition_probe"
+    });
+    const submission = createTargets.issue({
+      actorUserId: "user-1",
+      scene: "business_party",
+      entityType: "business_party",
+      scope: "global",
+      action: "business_party.create",
+      ...intent,
+      purpose: "submission"
+    });
+
+    await expect(service.getSceneDefinitionForOperation(
+      "business_party",
+      undefined,
+      "user-1",
+      "edit",
+      { entityType: "business_party", createTarget: submission.createTarget }
+    )).rejects.toThrow("新建目标令牌无效");
+    await expect(service.validateDraft(
+      "business_party",
+      undefined,
+      "user-1",
+      {
+        definitionVersion: partyDefinition.version,
+        target: { entityType: "business_party", createTarget: probe.createTarget },
+        values: { takeoverStatus: "operating_with_takeover" }
+      }
+    )).rejects.toThrow("新建目标令牌无效");
+    await expect(service.freezeSubmissionSnapshot(
+      "business_party",
+      undefined,
+      "user-1",
+      {
+        definitionVersion: partyDefinition.version,
+        target: { entityType: "business_party", createTarget: probe.createTarget },
+        values: { takeoverStatus: "operating_with_takeover" }
+      }
+    )).rejects.toThrow("新建目标令牌无效");
+    await expect(service.freezeSubmissionSnapshot(
+      "business_party",
+      undefined,
+      "user-1",
+      {
+        definitionVersion: partyDefinition.version,
+        target: { entityType: "business_party", createTarget: submission.createTarget },
+        values: { takeoverStatus: "operating_with_takeover" }
+      }
+    )).resolves.toMatchObject({
+      sceneKey: "business_party",
+      target: { createTarget: submission.createTarget },
+      values: { takeoverStatus: "operating_with_takeover" }
+    });
+
+    writeFreeze.assertCanWrite.mockImplementation(() => {
+      throw new Error("master-data-frozen");
+    });
+    await expect(service.getSceneDefinitionForOperation(
+      "business_party",
+      undefined,
+      "user-1",
+      "edit",
+      { entityType: "business_party", createTarget: probe.createTarget }
+    )).rejects.toThrow("master-data-frozen");
   });
 
   it("fails closed across create-target, validation, and freeze when domain authorization is missing", async () => {

@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 480,
-    "classificationOverrideCount": 182,
-    "derivedProductionPageCount": 298,
-    "classificationOverrideSha256": "f7ed671972da42649f6fa67e5c020dc2ddcffd88b092c971716d159903ac81cd",
+    "routeCount": 486,
+    "classificationOverrideCount": 183,
+    "derivedProductionPageCount": 303,
+    "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
-      "page": 299,
-      "external_takeover": 68,
-      "exit_candidate": 110,
+      "page": 305,
+      "external_takeover": 70,
+      "exit_candidate": 108,
       "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 349,
+      "web_api_wrapper": 357,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 122
+      "none": 120
     }
   },
   "overrides": [
@@ -310,8 +310,8 @@
     {
       "method": "POST",
       "path": "/business-parties",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "issue_210_non_production_web_api_wrapper_submission_surface_authorized"
     },
     {
       "method": "POST",
@@ -1072,8 +1072,14 @@
     {
       "method": "POST",
       "path": "/business-entry-definitions/:sceneKey/create-target",
-      "usage": "exit_candidate",
-      "reason": "pol_19_business_entry_create_target_backend_contract_pending_pol_19_page_migration_candidate_only_no_deletion_authorization"
+      "usage": "external_takeover",
+      "reason": "generic_business_entry_create_adapter_has_no_active_production_consumer_after_issue_210_dedicated_server_owned_path"
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/:sceneKey/submission-target",
+      "usage": "external_takeover",
+      "reason": "generic_business_entry_submission_adapter_has_no_active_production_consumer_after_issue_210_dedicated_server_owned_path"
     },
     {
       "method": "GET",
