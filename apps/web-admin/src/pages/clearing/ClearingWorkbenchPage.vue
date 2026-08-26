@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
 
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   attestClearingEvent,
   confirmClearingEvent,
@@ -105,7 +106,7 @@ const actionTitle = computed(() => ({
 }[pendingAction.value ?? "submit"]));
 const actionDescription = computed(() => {
   if (pendingAction.value === "confirm") {
-    return "确认将以当前冻结版本、显式分配和最新服务端权限生成正式清分与经营账投影。";
+    return "确认将以当前确认内容、显式分配和最新服务端权限生成正式清分与经营账投影。";
   }
   if (pendingAction.value === "attest") return "实名核验只追加当前 B 级证据的核验记录；正式确认仍必须由另一自然人财务负责人完成。";
   if (pendingAction.value === "submit") return "提交后生成新的不可变已提交版本，后续修改必须追加版本。";
@@ -156,7 +157,7 @@ async function loadInitial() {
     if (!selectedProjectId.value && projectRows[0]) selectedProjectId.value = projectRows[0].id;
     await loadCases();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "加载清分工作台失败";
+    errorMessage.value = formatUnknownApiError(error, "加载清分工作台失败");
   } finally {
     loading.value = false;
   }
@@ -177,7 +178,7 @@ async function changeProject() {
   try {
     await loadCases();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "加载清分事项失败";
+    errorMessage.value = formatUnknownApiError(error, "加载清分事项失败");
   } finally {
     loading.value = false;
   }
@@ -223,7 +224,7 @@ async function saveCase() {
     await loadCases();
     await MessagePlugin.success("清分事项已创建");
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "创建清分事项失败";
+    errorMessage.value = formatUnknownApiError(error, "创建清分事项失败");
   } finally {
     submitting.value = false;
   }
@@ -279,7 +280,7 @@ async function saveEvent() {
     await refreshDetail();
     await MessagePlugin.success(isRevision ? "清分草稿已修订" : "清分草稿已创建");
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "创建清分草稿失败";
+    errorMessage.value = formatUnknownApiError(error, "创建清分草稿失败");
   } finally {
     submitting.value = false;
   }
@@ -345,7 +346,7 @@ async function executeAction(values: { reason: string }) {
     await refreshDetail();
     await MessagePlugin.success("清分状态已更新");
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "清分操作失败";
+    errorMessage.value = formatUnknownApiError(error, "清分操作失败");
   } finally {
     submitting.value = false;
   }
