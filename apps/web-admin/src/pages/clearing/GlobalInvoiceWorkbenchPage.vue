@@ -65,7 +65,7 @@ async function submit(label: string, work: () => Promise<{ id: string }>) {
   submitting.value = true;
   message.value = "";
   try {
-    const result = await work();
+    await work();
     await refreshSelections();
     message.value = `${label}已追加，可在下方业务选择中继续处理。`;
     MessagePlugin.success(message.value);
