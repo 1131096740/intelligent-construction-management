@@ -10,6 +10,7 @@ type RuntimeDto = new () => object;
 type InvoiceLedgerMethod =
   | "createProcurementInvoice"
   | "createClearingAllocation"
+  | "reverseClearingAllocation"
   | "reverseAllocation"
   | "createNoInvoiceConfirmation"
   | "reviewNoInvoiceConfirmation"
@@ -108,6 +109,7 @@ describe("InvoiceLedgerController", () => {
         "spot-procurements/:procurementId/invoices"
       ],
       ["createClearingAllocation", "invoice-clearing-allocations"],
+      ["reverseClearingAllocation", "invoice-clearing-allocations/:clearingAllocationId/reversal"],
       ["reverseAllocation", "invoice-allocations/:allocationId/reversal"],
       [
         "createNoInvoiceConfirmation",
@@ -162,6 +164,12 @@ describe("InvoiceLedgerController", () => {
       Reflect.getMetadata(
         REQUIRED_PROJECT_ACTION_KEY,
         InvoiceLedgerController.prototype.createClearingAllocation
+      )
+    ).toBe("clearing.confirm");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        InvoiceLedgerController.prototype.reverseClearingAllocation
       )
     ).toBe("clearing.confirm");
 

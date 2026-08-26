@@ -450,6 +450,18 @@ export class PermissionGuard implements CanActivate {
       return this.spotAccess.requireReceiptProjectId(receiptId);
     }
 
+    const clearingAllocationId = request.params?.clearingAllocationId;
+    if (clearingAllocationId) {
+      const allocation = await this.prisma.invoiceClearingAllocation.findUnique({
+        where: { id: clearingAllocationId },
+        select: { projectId: true }
+      });
+      if (!allocation) {
+        throw new ForbiddenException("清算发票分配不存在或当前账号无权访问");
+      }
+      return allocation.projectId;
+    }
+
     const allocationId = request.params?.allocationId;
     if (allocationId) {
       return this.spotAccess.requireInvoiceAllocationProjectId(allocationId);

@@ -39,6 +39,7 @@ import type {
   ProcurementInvoiceLineDto
 } from "./dto/create-procurement-invoice.dto";
 import type { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocation.dto";
+import type { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-clearing-allocation.dto";
 import type { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import type { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
 
@@ -595,6 +596,43 @@ export class InvoiceLedgerService {
       const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
       await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocate", businessType: "invoice_clearing_allocation", businessId: allocation.id, metadata: { invoiceRecordId, clearingCaseId, clearingEventVersionId, amountCents: amountCents.toString() } });
       return { id: allocation.id, replayed: false };
+    }));
+  }
+
+  async reverseClearingAllocation(
+    allocationId: string,
+    actorUserId: string,
+    input: ReverseInvoiceClearingAllocationDto
+  ) {
+    const normalizedAllocationId = requiredId(allocationId, "请选择需要反向的清算发票分配");
+    const amountCents = positiveMoney(input.amountCents, "反向分配金额");
+    const structuredReasonCode = requiredText(input.structuredReasonCode, "结构化更正原因", 100);
+    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const requestFingerprint = createHash("sha256").update(JSON.stringify([
+      "invoice-clearing-allocation-reversal", 1, actorUserId, normalizedAllocationId,
+      amountCents.toString(), structuredReasonCode
+    ]), "utf8").digest("hex");
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      const replay = await tx.invoiceClearingAllocation.findUnique({ where: { idempotencyKey } });
+      if (replay) {
+        if (replay.requestFingerprint !== requestFingerprint) throw new ConflictException("幂等键已用于不同的发票清算反向请求");
+        return { id: replay.id, replayed: true };
+      }
+      const allocation = await tx.invoiceClearingAllocation.findUnique({ where: { id: normalizedAllocationId } });
+      if (!allocation || allocation.reversesAllocationId) throw new NotFoundException("可反向的清算发票分配不存在");
+      await this.requireFinanceDirector(tx, actorUserId, allocation.projectId);
+      const reversed = await tx.invoiceClearingAllocation.aggregate({ where: { reversesAllocationId: allocation.id }, _sum: { amountCents: true } });
+      if ((reversed._sum.amountCents ?? 0n) + amountCents > allocation.amountCents) {
+        throw new ConflictException("反向分配金额超过原清算发票分配的剩余有效金额");
+      }
+      const reversal = await tx.invoiceClearingAllocation.create({ data: {
+        invoiceRecordId: allocation.invoiceRecordId, projectId: allocation.projectId,
+        clearingCaseId: allocation.clearingCaseId, clearingEventVersionId: allocation.clearingEventVersionId,
+        amountCents, structuredReasonCode, reversesAllocationId: allocation.id,
+        createdByUserId: actorUserId, idempotencyKey, requestFingerprint
+      } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocation.reverse", businessType: "invoice_clearing_allocation", businessId: reversal.id, metadata: { reversesAllocationId: allocation.id, amountCents: amountCents.toString(), structuredReasonCode } });
+      return { id: reversal.id, replayed: false };
     }));
   }
 
