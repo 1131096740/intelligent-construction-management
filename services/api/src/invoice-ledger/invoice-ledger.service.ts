@@ -654,6 +654,8 @@ export class InvoiceLedgerService {
       if (existing) throw new ConflictException("该发票身份已用于不同的发票事实");
       const allocations = await Promise.all(references.map((reference) => tx.invoiceClearingAllocation.findUnique({ where: { id: reference.blueInvoiceAllocationId } })));
       if (allocations.some((allocation, index) => !allocation || allocation.invoiceRecordId !== blue.id || allocation.reversesAllocationId || allocation.amountCents !== references[index].amountCents)) throw new ConflictException("红字必须逐笔精确引用仍有效的蓝字清算发票分配");
+      const reversals = await tx.invoiceClearingAllocation.findMany({ where: { reversesAllocationId: { in: references.map((reference) => reference.blueInvoiceAllocationId) } }, select: { reversesAllocationId: true, amountCents: true } });
+      if (reversals.length) throw new ConflictException("红字必须逐笔精确引用仍有效的蓝字清算发票分配");
       const file = await this.files.assertFileHasNoBusinessBinding(tx, header.fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("只能登记本人上传且尚未绑定的发票文件");
       const red = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_red", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
@@ -730,10 +732,13 @@ export class InvoiceLedgerService {
       const [invoice, clearingCase, version] = await Promise.all([
         tx.invoiceRecord.findUnique({ where: { id: invoiceRecordId } }),
         tx.clearingCase.findUnique({ where: { id: clearingCaseId } }),
-        tx.clearingEventVersion.findUnique({ where: { id: clearingEventVersionId }, include: { confirmation: true } })
+        tx.clearingEventVersion.findUnique({ where: { id: clearingEventVersionId }, include: { confirmation: true, attestation: true } })
       ]);
       if (!invoice?.owningCompanyEntityId) throw new ConflictException("发票缺少归属我方公司主体，不能用于清算");
       if (!clearingCase || !version?.confirmation || version.clearingCaseId !== clearingCase.id) throw new ConflictException("发票分配必须引用同一案件的已确认清算版本");
+      if (version.amountCents !== amountCents && (!structuredReasonCode || version.evidenceLevel !== "B" || !version.attestation)) {
+        throw new ConflictException("清算额差异必须填写结构化原因并引用已完成 B 级双人确认的清算版本");
+      }
       const projectCompany = await tx.projectParticipatingCompany.findFirst({
         where: {
           projectId: clearingCase.projectId,

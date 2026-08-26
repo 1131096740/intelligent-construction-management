@@ -1384,7 +1384,8 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     const clearingAllocations: Array<Record<string, unknown>> = [{ id: "blue-clearing-allocation-1", invoiceRecordId: blue.id, reversesAllocationId: null, amountCents: 6000n }];
     Object.assign(harness.tx, {
       invoiceClearingAllocation: {
-        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve(clearingAllocations.find((row) => row.id === where.id) ?? null))
+        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve(clearingAllocations.find((row) => row.id === where.id) ?? null)),
+        findMany: jest.fn().mockResolvedValue([])
       }
     });
     const input = {
@@ -1426,7 +1427,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     const rows: Array<Record<string, unknown>> = [];
     Object.assign(harness.tx, {
       clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
-      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", confirmation: { id: "confirmation-1" } }) },
+      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", amountCents: 6000n, evidenceLevel: "B", attestation: { id: "attestation-1" }, confirmation: { id: "confirmation-1" } }) },
       projectParticipatingCompany: { findFirst: jest.fn().mockResolvedValue({ id: "project-company-1" }) },
       invoiceClearingAllocation: {
         findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey?: string; id?: string } }) => Promise.resolve(rows.find((row) => row.idempotencyKey === where.idempotencyKey || row.id === where.id) ?? null)),
@@ -1438,14 +1439,31 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     const input = { invoiceRecordId: invoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-key-1" };
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
-    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", idempotencyKey: "allocation-key-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", structuredReasonCode: "partial_reconciliation", idempotencyKey: "allocation-key-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
     await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-1" })).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-1" })).resolves.toMatchObject({ replayed: true });
     await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "2001", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-over-cap" })).rejects.toThrow("反向分配金额超过原清算发票分配的剩余有效金额");
-    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "4000", idempotencyKey: "allocation-key-replacement" })).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "4000", structuredReasonCode: "partial_reconciliation", idempotencyKey: "allocation-key-replacement" })).resolves.toMatchObject({ replayed: false });
     expect((harness.tx as any).projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ projectId: "project-1", companyEntityId: "company-entity-1" })
     }));
+  });
+
+  it("requires a structured reason and B-level dual-confirmed version for a clearing amount difference", async () => {
+    const harness = createHarness();
+    const invoice = await harness.service.createProcurementInvoice("procurement-1", ACTORS.handler, createInvoiceInput());
+    Object.assign(harness.tx, {
+      clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
+      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", amountCents: 7000n, evidenceLevel: "A", attestation: null, confirmation: { id: "confirmation-1" } }) },
+      invoiceClearingAllocation: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) }
+    });
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, {
+      invoiceRecordId: invoice.invoice.id,
+      clearingCaseId: "case-1",
+      clearingEventVersionId: "version-1",
+      amountCents: "6000",
+      idempotencyKey: "allocation-difference-key-1"
+    })).rejects.toThrow("清算额差异必须填写结构化原因并引用已完成 B 级双人确认的清算版本");
   });
 
   it("fails closed when the invoice owning company is not effective for the clearing project", async () => {
@@ -1453,7 +1471,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     const invoice = await harness.service.createProcurementInvoice("procurement-1", ACTORS.handler, createInvoiceInput());
     Object.assign(harness.tx, {
       clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
-      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", confirmation: { id: "confirmation-1" } }) },
+      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", amountCents: 1n, evidenceLevel: "A", attestation: null, confirmation: { id: "confirmation-1" } }) },
       projectParticipatingCompany: { findFirst: jest.fn().mockResolvedValue(null) },
       invoiceClearingAllocation: { findUnique: jest.fn().mockResolvedValue(null) }
     });
