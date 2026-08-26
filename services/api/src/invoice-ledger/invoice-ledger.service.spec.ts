@@ -1306,6 +1306,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     Object.assign(harness.tx, {
       clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
       clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", confirmation: { id: "confirmation-1" } }) },
+      projectParticipatingCompany: { findFirst: jest.fn().mockResolvedValue({ id: "project-company-1" }) },
       invoiceClearingAllocation: {
         findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey: string } }) => Promise.resolve(rows.find((row) => row.idempotencyKey === where.idempotencyKey) ?? null)),
         aggregate: jest.fn().mockImplementation(() => Promise.resolve({ _sum: { amountCents: rows.reduce((sum, row) => sum + (row.amountCents as bigint), 0n) } })),
@@ -1316,6 +1317,23 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", idempotencyKey: "allocation-key-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
+    expect((harness.tx as any).projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ projectId: "project-1", companyEntityId: "company-entity-1" })
+    }));
+  });
+
+  it("fails closed when the invoice owning company is not effective for the clearing project", async () => {
+    const harness = createHarness();
+    const invoice = await harness.service.createProcurementInvoice("procurement-1", ACTORS.handler, createInvoiceInput());
+    Object.assign(harness.tx, {
+      clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
+      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", confirmation: { id: "confirmation-1" } }) },
+      projectParticipatingCompany: { findFirst: jest.fn().mockResolvedValue(null) },
+      invoiceClearingAllocation: { findUnique: jest.fn().mockResolvedValue(null) }
+    });
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, {
+      invoiceRecordId: invoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "1", idempotencyKey: "allocation-key-company-mismatch"
+    })).rejects.toThrow("发票归属我方主体未在清算项目有效参与公司范围内");
   });
 
   it("restricts ordinary material staff to the current handler and finance staff to the current project", async () => {

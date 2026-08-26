@@ -579,6 +579,16 @@ export class InvoiceLedgerService {
       ]);
       if (!invoice?.owningCompanyEntityId) throw new ConflictException("发票缺少归属我方公司主体，不能用于清算");
       if (!clearingCase || !version?.confirmation || version.clearingCaseId !== clearingCase.id) throw new ConflictException("发票分配必须引用同一案件的已确认清算版本");
+      const projectCompany = await tx.projectParticipatingCompany.findFirst({
+        where: {
+          projectId: clearingCase.projectId,
+          companyEntityId: invoice.owningCompanyEntityId,
+          effectiveFrom: { lte: new Date() },
+          OR: [{ endedAt: null }, { endedAt: { gte: new Date() } }]
+        },
+        select: { id: true }
+      });
+      if (!projectCompany) throw new ConflictException("发票归属我方主体未在清算项目有效参与公司范围内");
       await this.requireFinanceDirector(tx, actorUserId, clearingCase.projectId);
       const used = await tx.invoiceClearingAllocation.aggregate({ where: { invoiceRecordId, reversesAllocationId: null }, _sum: { amountCents: true } });
       if ((used._sum.amountCents ?? 0n) + amountCents > invoice.totalAmountCents) throw new ConflictException("有效发票清算分配累计超过票面含税额");
