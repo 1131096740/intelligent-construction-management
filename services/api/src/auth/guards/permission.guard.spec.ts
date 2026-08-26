@@ -2316,4 +2316,32 @@ describe("PermissionGuard", () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.userPosition.findMany).not.toHaveBeenCalled();
   });
+
+  it("derives invoice clearing allocation scope from the persisted clearing case, not a forged body project", async () => {
+    const prisma = {
+      ...buildProjectPrisma("finance_director"),
+      clearingCase: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-clearing-1" }) }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("clearing.confirm")
+      } as never,
+      prisma as never
+    );
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "finance-1" },
+      body: { clearingCaseId: "case-1", projectId: "forged-project" }
+    }))).resolves.toBe(true);
+    expect(prisma.clearingCase.findUnique).toHaveBeenCalledWith({
+      where: { id: "case-1" },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ projectId: "project-clearing-1" })
+    }));
+  });
 });

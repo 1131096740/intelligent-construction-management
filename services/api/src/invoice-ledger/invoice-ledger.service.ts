@@ -554,7 +554,6 @@ export class InvoiceLedgerService {
       amountCents: string;
       structuredReasonCode?: string;
       idempotencyKey: string;
-      requestFingerprint: string;
     }
   ) {
     const invoiceRecordId = requiredId(input.invoiceRecordId, "请选择全局发票");
@@ -562,7 +561,11 @@ export class InvoiceLedgerService {
     const clearingEventVersionId = requiredId(input.clearingEventVersionId, "请选择已确认清算版本");
     const amountCents = positiveMoney(input.amountCents, "发票清算分配金额");
     const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
-    const requestFingerprint = requiredId(input.requestFingerprint, "请填写请求指纹");
+    const structuredReasonCode = optionalText(input.structuredReasonCode, 100);
+    const requestFingerprint = createHash("sha256").update(JSON.stringify([
+      "invoice-clearing-allocation", 1, invoiceRecordId, clearingCaseId,
+      clearingEventVersionId, amountCents.toString(), structuredReasonCode
+    ]), "utf8").digest("hex");
     return this.runWrite(() => this.runSerializable(async (tx) => {
       const replay = await tx.invoiceClearingAllocation.findUnique({ where: { idempotencyKey } });
       if (replay) {
@@ -579,7 +582,7 @@ export class InvoiceLedgerService {
       await this.requireFinanceDirector(tx, actorUserId, clearingCase.projectId);
       const used = await tx.invoiceClearingAllocation.aggregate({ where: { invoiceRecordId, reversesAllocationId: null }, _sum: { amountCents: true } });
       if ((used._sum.amountCents ?? 0n) + amountCents > invoice.totalAmountCents) throw new ConflictException("有效发票清算分配累计超过票面含税额");
-      const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode: optionalText(input.structuredReasonCode, 100), createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
+      const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
       await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocate", businessType: "invoice_clearing_allocation", businessId: allocation.id, metadata: { invoiceRecordId, clearingCaseId, clearingEventVersionId, amountCents: amountCents.toString() } });
       return { id: allocation.id, replayed: false };
     }));
@@ -2370,8 +2373,14 @@ export class InvoiceLedgerService {
       input.totalAmountCents,
       "发票价税合计金额"
     );
-    const taxExclusiveAmountCents = totalAmountCents;
-    const taxAmountCents = 0n;
+    const taxExclusiveAmountCents = nonNegativeMoney(
+      input.taxExclusiveAmountCents,
+      "发票不含税金额"
+    );
+    const taxAmountCents = nonNegativeMoney(input.taxAmountCents, "发票税额");
+    if (taxExclusiveAmountCents + taxAmountCents !== totalAmountCents) {
+      throw new BadRequestException("发票不含税金额与税额之和必须等于价税合计金额");
+    }
     return {
       identityKey: createHash("sha256")
         .update(identityPreimage, "utf8")
@@ -3410,6 +3419,14 @@ function positiveMoney(value: string, fieldName: string) {
     );
   }
   return amount;
+}
+
+function nonNegativeMoney(value: string, fieldName: string) {
+  return parseMoneyCentsInput(
+    value,
+    fieldName,
+    `${fieldName}必须按分填写为 0 或更大的整数`
+  );
 }
 
 function requiredId(value: unknown, message: string) {

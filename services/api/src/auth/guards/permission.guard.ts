@@ -546,6 +546,21 @@ export class PermissionGuard implements CanActivate {
       return projectIdFromParams;
     }
 
+    const clearingCaseIdFromBody =
+      typeof request.body?.clearingCaseId === "string"
+        ? request.body.clearingCaseId
+        : undefined;
+    if (clearingCaseIdFromBody) {
+      const clearingCase = await this.prisma.clearingCase.findUnique({
+        where: { id: clearingCaseIdFromBody },
+        select: { projectId: true }
+      });
+      if (!clearingCase) {
+        throw new ForbiddenException("清算案件不存在或当前账号无权访问");
+      }
+      return clearingCase.projectId;
+    }
+
     const contractLevelPaymentVersionId =
       ["contract_advance", "contract_due"].includes(String(request.body?.sourceType)) &&
       typeof request.body?.contractVersionId === "string"

@@ -29,7 +29,4 @@ export class CreateInvoiceClearingAllocationDto {
   @IsMaxUnicodeTextLength({ max: 128, message: "幂等键不能超过 128 个字符" })
   idempotencyKey!: string;
 
-  @IsRequiredText({ requiredMessage: "请填写请求指纹", typeMessage: "请求指纹必须是文字", blankMessage: "请填写请求指纹" })
-  @IsMaxUnicodeTextLength({ max: 128, message: "请求指纹不能超过 128 个字符" })
-  requestFingerprint!: string;
 }

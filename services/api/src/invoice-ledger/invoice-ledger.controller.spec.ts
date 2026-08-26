@@ -70,6 +70,8 @@ const validInvoice: CreateProcurementInvoiceDto = {
   sellerName: "甲供应商",
   buyerName: "乙建设公司",
   totalAmountCents: "13000",
+  taxExclusiveAmountCents: "11504",
+  taxAmountCents: "1496",
   fileId: "invoice-file-1",
   lines: [
     {

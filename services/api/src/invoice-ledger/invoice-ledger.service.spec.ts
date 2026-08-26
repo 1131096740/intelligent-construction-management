@@ -184,6 +184,7 @@ function filterRows<T extends object>(
 function createInvoiceInput(
   overrides: Partial<CreateProcurementInvoiceDto> = {}
 ): CreateProcurementInvoiceDto {
+  const totalAmountCents = overrides.totalAmountCents ?? "6000";
   return {
     invoiceType: "vat_special",
     owningCompanyEntityId: "company-entity-1",
@@ -195,7 +196,9 @@ function createInvoiceInput(
     issueDate: "2026-07-17",
     sellerName: " 供应商甲 ",
     buyerName: " 建设单位乙 ",
-    totalAmountCents: "6000",
+    totalAmountCents,
+    taxExclusiveAmountCents: overrides.taxExclusiveAmountCents ?? totalAmountCents,
+    taxAmountCents: overrides.taxAmountCents ?? "0",
     fileId: "invoice-file-1",
     lines: [
       {
@@ -818,6 +821,11 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       "发票价税合计金额必须按分填写为大于 0 的整数"
     ],
     [
+      "inconsistent tax components",
+      createInvoiceInput({ taxAmountCents: "690" }),
+      "发票不含税金额与税额之和必须等于价税合计金额"
+    ],
+    [
       "identity containing a control delimiter",
       createInvoiceInput({ invoiceCode: "INV\u001fCODE" }),
       "发票代码不能包含控制字符或不可见格式字符"
@@ -1304,10 +1312,10 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
         create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { const row = { id: `clearing-allocation-${rows.length + 1}`, ...data }; rows.push(row); return Promise.resolve(row); })
       }
     });
-    const input = { invoiceRecordId: invoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-key-1", requestFingerprint: "fingerprint-1" };
+    const input = { invoiceRecordId: invoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-key-1" };
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
-    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", idempotencyKey: "allocation-key-2", requestFingerprint: "fingerprint-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", idempotencyKey: "allocation-key-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
   });
 
   it("restricts ordinary material staff to the current handler and finance staff to the current project", async () => {

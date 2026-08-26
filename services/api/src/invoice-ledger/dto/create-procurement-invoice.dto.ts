@@ -211,6 +211,20 @@ export class CreateProcurementInvoiceDto {
   })
   totalAmountCents!: string;
 
+  @IsCanonicalMoneyText({
+    typeMessage: "发票不含税金额格式不正确",
+    formatMessage: "发票不含税金额必须按分填写为 0 或更大的整数",
+    rangeMessage: "发票不含税金额超出系统可保存范围"
+  })
+  taxExclusiveAmountCents!: string;
+
+  @IsCanonicalMoneyText({
+    typeMessage: "发票税额格式不正确",
+    formatMessage: "发票税额必须按分填写为 0 或更大的整数",
+    rangeMessage: "发票税额超出系统可保存范围"
+  })
+  taxAmountCents!: string;
+
   @IsRequiredText({
     requiredMessage: "请上传发票文件",
     typeMessage: "发票文件编号必须是文字",
