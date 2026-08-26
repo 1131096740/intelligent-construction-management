@@ -4568,6 +4568,76 @@
       "wrappers": [
         { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "activateOperatingTakeover" }
       ]
+    },
+    {
+      "id": "global-invoice.create",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createGlobalInvoiceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.create" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "createGlobalInvoice" }]
+    },
+    {
+      "id": "global-invoice.upload-file",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadInvoiceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.create" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadPrivateFile" }]
+    },
+    {
+      "id": "global-invoice.void",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidGlobalInvoiceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.correct" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "voidGlobalInvoice" }]
+    },
+    {
+      "id": "global-invoice.red",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createRedGlobalInvoiceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.correct" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "createRedGlobalInvoice" }]
+    },
+    {
+      "id": "global-invoice.reissue",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createReissueGlobalInvoiceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.correct" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "createReissueGlobalInvoice" }]
+    },
+    {
+      "id": "global-invoice.allocate-clearing",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "allocateGlobalInvoiceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "clearing.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "allocateGlobalInvoice" }]
+    },
+    {
+      "id": "global-invoice.reverse-clearing-allocation",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reverseGlobalInvoiceAllocationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "clearing.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "reverseGlobalInvoiceAllocation" }]
     }
   ]
 }

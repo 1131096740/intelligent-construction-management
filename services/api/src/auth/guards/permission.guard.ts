@@ -450,6 +450,18 @@ export class PermissionGuard implements CanActivate {
       return this.spotAccess.requireReceiptProjectId(receiptId);
     }
 
+    const clearingAllocationId = request.params?.clearingAllocationId;
+    if (clearingAllocationId) {
+      const allocation = await this.prisma.invoiceClearingAllocation.findUnique({
+        where: { id: clearingAllocationId },
+        select: { projectId: true }
+      });
+      if (!allocation) {
+        throw new ForbiddenException("清算发票分配不存在或当前账号无权访问");
+      }
+      return allocation.projectId;
+    }
+
     const allocationId = request.params?.allocationId;
     if (allocationId) {
       return this.spotAccess.requireInvoiceAllocationProjectId(allocationId);
@@ -544,6 +556,21 @@ export class PermissionGuard implements CanActivate {
     const projectIdFromParams = request.params?.projectId;
     if (projectIdFromParams) {
       return projectIdFromParams;
+    }
+
+    const clearingCaseIdFromBody =
+      typeof request.body?.clearingCaseId === "string"
+        ? request.body.clearingCaseId
+        : undefined;
+    if (clearingCaseIdFromBody) {
+      const clearingCase = await this.prisma.clearingCase.findUnique({
+        where: { id: clearingCaseIdFromBody },
+        select: { projectId: true }
+      });
+      if (!clearingCase) {
+        throw new ForbiddenException("清算案件不存在或当前账号无权访问");
+      }
+      return clearingCase.projectId;
     }
 
     const contractLevelPaymentVersionId =

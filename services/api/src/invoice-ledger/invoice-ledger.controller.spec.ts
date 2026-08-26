@@ -4,11 +4,19 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import type { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoice.dto";
+import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
+import type { CreateRedGlobalInvoiceDto } from "./dto/create-red-global-invoice.dto";
+import type { CreateReissueGlobalInvoiceDto } from "./dto/create-reissue-global-invoice.dto";
 import { InvoiceLedgerController } from "./invoice-ledger.controller";
 
 type RuntimeDto = new () => object;
 type InvoiceLedgerMethod =
   | "createProcurementInvoice"
+  | "createGlobalInvoice"
+  | "createRedGlobalInvoice"
+  | "createReissueGlobalInvoice"
+  | "createClearingAllocation"
+  | "reverseClearingAllocation"
   | "reverseAllocation"
   | "createNoInvoiceConfirmation"
   | "reviewNoInvoiceConfirmation"
@@ -59,12 +67,18 @@ async function getValidationResponse(
 
 const validInvoice: CreateProcurementInvoiceDto = {
   invoiceType: "vat_special",
+  owningCompanyEntityId: "company-entity-1",
+  direction: "inbound",
+  sellerTaxId: "91310000123456789A",
+  buyerTaxId: "91310000987654321B",
   invoiceCode: "INV-CODE-001",
   invoiceNumber: "INV-NO-001",
   issueDate: "2026-07-17",
   sellerName: "甲供应商",
   buyerName: "乙建设公司",
   totalAmountCents: "13000",
+  taxExclusiveAmountCents: "11504",
+  taxAmountCents: "1496",
   fileId: "invoice-file-1",
   lines: [
     {
@@ -93,13 +107,59 @@ const validInvoice: CreateProcurementInvoiceDto = {
   ]
 };
 
+const validGlobalInvoice: CreateGlobalInvoiceDto = {
+  invoiceType: "vat_special",
+  owningCompanyEntityId: "company-entity-1",
+  direction: "inbound",
+  sellerTaxId: "91310000123456789A",
+  buyerTaxId: "91310000987654321B",
+  invoiceCode: "GLOBAL-CODE-001",
+  invoiceNumber: "GLOBAL-NO-001",
+  issueDate: "2026-07-17",
+  sellerName: "甲供应商",
+  buyerName: "乙建设公司",
+  totalAmountCents: "13000",
+  taxExclusiveAmountCents: "11504",
+  taxAmountCents: "1496",
+  fileId: "global-invoice-file-1",
+  idempotencyKey: "global-invoice-key-1"
+};
+
+const validRedGlobalInvoice: CreateRedGlobalInvoiceDto = {
+  ...validGlobalInvoice,
+  invoiceCode: "GLOBAL-RED-CODE-001",
+  invoiceNumber: "GLOBAL-RED-NO-001",
+  fileId: "global-red-invoice-file-1",
+  idempotencyKey: "global-red-invoice-key-1",
+  blueInvoiceRecordId: "blue-invoice-1",
+  reasonCode: "sales_return",
+  blueAllocationReferences: [
+    { blueInvoiceAllocationId: "blue-allocation-1", amountCents: "13000" }
+  ]
+};
+
+const validReissueGlobalInvoice: CreateReissueGlobalInvoiceDto = {
+  ...validGlobalInvoice,
+  invoiceCode: "GLOBAL-REISSUE-CODE-001",
+  invoiceNumber: "GLOBAL-REISSUE-NO-001",
+  fileId: "global-reissue-invoice-file-1",
+  idempotencyKey: "global-reissue-invoice-key-1",
+  originalInvoiceRecordId: "original-invoice-1",
+  reasonCode: "issued_with_wrong_name"
+};
+
 describe("InvoiceLedgerController", () => {
-  it("exposes exactly the six frozen POST routes", () => {
+  it("exposes the frozen and global-allocation POST routes", () => {
     const routes: Array<[InvoiceLedgerMethod, string]> = [
       [
         "createProcurementInvoice",
         "spot-procurements/:procurementId/invoices"
       ],
+      ["createGlobalInvoice", "global-invoices"],
+      ["createRedGlobalInvoice", "global-invoices/red"],
+      ["createReissueGlobalInvoice", "global-invoices/reissue"],
+      ["createClearingAllocation", "invoice-clearing-allocations"],
+      ["reverseClearingAllocation", "invoice-clearing-allocations/:clearingAllocationId/reversal"],
       ["reverseAllocation", "invoice-allocations/:allocationId/reversal"],
       [
         "createNoInvoiceConfirmation",
@@ -150,6 +210,19 @@ describe("InvoiceLedgerController", () => {
       ).toBe("spot_procurement.invoice.manage");
     }
 
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        InvoiceLedgerController.prototype.createClearingAllocation
+      )
+    ).toBe("clearing.confirm");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        InvoiceLedgerController.prototype.reverseClearingAllocation
+      )
+    ).toBe("clearing.confirm");
+
     for (const method of [
       "reviewNoInvoiceConfirmation",
       "reviewInvoiceException"
@@ -166,6 +239,9 @@ describe("InvoiceLedgerController", () => {
   it("forwards only the authenticated user id and route identifiers", async () => {
     const service = {
       createProcurementInvoice: jest.fn().mockResolvedValue({ id: "invoice-1" }),
+      createGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-invoice-1" }),
+      createRedGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-red-invoice-1" }),
+      createReissueGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-reissue-invoice-1" }),
       reverseAllocation: jest.fn().mockResolvedValue({ id: "allocation-1" }),
       createNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
       reviewNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
@@ -196,6 +272,9 @@ describe("InvoiceLedgerController", () => {
       user,
       validInvoice
     );
+    await controller.createGlobalInvoice(user, validGlobalInvoice);
+    await controller.createRedGlobalInvoice(user, validRedGlobalInvoice);
+    await controller.createReissueGlobalInvoice(user, validReissueGlobalInvoice);
     await controller.reverseAllocation("allocation-1", user, reverseBody);
     await controller.createNoInvoiceConfirmation(
       "procurement-1",
@@ -224,6 +303,18 @@ describe("InvoiceLedgerController", () => {
       "procurement-1",
       "actor-1",
       validInvoice
+    );
+    expect(service.createGlobalInvoice).toHaveBeenCalledWith(
+      "actor-1",
+      validGlobalInvoice
+    );
+    expect(service.createRedGlobalInvoice).toHaveBeenCalledWith(
+      "actor-1",
+      validRedGlobalInvoice
+    );
+    expect(service.createReissueGlobalInvoice).toHaveBeenCalledWith(
+      "actor-1",
+      validReissueGlobalInvoice
     );
     expect(service.reverseAllocation).toHaveBeenCalledWith(
       "allocation-1",
@@ -260,6 +351,19 @@ describe("InvoiceLedgerController", () => {
     await expect(
       validateBody("createProcurementInvoice", 2, validInvoice)
     ).resolves.toMatchObject(validInvoice);
+
+    expect(bodyMetatype("createGlobalInvoice", 1)).not.toBe(Object);
+    await expect(
+      validateBody("createGlobalInvoice", 1, validGlobalInvoice)
+    ).resolves.toMatchObject(validGlobalInvoice);
+    expect(bodyMetatype("createRedGlobalInvoice", 1)).not.toBe(Object);
+    await expect(
+      validateBody("createRedGlobalInvoice", 1, validRedGlobalInvoice)
+    ).resolves.toMatchObject(validRedGlobalInvoice);
+    expect(bodyMetatype("createReissueGlobalInvoice", 1)).not.toBe(Object);
+    await expect(
+      validateBody("createReissueGlobalInvoice", 1, validReissueGlobalInvoice)
+    ).resolves.toMatchObject(validReissueGlobalInvoice);
   });
 
   it("rejects unsupported invoice types, missing identities and nested unknown fields", async () => {

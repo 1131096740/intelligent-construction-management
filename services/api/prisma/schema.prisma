@@ -2273,15 +2273,24 @@ model SpotProcurementRefund {
 
 model InvoiceRecord {
   id                     String    @id @default(uuid())
-  projectId              String
+  // Legacy project/source coordinates remain readable; new writes are governed by the immutable global header below.
+  projectId              String?
   identityKey            String    @unique
+  identityKind           String    @default("traditional")
+  owningCompanyEntityId  String?
+  direction              String?
   invoiceType            String
+  voucherType            String?
   invoiceCode            String?
   invoiceNumber          String?
   externalIdentifier     String?
   issueDate              DateTime  @db.Date
   sellerName             String
+  sellerTaxId            String?
   buyerName              String
+  buyerTaxId             String?
+  taxExclusiveAmountCents BigInt?
+  taxAmountCents          BigInt?
   totalAmountCents       BigInt
   allocatableAmountCents BigInt
   allocatedAmountCents   BigInt    @default(0)
@@ -2291,6 +2300,8 @@ model InvoiceRecord {
   sourceBusinessType     String
   sourceBusinessId       String
   sourceProcurementId    String?
+  commandIdempotencyKey  String?   @unique
+  commandFingerprint     String?
   invalidatedAt          DateTime?
   invalidatedByUserId    String?
   invalidationReason     String?
@@ -2299,8 +2310,10 @@ model InvoiceRecord {
 
   @@unique([projectId, id])
   @@index([projectId, status])
+  @@index([owningCompanyEntityId, direction, status])
   @@index([sourceBusinessType, sourceBusinessId])
   @@index([sourceProcurementId, status])
+  @@index([commandFingerprint])
 }
 
 model InvoiceLine {
@@ -2345,6 +2358,56 @@ model InvoiceAllocation {
   @@index([paymentId, invalidatedAt])
   @@index([receiptId, receiptRevisionNo])
   @@index([projectId, procurementId])
+}
+
+model InvoiceClearingAllocation {
+  id                    String   @id @default(uuid())
+  invoiceRecordId       String
+  projectId             String
+  clearingCaseId        String
+  clearingEventVersionId String
+  amountCents           BigInt
+  structuredReasonCode  String?
+  reversesAllocationId  String?
+  createdByUserId       String
+  idempotencyKey        String   @unique
+  requestFingerprint    String
+  createdAt             DateTime @default(now())
+
+  @@index([invoiceRecordId, createdAt])
+  @@index([projectId, clearingEventVersionId])
+  @@index([clearingCaseId])
+  @@index([reversesAllocationId])
+  @@index([clearingEventVersionId, requestFingerprint])
+}
+
+model InvoiceLifecycleEvent {
+  id                    String   @id @default(uuid())
+  invoiceRecordId       String
+  relatedInvoiceRecordId String?
+  kind                  String
+  reasonCode            String
+  createdByUserId       String
+  idempotencyKey        String   @unique
+  requestFingerprint    String
+  createdAt             DateTime @default(now())
+
+  @@index([invoiceRecordId, createdAt])
+  @@index([relatedInvoiceRecordId])
+  @@index([kind, createdAt])
+}
+
+model InvoiceRedAllocationReference {
+  id                       String   @id @default(uuid())
+  lifecycleEventId          String
+  redInvoiceRecordId        String
+  blueInvoiceAllocationId   String
+  amountCents               BigInt
+  createdAt                 DateTime @default(now())
+
+  @@unique([lifecycleEventId, blueInvoiceAllocationId])
+  @@index([redInvoiceRecordId])
+  @@index([blueInvoiceAllocationId])
 }
 
 model NoInvoiceConfirmation {

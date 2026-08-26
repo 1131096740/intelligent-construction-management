@@ -256,15 +256,23 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
   InvoiceRecord: expectedModel(
     [
       "id String @id @default(uuid())",
-      "projectId String",
+      "projectId String?",
       "identityKey String @unique",
+      'identityKind String @default("traditional")',
+      "owningCompanyEntityId String?",
+      "direction String?",
       "invoiceType String",
+      "voucherType String?",
       "invoiceCode String?",
       "invoiceNumber String?",
       "externalIdentifier String?",
       "issueDate DateTime @db.Date",
       "sellerName String",
+      "sellerTaxId String?",
       "buyerName String",
+      "buyerTaxId String?",
+      "taxExclusiveAmountCents BigInt?",
+      "taxAmountCents BigInt?",
       "totalAmountCents BigInt",
       "allocatableAmountCents BigInt",
       "allocatedAmountCents BigInt @default(0)",
@@ -274,6 +282,8 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "sourceBusinessType String",
       "sourceBusinessId String",
       "sourceProcurementId String?",
+      "commandIdempotencyKey String? @unique",
+      "commandFingerprint String?",
       "invalidatedAt DateTime?",
       "invalidatedByUserId String?",
       "invalidationReason String?",
@@ -283,8 +293,10 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
     [
       "@@unique([projectId, id])",
       "@@index([projectId, status])",
+      "@@index([owningCompanyEntityId, direction, status])",
       "@@index([sourceBusinessType, sourceBusinessId])",
-      "@@index([sourceProcurementId, status])"
+      "@@index([sourceProcurementId, status])",
+      "@@index([commandFingerprint])"
     ]
   ),
   InvoiceLine: expectedModel(
@@ -424,6 +436,13 @@ describe("spot procurement receipt and invoice schema", () => {
   )
     ? readFileSync(reviewerSnapshotMigrationPath, "utf8")
     : "";
+  const globalInvoiceCoordinatesMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260827113000_pol11b_global_invoice_coordinates/migration.sql"
+  );
+  const globalInvoiceCoordinatesMigration = existsSync(globalInvoiceCoordinatesMigrationPath)
+    ? readFileSync(globalInvoiceCoordinatesMigrationPath, "utf8")
+    : "";
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -562,14 +581,27 @@ describe("spot procurement receipt and invoice schema", () => {
       "SpotProcurementDiscrepancy.replenishedAt",
       "SpotProcurementDiscrepancy.replenishedByUserId",
       "SpotProcurementDiscrepancy.replenishmentNote",
-      "SpotProcurementRefund.paymentId"
+      "SpotProcurementRefund.paymentId",
+      "InvoiceRecord.identityKind",
+      "InvoiceRecord.owningCompanyEntityId",
+      "InvoiceRecord.direction",
+      "InvoiceRecord.voucherType",
+      "InvoiceRecord.sellerTaxId",
+      "InvoiceRecord.buyerTaxId",
+      "InvoiceRecord.taxExclusiveAmountCents",
+      "InvoiceRecord.taxAmountCents",
+      "InvoiceRecord.commandIdempotencyKey",
+      "InvoiceRecord.commandFingerprint"
     ]);
     const baseFields = EXPECTED_MODELS[modelName].fields.filter((field) =>
       !forwardOnlyFields.has(`${modelName}.${field.split(" ")[0]}`)
     );
-    expect(sqlColumns(modelName)).toEqual(
-      baseFields.map(prismaFieldToSqlColumn)
-    );
+    const expectedColumns = baseFields.map(prismaFieldToSqlColumn);
+    if (modelName === "InvoiceRecord") {
+      const projectId = expectedColumns.find((column) => column.name === "projectId");
+      if (projectId) projectId.nullable = false;
+    }
+    expect(sqlColumns(modelName)).toEqual(expectedColumns);
   });
 
   it("adds and freezes the receipt reviewer name through a forward-only migration", () => {
@@ -589,6 +621,12 @@ describe("spot procurement receipt and invoice schema", () => {
     );
     expect(reviewerSnapshotMigration).not.toMatch(
       /\b(?:DROP|TRUNCATE|DELETE)\b/i
+    );
+  });
+
+  it("moves only new global invoice headers off legacy project coordinates", () => {
+    expect(normalizeSql(globalInvoiceCoordinatesMigration)).toContain(
+      'ALTERTABLE"InvoiceRecord"ALTERCOLUMN"projectId"DROPNOTNULL'
     );
   });
 

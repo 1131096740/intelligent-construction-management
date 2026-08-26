@@ -121,6 +121,27 @@ export class CreateProcurementInvoiceDto {
   invoiceType!: VatInvoiceType;
 
   @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["digital", "traditional", "other"], {
+    message: "发票身份类型只能为数电票、传统发票或其他受控凭证"
+  })
+  invoiceIdentityKind?: "digital" | "traditional" | "other";
+
+  @IsRequiredText({ requiredMessage: "请选择发票归属的我方公司主体", typeMessage: "我方公司主体编号必须是文字", blankMessage: "请选择发票归属的我方公司主体" })
+  @IsMaxUnicodeTextLength({ max: 128, message: "我方公司主体编号不能超过 128 个字符" })
+  owningCompanyEntityId!: string;
+
+  @IsIn(["inbound", "outbound"], { message: "发票方向只能为进项或销项" })
+  direction!: "inbound" | "outbound";
+
+  @IsRequiredText({ requiredMessage: "请填写销售方税号", typeMessage: "销售方税号必须是文字", blankMessage: "销售方税号不能为空白" })
+  @IsMaxUnicodeTextLength({ max: 64, message: "销售方税号不能超过 64 个字符" })
+  sellerTaxId!: string;
+
+  @IsRequiredText({ requiredMessage: "请填写购买方税号", typeMessage: "购买方税号必须是文字", blankMessage: "购买方税号不能为空白" })
+  @IsMaxUnicodeTextLength({ max: 64, message: "购买方税号不能超过 64 个字符" })
+  buyerTaxId!: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsOptionalNonBlankText({
     typeMessage: "发票代码必须是文字",
     blankMessage: "发票代码不能为空白"
@@ -189,6 +210,20 @@ export class CreateProcurementInvoiceDto {
     rangeMessage: "发票价税合计金额超出系统可保存范围"
   })
   totalAmountCents!: string;
+
+  @IsCanonicalMoneyText({
+    typeMessage: "发票不含税金额格式不正确",
+    formatMessage: "发票不含税金额必须按分填写为 0 或更大的整数",
+    rangeMessage: "发票不含税金额超出系统可保存范围"
+  })
+  taxExclusiveAmountCents!: string;
+
+  @IsCanonicalMoneyText({
+    typeMessage: "发票税额格式不正确",
+    formatMessage: "发票税额必须按分填写为 0 或更大的整数",
+    rangeMessage: "发票税额超出系统可保存范围"
+  })
+  taxAmountCents!: string;
 
   @IsRequiredText({
     requiredMessage: "请上传发票文件",
