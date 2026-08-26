@@ -9,6 +9,7 @@ import { InvoiceLedgerController } from "./invoice-ledger.controller";
 type RuntimeDto = new () => object;
 type InvoiceLedgerMethod =
   | "createProcurementInvoice"
+  | "createClearingAllocation"
   | "reverseAllocation"
   | "createNoInvoiceConfirmation"
   | "reviewNoInvoiceConfirmation"
@@ -59,6 +60,10 @@ async function getValidationResponse(
 
 const validInvoice: CreateProcurementInvoiceDto = {
   invoiceType: "vat_special",
+  owningCompanyEntityId: "company-entity-1",
+  direction: "inbound",
+  sellerTaxId: "91310000123456789A",
+  buyerTaxId: "91310000987654321B",
   invoiceCode: "INV-CODE-001",
   invoiceNumber: "INV-NO-001",
   issueDate: "2026-07-17",
@@ -94,12 +99,13 @@ const validInvoice: CreateProcurementInvoiceDto = {
 };
 
 describe("InvoiceLedgerController", () => {
-  it("exposes exactly the six frozen POST routes", () => {
+  it("exposes the frozen and global-allocation POST routes", () => {
     const routes: Array<[InvoiceLedgerMethod, string]> = [
       [
         "createProcurementInvoice",
         "spot-procurements/:procurementId/invoices"
       ],
+      ["createClearingAllocation", "invoice-clearing-allocations"],
       ["reverseAllocation", "invoice-allocations/:allocationId/reversal"],
       [
         "createNoInvoiceConfirmation",
@@ -149,6 +155,13 @@ describe("InvoiceLedgerController", () => {
         )
       ).toBe("spot_procurement.invoice.manage");
     }
+
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        InvoiceLedgerController.prototype.createClearingAllocation
+      )
+    ).toBe("clearing.confirm");
 
     for (const method of [
       "reviewNoInvoiceConfirmation",

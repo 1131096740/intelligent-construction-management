@@ -180,28 +180,44 @@ type PreparedInvoiceAllocation = {
 
 type InvoiceHeaderFacts = {
   identityKey: string;
+  identityKind: InvoiceIdentityKind;
+  owningCompanyEntityId: string;
+  direction: "inbound" | "outbound";
   invoiceType: VatInvoiceType;
   invoiceCode: string | null;
   invoiceNumber: string | null;
   externalIdentifier: string | null;
   issueDate: Date;
   sellerName: string;
+  sellerTaxId: string;
   buyerName: string;
+  buyerTaxId: string;
+  taxExclusiveAmountCents: bigint;
+  taxAmountCents: bigint;
   totalAmountCents: bigint;
   fileId: string;
 };
+
+type InvoiceIdentityKind = "digital" | "traditional" | "other";
 
 type InvoiceRecordWithLines = {
   id: string;
   projectId: string;
   identityKey: string;
+  identityKind: string;
+  owningCompanyEntityId: string | null;
+  direction: string | null;
   invoiceType: string;
   invoiceCode: string | null;
   invoiceNumber: string | null;
   externalIdentifier: string | null;
   issueDate: Date;
   sellerName: string;
+  sellerTaxId: string | null;
   buyerName: string;
+  buyerTaxId: string | null;
+  taxExclusiveAmountCents: bigint | null;
+  taxAmountCents: bigint | null;
   totalAmountCents: bigint;
   allocatableAmountCents: bigint;
   allocatedAmountCents: bigint;
@@ -527,6 +543,46 @@ export class InvoiceLedgerService {
         };
       })
     );
+  }
+
+  async createClearingAllocation(
+    actorUserId: string,
+    input: {
+      invoiceRecordId: string;
+      clearingCaseId: string;
+      clearingEventVersionId: string;
+      amountCents: string;
+      structuredReasonCode?: string;
+      idempotencyKey: string;
+      requestFingerprint: string;
+    }
+  ) {
+    const invoiceRecordId = requiredId(input.invoiceRecordId, "请选择全局发票");
+    const clearingCaseId = requiredId(input.clearingCaseId, "请选择清算案件");
+    const clearingEventVersionId = requiredId(input.clearingEventVersionId, "请选择已确认清算版本");
+    const amountCents = positiveMoney(input.amountCents, "发票清算分配金额");
+    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const requestFingerprint = requiredId(input.requestFingerprint, "请填写请求指纹");
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      const replay = await tx.invoiceClearingAllocation.findUnique({ where: { idempotencyKey } });
+      if (replay) {
+        if (replay.requestFingerprint !== requestFingerprint) throw new ConflictException("幂等键已用于不同的发票清算请求");
+        return { id: replay.id, replayed: true };
+      }
+      const [invoice, clearingCase, version] = await Promise.all([
+        tx.invoiceRecord.findUnique({ where: { id: invoiceRecordId } }),
+        tx.clearingCase.findUnique({ where: { id: clearingCaseId } }),
+        tx.clearingEventVersion.findUnique({ where: { id: clearingEventVersionId }, include: { confirmation: true } })
+      ]);
+      if (!invoice?.owningCompanyEntityId) throw new ConflictException("发票缺少归属我方公司主体，不能用于清算");
+      if (!clearingCase || !version?.confirmation || version.clearingCaseId !== clearingCase.id) throw new ConflictException("发票分配必须引用同一案件的已确认清算版本");
+      await this.requireFinanceDirector(tx, actorUserId, clearingCase.projectId);
+      const used = await tx.invoiceClearingAllocation.aggregate({ where: { invoiceRecordId, reversesAllocationId: null }, _sum: { amountCents: true } });
+      if ((used._sum.amountCents ?? 0n) + amountCents > invoice.totalAmountCents) throw new ConflictException("有效发票清算分配累计超过票面含税额");
+      const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode: optionalText(input.structuredReasonCode, 100), createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocate", businessType: "invoice_clearing_allocation", businessId: allocation.id, metadata: { invoiceRecordId, clearingCaseId, clearingEventVersionId, amountCents: amountCents.toString() } });
+      return { id: allocation.id, replayed: false };
+    }));
   }
 
   async reverseAllocation(
@@ -2264,6 +2320,15 @@ export class InvoiceLedgerService {
   private prepareInvoiceHeader(
     input: CreateProcurementInvoiceDto
   ): InvoiceHeaderFacts {
+    const owningCompanyEntityId = requiredId(
+      input.owningCompanyEntityId,
+      "请选择发票归属的我方公司主体"
+    );
+    if (input.direction !== "inbound" && input.direction !== "outbound") {
+      throw new BadRequestException("发票方向只能为进项或销项");
+    }
+    const sellerTaxId = requiredText(input.sellerTaxId, "销售方税号", 64);
+    const buyerTaxId = requiredText(input.buyerTaxId, "购买方税号", 64);
     if (
       !VAT_INVOICE_TYPES.includes(
         input.invoiceType as VatInvoiceType
@@ -2288,34 +2353,32 @@ export class InvoiceLedgerService {
       "可识别票据编号",
       200
     );
-    if (
-      (invoiceCode && !invoiceNumber) ||
-      (!invoiceCode && invoiceNumber)
-    ) {
-      if (!externalIdentifier) {
-        throw new BadRequestException(
-          "发票代码和号码必须同时填写；否则请填写可识别票据编号"
-        );
-      }
-    }
-    if (!invoiceCode && !invoiceNumber && !externalIdentifier) {
-      throw new BadRequestException(
-        "请填写发票代码和号码，或填写可识别票据编号"
-      );
-    }
+    const identityKind = this.resolveInvoiceIdentityKind(
+      input.invoiceIdentityKind,
+      invoiceCode,
+      invoiceNumber,
+      externalIdentifier
+    );
     const identityPreimage = JSON.stringify(
-      invoiceCode && invoiceNumber
-        ? ["invoice", 1, "code-number", invoiceCode, invoiceNumber]
-        : ["invoice", 1, "external", externalIdentifier]
+      identityKind === "digital"
+        ? ["invoice", 1, "digital", invoiceNumber]
+        : identityKind === "traditional"
+          ? ["invoice", 1, "code-number", invoiceCode, invoiceNumber]
+          : ["invoice", 1, "external", externalIdentifier]
     );
     const totalAmountCents = positiveMoney(
       input.totalAmountCents,
       "发票价税合计金额"
     );
+    const taxExclusiveAmountCents = totalAmountCents;
+    const taxAmountCents = 0n;
     return {
       identityKey: createHash("sha256")
         .update(identityPreimage, "utf8")
         .digest("hex"),
+      identityKind,
+      owningCompanyEntityId,
+      direction: input.direction,
       invoiceType: input.invoiceType as VatInvoiceType,
       invoiceCode,
       invoiceNumber,
@@ -2326,14 +2389,70 @@ export class InvoiceLedgerService {
         "销售方名称",
         200
       ),
+      sellerTaxId,
       buyerName: requiredText(
         input.buyerName,
         "购买方名称",
         200
       ),
+      buyerTaxId,
+      taxExclusiveAmountCents,
+      taxAmountCents,
       totalAmountCents,
       fileId: requiredId(input.fileId, "请选择发票文件")
     };
+  }
+
+  private resolveInvoiceIdentityKind(
+    requestedKind: CreateProcurementInvoiceDto["invoiceIdentityKind"],
+    invoiceCode: string | null,
+    invoiceNumber: string | null,
+    externalIdentifier: string | null
+  ): InvoiceIdentityKind {
+    const inferredKind: InvoiceIdentityKind | null =
+      invoiceCode && invoiceNumber
+        ? "traditional"
+        : externalIdentifier
+          ? "other"
+          : null;
+    const kind = requestedKind ?? inferredKind;
+    if (!kind) {
+      if (invoiceCode || invoiceNumber) {
+        throw new BadRequestException(
+          "发票代码和号码必须同时填写；否则请填写可识别票据编号"
+        );
+      }
+      throw new BadRequestException(
+        "请填写发票代码和号码、20 位数电票号码或可识别票据编号"
+      );
+    }
+    if (kind === "digital") {
+      if (
+        invoiceCode ||
+        externalIdentifier ||
+        !invoiceNumber ||
+        !/^\d{20}$/u.test(invoiceNumber)
+      ) {
+        throw new BadRequestException(
+          "数电票必须填写 20 位发票号码，且不能同时填写代码或其他凭证编号"
+        );
+      }
+      return kind;
+    }
+    if (kind === "traditional") {
+      if (!invoiceCode || !invoiceNumber || externalIdentifier) {
+        throw new BadRequestException(
+          "传统发票必须同时填写发票代码和号码，且不能填写其他凭证编号"
+        );
+      }
+      return kind;
+    }
+    if (invoiceCode || invoiceNumber || !externalIdentifier) {
+      throw new BadRequestException(
+        "其他受控凭证只能填写可识别票据编号"
+      );
+    }
+    return kind;
   }
 
   private async prepareInvoiceLines(
@@ -2508,13 +2627,20 @@ export class InvoiceLedgerService {
       data: {
         projectId: context.procurement.projectId,
         identityKey: header.identityKey,
+        identityKind: header.identityKind,
+        owningCompanyEntityId: header.owningCompanyEntityId,
+        direction: header.direction,
         invoiceType: header.invoiceType,
         invoiceCode: header.invoiceCode,
         invoiceNumber: header.invoiceNumber,
         externalIdentifier: header.externalIdentifier,
         issueDate: header.issueDate,
         sellerName: header.sellerName,
+        sellerTaxId: header.sellerTaxId,
         buyerName: header.buyerName,
+        buyerTaxId: header.buyerTaxId,
+        taxExclusiveAmountCents: header.taxExclusiveAmountCents,
+        taxAmountCents: header.taxAmountCents,
         totalAmountCents: header.totalAmountCents,
         allocatableAmountCents: header.totalAmountCents,
         fileId: header.fileId,
@@ -2562,12 +2688,19 @@ export class InvoiceLedgerService {
       invoice.sourceProcurementId !== context.procurement.id ||
       invoice.status !== "active" ||
       invoice.invoiceType !== header.invoiceType ||
+      invoice.identityKind !== header.identityKind ||
+      invoice.owningCompanyEntityId !== header.owningCompanyEntityId ||
+      invoice.direction !== header.direction ||
       invoice.invoiceCode !== header.invoiceCode ||
       invoice.invoiceNumber !== header.invoiceNumber ||
       invoice.externalIdentifier !== header.externalIdentifier ||
       invoice.issueDate.getTime() !== header.issueDate.getTime() ||
       invoice.sellerName !== header.sellerName ||
+      invoice.sellerTaxId !== header.sellerTaxId ||
       invoice.buyerName !== header.buyerName ||
+      invoice.buyerTaxId !== header.buyerTaxId ||
+      invoice.taxExclusiveAmountCents !== header.taxExclusiveAmountCents ||
+      invoice.taxAmountCents !== header.taxAmountCents ||
       invoice.totalAmountCents !== header.totalAmountCents ||
       invoice.allocatableAmountCents !== header.totalAmountCents ||
       invoice.fileId !== header.fileId ||
@@ -3172,12 +3305,20 @@ export class InvoiceLedgerService {
       id: invoice.id,
       projectId: invoice.projectId,
       invoiceType: invoice.invoiceType,
+      identityKind: invoice.identityKind,
+      owningCompanyEntityId: invoice.owningCompanyEntityId,
+      direction: invoice.direction,
       invoiceCode: invoice.invoiceCode,
       invoiceNumber: invoice.invoiceNumber,
       externalIdentifier: invoice.externalIdentifier,
       issueDate: dateOnlyText(invoice.issueDate),
       sellerName: invoice.sellerName,
+      sellerTaxId: invoice.sellerTaxId,
       buyerName: invoice.buyerName,
+      buyerTaxId: invoice.buyerTaxId,
+      taxExclusiveAmountCents:
+        invoice.taxExclusiveAmountCents?.toString() ?? null,
+      taxAmountCents: invoice.taxAmountCents?.toString() ?? null,
       totalAmountCents: invoice.totalAmountCents.toString(),
       allocatableAmountCents:
         invoice.allocatableAmountCents.toString(),

@@ -5,6 +5,7 @@ import { RequireProjectRole } from "../auth/decorators/require-project-role.deco
 import { CreateInvoiceExceptionConfirmationDto } from "./dto/create-invoice-exception-confirmation.dto";
 import { CreateNoInvoiceConfirmationDto } from "./dto/create-no-invoice-confirmation.dto";
 import { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoice.dto";
+import { CreateInvoiceClearingAllocationDto } from "./dto/create-invoice-clearing-allocation.dto";
 import { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocation.dto";
 import { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
@@ -26,6 +27,15 @@ export class InvoiceLedgerController {
       user.id,
       body
     );
+  }
+
+  @Post("invoice-clearing-allocations")
+  @RequireProjectRole("clearing.confirm")
+  createClearingAllocation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateInvoiceClearingAllocationDto
+  ) {
+    return this.invoices.createClearingAllocation(user.id, body);
   }
 
   @Post("invoice-allocations/:allocationId/reversal")

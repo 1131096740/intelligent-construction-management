@@ -186,6 +186,10 @@ function createInvoiceInput(
 ): CreateProcurementInvoiceDto {
   return {
     invoiceType: "vat_special",
+    owningCompanyEntityId: "company-entity-1",
+    direction: "inbound",
+    sellerTaxId: "91310000123456789A",
+    buyerTaxId: "91310000987654321B",
     invoiceCode: "  inv-code-1 ",
     invoiceNumber: " inv-number-1 ",
     issueDate: "2026-07-17",
@@ -869,6 +873,50 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     expect(result.invoice.externalIdentifier).toBe(externalIdentifier);
   });
 
+  it("uses a normalized 20-digit digital-invoice number as the global identity without losing its raw leading zeros", async () => {
+    const harness = createHarness();
+    const digitalInvoiceNumber = "00000000000000000001";
+
+    const first = await harness.service.createProcurementInvoice(
+      "procurement-1",
+      ACTORS.handler,
+      createInvoiceInput({
+        invoiceCode: undefined,
+        invoiceNumber: `  ${digitalInvoiceNumber}  `,
+        externalIdentifier: undefined,
+        invoiceIdentityKind: "digital" as never
+      } as never)
+    );
+    const replay = await harness.service.createProcurementInvoice(
+      "procurement-1",
+      ACTORS.handler,
+      createInvoiceInput({
+        invoiceCode: undefined,
+        invoiceNumber: digitalInvoiceNumber,
+        externalIdentifier: undefined,
+        invoiceIdentityKind: "digital" as never
+      } as never)
+    );
+
+    expect(first.invoice.invoiceNumber).toBe(digitalInvoiceNumber);
+    expect(replay.created).toBe(false);
+    expect(harness.invoiceRecords).toHaveLength(1);
+  });
+
+  it("fails closed before writes when the invoice header has no owning company entity", async () => {
+    const harness = createHarness();
+
+    await expect(
+      harness.service.createProcurementInvoice(
+        "procurement-1",
+        ACTORS.handler,
+        createInvoiceInput({ owningCompanyEntityId: undefined } as never)
+      )
+    ).rejects.toThrow("请选择发票归属的我方公司主体");
+    expect(harness.invoiceRecords).toHaveLength(0);
+    expect(harness.allocations).toHaveLength(0);
+  });
+
   it("creates a multi-rate invoice and allocates each line against current receipt cost", async () => {
     const harness = createHarness({
       lines: [
@@ -1223,6 +1271,43 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     expect(
       harness.files.assertFileHasNoBusinessBinding
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("hard-rejects reuse of a canonical invoice identity by another owning company", async () => {
+    const harness = createHarness();
+    await harness.service.createProcurementInvoice(
+      "procurement-1",
+      ACTORS.handler,
+      createInvoiceInput()
+    );
+
+    await expect(
+      harness.service.createProcurementInvoice(
+        "procurement-1",
+        ACTORS.handler,
+        createInvoiceInput({ owningCompanyEntityId: "company-entity-2" })
+      )
+    ).rejects.toThrow("该发票身份已用于不同的发票事实");
+    expect(harness.invoiceRecords).toHaveLength(1);
+  });
+
+  it("allocates a global invoice only to a confirmed clearing version, replays its idempotency key, and caps total evidence", async () => {
+    const harness = createHarness();
+    const invoice = await harness.service.createProcurementInvoice("procurement-1", ACTORS.handler, createInvoiceInput());
+    const rows: Array<Record<string, unknown>> = [];
+    Object.assign(harness.tx, {
+      clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
+      clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", confirmation: { id: "confirmation-1" } }) },
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey: string } }) => Promise.resolve(rows.find((row) => row.idempotencyKey === where.idempotencyKey) ?? null)),
+        aggregate: jest.fn().mockImplementation(() => Promise.resolve({ _sum: { amountCents: rows.reduce((sum, row) => sum + (row.amountCents as bigint), 0n) } })),
+        create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { const row = { id: `clearing-allocation-${rows.length + 1}`, ...data }; rows.push(row); return Promise.resolve(row); })
+      }
+    });
+    const input = { invoiceRecordId: invoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-key-1", requestFingerprint: "fingerprint-1" };
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", idempotencyKey: "allocation-key-2", requestFingerprint: "fingerprint-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
   });
 
   it("restricts ordinary material staff to the current handler and finance staff to the current project", async () => {

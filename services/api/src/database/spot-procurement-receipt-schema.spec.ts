@@ -258,13 +258,20 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "id String @id @default(uuid())",
       "projectId String",
       "identityKey String @unique",
+      'identityKind String @default("traditional")',
+      "owningCompanyEntityId String?",
+      "direction String?",
       "invoiceType String",
       "invoiceCode String?",
       "invoiceNumber String?",
       "externalIdentifier String?",
       "issueDate DateTime @db.Date",
       "sellerName String",
+      "sellerTaxId String?",
       "buyerName String",
+      "buyerTaxId String?",
+      "taxExclusiveAmountCents BigInt?",
+      "taxAmountCents BigInt?",
       "totalAmountCents BigInt",
       "allocatableAmountCents BigInt",
       "allocatedAmountCents BigInt @default(0)",
@@ -283,6 +290,7 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
     [
       "@@unique([projectId, id])",
       "@@index([projectId, status])",
+      "@@index([owningCompanyEntityId, direction, status])",
       "@@index([sourceBusinessType, sourceBusinessId])",
       "@@index([sourceProcurementId, status])"
     ]
@@ -562,7 +570,14 @@ describe("spot procurement receipt and invoice schema", () => {
       "SpotProcurementDiscrepancy.replenishedAt",
       "SpotProcurementDiscrepancy.replenishedByUserId",
       "SpotProcurementDiscrepancy.replenishmentNote",
-      "SpotProcurementRefund.paymentId"
+      "SpotProcurementRefund.paymentId",
+      "InvoiceRecord.identityKind",
+      "InvoiceRecord.owningCompanyEntityId",
+      "InvoiceRecord.direction",
+      "InvoiceRecord.sellerTaxId",
+      "InvoiceRecord.buyerTaxId",
+      "InvoiceRecord.taxExclusiveAmountCents",
+      "InvoiceRecord.taxAmountCents"
     ]);
     const baseFields = EXPECTED_MODELS[modelName].fields.filter((field) =>
       !forwardOnlyFields.has(`${modelName}.${field.split(" ")[0]}`)
