@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 import { apiFetch } from "./api-fetch";
-import { allocateGlobalInvoice, createGlobalInvoice, createRedGlobalInvoice, createReissueGlobalInvoice, reverseGlobalInvoiceAllocation, voidGlobalInvoice } from "./global-invoice.api";
+import { allocateGlobalInvoice, createGlobalInvoice, createRedGlobalInvoice, createReissueGlobalInvoice, fetchGlobalInvoices, reverseGlobalInvoiceAllocation, voidGlobalInvoice } from "./global-invoice.api";
 
 const mockApiFetch = vi.mocked(apiFetch);
 const response = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -24,5 +24,11 @@ describe("global invoice API", () => {
     expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/global-invoices/invoice-1/void", expect.objectContaining({ method: "POST" }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(5, "/global-invoices/red", expect.objectContaining({ method: "POST" }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(6, "/global-invoices/reissue", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("loads selectable global invoice business records through the protected read API", async () => {
+    mockApiFetch.mockImplementation(() => Promise.resolve(response([])));
+    await fetchGlobalInvoices();
+    expect(mockApiFetch).toHaveBeenCalledWith("/global-invoices");
   });
 });

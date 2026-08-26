@@ -291,6 +291,37 @@ export class InvoiceLedgerService {
     return { create, correct };
   }
 
+  async listGlobalInvoices(actorUserId: string) {
+    const capabilities = await this.globalInvoiceCapabilities(actorUserId);
+    if (!capabilities.create) throw new ForbiddenException("当前账号无权查看全局发票");
+    const invoices = await this.prisma.invoiceRecord.findMany({
+      where: {
+        projectId: null,
+        sourceBusinessType: { in: ["global_clearing_invoice", "global_clearing_invoice_red", "global_clearing_invoice_reissue"] }
+      },
+      select: {
+        id: true, invoiceType: true, identityKind: true, invoiceCode: true,
+        invoiceNumber: true, externalIdentifier: true, issueDate: true,
+        sellerName: true, totalAmountCents: true, direction: true,
+        sourceBusinessType: true
+      },
+      orderBy: [{ issueDate: "desc" }, { createdAt: "desc" }]
+    });
+    const allocations = await this.prisma.invoiceClearingAllocation.findMany({
+      where: { invoiceRecordId: { in: invoices.map((invoice) => invoice.id) } },
+      select: { id: true, invoiceRecordId: true, amountCents: true, reversesAllocationId: true, createdAt: true },
+      orderBy: { createdAt: "desc" }
+    });
+    return invoices.map((invoice) => ({
+      ...invoice,
+      totalAmountCents: invoice.totalAmountCents.toString(),
+      allocations: allocations.filter((allocation) => allocation.invoiceRecordId === invoice.id).map((allocation) => ({
+        ...allocation,
+        amountCents: allocation.amountCents.toString()
+      }))
+    }));
+  }
+
   async createProcurementInvoice(
     procurementId: string,
     actorUserId: string,

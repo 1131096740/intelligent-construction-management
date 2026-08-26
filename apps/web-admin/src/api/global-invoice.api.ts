@@ -26,6 +26,27 @@ async function post<T>(path: string, body: Record<string, unknown>, fallback: st
 
 export type GlobalInvoiceCapabilities = { create: boolean; correct: boolean };
 
+export type GlobalInvoiceOption = {
+  id: string;
+  invoiceType: string;
+  identityKind: string;
+  invoiceCode: string | null;
+  invoiceNumber: string | null;
+  externalIdentifier: string | null;
+  issueDate: string;
+  sellerName: string;
+  totalAmountCents: string;
+  direction: string | null;
+  sourceBusinessType: string;
+  allocations: Array<{ id: string; amountCents: string; reversesAllocationId: string | null; createdAt: string }>;
+};
+
+export async function fetchGlobalInvoices() {
+  const response = await apiFetch("/global-invoices");
+  if (!response.ok) throw new Error(formatApiErrorMessage("", response.status, "加载可选全局发票失败"));
+  return response.json() as Promise<GlobalInvoiceOption[]>;
+}
+
 export async function fetchGlobalInvoiceCapabilities() {
   const response = await apiFetch("/global-invoices/capabilities");
   if (!response.ok) throw new Error(formatApiErrorMessage("", response.status, "加载全局发票权限失败"));

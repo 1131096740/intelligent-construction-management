@@ -26,6 +26,12 @@ export class InvoiceLedgerController {
     return this.invoices.globalInvoiceCapabilities(user.id);
   }
 
+  @Get("global-invoices")
+  @RequirePositions("finance_staff", "finance_director")
+  listGlobalInvoices(@CurrentUser() user: AuthenticatedUser) {
+    return this.invoices.listGlobalInvoices(user.id);
+  }
+
   @Post("spot-procurements/:procurementId/invoices")
   @RequireProjectRole("spot_procurement.invoice.manage")
   createProcurementInvoice(
