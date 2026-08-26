@@ -52,8 +52,14 @@ const allocationOptions = computed(() => globalInvoices.value.flatMap((invoice) 
 async function invoicePayload() {
   const file = invoiceFiles.value[0]?.raw;
   if (!(file instanceof File)) throw new Error("请先选择发票附件");
-  const uploaded = await uploadPrivateFile(file, file.name, idempotencyKey());
+  const uploaded = await uploadInvoiceFileWithCapability(file, file.name);
   return { ...invoiceForm, fileId: uploaded.id, idempotencyKey: idempotencyKey() };
+}
+async function uploadInvoiceFileWithCapability(file: File, fileName: string) {
+  const capability = await fetchGlobalInvoiceCapabilities();
+  const operationAllowed = capability.create;
+  if (!operationAllowed) throw new Error("当前账号无权上传全局发票附件");
+  return uploadPrivateFile(file, fileName);
 }
 async function refreshSelections() {
   const [companies, invoices, cases] = await Promise.all([fetchActiveCompanyEntities(), fetchGlobalInvoices(), fetchClearingCases()]);

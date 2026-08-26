@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 504,
-    "exactRouteCount": 504,
-    "normalizedRouteCount": 504,
+    "routeCount": 505,
+    "exactRouteCount": 505,
+    "normalizedRouteCount": 505,
     "classificationOverrideCount": 183,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 321,
-    "pageRouteCount": 323,
+    "derivedProductionPageCount": 322,
+    "pageRouteCount": 324,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 375,
+      "web_api_wrapper": 376,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 375,
+    "productionWrapperRouteCount": 376,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -827,7 +827,8 @@
             "normalizedPath": "/clearing-cases",
             "normalizedKey": "GET /clearing-cases",
             "productionConsumers": [
-              "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+              "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+              "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
             ]
           }
         ],
@@ -951,6 +952,7 @@
             "normalizedPath": "/company-entities",
             "normalizedKey": "GET /company-entities",
             "productionConsumers": [
+              "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBasicSection.vue",
               "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
@@ -2821,6 +2823,50 @@
             "normalizedKey": "GET /funds-workbench",
             "productionConsumers": [
               "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/global-invoices",
+      "normalizedKey": "GET /global-invoices",
+      "controller": "InvoiceLedgerController",
+      "handler": "listGlobalInvoices",
+      "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+            "wrapper": "fetchGlobalInvoices",
+            "method": "GET",
+            "normalizedPath": "/global-invoices",
+            "normalizedKey": "GET /global-invoices",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
             ]
           }
         ],
@@ -12361,6 +12407,7 @@
             "normalizedPath": "/files",
             "normalizedKey": "POST /files",
             "productionConsumers": [
+              "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
           }

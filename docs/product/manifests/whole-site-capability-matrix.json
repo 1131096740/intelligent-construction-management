@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "f6d10f4cfecc178ee057a5135bfbe284a1a76ca0903bf1fd30253ad3e6812ce0",
+      "sha256": "e0e6f03a3e7030e31953e7026f1ccce245ef4e04e11eef6353891b1978ff29a5",
       "status": "ready",
       "summary": {
-        "routeCount": 504
+        "routeCount": 505
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "90ba45e573a2e315848a11e018e18503b4aa84d3f5fb8f1f794e64eb223d1a2b",
+      "sha256": "d04743119f90014fdd1897628a9c1eaefcc9e7b1b4c6ddea401bed288a99c991",
       "status": "ready",
       "summary": {
         "apiModuleCount": 21,
-        "exportedFunctionCount": 510,
-        "transportWrapperCount": 490,
+        "exportedFunctionCount": 511,
+        "transportWrapperCount": 491,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 512,
+        "mainRequestBindingCount": 513,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 512,
-        "productionConsumerCount": 384,
+        "requestEdgeCount": 513,
+        "productionConsumerCount": 385,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,12 +42,12 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "6d67fa676893b03467b3b5a350745f4721f5ce1dc384c5477d1599fe9ce1b30b",
+      "sha256": "a9d44da5344bf1915de1b410c0e40e74304efb3f3d3103347f83c7f5ce0f2d2d",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 266,
+        "registeredActionCount": 267,
         "pageActionCount": 53,
-        "backgroundActionCount": 213,
+        "backgroundActionCount": 214,
         "reachableVueFileCount": 132,
         "routeRootCount": 53,
         "totalVueFileCount": 156,
@@ -55,33 +55,33 @@
         "reachableProductionModuleCount": 239,
         "templateEventDirectiveCount": 891,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 260,
-        "candidateProductionMutationConsumerCount": 260,
-        "acceptedProductionMutationConsumerCount": 260,
-        "productionMutationConsumerPairCount": 260,
+        "coveredProductionMutationConsumerCount": 261,
+        "candidateProductionMutationConsumerCount": 261,
+        "acceptedProductionMutationConsumerCount": 261,
+        "productionMutationConsumerPairCount": 261,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "6fd00f1880b603a268dbd679e13b435b98a78ed284a7cbeca2018eda0e999618",
+      "sha256": "5455ca0211b2d77d42191d8c2b8207636584de87ec4b65da76c51ca67de23f3d",
       "status": "ready",
       "summary": {
-        "routeCount": 504,
-        "exactRouteCount": 504,
-        "normalizedRouteCount": 504,
+        "routeCount": 505,
+        "exactRouteCount": 505,
+        "normalizedRouteCount": 505,
         "classificationOverrideCount": 183,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 321,
-        "pageRouteCount": 323,
+        "derivedProductionPageCount": 322,
+        "pageRouteCount": 324,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 375,
+          "web_api_wrapper": 376,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 504,
-    "pageRouteCount": 323,
+    "routeCount": 505,
+    "pageRouteCount": 324,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 512,
+    "mainRequestBindingCount": 513,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 266,
-    "actionBindingCount": 300,
-    "acceptedActionBindingCount": 280,
+    "registeredActionCount": 267,
+    "actionBindingCount": 301,
+    "acceptedActionBindingCount": 281,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 260,
-    "coveredProductionMutationConsumerPairCount": 260,
+    "productionMutationConsumerPairCount": 261,
+    "coveredProductionMutationConsumerPairCount": 261,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -1184,7 +1184,8 @@
           "normalizedKey": "GET /clearing-cases",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
           ],
           "testConsumers": []
         }
@@ -1266,6 +1267,7 @@
           "normalizedKey": "GET /company-entities",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractBasicSection.vue",
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
@@ -3384,6 +3386,51 @@
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
           ],
           "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/global-invoices",
+        "normalizedKey": "GET /global-invoices",
+        "controller": "InvoiceLedgerController",
+        "handler": "listGlobalInvoices",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "fetchGlobalInvoices",
+          "method": "GET",
+          "path": "/global-invoices",
+          "normalizedKey": "GET /global-invoices",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -16750,6 +16797,7 @@
           "normalizedKey": "POST /files",
           "bodyKind": "form_data",
           "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "testConsumers": [
@@ -16806,6 +16854,31 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "global-invoice.upload-file",
+          "bindingIndex": 0,
+          "identity": "global-invoice.upload-file\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.create",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

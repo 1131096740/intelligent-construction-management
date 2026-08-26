@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 266,
+    "registeredActionCount": 267,
     "pageActionCount": 53,
-    "backgroundActionCount": 213,
+    "backgroundActionCount": 214,
     "reachableVueFileCount": 132,
     "routeRootCount": 53,
     "totalVueFileCount": 156,
@@ -19,10 +19,10 @@
     "reachableProductionModuleCount": 239,
     "templateEventDirectiveCount": 891,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 260,
-    "candidateProductionMutationConsumerCount": 260,
-    "acceptedProductionMutationConsumerCount": 260,
-    "productionMutationConsumerPairCount": 260,
+    "coveredProductionMutationConsumerCount": 261,
+    "candidateProductionMutationConsumerCount": 261,
+    "acceptedProductionMutationConsumerCount": 261,
+    "productionMutationConsumerPairCount": 261,
     "blockerCount": 0
   },
   "evidence": {
@@ -8402,7 +8402,7 @@
         "event": "call",
         "handler": "allocateGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 87,
+        "sourceLine": 125,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8467,7 +8467,7 @@
         "event": "call",
         "handler": "createGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 63,
+        "sourceLine": 101,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8534,7 +8534,7 @@
         "event": "call",
         "handler": "createRedGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 75,
+        "sourceLine": 113,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8600,7 +8600,7 @@
         "event": "call",
         "handler": "createReissueGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 81,
+        "sourceLine": 119,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8666,7 +8666,7 @@
         "event": "call",
         "handler": "reverseGlobalInvoiceAllocationWithCapability",
         "kind": "background_call",
-        "sourceLine": 93,
+        "sourceLine": 131,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8717,6 +8717,75 @@
       ]
     },
     {
+      "id": "global-invoice.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadInvoiceFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 58,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.create",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadInvoiceFileWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "global-invoice.void",
       "usage": "background",
       "routePaths": [
@@ -8731,7 +8800,7 @@
         "event": "call",
         "handler": "voidGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 69,
+        "sourceLine": 107,
         "sourceColumn": 0
       },
       "semantic": "business_write",

@@ -4580,6 +4580,16 @@
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "createGlobalInvoice" }]
     },
     {
+      "id": "global-invoice.upload-file",
+      "usage": "background",
+      "routePaths": ["/全局发票与清分分配"],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadInvoiceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.create" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadPrivateFile" }]
+    },
+    {
       "id": "global-invoice.void",
       "usage": "background",
       "routePaths": ["/全局发票与清分分配"],

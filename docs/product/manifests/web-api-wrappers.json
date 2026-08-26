@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 21,
-    "exportedFunctionCount": 510,
-    "transportWrapperCount": 490,
+    "exportedFunctionCount": 511,
+    "transportWrapperCount": 491,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 512,
+    "mainRequestBindingCount": 513,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 512,
-    "productionConsumerCount": 384,
+    "requestEdgeCount": 513,
+    "productionConsumerCount": 385,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -571,7 +571,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -746,6 +747,7 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractBasicSection.vue",
         "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
@@ -9807,12 +9809,13 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+      ],
       "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
       ]
     },
     {
@@ -11087,7 +11090,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 30,
+          "sourceLine": 51,
           "method": "GET",
           "path": "/global-invoices/capabilities",
           "normalizedPath": "/global-invoices/capabilities",
@@ -11104,6 +11107,35 @@
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchGlobalInvoices",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "GET",
+          "path": "/global-invoices",
+          "normalizedPath": "/global-invoices",
+          "normalizedKey": "GET /global-invoices",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchGlobalInvoices"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {

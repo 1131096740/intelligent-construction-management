@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f6d10f4cfecc178ee057a5135bfbe284a1a76ca0903bf1fd30253ad3e6812ce0` |
-| webApiWrappers | ready | `90ba45e573a2e315848a11e018e18503b4aa84d3f5fb8f1f794e64eb223d1a2b` |
-| webPageActions | ready | `6d67fa676893b03467b3b5a350745f4721f5ce1dc384c5477d1599fe9ce1b30b` |
-| routeUsage | ready | `6fd00f1880b603a268dbd679e13b435b98a78ed284a7cbeca2018eda0e999618` |
+| nestRoutes | ready | `e0e6f03a3e7030e31953e7026f1ccce245ef4e04e11eef6353891b1978ff29a5` |
+| webApiWrappers | ready | `d04743119f90014fdd1897628a9c1eaefcc9e7b1b4c6ddea401bed288a99c991` |
+| webPageActions | ready | `a9d44da5344bf1915de1b410c0e40e74304efb3f3d3103347f83c7f5ce0f2d2d` |
+| routeUsage | ready | `5455ca0211b2d77d42191d8c2b8207636584de87ec4b65da76c51ca67de23f3d` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 504 |
-| pageRouteCount | 323 |
+| routeCount | 505 |
+| pageRouteCount | 324 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 512 |
+| mainRequestBindingCount | 513 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 266 |
-| actionBindingCount | 300 |
-| acceptedActionBindingCount | 280 |
+| registeredActionCount | 267 |
+| actionBindingCount | 301 |
+| acceptedActionBindingCount | 281 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 260 |
-| coveredProductionMutationConsumerPairCount | 260 |
+| productionMutationConsumerPairCount | 261 |
+| coveredProductionMutationConsumerPairCount | 261 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -106,6 +106,7 @@
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
 | GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
+| GET | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoices | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /health/readiness | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /me/signature/canvas-capabilities | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureCapabilities | — | not_applicable | — |
@@ -342,7 +343,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file | covered | — |
 | POST | /global-invoices/:invoiceRecordId/void | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#voidGlobalInvoice | global-invoice.void | covered | — |
 | POST | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createGlobalInvoice | global-invoice.create | covered | — |
 | POST | /global-invoices/red | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createRedGlobalInvoice | global-invoice.red | covered | — |
