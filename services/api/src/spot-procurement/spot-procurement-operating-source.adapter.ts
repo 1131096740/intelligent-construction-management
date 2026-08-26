@@ -978,7 +978,7 @@ export class SpotProcurementInvoiceOperatingSourceAdapter
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     invoice: {
       id: string;
-      projectId: string;
+      projectId: string | null;
       invoiceCode: string | null;
       invoiceNumber: string | null;
       externalIdentifier: string | null;
@@ -992,6 +992,9 @@ export class SpotProcurementInvoiceOperatingSourceAdapter
       createdAt: Date;
     }
   ): Promise<OperatingSourceSnapshot> {
+    if (!invoice.projectId) {
+      throw new BadRequestException("全局清算发票不能作为零采经营账来源");
+    }
     if (!invoice.sourceProcurementId) {
       throw new BadRequestException("零采发票缺少关联采购，不能登记经营账");
     }

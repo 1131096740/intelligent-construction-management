@@ -958,7 +958,8 @@ export class SpotProcurementAccessService {
     const evidenceBindings = [
       ...invoiceRecordBindings.map((binding) => ({
         kind: "invoice" as const,
-        projectId: binding.projectId,
+        // A global clearing invoice never receives spot-procurement file access.
+        projectId: binding.projectId ?? "",
         procurementId: binding.sourceProcurementId,
         sourceBusinessType: binding.sourceBusinessType,
         sourceBusinessId: binding.sourceBusinessId,

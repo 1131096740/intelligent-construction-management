@@ -2274,7 +2274,7 @@ model SpotProcurementRefund {
 model InvoiceRecord {
   id                     String    @id @default(uuid())
   // Legacy project/source coordinates remain readable; new writes are governed by the immutable global header below.
-  projectId              String
+  projectId              String?
   identityKey            String    @unique
   identityKind           String    @default("traditional")
   owningCompanyEntityId  String?

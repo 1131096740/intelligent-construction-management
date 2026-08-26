@@ -203,7 +203,7 @@ type InvoiceIdentityKind = "digital" | "traditional" | "other";
 
 type InvoiceRecordWithLines = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   identityKey: string;
   identityKind: string;
   owningCompanyEntityId: string | null;
@@ -591,8 +591,15 @@ export class InvoiceLedgerService {
       });
       if (!projectCompany) throw new ConflictException("发票归属我方主体未在清算项目有效参与公司范围内");
       await this.requireFinanceDirector(tx, actorUserId, clearingCase.projectId);
-      const used = await tx.invoiceClearingAllocation.aggregate({ where: { invoiceRecordId, reversesAllocationId: null }, _sum: { amountCents: true } });
-      if ((used._sum.amountCents ?? 0n) + amountCents > invoice.totalAmountCents) throw new ConflictException("有效发票清算分配累计超过票面含税额");
+      const existingAllocations = await tx.invoiceClearingAllocation.findMany({
+        where: { invoiceRecordId },
+        select: { amountCents: true, reversesAllocationId: true }
+      });
+      const used = existingAllocations.reduce(
+        (total, row) => total + (row.reversesAllocationId ? -row.amountCents : row.amountCents),
+        0n
+      );
+      if (used + amountCents > invoice.totalAmountCents) throw new ConflictException("有效发票清算分配累计超过票面含税额");
       const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
       await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocate", businessType: "invoice_clearing_allocation", businessId: allocation.id, metadata: { invoiceRecordId, clearingCaseId, clearingEventVersionId, amountCents: amountCents.toString() } });
       return { id: allocation.id, replayed: false };
