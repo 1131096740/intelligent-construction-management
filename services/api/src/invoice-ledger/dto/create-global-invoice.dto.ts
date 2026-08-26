@@ -9,8 +9,8 @@ import {
 } from "../../validation/static-field-validation";
 
 export class CreateGlobalInvoiceDto {
-  @IsIn(VAT_INVOICE_TYPES, { message: "发票类型不正确" })
-  invoiceType!: VatInvoiceType;
+  @IsIn([...VAT_INVOICE_TYPES, "other"], { message: "发票类型不正确" })
+  invoiceType!: VatInvoiceType | "other";
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(["digital", "traditional", "other"], { message: "发票身份类型不正确" })
@@ -45,6 +45,11 @@ export class CreateGlobalInvoiceDto {
   @IsOptionalNonBlankText({ typeMessage: "可识别票据编号必须是文字", blankMessage: "可识别票据编号不能为空白" })
   @IsMaxUnicodeTextLength({ max: 200, message: "可识别票据编号不能超过 200 个字符" })
   externalIdentifier?: string;
+
+  @ValidateIf((object: CreateGlobalInvoiceDto) => object.invoiceIdentityKind === "other")
+  @IsRequiredText({ requiredMessage: "请填写受控凭证类型", typeMessage: "受控凭证类型必须是文字", blankMessage: "受控凭证类型不能为空白" })
+  @IsMaxUnicodeTextLength({ max: 100, message: "受控凭证类型不能超过 100 个字符" })
+  voucherType?: string;
 
   @IsRequiredText({ requiredMessage: "请填写开票日期", typeMessage: "开票日期必须是文字", blankMessage: "开票日期不能为空白" })
   @IsStrictDateOnly({ message: "开票日期必须为 YYYY-MM-DD 格式的有效日期" })

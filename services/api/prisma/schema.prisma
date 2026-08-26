@@ -2280,6 +2280,7 @@ model InvoiceRecord {
   owningCompanyEntityId  String?
   direction              String?
   invoiceType            String
+  voucherType            String?
   invoiceCode            String?
   invoiceNumber          String?
   externalIdentifier     String?

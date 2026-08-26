@@ -32,6 +32,10 @@ export function allocateGlobalInvoice(body: Record<string, unknown>) {
   return post<GlobalInvoiceCommandResult>("/invoice-clearing-allocations", body, "登记清分发票分配失败");
 }
 
+export function reverseGlobalInvoiceAllocation(allocationId: string, body: Record<string, unknown>) {
+  return post<GlobalInvoiceCommandResult>(`/invoice-clearing-allocations/${encodeURIComponent(allocationId)}/reversal`, body, "反向清分发票分配失败");
+}
+
 export function voidGlobalInvoice(invoiceRecordId: string, body: Record<string, unknown>) {
   return post<GlobalInvoiceCommandResult>(`/global-invoices/${encodeURIComponent(invoiceRecordId)}/void`, body, "作废全局发票失败");
 }

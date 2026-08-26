@@ -6,6 +6,7 @@ import {
   createGlobalInvoice,
   createRedGlobalInvoice,
   createReissueGlobalInvoice,
+  reverseGlobalInvoiceAllocation,
   voidGlobalInvoice
 } from "../../api/global-invoice.api";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -13,13 +14,15 @@ import { formatUnknownApiError } from "../../api/error-message";
 const submitting = ref(false);
 const message = ref("");
 const invoiceForm = reactive({
-  invoiceType: "vat_special", owningCompanyEntityId: "", direction: "inbound",
+  invoiceType: "vat_special", invoiceIdentityKind: "traditional", owningCompanyEntityId: "", direction: "inbound",
   sellerTaxId: "", buyerTaxId: "", invoiceCode: "", invoiceNumber: "",
+  externalIdentifier: "", voucherType: "",
   issueDate: "", sellerName: "", buyerName: "", totalAmountCents: "",
   taxExclusiveAmountCents: "", taxAmountCents: "", fileId: ""
 });
 const allocationForm = reactive({ invoiceRecordId: "", clearingCaseId: "", clearingEventVersionId: "", amountCents: "", structuredReasonCode: "" });
 const lifecycleForm = reactive({ invoiceRecordId: "", linkedInvoiceRecordId: "", reasonCode: "", blueAllocationId: "", amountCents: "" });
+const reversalForm = reactive({ allocationId: "", amountCents: "", structuredReasonCode: "" });
 
 function idempotencyKey() { return crypto.randomUUID(); }
 function invoicePayload() { return { ...invoiceForm, idempotencyKey: idempotencyKey() }; }
@@ -46,6 +49,13 @@ function redInvoice() {
 function reissueInvoice() {
   return submit("重开发票", () => createReissueGlobalInvoice({ ...invoicePayload(), originalInvoiceRecordId: lifecycleForm.linkedInvoiceRecordId, reasonCode: lifecycleForm.reasonCode }));
 }
+function reverseAllocation() {
+  return submit("反向清分分配", () => reverseGlobalInvoiceAllocation(reversalForm.allocationId, {
+    amountCents: reversalForm.amountCents,
+    structuredReasonCode: reversalForm.structuredReasonCode,
+    idempotencyKey: idempotencyKey()
+  }));
+}
 </script>
 
 <template>
@@ -55,13 +65,16 @@ function reissueInvoice() {
     <p v-if="message" class="result-message">{{ message }}</p>
     <t-card title="登记全局发票" class="panel">
       <t-form label-align="top" @submit.prevent="create"><div class="form-grid">
-        <t-select v-model="invoiceForm.invoiceType" label="发票类型" :options="[{label:'增值税专用发票',value:'vat_special'},{label:'增值税普通发票',value:'vat_general'}]" />
+        <t-select v-model="invoiceForm.invoiceType" label="发票类型" :options="[{label:'增值税专用发票',value:'vat_special'},{label:'增值税普通发票',value:'vat_general'},{label:'其他受控凭证',value:'other'}]" />
+        <t-select v-model="invoiceForm.invoiceIdentityKind" label="法定身份类型" :options="[{label:'传统发票（代码+号码）',value:'traditional'},{label:'数电票（20位号码）',value:'digital'},{label:'其他受控凭证',value:'other'}]" />
         <t-select v-model="invoiceForm.direction" label="方向" :options="[{label:'进项',value:'inbound'},{label:'销项',value:'outbound'}]" />
         <t-input v-model="invoiceForm.owningCompanyEntityId" label="我方公司主体编号" />
         <t-input v-model="invoiceForm.issueDate" label="开票日期（YYYY-MM-DD）" />
         <t-input v-model="invoiceForm.sellerName" label="销售方名称" /><t-input v-model="invoiceForm.sellerTaxId" label="销售方税号" />
         <t-input v-model="invoiceForm.buyerName" label="购买方名称" /><t-input v-model="invoiceForm.buyerTaxId" label="购买方税号" />
         <t-input v-model="invoiceForm.invoiceCode" label="发票代码" /><t-input v-model="invoiceForm.invoiceNumber" label="发票号码" />
+        <t-input v-model="invoiceForm.externalIdentifier" label="外部凭证编号（保留前导零）" />
+        <t-input v-if="invoiceForm.invoiceIdentityKind === 'other'" v-model="invoiceForm.voucherType" label="受控凭证类型" />
         <t-input v-model="invoiceForm.taxExclusiveAmountCents" label="不含税金额（分）" /><t-input v-model="invoiceForm.taxAmountCents" label="税额（分）" />
         <t-input v-model="invoiceForm.totalAmountCents" label="价税合计（分）" /><t-input v-model="invoiceForm.fileId" label="私有附件编号" />
       </div><t-button theme="primary" type="submit" :loading="submitting">追加全局发票</t-button></t-form>
@@ -71,6 +84,10 @@ function reissueInvoice() {
       <t-input v-model="allocationForm.clearingEventVersionId" label="已确认清分版本编号" /><t-input v-model="allocationForm.amountCents" label="分配金额（分）" />
       <t-input v-model="allocationForm.structuredReasonCode" label="金额差异结构化原因（有差异时必填）" />
     </div><t-button theme="primary" type="submit" :loading="submitting">追加清分分配</t-button></t-form></t-card>
+    <t-card title="反向清分分配" class="panel"><t-form label-align="top" @submit.prevent="reverseAllocation"><div class="form-grid">
+      <t-input v-model="reversalForm.allocationId" label="原清分分配编号" /><t-input v-model="reversalForm.amountCents" label="反向金额（分）" />
+      <t-input v-model="reversalForm.structuredReasonCode" label="结构化更正原因" />
+    </div><t-button variant="outline" theme="danger" type="submit" :loading="submitting">追加反向分配</t-button></t-form></t-card>
     <t-card title="追加作废、红字或重开" class="panel"><t-form label-align="top"><div class="form-grid">
       <t-input v-model="lifecycleForm.invoiceRecordId" label="作废目标发票编号" /><t-input v-model="lifecycleForm.linkedInvoiceRecordId" label="蓝字/原发票编号" />
       <t-input v-model="lifecycleForm.reasonCode" label="结构化原因" /><t-input v-model="lifecycleForm.blueAllocationId" label="蓝字分配编号（红字必填）" />
