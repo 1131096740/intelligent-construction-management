@@ -363,6 +363,7 @@ function createHarness(options?: {
   const invoiceRecords: TestInvoiceRecord[] = [];
   const invoiceLines: TestInvoiceLine[] = [];
   const allocations: TestAllocation[] = [];
+  const redAllocationReferences: Array<Record<string, unknown>> = [];
   const noInvoices: TestConfirmation[] = [];
   const exceptions: TestConfirmation[] = [];
   const lifecycleEvents: Array<Record<string, unknown>> = [];
@@ -658,6 +659,13 @@ function createHarness(options?: {
       findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey: string } }) => Promise.resolve(lifecycleEvents.find((event) => event.idempotencyKey === where.idempotencyKey) ?? null)),
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { const event = { id: `invoice-lifecycle-${lifecycleEvents.length + 1}`, ...data }; lifecycleEvents.push(event); return Promise.resolve(event); })
     },
+    invoiceRedAllocationReference: {
+      create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: `invoice-red-reference-${redAllocationReferences.length + 1}`, ...data };
+        redAllocationReferences.push(row);
+        return Promise.resolve(row);
+      })
+    },
     user: {
       findUnique: jest.fn().mockImplementation(
         ({ where }: { where: { id: string } }) =>
@@ -795,7 +803,8 @@ function createHarness(options?: {
     allocations,
     noInvoices,
     exceptions,
-    lifecycleEvents
+    lifecycleEvents,
+    redAllocationReferences
   };
 }
 
@@ -1361,6 +1370,34 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     expect(harness.lifecycleEvents).toHaveLength(1);
     expect(harness.lifecycleEvents[0]).toMatchObject({ invoiceRecordId: created.id, kind: "void" });
     await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.globalFinanceStaff, { ...command, reasonCode: "another_reason" })).rejects.toThrow("幂等键已用于不同的发票作废请求");
+  });
+
+  it("creates a red global invoice only from precise active blue allocations and records its immutable references", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-2": ACTORS.globalFinanceStaff
+      },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const blue = await harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
+    const clearingAllocations: Array<Record<string, unknown>> = [{ id: "blue-clearing-allocation-1", invoiceRecordId: blue.id, reversesAllocationId: null, amountCents: 6000n }];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve(clearingAllocations.find((row) => row.id === where.id) ?? null))
+      }
+    });
+    const input = {
+      ...createGlobalInvoiceInput({ invoiceCode: "GLOBAL-RED-CODE-1", invoiceNumber: "GLOBAL-RED-NO-1", fileId: "global-invoice-file-2", idempotencyKey: "global-red-key-1" }),
+      blueInvoiceRecordId: blue.id,
+      reasonCode: "sales_return",
+      blueAllocationReferences: [{ blueInvoiceAllocationId: "blue-clearing-allocation-1", amountCents: "6000" }]
+    };
+    await expect(harness.service.createRedGlobalInvoice(ACTORS.globalFinanceStaff, input)).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.createRedGlobalInvoice(ACTORS.globalFinanceStaff, input)).resolves.toMatchObject({ replayed: true });
+    expect(harness.lifecycleEvents).toEqual([expect.objectContaining({ invoiceRecordId: blue.id, kind: "red" })]);
+    expect(harness.redAllocationReferences).toEqual([expect.objectContaining({ blueInvoiceAllocationId: "blue-clearing-allocation-1", amountCents: 6000n })]);
+    await expect(harness.service.createRedGlobalInvoice(ACTORS.globalFinanceStaff, { ...input, reasonCode: "other_reason" })).rejects.toThrow("幂等键已用于不同的红字发票请求");
   });
 
   it("allocates a global invoice only to a confirmed clearing version, replays its idempotency key, and caps total evidence", async () => {

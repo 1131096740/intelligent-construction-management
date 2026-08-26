@@ -42,6 +42,7 @@ import type { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocati
 import type { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-clearing-allocation.dto";
 import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import type { VoidGlobalInvoiceDto } from "./dto/void-global-invoice.dto";
+import type { CreateRedGlobalInvoiceDto } from "./dto/create-red-global-invoice.dto";
 import type { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import type { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
 
@@ -615,6 +616,50 @@ export class InvoiceLedgerService {
       } });
       await this.audit.record(tx, { actorUserId, action: "invoice.global.void", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { invoiceRecordId: invoice.id, reasonCode } });
       return { id: event.id, replayed: false };
+    }));
+  }
+
+  async createRedGlobalInvoice(actorUserId: string, input: CreateRedGlobalInvoiceDto) {
+    const header = this.prepareInvoiceHeader(input);
+    const blueInvoiceRecordId = requiredId(input.blueInvoiceRecordId, "请选择对应蓝字发票");
+    const reasonCode = requiredText(input.reasonCode, "红字原因", 100);
+    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const references = input.blueAllocationReferences.map((reference) => ({
+      blueInvoiceAllocationId: requiredId(reference.blueInvoiceAllocationId, "请选择蓝字清算发票分配"),
+      amountCents: positiveMoney(reference.amountCents, "红字引用金额")
+    }));
+    if (new Set(references.map((reference) => reference.blueInvoiceAllocationId)).size !== references.length) throw new BadRequestException("红字不能重复引用同一蓝字清算发票分配");
+    if (sumBigInt(references.map((reference) => reference.amountCents)) !== header.totalAmountCents) throw new BadRequestException("红字逐笔引用金额之和必须等于红字价税合计金额");
+    const requestFingerprint = createHash("sha256").update(JSON.stringify([
+      "global-invoice-red", 1, actorUserId, blueInvoiceRecordId,
+      header.identityKey, header.identityKind, header.owningCompanyEntityId,
+      header.direction, header.invoiceType, header.invoiceCode, header.invoiceNumber,
+      header.externalIdentifier, header.issueDate, header.sellerName, header.sellerTaxId,
+      header.buyerName, header.buyerTaxId, header.taxExclusiveAmountCents.toString(),
+      header.taxAmountCents.toString(), header.totalAmountCents.toString(), header.fileId,
+      reasonCode, references.map((reference) => [reference.blueInvoiceAllocationId, reference.amountCents.toString()])
+    ]), "utf8").digest("hex");
+    await this.files.assertCanDownloadFileById(header.fileId, actorUserId);
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      await this.requireGlobalInvoiceManager(tx, actorUserId);
+      const replay = await tx.invoiceLifecycleEvent.findUnique({ where: { idempotencyKey } });
+      if (replay) {
+        if (replay.requestFingerprint !== requestFingerprint) throw new ConflictException("幂等键已用于不同的红字发票请求");
+        return { id: replay.relatedInvoiceRecordId, lifecycleEventId: replay.id, replayed: true };
+      }
+      const blue = await tx.invoiceRecord.findUnique({ where: { id: blueInvoiceRecordId } });
+      if (!blue || blue.projectId !== null || blue.sourceBusinessType !== "global_clearing_invoice") throw new NotFoundException("对应蓝字全局发票不存在");
+      const existing = await this.lockInvoiceByIdentity(tx, header.identityKey);
+      if (existing) throw new ConflictException("该发票身份已用于不同的发票事实");
+      const allocations = await Promise.all(references.map((reference) => tx.invoiceClearingAllocation.findUnique({ where: { id: reference.blueInvoiceAllocationId } })));
+      if (allocations.some((allocation, index) => !allocation || allocation.invoiceRecordId !== blue.id || allocation.reversesAllocationId || allocation.amountCents !== references[index].amountCents)) throw new ConflictException("红字必须逐笔精确引用仍有效的蓝字清算发票分配");
+      const file = await this.files.assertFileHasNoBusinessBinding(tx, header.fileId);
+      if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("只能登记本人上传且尚未绑定的发票文件");
+      const red = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_red", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
+      const event = await tx.invoiceLifecycleEvent.create({ data: { invoiceRecordId: blue.id, relatedInvoiceRecordId: red.id, kind: "red", reasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
+      for (const reference of references) await tx.invoiceRedAllocationReference.create({ data: { lifecycleEventId: event.id, redInvoiceRecordId: red.id, blueInvoiceAllocationId: reference.blueInvoiceAllocationId, amountCents: reference.amountCents } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.red.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { blueInvoiceRecordId: blue.id, redInvoiceRecordId: red.id, reasonCode } });
+      return { id: red.id, lifecycleEventId: event.id, replayed: false };
     }));
   }
 
