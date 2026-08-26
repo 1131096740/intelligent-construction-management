@@ -1,6 +1,7 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { CreateInvoiceExceptionConfirmationDto } from "./dto/create-invoice-exception-confirmation.dto";
 import { CreateNoInvoiceConfirmationDto } from "./dto/create-no-invoice-confirmation.dto";
@@ -20,6 +21,11 @@ import { InvoiceLedgerService } from "./invoice-ledger.service";
 export class InvoiceLedgerController {
   constructor(private readonly invoices: InvoiceLedgerService) {}
 
+  @Get("global-invoices/capabilities")
+  globalInvoiceCapabilities(@CurrentUser() user: AuthenticatedUser) {
+    return this.invoices.globalInvoiceCapabilities(user.id);
+  }
+
   @Post("spot-procurements/:procurementId/invoices")
   @RequireProjectRole("spot_procurement.invoice.manage")
   createProcurementInvoice(
@@ -35,6 +41,7 @@ export class InvoiceLedgerController {
   }
 
   @Post("global-invoices")
+  @RequirePositions("finance_staff", "finance_director")
   createGlobalInvoice(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateGlobalInvoiceDto
@@ -43,6 +50,7 @@ export class InvoiceLedgerController {
   }
 
   @Post("global-invoices/red")
+  @RequirePositions("finance_director")
   createRedGlobalInvoice(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateRedGlobalInvoiceDto
@@ -51,6 +59,7 @@ export class InvoiceLedgerController {
   }
 
   @Post("global-invoices/reissue")
+  @RequirePositions("finance_director")
   createReissueGlobalInvoice(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateReissueGlobalInvoiceDto
@@ -59,6 +68,7 @@ export class InvoiceLedgerController {
   }
 
   @Post("global-invoices/:invoiceRecordId/void")
+  @RequirePositions("finance_director")
   voidGlobalInvoice(
     @Param("invoiceRecordId") invoiceRecordId: string,
     @CurrentUser() user: AuthenticatedUser,

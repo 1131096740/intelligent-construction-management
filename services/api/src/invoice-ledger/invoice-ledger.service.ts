@@ -269,6 +269,28 @@ export class InvoiceLedgerService {
       missingOperatingSourceReplayService()
   ) {}
 
+  async globalInvoiceCapabilities(actorUserId: string) {
+    await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    }).then((user) => {
+      if (!user?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
+    });
+    const positions = await this.prisma.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null },
+      select: { positionId: true }
+    });
+    const roles = positions.length
+      ? await this.prisma.position.findMany({
+        where: { id: { in: positions.map((position) => position.positionId) } },
+        select: { key: true }
+      })
+      : [];
+    const create = roles.some((role) => role.key === "finance_staff" || role.key === "finance_director");
+    const correct = roles.some((role) => role.key === "finance_director");
+    return { create, correct };
+  }
+
   async createProcurementInvoice(
     procurementId: string,
     actorUserId: string,

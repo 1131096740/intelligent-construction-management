@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "4c019a94ca076d68046ee131d64dcb0cdcf5d9f85c384b0e84b5844e43d5012c",
+      "sha256": "f6d10f4cfecc178ee057a5135bfbe284a1a76ca0903bf1fd30253ad3e6812ce0",
       "status": "ready",
       "summary": {
-        "routeCount": 497
+        "routeCount": 504
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "d99738a7a15de76dd9fb79f67c407703898d8b6cc4568fceee352455ee0c749b",
+      "sha256": "90ba45e573a2e315848a11e018e18503b4aa84d3f5fb8f1f794e64eb223d1a2b",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 20,
-        "exportedFunctionCount": 503,
-        "transportWrapperCount": 483,
+        "apiModuleCount": 21,
+        "exportedFunctionCount": 510,
+        "transportWrapperCount": 490,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 505,
+        "mainRequestBindingCount": 512,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 505,
-        "productionConsumerCount": 377,
+        "requestEdgeCount": 512,
+        "productionConsumerCount": 384,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "4c3057176cd5563b40c1fa12db5a5e70209ed607ab29ed7e951bd9df6dafdd14",
+      "sha256": "6d67fa676893b03467b3b5a350745f4721f5ce1dc384c5477d1599fe9ce1b30b",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 260,
+        "registeredActionCount": 266,
         "pageActionCount": 53,
-        "backgroundActionCount": 207,
-        "reachableVueFileCount": 131,
-        "routeRootCount": 52,
-        "totalVueFileCount": 155,
-        "parsedVueFileCount": 155,
-        "reachableProductionModuleCount": 237,
-        "templateEventDirectiveCount": 885,
+        "backgroundActionCount": 213,
+        "reachableVueFileCount": 132,
+        "routeRootCount": 53,
+        "totalVueFileCount": 156,
+        "parsedVueFileCount": 156,
+        "reachableProductionModuleCount": 239,
+        "templateEventDirectiveCount": 891,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 254,
-        "candidateProductionMutationConsumerCount": 254,
-        "acceptedProductionMutationConsumerCount": 254,
-        "productionMutationConsumerPairCount": 254,
+        "coveredProductionMutationConsumerCount": 260,
+        "candidateProductionMutationConsumerCount": 260,
+        "acceptedProductionMutationConsumerCount": 260,
+        "productionMutationConsumerPairCount": 260,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "d61b6992f4139da72198b7120d9d92e213c959e4ac972896d01f914ccdabd70c",
+      "sha256": "6fd00f1880b603a268dbd679e13b435b98a78ed284a7cbeca2018eda0e999618",
       "status": "ready",
       "summary": {
-        "routeCount": 497,
-        "exactRouteCount": 497,
-        "normalizedRouteCount": 497,
+        "routeCount": 504,
+        "exactRouteCount": 504,
+        "normalizedRouteCount": 504,
         "classificationOverrideCount": 183,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 314,
-        "pageRouteCount": 316,
+        "derivedProductionPageCount": 321,
+        "pageRouteCount": 323,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 368,
+          "web_api_wrapper": 375,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 497,
-    "pageRouteCount": 316,
+    "routeCount": 504,
+    "pageRouteCount": 323,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 505,
+    "mainRequestBindingCount": 512,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 260,
-    "actionBindingCount": 294,
-    "acceptedActionBindingCount": 274,
+    "registeredActionCount": 266,
+    "actionBindingCount": 300,
+    "acceptedActionBindingCount": 280,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 254,
-    "coveredProductionMutationConsumerPairCount": 254,
+    "productionMutationConsumerPairCount": 260,
+    "coveredProductionMutationConsumerPairCount": 260,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -1141,7 +1141,8 @@
           "normalizedKey": "GET /clearing-cases/capabilities",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/clearing.api.test.ts"
@@ -3343,6 +3344,46 @@
           "testConsumers": [
             "apps/web-admin/src/api/funds-workbench.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/global-invoices/capabilities",
+        "normalizedKey": "GET /global-invoices/capabilities",
+        "controller": "InvoiceLedgerController",
+        "handler": "globalInvoiceCapabilities",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "fetchGlobalInvoiceCapabilities",
+          "method": "GET",
+          "path": "/global-invoices/capabilities",
+          "normalizedKey": "GET /global-invoices/capabilities",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -16777,6 +16818,287 @@
     {
       "route": {
         "method": "POST",
+        "path": "/global-invoices/:invoiceRecordId/void",
+        "normalizedKey": "POST /global-invoices/:param/void",
+        "controller": "InvoiceLedgerController",
+        "handler": "voidGlobalInvoice",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "voidGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices/:param/void",
+          "normalizedKey": "POST /global-invoices/:param/void",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.void",
+          "bindingIndex": 0,
+          "identity": "global-invoice.void\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000voidGlobalInvoice\u0000POST\u0000POST /global-invoices/:param/void\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.correct",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "voidGlobalInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/global-invoices",
+        "normalizedKey": "POST /global-invoices",
+        "controller": "InvoiceLedgerController",
+        "handler": "createGlobalInvoice",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices",
+          "normalizedKey": "POST /global-invoices",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.create",
+          "bindingIndex": 0,
+          "identity": "global-invoice.create\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000createGlobalInvoice\u0000POST\u0000POST /global-invoices\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.create",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createGlobalInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/global-invoices/red",
+        "normalizedKey": "POST /global-invoices/red",
+        "controller": "InvoiceLedgerController",
+        "handler": "createRedGlobalInvoice",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createRedGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices/red",
+          "normalizedKey": "POST /global-invoices/red",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.red",
+          "bindingIndex": 0,
+          "identity": "global-invoice.red\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000createRedGlobalInvoice\u0000POST\u0000POST /global-invoices/red\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.correct",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createRedGlobalInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/global-invoices/reissue",
+        "normalizedKey": "POST /global-invoices/reissue",
+        "controller": "InvoiceLedgerController",
+        "handler": "createReissueGlobalInvoice",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createReissueGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices/reissue",
+          "normalizedKey": "POST /global-invoices/reissue",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.reissue",
+          "bindingIndex": 0,
+          "identity": "global-invoice.reissue\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000createReissueGlobalInvoice\u0000POST\u0000POST /global-invoices/reissue\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.correct",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createReissueGlobalInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/invoice-allocations/:allocationId/reversal",
         "normalizedKey": "POST /invoice-allocations/:param/reversal",
         "controller": "InvoiceLedgerController",
@@ -16799,6 +17121,144 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/invoice-clearing-allocations/:clearingAllocationId/reversal",
+        "normalizedKey": "POST /invoice-clearing-allocations/:param/reversal",
+        "controller": "InvoiceLedgerController",
+        "handler": "reverseClearingAllocation",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "clearing.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "reverseGlobalInvoiceAllocation",
+          "method": "POST",
+          "path": "/invoice-clearing-allocations/:param/reversal",
+          "normalizedKey": "POST /invoice-clearing-allocations/:param/reversal",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.reverse-clearing-allocation",
+          "bindingIndex": 0,
+          "identity": "global-invoice.reverse-clearing-allocation\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000reverseGlobalInvoiceAllocation\u0000POST\u0000POST /invoice-clearing-allocations/:param/reversal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "clearing.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "reverseGlobalInvoiceAllocation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/invoice-clearing-allocations",
+        "normalizedKey": "POST /invoice-clearing-allocations",
+        "controller": "InvoiceLedgerController",
+        "handler": "createClearingAllocation",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "clearing.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "allocateGlobalInvoice",
+          "method": "POST",
+          "path": "/invoice-clearing-allocations",
+          "normalizedKey": "POST /invoice-clearing-allocations",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.allocate-clearing",
+          "bindingIndex": 0,
+          "identity": "global-invoice.allocate-clearing\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000allocateGlobalInvoice\u0000POST\u0000POST /invoice-clearing-allocations\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "clearing.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "allocateGlobalInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

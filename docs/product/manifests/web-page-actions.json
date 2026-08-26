@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 260,
+    "registeredActionCount": 266,
     "pageActionCount": 53,
-    "backgroundActionCount": 207,
-    "reachableVueFileCount": 131,
-    "routeRootCount": 52,
-    "totalVueFileCount": 155,
-    "parsedVueFileCount": 155,
-    "reachableProductionModuleCount": 237,
-    "templateEventDirectiveCount": 885,
+    "backgroundActionCount": 213,
+    "reachableVueFileCount": 132,
+    "routeRootCount": 53,
+    "totalVueFileCount": 156,
+    "parsedVueFileCount": 156,
+    "reachableProductionModuleCount": 239,
+    "templateEventDirectiveCount": 891,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 254,
-    "candidateProductionMutationConsumerCount": 254,
-    "acceptedProductionMutationConsumerCount": 254,
-    "productionMutationConsumerPairCount": 254,
+    "coveredProductionMutationConsumerCount": 260,
+    "candidateProductionMutationConsumerCount": 260,
+    "acceptedProductionMutationConsumerCount": 260,
+    "productionMutationConsumerPairCount": 260,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 270,
-    "reachableProductionModuleCount": 237,
-    "totalVueFileCount": 155,
-    "parsedVueFileCount": 155
+    "totalProductionModuleCount": 272,
+    "reachableProductionModuleCount": 239,
+    "totalVueFileCount": 156,
+    "parsedVueFileCount": 156
   },
   "actions": [
     {
@@ -8381,6 +8381,401 @@
             "localCallChain": [
               "submitExpenseClaimWithCapability",
               "submitExpenseClaim"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "global-invoice.allocate-clearing",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "allocateGlobalInvoiceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 87,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "allocateGlobalInvoice",
+          "method": "POST",
+          "path": "/invoice-clearing-allocations",
+          "normalizedKey": "POST /invoice-clearing-allocations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/invoice-clearing-allocations",
+            "normalizedKey": "POST /invoice-clearing-allocations",
+            "controller": "InvoiceLedgerController",
+            "handler": "createClearingAllocation",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "allocateGlobalInvoiceWithCapability",
+              "allocateGlobalInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "global-invoice.create",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createGlobalInvoiceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 63,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.create",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices",
+          "normalizedKey": "POST /global-invoices",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/global-invoices",
+            "normalizedKey": "POST /global-invoices",
+            "controller": "InvoiceLedgerController",
+            "handler": "createGlobalInvoice",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createGlobalInvoiceWithCapability",
+              "createGlobalInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "global-invoice.red",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createRedGlobalInvoiceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 75,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.correct",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createRedGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices/red",
+          "normalizedKey": "POST /global-invoices/red",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/global-invoices/red",
+            "normalizedKey": "POST /global-invoices/red",
+            "controller": "InvoiceLedgerController",
+            "handler": "createRedGlobalInvoice",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createRedGlobalInvoiceWithCapability",
+              "createRedGlobalInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "global-invoice.reissue",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createReissueGlobalInvoiceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 81,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.correct",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "createReissueGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices/reissue",
+          "normalizedKey": "POST /global-invoices/reissue",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/global-invoices/reissue",
+            "normalizedKey": "POST /global-invoices/reissue",
+            "controller": "InvoiceLedgerController",
+            "handler": "createReissueGlobalInvoice",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createReissueGlobalInvoiceWithCapability",
+              "createReissueGlobalInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "global-invoice.reverse-clearing-allocation",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reverseGlobalInvoiceAllocationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 93,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "reverseGlobalInvoiceAllocation",
+          "method": "POST",
+          "path": "/invoice-clearing-allocations/:param/reversal",
+          "normalizedKey": "POST /invoice-clearing-allocations/:param/reversal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/invoice-clearing-allocations/:clearingAllocationId/reversal",
+            "normalizedKey": "POST /invoice-clearing-allocations/:param/reversal",
+            "controller": "InvoiceLedgerController",
+            "handler": "reverseClearingAllocation",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reverseGlobalInvoiceAllocationWithCapability",
+              "reverseGlobalInvoiceAllocation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "global-invoice.void",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "voidGlobalInvoiceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 69,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.correct",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "voidGlobalInvoice",
+          "method": "POST",
+          "path": "/global-invoices/:param/void",
+          "normalizedKey": "POST /global-invoices/:param/void",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/global-invoices/:invoiceRecordId/void",
+            "normalizedKey": "POST /global-invoices/:param/void",
+            "controller": "InvoiceLedgerController",
+            "handler": "voidGlobalInvoice",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "voidGlobalInvoiceWithCapability",
+              "voidGlobalInvoice"
             ]
           },
           "ticketFollowups": []

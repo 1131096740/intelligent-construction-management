@@ -24,6 +24,14 @@ async function post<T>(path: string, body: Record<string, unknown>, fallback: st
   return response.json() as Promise<T>;
 }
 
+export type GlobalInvoiceCapabilities = { create: boolean; correct: boolean };
+
+export async function fetchGlobalInvoiceCapabilities() {
+  const response = await apiFetch("/global-invoices/capabilities");
+  if (!response.ok) throw new Error(formatApiErrorMessage("", response.status, "加载全局发票权限失败"));
+  return response.json() as Promise<GlobalInvoiceCapabilities>;
+}
+
 export function createGlobalInvoice(body: Record<string, unknown>) {
   return post<GlobalInvoiceCommandResult>("/global-invoices", body, "登记全局发票失败");
 }

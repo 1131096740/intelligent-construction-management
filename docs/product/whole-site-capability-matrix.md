@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `4c019a94ca076d68046ee131d64dcb0cdcf5d9f85c384b0e84b5844e43d5012c` |
-| webApiWrappers | ready | `d99738a7a15de76dd9fb79f67c407703898d8b6cc4568fceee352455ee0c749b` |
-| webPageActions | ready | `4c3057176cd5563b40c1fa12db5a5e70209ed607ab29ed7e951bd9df6dafdd14` |
-| routeUsage | ready | `d61b6992f4139da72198b7120d9d92e213c959e4ac972896d01f914ccdabd70c` |
+| nestRoutes | ready | `f6d10f4cfecc178ee057a5135bfbe284a1a76ca0903bf1fd30253ad3e6812ce0` |
+| webApiWrappers | ready | `90ba45e573a2e315848a11e018e18503b4aa84d3f5fb8f1f794e64eb223d1a2b` |
+| webPageActions | ready | `6d67fa676893b03467b3b5a350745f4721f5ce1dc384c5477d1599fe9ce1b30b` |
+| routeUsage | ready | `6fd00f1880b603a268dbd679e13b435b98a78ed284a7cbeca2018eda0e999618` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 497 |
-| pageRouteCount | 316 |
+| routeCount | 504 |
+| pageRouteCount | 323 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 505 |
+| mainRequestBindingCount | 512 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 260 |
-| actionBindingCount | 294 |
-| acceptedActionBindingCount | 274 |
+| registeredActionCount | 266 |
+| actionBindingCount | 300 |
+| acceptedActionBindingCount | 280 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 254 |
-| coveredProductionMutationConsumerPairCount | 254 |
+| productionMutationConsumerPairCount | 260 |
+| coveredProductionMutationConsumerPairCount | 260 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -105,6 +105,7 @@
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | contract-file.download-private-file-by-ticket | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
+| GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /health/readiness | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /me/signature/canvas-capabilities | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureCapabilities | — | not_applicable | — |
@@ -342,7 +343,13 @@
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file | covered | — |
+| POST | /global-invoices/:invoiceRecordId/void | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#voidGlobalInvoice | global-invoice.void | covered | — |
+| POST | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createGlobalInvoice | global-invoice.create | covered | — |
+| POST | /global-invoices/red | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createRedGlobalInvoice | global-invoice.red | covered | — |
+| POST | /global-invoices/reissue | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createReissueGlobalInvoice | global-invoice.reissue | covered | — |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
+| POST | /invoice-clearing-allocations/:clearingAllocationId/reversal | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#reverseGlobalInvoiceAllocation | global-invoice.reverse-clearing-allocation | covered | — |
+| POST | /invoice-clearing-allocations | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#allocateGlobalInvoice | global-invoice.allocate-clearing | covered | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | signature.upload-canvas | covered | — |

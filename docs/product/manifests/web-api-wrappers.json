@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 20,
-    "exportedFunctionCount": 503,
-    "transportWrapperCount": 483,
+    "apiModuleCount": 21,
+    "exportedFunctionCount": 510,
+    "transportWrapperCount": 490,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 505,
+    "mainRequestBindingCount": 512,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 505,
-    "productionConsumerCount": 377,
+    "requestEdgeCount": 512,
+    "productionConsumerCount": 384,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 270,
-    "reachableProductionModuleCount": 237
+    "productionModuleCount": 272,
+    "reachableProductionModuleCount": 239
   },
   "wrappers": [
     {
@@ -513,7 +513,8 @@
         "apps/web-admin/src/api/clearing.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -10955,6 +10956,213 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "allocateGlobalInvoice",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/invoice-clearing-allocations",
+          "normalizedPath": "/invoice-clearing-allocations",
+          "normalizedKey": "POST /invoice-clearing-allocations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "allocateGlobalInvoice",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createGlobalInvoice",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/global-invoices",
+          "normalizedPath": "/global-invoices",
+          "normalizedKey": "POST /global-invoices",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createGlobalInvoice",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createRedGlobalInvoice",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/global-invoices/red",
+          "normalizedPath": "/global-invoices/red",
+          "normalizedKey": "POST /global-invoices/red",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createRedGlobalInvoice",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createReissueGlobalInvoice",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/global-invoices/reissue",
+          "normalizedPath": "/global-invoices/reissue",
+          "normalizedKey": "POST /global-invoices/reissue",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createReissueGlobalInvoice",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchGlobalInvoiceCapabilities",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 30,
+          "method": "GET",
+          "path": "/global-invoices/capabilities",
+          "normalizedPath": "/global-invoices/capabilities",
+          "normalizedKey": "GET /global-invoices/capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchGlobalInvoiceCapabilities"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reverseGlobalInvoiceAllocation",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/invoice-clearing-allocations/:param/reversal",
+          "normalizedPath": "/invoice-clearing-allocations/:param/reversal",
+          "normalizedKey": "POST /invoice-clearing-allocations/:param/reversal",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reverseGlobalInvoiceAllocation",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "voidGlobalInvoice",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/global-invoices/:param/void",
+          "normalizedPath": "/global-invoices/:param/void",
+          "normalizedKey": "POST /global-invoices/:param/void",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "voidGlobalInvoice",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     },

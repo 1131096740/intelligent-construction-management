@@ -1,18 +1,22 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
 import {
   allocateGlobalInvoice,
   createGlobalInvoice,
   createRedGlobalInvoice,
   createReissueGlobalInvoice,
+  fetchGlobalInvoiceCapabilities,
   reverseGlobalInvoiceAllocation,
   voidGlobalInvoice
 } from "../../api/global-invoice.api";
+import { fetchClearingCapabilities } from "../../api/clearing.api";
 import { formatUnknownApiError } from "../../api/error-message";
 
 const submitting = ref(false);
 const message = ref("");
+const globalInvoiceCapabilities = ref({ create: false, correct: false });
+const clearingCapabilities = ref<{ availableActions: string[] }>({ availableActions: [] });
 const invoiceForm = reactive({
   invoiceType: "vat_special", invoiceIdentityKind: "traditional", owningCompanyEntityId: "", direction: "inbound",
   sellerTaxId: "", buyerTaxId: "", invoiceCode: "", invoiceNumber: "",
@@ -38,24 +42,69 @@ async function submit(label: string, work: () => Promise<{ id: string }>) {
     MessagePlugin.error(message.value);
   } finally { submitting.value = false; }
 }
-function create() { return submit("全局发票", () => createGlobalInvoice(invoicePayload())); }
+function create() { return submit("全局发票", () => createGlobalInvoiceWithCapability(invoicePayload())); }
 function allocate() {
-  return submit("清分发票分配", () => allocateGlobalInvoice({ ...allocationForm, structuredReasonCode: allocationForm.structuredReasonCode || undefined, idempotencyKey: idempotencyKey() }));
+  return submit("清分发票分配", () => allocateGlobalInvoiceWithCapability({ ...allocationForm, structuredReasonCode: allocationForm.structuredReasonCode || undefined, idempotencyKey: idempotencyKey() }));
 }
-function voidInvoice() { return submit("发票作废事实", () => voidGlobalInvoice(lifecycleForm.invoiceRecordId, { reasonCode: lifecycleForm.reasonCode, idempotencyKey: idempotencyKey() })); }
+function voidInvoice() { return submit("发票作废事实", () => voidGlobalInvoiceWithCapability(lifecycleForm.invoiceRecordId, { reasonCode: lifecycleForm.reasonCode, idempotencyKey: idempotencyKey() })); }
 function redInvoice() {
-  return submit("红字发票", () => createRedGlobalInvoice({ ...invoicePayload(), blueInvoiceRecordId: lifecycleForm.linkedInvoiceRecordId, reasonCode: lifecycleForm.reasonCode, blueAllocationReferences: [{ blueInvoiceAllocationId: lifecycleForm.blueAllocationId, amountCents: lifecycleForm.amountCents }] }));
+  return submit("红字发票", () => createRedGlobalInvoiceWithCapability({ ...invoicePayload(), blueInvoiceRecordId: lifecycleForm.linkedInvoiceRecordId, reasonCode: lifecycleForm.reasonCode, blueAllocationReferences: [{ blueInvoiceAllocationId: lifecycleForm.blueAllocationId, amountCents: lifecycleForm.amountCents }] }));
 }
 function reissueInvoice() {
-  return submit("重开发票", () => createReissueGlobalInvoice({ ...invoicePayload(), originalInvoiceRecordId: lifecycleForm.linkedInvoiceRecordId, reasonCode: lifecycleForm.reasonCode }));
+  return submit("重开发票", () => createReissueGlobalInvoiceWithCapability({ ...invoicePayload(), originalInvoiceRecordId: lifecycleForm.linkedInvoiceRecordId, reasonCode: lifecycleForm.reasonCode }));
 }
 function reverseAllocation() {
-  return submit("反向清分分配", () => reverseGlobalInvoiceAllocation(reversalForm.allocationId, {
+  return submit("反向清分分配", () => reverseGlobalInvoiceAllocationWithCapability(reversalForm.allocationId, {
     amountCents: reversalForm.amountCents,
     structuredReasonCode: reversalForm.structuredReasonCode,
     idempotencyKey: idempotencyKey()
   }));
 }
+async function createGlobalInvoiceWithCapability(body: Parameters<typeof createGlobalInvoice>[0]) {
+  const capability = await fetchGlobalInvoiceCapabilities();
+  const operationAllowed = capability.create;
+  if (!operationAllowed) throw new Error("当前账号无权登记全局发票");
+  return await createGlobalInvoice(body);
+}
+async function voidGlobalInvoiceWithCapability(invoiceRecordId: string, body: Parameters<typeof voidGlobalInvoice>[1]) {
+  const capability = await fetchGlobalInvoiceCapabilities();
+  const operationAllowed = capability.correct;
+  if (!operationAllowed) throw new Error("当前账号无权追加发票作废");
+  return await voidGlobalInvoice(invoiceRecordId, body);
+}
+async function createRedGlobalInvoiceWithCapability(body: Parameters<typeof createRedGlobalInvoice>[0]) {
+  const capability = await fetchGlobalInvoiceCapabilities();
+  const operationAllowed = capability.correct;
+  if (!operationAllowed) throw new Error("当前账号无权追加红字发票");
+  return await createRedGlobalInvoice(body);
+}
+async function createReissueGlobalInvoiceWithCapability(body: Parameters<typeof createReissueGlobalInvoice>[0]) {
+  const capability = await fetchGlobalInvoiceCapabilities();
+  const operationAllowed = capability.correct;
+  if (!operationAllowed) throw new Error("当前账号无权重开发票");
+  return await createReissueGlobalInvoice(body);
+}
+async function allocateGlobalInvoiceWithCapability(body: Parameters<typeof allocateGlobalInvoice>[0]) {
+  const capability = await fetchClearingCapabilities();
+  const operationAllowed = capability.availableActions.includes("clearing.confirm");
+  if (!operationAllowed) throw new Error("当前账号无权追加清分分配");
+  return allocateGlobalInvoice(body);
+}
+async function reverseGlobalInvoiceAllocationWithCapability(allocationId: string, body: Parameters<typeof reverseGlobalInvoiceAllocation>[1]) {
+  const capability = await fetchClearingCapabilities();
+  const operationAllowed = capability.availableActions.includes("clearing.confirm");
+  if (!operationAllowed) throw new Error("当前账号无权反向清分分配");
+  return reverseGlobalInvoiceAllocation(allocationId, body);
+}
+onMounted(async () => {
+  try {
+    const [global, clearing] = await Promise.all([fetchGlobalInvoiceCapabilities(), fetchClearingCapabilities()]);
+    globalInvoiceCapabilities.value = global;
+    clearingCapabilities.value = clearing;
+  } catch (error) {
+    message.value = formatUnknownApiError(error, "加载操作权限失败");
+  }
+});
 </script>
 
 <template>
