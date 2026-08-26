@@ -1,4 +1,7 @@
-import { activeApprovalDelegatorIds } from "./active-approval-delegations";
+import {
+  activeApprovalDelegatorIds,
+  activeScopedApprovalDelegatorIds
+} from "./active-approval-delegations";
 
 const NOW = new Date("2026-07-12T08:00:00.000Z");
 
@@ -33,6 +36,9 @@ describe("activeApprovalDelegatorIds", () => {
     expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
       where: {
         toUserId: "to-1",
+        actionKey: null,
+        resourceType: null,
+        resourceId: null,
         enabled: true,
         startsAt: { lte: NOW },
         endsAt: { gte: NOW }
@@ -76,5 +82,42 @@ describe("activeApprovalDelegatorIds", () => {
     await expect(
       activeApprovalDelegatorIds(prisma as never, "to-1", NOW)
     ).resolves.toEqual([]);
+  });
+});
+
+describe("activeScopedApprovalDelegatorIds", () => {
+  it("only accepts the exact action and resource scope", async () => {
+    const prisma = client(
+      [{ fromUserId: "finance-director-1" }],
+      [
+        { id: "delegate-1", isActive: true },
+        { id: "finance-director-1", isActive: true }
+      ]
+    );
+
+    await expect(
+      activeScopedApprovalDelegatorIds(
+        prisma as never,
+        "delegate-1",
+        {
+          actionKey: "clearing.confirm",
+          resourceType: "clearing_event",
+          resourceId: "event-1"
+        },
+        NOW
+      )
+    ).resolves.toEqual(["finance-director-1"]);
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+      where: {
+        toUserId: "delegate-1",
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_event",
+        resourceId: "event-1",
+        enabled: true,
+        startsAt: { lte: NOW },
+        endsAt: { gte: NOW }
+      },
+      select: { fromUserId: true }
+    });
   });
 });

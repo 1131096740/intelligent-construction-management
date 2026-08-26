@@ -47,6 +47,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ExpenseClaimController: "expense",
   FileController: "files",
   InvoiceLedgerController: "finance",
+  ClearingController: "finance",
   MeController: "account",
   OrganizationController: "organization",
   OperatingTakeoverController: "project",

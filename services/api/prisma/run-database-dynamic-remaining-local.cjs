@@ -148,6 +148,7 @@ const GROUPS = [
       "src/database/project-operating-profile-db.spec.ts",
       "src/database/business-entry-definition-postgres.spec.ts",
       "src/database/operating-ledger-concurrency.spec.ts",
+      "src/database/clearing-concurrency.spec.ts",
       "src/database/operating-source-replay-consistency.spec.ts",
       "src/database/pol05-operating-source-facts.spec.ts",
       "src/database/contract-governance-file-concurrency.spec.ts",
@@ -164,6 +165,7 @@ const GROUPS = [
       RUN_PROJECT_UPSTREAM_FUND_DB_TESTS: "1",
       RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
       RUN_OPERATING_LEDGER_DATABASE: "1",
+      RUN_CLEARING_DATABASE: "1",
       RUN_OPERATING_SOURCE_REPLAY_DATABASE: "1",
       RUN_POL05_OPERATING_SOURCE_DATABASE: "1",
       OPERATING_LEDGER_DATABASE_URL: "databaseUrl",
@@ -171,7 +173,7 @@ const GROUPS = [
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 40,
+    pendingTests: 41,
     requiresOperatingLedgerWriteSecret: true
   }
 ];

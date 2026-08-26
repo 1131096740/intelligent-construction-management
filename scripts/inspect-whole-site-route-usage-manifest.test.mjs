@@ -997,7 +997,7 @@ test("renders deterministically without wall-clock evidence", () => {
   assert.doesNotMatch(rendered, /generatedAt|timestamp/i);
 });
 
-test("locks the repository baseline to 486 routes and no route-usage blockers", async () => {
+test("locks the repository baseline to 497 routes and no route-usage blockers", async () => {
   const manifest = await inspectWholeSiteRouteUsageManifest({
     root: REPOSITORY_ROOT
   });
@@ -1131,7 +1131,7 @@ test("locks the repository baseline to 486 routes and no route-usage blockers", 
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 486);
+  assert.equal(manifest.summary.routeCount, 497);
   assert.equal(manifest.summary.classificationOverrideCount, 183);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
@@ -1141,14 +1141,14 @@ test("locks the repository baseline to 486 routes and no route-usage blockers", 
     manifest.summary.consumerSurfaceOverrideSha256,
     "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 303);
-  assert.equal(manifest.summary.pageRouteCount, 305);
+  assert.equal(manifest.summary.derivedProductionPageCount, 314);
+  assert.equal(manifest.summary.pageRouteCount, 316);
   assert.equal(manifest.summary.externalTakeoverCount, 70);
   assert.equal(manifest.summary.exitCandidateCount, 108);
   assert.equal(manifest.summary.internalTaskCount, 3);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 357,
+    web_api_wrapper: 368,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 2,

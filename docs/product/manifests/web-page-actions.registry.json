@@ -77,6 +77,206 @@
       ]
     },
     {
+      "id": "clearing.case.create",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createClearingCaseWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.prepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "createClearingCase"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.prepare",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.prepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "createClearingEvent"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.revise",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviseClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.prepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "reviseClearingEvent"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.submit",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.submit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "submitClearingEvent"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.confirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "confirmClearingEvent"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.attest",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attestClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.attest"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "attestClearingEvent"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.return",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.return"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "returnClearingEvent"
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.reopen",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reopenClearingEventWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.reopen"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "name": "reopenClearingEvent"
+        }
+      ]
+    },
+    {
       "id": "archive.create-private-file-download-ticket",
       "usage": "page_action",
       "routePaths": [

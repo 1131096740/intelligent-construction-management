@@ -1,4 +1,5 @@
 import { Injectable, Optional } from "@nestjs/common";
+import { BUSINESS_ACTIONS, type BusinessAction } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
@@ -23,6 +24,8 @@ export class ApprovalDelegationService {
     if (!this.prisma) {
       throw new Error("Prisma service is required to create approval delegation");
     }
+
+    const scope = delegationScope(input);
 
     if (!input.toUserId || input.toUserId === fromUserId) {
       throw new Error("请选择需要委托的审批接收人，不能委托给自己");
@@ -53,7 +56,13 @@ export class ApprovalDelegationService {
     }
 
     const delegation = await this.prisma.approvalDelegation.create({
-      data: { fromUserId, toUserId: input.toUserId, startsAt, endsAt }
+      data: {
+        fromUserId,
+        toUserId: input.toUserId,
+        startsAt,
+        endsAt,
+        ...(scope ?? {})
+      }
     });
 
     await this.audit.record(this.prisma, {
@@ -64,7 +73,8 @@ export class ApprovalDelegationService {
       metadata: {
         toUserId: input.toUserId,
         startsAt: startsAt.toISOString(),
-        endsAt: endsAt.toISOString()
+        endsAt: endsAt.toISOString(),
+        ...(scope ?? {})
       }
     });
 
@@ -180,4 +190,22 @@ export class ApprovalDelegationService {
     }
     return this.projectVisibility.visibleProjectIds(userId);
   }
+}
+
+function delegationScope(input: CreateApprovalDelegationDto) {
+  const values = [input.actionKey, input.resourceType, input.resourceId];
+  if (values.every((value) => value === undefined)) return null;
+  if (values.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new Error("委托作用域必须同时包含动作、资源类型和资源标识");
+  }
+  const actionKey = input.actionKey as BusinessAction;
+  const resourceType = input.resourceType!.trim();
+  const resourceId = input.resourceId!.trim();
+  if (!BUSINESS_ACTIONS.includes(actionKey)) {
+    throw new Error("委托动作不在受支持的业务权限清单中");
+  }
+  if (!/^[a-z][a-z0-9_]{1,63}$/.test(resourceType) || resourceId.length > 200) {
+    throw new Error("委托资源作用域不合法");
+  }
+  return { actionKey, resourceType, resourceId };
 }

@@ -41,6 +41,7 @@ export const settlementMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["settlement.create"];
 export const operatingTakeoverRoleKeys =
   ACTION_REQUIRED_ROLES["operating_takeover.manage"];
+export const clearingRoleKeys = ACTION_REQUIRED_ROLES["clearing.read"];
 export const businessPartyCreateRoleKeys =
   ACTION_REQUIRED_ROLES["business_party.create"];
 
@@ -90,6 +91,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     items: [
       { label: "项目工作台", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
       { label: "历史经营接管", path: "/历史经营接管", requiredRoleKeys: operatingTakeoverRoleKeys },
+      {
+        label: "清分工作台",
+        path: "/清分工作台",
+        requiredGlobalRoleKeys: clearingRoleKeys
+      },
       { label: "项目花名册", path: "/项目花名册" }
     ]
   },
@@ -332,6 +338,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "历史经营接管",
         component: () => import("../pages/projects/ProjectOperatingTakeoverPage.vue"),
         meta: { requiredRoleKeys: operatingTakeoverRoleKeys, title: "历史经营接管" }
+      },
+      {
+        path: "清分工作台",
+        component: () => import("../pages/clearing/ClearingWorkbenchPage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: clearingRoleKeys,
+          title: "清分工作台"
+        }
       },
       {
         path: "项目支出/:projectId/:expenseRequestId",

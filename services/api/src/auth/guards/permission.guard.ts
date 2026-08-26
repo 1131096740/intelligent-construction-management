@@ -14,6 +14,7 @@ import {
 } from "@jiangkong/shared-domain";
 import {
   activeApprovalDelegatorIds,
+  activeScopedApprovalDelegatorIds,
   type ActiveApprovalDelegationClient
 } from "../../approval/active-approval-delegations";
 import {
@@ -125,7 +126,11 @@ export class PermissionGuard implements CanActivate {
         throw new ForbiddenException("当前账号不是该审批节点冻结的处理人");
       }
       if (!canPerform(requiredAction, actionRoleKeys)) {
+        const scopedClearingAllowed = requiredAction.startsWith("clearing.")
+          ? await this.hasScopedClearingAction(request, request.user.id, requiredAction)
+          : false;
         const delegatedApprovalAllowed =
+          scopedClearingAllowed ||
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&
             projectId &&
@@ -390,6 +395,28 @@ export class PermissionGuard implements CanActivate {
     }
 
     return false;
+  }
+
+  private async hasScopedClearingAction(
+    request: AuthenticatedRequest,
+    userId: string,
+    action: BusinessAction
+  ) {
+    const delegatorUserId = typeof request.body?.delegatorUserId === "string"
+      ? request.body.delegatorUserId.trim()
+      : "";
+    const scope = clearingDelegationScope(request, action);
+    if (!delegatorUserId || !scope) return false;
+    const delegationClient = this.prisma as Partial<ActiveApprovalDelegationClient>;
+    if (!delegationClient.approvalDelegation || !delegationClient.user) return false;
+    const delegatorIds = await activeScopedApprovalDelegatorIds(
+      delegationClient as ActiveApprovalDelegationClient,
+      userId,
+      scope
+    );
+    if (!delegatorIds.includes(delegatorUserId)) return false;
+    const roleKeys = await this.companyRoles.resolveActiveRoleScopes(delegatorUserId);
+    return canPerform(action, roleKeys);
   }
 
   private async extractProjectId(
@@ -659,4 +686,26 @@ export class PermissionGuard implements CanActivate {
     }
     return projectId;
   }
+}
+
+function clearingDelegationScope(
+  request: AuthenticatedRequest,
+  action: BusinessAction
+) {
+  const eventId = request.params?.eventId;
+  if (typeof eventId === "string" && eventId) {
+    return { actionKey: action, resourceType: "clearing_event", resourceId: eventId };
+  }
+  const caseId = request.params?.caseId;
+  if (typeof caseId === "string" && caseId) {
+    return { actionKey: action, resourceType: "clearing_case", resourceId: caseId };
+  }
+  const projectId = typeof request.body?.projectId === "string"
+    ? request.body.projectId
+    : typeof request.query?.projectId === "string"
+      ? request.query.projectId
+      : undefined;
+  return projectId
+    ? { actionKey: action, resourceType: "clearing_project", resourceId: projectId }
+    : null;
 }

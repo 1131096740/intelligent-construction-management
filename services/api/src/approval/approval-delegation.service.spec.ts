@@ -65,6 +65,74 @@ describe("ApprovalDelegationService", () => {
     });
   });
 
+  it("persists an exact action and resource scope for clearing delegation", async () => {
+    const prisma = {
+      approvalDelegation: {
+        create: jest.fn().mockResolvedValue({
+          id: "delegation-scoped-1",
+          fromUserId: "user-a",
+          toUserId: "user-b"
+        })
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: "user-b" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "user-b" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
+
+    await service.create("user-a", {
+      toUserId: "user-b",
+      startsAt: "2026-06-23T00:00:00.000Z",
+      endsAt: "2026-07-23T00:00:00.000Z",
+      actionKey: "clearing.confirm",
+      resourceType: "clearing_event",
+      resourceId: "event-1"
+    });
+
+    expect(prisma.approvalDelegation.create).toHaveBeenCalledWith({
+      data: {
+        fromUserId: "user-a",
+        toUserId: "user-b",
+        startsAt: new Date("2026-06-23T00:00:00.000Z"),
+        endsAt: new Date("2026-07-23T00:00:00.000Z"),
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_event",
+        resourceId: "event-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(prisma, expect.objectContaining({
+      metadata: expect.objectContaining({
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_event",
+        resourceId: "event-1"
+      })
+    }));
+  });
+
+  it("rejects a partially scoped delegation", async () => {
+    const prisma = { approvalDelegation: { create: jest.fn() } };
+    const service = new ApprovalDelegationService(prisma as never, audit as never);
+
+    await expect(
+      service.create("user-a", {
+        toUserId: "user-b",
+        startsAt: "2026-06-23T00:00:00.000Z",
+        endsAt: "2026-07-23T00:00:00.000Z",
+        actionKey: "clearing.confirm"
+      })
+    ).rejects.toThrow("作用域必须同时包含动作、资源类型和资源标识");
+    expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a delegation target outside the delegator visible projects", async () => {
     const prisma = {
       approvalDelegation: { create: jest.fn() },
@@ -391,6 +459,9 @@ describe("ApprovalDelegationService", () => {
     expect(client.approvalDelegation.findMany).toHaveBeenCalledWith({
       where: {
         toUserId: "user-b",
+        actionKey: null,
+        resourceType: null,
+        resourceId: null,
         enabled: true,
         startsAt: { lte: now },
         endsAt: { gte: now }

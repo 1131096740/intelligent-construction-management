@@ -71,7 +71,7 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 9 组 runner。已有 8 组保持独立收据；第 9 组由
-`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 10 个子组，覆盖原先缺少编排及后续新增的 70 条。
+`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 10 个子组，覆盖原先缺少编排及后续新增的 71 条。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
 
@@ -95,7 +95,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | settlement draft lifecycle | 1 | 1 |
 | 合计 | 24 | 9 |
 
-## 新增编排的 70 条
+## 新增编排的 71 条
 
 | 测试文件 | pending tests | RUN 开关 |
 | --- | ---: | --- |
@@ -123,11 +123,12 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | project-operating-profile-db.spec.ts | 17 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
 | business-entry-definition-postgres.spec.ts | 5 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
 | operating-ledger-concurrency.spec.ts | 1 | `RUN_OPERATING_LEDGER_DATABASE` |
+| clearing-concurrency.spec.ts | 1 | `RUN_CLEARING_DATABASE` |
 | operating-source-replay-consistency.spec.ts | 1 | `RUN_OPERATING_SOURCE_REPLAY_DATABASE` |
 | pol05-operating-source-facts.spec.ts | 1 | `RUN_POL05_OPERATING_SOURCE_DATABASE` |
 | contract-governance-file-concurrency.spec.ts | 1 | `RUN_CONTRACT_GOVERNANCE_CONCURRENCY` |
 | project-external-upstream-db.spec.ts | 2 | `RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS` |
 | project-affiliate-subject-db.spec.ts | 2 | `RUN_PROJECT_AFFILIATE_DB_TESTS` |
-| 合计 | 67 | 29 个文件 |
+| 合计 | 71 | 30 个文件 |
 
-这 70 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。当前清单合计 94 条 pending tests、38 个文件，remaining=0。
+这 71 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。当前清单合计 95 条 pending tests、39 个文件，remaining=0。

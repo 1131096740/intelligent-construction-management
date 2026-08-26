@@ -749,6 +749,63 @@ describe("PermissionGuard", () => {
     expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
       where: {
         toUserId: "delegatee-1",
+        actionKey: null,
+        resourceType: null,
+        resourceId: null,
+        enabled: true,
+        startsAt: { lte: expect.any(Date) },
+        endsAt: { gte: expect.any(Date) }
+      },
+      select: { fromUserId: true }
+    });
+  });
+
+  it("allows a clearing action only through an exact scoped delegation", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegatee-1", isActive: true },
+          { id: "finance-director-1", isActive: true }
+        ]),
+        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve({ isActive: where.id === "finance-director-1" })
+        )
+      }
+    };
+    const companyRoles = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_director"])
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("clearing.confirm")
+      } as never,
+      prisma as never,
+      undefined,
+      companyRoles as never
+    );
+
+    await expect(
+      guard.canActivate(contextWithRequest({
+        user: { id: "delegatee-1" },
+        params: { eventId: "event-1" },
+        body: { delegatorUserId: "finance-director-1" }
+      }))
+    ).resolves.toBe(true);
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+      where: {
+        toUserId: "delegatee-1",
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_event",
+        resourceId: "event-1",
         enabled: true,
         startsAt: { lte: expect.any(Date) },
         endsAt: { gte: expect.any(Date) }

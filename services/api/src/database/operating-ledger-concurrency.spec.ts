@@ -168,7 +168,7 @@ describe("operating ledger PostgreSQL concurrency", () => {
         await expectDatabaseError(
           () =>
             runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
-              tx.$executeRaw(Prisma.sql`TRUNCATE "OperatingImpactEntry"`)
+              tx.$executeRaw(Prisma.sql`TRUNCATE "OperatingImpactEntry" CASCADE`)
             ),
           runtimeRoleTest ? "permission denied" : "只允许追加"
         );
