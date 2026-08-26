@@ -96,6 +96,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/清分工作台",
         requiredGlobalRoleKeys: clearingRoleKeys
       },
+      {
+        label: "全局发票与清分分配",
+        path: "/全局发票与清分分配",
+        requiredGlobalRoleKeys: clearingRoleKeys
+      },
       { label: "项目花名册", path: "/项目花名册" }
     ]
   },
@@ -345,6 +350,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: {
           requiredGlobalRoleKeys: clearingRoleKeys,
           title: "清分工作台"
+        }
+      },
+      {
+        path: "全局发票与清分分配",
+        component: () => import("../pages/clearing/GlobalInvoiceWorkbenchPage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: clearingRoleKeys,
+          title: "全局发票与清分分配"
         }
       },
       {
