@@ -1425,10 +1425,11 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     const harness = createHarness();
     const invoice = await harness.service.createProcurementInvoice("procurement-1", ACTORS.handler, createInvoiceInput());
     const rows: Array<Record<string, unknown>> = [];
+    const projectParticipatingCompany = { findFirst: jest.fn().mockResolvedValue({ id: "project-company-1" }) };
     Object.assign(harness.tx, {
       clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
       clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", amountCents: 6000n, evidenceLevel: "B", attestation: { id: "attestation-1" }, confirmation: { id: "confirmation-1" } }) },
-      projectParticipatingCompany: { findFirst: jest.fn().mockResolvedValue({ id: "project-company-1" }) },
+      projectParticipatingCompany,
       invoiceClearingAllocation: {
         findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey?: string; id?: string } }) => Promise.resolve(rows.find((row) => row.idempotencyKey === where.idempotencyKey || row.id === where.id) ?? null)),
         findMany: jest.fn().mockImplementation(() => Promise.resolve(rows)),
@@ -1444,7 +1445,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-1" })).resolves.toMatchObject({ replayed: true });
     await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "2001", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-over-cap" })).rejects.toThrow("反向分配金额超过原清算发票分配的剩余有效金额");
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "4000", structuredReasonCode: "partial_reconciliation", idempotencyKey: "allocation-key-replacement" })).resolves.toMatchObject({ replayed: false });
-    expect((harness.tx as any).projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+    expect(projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ projectId: "project-1", companyEntityId: "company-entity-1" })
     }));
   });
