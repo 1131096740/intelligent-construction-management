@@ -6,6 +6,7 @@ import { createApiValidationPipe } from "../validation/api-validation";
 import type { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoice.dto";
 import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import type { CreateRedGlobalInvoiceDto } from "./dto/create-red-global-invoice.dto";
+import type { CreateReissueGlobalInvoiceDto } from "./dto/create-reissue-global-invoice.dto";
 import { InvoiceLedgerController } from "./invoice-ledger.controller";
 
 type RuntimeDto = new () => object;
@@ -13,6 +14,7 @@ type InvoiceLedgerMethod =
   | "createProcurementInvoice"
   | "createGlobalInvoice"
   | "createRedGlobalInvoice"
+  | "createReissueGlobalInvoice"
   | "createClearingAllocation"
   | "reverseClearingAllocation"
   | "reverseAllocation"
@@ -136,6 +138,16 @@ const validRedGlobalInvoice: CreateRedGlobalInvoiceDto = {
   ]
 };
 
+const validReissueGlobalInvoice: CreateReissueGlobalInvoiceDto = {
+  ...validGlobalInvoice,
+  invoiceCode: "GLOBAL-REISSUE-CODE-001",
+  invoiceNumber: "GLOBAL-REISSUE-NO-001",
+  fileId: "global-reissue-invoice-file-1",
+  idempotencyKey: "global-reissue-invoice-key-1",
+  originalInvoiceRecordId: "original-invoice-1",
+  reasonCode: "issued_with_wrong_name"
+};
+
 describe("InvoiceLedgerController", () => {
   it("exposes the frozen and global-allocation POST routes", () => {
     const routes: Array<[InvoiceLedgerMethod, string]> = [
@@ -145,6 +157,7 @@ describe("InvoiceLedgerController", () => {
       ],
       ["createGlobalInvoice", "global-invoices"],
       ["createRedGlobalInvoice", "global-invoices/red"],
+      ["createReissueGlobalInvoice", "global-invoices/reissue"],
       ["createClearingAllocation", "invoice-clearing-allocations"],
       ["reverseClearingAllocation", "invoice-clearing-allocations/:clearingAllocationId/reversal"],
       ["reverseAllocation", "invoice-allocations/:allocationId/reversal"],
@@ -228,6 +241,7 @@ describe("InvoiceLedgerController", () => {
       createProcurementInvoice: jest.fn().mockResolvedValue({ id: "invoice-1" }),
       createGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-invoice-1" }),
       createRedGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-red-invoice-1" }),
+      createReissueGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-reissue-invoice-1" }),
       reverseAllocation: jest.fn().mockResolvedValue({ id: "allocation-1" }),
       createNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
       reviewNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
@@ -260,6 +274,7 @@ describe("InvoiceLedgerController", () => {
     );
     await controller.createGlobalInvoice(user, validGlobalInvoice);
     await controller.createRedGlobalInvoice(user, validRedGlobalInvoice);
+    await controller.createReissueGlobalInvoice(user, validReissueGlobalInvoice);
     await controller.reverseAllocation("allocation-1", user, reverseBody);
     await controller.createNoInvoiceConfirmation(
       "procurement-1",
@@ -296,6 +311,10 @@ describe("InvoiceLedgerController", () => {
     expect(service.createRedGlobalInvoice).toHaveBeenCalledWith(
       "actor-1",
       validRedGlobalInvoice
+    );
+    expect(service.createReissueGlobalInvoice).toHaveBeenCalledWith(
+      "actor-1",
+      validReissueGlobalInvoice
     );
     expect(service.reverseAllocation).toHaveBeenCalledWith(
       "allocation-1",
@@ -341,6 +360,10 @@ describe("InvoiceLedgerController", () => {
     await expect(
       validateBody("createRedGlobalInvoice", 1, validRedGlobalInvoice)
     ).resolves.toMatchObject(validRedGlobalInvoice);
+    expect(bodyMetatype("createReissueGlobalInvoice", 1)).not.toBe(Object);
+    await expect(
+      validateBody("createReissueGlobalInvoice", 1, validReissueGlobalInvoice)
+    ).resolves.toMatchObject(validReissueGlobalInvoice);
   });
 
   it("rejects unsupported invoice types, missing identities and nested unknown fields", async () => {

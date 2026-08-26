@@ -1400,6 +1400,26 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     await expect(harness.service.createRedGlobalInvoice(ACTORS.globalFinanceStaff, { ...input, reasonCode: "other_reason" })).rejects.toThrow("幂等键已用于不同的红字发票请求");
   });
 
+  it("reissues a global invoice as a linked new fact and preserves company and direction", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-3": ACTORS.globalFinanceStaff
+      },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const original = await harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
+    const input = {
+      ...createGlobalInvoiceInput({ invoiceCode: "GLOBAL-REISSUE-CODE-1", invoiceNumber: "GLOBAL-REISSUE-NO-1", fileId: "global-invoice-file-3", idempotencyKey: "global-reissue-key-1" }),
+      originalInvoiceRecordId: original.id,
+      reasonCode: "issued_with_wrong_name"
+    };
+    await expect(harness.service.createReissueGlobalInvoice(ACTORS.globalFinanceStaff, input)).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.createReissueGlobalInvoice(ACTORS.globalFinanceStaff, input)).resolves.toMatchObject({ replayed: true });
+    expect(harness.lifecycleEvents).toEqual([expect.objectContaining({ invoiceRecordId: original.id, kind: "reissue" })]);
+    await expect(harness.service.createReissueGlobalInvoice(ACTORS.globalFinanceStaff, { ...input, direction: "outbound" })).rejects.toThrow("幂等键已用于不同的发票重开请求");
+  });
+
   it("allocates a global invoice only to a confirmed clearing version, replays its idempotency key, and caps total evidence", async () => {
     const harness = createHarness();
     const invoice = await harness.service.createProcurementInvoice("procurement-1", ACTORS.handler, createInvoiceInput());

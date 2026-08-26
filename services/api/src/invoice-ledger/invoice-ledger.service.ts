@@ -43,6 +43,7 @@ import type { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-
 import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import type { VoidGlobalInvoiceDto } from "./dto/void-global-invoice.dto";
 import type { CreateRedGlobalInvoiceDto } from "./dto/create-red-global-invoice.dto";
+import type { CreateReissueGlobalInvoiceDto } from "./dto/create-reissue-global-invoice.dto";
 import type { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import type { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
 
@@ -607,7 +608,7 @@ export class InvoiceLedgerService {
         return { id: replay.id, replayed: true };
       }
       const invoice = await tx.invoiceRecord.findUnique({ where: { id: normalizedInvoiceRecordId } });
-      if (!invoice || invoice.projectId !== null || invoice.sourceBusinessType !== "global_clearing_invoice") {
+      if (!invoice || invoice.projectId !== null || !["global_clearing_invoice", "global_clearing_invoice_red", "global_clearing_invoice_reissue"].includes(invoice.sourceBusinessType)) {
         throw new NotFoundException("可作废的全局发票不存在");
       }
       const event = await tx.invoiceLifecycleEvent.create({ data: {
@@ -660,6 +661,42 @@ export class InvoiceLedgerService {
       for (const reference of references) await tx.invoiceRedAllocationReference.create({ data: { lifecycleEventId: event.id, redInvoiceRecordId: red.id, blueInvoiceAllocationId: reference.blueInvoiceAllocationId, amountCents: reference.amountCents } });
       await this.audit.record(tx, { actorUserId, action: "invoice.global.red.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { blueInvoiceRecordId: blue.id, redInvoiceRecordId: red.id, reasonCode } });
       return { id: red.id, lifecycleEventId: event.id, replayed: false };
+    }));
+  }
+
+  async createReissueGlobalInvoice(actorUserId: string, input: CreateReissueGlobalInvoiceDto) {
+    const header = this.prepareInvoiceHeader(input);
+    const originalInvoiceRecordId = requiredId(input.originalInvoiceRecordId, "请选择需要重开的原发票");
+    const reasonCode = requiredText(input.reasonCode, "重开原因", 100);
+    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const requestFingerprint = createHash("sha256").update(JSON.stringify([
+      "global-invoice-reissue", 1, actorUserId, originalInvoiceRecordId,
+      header.identityKey, header.identityKind, header.owningCompanyEntityId,
+      header.direction, header.invoiceType, header.invoiceCode, header.invoiceNumber,
+      header.externalIdentifier, header.issueDate.toISOString(), header.sellerName,
+      header.sellerTaxId, header.buyerName, header.buyerTaxId,
+      header.taxExclusiveAmountCents.toString(), header.taxAmountCents.toString(),
+      header.totalAmountCents.toString(), header.fileId, reasonCode
+    ]), "utf8").digest("hex");
+    await this.files.assertCanDownloadFileById(header.fileId, actorUserId);
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      await this.requireGlobalInvoiceManager(tx, actorUserId);
+      const replay = await tx.invoiceLifecycleEvent.findUnique({ where: { idempotencyKey } });
+      if (replay) {
+        if (replay.requestFingerprint !== requestFingerprint) throw new ConflictException("幂等键已用于不同的发票重开请求");
+        return { id: replay.relatedInvoiceRecordId, lifecycleEventId: replay.id, replayed: true };
+      }
+      const original = await tx.invoiceRecord.findUnique({ where: { id: originalInvoiceRecordId } });
+      if (!original || original.projectId !== null || !["global_clearing_invoice", "global_clearing_invoice_red", "global_clearing_invoice_reissue"].includes(original.sourceBusinessType)) throw new NotFoundException("需要重开的全局发票不存在");
+      if (original.owningCompanyEntityId !== header.owningCompanyEntityId || original.direction !== header.direction) throw new ConflictException("重开发票必须保持原发票归属公司和进销项方向");
+      const existing = await this.lockInvoiceByIdentity(tx, header.identityKey);
+      if (existing) throw new ConflictException("该发票身份已用于不同的发票事实");
+      const file = await this.files.assertFileHasNoBusinessBinding(tx, header.fileId);
+      if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("只能登记本人上传且尚未绑定的发票文件");
+      const reissued = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_reissue", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
+      const event = await tx.invoiceLifecycleEvent.create({ data: { invoiceRecordId: original.id, relatedInvoiceRecordId: reissued.id, kind: "reissue", reasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.reissue.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { originalInvoiceRecordId: original.id, reissuedInvoiceRecordId: reissued.id, reasonCode } });
+      return { id: reissued.id, lifecycleEventId: event.id, replayed: false };
     }));
   }
 
