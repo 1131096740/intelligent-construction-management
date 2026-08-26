@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `1b4bab4e4b8c20a207b637dc1aebee362e84765233b2cb03d7cd20395359d230` |
-| webApiWrappers | ready | `2f3a1dd09e6e9c75e216a50190d76442386d271beb98d6ab11b2adb8ec9abbc9` |
-| webPageActions | ready | `1e1339c6e2999aa2932a85d0bc833c542a073ccdcdf6ac2a8b47cc1d13312adc` |
-| routeUsage | ready | `3f4d316d98681ca80c2989722b3392f741da1557565d77612bb8dd6f0b67562b` |
+| nestRoutes | ready | `4c019a94ca076d68046ee131d64dcb0cdcf5d9f85c384b0e84b5844e43d5012c` |
+| webApiWrappers | ready | `d99738a7a15de76dd9fb79f67c407703898d8b6cc4568fceee352455ee0c749b` |
+| webPageActions | ready | `fb563ca1fda4dbf9345349d7b82bb2d8d6af59ecbf86f636356a20de0effda73` |
+| routeUsage | ready | `d61b6992f4139da72198b7120d9d92e213c959e4ac972896d01f914ccdabd70c` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 486 |
-| pageRouteCount | 305 |
+| routeCount | 497 |
+| pageRouteCount | 316 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 494 |
+| mainRequestBindingCount | 505 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 252 |
-| actionBindingCount | 286 |
-| acceptedActionBindingCount | 266 |
+| registeredActionCount | 260 |
+| actionBindingCount | 294 |
+| acceptedActionBindingCount | 274 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 246 |
-| coveredProductionMutationConsumerPairCount | 246 |
+| productionMutationConsumerPairCount | 254 |
+| coveredProductionMutationConsumerPairCount | 254 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -58,6 +58,9 @@
 | GET | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listBusinessParties | — | not_applicable | — |
 | GET | /business-parties/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessPartyCreateCapability | — | not_applicable | — |
 | GET | /business-parties/creation-result | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#getBusinessPartyCreationResult | — | not_applicable | — |
+| GET | /clearing-cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCase | — | not_applicable | — |
+| GET | /clearing-cases/capabilities | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCapabilities | — | not_applicable | — |
+| GET | /clearing-cases | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCases | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
 | GET | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchActiveCompanyEntities | — | not_applicable | — |
 | GET | /company-entities/management | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagement | — | not_applicable | — |
@@ -188,6 +191,7 @@
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
 | GET | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | — | not_applicable | — |
+| PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
 | PATCH | /company-entities/:id | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | not_applicable | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |
 | PATCH | /contract-business-scenarios/:scenarioId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario | — | not_applicable | — |
@@ -230,6 +234,13 @@
 | POST | /business-entry-definitions/business-party/create/validate | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessPartyDraft | business-party.create.prepare | covered | — |
 | POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | — |
 | POST | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#submitBusinessPartyCreation | business-party.create | covered | — |
+| POST | /clearing-cases/:caseId/events | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#createClearingEvent | clearing.event.prepare | covered | — |
+| POST | /clearing-cases | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#createClearingCase | clearing.case.create | covered | — |
+| POST | /clearing-cases/events/:eventId/attest | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#attestClearingEvent | clearing.event.attest | covered | — |
+| POST | /clearing-cases/events/:eventId/confirm | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#confirmClearingEvent | clearing.event.confirm | covered | — |
+| POST | /clearing-cases/events/:eventId/reopen | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reopenClearingEvent | clearing.event.reopen | covered | — |
+| POST | /clearing-cases/events/:eventId/return | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#returnClearingEvent | clearing.event.return | covered | — |
+| POST | /clearing-cases/events/:eventId/submit | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#submitClearingEvent | clearing.event.submit | covered | — |
 | POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | — |
 | POST | /company-entities | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | not_applicable | — |
 | POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |

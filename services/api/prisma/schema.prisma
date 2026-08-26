@@ -8,22 +8,22 @@ datasource db {
 }
 
 model User {
-  id                           String                        @id @default(uuid())
-  phone                        String?                       @unique
-  name                         String
-  departmentId                 String?
-  wxOpenid                     String?                       @unique
-  passwordHash                 String?
-  mustChangePassword           Boolean                       @default(true)
-  lastLoginAt                  DateTime?
-  isActive                     Boolean                       @default(true)
+  id                               String                            @id @default(uuid())
+  phone                            String?                           @unique
+  name                             String
+  departmentId                     String?
+  wxOpenid                         String?                           @unique
+  passwordHash                     String?
+  mustChangePassword               Boolean                           @default(true)
+  lastLoginAt                      DateTime?
+  isActive                         Boolean                           @default(true)
   // 旧上传签名只用于历史单据预览与回退；新审批从不可变 Canvas 版本取快照。
-  signatureFileId              String?
-  handwrittenSignatureVersions HandwrittenSignatureVersion[]
-  handwrittenSignatureHandoffs HandwrittenSignatureHandoff[]
+  signatureFileId                  String?
+  handwrittenSignatureVersions     HandwrittenSignatureVersion[]
+  handwrittenSignatureHandoffs     HandwrittenSignatureHandoff[]
   businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
-  createdAt                    DateTime                      @default(now())
-  updatedAt                    DateTime                      @updatedAt
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
 
   @@index([departmentId])
 }
@@ -139,17 +139,17 @@ model UserPosition {
 }
 
 model Project {
-  id                           String    @id @default(uuid())
-  code                         String    @unique
-  name                         String
-  operatingLedgerEffectiveDate DateTime? @db.Date
-  takeoverCompletedDate        DateTime? @db.Date
-  takeoverStatus               String    @default("preparing")
-  constructionEnterpriseLockedAt DateTime?
+  id                               String                            @id @default(uuid())
+  code                             String                            @unique
+  name                             String
+  operatingLedgerEffectiveDate     DateTime?                         @db.Date
+  takeoverCompletedDate            DateTime?                         @db.Date
+  takeoverStatus                   String                            @default("preparing")
+  constructionEnterpriseLockedAt   DateTime?
   businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
-  isActive                     Boolean   @default(true)
-  createdAt                    DateTime  @default(now())
-  updatedAt                    DateTime  @updatedAt
+  isActive                         Boolean                           @default(true)
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
 }
 
 // 项目挂靠企业只通过显式映射生效；变更时结束旧行并新增快照，不覆盖历史事实。
@@ -241,8 +241,9 @@ model OperatingFact {
   status                               String                 @default("confirmed")
   createdAt                            DateTime               @default(now())
   impacts                              OperatingImpactEntry[] @relation("OperatingFactImpacts")
+  clearingImpactLinks                  ClearingImpactLink[]   @relation("ClearingImpactFact")
   originalFact                         OperatingFact?         @relation("OperatingFactAdjustments", fields: [adjustsFactId], references: [id], onDelete: Restrict)
-  adjustments                          OperatingFact[]         @relation("OperatingFactAdjustments")
+  adjustments                          OperatingFact[]        @relation("OperatingFactAdjustments")
 
   @@unique([sourceType, sourceBusinessId])
   @@unique([id, projectId], map: "OperatingFact_id_projectId_key")
@@ -254,25 +255,26 @@ model OperatingFact {
 }
 
 model OperatingImpactEntry {
-  id               String       @id @default(uuid())
-  factId           String
-  projectId        String
-  sourceType       String
-  sourceBusinessId String
-  sourceImpactKey  String
-  idempotencyKey   String       @unique
-  impactKind       String
-  amountCents      BigInt
-  direction        String
-  subjectRole      String?
-  subjectKind      String?
-  subjectId        String?
-  costCategoryCode String?
-  fundPurpose      String?
-  description      String?
-  impactSnapshot   Json
-  createdAt        DateTime     @default(now())
-  fact             OperatingFact @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+  id                  String               @id @default(uuid())
+  factId              String
+  projectId           String
+  sourceType          String
+  sourceBusinessId    String
+  sourceImpactKey     String
+  idempotencyKey      String               @unique
+  impactKind          String
+  amountCents         BigInt
+  direction           String
+  subjectRole         String?
+  subjectKind         String?
+  subjectId           String?
+  costCategoryCode    String?
+  fundPurpose         String?
+  description         String?
+  impactSnapshot      Json
+  createdAt           DateTime             @default(now())
+  fact                OperatingFact        @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+  clearingImpactLinks ClearingImpactLink[] @relation("ClearingImpactEntry")
 
   @@unique([factId, sourceImpactKey])
   @@unique([sourceType, sourceBusinessId, sourceImpactKey], map: "OperatingImpactEntry_source_impact_key")
@@ -280,31 +282,172 @@ model OperatingImpactEntry {
   @@index([factId])
 }
 
+// POL-11A 清分核心：稳定 case/event 标识与不可变版本分离，正式影响仍投影到 OperatingFact。
+model ClearingCase {
+  id                                 String          @id @default(uuid())
+  projectId                          String
+  constructionEnterpriseAssignmentId String
+  category                           String
+  governedSubjectKey                 String
+  status                             String          @default("open")
+  revision                           Int             @default(1)
+  authoritativeGrossCapCents         BigInt
+  currencyCode                       String          @default("CNY")
+  createdByUserId                    String
+  createdAt                          DateTime        @default(now())
+  updatedAt                          DateTime        @updatedAt
+  events                             ClearingEvent[]
+
+  @@unique([projectId, constructionEnterpriseAssignmentId, category, governedSubjectKey], map: "ClearingCase_natural_key")
+  @@index([projectId, status, updatedAt])
+  @@index([constructionEnterpriseAssignmentId])
+}
+
+model ClearingEvent {
+  id               String                 @id @default(uuid())
+  clearingCaseId   String
+  kind             String
+  workflowStatus   String                 @default("draft")
+  revision         Int                    @default(1)
+  currentVersionNo Int                    @default(1)
+  createdByUserId  String
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  clearingCase     ClearingCase           @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict)
+  versions         ClearingEventVersion[]
+
+  @@index([clearingCaseId, workflowStatus, createdAt])
+  @@index([clearingCaseId, kind])
+}
+
+model ClearingEventVersion {
+  id                String                       @id @default(uuid())
+  clearingEventId   String
+  clearingCaseId    String
+  versionNo         Int
+  workflowStatus    String
+  amountCents       BigInt
+  currencyCode      String                       @default("CNY")
+  payableRef        String?
+  evidenceLevel     String
+  payloadSnapshot   Json
+  actorSetSnapshot  Json
+  fingerprint       String
+  previousVersionId String?
+  createdByUserId   String
+  createdAt         DateTime                     @default(now())
+  clearingEvent     ClearingEvent                @relation(fields: [clearingEventId], references: [id], onDelete: Restrict)
+  confirmation      ClearingConfirmation?
+  attestation       ClearingEvidenceAttestation?
+  allocations       ClearingAllocation[]         @relation("ClearingAllocationTarget")
+  sourceAllocations ClearingAllocation[]         @relation("ClearingAllocationSource")
+  impactLinks       ClearingImpactLink[]
+  previousVersion   ClearingEventVersion?        @relation("ClearingEventVersionHistory", fields: [previousVersionId], references: [id], onDelete: Restrict)
+  nextVersions      ClearingEventVersion[]       @relation("ClearingEventVersionHistory")
+
+  @@unique([clearingEventId, versionNo])
+  @@index([clearingCaseId, createdAt])
+  @@index([previousVersionId])
+}
+
+model ClearingEvidenceAttestation {
+  id                       String               @id @default(uuid())
+  eventVersionId           String               @unique
+  attestedByUserId         String
+  attesterActorSetSnapshot Json
+  attestedAt               DateTime             @default(now())
+  eventVersion             ClearingEventVersion @relation(fields: [eventVersionId], references: [id], onDelete: Restrict)
+}
+
+model ClearingConfirmation {
+  id                        String               @id @default(uuid())
+  eventVersionId            String               @unique
+  confirmedByUserId         String
+  confirmerActorSetSnapshot Json
+  confirmedAt               DateTime             @default(now())
+  eventVersion              ClearingEventVersion @relation(fields: [eventVersionId], references: [id], onDelete: Restrict)
+}
+
+model ClearingAllocation {
+  id                        String                @id @default(uuid())
+  eventVersionId            String
+  sourceEventVersionId      String?
+  sourceKind                String
+  amountCents               BigInt
+  sourceRemainingAfterCents BigInt
+  reversesAllocationId      String?
+  createdAt                 DateTime              @default(now())
+  eventVersion              ClearingEventVersion  @relation("ClearingAllocationTarget", fields: [eventVersionId], references: [id], onDelete: Restrict)
+  sourceEventVersion        ClearingEventVersion? @relation("ClearingAllocationSource", fields: [sourceEventVersionId], references: [id], onDelete: Restrict)
+  reversesAllocation        ClearingAllocation?   @relation("ClearingAllocationReversal", fields: [reversesAllocationId], references: [id], onDelete: Restrict)
+  reversedByAllocations     ClearingAllocation[]  @relation("ClearingAllocationReversal")
+
+  @@index([eventVersionId])
+  @@index([sourceEventVersionId])
+  @@index([reversesAllocationId])
+}
+
+model ClearingImpactLink {
+  id                String               @id @default(uuid())
+  eventVersionId    String
+  operatingFactId   String
+  operatingImpactId String
+  sourceImpactKey   String
+  reversesImpactId  String?
+  amountCents       BigInt
+  createdAt         DateTime             @default(now())
+  eventVersion      ClearingEventVersion @relation(fields: [eventVersionId], references: [id], onDelete: Restrict)
+  operatingFact     OperatingFact        @relation("ClearingImpactFact", fields: [operatingFactId], references: [id], onDelete: Restrict)
+  operatingImpact   OperatingImpactEntry @relation("ClearingImpactEntry", fields: [operatingImpactId], references: [id], onDelete: Restrict)
+  reversesImpact    ClearingImpactLink?  @relation("ClearingImpactReversal", fields: [reversesImpactId], references: [id], onDelete: Restrict)
+  reversedByImpacts ClearingImpactLink[] @relation("ClearingImpactReversal")
+
+  @@unique([eventVersionId, sourceImpactKey])
+  @@index([operatingFactId])
+  @@index([operatingImpactId])
+  @@index([reversesImpactId])
+}
+
+model ClearingCommandReceipt {
+  id               String   @id @default(uuid())
+  idempotencyKey   String   @unique
+  action           String
+  aggregateId      String
+  expectedRevision Int
+  actorUserId      String
+  delegatorUserId  String?
+  fingerprint      String
+  resultSnapshot   Json
+  createdAt        DateTime @default(now())
+
+  @@index([aggregateId, action, createdAt])
+}
+
 // 通用历史经营接管与合同接管分离；批次只保存草稿、复核和激活坐标，正式事实仍写入 OperatingFact。
 model OperatingTakeoverBatch {
-  id                    String   @id @default(uuid())
-  projectId             String
-  batchNo               String
-  sourceFileId          String?
-  sourceFileName        String?
-  sceneKeys             Json
-  status                String   @default("draft")
-  revision              Int      @default(1)
-  importFingerprint     String
-  totalRows             Int      @default(0)
-  readyRows             Int      @default(0)
-  blockedRows           Int      @default(0)
-  warningRows           Int      @default(0)
-  createdByUserId       String
-  activatedAt           DateTime?
-  activatedByUserId     String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  rows                  OperatingTakeoverRow[]
-  issues                OperatingTakeoverIssue[]
-  attachmentGroups      OperatingTakeoverAttachmentGroup[]
-  confirmations         OperatingTakeoverConfirmation[]
-  activation            OperatingTakeoverActivation?
+  id                String                             @id @default(uuid())
+  projectId         String
+  batchNo           String
+  sourceFileId      String?
+  sourceFileName    String?
+  sceneKeys         Json
+  status            String                             @default("draft")
+  revision          Int                                @default(1)
+  importFingerprint String
+  totalRows         Int                                @default(0)
+  readyRows         Int                                @default(0)
+  blockedRows       Int                                @default(0)
+  warningRows       Int                                @default(0)
+  createdByUserId   String
+  activatedAt       DateTime?
+  activatedByUserId String?
+  createdAt         DateTime                           @default(now())
+  updatedAt         DateTime                           @updatedAt
+  rows              OperatingTakeoverRow[]
+  issues            OperatingTakeoverIssue[]
+  attachmentGroups  OperatingTakeoverAttachmentGroup[]
+  confirmations     OperatingTakeoverConfirmation[]
+  activation        OperatingTakeoverActivation?
 
   @@unique([projectId, batchNo])
   @@unique([projectId, importFingerprint])
@@ -313,26 +456,26 @@ model OperatingTakeoverBatch {
 }
 
 model OperatingTakeoverRow {
-  id                String   @id @default(uuid())
+  id                String                             @id @default(uuid())
   batchId           String
   rowNo             Int
   sceneKey          String
   definitionVersion Int
   businessRef       String?
-  occurredAt        DateTime? @db.Date
+  occurredAt        DateTime?                          @db.Date
   periodLabel       String?
   amountCents       BigInt?
   valuesSnapshot    Json
   evidenceLevel     String
-  reviewStatus      String   @default("pending")
-  duplicateStatus   String   @default("none")
+  reviewStatus      String                             @default("pending")
+  duplicateStatus   String                             @default("none")
   duplicateNote     String?
   reviewConclusion  String?
-  revision          Int      @default(1)
-  generatedFactId   String?  @unique
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  batch             OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  revision          Int                                @default(1)
+  generatedFactId   String?                            @unique
+  createdAt         DateTime                           @default(now())
+  updatedAt         DateTime                           @updatedAt
+  batch             OperatingTakeoverBatch             @relation(fields: [batchId], references: [id], onDelete: Restrict)
   issues            OperatingTakeoverIssue[]
   attachmentGroups  OperatingTakeoverAttachmentGroup[]
 
@@ -343,42 +486,42 @@ model OperatingTakeoverRow {
 }
 
 model OperatingTakeoverIssue {
-  id             String   @id @default(uuid())
-  batchId        String
-  rowId          String?
-  code           String
-  severity       String
-  fieldKey       String?
-  message        String
-  suggestion     String?
-  status         String   @default("open")
-  createdAt      DateTime @default(now())
-  batch          OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  row            OperatingTakeoverRow? @relation(fields: [rowId], references: [id], onDelete: Restrict)
+  id         String                 @id @default(uuid())
+  batchId    String
+  rowId      String?
+  code       String
+  severity   String
+  fieldKey   String?
+  message    String
+  suggestion String?
+  status     String                 @default("open")
+  createdAt  DateTime               @default(now())
+  batch      OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  row        OperatingTakeoverRow?  @relation(fields: [rowId], references: [id], onDelete: Restrict)
 
   @@index([batchId, severity, status])
   @@index([rowId, status])
 }
 
 model OperatingTakeoverAttachmentGroup {
-  id          String   @id @default(uuid())
-  batchId     String
-  rowId       String?
-  purpose     String
+  id              String                            @id @default(uuid())
+  batchId         String
+  rowId           String?
+  purpose         String
   createdByUserId String
-  createdAt   DateTime @default(now())
-  batch       OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  row         OperatingTakeoverRow? @relation(fields: [rowId], references: [id], onDelete: Restrict)
-  links       OperatingTakeoverAttachmentLink[]
+  createdAt       DateTime                          @default(now())
+  batch           OperatingTakeoverBatch            @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  row             OperatingTakeoverRow?             @relation(fields: [rowId], references: [id], onDelete: Restrict)
+  links           OperatingTakeoverAttachmentLink[]
 
   @@index([batchId, rowId])
 }
 
 model OperatingTakeoverAttachmentLink {
-  id        String   @id @default(uuid())
+  id        String                           @id @default(uuid())
   groupId   String
   fileId    String
-  createdAt DateTime @default(now())
+  createdAt DateTime                         @default(now())
   group     OperatingTakeoverAttachmentGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   @@unique([groupId, fileId])
@@ -386,29 +529,29 @@ model OperatingTakeoverAttachmentLink {
 }
 
 model OperatingTakeoverConfirmation {
-  idempotencyKey String   @id
-  batchId        String
-  profession     String
-  revision       Int
+  idempotencyKey    String                 @id
+  batchId           String
+  profession        String
+  revision          Int
   confirmedByUserId String
-  snapshot       Json
-  confirmedAt    DateTime @default(now())
-  batch           OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  snapshot          Json
+  confirmedAt       DateTime               @default(now())
+  batch             OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
 
   @@unique([batchId, profession, revision])
   @@index([batchId, profession, confirmedAt])
 }
 
 model OperatingTakeoverActivation {
-  idempotencyKey String   @id
-  batchId        String   @unique
-  revision       Int
-  status         String
-  generatedFactIds Json
-  gapRowIds      Json
+  idempotencyKey    String                 @id
+  batchId           String                 @unique
+  revision          Int
+  status            String
+  generatedFactIds  Json
+  gapRowIds         Json
   activatedByUserId String
-  activatedAt    DateTime @default(now())
-  batch          OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  activatedAt       DateTime               @default(now())
+  batch             OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
 }
 
 model ProjectMember {
@@ -555,20 +698,20 @@ model ContractEndedApplicationRetentionHold {
 /// 到期结束申请的最小清理回执。它不保留合同正文、相对方、金额或审批意见，
 /// 只保留可核验的技术标识、正式编号占位关联和清理收敛摘要。
 model ContractEndedApplicationPurgeReceipt {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   batchId            String
   projectId          String
   contractId         String
-  contractVersionId  String   @unique
+  contractVersionId  String    @unique
   formalCode         String?
-  status             String   @default("purging")
-  exclusiveFileCount Int      @default(0)
-  sharedFileCount    Int      @default(0)
+  status             String    @default("purging")
+  exclusiveFileCount Int       @default(0)
+  sharedFileCount    Int       @default(0)
   aggregateHash      String?
   failureCode        String?
   completedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([batchId, status])
   @@index([status, updatedAt])
@@ -2967,7 +3110,7 @@ model ProjectFinancingQuota {
   terminationSignatureFileId    String?
   terminationSignatureSha256    String?
   terminationSignatureVersionId String?
-  terminationActionId            String?   @unique
+  terminationActionId           String?   @unique
   terminationRequestFingerprint String?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
@@ -3069,13 +3212,18 @@ model ApprovalActionLog {
 }
 
 model ApprovalDelegation {
-  id         String   @id @default(uuid())
-  fromUserId String
-  toUserId   String
-  startsAt   DateTime
-  endsAt     DateTime
-  enabled    Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  fromUserId   String
+  toUserId     String
+  startsAt     DateTime
+  endsAt       DateTime
+  enabled      Boolean  @default(true)
+  actionKey    String?
+  resourceType String?
+  resourceId   String?
+  createdAt    DateTime @default(now())
+
+  @@index([toUserId, actionKey, resourceType, resourceId, enabled, startsAt, endsAt])
 }
 
 model FileObject {
@@ -3271,16 +3419,16 @@ model BusinessPartyVersion {
 }
 
 model BusinessPartyCreateIdempotency {
-  idempotencyKey  String   @id
-  actorUserId     String
-  action          String
-  definitionKey   String
-  definitionVersion Int
-  fingerprint     String
+  idempotencyKey     String    @id
+  actorUserId        String
+  action             String
+  definitionKey      String
+  definitionVersion  Int
+  fingerprint        String
   normalizedSnapshot Json
-  businessPartyId String?
-  createdAt       DateTime @default(now())
-  completedAt     DateTime?
+  businessPartyId    String?
+  createdAt          DateTime  @default(now())
+  completedAt        DateTime?
 
   @@index([businessPartyId])
   @@index([actorUserId, createdAt])
@@ -3701,8 +3849,8 @@ model BusinessEntrySubmissionSnapshot {
   frozenByUserId     String
   createdAt          DateTime @default(now())
 
-  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  frozenByUser  User    @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  frozenByUser User    @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
 
   @@unique([projectId, sceneKey, entityType, entityId, revision], map: "BusinessEntrySubmissionSnapshot_target_revision_key")
   @@index([projectId, sceneKey, frozenAt])

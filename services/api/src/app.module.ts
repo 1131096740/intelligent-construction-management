@@ -6,6 +6,7 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { BusinessPartyModule } from "./business-party/business-party.module";
 import { BusinessEntryDefinitionModule } from "./business-entry-definition/business-entry-definition.module";
+import { ClearingModule } from "./clearing/clearing.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractBillModule } from "./contract-bill/contract-bill.module";
 import { ContractDocumentModule } from "./contract-document/contract-document.module";
@@ -47,6 +48,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     ContractTakeoverModule,
     BusinessPartyModule,
     BusinessEntryDefinitionModule,
+    ClearingModule,
     CompanyEntityModule,
     OperatingLedgerModule,
     OperatingTakeoverModule,

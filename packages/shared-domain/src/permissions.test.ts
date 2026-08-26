@@ -40,6 +40,32 @@ describe("permission policy table", () => {
     expect(canPerform("project.operating_profile.manage", ["project_manager"])).toBe(false);
   });
 
+  it("limits clearing preparation and confirmation to global finance roles", () => {
+    for (const action of [
+      "clearing.read",
+      "clearing.prepare",
+      "clearing.submit",
+      "clearing.attest"
+    ] as const) {
+      expect(ACTION_REQUIRED_ROLES[action]).toEqual([
+        "finance_staff",
+        "finance_director"
+      ]);
+    }
+    for (const action of [
+      "clearing.confirm",
+      "clearing.return",
+      "clearing.reopen"
+    ] as const) {
+      expect(ACTION_REQUIRED_ROLES[action]).toEqual(["finance_director"]);
+    }
+    expect(canPerform("clearing.prepare", ["finance_staff"])).toBe(true);
+    expect(canPerform("clearing.attest", ["finance_staff"])).toBe(true);
+    expect(canPerform("clearing.confirm", ["finance_staff"])).toBe(false);
+    expect(canPerform("clearing.confirm", ["finance_director"])).toBe(true);
+    expect(canPerform("clearing.confirm", ["super_admin"])).toBe(false);
+  });
+
   it("defines required roles for every business action", () => {
     for (const action of BUSINESS_ACTIONS) {
       expect(ACTION_REQUIRED_ROLES[action].length).toBeGreaterThan(0);

@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 19,
-    "exportedFunctionCount": 492,
-    "transportWrapperCount": 472,
+    "apiModuleCount": 20,
+    "exportedFunctionCount": 503,
+    "transportWrapperCount": 483,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 494,
+    "mainRequestBindingCount": 505,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 494,
-    "productionConsumerCount": 366,
+    "requestEdgeCount": 505,
+    "productionConsumerCount": 377,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 267,
-    "reachableProductionModuleCount": 234
+    "productionModuleCount": 270,
+    "reachableProductionModuleCount": 237
   },
   "wrappers": [
     {
@@ -365,6 +365,331 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "attestClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/attest",
+          "normalizedPath": "/clearing-cases/events/:param/attest",
+          "normalizedKey": "POST /clearing-cases/events/:param/attest",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attestClearingEvent",
+              "command",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/clearing.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/confirm",
+          "normalizedPath": "/clearing-cases/events/:param/confirm",
+          "normalizedKey": "POST /clearing-cases/events/:param/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmClearingEvent",
+              "command",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/clearing.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createClearingCase",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases",
+          "normalizedPath": "/clearing-cases",
+          "normalizedKey": "POST /clearing-cases",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createClearingCase",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases/:param/events",
+          "normalizedPath": "/clearing-cases/:param/events",
+          "normalizedKey": "POST /clearing-cases/:param/events",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createClearingEvent",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/clearing.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchClearingCapabilities",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 93,
+          "method": "GET",
+          "path": "/clearing-cases/capabilities",
+          "normalizedPath": "/clearing-cases/capabilities",
+          "normalizedKey": "GET /clearing-cases/capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchClearingCapabilities",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/clearing.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchClearingCase",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 93,
+          "method": "GET",
+          "path": "/clearing-cases/:param",
+          "normalizedPath": "/clearing-cases/:param",
+          "normalizedKey": "GET /clearing-cases/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchClearingCase",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/clearing.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchClearingCases",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 93,
+          "method": "GET",
+          "path": "/clearing-cases",
+          "normalizedPath": "/clearing-cases",
+          "normalizedKey": "GET /clearing-cases",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchClearingCases",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reopenClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/reopen",
+          "normalizedPath": "/clearing-cases/events/:param/reopen",
+          "normalizedKey": "POST /clearing-cases/events/:param/reopen",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reopenClearingEvent",
+              "command",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "returnClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/return",
+          "normalizedPath": "/clearing-cases/events/:param/return",
+          "normalizedKey": "POST /clearing-cases/events/:param/return",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnClearingEvent",
+              "command",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reviseClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 105,
+          "method": "PATCH",
+          "path": "/clearing-cases/events/:param/draft",
+          "normalizedPath": "/clearing-cases/events/:param/draft",
+          "normalizedKey": "PATCH /clearing-cases/events/:param/draft",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviseClearingEvent",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/clearing.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "submitClearingEvent",
+      "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/submit",
+          "normalizedPath": "/clearing-cases/events/:param/submit",
+          "normalizedKey": "POST /clearing-cases/events/:param/submit",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitClearingEvent",
+              "command",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6959,6 +7284,7 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
@@ -11909,6 +12235,7 @@
         "apps/web-admin/src/api/project-operating-profile.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
       ],
       "unreachableConsumers": []

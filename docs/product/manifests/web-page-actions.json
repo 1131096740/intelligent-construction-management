@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 252,
+    "registeredActionCount": 260,
     "pageActionCount": 53,
-    "backgroundActionCount": 199,
-    "reachableVueFileCount": 130,
-    "routeRootCount": 51,
-    "totalVueFileCount": 154,
-    "parsedVueFileCount": 154,
-    "reachableProductionModuleCount": 234,
-    "templateEventDirectiveCount": 871,
+    "backgroundActionCount": 207,
+    "reachableVueFileCount": 131,
+    "routeRootCount": 52,
+    "totalVueFileCount": 155,
+    "parsedVueFileCount": 155,
+    "reachableProductionModuleCount": 237,
+    "templateEventDirectiveCount": 885,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 246,
-    "candidateProductionMutationConsumerCount": 246,
-    "acceptedProductionMutationConsumerCount": 246,
-    "productionMutationConsumerPairCount": 246,
+    "coveredProductionMutationConsumerCount": 254,
+    "candidateProductionMutationConsumerCount": 254,
+    "acceptedProductionMutationConsumerCount": 254,
+    "productionMutationConsumerPairCount": 254,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 267,
-    "reachableProductionModuleCount": 234,
-    "totalVueFileCount": 154,
-    "parsedVueFileCount": 154
+    "totalProductionModuleCount": 270,
+    "reachableProductionModuleCount": 237,
+    "totalVueFileCount": 155,
+    "parsedVueFileCount": 155
   },
   "actions": [
     {
@@ -508,6 +508,526 @@
             "localCallChain": [
               "prepareCreate",
               "validateBusinessPartyDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.case.create",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createClearingCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 360,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "createClearingCase",
+          "method": "POST",
+          "path": "/clearing-cases",
+          "normalizedKey": "POST /clearing-cases",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases",
+            "normalizedKey": "POST /clearing-cases",
+            "controller": "ClearingController",
+            "handler": "createCase",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.prepare"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createClearingCaseWithCapability",
+              "createClearingCase"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.attest",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attestClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 407,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.attest",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "attestClearingEvent",
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/attest",
+          "normalizedKey": "POST /clearing-cases/events/:param/attest",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases/events/:eventId/attest",
+            "normalizedKey": "POST /clearing-cases/events/:param/attest",
+            "controller": "ClearingController",
+            "handler": "attestEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.attest"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attestClearingEventWithCapability",
+              "attestClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 397,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "confirmClearingEvent",
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/confirm",
+          "normalizedKey": "POST /clearing-cases/events/:param/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases/events/:eventId/confirm",
+            "normalizedKey": "POST /clearing-cases/events/:param/confirm",
+            "controller": "ClearingController",
+            "handler": "confirmEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmClearingEventWithCapability",
+              "confirmClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.prepare",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 367,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "createClearingEvent",
+          "method": "POST",
+          "path": "/clearing-cases/:param/events",
+          "normalizedKey": "POST /clearing-cases/:param/events",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases/:caseId/events",
+            "normalizedKey": "POST /clearing-cases/:param/events",
+            "controller": "ClearingController",
+            "handler": "createEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.prepare"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createClearingEventWithCapability",
+              "createClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.reopen",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reopenClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 427,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.reopen",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "reopenClearingEvent",
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/reopen",
+          "normalizedKey": "POST /clearing-cases/events/:param/reopen",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases/events/:eventId/reopen",
+            "normalizedKey": "POST /clearing-cases/events/:param/reopen",
+            "controller": "ClearingController",
+            "handler": "reopenEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.reopen"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reopenClearingEventWithCapability",
+              "reopenClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.return",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 417,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.return",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "returnClearingEvent",
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/return",
+          "normalizedKey": "POST /clearing-cases/events/:param/return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases/events/:eventId/return",
+            "normalizedKey": "POST /clearing-cases/events/:param/return",
+            "controller": "ClearingController",
+            "handler": "returnEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.return"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnClearingEventWithCapability",
+              "returnClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.revise",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviseClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 377,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "reviseClearingEvent",
+          "method": "PATCH",
+          "path": "/clearing-cases/events/:param/draft",
+          "normalizedKey": "PATCH /clearing-cases/events/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/clearing-cases/events/:eventId/draft",
+            "normalizedKey": "PATCH /clearing-cases/events/:param/draft",
+            "controller": "ClearingController",
+            "handler": "reviseEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.prepare"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviseClearingEventWithCapability",
+              "reviseClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "clearing.event.submit",
+      "usage": "background",
+      "routePaths": [
+        "/清分工作台"
+      ],
+      "ownerRoutePaths": [
+        "/清分工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitClearingEventWithCapability",
+        "kind": "background_call",
+        "sourceLine": 387,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.submit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/clearing.api.ts",
+          "wrapper": "submitClearingEvent",
+          "method": "POST",
+          "path": "/clearing-cases/events/:param/submit",
+          "normalizedKey": "POST /clearing-cases/events/:param/submit",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/clearing-cases/events/:eventId/submit",
+            "normalizedKey": "POST /clearing-cases/events/:param/submit",
+            "controller": "ClearingController",
+            "handler": "submitEvent",
+            "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitClearingEventWithCapability",
+              "submitClearingEvent"
             ]
           },
           "ticketFollowups": []
