@@ -128,6 +128,23 @@ function upload(buffer: Buffer, overrides: Partial<{
 }
 
 describe("BusinessEntryExcelService", () => {
+  it("rejects business-party definition probes from every Excel surface", async () => {
+    const gateway = definitions();
+    const service = new BusinessEntryExcelService(gateway as never);
+    const target = { entityType: "business_party", createTarget: "definition-probe" };
+
+    await expect(service.exportTemplate("business_party", undefined, "user-1", target))
+      .rejects.toThrow("合作单位定义探针仅可用于读取最新字段定义");
+    await expect(service.preview(
+      "business_party",
+      undefined,
+      "user-1",
+      { definitionVersion: 1, target },
+      upload(Buffer.from("not-used"))
+    )).rejects.toThrow("合作单位定义探针仅可用于读取最新字段定义");
+    expect(gateway.getSceneDefinitionForOperation).not.toHaveBeenCalled();
+  });
+
   it("generates one visible Chinese-only worksheet without a hidden technical layer", async () => {
     const service = new BusinessEntryExcelService(definitions() as never);
     const result = await service.exportTemplate(

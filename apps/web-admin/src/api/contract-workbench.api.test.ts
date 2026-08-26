@@ -9,7 +9,6 @@ import {
   cloneLayoutTemplateVersion,
   createBusinessPartyVersion,
   createContractTemplate,
-  createBusinessParty,
   createContractNumberRule,
   createDraftCheckpoint,
   checkContractSubmissionReadiness,
@@ -38,6 +37,7 @@ import {
   uploadContractFormalApprovalFile,
   uploadContractWorkbenchPrivateFile,
   getBusinessParty,
+  getBusinessPartyCreateCapability,
   getContractTemplate,
   getLayoutTemplate,
   getLatestLayoutTemplatePreview,
@@ -1362,24 +1362,15 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/business-parties?query=%E4%BA%91%E5%8D%97");
   });
 
-  it("createBusinessParty – POST /business-parties", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ id: "party-1" }));
+  it("getBusinessPartyCreateCapability – GET /business-parties/create-capability", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ availableActions: ["business_party.create"] }));
 
-    await createBusinessParty({
-      name: "云南示例供应商有限公司",
-      unifiedSocialCreditCode: "91530000EXAMPLE01",
-      attachments: []
-    });
+    await getBusinessPartyCreateCapability();
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "云南示例供应商有限公司",
-        unifiedSocialCreditCode: "91530000EXAMPLE01",
-        attachments: []
-      })
-    });
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/business-parties/create-capability",
+      { retryUnauthorized: false }
+    );
   });
 
   it("getBusinessParty – GET /business-parties/:partyId", async () => {

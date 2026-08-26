@@ -16,7 +16,7 @@ export interface BusinessPartyCreateRecoveryEnvelope {
   version: 1;
   sceneKey: typeof BUSINESS_PARTY_CREATE_SCENE;
   definitionKey: typeof BUSINESS_PARTY_CREATE_DEFINITION_KEY;
-  definitionVersion: typeof BUSINESS_PARTY_CREATE_DEFINITION_VERSION;
+  definitionVersion: number;
   idempotencyKey: string;
   fingerprint: string;
   values: BusinessPartyCreateFormValues;
@@ -112,6 +112,12 @@ export async function fingerprintBusinessPartyValues(
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+export function assertBusinessPartyFingerprintMatches(actual: string, expected: string) {
+  if (actual !== expected) {
+    throw new Error("服务器规范化资料已变化，请重新确认后重试");
+  }
+}
+
 function isUuidV4(value: unknown): value is string {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
@@ -124,6 +130,7 @@ function isRecoveryValues(value: unknown): value is BusinessPartyCreateFormValue
 }
 
 export function createBusinessPartyRecoveryEnvelope(input: {
+  definitionVersion?: number;
   idempotencyKey: string;
   fingerprint: string;
   values: BusinessPartyCreateFormValues;
@@ -134,7 +141,7 @@ export function createBusinessPartyRecoveryEnvelope(input: {
     version: 1,
     sceneKey: BUSINESS_PARTY_CREATE_SCENE,
     definitionKey: BUSINESS_PARTY_CREATE_DEFINITION_KEY,
-    definitionVersion: BUSINESS_PARTY_CREATE_DEFINITION_VERSION,
+    definitionVersion: input.definitionVersion ?? BUSINESS_PARTY_CREATE_DEFINITION_VERSION,
     idempotencyKey: input.idempotencyKey,
     fingerprint: input.fingerprint,
     values: normalizeBusinessPartyCreateValues(input.values),
@@ -148,7 +155,7 @@ export type RecoveryStorage =
 
 export function getBusinessPartyRecoveryStorage(): RecoveryStorage | null {
   try {
-    return typeof localStorage === "undefined" ? null : localStorage;
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
   } catch {
     return null;
   }
@@ -158,6 +165,21 @@ export function assertBusinessPartyCreateDefinition(key: string, version: number
   if (
     key !== BUSINESS_PARTY_CREATE_DEFINITION_KEY ||
     version !== BUSINESS_PARTY_CREATE_DEFINITION_VERSION
+  ) {
+    throw new Error("合作单位字段定义已变化，请刷新页面后重试");
+  }
+}
+
+export function assertBusinessPartyFreshDefinition(
+  key: string,
+  entityId: string,
+  revision: number
+) {
+  if (
+    key !== BUSINESS_PARTY_CREATE_DEFINITION_KEY ||
+    entityId !== BUSINESS_PARTY_CREATE_ENTITY ||
+    !Number.isInteger(revision) ||
+    revision < 1
   ) {
     throw new Error("合作单位字段定义已变化，请刷新页面后重试");
   }
@@ -233,7 +255,8 @@ export function readBusinessPartyRecoveryEnvelope(
       parsed.version !== 1 ||
       parsed.sceneKey !== BUSINESS_PARTY_CREATE_SCENE ||
       parsed.definitionKey !== BUSINESS_PARTY_CREATE_DEFINITION_KEY ||
-      parsed.definitionVersion !== BUSINESS_PARTY_CREATE_DEFINITION_VERSION ||
+      !Number.isInteger(parsed.definitionVersion) ||
+      Number(parsed.definitionVersion) < 1 ||
       !isUuidV4(parsed.idempotencyKey) ||
       typeof parsed.fingerprint !== "string" ||
       !/^[0-9a-f]{64}$/iu.test(parsed.fingerprint) ||
@@ -269,6 +292,45 @@ export function reconcileBusinessPartyRecoveryState(input: {
     idempotencyKey: rotate ? input.issueIdempotencyKey() : input.existingIdempotencyKey,
     visible: rotate ? false : input.visible
   };
+}
+
+export function resolveBusinessPartyRecoveryKey(input: {
+  existingIdempotencyKey: string;
+  previousDefinitionVersion: number;
+  currentDefinitionVersion: number;
+  issueIdempotencyKey: () => string;
+}) {
+  const rotated = input.previousDefinitionVersion !== input.currentDefinitionVersion;
+  return {
+    idempotencyKey: rotated
+      ? input.issueIdempotencyKey()
+      : input.existingIdempotencyKey,
+    rotated
+  };
+}
+
+export function resolveBusinessPartyIntentKey(input: {
+  existingIdempotencyKey: string;
+  previousFingerprint: string;
+  currentFingerprint: string;
+  issueIdempotencyKey: () => string;
+}) {
+  const rotated = Boolean(
+    input.previousFingerprint &&
+    input.previousFingerprint !== input.currentFingerprint
+  );
+  return {
+    idempotencyKey: rotated
+      ? input.issueIdempotencyKey()
+      : input.existingIdempotencyKey,
+    rotated
+  };
+}
+
+export function businessPartyIdFromConflictError(error: unknown) {
+  if (!error || typeof error !== "object" || !("partyId" in error)) return null;
+  const partyId = error.partyId;
+  return typeof partyId === "string" && partyId.length > 0 ? partyId : null;
 }
 
 export function createSingleFlight<T>() {
@@ -315,10 +377,12 @@ export function classifyBusinessPartyCreateFailure(
   return { kind: "request_failed", message: text || "合作单位创建暂时失败，请稍后重试。" };
 }
 
-export function submissionTargetOf(value: {
-  target?: BusinessEntrySubmissionTarget;
-  createTarget?: string;
-}): Extract<BusinessEntrySubmissionTarget, { createTarget: string }> {
+export function submissionTargetOf(
+  value: {
+    target?: BusinessEntrySubmissionTarget;
+    createTarget?: string;
+  }
+): Extract<BusinessEntrySubmissionTarget, { createTarget: string }> {
   const target = value.target ?? (
     typeof value.createTarget === "string"
       ? { entityType: BUSINESS_PARTY_CREATE_ENTITY, createTarget: value.createTarget }

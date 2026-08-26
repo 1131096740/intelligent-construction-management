@@ -6,27 +6,27 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `c60b56ef5dc2a81b1412d126bdc10244887c0089af955c8d213f72b8e5f387f1` |
-| webApiWrappers | ready | `d9cdd815905a67d1de6284078c5882bb2e69726e41991178069b2de64c00796e` |
-| webPageActions | ready | `d21c1d30fbb1d16ada7160213007f6b9ee41d2d9de2f3db24c3812d347ec5a79` |
-| routeUsage | ready | `8f552c1217ba05866a9f11241ce475b000d833727c0b92cefda6fd39cdfc1be9` |
+| nestRoutes | ready | `1b4bab4e4b8c20a207b637dc1aebee362e84765233b2cb03d7cd20395359d230` |
+| webApiWrappers | ready | `2f3a1dd09e6e9c75e216a50190d76442386d271beb98d6ab11b2adb8ec9abbc9` |
+| webPageActions | ready | `1e1339c6e2999aa2932a85d0bc833c542a073ccdcdf6ac2a8b47cc1d13312adc` |
+| routeUsage | ready | `3f4d316d98681ca80c2989722b3392f741da1557565d77612bb8dd6f0b67562b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 481 |
-| pageRouteCount | 302 |
-| externalTakeoverRouteCount | 68 |
+| routeCount | 486 |
+| pageRouteCount | 305 |
+| externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 489 |
+| mainRequestBindingCount | 494 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 251 |
+| registeredActionCount | 252 |
 | actionBindingCount | 286 |
 | acceptedActionBindingCount | 266 |
 | unresolvedActionBindingCount | 0 |
@@ -56,6 +56,8 @@
 | GET | /business-entry-definitions/:sceneKey/excel-template | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#downloadBusinessEntryExcelTemplate | — | not_applicable | — |
 | GET | /business-parties/:partyId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessParty | — | not_applicable | — |
 | GET | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listBusinessParties | — | not_applicable | — |
+| GET | /business-parties/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessPartyCreateCapability | — | not_applicable | — |
+| GET | /business-parties/creation-result | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#getBusinessPartyCreationResult | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
 | GET | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchActiveCompanyEntities | — | not_applicable | — |
 | GET | /company-entities/management | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagement | — | not_applicable | — |
@@ -218,11 +220,14 @@
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/refresh | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/wx-login | exit_candidate | none | — | — | not_applicable | — |
-| POST | /business-entry-definitions/:sceneKey/create-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntryCreateTarget | business-party.create | covered | — |
+| POST | /business-entry-definitions/:sceneKey/create-target | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntryCreateTarget | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/excel-preview | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#previewBusinessEntryExcel | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#freezeBusinessEntrySnapshot | business-party.create | covered | — |
-| POST | /business-entry-definitions/:sceneKey/submission-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntrySubmissionTarget | business-party.create | covered | — |
-| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | business-party.create | covered | — |
+| POST | /business-entry-definitions/:sceneKey/submission-target | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntrySubmissionTarget | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | — | not_applicable | — |
+| POST | /business-entry-definitions/business-party/create/probe | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartyDefinitionProbe | business-party.create.prepare | covered | — |
+| POST | /business-entry-definitions/business-party/create/submission-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartySubmissionTarget | business-party.create.prepare | covered | — |
+| POST | /business-entry-definitions/business-party/create/validate | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessPartyDraft | business-party.create.prepare | covered | — |
 | POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | — |
 | POST | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#submitBusinessPartyCreation | business-party.create | covered | — |
 | POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | — |

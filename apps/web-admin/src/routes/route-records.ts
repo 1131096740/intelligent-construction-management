@@ -147,14 +147,13 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "系统配置",
     items: [
       {
-        label: "合作单位档案",
-        path: "/business-parties",
-        requiredGlobalRoleKeys: businessPartyCreateRoleKeys
-      },
-      {
         label: "我方公司主体",
         path: "/我方公司主体",
         requiredGlobalRoleKeys: companyEntityReaderRoleKeys
+      },
+      {
+        label: "合作单位档案",
+        path: "/business-parties"
       },
       {
         label: "组织权限",
@@ -319,6 +318,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "business-parties/new",
         component: () => import("../pages/business-parties/BusinessPartyCreatePage.vue"),
         meta: {
+          requiredServerAction: "business_party.create",
           requiredGlobalRoleKeys: businessPartyCreateRoleKeys,
           title: "新建合作单位"
         }
@@ -511,10 +511,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "business-parties",
         component: () => import("../pages/business-parties/BusinessPartyListPage.vue"),
-        meta: {
-          requiredGlobalRoleKeys: businessPartyCreateRoleKeys,
-          title: "合作单位档案"
-        }
+        meta: { title: "合作单位档案" }
       },
       {
         path: "business-parties/:partyId",

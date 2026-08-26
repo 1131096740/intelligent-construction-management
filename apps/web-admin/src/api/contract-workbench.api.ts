@@ -9,7 +9,6 @@ import type {
   DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import type { PrivateFileReadModel } from "./core-flow-read.api";
-import { submitBusinessPartyCreation } from "./business-entry.api";
 
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
@@ -1315,16 +1314,20 @@ export function listBusinessParties(query?: string) {
   return readJson<unknown[]>(`/business-parties${qs}`);
 }
 
+export async function getBusinessPartyCreateCapability() {
+  const response = await apiFetch("/business-parties/create-capability", {
+    retryUnauthorized: false
+  });
+  await ensureOk(response, "读取失败");
+  return response.json() as Promise<{ availableActions: string[] }>;
+}
+
 export interface CreateBusinessPartyPayload {
   name: string;
   unifiedSocialCreditCode?: string;
   attachments?: unknown[];
   [key: string]: unknown;
 }
-
-export const createBusinessParty = submitBusinessPartyCreation as unknown as (
-  body: CreateBusinessPartyPayload
-) => ReturnType<typeof submitBusinessPartyCreation>;
 
 export function getBusinessParty(partyId: string) {
   return readJson<unknown>(`/business-parties/${partyId}`);

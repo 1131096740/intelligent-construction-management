@@ -68,6 +68,15 @@ export interface BusinessEntrySubmissionTargetRequest {
   definitionVersion: number;
 }
 
+export interface BusinessPartyCreateIntentRequest {
+  idempotencyKey: string;
+  fingerprint: string;
+}
+
+export interface BusinessPartySubmissionIntentRequest extends BusinessPartyCreateIntentRequest {
+  probe: string;
+}
+
 export interface BusinessEntryRoleResolver {
   effectiveRoleScopes(userId: string, projectId: string): Promise<{
     globalRoleKeys: RoleKey[];
@@ -259,6 +268,45 @@ export class BusinessEntryDefinitionService {
       entityType,
       scope: access.target.scope
     };
+  }
+
+  async issueBusinessPartyDefinitionProbe(
+    actorUserId: string,
+    input: BusinessPartyCreateIntentRequest
+  ) {
+    const definition = this.registry.getSceneDefinition("business_party");
+    return this.issueCreateTarget(
+      "business_party",
+      undefined,
+      actorUserId,
+      definition.entityType,
+      {
+        idempotencyKey: input.idempotencyKey,
+        fingerprint: input.fingerprint,
+        definitionKey: definition.key,
+        definitionVersion: definition.version
+      }
+    );
+  }
+
+  async issueBusinessPartySubmissionTarget(
+    actorUserId: string,
+    input: BusinessPartySubmissionIntentRequest
+  ) {
+    const definition = this.registry.getSceneDefinition("business_party");
+    return this.issueSubmissionTarget(
+      "business_party",
+      undefined,
+      actorUserId,
+      {
+        entityType: definition.entityType,
+        probe: input.probe,
+        idempotencyKey: input.idempotencyKey,
+        fingerprint: input.fingerprint,
+        definitionKey: definition.key,
+        definitionVersion: definition.version
+      }
+    );
   }
 
   async issueSubmissionTarget(

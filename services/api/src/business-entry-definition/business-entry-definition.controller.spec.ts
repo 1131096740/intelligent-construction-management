@@ -183,4 +183,60 @@ describe("BusinessEntryDefinitionController", () => {
     );
     expect(definitions.issueSubmissionTarget.mock.calls[0]![3]).not.toHaveProperty("purpose");
   });
+
+  it("fixes business-party preparation to guarded server-owned scene semantics", async () => {
+    const definitions = {
+      issueBusinessPartyDefinitionProbe: jest.fn().mockResolvedValue({ createTarget: "probe" }),
+      issueBusinessPartySubmissionTarget: jest.fn().mockResolvedValue({ createTarget: "submission" }),
+      validateDraft: jest.fn().mockResolvedValue({ valid: true, errors: [] })
+    };
+    const controller = new BusinessEntryDefinitionController(definitions as never, {} as never);
+    const user = { id: "contract-user" } as never;
+
+    await controller.issueBusinessPartyDefinitionProbe(
+      { idempotencyKey: "55555555-5555-4555-8555-555555555555", fingerprint: "c".repeat(64) },
+      user
+    );
+    await controller.issueBusinessPartySubmissionTarget(
+      {
+        probe: "probe",
+        idempotencyKey: "55555555-5555-4555-8555-555555555555",
+        fingerprint: "c".repeat(64)
+      },
+      user
+    );
+    await controller.validateBusinessPartyDraft(
+      {
+        definitionVersion: 1,
+        target: { entityType: "business_party", createTarget: "submission" },
+        values: { name: "受控单位" },
+        operation: "import"
+      },
+      user
+    );
+
+    expect(definitions.issueBusinessPartyDefinitionProbe).toHaveBeenCalledWith(
+      "contract-user",
+      { idempotencyKey: "55555555-5555-4555-8555-555555555555", fingerprint: "c".repeat(64) }
+    );
+    expect(definitions.issueBusinessPartySubmissionTarget).toHaveBeenCalledWith(
+      "contract-user",
+      expect.objectContaining({ probe: "probe" })
+    );
+    expect(definitions.validateDraft).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "contract-user",
+      expect.objectContaining({ operation: "edit" })
+    );
+    for (const handler of [
+      BusinessEntryDefinitionController.prototype.issueBusinessPartyDefinitionProbe,
+      BusinessEntryDefinitionController.prototype.issueBusinessPartySubmissionTarget,
+      BusinessEntryDefinitionController.prototype.validateBusinessPartyDraft
+    ]) {
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(
+        "business_party.create"
+      );
+    }
+  });
 });

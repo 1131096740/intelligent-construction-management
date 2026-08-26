@@ -23,7 +23,7 @@
       class="panel"
     >
       <t-space direction="vertical">
-        <span>创建人：{{ creatorLabel(party) }}</span>
+        <span>创建人：{{ creatorName(party) }}</span>
         <span>创建时间：{{ dateLabel(party?.createdAt) }}</span>
       </t-space>
     </t-card>
@@ -57,7 +57,7 @@
         </template>
         <template #createdAt="{ row }">
           <div>{{ dateLabel(row.createdAt) }}</div>
-          <small>创建人：{{ creatorLabel(row) }}</small>
+          <small>创建人：{{ creatorName(row) }}</small>
         </template>
       </t-table>
     </t-card>
@@ -88,7 +88,7 @@ interface PartyVersionRow {
   id: string;
   versionNo: number;
   snapshot: Record<string, unknown>;
-  createdByUserId?: string;
+  createdByName?: string;
   createdAt?: string;
 }
 
@@ -113,17 +113,16 @@ function snapshot(row: PartyVersionRow) {
   };
 }
 
-function creatorLabel(
-  value: { createdByUserId?: unknown } | null | undefined
-) {
-  const creator = value?.createdByUserId;
-  return typeof creator === "string" && creator ? creator : "未记录";
-}
-
 function dateLabel(value: unknown) {
   if (typeof value !== "string" || !value) return "未记录";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN");
+}
+
+function creatorName(value: { createdByName?: unknown } | null | undefined) {
+  return typeof value?.createdByName === "string" && value.createdByName.trim()
+    ? value.createdByName
+    : "未记录";
 }
 
 async function loadParty() {

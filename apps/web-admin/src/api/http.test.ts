@@ -81,6 +81,75 @@ describe("createApiFetch", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it("never refreshes or replays a one-shot business request after 401", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(401));
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    const apiFetch = createApiFetch(bridge({ refresh, onUnauthorized }), fetchImpl);
+
+    const response = await apiFetch("/business-parties", {
+      method: "POST",
+      retryUnauthorized: false
+    });
+
+    expect(response.status).toBe(401);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a one-shot failed response without replaying it", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(503));
+    const onRequestFailure = vi.fn();
+    const apiFetch = createApiFetch(bridge({ onRequestFailure }), fetchImpl);
+
+    const response = await apiFetch("/business-entry-definitions/business_party", {
+      retryUnauthorized: false
+    });
+
+    expect(response.status).toBe(503);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(onRequestFailure).toHaveBeenCalledTimes(1);
+    expect(onRequestFailure.mock.calls[0]?.[0]).toBe(
+      "/business-entry-definitions/business_party"
+    );
+    expect(onRequestFailure.mock.calls[0]?.[1]).toMatchObject({ status: 503 });
+  });
+
+  it("reports invalid JSON parsing on the original request path", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    const onRequestFailure = vi.fn();
+    const apiFetch = createApiFetch(bridge({ onRequestFailure }), fetchImpl);
+
+    const response = await apiFetch("/business-entry-definitions/business_party", {
+      retryUnauthorized: false
+    });
+    await expect(response.json()).rejects.toBeInstanceOf(SyntaxError);
+
+    expect(onRequestFailure).toHaveBeenCalledOnce();
+    expect(onRequestFailure).toHaveBeenCalledWith(
+      "/business-entry-definitions/business_party",
+      expect.any(SyntaxError)
+    );
+  });
+
+  it("leaves successful non-JSON download responses unchanged", async () => {
+    const downloadResponse = {
+      ok: true,
+      status: 200,
+      blob: vi.fn(async () => new Blob(["xlsx"]))
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => downloadResponse);
+    const onRequestFailure = vi.fn();
+    const apiFetch = createApiFetch(bridge({ onRequestFailure }), fetchImpl);
+
+    await expect(apiFetch("/contracts/export.xlsx")).resolves.toBe(downloadResponse);
+    expect(onRequestFailure).not.toHaveBeenCalled();
+  });
+
   it("shares one refresh across concurrent 401 responses", async () => {
     let token = "stale";
     let releaseRefresh: (() => void) | undefined;

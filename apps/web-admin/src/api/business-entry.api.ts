@@ -43,6 +43,11 @@ export interface BusinessEntryTargetIntent {
   definitionVersion: number;
 }
 
+export interface BusinessPartyCreateIntent {
+  idempotencyKey: string;
+  fingerprint: string;
+}
+
 export interface BusinessPartySubmissionPayload {
   target: Extract<BusinessEntrySubmissionTarget, { createTarget: string }>;
   definitionKey: string;
@@ -50,6 +55,10 @@ export interface BusinessPartySubmissionPayload {
   idempotencyKey: string;
   values: Record<string, unknown>;
 }
+
+export type BusinessPartyCreationResult =
+  | { status: "missing" }
+  | { status: "completed"; partyId: string };
 
 export type BusinessEntryRequestScope =
   | { scope: "global"; projectId?: never }
@@ -131,11 +140,17 @@ function requestBody(payload: BusinessEntryDraftPayload, operation?: BusinessEnt
   };
 }
 
-async function postJson<T>(requestPath: string, body: unknown, fallback: string): Promise<T> {
+async function postJson<T>(
+  requestPath: string,
+  body: unknown,
+  fallback: string,
+  retryUnauthorized = true
+): Promise<T> {
   const response = await apiFetch(requestPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...(retryUnauthorized ? {} : { retryUnauthorized: false })
   });
   await ensureOk(response, fallback);
   return response.json() as Promise<T>;
@@ -166,18 +181,102 @@ export function issueBusinessEntrySubmissionTarget(
   );
 }
 
-export function submitBusinessPartyCreation(body: BusinessPartySubmissionPayload) {
-  return postJson<unknown>("/business-parties", body, "创建合作单位失败");
+export function issueBusinessPartyDefinitionProbe(input: BusinessPartyCreateIntent) {
+  return postJson<BusinessEntryCreateTargetReceipt>(
+    "/business-entry-definitions/business-party/create/probe",
+    input,
+    "获取合作单位业务定义探针失败",
+    false
+  );
+}
+
+export function issueBusinessPartySubmissionTarget(
+  input: BusinessPartyCreateIntent & { probe: string }
+) {
+  return postJson<BusinessEntrySubmissionTargetReceipt>(
+    "/business-entry-definitions/business-party/create/submission-target",
+    input,
+    "获取合作单位独立提交授权失败",
+    false
+  );
+}
+
+export function validateBusinessPartyDraft(payload: BusinessEntryDraftPayload) {
+  return postJson<BusinessEntryValidationResult>(
+    "/business-entry-definitions/business-party/create/validate",
+    requestBody(payload),
+    "检查合作单位业务草稿失败",
+    false
+  );
+}
+
+export async function submitBusinessPartyCreation(body: BusinessPartySubmissionPayload) {
+  const response = await apiFetch("/business-parties", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    retryUnauthorized: false
+  });
+  if (response.status === 409) {
+    const duplicate = await response.clone().json().catch(() => null) as {
+      message?: unknown;
+      partyId?: unknown;
+    } | null;
+    if (
+      duplicate &&
+      typeof duplicate.message === "string" &&
+      typeof duplicate.partyId === "string" &&
+      duplicate.partyId.length > 0
+    ) {
+      const error = new Error(formatApiErrorMessage(
+        duplicate.message,
+        response.status,
+        "创建合作单位失败"
+      )) as Error & { partyId: string };
+      error.partyId = duplicate.partyId;
+      throw error;
+    }
+  }
+  await ensureOk(response, "创建合作单位失败");
+  return response.json() as Promise<{ party: { id: string } }>;
+}
+
+export async function getBusinessPartyCreationResult(
+  idempotencyKey: string,
+  fingerprint: string
+): Promise<BusinessPartyCreationResult> {
+  const query = new URLSearchParams({ idempotencyKey, fingerprint });
+  const response = await apiFetch(`/business-parties/creation-result?${query.toString()}`, {
+    retryUnauthorized: false
+  });
+  await ensureOk(response, "查询合作单位创建结果失败");
+  const result = await response.json() as Record<string, unknown>;
+  const keys = Object.keys(result).sort();
+  if (result.status === "missing" && keys.length === 1 && keys[0] === "status") {
+    return { status: "missing" };
+  }
+  if (
+    result.status === "completed" &&
+    typeof result.partyId === "string" &&
+    result.partyId.length > 0 &&
+    keys.length === 2 &&
+    keys[0] === "partyId" &&
+    keys[1] === "status"
+  ) {
+    return { status: "completed", partyId: result.partyId };
+  }
+  throw new Error("合作单位创建结果响应无效");
 }
 
 export async function fetchBusinessEntryDefinition(
   sceneKey: string,
   scope: BusinessEntryRequestScope,
   target: BusinessEntrySubmissionTarget,
-  operation: BusinessEntryOperation = "edit"
+  operation: BusinessEntryOperation = "edit",
+  options?: { retryUnauthorized?: boolean }
 ) {
   if (!target) throw new Error("加载业务字段需要正式业务对象");
-  const response = await apiFetch(path(sceneKey, scope, "", operation, target));
+  const response = await apiFetch(path(sceneKey, scope, "", operation, target), options);
   await ensureOk(response, "加载业务字段失败");
   return response.json() as Promise<BusinessEntrySceneDefinition>;
 }
@@ -197,12 +296,14 @@ export function validateBusinessEntryDraft(
 export function freezeBusinessEntrySnapshot(
   scope: BusinessEntryRequestScope,
   payload: BusinessEntryDraftPayload,
-  operation: "edit" | "import" = "edit"
+  operation: "edit" | "import" = "edit",
+  retryUnauthorized = true
 ) {
   return postJson<BusinessEntryFrozenSnapshot>(
     path(payload.sceneKey, scope, "/freeze"),
     requestBody(payload, operation),
-    "提交业务草稿失败"
+    "提交业务草稿失败",
+    retryUnauthorized
   );
 }
 

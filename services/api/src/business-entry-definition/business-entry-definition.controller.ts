@@ -18,6 +18,7 @@ import {
   type BusinessEntryOperation
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import type { MemoryUploadedFile } from "../file/uploaded-file";
 import {
@@ -29,6 +30,10 @@ import { BusinessEntryDraftRequestDto } from "./dto/business-entry-draft-request
 import { BusinessEntryExcelPreviewDto } from "./dto/business-entry-excel-preview.dto";
 import { BusinessEntryCreateTargetDto } from "./dto/business-entry-create-target.dto";
 import { BusinessEntrySubmissionTargetDto } from "./dto/business-entry-submission-target.dto";
+import {
+  BusinessPartyCreateIntentDto,
+  BusinessPartySubmissionIntentDto
+} from "./dto/business-party-create-intent.dto";
 
 function normalizeTarget(
   target: BusinessEntryDraftRequestDto["target"]
@@ -143,6 +148,37 @@ export class BusinessEntryDefinitionController {
     return this.definitions.validateDraft(sceneKey, projectId, user.id, {
       ...body,
       target: normalizeTarget(body.target)
+    });
+  }
+
+  @Post("business-party/create/probe")
+  @RequireProjectRole("business_party.create")
+  issueBusinessPartyDefinitionProbe(
+    @Body() body: BusinessPartyCreateIntentDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.definitions.issueBusinessPartyDefinitionProbe(user.id, body);
+  }
+
+  @Post("business-party/create/submission-target")
+  @RequireProjectRole("business_party.create")
+  issueBusinessPartySubmissionTarget(
+    @Body() body: BusinessPartySubmissionIntentDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.definitions.issueBusinessPartySubmissionTarget(user.id, body);
+  }
+
+  @Post("business-party/create/validate")
+  @RequireProjectRole("business_party.create")
+  validateBusinessPartyDraft(
+    @Body() body: BusinessEntryDraftRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.definitions.validateDraft("business_party", undefined, user.id, {
+      ...body,
+      target: normalizeTarget(body.target),
+      operation: "edit"
     });
   }
 

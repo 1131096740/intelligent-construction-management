@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 481,
+    "routeCount": 486,
     "classificationOverrideCount": 183,
-    "derivedProductionPageCount": 298,
-    "classificationOverrideSha256": "f725a11156b8a7ccf0bf6c8cffce18e9c167ad5c18eec361b80d8eaa0b88fb0a",
+    "derivedProductionPageCount": 303,
+    "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
-      "page": 302,
-      "external_takeover": 68,
+      "page": 305,
+      "external_takeover": 70,
       "exit_candidate": 108,
       "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 355,
+      "web_api_wrapper": 357,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 117
+      "none": 120
     }
   },
   "overrides": [
@@ -1072,14 +1072,14 @@
     {
       "method": "POST",
       "path": "/business-entry-definitions/:sceneKey/create-target",
-      "usage": "page",
-      "reason": "issue_210_non_production_web_api_wrapper_submission_surface_authorized"
+      "usage": "external_takeover",
+      "reason": "generic_business_entry_create_adapter_has_no_active_production_consumer_after_issue_210_dedicated_server_owned_path"
     },
     {
       "method": "POST",
       "path": "/business-entry-definitions/:sceneKey/submission-target",
-      "usage": "page",
-      "reason": "issue_210_non_production_web_api_wrapper_submission_surface_authorized"
+      "usage": "external_takeover",
+      "reason": "generic_business_entry_submission_adapter_has_no_active_production_consumer_after_issue_210_dedicated_server_owned_path"
     },
     {
       "method": "GET",

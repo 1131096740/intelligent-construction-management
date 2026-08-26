@@ -85,6 +85,50 @@ export class BusinessPartyService {
     await this.assertGlobalContractRole(actorUserId);
   }
 
+  async getCreateCapability(actorUserId: string) {
+    await this.assertGlobalContractRole(actorUserId);
+    (this.writeFreeze ?? new OperationalWriteFreezeService()).assertCanWrite("master_data");
+    return { availableActions: [BUSINESS_PARTY_ACTION] };
+  }
+
+  async getCreationResult(
+    actorUserId: string,
+    idempotencyKey: string,
+    fingerprint: string
+  ): Promise<{ status: "missing" } | { status: "completed"; partyId: string }> {
+    if (!isUuidV4(idempotencyKey) || !/^[0-9a-f]{64}$/iu.test(fingerprint)) {
+      throw new BadRequestException("合作单位创建结果查询参数无效");
+    }
+    await this.assertGlobalContractRole(actorUserId);
+    const idempotency = await this.prisma.businessPartyCreateIdempotency.findUnique({
+      where: { idempotencyKey },
+      select: {
+        actorUserId: true,
+        action: true,
+        fingerprint: true,
+        businessPartyId: true,
+        completedAt: true
+      }
+    });
+    if (
+      !idempotency ||
+      idempotency.actorUserId !== actorUserId ||
+      idempotency.action !== BUSINESS_PARTY_ACTION ||
+      idempotency.fingerprint !== fingerprint ||
+      !idempotency.businessPartyId ||
+      !idempotency.completedAt
+    ) {
+      return { status: "missing" };
+    }
+    const party = await this.prisma.businessParty.findUnique({
+      where: { id: idempotency.businessPartyId },
+      select: { id: true }
+    });
+    return party
+      ? { status: "completed", partyId: party.id }
+      : { status: "missing" };
+  }
+
   async replaceContractPartiesInTransaction(
     tx: Prisma.TransactionClient,
     contractVersionId: string,
@@ -174,7 +218,16 @@ export class BusinessPartyService {
             ]
           }
         : undefined,
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        unifiedSocialCreditCode: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
   }
 
@@ -185,7 +238,26 @@ export class BusinessPartyService {
       where: { businessPartyId: partyId },
       orderBy: { versionNo: "desc" }
     });
-    return { party, versions };
+    const creatorIds = [...new Set([
+      party.createdByUserId,
+      ...versions.map((version) => version.createdByUserId)
+    ])];
+    const creators = await this.prisma.user.findMany({
+      where: { id: { in: creatorIds } },
+      select: { id: true, name: true }
+    });
+    const creatorNames = new Map(creators.map((creator) => [creator.id, creator.name]));
+    const projectCreator = <T extends { createdByUserId: string }>(record: T) => {
+      const { createdByUserId, ...controlled } = record;
+      return {
+        ...controlled,
+        createdByName: creatorNames.get(createdByUserId) ?? "未记录"
+      };
+    };
+    return {
+      party: projectCreator(party),
+      versions: versions.map(projectCreator)
+    };
   }
 
   async createParty(actorUserId: string, input: CreateBusinessPartyDto) {
@@ -229,7 +301,17 @@ export class BusinessPartyService {
       purpose: "submission"
     });
 
-    const existing = await this.findIdempotentResult(request.idempotencyKey, fingerprint);
+    const idempotentIntent = {
+      actorUserId,
+      action: BUSINESS_PARTY_ACTION,
+      definitionKey: definition.key,
+      definitionVersion: definition.version,
+      fingerprint
+    };
+    const existing = await this.findIdempotentResult(
+      request.idempotencyKey,
+      idempotentIntent
+    );
     const roleKeys = await this.assertGlobalContractRole(actorUserId);
     if (existing) return existing;
     this.writeFreeze.assertCanWrite("master_data");
@@ -242,14 +324,50 @@ export class BusinessPartyService {
     });
   }
 
-  private async findIdempotentResult(idempotencyKey: string, fingerprint: string) {
+  private assertIdempotentIntent(
+    idempotency: {
+      actorUserId: string;
+      action: string;
+      definitionKey: string;
+      definitionVersion: number;
+      fingerprint: string;
+    },
+    expected: {
+      actorUserId: string;
+      action: string;
+      definitionKey: string;
+      definitionVersion: number;
+      fingerprint: string;
+    }
+  ) {
+    if (idempotency.fingerprint !== expected.fingerprint) {
+      throw new ConflictException("该幂等键已用于另一份合作单位资料");
+    }
+    if (
+      idempotency.actorUserId !== expected.actorUserId ||
+      idempotency.action !== expected.action ||
+      idempotency.definitionKey !== expected.definitionKey ||
+      idempotency.definitionVersion !== expected.definitionVersion
+    ) {
+      throw new ConflictException("该幂等键已绑定其他创建意图");
+    }
+  }
+
+  private async findIdempotentResult(
+    idempotencyKey: string,
+    expected: {
+      actorUserId: string;
+      action: string;
+      definitionKey: string;
+      definitionVersion: number;
+      fingerprint: string;
+    }
+  ) {
     const idempotency = await this.prisma.businessPartyCreateIdempotency?.findUnique({
       where: { idempotencyKey }
     });
     if (!idempotency) return null;
-    if (idempotency.fingerprint !== fingerprint) {
-      throw new ConflictException("该幂等键已用于另一份合作单位资料");
-    }
+    this.assertIdempotentIntent(idempotency, expected);
     if (!idempotency.businessPartyId || !idempotency.completedAt) return null;
     const party = await this.prisma.businessParty.findUnique({
       where: { id: idempotency.businessPartyId }
@@ -282,9 +400,13 @@ export class BusinessPartyService {
             where: { idempotencyKey: idempotency.idempotencyKey }
           });
           if (existing) {
-            if (existing.fingerprint !== idempotency.fingerprint) {
-              throw new ConflictException("该幂等键已用于另一份合作单位资料");
-            }
+            this.assertIdempotentIntent(existing, {
+              actorUserId,
+              action: BUSINESS_PARTY_ACTION,
+              definitionKey: idempotency.definitionKey,
+              definitionVersion: idempotency.definitionVersion,
+              fingerprint: idempotency.fingerprint
+            });
             if (!existing.businessPartyId || !existing.completedAt) {
               throw new ConflictException("该合作单位创建请求正在处理中，请稍后重试");
             }
@@ -367,7 +489,13 @@ export class BusinessPartyService {
         if (idempotency) {
           const replay = await this.findIdempotentResult(
             idempotency.idempotencyKey,
-            idempotency.fingerprint
+            {
+              actorUserId,
+              action: BUSINESS_PARTY_ACTION,
+              definitionKey: idempotency.definitionKey,
+              definitionVersion: idempotency.definitionVersion,
+              fingerprint: idempotency.fingerprint
+            }
           );
           if (replay) return replay;
         }
@@ -713,7 +841,10 @@ export class BusinessPartyService {
       where: { unifiedSocialCreditCode: code }
     });
     if (duplicate && duplicate.id !== excludedPartyId) {
-      throw new BadRequestException("统一社会信用代码已存在");
+      throw new ConflictException({
+        message: "统一社会信用代码已存在，请核对既有合作单位档案",
+        partyId: duplicate.id
+      });
     }
   }
 
@@ -731,7 +862,10 @@ export class BusinessPartyService {
       where: { normalizedName: snapshot.name }
     });
     if (duplicateName && duplicateName.id !== excludedPartyId) {
-      throw new ConflictException("合作单位名称已存在，请核对既有档案");
+      throw new ConflictException({
+        message: "合作单位名称已存在，请核对既有合作单位档案",
+        partyId: duplicateName.id
+      });
     }
   }
 

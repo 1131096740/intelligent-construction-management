@@ -28,6 +28,22 @@ export class BusinessPartyController {
     return this.businessParties.list(query);
   }
 
+  @Get("business-parties/create-capability")
+  @RequireProjectRole("business_party.create")
+  createCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.businessParties.getCreateCapability(user.id);
+  }
+
+  @Get("business-parties/creation-result")
+  @RequireProjectRole("business_party.create")
+  creationResult(
+    @Query("idempotencyKey") idempotencyKey: string,
+    @Query("fingerprint") fingerprint: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.businessParties.getCreationResult(user.id, idempotencyKey, fingerprint);
+  }
+
   @Get("business-parties/:partyId")
   get(@Param("partyId") partyId: string) {
     return this.businessParties.get(partyId);

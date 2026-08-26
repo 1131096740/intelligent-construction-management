@@ -283,6 +283,73 @@ describe("BusinessEntryDefinitionService", () => {
     }));
   });
 
+  it("derives the business-party probe and submission contracts from the server registry", async () => {
+    const partyDefinition = {
+      ...definition,
+      key: "business_party",
+      entityType: "business_party",
+      version: 7
+    };
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([partyDefinition]),
+      createBusinessEntrySceneAccessRegistry([partyDefinition], [{
+        sceneKey: "business_party",
+        target: {
+          scope: "global",
+          entityType: "business_party",
+          resolve: jest.fn().mockResolvedValue(true)
+        },
+        permission: {
+          kind: "business_action",
+          action: "business_party.create",
+          roleScope: "global"
+        }
+      }]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshotStoreMock(),
+      { project: { findUnique: jest.fn() } } as never,
+      authorizationMock()
+    );
+    const issueCreateTarget = jest.spyOn(service, "issueCreateTarget")
+      .mockResolvedValue({ createTarget: "probe" } as never);
+    const issueSubmissionTarget = jest.spyOn(service, "issueSubmissionTarget")
+      .mockResolvedValue({ createTarget: "submission" } as never);
+    const intent = {
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      fingerprint: "a".repeat(64)
+    };
+
+    await service.issueBusinessPartyDefinitionProbe("user-1", intent);
+    await service.issueBusinessPartySubmissionTarget("user-1", {
+      ...intent,
+      probe: "probe"
+    });
+
+    expect(issueCreateTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      "business_party",
+      {
+        ...intent,
+        definitionKey: "business_party",
+        definitionVersion: 7
+      }
+    );
+    expect(issueSubmissionTarget).toHaveBeenCalledWith(
+      "business_party",
+      undefined,
+      "user-1",
+      {
+        ...intent,
+        probe: "probe",
+        entityType: "business_party",
+        definitionKey: "business_party",
+        definitionVersion: 7
+      }
+    );
+  });
+
   it("rejects a submission target for definition reads and a probe for validation", async () => {
     const partyDefinition = {
       ...definition,

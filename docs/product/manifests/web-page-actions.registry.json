@@ -11,7 +11,7 @@
       "trigger": {
         "element": "t-dialog",
         "event": "confirm",
-        "handler": "runCreate"
+        "handler": "confirmCreate"
       },
       "semantic": "business_write",
       "capability": {
@@ -35,23 +35,44 @@
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-          "name": "issueBusinessEntryCreateTarget"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-          "name": "issueBusinessEntrySubmissionTarget"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-          "name": "validateBusinessEntryDraft"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
           "name": "freezeBusinessEntrySnapshot"
         },
         {
           "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
           "name": "submitBusinessPartyCreation"
+        }
+      ]
+    },
+    {
+      "id": "business-party.create.prepare",
+      "usage": "page_action",
+      "routePaths": [
+        "/business-parties/new"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "prepareCreate"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "createActions",
+        "key": "business_party.create"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "issueBusinessPartyDefinitionProbe"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "issueBusinessPartySubmissionTarget"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "validateBusinessPartyDraft"
         }
       ]
     },

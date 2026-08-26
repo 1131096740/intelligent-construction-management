@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 481,
-    "exactRouteCount": 481,
-    "normalizedRouteCount": 481,
+    "routeCount": 486,
+    "exactRouteCount": 486,
+    "normalizedRouteCount": 486,
     "classificationOverrideCount": 183,
     "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "f725a11156b8a7ccf0bf6c8cffce18e9c167ad5c18eec361b80d8eaa0b88fb0a",
+    "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 298,
-    "pageRouteCount": 302,
-    "externalTakeoverCount": 68,
+    "derivedProductionPageCount": 303,
+    "pageRouteCount": 305,
+    "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 355,
+      "web_api_wrapper": 357,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 117
+      "none": 120
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 355,
+    "productionWrapperRouteCount": 357,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -704,6 +704,89 @@
             "normalizedKey": "GET /business-parties/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/business-parties/create-capability",
+      "normalizedKey": "GET /business-parties/create-capability",
+      "controller": "BusinessPartyController",
+      "handler": "createCapability",
+      "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "getBusinessPartyCreateCapability",
+            "method": "GET",
+            "normalizedPath": "/business-parties/create-capability",
+            "normalizedKey": "GET /business-parties/create-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+              "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/business-parties/creation-result",
+      "normalizedKey": "GET /business-parties/creation-result",
+      "controller": "BusinessPartyController",
+      "handler": "creationResult",
+      "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+            "wrapper": "getBusinessPartyCreationResult",
+            "method": "GET",
+            "normalizedPath": "/business-parties/creation-result",
+            "normalizedKey": "GET /business-parties/creation-result",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
             ]
           }
         ],
@@ -7740,23 +7823,12 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
+      "usage": "external_takeover",
       "classificationSource": "registry_override",
-      "classificationReason": "issue_210_non_production_web_api_wrapper_submission_surface_authorized",
-      "consumerSurface": "web_api_wrapper",
+      "classificationReason": "generic_business_entry_create_adapter_has_no_active_production_consumer_after_issue_210_dedicated_server_owned_path",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-            "wrapper": "issueBusinessEntryCreateTarget",
-            "method": "POST",
-            "normalizedPath": "/business-entry-definitions/:param/create-target",
-            "normalizedKey": "POST /business-entry-definitions/:param/create-target",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -7852,23 +7924,12 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
+      "usage": "external_takeover",
       "classificationSource": "registry_override",
-      "classificationReason": "issue_210_non_production_web_api_wrapper_submission_surface_authorized",
-      "consumerSurface": "web_api_wrapper",
+      "classificationReason": "generic_business_entry_submission_adapter_has_no_active_production_consumer_after_issue_210_dedicated_server_owned_path",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-            "wrapper": "issueBusinessEntrySubmissionTarget",
-            "method": "POST",
-            "normalizedPath": "/business-entry-definitions/:param/submission-target",
-            "normalizedKey": "POST /business-entry-definitions/:param/submission-target",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -7896,15 +7957,127 @@
       "usage": "external_takeover",
       "classificationSource": "registry_override",
       "classificationReason": "controlled_business_entry_definition_backend_surface",
+      "consumerSurface": "none",
+      "consumerEvidence": {
+        "webApiWrappers": [],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/business-party/create/probe",
+      "normalizedKey": "POST /business-entry-definitions/business-party/create/probe",
+      "controller": "BusinessEntryDefinitionController",
+      "handler": "issueBusinessPartyDefinitionProbe",
+      "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
-            "wrapper": "validateBusinessEntryDraft",
+            "wrapper": "issueBusinessPartyDefinitionProbe",
             "method": "POST",
-            "normalizedPath": "/business-entry-definitions/:param/validate",
-            "normalizedKey": "POST /business-entry-definitions/:param/validate",
+            "normalizedPath": "/business-entry-definitions/business-party/create/probe",
+            "normalizedKey": "POST /business-entry-definitions/business-party/create/probe",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/business-party/create/submission-target",
+      "normalizedKey": "POST /business-entry-definitions/business-party/create/submission-target",
+      "controller": "BusinessEntryDefinitionController",
+      "handler": "issueBusinessPartySubmissionTarget",
+      "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+            "wrapper": "issueBusinessPartySubmissionTarget",
+            "method": "POST",
+            "normalizedPath": "/business-entry-definitions/business-party/create/submission-target",
+            "normalizedKey": "POST /business-entry-definitions/business-party/create/submission-target",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/business-party/create/validate",
+      "normalizedKey": "POST /business-entry-definitions/business-party/create/validate",
+      "controller": "BusinessEntryDefinitionController",
+      "handler": "validateBusinessPartyDraft",
+      "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+            "wrapper": "validateBusinessPartyDraft",
+            "method": "POST",
+            "normalizedPath": "/business-entry-definitions/business-party/create/validate",
+            "normalizedKey": "POST /business-entry-definitions/business-party/create/validate",
             "productionConsumers": [
               "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
             ]
