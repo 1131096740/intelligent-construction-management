@@ -90,6 +90,14 @@ test("CI fans out independent static and database gates behind one stable summar
 
   assert.match(workflow, /pull_request:\s*\n\s+branches: \[main\]/u);
   assert.match(workflow, /push:\s*\n\s+branches: \[main\]/u);
+  assert.match(
+    workflow,
+    /workflow_dispatch:\s*\n\s+inputs:\s*\n\s+target_sha:\s*\n\s+description: .+\n\s+required: true\s*\n\s+type: string/u
+  );
+  assert.match(
+    workflow,
+    /CI_SOURCE_SHA: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.target_sha \|\| github\.sha \}\}/u
+  );
   assert.match(workflow, /cancel-in-progress: true/u);
   assert.match(workflow, /permissions:\s*\n\s+contents: read/u);
 
@@ -102,6 +110,9 @@ test("CI fans out independent static and database gates behind one stable summar
   for (const independentJob of [quality, tests, build, dynamic]) {
     assert.doesNotMatch(independentJob, /\n\s+needs:/u);
     assert.match(independentJob, /CI=true pnpm install --frozen-lockfile/u);
+    assert.match(independentJob, /ref: \$\{\{ env\.CI_SOURCE_SHA \}\}/u);
+    assert.match(independentJob, /Verify checked-out CI source SHA/u);
+    assert.match(independentJob, /git merge-base --is-ancestor "\$CI_SOURCE_SHA" origin\/main/u);
   }
 
   assert.match(quality, /pnpm test:ci-orchestration/u);
