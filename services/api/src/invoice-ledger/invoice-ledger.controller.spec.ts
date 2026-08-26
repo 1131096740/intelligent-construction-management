@@ -4,11 +4,13 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import type { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoice.dto";
+import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import { InvoiceLedgerController } from "./invoice-ledger.controller";
 
 type RuntimeDto = new () => object;
 type InvoiceLedgerMethod =
   | "createProcurementInvoice"
+  | "createGlobalInvoice"
   | "createClearingAllocation"
   | "reverseClearingAllocation"
   | "reverseAllocation"
@@ -101,6 +103,24 @@ const validInvoice: CreateProcurementInvoiceDto = {
   ]
 };
 
+const validGlobalInvoice: CreateGlobalInvoiceDto = {
+  invoiceType: "vat_special",
+  owningCompanyEntityId: "company-entity-1",
+  direction: "inbound",
+  sellerTaxId: "91310000123456789A",
+  buyerTaxId: "91310000987654321B",
+  invoiceCode: "GLOBAL-CODE-001",
+  invoiceNumber: "GLOBAL-NO-001",
+  issueDate: "2026-07-17",
+  sellerName: "甲供应商",
+  buyerName: "乙建设公司",
+  totalAmountCents: "13000",
+  taxExclusiveAmountCents: "11504",
+  taxAmountCents: "1496",
+  fileId: "global-invoice-file-1",
+  idempotencyKey: "global-invoice-key-1"
+};
+
 describe("InvoiceLedgerController", () => {
   it("exposes the frozen and global-allocation POST routes", () => {
     const routes: Array<[InvoiceLedgerMethod, string]> = [
@@ -108,6 +128,7 @@ describe("InvoiceLedgerController", () => {
         "createProcurementInvoice",
         "spot-procurements/:procurementId/invoices"
       ],
+      ["createGlobalInvoice", "global-invoices"],
       ["createClearingAllocation", "invoice-clearing-allocations"],
       ["reverseClearingAllocation", "invoice-clearing-allocations/:clearingAllocationId/reversal"],
       ["reverseAllocation", "invoice-allocations/:allocationId/reversal"],
@@ -189,6 +210,7 @@ describe("InvoiceLedgerController", () => {
   it("forwards only the authenticated user id and route identifiers", async () => {
     const service = {
       createProcurementInvoice: jest.fn().mockResolvedValue({ id: "invoice-1" }),
+      createGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-invoice-1" }),
       reverseAllocation: jest.fn().mockResolvedValue({ id: "allocation-1" }),
       createNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
       reviewNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
@@ -219,6 +241,7 @@ describe("InvoiceLedgerController", () => {
       user,
       validInvoice
     );
+    await controller.createGlobalInvoice(user, validGlobalInvoice);
     await controller.reverseAllocation("allocation-1", user, reverseBody);
     await controller.createNoInvoiceConfirmation(
       "procurement-1",
@@ -247,6 +270,10 @@ describe("InvoiceLedgerController", () => {
       "procurement-1",
       "actor-1",
       validInvoice
+    );
+    expect(service.createGlobalInvoice).toHaveBeenCalledWith(
+      "actor-1",
+      validGlobalInvoice
     );
     expect(service.reverseAllocation).toHaveBeenCalledWith(
       "allocation-1",
@@ -283,6 +310,11 @@ describe("InvoiceLedgerController", () => {
     await expect(
       validateBody("createProcurementInvoice", 2, validInvoice)
     ).resolves.toMatchObject(validInvoice);
+
+    expect(bodyMetatype("createGlobalInvoice", 1)).not.toBe(Object);
+    await expect(
+      validateBody("createGlobalInvoice", 1, validGlobalInvoice)
+    ).resolves.toMatchObject(validGlobalInvoice);
   });
 
   it("rejects unsupported invoice types, missing identities and nested unknown fields", async () => {

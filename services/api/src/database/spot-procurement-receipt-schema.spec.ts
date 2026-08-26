@@ -281,6 +281,8 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "sourceBusinessType String",
       "sourceBusinessId String",
       "sourceProcurementId String?",
+      "commandIdempotencyKey String? @unique",
+      "commandFingerprint String?",
       "invalidatedAt DateTime?",
       "invalidatedByUserId String?",
       "invalidationReason String?",
@@ -292,7 +294,8 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "@@index([projectId, status])",
       "@@index([owningCompanyEntityId, direction, status])",
       "@@index([sourceBusinessType, sourceBusinessId])",
-      "@@index([sourceProcurementId, status])"
+      "@@index([sourceProcurementId, status])",
+      "@@index([commandFingerprint])"
     ]
   ),
   InvoiceLine: expectedModel(
@@ -584,7 +587,9 @@ describe("spot procurement receipt and invoice schema", () => {
       "InvoiceRecord.sellerTaxId",
       "InvoiceRecord.buyerTaxId",
       "InvoiceRecord.taxExclusiveAmountCents",
-      "InvoiceRecord.taxAmountCents"
+      "InvoiceRecord.taxAmountCents",
+      "InvoiceRecord.commandIdempotencyKey",
+      "InvoiceRecord.commandFingerprint"
     ]);
     const baseFields = EXPECTED_MODELS[modelName].fields.filter((field) =>
       !forwardOnlyFields.has(`${modelName}.${field.split(" ")[0]}`)

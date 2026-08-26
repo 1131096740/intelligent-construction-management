@@ -34,7 +34,7 @@ type PaymentSeed = {
 
 type TestInvoiceRecord = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   identityKey: string;
   invoiceType: string;
   invoiceCode: string | null;
@@ -52,6 +52,8 @@ type TestInvoiceRecord = {
   sourceBusinessType: string;
   sourceBusinessId: string;
   sourceProcurementId: string | null;
+  commandIdempotencyKey?: string | null;
+  commandFingerprint?: string | null;
   createdAt: Date;
 };
 
@@ -214,6 +216,27 @@ function createInvoiceInput(
         ]
       }
     ],
+    ...overrides
+  };
+}
+
+function createGlobalInvoiceInput(overrides: Record<string, unknown> = {}) {
+  return {
+    invoiceType: "vat_special" as const,
+    owningCompanyEntityId: "company-entity-1",
+    direction: "inbound" as const,
+    sellerTaxId: "91310000123456789A",
+    buyerTaxId: "91310000987654321B",
+    invoiceCode: "GLOBAL-INV-CODE-1",
+    invoiceNumber: "GLOBAL-INV-NO-1",
+    issueDate: "2026-07-17",
+    sellerName: "供应商甲",
+    buyerName: "建设单位乙",
+    totalAmountCents: "6000",
+    taxExclusiveAmountCents: "5309",
+    taxAmountCents: "691",
+    fileId: "global-invoice-file-1",
+    idempotencyKey: "global-invoice-key-1",
     ...overrides
   };
 }
@@ -547,9 +570,9 @@ function createHarness(options?: {
       }
     ),
     findUnique: jest.fn().mockImplementation(
-      ({ where }: { where: { id: string } }) =>
+      ({ where }: { where: { id?: string; commandIdempotencyKey?: string } }) =>
         Promise.resolve(
-          invoiceRecords.find((row) => row.id === where.id) ?? null
+          invoiceRecords.find((row) => row.id === where.id || row.commandIdempotencyKey === where.commandIdempotencyKey) ?? null
         )
     ),
     findMany: jest.fn().mockImplementation(
@@ -1297,6 +1320,27 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       )
     ).rejects.toThrow("该发票身份已用于不同的发票事实");
     expect(harness.invoiceRecords).toHaveLength(1);
+  });
+
+  it("creates a global invoice without a project coordinate and replays only its identical idempotency request", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const input = createGlobalInvoiceInput();
+    await expect(harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, input)).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, input)).resolves.toMatchObject({ replayed: true });
+    expect(harness.invoiceRecords[0]).toMatchObject({ projectId: null, sourceProcurementId: null, sourceBusinessType: "global_clearing_invoice" });
+    await expect(harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput({ sellerName: "供应商乙" }))).rejects.toThrow("幂等键已用于不同的全局发票请求");
+  });
+
+  it("rejects global invoice creation by a project-only finance role", async () => {
+    const harness = createHarness({
+      globalRoles: { [ACTORS.financeStaff]: [] },
+      projectRoles: { [ACTORS.financeStaff]: ["finance_staff"] },
+      fileOwners: { "global-invoice-file-1": ACTORS.financeStaff }
+    });
+    await expect(harness.service.createGlobalInvoice(ACTORS.financeStaff, createGlobalInvoiceInput())).rejects.toThrow("只有全局财务人员可以登记全局发票");
   });
 
   it("allocates a global invoice only to a confirmed clearing version, replays its idempotency key, and caps total evidence", async () => {

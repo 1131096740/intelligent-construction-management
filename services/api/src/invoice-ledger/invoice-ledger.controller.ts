@@ -6,6 +6,7 @@ import { CreateInvoiceExceptionConfirmationDto } from "./dto/create-invoice-exce
 import { CreateNoInvoiceConfirmationDto } from "./dto/create-no-invoice-confirmation.dto";
 import { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoice.dto";
 import { CreateInvoiceClearingAllocationDto } from "./dto/create-invoice-clearing-allocation.dto";
+import { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocation.dto";
 import { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-clearing-allocation.dto";
 import { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
@@ -28,6 +29,14 @@ export class InvoiceLedgerController {
       user.id,
       body
     );
+  }
+
+  @Post("global-invoices")
+  createGlobalInvoice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateGlobalInvoiceDto
+  ) {
+    return this.invoices.createGlobalInvoice(user.id, body);
   }
 
   @Post("invoice-clearing-allocations")
