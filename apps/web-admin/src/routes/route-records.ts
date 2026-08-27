@@ -96,6 +96,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/清分工作台",
         requiredGlobalRoleKeys: clearingRoleKeys
       },
+      { label: "工资承担工作台", path: "/工资承担工作台" },
       {
         label: "全局发票与清分分配",
         path: "/全局发票与清分分配",
@@ -351,6 +352,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
           requiredGlobalRoleKeys: clearingRoleKeys,
           title: "清分工作台"
         }
+      },
+      {
+        path: "工资承担工作台",
+        component: () => import("../pages/wage/WageStatementWorkbenchPage.vue"),
+        meta: { title: "工资承担工作台" }
       },
       {
         path: "全局发票与清分分配",

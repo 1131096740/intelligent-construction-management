@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `e0e6f03a3e7030e31953e7026f1ccce245ef4e04e11eef6353891b1978ff29a5` |
-| webApiWrappers | ready | `d04743119f90014fdd1897628a9c1eaefcc9e7b1b4c6ddea401bed288a99c991` |
-| webPageActions | ready | `a9d44da5344bf1915de1b410c0e40e74304efb3f3d3103347f83c7f5ce0f2d2d` |
-| routeUsage | ready | `5455ca0211b2d77d42191d8c2b8207636584de87ec4b65da76c51ca67de23f3d` |
+| nestRoutes | ready | `63fceb4120051fe31ce84b9870ca99f8a5cea181fd2ddf7cbe204d742c58a468` |
+| webApiWrappers | ready | `d7407739b55b47ecf89c89fdab5f6f8ae6324c18714cdb0de1075685169c7b9b` |
+| webPageActions | ready | `0304125cab15a6a063b0c121b0a35266c3bccd57bfd004bf11b1f3a646c82d35` |
+| routeUsage | ready | `8af1644d948c318c89852ebb110f654b9a7587ff48b7880667e2d1fe7379cee3` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 505 |
-| pageRouteCount | 324 |
+| routeCount | 514 |
+| pageRouteCount | 333 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 513 |
+| mainRequestBindingCount | 522 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 267 |
-| actionBindingCount | 301 |
-| acceptedActionBindingCount | 281 |
+| registeredActionCount | 271 |
+| actionBindingCount | 306 |
+| acceptedActionBindingCount | 286 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 261 |
-| coveredProductionMutationConsumerPairCount | 261 |
+| productionMutationConsumerPairCount | 266 |
+| coveredProductionMutationConsumerPairCount | 266 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -192,6 +192,10 @@
 | GET | /standard-clauses/history | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listStandardClauseHistory | — | not_applicable | — |
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
 | GET | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
+| GET | /wage-statements/:statementId/import-preview | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementImportPreview | — | not_applicable | — |
+| GET | /wage-statements/:statementId/summary | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementSummary | — | not_applicable | — |
+| GET | /wage-statements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementCapabilities | — | not_applicable | — |
+| GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | — | not_applicable | — |
 | PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
 | PATCH | /company-entities/:id | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | not_applicable | — |
@@ -539,6 +543,11 @@
 | POST | /standard-clause-versions/:versionId/submission | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#submitStandardClauseVersion | — | not_applicable | — |
 | POST | /standard-clauses | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause | — | not_applicable | — |
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
+| POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |
+| POST | /wage-statements/:statementId/return | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#returnWageStatement | wage-statement.return | covered | — |
+| POST | /wage-statements/:statementId/submit | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#submitWageStatement | wage-statement.submit | covered | — |
+| POST | /wage-statements/approved-sources | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createApprovedWageSource | wage-statement.approved-source.import-and-draft | covered | — |
+| POST | /wage-statements/drafts | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createWageStatementDraft | wage-statement.approved-source.import-and-draft | covered | — |
 | PUT | /contract-bills/:billId/rows | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | covered | — |
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | contract-bill-transition.save | covered | — |

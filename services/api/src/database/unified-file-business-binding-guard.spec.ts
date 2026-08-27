@@ -99,6 +99,13 @@ const operatingTakeoverBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const wageStatementBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260827270000_pol12a_wage_statement_source_and_versions/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -123,7 +130,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}`.matchAll(
+    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -142,7 +149,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(80);
+    expect(registered).toHaveLength(81);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -194,8 +201,15 @@ describe("unified file business binding migration", () => {
       "SpotProcurementPaymentInvoice.fileId",
       "SpotProcurementReceiptPhoto.originalFileId",
       "SpotProcurementReceiptPhoto.watermarkedFileId",
-      "SpotProcurementRefund.voucherFileId"
+      "SpotProcurementRefund.voucherFileId",
+      "WageApprovedSourceVersion.evidenceFileId"
     ]);
+    expect(wageStatementBindingMigration).toContain(
+      "('WageApprovedSourceVersion', 'evidenceFileId', TRUE)"
+    );
+    expect(wageStatementBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "evidenceFileId" ON "WageApprovedSourceVersion"'
+    );
     expect(currentBindingMigration).toContain(
       `"correctionType" = 'company_entity'`
     );
