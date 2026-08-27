@@ -9724,6 +9724,27 @@
     },
     {
       "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "normalizedKey": "POST /wage-statements/:param/revisions",
+      "controller": "WageStatementController",
+      "handler": "createRevision",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
       "path": "/wage-statements/:statementId/submit",
       "normalizedKey": "POST /wage-statements/:param/submit",
       "controller": "WageStatementController",

@@ -17,14 +17,18 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
+import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import {
   assertBalancedWageStatementDraft,
-  type WagePersonLineInput
+  type WagePersonLineInput,
+  type WageProjectCostComponentAllocationInput,
+  type WageProjectCreditorAllocationInput
 } from "./wage-statement.domain";
 import type {
   ApprovedWagePersonDto,
   CreateApprovedWageSourceDto,
   CreateWageStatementDraftDto,
+  CreateWageStatementRevisionDto,
   ReturnWageStatementDto,
   WageStatementCommandDto
 } from "./wage-statement.dto";
@@ -62,12 +66,87 @@ const WAGE_AGGREGATE_SELECT = {
 
 type WageAggregateStatement = Prisma.WageStatementGetPayload<{ select: typeof WAGE_AGGREGATE_SELECT }>;
 
+const WAGE_CONFIRMATION_INCLUDE = {
+  sourceVersion: true,
+  personLines: {
+    include: {
+      costComponents: { include: { projectAllocations: true } },
+      creditorBreakdowns: { include: { projectAllocations: true } },
+      projectAllocations: {
+        include: {
+          componentAllocations: { include: { costComponent: true } },
+          creditorAllocations: { include: { creditorBreakdown: true } }
+        }
+      }
+    }
+  }
+} satisfies Prisma.WageStatementVersionInclude;
+
+type WageConfirmationVersion = Prisma.WageStatementVersionGetPayload<{
+  include: typeof WAGE_CONFIRMATION_INCLUDE;
+}>;
+type WageConfirmationPerson = WageConfirmationVersion["personLines"][number];
+type WageConfirmationAllocation = WageConfirmationPerson["projectAllocations"][number];
+type WageConfirmationCostCell = WageConfirmationAllocation["componentAllocations"][number];
+type WageConfirmationCreditorCell = WageConfirmationAllocation["creditorAllocations"][number];
+type WageConfirmationCreditor = WageConfirmationPerson["creditorBreakdowns"][number];
+type WageProjection = {
+  amount: bigint;
+  direction: "increase" | "decrease";
+  kind: WageVersionKind;
+  refs: string[];
+  costs: Array<{ allocation: WageConfirmationAllocation; cell: WageConfirmationCostCell }>;
+  payables: Array<{
+    allocation: WageConfirmationAllocation;
+    cell: WageConfirmationCreditorCell;
+    ref: { id: string };
+  }>;
+};
+
+type WagePayableRefAdjustmentTarget = {
+  id: string;
+  debtorCompanyId: string;
+  costBearingCompanyId: string;
+  projectId: string;
+  personLine: { employeeId: string; employmentSnapshotId: string };
+  creditorBreakdown: {
+    creditorSubjectType: string | null;
+    creditorSubjectIdentityKey: string | null;
+    creditorCategory: string;
+    creditorNameSnapshot: string | null;
+    creditorUnifiedIdentitySnapshot: string | null;
+    creditorVersionFingerprint: string | null;
+  };
+};
+
+type WageVersionKind = "base" | "supplemental" | "correction" | "reversal";
+
+type WageCostCellIdentity = {
+  person: WageConfirmationPerson;
+  allocation: WageConfirmationAllocation;
+  cell: WageConfirmationCostCell;
+  amountCents: bigint;
+};
+type WagePayableCellIdentity = {
+  person: WageConfirmationPerson;
+  allocation: WageConfirmationAllocation;
+  cell: WageConfirmationCreditorCell;
+  creditor: WageConfirmationCreditor;
+  amountCents: bigint;
+};
+type WageDeltaProjection = {
+  refs: string[];
+  costs: Array<WageCostCellIdentity & { direction: "increase" | "decrease" }>;
+  payables: Array<WagePayableCellIdentity & { direction: "increase" | "decrease"; ref: { id: string } }>;
+};
+
 @Injectable()
 export class WageStatementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly companyRoles: CompanyRoleResolverService,
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    private readonly operatingLedger?: OperatingLedgerService
   ) {}
 
   async listWorkbench(actorUserId: string) {
@@ -246,7 +325,7 @@ export class WageStatementService {
       if (source.wageMonth !== input.wageMonth) throw new BadRequestException("工资承担单月份必须与外部批准来源一致");
       const sourceLines = sourcePersonLines(source.sourceSnapshot);
       assertSourceFacts(input.personLines, sourceLines, source.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
-      const [company, evidence, employees, projects, serviceBasisBindings] = await Promise.all([
+      const [company, evidence, employees, projects, serviceBasisBindings, businessPartyVersions] = await Promise.all([
         tx.companyEntity.findUnique({
           where: { id: source.employmentCompanyId, isActive: true },
           select: { id: true }
@@ -260,6 +339,13 @@ export class WageStatementService {
         tx.wageServiceBasisBinding.findMany({
           where: { sourceVersionId: source.id },
           select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true }
+        }),
+        tx.businessPartyVersion.findMany({
+          where: { id: { in: [...new Set(sourceLines.flatMap((line) => line.creditorBreakdowns.map((creditor) => creditor.creditorBusinessPartyVersionId).filter((id): id is string => Boolean(id))))] } },
+          // A BusinessPartyVersion is the authority for an institution. Its
+          // aggregate identity, immutable version number and frozen snapshot
+          // form the fingerprint basis; caller-provided creditor rows never do.
+          select: { id: true, businessPartyId: true, versionNo: true, snapshot: true }
         })
       ]);
       if (!company) throw new BadRequestException("承担工资的我方公司不存在或已停用");
@@ -267,6 +353,7 @@ export class WageStatementService {
       employeeMap(sourceLines, employees);
       const projectById = projectMap(sourceLines, projects);
       const serviceBindingByKey = serviceBasisBindingMap(source.id, sourceLines, serviceBasisBindings, source.evidenceSha256);
+      const businessPartyByVersionId = new Map(businessPartyVersions.map((version) => [version.id, version]));
       let statement: { id: string };
       try {
         statement = await tx.wageStatement.create({
@@ -312,32 +399,32 @@ export class WageStatementService {
           },
           select: { id: true }
         });
-        await Promise.all([
-          tx.wageCostComponent.createMany({ data: line.costComponents.map((component) => ({
-            personLineId: person.id,
-            componentCode: component.componentCode,
-            amountCents: BigInt(component.amountCents),
-            sourceSnapshot: jsonValue(component)
-          })) }),
-          tx.wageCreditorBreakdown.createMany({ data: line.creditorBreakdowns.map((creditor) => ({
-            personLineId: person.id,
-            creditorSubjectId: creditor.creditorSubjectId,
-            creditorCategory: creditor.creditorCategory,
-            amountCents: BigInt(creditor.amountCents),
-            sourceSnapshot: jsonValue(creditor)
-          })) }),
-          tx.wageProjectAllocation.createMany({ data: line.projectAllocations.map((allocation) => ({
-            personLineId: person.id,
-            projectId: allocation.projectId,
-            serviceSnapshotId: allocation.serviceSnapshotId,
-            serviceBasisBindingId: serviceBindingByKey.get(serviceBasisKey(allocation))!.id,
-            serviceSnapshot: jsonValue({
-              ...allocation,
-              project: projectById.get(allocation.projectId)
-            }),
-            amountCents: BigInt(allocation.amountCents)
-          })) })
-        ]);
+        const components = await Promise.all(line.costComponents.map((component) => tx.wageCostComponent.create({ data: {
+          personLineId: person.id, componentCode: component.componentCode, amountCents: BigInt(component.amountCents), sourceSnapshot: jsonValue(component)
+        }, select: { id: true, componentCode: true } })));
+        const creditors = await Promise.all(line.creditorBreakdowns.map((creditor) => tx.wageCreditorBreakdown.create({ data: {
+          personLineId: person.id, creditorSubjectId: creditor.creditorSubjectId,
+          creditorSubjectType: creditor.creditorSubjectType, creditorUserId: creditor.creditorUserId,
+          creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId,
+          creditorSubjectIdentityKey: creditorIdentityKey(creditor),
+          creditorNameSnapshot: frozenCreditorName(creditor, employees, businessPartyByVersionId),
+          creditorUnifiedIdentitySnapshot: frozenCreditorUnifiedIdentity(creditor, businessPartyByVersionId),
+          creditorVersionFingerprint: frozenCreditorFingerprint(creditor, employees, businessPartyByVersionId),
+          creditorCategory: creditor.creditorCategory, amountCents: BigInt(creditor.amountCents), sourceSnapshot: jsonValue(creditor)
+        }, select: { id: true, creditorCategory: true, creditorSubjectType: true, creditorUserId: true, creditorBusinessPartyVersionId: true } })));
+        const allocations = await Promise.all(line.projectAllocations.map((allocation) => tx.wageProjectAllocation.create({ data: {
+          personLineId: person.id, projectId: allocation.projectId, serviceSnapshotId: allocation.serviceSnapshotId,
+          serviceBasisBindingId: serviceBindingByKey.get(serviceBasisKey(allocation))!.id,
+          serviceSnapshot: jsonValue({ ...allocation, project: projectById.get(allocation.projectId) }), amountCents: BigInt(allocation.amountCents)
+        }, select: { id: true, projectId: true, serviceSnapshotId: true } })));
+        if (line.projectCostComponentAllocations || line.projectCreditorAllocations) {
+          if (!line.projectCostComponentAllocations || !line.projectCreditorAllocations) throw new BadRequestException("项目成本组成矩阵和项目债权人矩阵必须同时明确填写");
+          const allocationByKey = new Map(allocations.map((allocation) => [`${allocation.projectId}:${allocation.serviceSnapshotId}`, allocation.id]));
+          const componentByCode = new Map(components.map((component) => [component.componentCode, component.id]));
+          const creditorByKey = new Map(creditors.map((creditor) => [`${creditor.creditorSubjectType}:${creditor.creditorSubjectType === "employee_user" ? creditor.creditorUserId : creditor.creditorBusinessPartyVersionId}:${creditor.creditorCategory}`, creditor.id]));
+          await tx.wageProjectCostComponentAllocation.createMany({ data: line.projectCostComponentAllocations.map((cell) => ({ projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资成本矩阵缺少项目分摊行"), costComponentId: required(componentByCode.get(cell.componentCode), "工资成本矩阵缺少成本组成行"), amountCents: BigInt(cell.amountCents) })) });
+          await tx.wageProjectCreditorAllocation.createMany({ data: line.projectCreditorAllocations.map((cell) => ({ projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资债权人矩阵缺少项目分摊行"), creditorBreakdownId: required(creditorByKey.get(`${cell.creditorSubjectType}:${cell.creditorSubjectType === "employee_user" ? cell.creditorUserId : cell.creditorBusinessPartyVersionId}:${cell.creditorCategory}`), "工资债权人矩阵缺少债权人行"), amountCents: BigInt(cell.amountCents) })) });
+        }
       }
       await this.audit.record(tx, {
         actorUserId,
@@ -350,6 +437,131 @@ export class WageStatementService {
       await this.receipt(tx, input, "wage_statement.draft.create", statement.id, fingerprintValue, actorUserId, result);
       return result;
     }));
+  }
+
+  /**
+   * Creates, but never confirms, a later full revision of an already-confirmed
+   * statement.  This is the only public preparation seam for supplemental,
+   * correction and reversal dispositions.  It deliberately receives a new
+   * approved source and explicit matrices instead of copying or deriving any
+   * previous finance decision.
+   */
+  async createRevision(actorUserId: string, statementId: string, input: CreateWageStatementRevisionDto) {
+    await this.assertPrepareAuthority(actorUserId);
+    validateRevisionInput(input);
+    assertBalancedWageStatementDraft(input);
+    const id = required(statementId, "工资承担单不能为空");
+    const fingerprintValue = commandFingerprint("wage_statement.revision.create", id, input, actorUserId);
+    return this.executeWithReceiptReplay(input.idempotencyKey, fingerprintValue, "statement", async () => this.serializable(async (tx) => {
+      const replay = await this.replay(tx, input.idempotencyKey, fingerprintValue);
+      if (replay) return replay;
+      const statement = await this.lockStatement(tx, id);
+      assertRevision(statement.currentRevision, input.expectedRevision);
+      const prior = await this.currentVersion(tx, id, statement.currentRevision);
+      if (prior.status !== "confirmed") throw new ConflictException("只有已确认工资承担单可以创建后续修订");
+      const source = await tx.wageApprovedSourceVersion.findUnique({ where: { id: required(input.sourceVersionId, "外部批准工资来源不能为空") } });
+      if (!source) throw new NotFoundException("外部批准工资来源不存在，请刷新后重试");
+      if (source.employmentCompanyId !== statement.employmentCompanyId || source.wageMonth !== input.wageMonth) {
+        throw new BadRequestException("后续工资修订的公司和月份必须与原工资承担单一致");
+      }
+      const sourceLines = sourcePersonLines(source.sourceSnapshot);
+      assertSourceFacts(input.personLines, sourceLines, statement.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
+      const [company, evidence, employees, projects, serviceBasisBindings, businessPartyVersions] = await Promise.all([
+        tx.companyEntity.findUnique({ where: { id: statement.employmentCompanyId, isActive: true }, select: { id: true } }),
+        tx.fileObject.findUnique({ where: { id: source.evidenceFileId }, select: { id: true, storageStatus: true, contentSha256: true } }),
+        this.activeEmployees(tx, sourceLines),
+        this.activeProjects(tx, sourceLines),
+        tx.wageServiceBasisBinding.findMany({ where: { sourceVersionId: source.id }, select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true } }),
+        tx.businessPartyVersion.findMany({
+          where: { id: { in: [...new Set(sourceLines.flatMap((line) => line.creditorBreakdowns.map((creditor) => creditor.creditorBusinessPartyVersionId).filter((value): value is string => Boolean(value))))] } },
+          select: { id: true, businessPartyId: true, versionNo: true, snapshot: true }
+        })
+      ]);
+      if (!company) throw new BadRequestException("承担工资的我方公司不存在或已停用");
+      assertSourceEvidenceActive(source, evidence);
+      employeeMap(sourceLines, employees);
+      const projectById = projectMap(sourceLines, projects);
+      const serviceBindingByKey = serviceBasisBindingMap(source.id, sourceLines, serviceBasisBindings, source.evidenceSha256);
+      const businessPartyByVersionId = new Map(businessPartyVersions.map((version) => [version.id, version]));
+      const revision = statement.currentRevision + 1;
+      const version = await tx.wageStatementVersion.create({
+        data: {
+          statementId: id, revision, kind: input.disposition, status: "draft", sourceVersionId: source.id,
+          sourceSnapshot: jsonValue(source.sourceSnapshot), createdByUserId: actorUserId, lastEditedByUserId: actorUserId
+        },
+        select: { id: true }
+      });
+      await this.writeVersionLines(tx, version.id, sourceLines, source.wageMonth, input.personLines, employees, projectById, serviceBindingByKey, businessPartyByVersionId);
+      await tx.wageStatement.update({ where: { id }, data: { currentRevision: revision } });
+      const result = { statementId: id, versionId: version.id, revision, status: "draft", disposition: input.disposition };
+      await this.receipt(tx, input, "wage_statement.revision.create", id, fingerprintValue, actorUserId, result);
+      await this.audit.record(tx, {
+        actorUserId, action: "wage_statement.revision.create", businessType: "wage_statement_version", businessId: version.id,
+        metadata: jsonValue({ statementId: id, expectedRevision: input.expectedRevision, revision, disposition: input.disposition, sourceVersionId: source.id })
+      });
+      return result;
+    }));
+  }
+
+  private async writeVersionLines(
+    tx: Tx,
+    versionId: string,
+    sourceLines: AuthorityLine[],
+    wageMonth: string,
+    lines: WagePersonLineInput[],
+    employees: Array<{ id: string; name: string; departmentId: string | null }>,
+    projectById: ReadonlyMap<string, { id: string; code: string; name: string }>,
+    serviceBindingByKey: ReadonlyMap<string, ServiceBasisBinding>,
+    businessPartyByVersionId: ReadonlyMap<string, { id: string; businessPartyId: string; versionNo: number; snapshot: Prisma.JsonValue }>
+  ) {
+    // `sourceLines` is intentionally accepted so callers must prove the exact
+    // source before writing. The persisted rows use that authoritative frozen
+    // form, not a current roster or a ratio calculation.
+    if (sourceLines.length !== lines.length) throw new ConflictException("外部批准工资来源人员事实不完整，不能创建后续修订");
+    for (const line of lines) {
+      const person = await tx.wagePersonLine.create({
+        data: {
+          statementVersionId: versionId, employeeId: line.employeeId, employmentSnapshotId: line.employmentSnapshotId,
+          employeeSnapshot: jsonValue({ employeeId: line.employeeId }),
+          employmentSnapshot: jsonValue({ id: line.employmentSnapshotId, companyId: line.employmentCompanyId }),
+          periodSnapshot: jsonValue({ wageMonth, periodStart: line.employmentPeriodStart, periodEnd: line.employmentPeriodEnd }),
+          positionCategorySnapshot: jsonValue({ category: line.positionCategory }), approvedAmountCents: BigInt(line.approvedAmountCents)
+        }, select: { id: true }
+      });
+      const components = await Promise.all(line.costComponents.map((component) => tx.wageCostComponent.create({ data: {
+        personLineId: person.id, componentCode: component.componentCode, amountCents: BigInt(component.amountCents), sourceSnapshot: jsonValue(component)
+      }, select: { id: true, componentCode: true } })));
+      const creditors = await Promise.all(line.creditorBreakdowns.map((creditor) => tx.wageCreditorBreakdown.create({ data: {
+        personLineId: person.id, creditorSubjectId: creditor.creditorSubjectId,
+        creditorSubjectType: creditor.creditorSubjectType, creditorUserId: creditor.creditorUserId,
+        creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId,
+        creditorSubjectIdentityKey: creditorIdentityKey(creditor),
+        creditorNameSnapshot: frozenCreditorName(creditor, employees, businessPartyByVersionId),
+        creditorUnifiedIdentitySnapshot: frozenCreditorUnifiedIdentity(creditor, businessPartyByVersionId),
+        creditorVersionFingerprint: frozenCreditorFingerprint(creditor, employees, businessPartyByVersionId),
+        creditorCategory: creditor.creditorCategory, amountCents: BigInt(creditor.amountCents), sourceSnapshot: jsonValue(creditor)
+      }, select: { id: true, creditorCategory: true, creditorSubjectType: true, creditorUserId: true, creditorBusinessPartyVersionId: true } })));
+      const allocations = await Promise.all(line.projectAllocations.map((allocation) => tx.wageProjectAllocation.create({ data: {
+        personLineId: person.id, projectId: allocation.projectId, serviceSnapshotId: allocation.serviceSnapshotId,
+        serviceBasisBindingId: required(serviceBindingByKey.get(serviceBasisKey(allocation))?.id, "外部批准工资来源的服务依据绑定不完整，不能创建后续修订"),
+        serviceSnapshot: jsonValue({ ...allocation, project: projectById.get(allocation.projectId) }), amountCents: BigInt(allocation.amountCents)
+      }, select: { id: true, projectId: true, serviceSnapshotId: true } })));
+      if (!line.projectCostComponentAllocations || !line.projectCreditorAllocations) {
+        throw new BadRequestException("项目成本组成矩阵和项目债权人矩阵必须同时明确填写");
+      }
+      const allocationByKey = new Map(allocations.map((allocation) => [`${allocation.projectId}:${allocation.serviceSnapshotId}`, allocation.id]));
+      const componentByCode = new Map(components.map((component) => [component.componentCode, component.id]));
+      const creditorByKey = new Map(creditors.map((creditor) => [`${creditor.creditorSubjectType}:${creditor.creditorSubjectType === "employee_user" ? creditor.creditorUserId : creditor.creditorBusinessPartyVersionId}:${creditor.creditorCategory}`, creditor.id]));
+      await tx.wageProjectCostComponentAllocation.createMany({ data: line.projectCostComponentAllocations.map((cell) => ({
+        projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资成本矩阵缺少项目分摊行"),
+        costComponentId: required(componentByCode.get(cell.componentCode), "工资成本矩阵缺少成本组成行"), amountCents: BigInt(cell.amountCents)
+      })) });
+      await tx.wageProjectCreditorAllocation.createMany({ data: line.projectCreditorAllocations.map((cell) => ({
+        projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资债权人矩阵缺少项目分摊行"),
+        creditorBreakdownId: required(creditorByKey.get(`${cell.creditorSubjectType}:${cell.creditorSubjectType === "employee_user" ? cell.creditorUserId : cell.creditorBusinessPartyVersionId}:${cell.creditorCategory}`), "工资债权人矩阵缺少债权人行"),
+        amountCents: BigInt(cell.amountCents)
+      })) });
+    }
   }
 
   async submit(actorUserId: string, statementId: string, input: WageStatementCommandDto) {
@@ -388,7 +600,17 @@ export class WageStatementService {
       assertRevision(statement.currentRevision, input.expectedRevision);
       const submitted = await tx.wageStatementVersion.findUnique({
         where: { statementId_revision: { statementId: statement.id, revision: statement.currentRevision } },
-        include: { personLines: { include: { costComponents: true, creditorBreakdowns: true, projectAllocations: true } } }
+        include: {
+          personLines: {
+            include: {
+              costComponents: true,
+              creditorBreakdowns: true,
+              projectAllocations: {
+                include: { componentAllocations: true, creditorAllocations: true }
+              }
+            }
+          }
+        }
       });
       if (!submitted) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
       if (submitted.status !== "submitted") throw new ConflictException("只有已提交工资承担单可以退回");
@@ -400,12 +622,59 @@ export class WageStatementService {
         data: {
           id: randomUUID(), statementId: id, revision: nextRevision, kind: "base", status: "draft", sourceVersionId: submitted.sourceVersionId,
           sourceSnapshot: jsonValue(submitted.sourceSnapshot), createdByUserId: actorUserId, lastEditedByUserId: actorUserId,
-          personLines: { create: submitted.personLines.map((line) => ({
-            employeeId: line.employeeId, employmentSnapshotId: line.employmentSnapshotId, employeeSnapshot: jsonValue(line.employeeSnapshot), employmentSnapshot: jsonValue(line.employmentSnapshot), periodSnapshot: jsonValue(line.periodSnapshot), positionCategorySnapshot: jsonValue(line.positionCategorySnapshot), approvedAmountCents: line.approvedAmountCents,
-            costComponents: { create: line.costComponents.map((component) => ({ componentCode: component.componentCode, amountCents: component.amountCents, sourceSnapshot: jsonValue(component.sourceSnapshot) })) },
-            creditorBreakdowns: { create: line.creditorBreakdowns.map((creditor) => ({ creditorSubjectId: creditor.creditorSubjectId, creditorCategory: creditor.creditorCategory, amountCents: creditor.amountCents, sourceSnapshot: jsonValue(creditor.sourceSnapshot) })) },
-            projectAllocations: { create: line.projectAllocations.map((allocation) => ({ projectId: allocation.projectId, serviceSnapshotId: allocation.serviceSnapshotId, serviceBasisBindingId: allocation.serviceBasisBindingId, serviceSnapshot: jsonValue(allocation.serviceSnapshot), amountCents: allocation.amountCents })) }
-          })) }
+          personLines: {
+            create: submitted.personLines.map((line) => {
+              const costIds = new Map(line.costComponents.map((component) => [component.id, randomUUID()]));
+              const creditorIds = new Map(line.creditorBreakdowns.map((creditor) => [creditor.id, randomUUID()]));
+              return {
+                id: randomUUID(),
+                employeeId: line.employeeId,
+                employmentSnapshotId: line.employmentSnapshotId,
+                employeeSnapshot: jsonValue(line.employeeSnapshot),
+                employmentSnapshot: jsonValue(line.employmentSnapshot),
+                periodSnapshot: jsonValue(line.periodSnapshot),
+                positionCategorySnapshot: jsonValue(line.positionCategorySnapshot),
+                approvedAmountCents: line.approvedAmountCents,
+                costComponents: {
+                  create: line.costComponents.map((component) => ({
+                    id: costIds.get(component.id), componentCode: component.componentCode,
+                    amountCents: component.amountCents, sourceSnapshot: jsonValue(component.sourceSnapshot)
+                  }))
+                },
+                creditorBreakdowns: {
+                  create: line.creditorBreakdowns.map((creditor) => ({
+                    id: creditorIds.get(creditor.id), creditorSubjectId: creditor.creditorSubjectId,
+                    creditorSubjectType: creditor.creditorSubjectType, creditorUserId: creditor.creditorUserId,
+                    creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId,
+                    creditorSubjectIdentityKey: creditor.creditorSubjectIdentityKey,
+                    creditorNameSnapshot: creditor.creditorNameSnapshot,
+                    creditorUnifiedIdentitySnapshot: creditor.creditorUnifiedIdentitySnapshot,
+                    creditorVersionFingerprint: creditor.creditorVersionFingerprint,
+                    creditorCategory: creditor.creditorCategory, amountCents: creditor.amountCents,
+                    sourceSnapshot: jsonValue(creditor.sourceSnapshot)
+                  }))
+                },
+                projectAllocations: {
+                  create: line.projectAllocations.map((allocation) => ({
+                    id: randomUUID(), projectId: allocation.projectId,
+                    serviceSnapshotId: allocation.serviceSnapshotId,
+                    serviceBasisBinding: { connect: { id: allocation.serviceBasisBindingId } },
+                    serviceSnapshot: jsonValue(allocation.serviceSnapshot), amountCents: allocation.amountCents,
+                    componentAllocations: {
+                      create: allocation.componentAllocations.map((cell) => ({
+                        costComponent: { connect: { id: costIds.get(cell.costComponentId)! } }, amountCents: cell.amountCents
+                      }))
+                    },
+                    creditorAllocations: {
+                      create: allocation.creditorAllocations.map((cell) => ({
+                        creditorBreakdown: { connect: { id: creditorIds.get(cell.creditorBreakdownId)! } }, amountCents: cell.amountCents
+                      }))
+                    }
+                  }))
+                }
+              };
+            })
+          }
         }, select: { id: true }
       });
       await tx.wageStatement.update({ where: { id }, data: { currentRevision: nextRevision } });
@@ -428,13 +697,432 @@ export class WageStatementService {
       assertRevision(statement.currentRevision, input.expectedRevision);
       const version = await this.currentVersion(tx, statement.id, statement.currentRevision);
       if (version.status !== "submitted") throw new ConflictException("只有已提交工资承担单可以确认");
+      // No public adjustment endpoint is exposed. A later controlled lifecycle
+      // owner may prepare one of these dispositions, but it can only become
+      // effective through this existing segregated confirmation transaction.
+      wageVersionKind(version.kind);
       if ([version.createdByUserId, version.lastEditedByUserId, version.submittedByUserId].includes(actorUserId)) throw new ConflictException("职责分离冲突：确认人不得为编制人、编辑人或提交人");
+      await this.projectConfirmedVersion(tx, version.id, statement.employmentCompanyId, statement.currentRevision, actorUserId);
       await tx.wageStatementVersion.update({ where: { id: version.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date() } });
       const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "confirmed" };
       await this.receipt(tx, input, "wage_statement.confirm", id, fingerprintValue, actorUserId, result);
       await this.audit.record(tx, { actorUserId, action: "wage_statement.confirm", businessType: "wage_statement_version", businessId: version.id, metadata: jsonValue({ statementId: id, expectedRevision: input.expectedRevision }) });
       return result;
     }));
+  }
+
+  /**
+   * The confirmation write is deliberately kept inside the caller's
+   * Serializable transaction. It materializes immutable payables before the
+   * version status flips, then asks the controlled operating ledger to append
+   * exactly one no-payee project_wage envelope per project.
+   */
+  private async projectConfirmedVersion(
+    tx: Tx,
+    versionId: string,
+    employmentCompanyId: string,
+    revision: number,
+    actorUserId: string
+  ) {
+    if (!this.operatingLedger) throw new ConflictException("工资经营投影服务未配置，不能确认工资承担单");
+    const version = await tx.wageStatementVersion.findUnique({
+      where: { id: versionId },
+      include: WAGE_CONFIRMATION_INCLUDE
+    });
+    if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
+    const kind = wageVersionKind(version.kind);
+    if (kind !== "base") {
+      await this.projectSubsequentVersion(tx, version, employmentCompanyId, revision, actorUserId, kind);
+      return;
+    }
+    const direction = isWageDecreaseKind(kind) ? "decrease" : "increase";
+    const adjustmentTargets: readonly WagePayableRefAdjustmentTarget[] = isWageDecreaseKind(kind)
+      ? await tx.wagePayableRef.findMany({
+          where: {
+            adjustsPayableRefId: null,
+            direction: "increase",
+            confirmedVersion: {
+              statementId: version.statementId,
+              revision: { lt: version.revision },
+              status: "confirmed"
+            }
+          },
+          select: {
+            id: true,
+            debtorCompanyId: true,
+            costBearingCompanyId: true,
+            projectId: true,
+            personLine: { select: { employeeId: true, employmentSnapshotId: true } },
+            creditorBreakdown: {
+              select: {
+                creditorSubjectType: true,
+                creditorSubjectIdentityKey: true,
+                creditorCategory: true,
+                creditorNameSnapshot: true,
+                creditorUnifiedIdentitySnapshot: true,
+                creditorVersionFingerprint: true
+              }
+            }
+          }
+        })
+      : [];
+    const occurredAt = version.sourceVersion.periodEnd as Date;
+    const confirmedAt = new Date();
+    const byProject = new Map<string, WageProjection>();
+    for (const person of version.personLines) {
+      this.assertCompleteStoredMatrices(person);
+      const allocationById = new Map(person.projectAllocations.map((allocation) => [allocation.id, allocation]));
+      const costById = new Map(person.costComponents.map((component) => [component.id, component]));
+      const creditorById = new Map(person.creditorBreakdowns.map((creditor) => [creditor.id, creditor]));
+      for (const creditor of creditorById.values()) this.assertFrozenCreditor(creditor, person.employeeId);
+      for (const allocation of allocationById.values()) {
+        const costTotal = allocation.componentAllocations.reduce((sum, cell) => sum + cell.amountCents, 0n);
+        const creditorTotal = allocation.creditorAllocations.reduce((sum, cell) => sum + cell.amountCents, 0n);
+        if (costTotal !== allocation.amountCents || creditorTotal !== allocation.amountCents) {
+          throw new ConflictException("工资版本缺少完整交叉矩阵或项目分摊未逐分平衡，不能确认");
+        }
+        for (const component of costById.values()) {
+          const total = [...allocationById.values()].reduce((sum, row) => sum + row.componentAllocations.filter((cell) => cell.costComponentId === component.id).reduce((rowSum, cell) => rowSum + cell.amountCents, 0n), 0n);
+          if (total !== component.amountCents) throw new ConflictException("工资成本组成矩阵列合计未逐分平衡，不能确认");
+        }
+        for (const creditor of creditorById.values()) {
+          const total = [...allocationById.values()].reduce((sum, row) => sum + row.creditorAllocations.filter((cell) => cell.creditorBreakdownId === creditor.id).reduce((rowSum, cell) => rowSum + cell.amountCents, 0n), 0n);
+          if (total !== creditor.amountCents) throw new ConflictException("工资债权人矩阵列合计未逐分平衡，不能确认");
+        }
+        const project = byProject.get(allocation.projectId) ?? { amount: 0n, direction, kind, refs: [], costs: [], payables: [] };
+        project.amount += allocation.amountCents;
+        for (const cell of allocation.componentAllocations) {
+          if (!costById.has(cell.costComponentId)) throw new ConflictException("工资成本矩阵引用不属于该人员行");
+          if (cell.amountCents > 0n) project.costs.push({ allocation, cell });
+        }
+        for (const cell of allocation.creditorAllocations) {
+          const creditor = creditorById.get(cell.creditorBreakdownId);
+          if (!creditor) throw new ConflictException("工资债权人矩阵引用不属于该人员行");
+          // A zero matrix cell is a required explicit finance decision, not an
+          // accounting impact or payable. WagePayableRef is strictly positive.
+          if (cell.amountCents === 0n) continue;
+          const matchingTargets = isWageDecreaseKind(kind)
+            ? adjustmentTargets.filter((target) =>
+                target.debtorCompanyId === employmentCompanyId &&
+                target.costBearingCompanyId === employmentCompanyId &&
+                target.projectId === allocation.projectId &&
+                target.personLine.employeeId === person.employeeId &&
+                target.personLine.employmentSnapshotId === person.employmentSnapshotId &&
+                target.creditorBreakdown.creditorSubjectType === creditor.creditorSubjectType &&
+                target.creditorBreakdown.creditorSubjectIdentityKey === creditor.creditorSubjectIdentityKey &&
+                target.creditorBreakdown.creditorCategory === creditor.creditorCategory
+              )
+            : [];
+          if (isWageDecreaseKind(kind) && matchingTargets.length !== 1) {
+            throw new ConflictException("工资更正或冲销必须逐笔且唯一地指向同一工资承担单既有正向应付引用");
+          }
+          const adjustmentTarget = matchingTargets[0];
+          const ref = await tx.wagePayableRef.create({
+            data: {
+              id: randomUUID(), confirmedVersionId: version.id, projectAllocationId: allocation.id,
+              creditorBreakdownId: creditor.id, debtorCompanyId: employmentCompanyId,
+              costBearingCompanyId: employmentCompanyId, projectId: allocation.projectId, personLineId: person.id,
+              debtorCompanySnapshot: jsonValue({ companyId: employmentCompanyId }),
+              costBearingCompanySnapshot: jsonValue({ companyId: employmentCompanyId }),
+              projectSnapshot: jsonValue({ projectId: allocation.projectId, serviceSnapshotId: allocation.serviceSnapshotId }),
+              personSnapshot: jsonValue({ employeeId: person.employeeId, employmentSnapshotId: person.employmentSnapshotId }),
+              creditorSnapshot: jsonValue(this.frozenCreditorSnapshot(creditor)),
+              amountCents: cell.amountCents,
+              direction,
+              ...(adjustmentTarget
+                ? { adjustsPayableRefId: adjustmentTarget.id, settlementRecheckRequired: true }
+                : {})
+            },
+            select: { id: true }
+          });
+          project.refs.push(ref.id);
+          project.payables.push({ allocation, cell, ref });
+        }
+        byProject.set(allocation.projectId, project);
+      }
+    }
+    const projectWrites: Array<{
+      projectId: string;
+      projection: WageProjection;
+      participant: { companyEntityId: string; companyEntityVersionId: string };
+      snapshot: Prisma.InputJsonObject;
+    }> = [];
+    const projects: Record<string, Prisma.InputJsonObject> = {};
+    for (const [projectId, projection] of byProject) {
+      // A zero project-allocation row remains in the frozen finance matrix but
+      // has no formal ledger impact or positive payable reference to publish.
+      if (projection.amount === 0n) continue;
+      const projectRecord = await tx.project.findUnique({
+        where: { id: projectId },
+        select: { operatingLedgerEffectiveDate: true }
+      });
+      if (!projectRecord?.operatingLedgerEffectiveDate) {
+        throw new ConflictException("工资项目尚未启用经营账，不能确认");
+      }
+      const participant = await tx.projectParticipatingCompany.findFirst({
+        where: { projectId, companyEntityId: employmentCompanyId, effectiveFrom: { lte: occurredAt }, OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }] },
+        select: { companyEntityId: true, companyEntityVersionId: true }
+      });
+      if (!participant) throw new ConflictException("工资劳动关系公司不是项目事实日有效参与公司，不能确认");
+      const affiliate = await tx.projectAffiliateAssignment.findFirst({
+        where: { projectId, effectiveFrom: { lte: occurredAt }, OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }] },
+        select: { id: true, businessPartyVersionId: true, affiliateNameSnapshot: true, affiliateCreditCodeSnapshot: true }
+      });
+      if (!affiliate) throw new ConflictException("工资项目缺少事实日有效施工企业上下文，不能确认");
+      const snapshot = jsonValue({
+        formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind,
+        projectId, occurredAt: occurredAt.toISOString(), confirmedAt: confirmedAt.toISOString(),
+        confirmedByUserId: actorUserId, employmentCompanyId,
+        operatingLedgerEffectiveDate: projectRecord.operatingLedgerEffectiveDate.toISOString(),
+        affiliate: { assignmentId: affiliate.id, businessPartyVersionId: affiliate.businessPartyVersionId, name: affiliate.affiliateNameSnapshot, creditCode: affiliate.affiliateCreditCodeSnapshot ?? undefined },
+        payableRefIds: projection.refs,
+        costDeltaCells: projection.costs.map(({ cell }) => ({ id: cell.id, direction: "increase" }))
+      }) as Prisma.InputJsonObject;
+      projects[projectId] = snapshot;
+      projectWrites.push({ projectId, projection, participant, snapshot });
+    }
+    await tx.wageStatementVersion.update({
+      where: { id: version.id },
+      data: { operatingProjectionSnapshot: jsonValue({ formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind, projects }) }
+    });
+    for (const { projectId, projection, participant, snapshot } of projectWrites) {
+      await this.operatingLedger.appendConfirmedSourceInTransaction(tx, {
+        projectId, sourceType: "wage_statement_version", sourceBusinessId: `${version.id}:${projectId}`,
+        sourceBusinessCode: `工资承担单-${revision}`, sourceVersion: revision,
+        idempotencyKey: `wage:${version.id}:${projectId}`, occurredAt, confirmedAt, confirmedByUserId: actorUserId,
+        factKind: "project_wage", operatingLevel: "participating_company", evidenceLevel: "A",
+        amountCents: projection.amount, currencyCode: "CNY", direction: "neutral",
+        isBeforeOperatingLedgerEffectiveDate: occurredAt.toISOString().slice(0, 10) < (snapshot.operatingLedgerEffectiveDate as string).slice(0, 10),
+        affiliateAssignmentId: (snapshot.affiliate as Prisma.InputJsonObject).assignmentId as string,
+        affiliateBusinessPartyVersionId: (snapshot.affiliate as Prisma.InputJsonObject).businessPartyVersionId as string,
+        affiliateNameSnapshot: (snapshot.affiliate as Prisma.InputJsonObject).name as string,
+        affiliateCreditCodeSnapshot: (snapshot.affiliate as Prisma.InputJsonObject).creditCode as string | undefined,
+        sourceSnapshot: snapshot,
+        subjects: { debtor: { kind: "participating_company", id: participant.companyEntityId }, costBearingCompany: { kind: "participating_company", id: participant.companyEntityId } },
+        impacts: [
+          ...projection.costs.map(({ cell }) => ({ idempotencyKey: `wage:${version.id}:${cell.id}:cost`, sourceImpactKey: `cost:${cell.id}`, impactKind: "confirmed_cost" as const, amountCents: cell.amountCents, direction: projection.direction, subjectRole: "cost_bearing_company" as const, subject: { kind: "participating_company" as const, id: participant.companyEntityId }, costCategoryCode: "crew_and_labor" as const, impactSnapshot: jsonValue({ wageCostComponentCode: cell.costComponent.componentCode }) as Prisma.InputJsonObject })),
+          ...projection.payables.map(({ cell, ref }) => ({ idempotencyKey: `wage:${version.id}:${cell.id}:payable`, sourceImpactKey: `payable:${cell.id}`, impactKind: projection.direction === "increase" ? "payable_increase" as const : "payable_decrease" as const, amountCents: cell.amountCents, direction: projection.direction, impactSnapshot: jsonValue({ wagePayableRefId: ref.id }) as Prisma.InputJsonObject }))
+        ]
+      }, actorUserId);
+    }
+  }
+
+  /**
+   * Later revisions are complete replacement snapshots, but their formal
+   * effects are strictly the signed difference from the immediately preceding
+   * confirmed snapshot.  A negative movement is distributed across immutable
+   * original refs (never an earlier adjustment), so the database trigger can
+   * serialize and protect the effective non-negative balance.
+   */
+  private async projectSubsequentVersion(
+    tx: Tx,
+    version: WageConfirmationVersion,
+    employmentCompanyId: string,
+    revision: number,
+    actorUserId: string,
+    kind: Exclude<WageVersionKind, "base">
+  ) {
+    const prior = await tx.wageStatementVersion.findFirst({
+      where: { statementId: version.statementId, revision: { lt: version.revision }, status: "confirmed" },
+      orderBy: { revision: "desc" }, include: WAGE_CONFIRMATION_INCLUDE
+    }) as WageConfirmationVersion | null;
+    if (!prior) throw new ConflictException("后续工资修订缺少已确认的前置版本，不能确认");
+    const current = wageMatrixIdentities(version);
+    const previous = wageMatrixIdentities(prior);
+    assertRetainedWageIdentities(current.costs, previous.costs, "成本组成");
+    assertRetainedWageIdentities(current.payables, previous.payables, "债权人");
+    const roots = await tx.wagePayableRef.findMany({
+      where: {
+        adjustsPayableRefId: null, direction: "increase",
+        confirmedVersion: { statementId: version.statementId, revision: { lt: version.revision }, status: "confirmed" }
+      },
+      select: {
+        id: true, amountCents: true, debtorCompanyId: true, costBearingCompanyId: true, projectId: true,
+        personLine: { select: { employeeId: true, employmentSnapshotId: true } },
+        creditorBreakdown: { select: { creditorSubjectType: true, creditorSubjectIdentityKey: true, creditorCategory: true } },
+        adjustments: { select: { direction: true, amountCents: true } }
+      }, orderBy: { createdAt: "asc" }
+    });
+    const rootBalances = roots.map((root) => ({
+      ...root,
+      remaining: root.amountCents + root.adjustments.reduce((sum, adjustment) => sum + (adjustment.direction === "increase" ? adjustment.amountCents : -adjustment.amountCents), 0n)
+    }));
+    const byProject = new Map<string, WageDeltaProjection>();
+    const projectFor = (projectId: string) => {
+      const existing = byProject.get(projectId);
+      if (existing) return existing;
+      const next: WageDeltaProjection = { costs: [], payables: [], refs: [] };
+      byProject.set(projectId, next);
+      return next;
+    };
+    for (const [key, cell] of current.costs) {
+      const previousAmount = previous.costs.get(key)?.amountCents ?? 0n;
+      const delta = cell.amountCents - previousAmount;
+      if (delta !== 0n) projectFor(cell.allocation.projectId).costs.push({ ...cell, amountCents: abs(delta), direction: delta > 0n ? "increase" : "decrease" });
+    }
+    for (const [key, cell] of current.payables) {
+      const previousAmount = previous.payables.get(key)?.amountCents ?? 0n;
+      const delta = cell.amountCents - previousAmount;
+      if (delta === 0n) continue;
+      const projection = projectFor(cell.allocation.projectId);
+      if (kind === "supplemental") {
+        if (delta < 0n) {
+          throw new ConflictException("补发工资不能减少既有应付引用，须以更正或冲销确认");
+        }
+        const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, delta, "increase");
+        projection.refs.push(ref.id);
+        projection.payables.push({ ...cell, amountCents: delta, direction: "increase", ref });
+        continue;
+      }
+      const matchingRoots = rootBalances.filter((candidate) => wageRootIdentity(candidate) === key);
+      if (!matchingRoots.length) {
+        throw new ConflictException("工资更正或冲销缺少可调整的原始应付引用，不能确认");
+      }
+      if (delta > 0n) {
+        // A correction/reversal must remain lineage-linked even when it adds
+        // back value: select the oldest immutable root deterministically.
+        const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, delta, "increase", matchingRoots[0].id);
+        projection.refs.push(ref.id);
+        projection.payables.push({ ...cell, amountCents: delta, direction: "increase", ref });
+        continue;
+      }
+      let remaining = -delta;
+      for (const root of matchingRoots.filter((candidate) => candidate.remaining > 0n)) {
+        const amount = remaining < root.remaining ? remaining : root.remaining;
+        const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, amount, "decrease", root.id);
+        root.remaining -= amount;
+        remaining -= amount;
+        projection.refs.push(ref.id);
+        projection.payables.push({ ...cell, amountCents: amount, direction: "decrease", ref });
+        if (remaining === 0n) break;
+      }
+      if (remaining !== 0n) throw new ConflictException("工资更正或冲销会使既有应付引用有效金额低于零，不能确认");
+    }
+    const occurredAt = version.sourceVersion.periodEnd as Date;
+    const confirmedAt = new Date();
+    const writes: Array<{ projectId: string; projection: WageDeltaProjection; participant: { companyEntityId: string }; snapshot: Prisma.InputJsonObject }> = [];
+    const projects: Record<string, Prisma.InputJsonObject> = {};
+    for (const [projectId, projection] of byProject) {
+      if (!projection.costs.length && !projection.payables.length) continue;
+      const projectRecord = await tx.project.findUnique({ where: { id: projectId }, select: { operatingLedgerEffectiveDate: true } });
+      if (!projectRecord?.operatingLedgerEffectiveDate) throw new ConflictException("工资项目尚未启用经营账，不能确认");
+      const participant = await tx.projectParticipatingCompany.findFirst({
+        where: { projectId, companyEntityId: employmentCompanyId, effectiveFrom: { lte: occurredAt }, OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }] },
+        select: { companyEntityId: true }
+      });
+      if (!participant) throw new ConflictException("工资劳动关系公司不是项目事实日有效参与公司，不能确认");
+      const affiliate = await tx.projectAffiliateAssignment.findFirst({
+        where: { projectId, effectiveFrom: { lte: occurredAt }, OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }] },
+        select: { id: true, businessPartyVersionId: true, affiliateNameSnapshot: true, affiliateCreditCodeSnapshot: true }
+      });
+      if (!affiliate) throw new ConflictException("工资项目缺少事实日有效施工企业上下文，不能确认");
+      const snapshot = jsonValue({
+        formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind,
+        projectId, occurredAt: occurredAt.toISOString(), confirmedAt: confirmedAt.toISOString(), confirmedByUserId: actorUserId,
+        employmentCompanyId, operatingLedgerEffectiveDate: projectRecord.operatingLedgerEffectiveDate.toISOString(),
+        affiliate: { assignmentId: affiliate.id, businessPartyVersionId: affiliate.businessPartyVersionId, name: affiliate.affiliateNameSnapshot, creditCode: affiliate.affiliateCreditCodeSnapshot ?? undefined },
+        payableRefIds: projection.refs,
+        costDeltaCells: projection.costs.map((cost) => ({ id: cost.cell.id, direction: cost.direction }))
+      }) as Prisma.InputJsonObject;
+      projects[projectId] = snapshot;
+      writes.push({ projectId, projection, participant, snapshot });
+    }
+    await tx.wageStatementVersion.update({
+      where: { id: version.id },
+      data: { operatingProjectionSnapshot: jsonValue({ formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind, projects }) }
+    });
+    for (const { projectId, projection, participant, snapshot } of writes) {
+      const costTotal = projection.costs.reduce((sum, cell) => sum + cell.amountCents, 0n);
+      const payableTotal = projection.payables.reduce((sum, cell) => sum + cell.amountCents, 0n);
+      const amountCents = costTotal > payableTotal ? costTotal : payableTotal;
+      await this.operatingLedger!.appendConfirmedSourceInTransaction(tx, {
+        projectId, sourceType: "wage_statement_version", sourceBusinessId: `${version.id}:${projectId}`, sourceBusinessCode: `工资承担单-${revision}`,
+        sourceVersion: revision, idempotencyKey: `wage:${version.id}:${projectId}`, occurredAt, confirmedAt, confirmedByUserId: actorUserId,
+        factKind: "project_wage", operatingLevel: "participating_company", evidenceLevel: "A", amountCents, currencyCode: "CNY", direction: "neutral",
+        isBeforeOperatingLedgerEffectiveDate: occurredAt.toISOString().slice(0, 10) < (snapshot.operatingLedgerEffectiveDate as string).slice(0, 10),
+        affiliateAssignmentId: (snapshot.affiliate as Prisma.InputJsonObject).assignmentId as string,
+        affiliateBusinessPartyVersionId: (snapshot.affiliate as Prisma.InputJsonObject).businessPartyVersionId as string,
+        affiliateNameSnapshot: (snapshot.affiliate as Prisma.InputJsonObject).name as string,
+        affiliateCreditCodeSnapshot: (snapshot.affiliate as Prisma.InputJsonObject).creditCode as string | undefined,
+        sourceSnapshot: snapshot,
+        subjects: { debtor: { kind: "participating_company", id: participant.companyEntityId }, costBearingCompany: { kind: "participating_company", id: participant.companyEntityId } },
+        impacts: [
+          ...projection.costs.map((cost) => ({ idempotencyKey: `wage:${version.id}:${cost.cell.id}:cost:${cost.direction}`, sourceImpactKey: `cost:${cost.cell.id}:${cost.direction}`, impactKind: "confirmed_cost" as const, amountCents: cost.amountCents, direction: cost.direction, subjectRole: "cost_bearing_company" as const, subject: { kind: "participating_company" as const, id: participant.companyEntityId }, costCategoryCode: "crew_and_labor" as const, impactSnapshot: jsonValue({ wageCostComponentCode: cost.cell.costComponent.componentCode }) as Prisma.InputJsonObject })),
+          ...projection.payables.map((payable) => ({ idempotencyKey: `wage:${version.id}:${payable.cell.id}:payable:${payable.ref.id}`, sourceImpactKey: `payable:${payable.cell.id}:${payable.ref.id}`, impactKind: payable.direction === "increase" ? "payable_increase" as const : "payable_decrease" as const, amountCents: payable.amountCents, direction: payable.direction, impactSnapshot: jsonValue({ wagePayableRefId: payable.ref.id }) as Prisma.InputJsonObject }))
+        ]
+      }, actorUserId);
+    }
+  }
+
+  private async createWagePayableRef(
+    tx: Tx, versionId: string, employmentCompanyId: string, cell: WagePayableCellIdentity, amountCents: bigint,
+    direction: "increase" | "decrease", adjustsPayableRefId?: string
+  ) {
+    return tx.wagePayableRef.create({
+      data: {
+        id: randomUUID(), confirmedVersionId: versionId, projectAllocationId: cell.allocation.id, creditorBreakdownId: cell.creditor.id,
+        debtorCompanyId: employmentCompanyId, costBearingCompanyId: employmentCompanyId, projectId: cell.allocation.projectId, personLineId: cell.person.id,
+        debtorCompanySnapshot: jsonValue({ companyId: employmentCompanyId }), costBearingCompanySnapshot: jsonValue({ companyId: employmentCompanyId }),
+        projectSnapshot: jsonValue({ projectId: cell.allocation.projectId, serviceSnapshotId: cell.allocation.serviceSnapshotId }),
+        personSnapshot: jsonValue({ employeeId: cell.person.employeeId, employmentSnapshotId: cell.person.employmentSnapshotId }),
+        creditorSnapshot: jsonValue(this.frozenCreditorSnapshot(cell.creditor)), amountCents, direction,
+        ...(adjustsPayableRefId ? { adjustsPayableRefId, settlementRecheckRequired: direction === "decrease" } : {})
+      }, select: { id: true }
+    });
+  }
+
+  /** Confirmation must re-check persisted cells, because pre-confirmation
+   * writes may be old, manually malformed, or otherwise outside DTO parsing. */
+  private assertCompleteStoredMatrices(person: {
+    costComponents: Array<{ id: string }>;
+    creditorBreakdowns: Array<{ id: string }>;
+    projectAllocations: Array<{
+      componentAllocations: Array<{ costComponentId: string }>;
+      creditorAllocations: Array<{ creditorBreakdownId: string }>;
+    }>;
+  }) {
+    const costIds = new Set(person.costComponents.map((component) => component.id));
+    const creditorIds = new Set(person.creditorBreakdowns.map((creditor) => creditor.id));
+    for (const allocation of person.projectAllocations) {
+      this.assertCompleteStoredMatrixRow(
+        allocation.componentAllocations.map((cell) => cell.costComponentId),
+        costIds,
+        "成本组成"
+      );
+      this.assertCompleteStoredMatrixRow(
+        allocation.creditorAllocations.map((cell) => cell.creditorBreakdownId),
+        creditorIds,
+        "债权人"
+      );
+    }
+  }
+
+  private assertCompleteStoredMatrixRow(actualIds: string[], expectedIds: ReadonlySet<string>, kind: string) {
+    if (actualIds.length !== expectedIds.size || new Set(actualIds).size !== actualIds.length || actualIds.some((id) => !expectedIds.has(id))) {
+      throw new ConflictException(`工资版本缺少完整交叉矩阵：每个项目分摊必须包含全部${kind}单元（含零金额）`);
+    }
+  }
+
+  private assertFrozenCreditor(creditor: WageConfirmationCreditor, employeeId: string) {
+    const employee = creditor.creditorSubjectType === "employee_user" && creditor.creditorUserId;
+    const businessParty = creditor.creditorSubjectType === "business_party" && creditor.creditorBusinessPartyVersionId;
+    if ((!employee && !businessParty) || !creditor.creditorSubjectIdentityKey || !creditor.creditorNameSnapshot || !creditor.creditorVersionFingerprint) {
+      throw new ConflictException("旧工资版本缺少冻结债权人身份，不能确认");
+    }
+    if (employee && creditor.creditorUserId !== employeeId && creditor.creditorCategory === "employee_net_pay") {
+      throw new ConflictException("员工净付债权人必须绑定该人员");
+    }
+  }
+
+  private frozenCreditorSnapshot(creditor: WageConfirmationCreditor) {
+    return {
+      subjectType: creditor.creditorSubjectType,
+      identityKey: creditor.creditorSubjectIdentityKey,
+      name: creditor.creditorNameSnapshot,
+      unifiedIdentity: creditor.creditorUnifiedIdentitySnapshot ?? null,
+      versionFingerprint: creditor.creditorVersionFingerprint,
+      category: creditor.creditorCategory
+    };
   }
 
   private async assertPrepareAuthority(actorUserId: string) {
@@ -536,7 +1224,7 @@ export class WageStatementService {
   private async lockStatement(tx: Tx, statementId: string) {
     const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT id FROM "WageStatement" WHERE id = ${statementId} FOR UPDATE`);
     if (!locked.length) throw new NotFoundException("工资承担单不存在，请刷新后重试");
-    const statement = await tx.wageStatement.findUnique({ where: { id: statementId }, select: { id: true, currentRevision: true } });
+    const statement = await tx.wageStatement.findUnique({ where: { id: statementId }, select: { id: true, employmentCompanyId: true, currentRevision: true } });
     if (!statement) throw new NotFoundException("工资承担单不存在，请刷新后重试");
     return statement;
   }
@@ -727,7 +1415,7 @@ function normalizeAuthorityPersonLine(
   if (sumAmounts(projectAllocations, "项目分摊") !== approvedAmountCents) {
     throw new BadRequestException("项目分摊合计必须与外部批准人员金额逐分一致");
   }
-  return {
+  const normalized: AuthorityLine = {
     employeeId,
     employmentSnapshotId,
     employmentCompanyId,
@@ -737,8 +1425,19 @@ function normalizeAuthorityPersonLine(
     approvedAmountCents: approvedAmountCents.toString(),
     costComponents,
     creditorBreakdowns,
-    projectAllocations
+    projectAllocations,
+    projectCostComponentAllocations: normalizeProjectCostComponentAllocations(line.projectCostComponentAllocations),
+    projectCreditorAllocations: normalizeProjectCreditorAllocations(line.projectCreditorAllocations)
   };
+  // The source is the first frozen form of finance's explicit decision.  Run
+  // the same public balance boundary here so it cannot silently downgrade a
+  // union creditor or omit a zero-valued Cartesian cell before draft creation.
+  assertBalancedWageStatementDraft({
+    wageMonth: context.wageMonth,
+    sourceTotalCents: approvedAmountCents.toString(),
+    personLines: [normalized]
+  });
+  return normalized;
 }
 
 function normalizeCostComponents(lines: ApprovedWagePersonDto["costComponents"]) {
@@ -758,20 +1457,60 @@ function normalizeCreditorBreakdowns(lines: ApprovedWagePersonDto["creditorBreak
   const keys = new Set<string>();
   let employeeNetPayCount = 0;
   const normalized = lines.map((line) => {
-    const creditorSubjectId = required(line.creditorSubjectId, "工资债权人不能为空");
     const creditorCategory = required(line.creditorCategory, "工资债权人类别不正确");
     if (!WAGE_CREDITOR_CATEGORIES.includes(creditorCategory as never)) throw new BadRequestException("工资债权人类别不正确");
+    const creditorSubjectType = line.creditorSubjectType;
+    if (creditorSubjectType !== "employee_user" && creditorSubjectType !== "business_party") {
+      throw new BadRequestException("工资债权人必须明确为员工或机构冻结版本");
+    }
+    const creditorUserId = creditorSubjectType === "employee_user" ? required(line.creditorUserId, "员工债权人不能为空") : undefined;
+    const creditorBusinessPartyVersionId = creditorSubjectType === "business_party" ? required(line.creditorBusinessPartyVersionId, "机构债权人版本不能为空") : undefined;
+    if ((creditorSubjectType === "employee_user" && line.creditorBusinessPartyVersionId) || (creditorSubjectType === "business_party" && line.creditorUserId)) {
+      throw new BadRequestException("工资债权人只能绑定一种权威身份");
+    }
     if (creditorCategory === "employee_net_pay") {
       employeeNetPayCount += 1;
-      if (creditorSubjectId !== employeeId) throw new BadRequestException("员工净付债权人必须绑定该员工");
+      if (creditorSubjectType !== "employee_user" || creditorUserId !== employeeId) throw new BadRequestException("员工净付债权人必须绑定该员工");
+    } else if (creditorSubjectType !== "business_party") {
+      throw new BadRequestException("受控机构工资债权人必须绑定机构冻结版本");
     }
-    const key = `${creditorSubjectId}:${creditorCategory}`;
+    const key = `${creditorSubjectType}:${creditorUserId ?? creditorBusinessPartyVersionId}:${creditorCategory}`;
     if (keys.has(key)) throw new BadRequestException("同一人员工资债权人拆分不能重复");
     keys.add(key);
-    return { creditorSubjectId, creditorCategory, amountCents: cents(line.amountCents, "债权人拆分金额必须是非负整数分").toString() };
-  }).sort((left, right) => `${left.creditorSubjectId}:${left.creditorCategory}`.localeCompare(`${right.creditorSubjectId}:${right.creditorCategory}`));
+    return { creditorSubjectType, creditorUserId, creditorBusinessPartyVersionId, creditorCategory, amountCents: cents(line.amountCents, "债权人拆分金额必须是非负整数分").toString() };
+  }).sort((left, right) => `${left.creditorSubjectType}:${left.creditorUserId ?? left.creditorBusinessPartyVersionId}:${left.creditorCategory}`.localeCompare(`${right.creditorSubjectType}:${right.creditorUserId ?? right.creditorBusinessPartyVersionId}:${right.creditorCategory}`));
   if (employeeNetPayCount !== 1) throw new BadRequestException("每名员工必须且只能有一项员工净付债权人");
   return normalized;
+}
+
+function normalizeProjectCostComponentAllocations(lines: ApprovedWagePersonDto["projectCostComponentAllocations"]): WageProjectCostComponentAllocationInput[] {
+  if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("项目成本组成矩阵必须明确填写");
+  return lines.map((line) => ({
+    projectId: required(line.projectId, "项目不能为空"),
+    serviceSnapshotId: required(line.serviceSnapshotId, "服务快照不能为空"),
+    componentCode: required(line.componentCode, "工资成本组成类别不正确"),
+    amountCents: cents(line.amountCents, "项目成本组成矩阵金额必须是非负整数分").toString()
+  })).sort((left, right) => `${left.projectId}:${left.serviceSnapshotId}:${left.componentCode}`.localeCompare(`${right.projectId}:${right.serviceSnapshotId}:${right.componentCode}`));
+}
+
+function normalizeProjectCreditorAllocations(lines: ApprovedWagePersonDto["projectCreditorAllocations"]): WageProjectCreditorAllocationInput[] {
+  if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("项目债权人矩阵必须明确填写");
+  return lines.map((line) => {
+    const creditorSubjectType = line.creditorSubjectType;
+    if (creditorSubjectType !== "employee_user" && creditorSubjectType !== "business_party") throw new BadRequestException("项目债权人矩阵必须明确债权人身份");
+    const creditorUserId = creditorSubjectType === "employee_user" ? required(line.creditorUserId, "员工债权人不能为空") : undefined;
+    const creditorBusinessPartyVersionId = creditorSubjectType === "business_party" ? required(line.creditorBusinessPartyVersionId, "机构债权人版本不能为空") : undefined;
+    if ((creditorSubjectType === "employee_user" && line.creditorBusinessPartyVersionId) || (creditorSubjectType === "business_party" && line.creditorUserId)) throw new BadRequestException("项目债权人矩阵只能绑定一种权威身份");
+    return {
+      projectId: required(line.projectId, "项目不能为空"),
+      serviceSnapshotId: required(line.serviceSnapshotId, "服务快照不能为空"),
+      creditorSubjectType,
+      creditorUserId,
+      creditorBusinessPartyVersionId,
+      creditorCategory: required(line.creditorCategory, "工资债权人类别不正确"),
+      amountCents: cents(line.amountCents, "项目债权人矩阵金额必须是非负整数分").toString()
+    };
+  }).sort((left, right) => `${left.projectId}:${left.serviceSnapshotId}:${left.creditorSubjectType}:${left.creditorUserId ?? left.creditorBusinessPartyVersionId}:${left.creditorCategory}`.localeCompare(`${right.projectId}:${right.serviceSnapshotId}:${right.creditorSubjectType}:${right.creditorUserId ?? right.creditorBusinessPartyVersionId}:${right.creditorCategory}`));
 }
 
 function normalizeProjectAllocations(lines: ApprovedWagePersonDto["projectAllocations"], wageMonth: string) {
@@ -799,32 +1538,27 @@ function validateDraftInput(input: CreateWageStatementDraftDto) {
   validateCommand(input);
   if (input.expectedRevision !== 0) throw new ConflictException("新建工资承担单的 expectedRevision 必须为 0");
   required(input.sourceVersionId, "外部批准工资来源不能为空");
-  const componentCodes = new Set<string>();
-  const creditorKeys = new Set<string>();
-  const allocationKeys = new Set<string>();
   for (const line of input.personLines ?? []) {
-    componentCodes.clear();
-    creditorKeys.clear();
-    allocationKeys.clear();
-    for (const component of line.costComponents ?? []) {
-      if (!WAGE_COST_COMPONENT_CODES.includes(component.componentCode as never)) throw new BadRequestException("工资成本组成类别不正确");
-      if (componentCodes.has(component.componentCode)) throw new BadRequestException("同一人员工资成本组成不能重复");
-      componentCodes.add(component.componentCode);
-    }
-    for (const creditor of line.creditorBreakdowns ?? []) {
-      required(creditor.creditorSubjectId, "工资债权人不能为空");
-      if (!WAGE_CREDITOR_CATEGORIES.includes(creditor.creditorCategory as never)) throw new BadRequestException("工资债权人类别不正确");
-      const key = `${creditor.creditorSubjectId}:${creditor.creditorCategory}`;
-      if (creditorKeys.has(key)) throw new BadRequestException("同一人员工资债权人拆分不能重复");
-      creditorKeys.add(key);
-    }
-    for (const allocation of line.projectAllocations ?? []) {
-      required(allocation.projectId, "分摊项目不能为空");
-      required(allocation.serviceSnapshotId, "服务快照不能为空");
-      const key = `${allocation.projectId}:${allocation.serviceSnapshotId}`;
-      if (allocationKeys.has(key)) throw new BadRequestException("同一人员项目分摊不能重复");
-      allocationKeys.add(key);
-    }
+    normalizeCostComponents(line.costComponents);
+    normalizeCreditorBreakdowns(line.creditorBreakdowns, required(line.employeeId, "人员不能为空"));
+    normalizeProjectAllocations(line.projectAllocations, required(input.wageMonth, "工资月份不能为空"));
+    normalizeProjectCostComponentAllocations(line.projectCostComponentAllocations);
+    normalizeProjectCreditorAllocations(line.projectCreditorAllocations);
+  }
+}
+
+function validateRevisionInput(input: CreateWageStatementRevisionDto) {
+  validateCommand(input);
+  if (input.disposition !== "supplemental" && input.disposition !== "correction" && input.disposition !== "reversal") {
+    throw new BadRequestException("后续工资修订必须明确为补发、更正或冲销");
+  }
+  required(input.sourceVersionId, "外部批准工资来源不能为空");
+  for (const line of input.personLines ?? []) {
+    normalizeCostComponents(line.costComponents);
+    normalizeCreditorBreakdowns(line.creditorBreakdowns, required(line.employeeId, "人员不能为空"));
+    normalizeProjectAllocations(line.projectAllocations, required(input.wageMonth, "工资月份不能为空"));
+    normalizeProjectCostComponentAllocations(line.projectCostComponentAllocations);
+    normalizeProjectCreditorAllocations(line.projectCreditorAllocations);
   }
 }
 
@@ -861,7 +1595,9 @@ function sourcePersonLines(snapshot: unknown): AuthorityLine[] {
         approvedAmountCents: requiredJsonText(value.approvedAmountCents),
         costComponents: jsonArray(value.costComponents),
         creditorBreakdowns: jsonArray(value.creditorBreakdowns),
-        projectAllocations: jsonArray(value.projectAllocations)
+        projectAllocations: jsonArray(value.projectAllocations),
+        projectCostComponentAllocations: jsonArray(value.projectCostComponentAllocations),
+        projectCreditorAllocations: jsonArray(value.projectCreditorAllocations)
       }, {
         employmentCompanyId: requiredJsonText(value.employmentCompanyId),
         periodStart: requiredJsonText(value.employmentPeriodStart),
@@ -1028,6 +1764,62 @@ function serviceBasisBindingMap(
   return byKey;
 }
 
+function wageMatrixIdentities(version: WageConfirmationVersion) {
+  const costs = new Map<string, WageCostCellIdentity>();
+  const payables = new Map<string, WagePayableCellIdentity>();
+  for (const person of version.personLines) {
+    const creditors = new Map(person.creditorBreakdowns.map((creditor) => [creditor.id, creditor]));
+    for (const allocation of person.projectAllocations) {
+      for (const cell of allocation.componentAllocations) {
+        const key = `${allocation.projectId}:${person.employeeId}:${person.employmentSnapshotId}:${cell.costComponent.componentCode}`;
+        if (costs.has(key)) throw new ConflictException("工资版本存在重复的项目成本组成身份，不能确认");
+        costs.set(key, { person, allocation, cell, amountCents: cell.amountCents });
+      }
+      for (const cell of allocation.creditorAllocations) {
+        const creditor = creditors.get(cell.creditorBreakdownId);
+        if (!creditor) throw new ConflictException("工资债权人矩阵引用不属于该人员行");
+        const key = wagePayableIdentity(allocation.projectId, person.employeeId, person.employmentSnapshotId, creditor);
+        if (payables.has(key)) throw new ConflictException("工资版本存在重复的项目债权人身份，不能确认");
+        payables.set(key, { person, allocation, cell, creditor, amountCents: cell.amountCents });
+      }
+    }
+  }
+  return { costs, payables };
+}
+
+function assertRetainedWageIdentities<T extends { amountCents: bigint }>(
+  current: ReadonlyMap<string, T>, previous: ReadonlyMap<string, T>, label: string
+) {
+  for (const [key, prior] of previous) {
+    if (prior.amountCents > 0n && !current.has(key)) {
+      throw new ConflictException(`后续工资修订必须显式保留既有${label}身份的零金额交叉单元，不能省略冲销对象`);
+    }
+  }
+}
+
+function wagePayableIdentity(
+  projectId: string, employeeId: string, employmentSnapshotId: string,
+  creditor: Pick<WageConfirmationCreditor, "creditorSubjectType" | "creditorSubjectIdentityKey" | "creditorCategory">
+) {
+  if (!creditor.creditorSubjectType || !creditor.creditorSubjectIdentityKey) {
+    throw new ConflictException("工资债权人缺少冻结身份，不能确认");
+  }
+  return `${projectId}:${employeeId}:${employmentSnapshotId}:${creditor.creditorSubjectType}:${creditor.creditorSubjectIdentityKey}:${creditor.creditorCategory}`;
+}
+
+function wageRootIdentity(root: {
+  projectId: string;
+  personLine: { employeeId: string; employmentSnapshotId: string };
+  creditorBreakdown: { creditorSubjectType: string | null; creditorSubjectIdentityKey: string | null; creditorCategory: string };
+}) {
+  if (!root.creditorBreakdown.creditorSubjectType || !root.creditorBreakdown.creditorSubjectIdentityKey) return "";
+  return `${root.projectId}:${root.personLine.employeeId}:${root.personLine.employmentSnapshotId}:${root.creditorBreakdown.creditorSubjectType}:${root.creditorBreakdown.creditorSubjectIdentityKey}:${root.creditorBreakdown.creditorCategory}`;
+}
+
+function abs(value: bigint) {
+  return value < 0n ? -value : value;
+}
+
 function validDateOnly(value: string, message: string) {
   const text = required(value, message);
   const parsed = new Date(`${text}T00:00:00.000Z`);
@@ -1042,6 +1834,75 @@ function dateOnly(value: string) {
 function cents(value: string, message: string) {
   if (!/^\d+$/u.test(value ?? "")) throw new BadRequestException(message);
   return BigInt(value);
+}
+
+function businessPartySnapshotName(snapshot: Prisma.JsonValue | undefined): string | undefined {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return undefined;
+  const name = (snapshot as Record<string, unknown>).name;
+  return typeof name === "string" && name.trim() ? name.trim() : undefined;
+}
+
+function businessPartySnapshotIdentity(snapshot: Prisma.JsonValue | undefined): string | null {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+  const value = (snapshot as Record<string, unknown>).unifiedSocialCreditCode;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function creditorIdentityKey(creditor: { creditorSubjectType?: string; creditorUserId?: string; creditorBusinessPartyVersionId?: string }) {
+  if (creditor.creditorSubjectType === "employee_user") return `employee_user:${required(creditor.creditorUserId, "员工债权人不能为空")}`;
+  if (creditor.creditorSubjectType === "business_party") return `business_party:${required(creditor.creditorBusinessPartyVersionId, "机构债权人版本不能为空")}`;
+  return null;
+}
+
+function frozenCreditorName(
+  creditor: { creditorSubjectType?: string; creditorUserId?: string; creditorBusinessPartyVersionId?: string },
+  employees: Array<{ id: string; name: string }>,
+  businessPartyByVersionId: ReadonlyMap<string, { id: string; businessPartyId: string; versionNo: number; snapshot: Prisma.JsonValue }>
+) {
+  if (creditor.creditorSubjectType === "employee_user") {
+    return required(employees.find((employee) => employee.id === creditor.creditorUserId)?.name, "新工资债权人必须冻结名称");
+  }
+  if (creditor.creditorSubjectType === "business_party") {
+    return required(businessPartySnapshotName(businessPartyByVersionId.get(required(creditor.creditorBusinessPartyVersionId, "机构债权人版本不能为空"))?.snapshot), "新工资债权人必须冻结名称");
+  }
+  return null;
+}
+
+function frozenCreditorUnifiedIdentity(
+  creditor: { creditorSubjectType?: string; creditorBusinessPartyVersionId?: string },
+  businessPartyByVersionId: ReadonlyMap<string, { id: string; businessPartyId: string; versionNo: number; snapshot: Prisma.JsonValue }>
+) {
+  if (creditor.creditorSubjectType !== "business_party") return null;
+  return businessPartySnapshotIdentity(businessPartyByVersionId.get(required(creditor.creditorBusinessPartyVersionId, "机构债权人版本不能为空"))?.snapshot);
+}
+
+function frozenCreditorFingerprint(
+  creditor: { creditorSubjectType?: string; creditorUserId?: string; creditorBusinessPartyVersionId?: string },
+  employees: Array<{ id: string; name: string }>,
+  businessPartyByVersionId: ReadonlyMap<string, { id: string; businessPartyId: string; versionNo: number; snapshot: Prisma.JsonValue }>
+) {
+  if (creditor.creditorSubjectType === "employee_user") {
+    // User has no master-data version model. Freeze the stable user id and the
+    // display name observed in this transaction; later profile edits cannot
+    // alter this persisted basis or a confirmed wage creditor snapshot.
+    return fingerprint({
+      subjectType: "employee_user",
+      userId: required(creditor.creditorUserId, "员工债权人不能为空"),
+      nameSnapshot: required(employees.find((employee) => employee.id === creditor.creditorUserId)?.name, "新工资债权人必须冻结名称")
+    });
+  }
+  if (creditor.creditorSubjectType === "business_party") {
+    const version = businessPartyByVersionId.get(required(creditor.creditorBusinessPartyVersionId, "机构债权人版本不能为空"));
+    if (!version) throw new BadRequestException("机构债权人冻结版本不存在，请刷新后重试");
+    return fingerprint({
+      subjectType: "business_party",
+      businessPartyVersionId: version.id,
+      businessPartyId: version.businessPartyId,
+      versionNo: version.versionNo,
+      snapshot: version.snapshot
+    });
+  }
+  return null;
 }
 
 function required(value: string | undefined | null, message: string) {
@@ -1074,6 +1935,18 @@ function workbenchStatusLabel(status: string) {
     case "superseded": return "已修订";
     default: return "状态待核对";
   }
+}
+
+function wageVersionKind(value: string | null | undefined): WageVersionKind {
+  // Pre-POL-12B rows and service-level legacy mocks read as the original base
+  // disposition. Any explicit unknown value remains fail-closed.
+  if (value === undefined || value === null || value === "base") return "base";
+  if (value === "supplemental" || value === "correction" || value === "reversal") return value;
+  throw new ConflictException("工资版本处置类型不受支持，不能确认");
+}
+
+function isWageDecreaseKind(kind: WageVersionKind) {
+  return kind === "correction" || kind === "reversal";
 }
 
 function jsonValue(value: unknown): Prisma.InputJsonValue {

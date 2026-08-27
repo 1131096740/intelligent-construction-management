@@ -22,6 +22,7 @@ model User {
   handwrittenSignatureVersions     HandwrittenSignatureVersion[]
   handwrittenSignatureHandoffs     HandwrittenSignatureHandoff[]
   businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
+  wageCreditorBreakdowns           WageCreditorBreakdown[]           @relation("WageCreditorUser")
   createdAt                        DateTime                          @default(now())
   updatedAt                        DateTime                          @updatedAt
 
@@ -3479,6 +3480,8 @@ model BusinessPartyVersion {
   createdByUserId String
   createdAt       DateTime @default(now())
 
+  wageCreditorBreakdowns WageCreditorBreakdown[] @relation("WageCreditorBusinessPartyVersion")
+
   @@unique([businessPartyId, versionNo])
 }
 
@@ -4003,6 +4006,9 @@ model WageStatementVersion {
   status                  String   @default("draft")
   sourceVersionId         String
   sourceSnapshot          Json
+  // 仅保存工资经营 envelope 的非敏感冻结坐标；人员、金额、债权人和证据仍只留在
+  // 受控工资版本/应付引用中，重放时由同一不可变矩阵重新读取。
+  operatingProjectionSnapshot Json?
   createdByUserId         String
   lastEditedByUserId      String
   submittedByUserId       String?
@@ -4020,6 +4026,7 @@ model WageStatementVersion {
   statement     WageStatement              @relation(fields: [statementId], references: [id], onDelete: Restrict)
   sourceVersion WageApprovedSourceVersion  @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
   personLines   WagePersonLine[]
+  payableRefs   WagePayableRef[]
 
   @@unique([statementId, revision], map: "WageStatementVersion_statement_revision_key")
   @@index([sourceVersionId])
@@ -4062,6 +4069,7 @@ model WagePersonLine {
   costComponents   WageCostComponent[]
   creditorBreakdowns WageCreditorBreakdown[]
   projectAllocations WageProjectAllocation[]
+  payableRefs       WagePayableRef[]
 
   @@unique([statementVersionId, employeeId, employmentSnapshotId], map: "WagePersonLine_version_employee_employment_key")
   @@index([employeeId])
@@ -4076,22 +4084,38 @@ model WageCostComponent {
   createdAt      DateTime @default(now())
 
   personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  projectAllocations WageProjectCostComponentAllocation[]
 
   @@unique([personLineId, componentCode], map: "WageCostComponent_person_component_key")
 }
 
 model WageCreditorBreakdown {
-  id                String   @id @default(uuid())
-  personLineId      String
-  creditorSubjectId String
-  creditorCategory  String
-  amountCents       BigInt
-  sourceSnapshot    Json
-  createdAt         DateTime @default(now())
+  id                              String   @id @default(uuid())
+  personLineId                    String
+  // POL-12A legacy identity remains nullable only for already-frozen versions.
+  // New POL-12B writes use the explicit union below and its canonical identity key.
+  creditorSubjectId               String?
+  creditorSubjectType             String?
+  creditorUserId                  String?
+  creditorBusinessPartyVersionId  String?
+  creditorSubjectIdentityKey      String?
+  creditorNameSnapshot            String?
+  creditorUnifiedIdentitySnapshot String?
+  creditorVersionFingerprint      String?
+  creditorCategory                String
+  amountCents                     BigInt
+  sourceSnapshot                  Json
+  createdAt                       DateTime @default(now())
 
-  personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  personLine                    WagePersonLine      @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  creditorUser                  User?                @relation("WageCreditorUser", fields: [creditorUserId], references: [id], onDelete: Restrict)
+  creditorBusinessPartyVersion  BusinessPartyVersion? @relation("WageCreditorBusinessPartyVersion", fields: [creditorBusinessPartyVersionId], references: [id], onDelete: Restrict)
+  projectAllocations            WageProjectCreditorAllocation[]
+  payableRefs                   WagePayableRef[]
 
   @@unique([personLineId, creditorSubjectId, creditorCategory], map: "WageCreditorBreakdown_person_creditor_category_key")
+  @@index([creditorUserId])
+  @@index([creditorBusinessPartyVersionId])
 }
 
 model WageProjectAllocation {
@@ -4106,8 +4130,78 @@ model WageProjectAllocation {
 
   personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
   serviceBasisBinding WageServiceBasisBinding @relation(fields: [serviceBasisBindingId], references: [id], onDelete: Restrict)
+  componentAllocations WageProjectCostComponentAllocation[]
+  creditorAllocations WageProjectCreditorAllocation[]
+  payableRefs         WagePayableRef[]
 
   @@unique([personLineId, projectId, serviceSnapshotId], map: "WageProjectAllocation_person_project_service_key")
   @@index([projectId])
   @@index([serviceBasisBindingId])
+}
+
+// 这两张交叉矩阵是财务显式填写的冻结分配；服务层负责所有逐行、逐列与版本总额平衡，
+// 数据库在这里固定其引用、唯一性和非负金额边界。
+model WageProjectCostComponentAllocation {
+  id                  String   @id @default(uuid())
+  projectAllocationId String
+  costComponentId     String
+  amountCents         BigInt
+  createdAt           DateTime @default(now())
+
+  projectAllocation WageProjectAllocation @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
+  costComponent     WageCostComponent     @relation(fields: [costComponentId], references: [id], onDelete: Restrict)
+
+  @@unique([projectAllocationId, costComponentId], map: "WageProjectCostComponentAllocation_project_component_key")
+  @@index([costComponentId])
+}
+
+model WageProjectCreditorAllocation {
+  id                  String   @id @default(uuid())
+  projectAllocationId String
+  creditorBreakdownId String
+  amountCents         BigInt
+  createdAt           DateTime @default(now())
+
+  projectAllocation WageProjectAllocation @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
+  creditorBreakdown WageCreditorBreakdown @relation(fields: [creditorBreakdownId], references: [id], onDelete: Restrict)
+
+  @@unique([projectAllocationId, creditorBreakdownId], map: "WageProjectCreditorAllocation_project_creditor_key")
+  @@index([creditorBreakdownId])
+}
+
+// 应付引用是 #217 对经营投影的唯一追加式接口。它不记录付款或核销；#220 再以实际核销
+// 计算 remainingPayable、overSettledAmount 和 reconciliation 状态。
+model WagePayableRef {
+  id                   String   @id @default(uuid())
+  confirmedVersionId   String
+  projectAllocationId  String
+  creditorBreakdownId  String
+  debtorCompanyId      String
+  costBearingCompanyId String
+  projectId            String
+  personLineId         String
+  debtorCompanySnapshot Json
+  costBearingCompanySnapshot Json
+  projectSnapshot      Json
+  personSnapshot       Json
+  creditorSnapshot     Json
+  amountCents          BigInt
+  direction            String
+  adjustsPayableRefId  String?
+  // A decrease is an immutable debt-side correction only.  #220 alone reads
+  // real settlement facts and decides whether reconciliation is required.
+  settlementRecheckRequired Boolean @default(false)
+  createdAt            DateTime @default(now())
+
+  confirmedVersion  WageStatementVersion  @relation(fields: [confirmedVersionId], references: [id], onDelete: Restrict)
+  projectAllocation WageProjectAllocation @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
+  creditorBreakdown WageCreditorBreakdown @relation(fields: [creditorBreakdownId], references: [id], onDelete: Restrict)
+  personLine        WagePersonLine        @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  adjustsPayableRef WagePayableRef?       @relation("WagePayableRefAdjustments", fields: [adjustsPayableRefId], references: [id], onDelete: Restrict)
+  adjustments       WagePayableRef[]      @relation("WagePayableRefAdjustments")
+
+  @@index([confirmedVersionId])
+  @@index([projectId, debtorCompanyId])
+  @@index([projectId, costBearingCompanyId])
+  @@index([adjustsPayableRefId])
 }

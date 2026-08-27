@@ -204,6 +204,8 @@ const REQUIRED_FACT_SUBJECT_ROLES: Record<string, Array<keyof OperatingFactSubje
   fund_movement: ["actualPayer", "payee"]
 };
 
+const WAGE_STATEMENT_OPERATING_SOURCE_TYPE = "wage_statement_version";
+
 @Injectable()
 export class OperatingLedgerService {
   constructor(private readonly prisma: PrismaService) {}
@@ -1050,9 +1052,25 @@ function validateFactInput(input: AppendOperatingFactInput) {
     }
     if (subject) validateSubjectRoleKind(FACT_SUBJECT_ROLE_BY_PROPERTY[property], subject);
   }
-  for (const role of REQUIRED_FACT_SUBJECT_ROLES[input.factKind] ?? []) {
+  for (const role of requiredFactSubjectRoles(input)) {
     if (!input.subjects[role]) {
       throw new BadRequestException(`事实种类${input.factKind}必须填写${role}主体`);
+    }
+  }
+  if (isWageStatementProjectWage(input)) {
+    if (input.subjects.payee || input.subjects.creditor) {
+      throw new BadRequestException("工资经营事实不得伪造单一收款或债权主体");
+    }
+    const debtor = input.subjects.debtor;
+    const costBearingCompany = input.subjects.costBearingCompany;
+    if (
+      !debtor ||
+      !costBearingCompany ||
+      debtor.kind !== "participating_company" ||
+      costBearingCompany.kind !== "participating_company" ||
+      debtor.id !== costBearingCompany.id
+    ) {
+      throw new BadRequestException("工资经营事实的债务与成本承担主体必须是同一劳动关系公司");
     }
   }
   if (!input.impacts.length) throw new BadRequestException("经营事实至少需要一笔影响分录");
@@ -1060,6 +1078,15 @@ function validateFactInput(input: AppendOperatingFactInput) {
   if (input.evidenceLevel === "C" && input.impacts.some((impact) => impact.impactKind !== "evidence_gap_notice")) {
     throw new BadRequestException("C级证据只能登记缺口提示，不能产生正式经营影响");
   }
+}
+
+function isWageStatementProjectWage(input: AppendOperatingFactInput): boolean {
+  return input.sourceType === WAGE_STATEMENT_OPERATING_SOURCE_TYPE && input.factKind === "project_wage";
+}
+
+function requiredFactSubjectRoles(input: AppendOperatingFactInput): Array<keyof OperatingFactSubjects> {
+  if (isWageStatementProjectWage(input)) return ["debtor", "costBearingCompany"];
+  return REQUIRED_FACT_SUBJECT_ROLES[input.factKind] ?? [];
 }
 
 function validateImpactInput(impact: OperatingImpactInput) {

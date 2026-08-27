@@ -3,7 +3,7 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
-import type { CreateApprovedWageSourceDto, CreateWageStatementDraftDto, ReturnWageStatementDto, WageStatementCommandDto } from "./wage-statement.dto";
+import type { CreateApprovedWageSourceDto, CreateWageStatementDraftDto, CreateWageStatementRevisionDto, ReturnWageStatementDto, WageStatementCommandDto } from "./wage-statement.dto";
 import { WageStatementService } from "./wage-statement.service";
 
 @Controller("wage-statements")
@@ -50,6 +50,16 @@ export class WageStatementController {
     @Body() input: CreateWageStatementDraftDto
   ) {
     return this.wages.createDraft(user.id, input);
+  }
+
+  @Post(":statementId/revisions")
+  @RequirePositions("finance_staff", "finance_director")
+  createRevision(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("statementId") statementId: string,
+    @Body() input: CreateWageStatementRevisionDto
+  ) {
+    return this.wages.createRevision(user.id, statementId, input);
   }
 
   @Post(":statementId/submit")

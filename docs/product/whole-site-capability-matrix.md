@@ -6,20 +6,20 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `63fceb4120051fe31ce84b9870ca99f8a5cea181fd2ddf7cbe204d742c58a468` |
+| nestRoutes | ready | `43337a77802181f28fac3d66419363e267cd72b284b3e0664fdeda63326c28a1` |
 | webApiWrappers | ready | `d7407739b55b47ecf89c89fdab5f6f8ae6324c18714cdb0de1075685169c7b9b` |
 | webPageActions | ready | `0304125cab15a6a063b0c121b0a35266c3bccd57bfd004bf11b1f3a646c82d35` |
-| routeUsage | ready | `8af1644d948c318c89852ebb110f654b9a7587ff48b7880667e2d1fe7379cee3` |
+| routeUsage | ready | `bae69f75b15cb9a4b90d0831c8c61c9141602214b15b3d383bd1844759ebe570` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 514 |
+| routeCount | 515 |
 | pageRouteCount | 333 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 3 |
+| internalTaskRouteCount | 4 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 522 |
 | webRequestWithoutNestCount | 0 |
@@ -545,6 +545,7 @@
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |
 | POST | /wage-statements/:statementId/return | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#returnWageStatement | wage-statement.return | covered | — |
+| POST | /wage-statements/:statementId/revisions | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/submit | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#submitWageStatement | wage-statement.submit | covered | — |
 | POST | /wage-statements/approved-sources | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createApprovedWageSource | wage-statement.approved-source.import-and-draft | covered | — |
 | POST | /wage-statements/drafts | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createWageStatementDraft | wage-statement.approved-source.import-and-draft | covered | — |

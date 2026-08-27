@@ -27,8 +27,12 @@ describe("OperatingLedgerModule formal source registry", () => {
       "spot_procurement_refund",
       "spot_procurement_invoice_record",
       "contract_takeover_historical_payment",
-      "operating_takeover"
+      "operating_takeover",
+      "wage_statement_version"
     ]);
+    expect(registry.require("wage_statement_version").sourceType).toBe(
+      "wage_statement_version"
+    );
     expect(() => registry.assertComplete()).not.toThrow();
     expect(() => registry.require("finance_record")).toThrow(
       "缺少经营来源适配器"

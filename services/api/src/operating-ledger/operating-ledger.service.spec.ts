@@ -174,6 +174,61 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("allows only wage_statement_version project wage to omit a single payee", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const wage = {
+      ...baseInput(),
+      sourceType: "wage_statement_version",
+      sourceBusinessId: "version-1:project-1",
+      sourceBusinessCode: "工资承担单第 1 版/项目 project-1",
+      idempotencyKey: "wage-statement-version:version-1:project-1",
+      factKind: "project_wage" as const,
+      direction: "neutral" as const,
+      subjects: {
+        debtor: { kind: "participating_company" as const, id: "company-1" },
+        costBearingCompany: { kind: "participating_company" as const, id: "company-1" }
+      }
+    };
+
+    await expect(service.appendConfirmedSourceInTransaction(prisma as never, wage, "actor-1"))
+      .resolves.toEqual(expect.objectContaining({ created: true }));
+
+    await expect(
+      service.appendConfirmedSourceInTransaction(
+        prisma as never,
+        { ...wage, sourceType: "expense_claim", sourceBusinessId: "wage-like-expense" },
+        "actor-1"
+      )
+    ).rejects.toThrow("事实种类project_wage必须填写payee主体");
+  });
+
+  it("does not expose the wage external creditor kind to generic operating facts", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await expect(
+      service.appendFromSource({
+        ...baseInput(),
+        factKind: "downstream_settlement" as const,
+        subjects: {
+          debtor: { kind: "participating_company" as const, id: "company-1" },
+          creditor: { kind: "wage_external_creditor" as const, id: "business-party-version-1" }
+        }
+      }, "actor-1")
+    ).rejects.toThrow("当前经营账尚未接入该主体种类");
+  });
+
   it("keeps invoice references as non-economic notice impacts", async () => {
     const service = new OperatingLedgerService(
       createPrismaMock({}) as never
