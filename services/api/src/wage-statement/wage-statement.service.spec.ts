@@ -78,6 +78,7 @@ describe("WageStatementService", () => {
       wageProjectCostComponentAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wageProjectCreditorAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wagePayableRef: { findMany: jest.fn(), create: jest.fn() },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
       projectParticipatingCompany: { findFirst: jest.fn() },
       projectAffiliateAssignment: { findFirst: jest.fn() },
       businessPartyVersion: { findMany: jest.fn().mockResolvedValue([]) },
@@ -355,7 +356,10 @@ describe("WageStatementService", () => {
       canPrepare: true,
       canSubmit: true,
       canReturn: true,
-      canConfirm: true
+      canConfirm: true,
+      canReadSensitive: true,
+      canDownloadSensitive: true,
+      canExportSensitive: true
     });
   });
 
@@ -498,6 +502,53 @@ describe("WageStatementService", () => {
     await expect(service.confirm("submitter-1", "statement-1", { idempotencyKey: "44444444-4444-4444-8444-444444444444", expectedRevision: 1 })).rejects.toThrow("职责分离冲突");
     await expect(service.confirm("director-1", "statement-1", { idempotencyKey: "55555555-5555-4555-8555-555555555555", expectedRevision: 1 }))
       .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "confirmed" });
+  });
+
+  it("fails closed after recording an explicit export request when no immutable export artifact exists", async () => {
+    const { prisma, roles } = setup();
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new WageStatementService(prisma as never, roles as never, audit as never);
+    roles.resolveActiveRoleScopes.mockResolvedValue(["finance_staff"]);
+
+    await expect(service.createSensitiveExportTicket("finance-user", "statement-1", "核对工资归档"))
+      .rejects.toThrow("工资敏感导出工件尚未生成");
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "finance-user",
+      action: "wage_sensitive_export.denied",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: expect.objectContaining({ reasonCode: "wage_sensitive_export_artifact_unavailable" })
+    }));
+
+    roles.resolveActiveRoleScopes.mockResolvedValue(["super_admin"]);
+    await expect(service.createSensitiveExportTicket("admin-user", "statement-1", "核对工资归档"))
+      .rejects.toThrow("当前公司岗位无权导出工资敏感资料");
+  });
+
+  it.each([
+    ["the confirmer is the delegate of a submitter", "delegate-1", { fromUserId: "submitter-1", toUserId: "delegate-1" }],
+    ["the confirmer delegated to a submitter", "delegator-1", { fromUserId: "delegator-1", toUserId: "submitter-1" }],
+    ["the confirmer is the scoped delegate of a submitter", "delegate-1", { fromUserId: "submitter-1", toUserId: "delegate-1", actionKey: "wage_statement.confirm", resourceType: "wage_statement", resourceId: "statement-1" }],
+    ["the confirmer scoped-delegated to a submitter", "delegator-1", { fromUserId: "delegator-1", toUserId: "submitter-1", actionKey: "wage_statement.confirm", resourceType: "wage_statement", resourceId: "statement-1" }]
+  ])("refuses confirmation when %s", async (_label, confirmerUserId, delegation) => {
+    const { service, tx, roles } = setup();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
+    tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
+    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({
+      id: "version-1", statementId: "statement-1", revision: 1, status: "submitted",
+      createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
+    });
+    tx.approvalDelegation.findMany.mockResolvedValue([delegation]);
+
+    await expect(service.confirm(confirmerUserId, "statement-1", {
+      idempotencyKey: "66666666-6666-4666-8666-666666666666", expectedRevision: 1
+    })).rejects.toThrow("职责分离冲突");
+    expect(tx.wageStatementVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalDelegation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ enabled: true, startsAt: { lte: expect.any(Date) }, endsAt: { gte: expect.any(Date) } })
+    }));
   });
 
   it("accepts a controlled correction version through the existing confirmation seam without exposing a public adjustment command", async () => {

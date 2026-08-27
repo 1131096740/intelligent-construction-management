@@ -3,16 +3,16 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 515,
-    "classificationOverrideCount": 184,
+    "routeCount": 517,
+    "classificationOverrideCount": 186,
     "derivedProductionPageCount": 331,
-    "classificationOverrideSha256": "b7dc2e4e9e63a55aff40404851643821a3b92642917522229e2b372968df934d",
-    "consumerSurfaceOverrideSha256": "6f0602f083270b7bda4a8ba25d63b2ea7a6aac03400a70b09fef931bf085f8af",
+    "classificationOverrideSha256": "c8c406ff3842d7bb2d6b9d2a1c51e50c39f1ed94e5fc4de5f79088d14d1d374c",
+    "consumerSurfaceOverrideSha256": "7a075f08796cf22cd1c0a56c9c4b97c8e22f3be8dce5e6d32fed3cee792b8075",
     "usageCounts": {
       "page": 333,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 4,
+      "internal_task": 6,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
@@ -20,7 +20,7 @@
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 2,
+      "operator_endpoint": 4,
       "none": 120
     }
   },
@@ -570,6 +570,18 @@
       "path": "/wage-statements/:statementId/revisions",
       "usage": "internal_task",
       "reason": "wage_revision_controlled_operator_workflow_no_page_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/:statementId/non-sensitive-summary",
+      "usage": "internal_task",
+      "reason": "wage_management_summary_controlled_operator_workflow_no_page_consumer"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/sensitive-export-ticket",
+      "usage": "internal_task",
+      "reason": "wage_sensitive_export_fail_closed_controlled_operator_workflow_no_page_consumer"
     },
     {
       "method": "POST",
@@ -1168,6 +1180,18 @@
       "path": "/wage-statements/:statementId/revisions",
       "consumerSurface": "operator_endpoint",
       "reason": "finance_controlled_confirmed_wage_revision_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/:statementId/non-sensitive-summary",
+      "consumerSurface": "operator_endpoint",
+      "reason": "wage_management_summary_controlled_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/sensitive-export-ticket",
+      "consumerSurface": "operator_endpoint",
+      "reason": "wage_sensitive_export_fail_closed_controlled_operator_workflow"
     }
   ]
 }

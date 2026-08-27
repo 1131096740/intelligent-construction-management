@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
 import {
+  ACTION_REQUIRED_ROLES,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canUseCurrentContractApprovalForm,
   type RoleKey
@@ -64,6 +65,12 @@ export interface LinkFileReplacementInput {
   newFileId: string;
   oldFileId: string;
   actorUserId: string;
+}
+
+class WageSensitiveFileAccessDeniedException extends ForbiddenException {
+  constructor() {
+    super("当前账号无权下载工资敏感依据");
+  }
 }
 
 export interface InternalFileBuffer {
@@ -1054,7 +1061,7 @@ export class FileService {
     const downloadReason = normalizeDownloadReason(input.downloadReason);
     const accessMode = input.accessMode ?? "download";
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.withWageDeniedAccessAudit(fileId, input.actorUserId, () => this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.findUnique({
         where: { id: fileId }
       });
@@ -1104,14 +1111,14 @@ export class FileService {
           downloadReason
         )}&accessMode=${accessMode}&token=${encodeURIComponent(token)}`
       };
-    });
+    }));
   }
 
   async getDownloadTicketCapability(fileId: string, actorUserId: string) {
     if (!actorUserId.trim()) {
       throw new Error("下载人信息缺失，请重新登录后再下载资料");
     }
-    return this.prisma.$transaction(async (tx) => {
+    return this.withWageDeniedAccessAudit(fileId, actorUserId, () => this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.findUnique({ where: { id: fileId } });
       if (!file) {
         throw new Error("资料文件不存在或已被移除");
@@ -1124,7 +1131,7 @@ export class FileService {
           enabled: true as const
         }
       };
-    });
+    }));
   }
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
@@ -1156,7 +1163,7 @@ export class FileService {
       throw new BadRequestException("下载链接校验失败，请重新申请下载");
     }
 
-    const file = await this.prisma.$transaction(async (tx) => {
+    const file = await this.withWageDeniedAccessAudit(fileId, input.actorUserId, () => this.prisma.$transaction(async (tx) => {
       const found = await tx.fileObject.findUnique({
         where: { id: fileId }
       });
@@ -1170,11 +1177,21 @@ export class FileService {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
       return found;
-    });
+    }));
 
     const buffer = await this.readVerifiedFileBuffer(file);
+    const wageEvidence = await this.isWageEvidenceFile(file.id);
     await this.prisma.$transaction((tx) =>
-      this.audit.record(tx, {
+      this.audit.record(tx, wageEvidence ? {
+        actorUserId: input.actorUserId,
+        action: accessMode === "preview" ? "wage_sensitive_download.preview" : "wage_sensitive_download",
+        businessType: "wage_evidence_file",
+        businessId: file.id,
+        metadata: {
+          reasonCode: "wage_sensitive_download_authorized",
+          ...(accessMode === "preview" ? { accessMode } : {})
+        }
+      } : {
         actorUserId: input.actorUserId,
         action: accessMode === "preview" ? "file.preview" : "file.download",
         businessType: "file_object",
@@ -1786,6 +1803,13 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    const wageEvidenceAccess = await this.resolveWageEvidenceFileAccess(
+      tx,
+      file.id,
+      actorUserId
+    );
+    if (wageEvidenceAccess === false) throw new WageSensitiveFileAccessDeniedException();
+
     const approvalFormClients = tx as unknown as {
       pdfDocument?: Prisma.TransactionClient["pdfDocument"];
       approvalFormGenerationClaim?: Prisma.TransactionClient["approvalFormGenerationClaim"];
@@ -2615,6 +2639,7 @@ export class FileService {
       }
     }
 
+    if (wageEvidenceAccess === true) return;
     throw new ForbiddenException("当前账号无权下载该资料");
   }
 
@@ -2858,6 +2883,77 @@ export class FileService {
   ) {
     const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
     return roleKeys.some((role) => allowedRoles.includes(role));
+  }
+
+  private async resolveWageEvidenceFileAccess(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ): Promise<boolean | null> {
+    const wageApprovedSourceVersion = (tx as unknown as {
+      wageApprovedSourceVersion?: {
+        findMany(args: {
+          where: { evidenceFileId: string };
+          select: { id: true };
+          take: number;
+        }): Promise<Array<{ id: string }>>;
+      };
+    }).wageApprovedSourceVersion;
+    if (!wageApprovedSourceVersion) return null;
+
+    const sources = await wageApprovedSourceVersion.findMany({
+      where: { evidenceFileId: fileId },
+      select: { id: true },
+      take: 2
+    });
+    if (!sources.length) return null;
+    if (sources.length !== 1) {
+      throw new ForbiddenException("工资敏感依据存在异常绑定，暂不能下载");
+    }
+    return this.hasGlobalRole(
+      tx,
+      actorUserId,
+      ACTION_REQUIRED_ROLES["wage_sensitive_download"]
+    );
+  }
+
+  private async withWageDeniedAccessAudit<T>(
+    fileId: string,
+    actorUserId: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!(error instanceof WageSensitiveFileAccessDeniedException)) throw error;
+      // The guarded read transaction has rolled back.  Record the denied
+      // access in a separate transaction before returning the same 403.
+      await this.prisma.$transaction((tx) => this.audit.record(tx, {
+        actorUserId,
+        action: "wage_sensitive_download.denied",
+        businessType: "wage_evidence_file",
+        businessId: fileId,
+        metadata: { reasonCode: "wage_sensitive_download_not_authorized" }
+      }));
+      throw error;
+    }
+  }
+
+  private async isWageEvidenceFile(fileId: string): Promise<boolean> {
+    const wageApprovedSourceVersion = (this.prisma as unknown as {
+      wageApprovedSourceVersion?: {
+        findFirst(args: {
+          where: { evidenceFileId: string };
+          select: { id: true };
+        }): Promise<{ id: string } | null>;
+      };
+    }).wageApprovedSourceVersion;
+    if (!wageApprovedSourceVersion) return false;
+    const source = await wageApprovedSourceVersion.findFirst({
+      where: { evidenceFileId: fileId },
+      select: { id: true }
+    });
+    return Boolean(source);
   }
 
   private async hasGlobalRole(

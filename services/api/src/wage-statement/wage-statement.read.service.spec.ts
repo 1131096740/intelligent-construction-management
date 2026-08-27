@@ -20,13 +20,13 @@ describe("WageStatementService aggregate reads", () => {
           employeeId: "employee-secret",
           approvedAmountCents: 100000n,
           positionCategorySnapshot: { category: "project_manager" },
-          projectAllocations: [{ id: "allocation-1", amountCents: 100000n }]
+          projectAllocations: [{ id: "allocation-1", projectId: "project-1", amountCents: 100000n }]
         },
         {
           employeeId: "employee-other",
           approvedAmountCents: 90000n,
           positionCategorySnapshot: { category: "project_manager" },
-          projectAllocations: [{ id: "allocation-2", amountCents: 90000n }]
+          projectAllocations: [{ id: "allocation-2", projectId: "project-2", amountCents: 90000n }]
         }
       ]
     };
@@ -57,7 +57,15 @@ describe("WageStatementService aggregate reads", () => {
     const result = await service.listWorkbench("finance-user");
 
     expect(result).toEqual({
-      capabilities: { canPrepare: true, canSubmit: true, canReturn: false, canConfirm: false },
+      capabilities: {
+        canPrepare: true,
+        canSubmit: true,
+        canReturn: false,
+        canConfirm: false,
+        canReadSensitive: true,
+        canDownloadSensitive: true,
+        canExportSensitive: true
+      },
       items: [{
         statementId: "statement-1",
         employmentCompanyName: "甲公司",
@@ -87,7 +95,15 @@ describe("WageStatementService aggregate reads", () => {
     ]);
 
     expect(summary).toEqual({
-      capabilities: { canPrepare: true, canSubmit: true, canReturn: false, canConfirm: false },
+      capabilities: {
+        canPrepare: true,
+        canSubmit: true,
+        canReturn: false,
+        canConfirm: false,
+        canReadSensitive: true,
+        canDownloadSensitive: true,
+        canExportSensitive: true
+      },
       employmentCompanyName: "甲公司",
       wageMonth: "2026-08",
       statusLabel: "待确认",
@@ -140,5 +156,46 @@ describe("WageStatementService aggregate reads", () => {
 
     await expect(service.listWorkbench("project-user")).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.wageStatement.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps management aggregates separate from wage_sensitive_read and restricts project categories to effective project roles", async () => {
+    const { prisma, roles } = setup();
+    const visibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]),
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(new Map([["project-1", ["project_manager"]]]))
+    };
+    roles.resolveActiveRoleScopes.mockRejectedValue(new Error("no global role"));
+    const service = new WageStatementService(prisma as never, roles as never, undefined, undefined, visibility as never);
+
+    await expect(service.readNonSensitiveSummary("project-manager", "statement-1")).resolves.toEqual({
+      scope: "project_category",
+      wageMonth: "2026-08",
+      statusLabel: "待确认",
+      revision: 1,
+      positionCategoryCount: 1,
+      projectAllocationCount: 1,
+      categories: [{ positionCategoryLabel: "岗位类别 1", projectAllocationCount: 1 }]
+    });
+    expect(JSON.stringify(await service.readNonSensitiveSummary("project-manager", "statement-1"))).not.toContain("employee-secret");
+    expect(JSON.stringify(await service.readNonSensitiveSummary("project-manager", "statement-1"))).not.toContain("100000");
+  });
+
+  it("gives chairman only sanitized company and project-count summaries", async () => {
+    const { service, roles } = setup();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["chairman"]);
+
+    const summary = await service.readNonSensitiveSummary("chairman-user", "statement-1");
+    expect(summary).toEqual(expect.objectContaining({
+      scope: "company",
+      employmentCompanyName: "甲公司",
+      projectAllocationCount: 2,
+      projects: [
+        { projectLabel: "项目 1", projectAllocationCount: 1 },
+        { projectLabel: "项目 2", projectAllocationCount: 1 }
+      ]
+    }));
+    expect(JSON.stringify(summary)).not.toContain("employee-secret");
+    expect(JSON.stringify(summary)).not.toContain("100000");
+    expect(JSON.stringify(summary)).not.toContain("project-1");
   });
 });

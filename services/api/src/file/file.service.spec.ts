@@ -74,6 +74,86 @@ describe("FileService", () => {
     jest.restoreAllMocks();
   });
 
+  it("recognizes wage evidence only for an explicitly authorized global finance role", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+    const tx = {
+      wageApprovedSourceVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }])
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-finance" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "finance_staff" }])
+      }
+    };
+
+    await expect((service as unknown as {
+      resolveWageEvidenceFileAccess(tx: unknown, fileId: string, actorUserId: string): Promise<boolean | null>;
+    }).resolveWageEvidenceFileAccess(tx, "wage-evidence-1", "finance-user")).resolves.toBe(true);
+
+    expect(tx.userPosition.findMany).toHaveBeenCalledWith({
+      where: { userId: "finance-user", projectId: null }
+    });
+  });
+
+  it("does not let a project-scoped finance assignment unlock wage evidence", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+    const tx = {
+      wageApprovedSourceVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }])
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn()
+      }
+    };
+
+    await expect((service as unknown as {
+      resolveWageEvidenceFileAccess(tx: unknown, fileId: string, actorUserId: string): Promise<boolean | null>;
+    }).resolveWageEvidenceFileAccess(tx, "wage-evidence-1", "project-finance-user")).resolves.toBe(false);
+    expect(tx.position.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["project-scoped finance", "project-finance-user", []],
+    ["technical administrator", "super-admin-user", [{ positionId: "position-super-admin" }]]
+  ])("audits the denied wage-evidence download for %s without recording wage content", async (_label, actorUserId, globalAssignments) => {
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "wage-evidence-1", mimeType: "application/pdf" }) },
+      wageApprovedSourceVersion: { findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }]) },
+      userPosition: { findMany: jest.fn().mockResolvedValue(globalAssignments) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "super_admin" }]) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+      wageApprovedSourceVersion: { findFirst: jest.fn() }
+    };
+    const service = new FileService(prisma as never, audit as never, storage as never);
+
+    await expect(service.createDownloadTicket("wage-evidence-1", {
+      actorUserId,
+      downloadReason: "工资资料权限核验"
+    }))
+      .rejects.toThrow("当前账号无权下载工资敏感依据");
+
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId,
+      action: "wage_sensitive_download.denied",
+      businessType: "wage_evidence_file",
+      businessId: "wage-evidence-1",
+      metadata: { reasonCode: "wage_sensitive_download_not_authorized" }
+    });
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("张三");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    if (actorUserId === "super-admin-user") {
+      expect(tx.position.findMany).toHaveBeenCalledWith({ where: { id: { in: ["position-super-admin"] } } });
+    }
+  });
+
   it("denies a generated upload that is still owned by an incomplete settlement claim", async () => {
     const service = new FileService(
       {} as PrismaService,
@@ -365,7 +445,7 @@ describe("FileService", () => {
       where: { id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active" },
       data: { storageStatus: "discarded" }
     });
-    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "file.generated_orphan.discard", businessId: "file-orphan"
     }));
     expect(storage.delete).toHaveBeenCalledWith("uploads/file-orphan.pdf");
@@ -6891,6 +6971,57 @@ describe("FileService", () => {
         accessMode: "preview"
       }
     });
+  });
+
+  it("records a successful wage-evidence download without filename, amount, or personnel content", async () => {
+    const buffer = Buffer.from("wage-evidence");
+    const txBase = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue({
+        id: "wage-evidence-1", bucket: "private-local", objectKey: "uploads/wage-evidence-1.pdf",
+        originalName: "张三-100000工资.pdf", mimeType: "application/pdf", sizeBytes: 13,
+        uploadedByUserId: "uploader-1", storageStatus: "active",
+        contentSha256: createHash("sha256").update(buffer).digest("hex")
+      }) },
+      wageApprovedSourceVersion: { findMany: jest.fn().mockResolvedValue([{ id: "source-1" }]) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "finance-position" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "finance_staff" }]) },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const tx = new Proxy(txBase, {
+      get(target, key) {
+        if (key in target) return target[key as keyof typeof target];
+        return { findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
+      }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+      wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "source-1" }) }
+    };
+    const service = new FileService(prisma as never, audit as never, storage as never);
+    storage.read.mockResolvedValue(buffer);
+    const ticket = await service.createDownloadTicket("wage-evidence-1", {
+      actorUserId: "finance-user", downloadReason: "工资资料核验"
+    });
+    const url = new URL(`http://local${ticket.downloadUrl}`);
+    audit.record.mockClear();
+
+    await service.readPrivateFile("wage-evidence-1", {
+      actorUserId: url.searchParams.get("actorUserId") ?? "",
+      expiresAt: url.searchParams.get("expiresAt") ?? "",
+      downloadReason: url.searchParams.get("downloadReason") ?? "",
+      token: url.searchParams.get("token") ?? ""
+    });
+
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "wage_sensitive_download",
+      businessType: "wage_evidence_file",
+      businessId: "wage-evidence-1",
+      metadata: { reasonCode: "wage_sensitive_download_authorized" }
+    }));
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("张三");
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("100000");
   });
 
   it("rechecks formal final-contract access at download time and records the successful download", async () => {

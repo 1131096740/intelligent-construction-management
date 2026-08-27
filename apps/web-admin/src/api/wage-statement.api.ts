@@ -18,6 +18,9 @@ export interface WageStatementCapabilities {
   canSubmit: boolean;
   canReturn: boolean;
   canConfirm: boolean;
+  canReadSensitive: boolean;
+  canDownloadSensitive: boolean;
+  canExportSensitive: boolean;
 }
 
 /** The monthly workbench deliberately transports aggregate, non-sensitive data only. */
