@@ -1,14 +1,19 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post } from "@nestjs/common";
 
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import { RequirePositions, UseAnyProjectPositionScope } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { AuthService } from "../auth/auth.service";
+import { CreateDownloadTicketDto } from "../file/dto/create-download-ticket.dto";
 import type { CreateApprovedWageSourceDto, CreateWageStatementDraftDto, CreateWageStatementRevisionDto, ReturnWageStatementDto, WageStatementCommandDto } from "./wage-statement.dto";
 import { WageStatementService } from "./wage-statement.service";
 
 @Controller("wage-statements")
 export class WageStatementController {
-  constructor(private readonly wages: WageStatementService) {}
+  constructor(
+    private readonly wages: WageStatementService,
+    private readonly auth: AuthService
+  ) {}
 
   @Get("capabilities")
   @RequirePositions("finance_staff", "finance_director")
@@ -22,6 +27,13 @@ export class WageStatementController {
     return this.wages.listWorkbench(user.id);
   }
 
+  @Get(":statementId/non-sensitive-summary")
+  @RequirePositions("chairman", "general_manager", "contract_director", "project_manager")
+  @UseAnyProjectPositionScope()
+  nonSensitiveSummary(@CurrentUser() user: AuthenticatedUser, @Param("statementId") statementId: string) {
+    return this.wages.readNonSensitiveSummary(user.id, statementId);
+  }
+
   @Get(":statementId/summary")
   @RequirePositions("finance_staff", "finance_director")
   summary(@CurrentUser() user: AuthenticatedUser, @Param("statementId") statementId: string) {
@@ -32,6 +44,23 @@ export class WageStatementController {
   @RequirePositions("finance_staff", "finance_director")
   importPreview(@CurrentUser() user: AuthenticatedUser, @Param("statementId") statementId: string) {
     return this.wages.readImportPreview(user.id, statementId);
+  }
+
+  @Post(":statementId/sensitive-export-ticket")
+  @RequirePositions("finance_staff", "finance_director")
+  async createSensitiveExportTicket(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("statementId") statementId: string,
+    @Body() input: CreateDownloadTicketDto
+  ) {
+    if (!input.confirmationPassword?.trim()) {
+      throw new BadRequestException("请输入当前登录密码后再导出工资敏感资料");
+    }
+    if (!input.downloadReason?.trim()) {
+      throw new BadRequestException("请填写导出原因，便于留痕审计");
+    }
+    await this.auth.confirmPassword(user.id, input.confirmationPassword);
+    return this.wages.createSensitiveExportTicket(user.id, statementId, input.downloadReason);
   }
 
   @Post("approved-sources")

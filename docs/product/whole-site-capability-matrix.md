@@ -6,20 +6,20 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `43337a77802181f28fac3d66419363e267cd72b284b3e0664fdeda63326c28a1` |
-| webApiWrappers | ready | `d7407739b55b47ecf89c89fdab5f6f8ae6324c18714cdb0de1075685169c7b9b` |
-| webPageActions | ready | `0304125cab15a6a063b0c121b0a35266c3bccd57bfd004bf11b1f3a646c82d35` |
-| routeUsage | ready | `bae69f75b15cb9a4b90d0831c8c61c9141602214b15b3d383bd1844759ebe570` |
+| nestRoutes | ready | `32a6605f579637b6a91904c963ee4d178a723c310ceec058d50e9bb305761e75` |
+| webApiWrappers | ready | `3d5e30653c03685d713647d2d7951e59253b68c94ffc80d4502c36347a0ad4cd` |
+| webPageActions | ready | `26de356528d219b4c55fb070e3d2a6297712b1632c9a8dbd7abf1e3eb0d153e4` |
+| routeUsage | ready | `335309b8925db5d39d7282db5b1ba9f264623acaf9bd75c28255c498f4e1f1b2` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 515 |
+| routeCount | 517 |
 | pageRouteCount | 333 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 4 |
+| internalTaskRouteCount | 6 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 522 |
 | webRequestWithoutNestCount | 0 |
@@ -193,6 +193,7 @@
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
 | GET | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | GET | /wage-statements/:statementId/import-preview | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementImportPreview | — | not_applicable | — |
+| GET | /wage-statements/:statementId/non-sensitive-summary | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /wage-statements/:statementId/summary | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementSummary | — | not_applicable | — |
 | GET | /wage-statements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementCapabilities | — | not_applicable | — |
 | GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
@@ -546,6 +547,7 @@
 | POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |
 | POST | /wage-statements/:statementId/return | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#returnWageStatement | wage-statement.return | covered | — |
 | POST | /wage-statements/:statementId/revisions | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /wage-statements/:statementId/sensitive-export-ticket | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/submit | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#submitWageStatement | wage-statement.submit | covered | — |
 | POST | /wage-statements/approved-sources | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createApprovedWageSource | wage-statement.approved-source.import-and-draft | covered | — |
 | POST | /wage-statements/drafts | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createWageStatementDraft | wage-statement.approved-source.import-and-draft | covered | — |

@@ -3146,6 +3146,29 @@
     },
     {
       "method": "GET",
+      "path": "/wage-statements/:statementId/non-sensitive-summary",
+      "normalizedKey": "GET /wage-statements/:param/non-sensitive-summary",
+      "controller": "WageStatementController",
+      "handler": "nonSensitiveSummary",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "contract_director",
+        "general_manager",
+        "project_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/wage-statements/:statementId/summary",
       "normalizedKey": "GET /wage-statements/:param/summary",
       "controller": "WageStatementController",
@@ -9728,6 +9751,27 @@
       "normalizedKey": "POST /wage-statements/:param/revisions",
       "controller": "WageStatementController",
       "handler": "createRevision",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/sensitive-export-ticket",
+      "normalizedKey": "POST /wage-statements/:param/sensitive-export-ticket",
+      "controller": "WageStatementController",
+      "handler": "createSensitiveExportTicket",
       "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",

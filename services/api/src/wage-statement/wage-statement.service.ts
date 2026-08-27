@@ -16,6 +16,7 @@ import {
 
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import {
@@ -38,6 +39,30 @@ type Tx = Prisma.TransactionClient;
 const SHA256 = /^[0-9a-f]{64}$/iu;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+type ActiveApprovalDelegationEdge = { fromUserId: string; toUserId: string };
+
+function delegationIdentitySet(
+  userId: string,
+  delegations: ActiveApprovalDelegationEdge[]
+): Set<string> {
+  const identities = new Set([userId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const delegation of delegations) {
+      if (identities.has(delegation.fromUserId) && !identities.has(delegation.toUserId)) {
+        identities.add(delegation.toUserId);
+        changed = true;
+      }
+      if (identities.has(delegation.toUserId) && !identities.has(delegation.fromUserId)) {
+        identities.add(delegation.fromUserId);
+        changed = true;
+      }
+    }
+  }
+  return identities;
+}
+
 // Aggregate reads select only category snapshots and allocation-row identifiers to
 // derive counts. Employee identities, monetary values, attachments and source
 // snapshots never enter these queries or their API projections.
@@ -57,7 +82,7 @@ const WAGE_AGGREGATE_SELECT = {
       personLines: {
         select: {
           positionCategorySnapshot: true,
-          projectAllocations: { select: { id: true } }
+          projectAllocations: { select: { id: true, projectId: true } }
         }
       }
     }
@@ -146,7 +171,8 @@ export class WageStatementService {
     private readonly prisma: PrismaService,
     private readonly companyRoles: CompanyRoleResolverService,
     private readonly audit: AuditService = new AuditService(),
-    private readonly operatingLedger?: OperatingLedgerService
+    private readonly operatingLedger?: OperatingLedgerService,
+    private readonly projectVisibility?: ProjectVisibilityService
   ) {}
 
   async listWorkbench(actorUserId: string) {
@@ -210,6 +236,76 @@ export class WageStatementService {
       positionCategoryCount: aggregate.positionCategoryCount,
       projectAllocationCount: aggregate.projectAllocationCount
     };
+  }
+
+  /**
+   * A deliberately separate aggregate seam for management roles.  It does not
+   * consult, expose, or imply the personal-detail `wage_sensitive_read`
+   * action: chairman/GM receive company totals by count only; contract
+   * director/project manager receive category counts restricted to their
+   * visible projects.
+   */
+  async readNonSensitiveSummary(actorUserId: string, statementId: string) {
+    const access = await this.nonSensitiveSummaryAccess(actorUserId);
+    const statement = await this.aggregateStatement(statementId);
+    const aggregate = this.aggregate(statement, await this.companyNames([statement.employmentCompanyId]));
+    if (access.kind === "company") {
+      const projects = this.aggregateProjectSummaries(statement);
+      return {
+        scope: "company" as const,
+        employmentCompanyName: aggregate.employmentCompanyName,
+        wageMonth: statement.wageMonth,
+        statusLabel: aggregate.statusLabel,
+        revision: statement.currentRevision,
+        personLineCount: aggregate.personLineCount,
+        positionCategoryCount: aggregate.positionCategoryCount,
+        projectAllocationCount: aggregate.projectAllocationCount,
+        projects
+      };
+    }
+    const categories = this.aggregateProjectCategories(statement, access.projectIds);
+    if (!categories.projectAllocationCount) {
+      throw new ForbiddenException("当前账号无权查看该工资项目汇总");
+    }
+    return {
+      scope: "project_category" as const,
+      wageMonth: statement.wageMonth,
+      statusLabel: aggregate.statusLabel,
+      revision: statement.currentRevision,
+      positionCategoryCount: categories.categories.length,
+      projectAllocationCount: categories.projectAllocationCount,
+      categories: categories.categories
+    };
+  }
+
+  /**
+   * There is no generated wage export/PDF artifact in this release.  Do not
+   * substitute source evidence for an export: after reauthentication, record
+   * the explicit controlled request and fail closed until a separately-owned
+   * immutable export artifact exists.  Evidence download remains governed by
+   * its own `wage_sensitive_download` private-file route.
+   */
+  async createSensitiveExportTicket(
+    actorUserId: string,
+    statementId: string,
+    downloadReason: string
+  ) {
+    void downloadReason;
+    const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+    if (!canPerform("wage_sensitive_export", roles)) {
+      throw new ForbiddenException("当前公司岗位无权导出工资敏感资料");
+    }
+    const id = required(statementId, "工资承担单不能为空");
+    await this.prisma.$transaction(async (tx) => {
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "wage_sensitive_export.denied",
+        businessType: "wage_statement",
+        businessId: id,
+        metadata: jsonValue({ reasonCode: "wage_sensitive_export_artifact_unavailable" })
+      });
+    });
+    throw new ConflictException("工资敏感导出工件尚未生成，暂不能导出");
   }
 
   async createApprovedSource(actorUserId: string, input: CreateApprovedWageSourceDto) {
@@ -701,7 +797,7 @@ export class WageStatementService {
       // owner may prepare one of these dispositions, but it can only become
       // effective through this existing segregated confirmation transaction.
       wageVersionKind(version.kind);
-      if ([version.createdByUserId, version.lastEditedByUserId, version.submittedByUserId].includes(actorUserId)) throw new ConflictException("职责分离冲突：确认人不得为编制人、编辑人或提交人");
+      await this.assertConfirmationSeparation(tx, actorUserId, version);
       await this.projectConfirmedVersion(tx, version.id, statement.employmentCompanyId, statement.currentRevision, actorUserId);
       await tx.wageStatementVersion.update({ where: { id: version.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date() } });
       const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "confirmed" };
@@ -709,6 +805,45 @@ export class WageStatementService {
       await this.audit.record(tx, { actorUserId, action: "wage_statement.confirm", businessType: "wage_statement_version", businessId: version.id, metadata: jsonValue({ statementId: id, expectedRevision: input.expectedRevision }) });
       return result;
     }));
+  }
+
+  /**
+   * Confirmation must stay independent from the complete effective identity
+   * sets, rather than merely comparing the session users.  Standing approval
+   * delegations are treated as undirected for this segregation check: either a
+   * preparer acting through an agent or an agent acting for a preparer would
+   * otherwise bypass the same control.  The rows are read in the confirmation
+   * transaction so a concurrent delegation change cannot split the decision.
+   */
+  private async assertConfirmationSeparation(
+    tx: Tx,
+    actorUserId: string,
+    version: Pick<
+      Awaited<ReturnType<WageStatementService["currentVersion"]>>,
+      "createdByUserId" | "lastEditedByUserId" | "submittedByUserId"
+    >
+  ) {
+    const preparerIds = [
+      version.createdByUserId,
+      version.lastEditedByUserId,
+      version.submittedByUserId
+    ].filter((id): id is string => Boolean(id));
+    const now = new Date();
+    const delegations = await tx.approvalDelegation.findMany({
+      where: {
+        enabled: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now }
+      },
+      select: { fromUserId: true, toUserId: true }
+    });
+    const effectiveActorIds = delegationIdentitySet(actorUserId, delegations);
+    const effectivePreparerIds = new Set(
+      preparerIds.flatMap((preparerId) => [...delegationIdentitySet(preparerId, delegations)])
+    );
+    if ([...effectiveActorIds].some((identityId) => effectivePreparerIds.has(identityId))) {
+      throw new ConflictException("职责分离冲突：确认人不得为编制人、编辑人或提交人及其有效委托身份");
+    }
   }
 
   /**
@@ -1134,9 +1269,43 @@ export class WageStatementService {
 
   private async assertReadAuthority(actorUserId: string) {
     const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
-    if (!canPerform("wage_statement.prepare", roles)) {
+    if (!canPerform("wage_sensitive_read", roles)) {
       throw new ForbiddenException("当前公司岗位无权查看工资汇总");
     }
+  }
+
+  private async nonSensitiveSummaryAccess(actorUserId: string): Promise<
+    | { kind: "company" }
+    | { kind: "project_category"; projectIds: string[] }
+  > {
+    let globalRoles: string[] = [];
+    try {
+      globalRoles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+    } catch {
+      // Project-only management positions are intentionally resolved through
+      // the visibility seam below, not by treating a missing global role as a
+      // company-wide permission.
+    }
+    if (globalRoles.some((role) => role === "chairman" || role === "general_manager")) {
+      return { kind: "company" };
+    }
+    if (!this.projectVisibility) {
+      throw new ForbiddenException("当前账号无权查看工资非敏感汇总");
+    }
+    const visibleProjectIds = await this.projectVisibility.visibleProjectIds(actorUserId);
+    const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
+      actorUserId,
+      visibleProjectIds
+    );
+    const allowedProjectIds = visibleProjectIds.filter((projectId) =>
+      (roleKeysByProject.get(projectId) ?? []).some(
+        (role) => role === "contract_director" || role === "project_manager"
+      )
+    );
+    if (!allowedProjectIds.length) {
+      throw new ForbiddenException("当前账号无权查看工资非敏感汇总");
+    }
+    return { kind: "project_category", projectIds: allowedProjectIds };
   }
 
   /**
@@ -1150,7 +1319,10 @@ export class WageStatementService {
       canPrepare: canPerform("wage_statement.prepare", roles),
       canSubmit: canPerform("wage_statement.submit", roles),
       canReturn: canPerform("wage_statement.return", roles),
-      canConfirm: canPerform("wage_statement.confirm", roles)
+      canConfirm: canPerform("wage_statement.confirm", roles),
+      canReadSensitive: canPerform("wage_sensitive_read", roles),
+      canDownloadSensitive: canPerform("wage_sensitive_download", roles),
+      canExportSensitive: canPerform("wage_sensitive_export", roles)
     };
   }
 
@@ -1214,6 +1386,43 @@ export class WageStatementService {
         ? { revision: returned.revision, returnedAt: returned.reviewReturnedAt!.toISOString() }
         : null
     };
+  }
+
+  private aggregateProjectCategories(statement: WageAggregateStatement, projectIds: string[]) {
+    const visibleProjectIds = new Set(projectIds);
+    const version = statement.versions.find((candidate) => candidate.revision === statement.currentRevision);
+    if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
+    const categoryCounts = new Map<string, number>();
+    let projectAllocationCount = 0;
+    for (const line of version.personLines) {
+      const visibleAllocations = line.projectAllocations.filter((allocation) => visibleProjectIds.has(allocation.projectId));
+      if (!visibleAllocations.length) continue;
+      const category = positionCategoryKey(line.positionCategorySnapshot);
+      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + visibleAllocations.length);
+      projectAllocationCount += visibleAllocations.length;
+    }
+    return {
+      projectAllocationCount,
+      categories: [...categoryCounts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, count], index) => ({
+        positionCategoryLabel: `岗位类别 ${index + 1}`,
+        projectAllocationCount: count
+      }))
+    };
+  }
+
+  private aggregateProjectSummaries(statement: WageAggregateStatement) {
+    const version = statement.versions.find((candidate) => candidate.revision === statement.currentRevision);
+    if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
+    const allocationCounts = new Map<string, number>();
+    for (const line of version.personLines) {
+      for (const allocation of line.projectAllocations) {
+        allocationCounts.set(allocation.projectId, (allocationCounts.get(allocation.projectId) ?? 0) + 1);
+      }
+    }
+    return [...allocationCounts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, projectAllocationCount], index) => ({
+      projectLabel: `项目 ${index + 1}`,
+      projectAllocationCount
+    }));
   }
 
   private async assertAction(actorUserId: string, action: "wage_statement.submit" | "wage_statement.return" | "wage_statement.confirm", message: string) {

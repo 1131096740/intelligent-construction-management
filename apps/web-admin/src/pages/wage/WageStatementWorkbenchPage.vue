@@ -22,7 +22,15 @@ import JgStatusTag from "../../components/JgStatusTag.vue";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import { formatUnknownApiError } from "../../api/error-message";
 
-const noCapabilities: WageStatementCapabilities = { canPrepare: false, canSubmit: false, canReturn: false, canConfirm: false };
+const noCapabilities: WageStatementCapabilities = {
+  canPrepare: false,
+  canSubmit: false,
+  canReturn: false,
+  canConfirm: false,
+  canReadSensitive: false,
+  canDownloadSensitive: false,
+  canExportSensitive: false
+};
 const loading = ref(false);
 const detailLoading = ref(false);
 const commandLoading = ref(false);

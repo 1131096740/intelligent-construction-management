@@ -66,6 +66,23 @@ describe("permission policy table", () => {
     expect(canPerform("clearing.confirm", ["super_admin"])).toBe(false);
   });
 
+  it("requires independent explicit authority for wage-sensitive reads, downloads, and exports", () => {
+    for (const action of [
+      "wage_sensitive_read",
+      "wage_sensitive_download",
+      "wage_sensitive_export"
+    ] as const) {
+      expect(ACTION_REQUIRED_ROLES[action]).toEqual([
+        "finance_staff",
+        "finance_director"
+      ]);
+      expect(canPerform(action, ["finance_staff"])).toBe(true);
+      expect(canPerform(action, ["finance_director"])).toBe(true);
+      expect(canPerform(action, ["project_manager"])).toBe(false);
+      expect(canPerform(action, ["super_admin"])).toBe(false);
+    }
+  });
+
   it("defines required roles for every business action", () => {
     for (const action of BUSINESS_ACTIONS) {
       expect(ACTION_REQUIRED_ROLES[action].length).toBeGreaterThan(0);
