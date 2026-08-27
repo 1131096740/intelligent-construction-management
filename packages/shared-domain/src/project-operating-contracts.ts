@@ -102,7 +102,8 @@ export const OPERATING_SUBJECT_KINDS = Object.freeze([
   "construction_enterprise",
   "participating_company",
   "downstream_counterparty",
-  "employee"
+  "employee",
+  "wage_external_creditor"
 ] as const);
 
 export type OperatingSubjectKind = (typeof OPERATING_SUBJECT_KINDS)[number];
@@ -112,7 +113,8 @@ export const OPERATING_SUBJECT_KIND_LABELS = Object.freeze({
   construction_enterprise: "施工企业",
   participating_company: "我方参与公司",
   downstream_counterparty: "下游相对方",
-  employee: "员工或其他个人"
+  employee: "员工或其他个人",
+  wage_external_creditor: "工资外部债权人"
 } as const satisfies Readonly<Record<OperatingSubjectKind, string>>);
 
 export const OPERATING_SUBJECT_ROLES = Object.freeze([

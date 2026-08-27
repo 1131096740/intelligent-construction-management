@@ -10,25 +10,25 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 514,
-    "exactRouteCount": 514,
-    "normalizedRouteCount": 514,
-    "classificationOverrideCount": 183,
-    "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
-    "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
+    "routeCount": 515,
+    "exactRouteCount": 515,
+    "normalizedRouteCount": 515,
+    "classificationOverrideCount": 184,
+    "consumerSurfaceOverrideCount": 5,
+    "classificationOverrideSha256": "b7dc2e4e9e63a55aff40404851643821a3b92642917522229e2b372968df934d",
+    "consumerSurfaceOverrideSha256": "6f0602f083270b7bda4a8ba25d63b2ea7a6aac03400a70b09fef931bf085f8af",
     "derivedProductionPageCount": 331,
     "pageRouteCount": 333,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
-    "internalTaskCount": 3,
+    "internalTaskCount": 4,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
       "web_api_wrapper": 385,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 1,
+      "operator_endpoint": 2,
       "none": 120
     },
     "blockerCount": 0
@@ -20403,6 +20403,39 @@
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "normalizedKey": "POST /wage-statements/:param/revisions",
+      "controller": "WageStatementController",
+      "handler": "createRevision",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "wage_revision_controlled_operator_workflow_no_page_consumer",
+      "consumerSurface": "operator_endpoint",
+      "consumerEvidence": {
+        "webApiWrappers": [],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": "finance_controlled_confirmed_wage_revision_operator_workflow"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null

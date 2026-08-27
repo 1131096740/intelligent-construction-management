@@ -45,6 +45,20 @@ export const WAGE_CREDITOR_CATEGORIES = Object.freeze([
 
 export type WageCreditorCategory = (typeof WAGE_CREDITOR_CATEGORIES)[number];
 
+export const WAGE_CREDITOR_SUBJECT_TYPES = Object.freeze([
+  "employee_user",
+  "business_party"
+] as const);
+
+export type WageCreditorSubjectType = (typeof WAGE_CREDITOR_SUBJECT_TYPES)[number];
+
+export const WAGE_PAYABLE_REF_DIRECTIONS = Object.freeze([
+  "increase",
+  "decrease"
+] as const);
+
+export type WagePayableRefDirection = (typeof WAGE_PAYABLE_REF_DIRECTIONS)[number];
+
 export const WAGE_STATEMENT_ACTIONS = Object.freeze([
   "prepare",
   "submit",

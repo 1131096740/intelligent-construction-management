@@ -3,16 +3,16 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 514,
-    "classificationOverrideCount": 183,
+    "routeCount": 515,
+    "classificationOverrideCount": 184,
     "derivedProductionPageCount": 331,
-    "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
-    "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
+    "classificationOverrideSha256": "b7dc2e4e9e63a55aff40404851643821a3b92642917522229e2b372968df934d",
+    "consumerSurfaceOverrideSha256": "6f0602f083270b7bda4a8ba25d63b2ea7a6aac03400a70b09fef931bf085f8af",
     "usageCounts": {
       "page": 333,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 3,
+      "internal_task": 4,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
@@ -20,7 +20,7 @@
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 1,
+      "operator_endpoint": 2,
       "none": 120
     }
   },
@@ -564,6 +564,12 @@
       "path": "/draft-retention/controlled-entry",
       "usage": "internal_task",
       "reason": "super_admin_operator_preview_only"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "usage": "internal_task",
+      "reason": "wage_revision_controlled_operator_workflow_no_page_consumer"
     },
     {
       "method": "POST",
@@ -1156,6 +1162,12 @@
       "path": "/draft-retention/controlled-entry",
       "consumerSurface": "operator_endpoint",
       "reason": "super_admin_controlled_preview_entry_execute_forbidden"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "consumerSurface": "operator_endpoint",
+      "reason": "finance_controlled_confirmed_wage_revision_operator_workflow"
     }
   ]
 }

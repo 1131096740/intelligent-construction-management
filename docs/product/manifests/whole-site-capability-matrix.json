@@ -14,10 +14,10 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "63fceb4120051fe31ce84b9870ca99f8a5cea181fd2ddf7cbe204d742c58a468",
+      "sha256": "43337a77802181f28fac3d66419363e267cd72b284b3e0664fdeda63326c28a1",
       "status": "ready",
       "summary": {
-        "routeCount": 514
+        "routeCount": 515
       }
     },
     "webApiWrappers": {
@@ -64,28 +64,28 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "8af1644d948c318c89852ebb110f654b9a7587ff48b7880667e2d1fe7379cee3",
+      "sha256": "bae69f75b15cb9a4b90d0831c8c61c9141602214b15b3d383bd1844759ebe570",
       "status": "ready",
       "summary": {
-        "routeCount": 514,
-        "exactRouteCount": 514,
-        "normalizedRouteCount": 514,
-        "classificationOverrideCount": 183,
-        "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
-        "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
+        "routeCount": 515,
+        "exactRouteCount": 515,
+        "normalizedRouteCount": 515,
+        "classificationOverrideCount": 184,
+        "consumerSurfaceOverrideCount": 5,
+        "classificationOverrideSha256": "b7dc2e4e9e63a55aff40404851643821a3b92642917522229e2b372968df934d",
+        "consumerSurfaceOverrideSha256": "6f0602f083270b7bda4a8ba25d63b2ea7a6aac03400a70b09fef931bf085f8af",
         "derivedProductionPageCount": 331,
         "pageRouteCount": 333,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
-        "internalTaskCount": 3,
+        "internalTaskCount": 4,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
           "web_api_wrapper": 385,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 1,
+          "operator_endpoint": 2,
           "none": 120
         },
         "blockerCount": 0
@@ -93,11 +93,11 @@
     }
   },
   "summary": {
-    "routeCount": 514,
+    "routeCount": 515,
     "pageRouteCount": 333,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
-    "internalTaskRouteCount": 3,
+    "internalTaskRouteCount": 4,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 522,
     "webRequestWithoutNestCount": 0,
@@ -29840,6 +29840,36 @@
         }
       ],
       "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/wage-statements/:statementId/revisions",
+        "normalizedKey": "POST /wage-statements/:param/revisions",
+        "controller": "WageStatementController",
+        "handler": "createRevision",
+        "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
