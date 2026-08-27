@@ -3304,6 +3304,7 @@ model FileObject {
   supersedesFileObjectId  String?
   supersedesFileObject    FileObject?  @relation("FileObjectReplacement", fields: [supersedesFileObjectId], references: [id], onDelete: SetNull)
   supersededByFileObjects FileObject[] @relation("FileObjectReplacement")
+  wageApprovedSourceEvidenceVersions WageApprovedSourceVersion[] @relation("WageApprovedSourceEvidence")
   createdAt               DateTime     @default(now())
 
   @@index([supersedesFileObjectId])
@@ -3917,4 +3918,196 @@ model BusinessEntrySubmissionSnapshot {
 
   @@unique([projectId, sceneKey, entityType, entityId, revision], map: "BusinessEntrySubmissionSnapshot_target_revision_key")
   @@index([projectId, sceneKey, frozenAt])
+}
+
+// POL-12A：外部已批准工资资料与月度承担单聚合。该聚合只冻结来源和分摊，
+// 不在本票生成 OperatingFact、工资应付或付款事实。
+model WageApprovedSourceVersion {
+  id                  String   @id @default(uuid())
+  employmentCompanyId String
+  wageMonth           String
+  periodStart         DateTime @db.Date
+  periodEnd           DateTime @db.Date
+  sourceType          String
+  externalReference   String
+  sourceVersion       String
+  basisDate           DateTime @db.Date
+  evidenceFileId      String
+  evidenceSha256      String
+  sourceFingerprint   String
+  sourceSnapshot      Json
+  createdByUserId     String
+  createdAt           DateTime @default(now())
+
+  evidenceFile      FileObject                  @relation("WageApprovedSourceEvidence", fields: [evidenceFileId], references: [id], onDelete: Restrict)
+  statementVersions WageStatementVersion[]
+  commandReceipts  WageApprovedSourceCommandReceipt[]
+  serviceBasisBindings WageServiceBasisBinding[]
+
+  @@unique([employmentCompanyId, externalReference, sourceVersion], map: "WageApprovedSourceVersion_external_identity_key")
+  @@index([employmentCompanyId, wageMonth, periodStart, periodEnd])
+}
+
+// 来源创建与工资承担单命令分别使用回执表，避免把来源幂等键错误地挂到尚未
+// 存在的月度单据上；结果快照只保留来源 ID，不复制私有批准载荷或证据内容。
+model WageApprovedSourceCommandReceipt {
+  idempotencyKey String   @id
+  action         String
+  aggregateId    String
+  expectedRevision Int
+  actorUserId    String
+  fingerprint    String
+  resultSnapshot Json
+  createdAt      DateTime @default(now())
+
+  source WageApprovedSourceVersion @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
+
+  @@index([aggregateId, createdAt])
+}
+
+model WageStatement {
+  id                  String   @id @default(uuid())
+  employmentCompanyId String
+  wageMonth           String
+  currentRevision     Int      @default(0)
+  createdByUserId     String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  versions WageStatementVersion[]
+  commandReceipts WageCommandReceipt[]
+
+  @@unique([employmentCompanyId, wageMonth], map: "WageStatement_company_month_key")
+}
+
+model WageCommandReceipt {
+  idempotencyKey String   @id
+  action         String
+  aggregateId    String
+  expectedRevision Int
+  actorUserId    String
+  fingerprint    String
+  resultSnapshot Json
+  createdAt      DateTime @default(now())
+
+  statement WageStatement @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
+
+  @@index([aggregateId, createdAt])
+}
+
+model WageStatementVersion {
+  id                      String   @id @default(uuid())
+  statementId             String
+  revision                Int
+  kind                    String   @default("base")
+  status                  String   @default("draft")
+  sourceVersionId         String
+  sourceSnapshot          Json
+  createdByUserId         String
+  lastEditedByUserId      String
+  submittedByUserId       String?
+  submittedAt             DateTime?
+  confirmedByUserId       String?
+  confirmedAt             DateTime?
+  reviewReturnedByUserId  String?
+  reviewReturnedAt        DateTime?
+  reviewReturnReason      String?
+  reviewDisposition       String?
+  supersededAt            DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  statement     WageStatement              @relation(fields: [statementId], references: [id], onDelete: Restrict)
+  sourceVersion WageApprovedSourceVersion  @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  personLines   WagePersonLine[]
+
+  @@unique([statementId, revision], map: "WageStatementVersion_statement_revision_key")
+  @@index([sourceVersionId])
+  @@index([status, updatedAt])
+  @@index([reviewDisposition, reviewReturnedAt])
+}
+
+// 服务依据不是调用方提供的裸字符串：它由批准来源版本在同一串行事务中
+// 固化，并由后续工资分摊行通过外键引用。
+model WageServiceBasisBinding {
+  id                   String   @id @default(uuid())
+  sourceVersionId      String
+  projectId            String
+  serviceSnapshotId    String
+  serviceMonth         String
+  evidenceSha256       String
+  authorityFingerprint String
+  createdAt            DateTime @default(now())
+
+  sourceVersion      WageApprovedSourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  projectAllocations WageProjectAllocation[]
+
+  @@unique([sourceVersionId, projectId, serviceSnapshotId], map: "WageServiceBasisBinding_source_project_service_key")
+  @@index([sourceVersionId, serviceMonth])
+}
+
+model WagePersonLine {
+  id                         String   @id @default(uuid())
+  statementVersionId         String
+  employeeId                 String
+  employmentSnapshotId       String
+  employeeSnapshot           Json
+  employmentSnapshot          Json
+  periodSnapshot              Json
+  positionCategorySnapshot    Json
+  approvedAmountCents         BigInt
+  createdAt                   DateTime @default(now())
+
+  statementVersion WageStatementVersion      @relation(fields: [statementVersionId], references: [id], onDelete: Restrict)
+  costComponents   WageCostComponent[]
+  creditorBreakdowns WageCreditorBreakdown[]
+  projectAllocations WageProjectAllocation[]
+
+  @@unique([statementVersionId, employeeId, employmentSnapshotId], map: "WagePersonLine_version_employee_employment_key")
+  @@index([employeeId])
+}
+
+model WageCostComponent {
+  id             String   @id @default(uuid())
+  personLineId   String
+  componentCode  String
+  amountCents    BigInt
+  sourceSnapshot Json
+  createdAt      DateTime @default(now())
+
+  personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+
+  @@unique([personLineId, componentCode], map: "WageCostComponent_person_component_key")
+}
+
+model WageCreditorBreakdown {
+  id                String   @id @default(uuid())
+  personLineId      String
+  creditorSubjectId String
+  creditorCategory  String
+  amountCents       BigInt
+  sourceSnapshot    Json
+  createdAt         DateTime @default(now())
+
+  personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+
+  @@unique([personLineId, creditorSubjectId, creditorCategory], map: "WageCreditorBreakdown_person_creditor_category_key")
+}
+
+model WageProjectAllocation {
+  id                String   @id @default(uuid())
+  personLineId      String
+  projectId         String
+  serviceSnapshotId String
+  serviceBasisBindingId String
+  serviceSnapshot   Json
+  amountCents       BigInt
+  createdAt         DateTime @default(now())
+
+  personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  serviceBasisBinding WageServiceBasisBinding @relation(fields: [serviceBasisBindingId], references: [id], onDelete: Restrict)
+
+  @@unique([personLineId, projectId, serviceSnapshotId], map: "WageProjectAllocation_person_project_service_key")
+  @@index([projectId])
+  @@index([serviceBasisBindingId])
 }

@@ -430,7 +430,10 @@ const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
   "ProjectFinancingQuota.terminationSignatureFileId",
   "ProjectUpstreamSettlement.confirmationSignatureFileId",
   "OperatingTakeoverBatch.sourceFileId",
-  "OperatingTakeoverAttachmentLink.fileId"
+  "OperatingTakeoverAttachmentLink.fileId",
+  // POL-12A is later than the invoice-evidence guard; its source evidence is
+  // independently promoted to an exclusive fact in its own terminal migration.
+  "WageApprovedSourceVersion.evidenceFileId"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>

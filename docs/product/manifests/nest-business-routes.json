@@ -3124,6 +3124,90 @@
       "contractCutoverTombstoneWrite": false
     },
     {
+      "method": "GET",
+      "path": "/wage-statements/:statementId/import-preview",
+      "normalizedKey": "GET /wage-statements/:param/import-preview",
+      "controller": "WageStatementController",
+      "handler": "importPreview",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/:statementId/summary",
+      "normalizedKey": "GET /wage-statements/:param/summary",
+      "controller": "WageStatementController",
+      "handler": "summary",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/capabilities",
+      "normalizedKey": "GET /wage-statements/capabilities",
+      "controller": "WageStatementController",
+      "handler": "capabilities",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/workbench",
+      "normalizedKey": "GET /wage-statements/workbench",
+      "controller": "WageStatementController",
+      "handler": "workbench",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
       "method": "PATCH",
       "path": "/auth/profile",
       "normalizedKey": "PATCH /auth/profile",
@@ -9591,6 +9675,109 @@
       "isPublic": false,
       "requiredPositions": [
         "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/confirm",
+      "normalizedKey": "POST /wage-statements/:param/confirm",
+      "controller": "WageStatementController",
+      "handler": "confirm",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/return",
+      "normalizedKey": "POST /wage-statements/:param/return",
+      "controller": "WageStatementController",
+      "handler": "returnForReview",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/submit",
+      "normalizedKey": "POST /wage-statements/:param/submit",
+      "controller": "WageStatementController",
+      "handler": "submit",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/approved-sources",
+      "normalizedKey": "POST /wage-statements/approved-sources",
+      "controller": "WageStatementController",
+      "handler": "createApprovedSource",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/drafts",
+      "normalizedKey": "POST /wage-statements/drafts",
+      "controller": "WageStatementController",
+      "handler": "createDraft",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

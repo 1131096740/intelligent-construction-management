@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 267,
+    "registeredActionCount": 271,
     "pageActionCount": 53,
-    "backgroundActionCount": 214,
-    "reachableVueFileCount": 132,
-    "routeRootCount": 53,
-    "totalVueFileCount": 156,
-    "parsedVueFileCount": 156,
-    "reachableProductionModuleCount": 239,
-    "templateEventDirectiveCount": 891,
+    "backgroundActionCount": 218,
+    "reachableVueFileCount": 133,
+    "routeRootCount": 54,
+    "totalVueFileCount": 157,
+    "parsedVueFileCount": 157,
+    "reachableProductionModuleCount": 241,
+    "templateEventDirectiveCount": 900,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 261,
-    "candidateProductionMutationConsumerCount": 261,
-    "acceptedProductionMutationConsumerCount": 261,
-    "productionMutationConsumerPairCount": 261,
+    "coveredProductionMutationConsumerCount": 266,
+    "candidateProductionMutationConsumerCount": 266,
+    "acceptedProductionMutationConsumerCount": 266,
+    "productionMutationConsumerPairCount": 266,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 272,
-    "reachableProductionModuleCount": 239,
-    "totalVueFileCount": 156,
-    "parsedVueFileCount": 156
+    "totalProductionModuleCount": 274,
+    "reachableProductionModuleCount": 241,
+    "totalVueFileCount": 157,
+    "parsedVueFileCount": 157
   },
   "actions": [
     {
@@ -18811,6 +18811,311 @@
             "localCallChain": [
               "confirmWithdrawal",
               "executeSpotProcurementWithdrawalAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "wage-statement.approved-source.import-and-draft",
+      "usage": "background",
+      "routePaths": [
+        "/工资承担工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资承担工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createImportedDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 225,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "createApprovedWageSource",
+          "method": "POST",
+          "path": "/wage-statements/approved-sources",
+          "normalizedKey": "POST /wage-statements/approved-sources",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/wage-statements/approved-sources",
+            "normalizedKey": "POST /wage-statements/approved-sources",
+            "controller": "WageStatementController",
+            "handler": "createApprovedSource",
+            "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createImportedDraftWithCapability",
+              "createApprovedWageSource"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "createWageStatementDraft",
+          "method": "POST",
+          "path": "/wage-statements/drafts",
+          "normalizedKey": "POST /wage-statements/drafts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/wage-statements/drafts",
+            "normalizedKey": "POST /wage-statements/drafts",
+            "controller": "WageStatementController",
+            "handler": "createDraft",
+            "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createImportedDraftWithCapability",
+              "createWageStatementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "wage-statement.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/工资承担工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资承担工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmWageStatementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 350,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canConfirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "confirmWageStatement",
+          "method": "POST",
+          "path": "/wage-statements/:param/confirm",
+          "normalizedKey": "POST /wage-statements/:param/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/wage-statements/:statementId/confirm",
+            "normalizedKey": "POST /wage-statements/:param/confirm",
+            "controller": "WageStatementController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmWageStatementWithCapability",
+              "confirmWageStatement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "wage-statement.return",
+      "usage": "background",
+      "routePaths": [
+        "/工资承担工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资承担工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnWageStatementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 340,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReturn",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "returnWageStatement",
+          "method": "POST",
+          "path": "/wage-statements/:param/return",
+          "normalizedKey": "POST /wage-statements/:param/return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/wage-statements/:statementId/return",
+            "normalizedKey": "POST /wage-statements/:param/return",
+            "controller": "WageStatementController",
+            "handler": "returnForReview",
+            "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnWageStatementWithCapability",
+              "returnWageStatement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "wage-statement.submit",
+      "usage": "background",
+      "routePaths": [
+        "/工资承担工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资承担工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitWageStatementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 330,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canSubmit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "submitWageStatement",
+          "method": "POST",
+          "path": "/wage-statements/:param/submit",
+          "normalizedKey": "POST /wage-statements/:param/submit",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/wage-statements/:statementId/submit",
+            "normalizedKey": "POST /wage-statements/:param/submit",
+            "controller": "WageStatementController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitWageStatementWithCapability",
+              "submitWageStatement"
             ]
           },
           "ticketFollowups": []

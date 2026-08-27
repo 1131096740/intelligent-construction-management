@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 505,
-    "exactRouteCount": 505,
-    "normalizedRouteCount": 505,
+    "routeCount": 514,
+    "exactRouteCount": 514,
+    "normalizedRouteCount": 514,
     "classificationOverrideCount": 183,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 322,
-    "pageRouteCount": 324,
+    "derivedProductionPageCount": 331,
+    "pageRouteCount": 333,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 376,
+      "web_api_wrapper": 385,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 376,
+    "productionWrapperRouteCount": 385,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -6810,6 +6810,182 @@
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/:statementId/import-preview",
+      "normalizedKey": "GET /wage-statements/:param/import-preview",
+      "controller": "WageStatementController",
+      "handler": "importPreview",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "fetchWageStatementImportPreview",
+            "method": "GET",
+            "normalizedPath": "/wage-statements/:param/import-preview",
+            "normalizedKey": "GET /wage-statements/:param/import-preview",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/:statementId/summary",
+      "normalizedKey": "GET /wage-statements/:param/summary",
+      "controller": "WageStatementController",
+      "handler": "summary",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "fetchWageStatementSummary",
+            "method": "GET",
+            "normalizedPath": "/wage-statements/:param/summary",
+            "normalizedKey": "GET /wage-statements/:param/summary",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/capabilities",
+      "normalizedKey": "GET /wage-statements/capabilities",
+      "controller": "WageStatementController",
+      "handler": "capabilities",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "fetchWageStatementCapabilities",
+            "method": "GET",
+            "normalizedPath": "/wage-statements/capabilities",
+            "normalizedKey": "GET /wage-statements/capabilities",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/workbench",
+      "normalizedKey": "GET /wage-statements/workbench",
+      "controller": "WageStatementController",
+      "handler": "workbench",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "fetchWageStatementWorkbench",
+            "method": "GET",
+            "normalizedPath": "/wage-statements/workbench",
+            "normalizedKey": "GET /wage-statements/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "PATCH",
@@ -20144,6 +20320,224 @@
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/confirm",
+      "normalizedKey": "POST /wage-statements/:param/confirm",
+      "controller": "WageStatementController",
+      "handler": "confirm",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "confirmWageStatement",
+            "method": "POST",
+            "normalizedPath": "/wage-statements/:param/confirm",
+            "normalizedKey": "POST /wage-statements/:param/confirm",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/return",
+      "normalizedKey": "POST /wage-statements/:param/return",
+      "controller": "WageStatementController",
+      "handler": "returnForReview",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "returnWageStatement",
+            "method": "POST",
+            "normalizedPath": "/wage-statements/:param/return",
+            "normalizedKey": "POST /wage-statements/:param/return",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/submit",
+      "normalizedKey": "POST /wage-statements/:param/submit",
+      "controller": "WageStatementController",
+      "handler": "submit",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "submitWageStatement",
+            "method": "POST",
+            "normalizedPath": "/wage-statements/:param/submit",
+            "normalizedKey": "POST /wage-statements/:param/submit",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/approved-sources",
+      "normalizedKey": "POST /wage-statements/approved-sources",
+      "controller": "WageStatementController",
+      "handler": "createApprovedSource",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "createApprovedWageSource",
+            "method": "POST",
+            "normalizedPath": "/wage-statements/approved-sources",
+            "normalizedKey": "POST /wage-statements/approved-sources",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/drafts",
+      "normalizedKey": "POST /wage-statements/drafts",
+      "controller": "WageStatementController",
+      "handler": "createDraft",
+      "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "createWageStatementDraft",
+            "method": "POST",
+            "normalizedPath": "/wage-statements/drafts",
+            "normalizedKey": "POST /wage-statements/drafts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "PUT",

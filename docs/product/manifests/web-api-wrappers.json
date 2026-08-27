@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 21,
-    "exportedFunctionCount": 511,
-    "transportWrapperCount": 491,
+    "apiModuleCount": 22,
+    "exportedFunctionCount": 520,
+    "transportWrapperCount": 500,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 513,
+    "mainRequestBindingCount": 522,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 513,
-    "productionConsumerCount": 385,
+    "requestEdgeCount": 522,
+    "productionConsumerCount": 394,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 272,
-    "reachableProductionModuleCount": 239
+    "productionModuleCount": 274,
+    "reachableProductionModuleCount": 241
   },
   "wrappers": [
     {
@@ -15325,6 +15325,279 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmWageStatement",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 171,
+          "method": "POST",
+          "path": "/wage-statements/:param/confirm",
+          "normalizedPath": "/wage-statements/:param/confirm",
+          "normalizedKey": "POST /wage-statements/:param/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmWageStatement",
+              "command",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createApprovedWageSource",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 171,
+          "method": "POST",
+          "path": "/wage-statements/approved-sources",
+          "normalizedPath": "/wage-statements/approved-sources",
+          "normalizedKey": "POST /wage-statements/approved-sources",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createApprovedWageSource",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createWageStatementDraft",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 171,
+          "method": "POST",
+          "path": "/wage-statements/drafts",
+          "normalizedPath": "/wage-statements/drafts",
+          "normalizedKey": "POST /wage-statements/drafts",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createWageStatementDraft",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWageStatementCapabilities",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 140,
+          "method": "GET",
+          "path": "/wage-statements/capabilities",
+          "normalizedPath": "/wage-statements/capabilities",
+          "normalizedKey": "GET /wage-statements/capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWageStatementCapabilities",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWageStatementImportPreview",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 140,
+          "method": "GET",
+          "path": "/wage-statements/:param/import-preview",
+          "normalizedPath": "/wage-statements/:param/import-preview",
+          "normalizedKey": "GET /wage-statements/:param/import-preview",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWageStatementImportPreview",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWageStatementSummary",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 140,
+          "method": "GET",
+          "path": "/wage-statements/:param/summary",
+          "normalizedPath": "/wage-statements/:param/summary",
+          "normalizedKey": "GET /wage-statements/:param/summary",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWageStatementSummary",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWageStatementWorkbench",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 140,
+          "method": "GET",
+          "path": "/wage-statements/workbench",
+          "normalizedPath": "/wage-statements/workbench",
+          "normalizedKey": "GET /wage-statements/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWageStatementWorkbench",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "returnWageStatement",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 171,
+          "method": "POST",
+          "path": "/wage-statements/:param/return",
+          "normalizedPath": "/wage-statements/:param/return",
+          "normalizedKey": "POST /wage-statements/:param/return",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnWageStatement",
+              "command",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "submitWageStatement",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 171,
+          "method": "POST",
+          "path": "/wage-statements/:param/submit",
+          "normalizedPath": "/wage-statements/:param/submit",
+          "normalizedKey": "POST /wage-statements/:param/submit",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitWageStatement",
+              "command",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     }

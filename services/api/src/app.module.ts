@@ -34,6 +34,7 @@ import { ProjectModule } from "./project/project.module";
 import { ProjectOperatingConstraintFilter } from "./project/project-operating-constraint.filter";
 import { SettlementModule } from "./settlement/settlement.module";
 import { SpotProcurementModule } from "./spot-procurement/spot-procurement.module";
+import { WageStatementModule } from "./wage-statement/wage-statement.module";
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     ExpenseClaimModule,
     FundsWorkbenchModule,
     SpotProcurementModule,
+    WageStatementModule,
     InvoiceLedgerModule,
     ApprovalModule,
     FileModule,

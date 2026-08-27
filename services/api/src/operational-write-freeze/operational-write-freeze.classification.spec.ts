@@ -97,4 +97,10 @@ describe("operational write freeze classification", () => {
     expect(staleControllers).toEqual([]);
     expect(staleAllowedActions).toEqual([]);
   });
+
+  it("keeps approved wage-source and statement writes in the finance control plane", () => {
+    expect(OPERATIONAL_WRITE_CONTROLLER_MODULES.WageStatementController).toBe(
+      "finance"
+    );
+  });
 });

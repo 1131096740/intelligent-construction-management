@@ -63,7 +63,8 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   SpotProcurementInvoiceController: "procurement",
   SpotProcurementPaymentController: "procurement",
   SpotProcurementReceiptController: "procurement",
-  VatRateOptionController: "finance"
+  VatRateOptionController: "finance",
+  WageStatementController: "finance"
 });
 
 /**

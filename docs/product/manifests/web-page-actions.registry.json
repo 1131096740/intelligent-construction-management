@@ -4570,6 +4570,49 @@
       ]
     },
     {
+      "id": "wage-statement.approved-source.import-and-draft",
+      "usage": "background",
+      "routePaths": ["/工资承担工作台"],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createImportedDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.canPrepare" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "createApprovedWageSource" },
+        { "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "createWageStatementDraft" }
+      ]
+    },
+    {
+      "id": "wage-statement.submit",
+      "usage": "background",
+      "routePaths": ["/工资承担工作台"],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitWageStatementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.canSubmit" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "submitWageStatement" }]
+    },
+    {
+      "id": "wage-statement.return",
+      "usage": "background",
+      "routePaths": ["/工资承担工作台"],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnWageStatementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.canReturn" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "returnWageStatement" }]
+    },
+    {
+      "id": "wage-statement.confirm",
+      "usage": "background",
+      "routePaths": ["/工资承担工作台"],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmWageStatementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.canConfirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "confirmWageStatement" }]
+    },
+    {
       "id": "global-invoice.create",
       "usage": "background",
       "routePaths": ["/全局发票与清分分配"],
