@@ -86,6 +86,7 @@ describe("payable settlement API", () => {
     const input = {
       amountCents: "3000",
       evidenceFileId: "file-return-evidence",
+      evidenceClaimId: "claim-return-evidence",
       reason: "跨主体代付部分归还",
       idempotencyKey: "00000000-0000-4000-8000-000000000033"
     };

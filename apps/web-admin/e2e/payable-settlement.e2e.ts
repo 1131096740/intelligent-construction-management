@@ -134,7 +134,10 @@ async function installHarness(page: Page) {
       pathname === "/payable-settlements/inter-entity-relationships/relationship-e2e/evidence" &&
       request.method() === "POST"
     ) {
-      return json(route, { id: "relationship-return-evidence" });
+      return json(route, {
+        id: "relationship-return-evidence",
+        claimId: "relationship-return-claim"
+      });
     }
     if (
       pathname === "/payable-settlements/inter-entity-relationships/relationship-e2e/returns" &&
@@ -278,6 +281,7 @@ test.describe("#220/#221 工资应付核销与跨主体往来非生产动态验�
     expect(returned.body).toMatchObject({
       amountCents: "3000",
       evidenceFileId: "relationship-return-evidence",
+      evidenceClaimId: "relationship-return-claim",
       reason: "跨主体代付部分归还"
     });
     expect(JSON.stringify(requests)).not.toContain("paymentExecutionId");

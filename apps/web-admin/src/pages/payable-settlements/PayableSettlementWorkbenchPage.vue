@@ -195,6 +195,7 @@ async function executeRelationshipReturn() {
     await returnInterEntityRelationshipWithCapability(relationship.relationshipEntryId, {
       amountCents,
       evidenceFileId: uploaded.id,
+      evidenceClaimId: uploaded.claimId,
       reason: relationshipReason.value.trim(),
       idempotencyKey: crypto.randomUUID()
     });

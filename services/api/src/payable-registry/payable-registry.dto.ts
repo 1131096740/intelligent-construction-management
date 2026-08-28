@@ -36,6 +36,9 @@ export class ReturnInterEntityRelationshipDto {
   @IsRequiredText({ requiredMessage: "归还凭证不能为空", typeMessage: "归还凭证格式不正确", blankMessage: "归还凭证不能为空白" })
   evidenceFileId!: string;
 
+  @IsUUID("4", { message: "归还凭证关系格式不正确" })
+  evidenceClaimId!: string;
+
   @IsRequiredText({ requiredMessage: "归还原因不能为空", typeMessage: "归还原因格式不正确", blankMessage: "归还原因不能为空白" })
   reason!: string;
 

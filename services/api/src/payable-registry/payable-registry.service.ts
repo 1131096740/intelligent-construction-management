@@ -27,6 +27,11 @@ import {
   payableSourceAdapterRegistry,
   type RegisteredPayable,
 } from "./wage-payable-source.adapter";
+import {
+  assertPayerAttestationFacts,
+  requiresPayerAuthorization,
+  type PayerAttestationAuthorization
+} from "./payer-attestation.domain";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -49,8 +54,32 @@ export type InterEntityRelationshipReturnInput = Readonly<{
   relationshipEntryId: string;
   amountCents: bigint;
   evidenceFileId: string;
+  evidenceClaimId: string;
   reason: string;
   idempotencyKey: string;
+}>;
+
+type PayerAttestationRecord = Readonly<{
+  payerVerificationId?: string;
+  bankAccountReference: string;
+  holderCompanyEntityId: string;
+  holderNameSnapshot: string;
+  holderCreditCodeSnapshot: string;
+  verificationReference: string;
+  verifiedByUserId: string;
+  verifiedAt: Date;
+  verificationEvidenceFileId: string;
+  verificationEvidenceContentSha256: string;
+  proxyAuthorizationReason: string | null;
+  proxyAuthorizationEvidenceFileId: string | null;
+  proxyAuthorizationEvidenceSha256: string | null;
+  reauthorizationReference: string | null;
+  reauthorizationApprovalInstanceId?: string | null;
+  reauthorizationApprovalActionLogId?: string | null;
+  reauthorizationPaymentRequestId?: string | null;
+  reauthorizationContractVersionId?: string | null;
+  reauthorizedByUserId: string | null;
+  reauthorizedAt: Date | null;
 }>;
 
 type PayableRegistryDb = Prisma.TransactionClient | PrismaService;
@@ -851,6 +880,126 @@ export class PayableRegistryService {
     }
   }
 
+  async createInterEntityRelationshipEvidenceClaim(
+    actorUserId: string,
+    relationshipEntryId: string,
+    evidenceFileId: string,
+    idempotencyKey?: string
+  ) {
+    await this.assertGlobalFinanceDirector(actorUserId);
+    const normalizedRelationshipEntryId = requiredText(relationshipEntryId, "代付往来不能为空");
+    const normalizedEvidenceFileId = requiredText(evidenceFileId, "归还凭证不能为空");
+    const claimIdempotencyKey = idempotencyKey ? requiredUuid(idempotencyKey) : randomUUID();
+    const fingerprint = commandFingerprint("inter_entity_relationship.evidence_claim", {
+      actorUserId,
+      relationshipEntryId: normalizedRelationshipEntryId,
+      evidenceFileId: normalizedEvidenceFileId
+    });
+
+    return this.serializableWithRetry(() => this.prisma.$transaction(async (tx) => {
+      const roleKeys = await this.assertTransactionFinanceDirector(tx, actorUserId);
+      await this.lockIdempotencyKey(tx, claimIdempotencyKey);
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "InterEntityRelationshipEntry" WHERE "id" = ${normalizedRelationshipEntryId} FOR UPDATE`
+      );
+      const root = await tx.interEntityRelationshipEntry.findUnique({
+        where: { id: normalizedRelationshipEntryId },
+        select: {
+          id: true,
+          entryKind: true,
+          direction: true,
+          status: true,
+          adjustsEntryId: true
+        }
+      });
+      if (
+        !root ||
+        root.entryKind !== "proxy_payment" ||
+        root.direction !== "increase" ||
+        root.status !== "confirmed" ||
+        root.adjustsEntryId !== null
+      ) {
+        throw new ConflictException("代付往来不存在或尚未确认");
+      }
+      const claimClient = (tx as unknown as {
+        interEntityRelationshipEvidenceClaim?: {
+          findUnique(args: { where: Record<string, unknown> }): Promise<{
+            id: string;
+            relationshipEntryId: string;
+            fileId: string;
+            uploadedByUserId: string;
+            contentSha256: string;
+            status: string;
+          } | null>;
+          create(args: { data: Record<string, unknown> }): Promise<{
+            id: string;
+            relationshipEntryId: string;
+            fileId: string;
+            uploadedByUserId: string;
+            contentSha256: string;
+            status: string;
+          }>;
+        };
+      }).interEntityRelationshipEvidenceClaim;
+      if (!claimClient) {
+        throw new ConflictException("归还凭证关系服务暂不可用，请稍后重试");
+      }
+      const existing = await claimClient.findUnique({
+        where: { idempotencyKey: claimIdempotencyKey }
+      });
+      if (existing) {
+        if (
+          existing.relationshipEntryId !== normalizedRelationshipEntryId ||
+          existing.fileId !== normalizedEvidenceFileId ||
+          existing.uploadedByUserId !== actorUserId
+        ) {
+          throw new ConflictException("归还凭证关系幂等键已用于其他载荷");
+        }
+        return { id: existing.fileId, claimId: existing.id };
+      }
+      const file = await tx.fileObject.findUnique({
+        where: { id: normalizedEvidenceFileId },
+        select: { id: true, uploadedByUserId: true, storageStatus: true, contentSha256: true }
+      });
+      if (
+        !file ||
+        file.storageStatus !== "active" ||
+        file.uploadedByUserId !== actorUserId ||
+        !file.contentSha256 ||
+        !/^[0-9a-f]{64}$/u.test(file.contentSha256)
+      ) {
+        throw new ConflictException("归还凭证不存在、已失效或缺少内容指纹");
+      }
+      const claim = await claimClient.create({
+        data: {
+          id: randomUUID(),
+          relationshipEntryId: normalizedRelationshipEntryId,
+          fileId: normalizedEvidenceFileId,
+          uploadedByUserId: actorUserId,
+          contentSha256: file.contentSha256,
+          status: "pending",
+          idempotencyKey: claimIdempotencyKey
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "inter_entity_relationship.evidence_claim.create",
+        businessType: "inter_entity_relationship_entry",
+        businessId: root.id,
+        metadata: {
+          scope: "global",
+          roleKeys,
+          relationshipFingerprint: auditFingerprint("inter_entity_relationship", root.id),
+          claimFingerprint: auditFingerprint("evidence_claim", claim.id),
+          fileFingerprint: auditFingerprint("evidence_file", file.id),
+          contentFingerprint: auditFingerprint("evidence_content", file.contentSha256),
+          payloadFingerprint: fingerprint
+        }
+      });
+      return { id: claim.fileId, claimId: claim.id };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  }
+
   async returnInterEntityRelationship(
     actorUserId: string,
     input: InterEntityRelationshipReturnInput
@@ -859,6 +1008,7 @@ export class PayableRegistryService {
     const relationshipEntryId = requiredText(input.relationshipEntryId, "代付往来不能为空");
     if (input.amountCents <= 0n) throw new ConflictException("代付往来归还金额必须大于零");
     const evidenceFileId = requiredText(input.evidenceFileId, "归还凭证不能为空");
+    const evidenceClaimId = requiredText(input.evidenceClaimId, "归还凭证关系不能为空");
     const reason = requiredText(input.reason, "归还原因不能为空");
     const idempotencyKey = requiredUuid(input.idempotencyKey);
     const fingerprint = commandFingerprint("inter_entity_relationship.return", {
@@ -866,6 +1016,7 @@ export class PayableRegistryService {
       relationshipEntryId,
       amountCents: input.amountCents.toString(),
       evidenceFileId,
+      evidenceClaimId,
       reason
     });
 
@@ -914,11 +1065,46 @@ export class PayableRegistryService {
       ) {
         throw new ForbiddenException("代付归还人与原付款职责必须分离");
       }
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "InterEntityRelationshipEvidenceClaim" WHERE "id" = ${evidenceClaimId} FOR UPDATE`
+      );
+      const claimClient = (tx as unknown as {
+        interEntityRelationshipEvidenceClaim?: {
+          findUnique(args: { where: { id: string } }): Promise<{
+            id: string;
+            relationshipEntryId: string;
+            fileId: string;
+            uploadedByUserId: string;
+            contentSha256: string;
+            status: string;
+          } | null>;
+          update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
+        };
+      }).interEntityRelationshipEvidenceClaim;
+      if (!claimClient) {
+        throw new ConflictException("归还凭证关系服务暂不可用，请稍后重试");
+      }
+      const claim = await claimClient.findUnique({ where: { id: evidenceClaimId } });
+      if (
+        !claim ||
+        claim.relationshipEntryId !== root.id ||
+        claim.fileId !== evidenceFileId ||
+        claim.uploadedByUserId !== actorUserId ||
+        claim.status !== "pending" ||
+        !/^[0-9a-f]{64}$/u.test(claim.contentSha256)
+      ) {
+        throw new ConflictException("归还凭证关系不存在、已使用或主体不匹配");
+      }
       const evidence = await tx.fileObject.findUnique({
         where: { id: evidenceFileId },
-        select: { id: true, storageStatus: true }
+        select: { id: true, storageStatus: true, uploadedByUserId: true, contentSha256: true }
       });
-      if (!evidence || evidence.storageStatus !== "active") {
+      if (
+        !evidence ||
+        evidence.storageStatus !== "active" ||
+        evidence.uploadedByUserId !== actorUserId ||
+        evidence.contentSha256 !== claim.contentSha256
+      ) {
         throw new ConflictException("归还凭证不存在或已失效");
       }
       const balance = deriveInterEntityRelationshipBalance([
@@ -951,11 +1137,25 @@ export class PayableRegistryService {
           amountCents: input.amountCents,
           currencyCode: root.currencyCode,
           evidenceFileId,
+          evidenceClaimId,
+          evidenceUploadedByUserId: claim.uploadedByUserId,
+          evidenceContentSha256: claim.contentSha256,
+          projectId: root.projectId,
+          contractId: root.contractId,
+          contractVersionId: root.contractVersionId,
+          sourceType: root.sourceType,
+          sourceAggregateId: root.sourceAggregateId,
+          sourceAllocationCount: root.sourceAllocationCount,
+          sourceAllocationAmountCents: root.sourceAllocationAmountCents,
           reason,
           idempotencyKey,
           payloadFingerprint: fingerprint,
           createdByUserId: actorUserId,
         }
+      });
+      await claimClient.update({
+        where: { id: claim.id },
+        data: { status: "consumed", consumedAt: now, consumedByUserId: actorUserId }
       });
       await tx.interEntityRelationshipEntry.update({
         where: { id: returnId },
@@ -989,6 +1189,8 @@ export class PayableRegistryService {
           returnFingerprint: auditFingerprint("inter_entity_relationship_return", returnId),
           amountCentsFingerprint: auditFingerprint("amount_cents", input.amountCents.toString()),
           evidenceFingerprint: auditFingerprint("evidence_file", evidenceFileId),
+          evidenceClaimFingerprint: auditFingerprint("evidence_claim", evidenceClaimId),
+          evidenceContentFingerprint: auditFingerprint("evidence_content", claim.contentSha256),
           payloadFingerprint: fingerprint,
           idempotencyKeyFingerprint: auditFingerprint("idempotency_key", idempotencyKey)
         }
@@ -1077,7 +1279,9 @@ export class PayableRegistryService {
           request,
           contractVersion,
           execution,
-          allocations[0]?.debtorCompanyId
+          allocations[0]?.debtorCompanyId,
+          actorUserId,
+          context.payerAttestation
         );
         assertAllocationSetMatchesPaymentExecution({
           id: execution.id, amountCents: execution.amountCents, currencyCode: "CNY",
@@ -1150,7 +1354,9 @@ export class PayableRegistryService {
               context.request,
               context.contractVersion,
               context.execution,
-              firstAllocation.debtorCompanyId
+              firstAllocation.debtorCompanyId,
+              actorUserId,
+              context.payerAttestation
             );
             const totalPayableAmountCents = context.allocations.reduce(
               (total, allocation) => total + allocation.amountCents,
@@ -1219,7 +1425,7 @@ export class PayableRegistryService {
 
   private async resolvePayerCompanies(
     tx: Prisma.TransactionClient,
-    request: Readonly<{ paymentSubjectType: string }>,
+    request: Readonly<{ paymentSubjectType: string; id?: string; contractVersionId?: string }>,
     contractVersion: Readonly<{
       status: string;
       signingSubjectType: string;
@@ -1235,7 +1441,9 @@ export class PayableRegistryService {
       companyEntityCreditCodeSnapshot?: string;
       voucherFileId?: string;
     }>,
-    originalDebtorCompanyId?: string
+    originalDebtorCompanyId?: string,
+    actorUserId?: string,
+    payerAttestation?: PayerAttestationRecord | null
   ) {
     if (
       request.paymentSubjectType !== "our_company" ||
@@ -1248,9 +1456,59 @@ export class PayableRegistryService {
     ) {
       throw new ConflictException("付款主体事实不属于本票允许的我方公司付款范围");
     }
+    const approvedPayerCompanyId = contractVersion.companyEntityIdSnapshot;
+    let payerVerification: {
+      id: string;
+      reference: string;
+      holderCompanyEntityId: string;
+      holderNameSnapshot: string;
+      holderCreditCodeSnapshot: string;
+      verificationReference: string;
+      verifiedByUserId: string;
+      verifiedAt: Date;
+      verificationEvidenceFileId: string;
+      verificationEvidenceContentSha256: string;
+      status: string;
+      sourceType: string;
+      sourceRecordId: string;
+    } | null = null;
+    if (payerAttestation) {
+      if (!payerAttestation.payerVerificationId) {
+        throw new ConflictException("实际付款主体缺少服务端银行账户核验引用");
+      }
+      const verificationClient = (tx as unknown as {
+        paymentExecutionPayerVerification?: {
+          findUnique(args: { where: { id: string } }): Promise<typeof payerVerification>;
+        };
+      }).paymentExecutionPayerVerification;
+      if (!verificationClient) {
+        throw new ConflictException("银行账户核验权威服务暂不可用，请稍后重试");
+      }
+      payerVerification = await verificationClient.findUnique({
+        where: { id: payerAttestation.payerVerificationId }
+      });
+      if (
+        !payerVerification ||
+        payerVerification.status !== "verified" ||
+        payerVerification.sourceType !== "bank_account_legal_holder" ||
+        payerVerification.reference !== payerAttestation.bankAccountReference ||
+        payerVerification.holderCompanyEntityId !== payerAttestation.holderCompanyEntityId ||
+        payerVerification.holderNameSnapshot !== payerAttestation.holderNameSnapshot ||
+        payerVerification.holderCreditCodeSnapshot !== payerAttestation.holderCreditCodeSnapshot ||
+        payerVerification.verificationReference !== payerAttestation.verificationReference ||
+        payerVerification.verifiedByUserId !== payerAttestation.verifiedByUserId ||
+        payerVerification.verifiedAt.getTime() !== payerAttestation.verifiedAt.getTime() ||
+        payerVerification.verificationEvidenceFileId !== payerAttestation.verificationEvidenceFileId ||
+        payerVerification.verificationEvidenceContentSha256 !== payerAttestation.verificationEvidenceContentSha256
+      ) {
+        throw new ConflictException("付款主体核验事实未与服务端银行账户权威记录一致");
+      }
+    }
+    const actualPayerCompanyId = payerVerification?.holderCompanyEntityId?.trim() ||
+      execution.companyEntityIdSnapshot.trim();
     const ids = Array.from(new Set([
       contractVersion.companyEntityIdSnapshot,
-      execution.companyEntityIdSnapshot,
+      actualPayerCompanyId,
       originalDebtorCompanyId
     ].filter((value): value is string => Boolean(value && value.trim()))));
     const [companies, approvedVersion] = await Promise.all([
@@ -1266,20 +1524,124 @@ export class PayableRegistryService {
     if (
       companies.length !== ids.length ||
       !approvedVersion ||
-      approvedVersion.companyEntityId !== contractVersion.companyEntityIdSnapshot ||
+      approvedVersion.companyEntityId !== approvedPayerCompanyId ||
       !approvedVersion.isActive
     ) {
       throw new ConflictException("代付主体档案不存在或身份不明确");
     }
     const companyById = new Map(companies.map((company) => [company.id, company]));
-    const approved = companyById.get(contractVersion.companyEntityIdSnapshot);
-    const actual = companyById.get(execution.companyEntityIdSnapshot);
-    if (!approved || !actual) {
+    const approved = companyById.get(approvedPayerCompanyId);
+    const actual = companyById.get(actualPayerCompanyId);
+    if (!approved || !actual || !approved.isActive || !actual.isActive) {
       throw new ConflictException("批准付款主体或实际付款主体档案不完整");
     }
+    const original = originalDebtorCompanyId?.trim() || approvedPayerCompanyId;
+    const authorizationRequired = requiresPayerAuthorization({
+      originalDebtorCompanyId: original,
+      approvedPayerCompanyId,
+      actualPayerCompanyId
+    });
+    if (authorizationRequired) {
+      if (!payerAttestation || !actorUserId) {
+        throw new ConflictException("跨主体付款必须先完成银行账户核验和重新授权");
+      }
+      const authorization: PayerAttestationAuthorization | null =
+        payerAttestation.proxyAuthorizationReason &&
+        payerAttestation.proxyAuthorizationEvidenceFileId &&
+        payerAttestation.reauthorizationReference &&
+        payerAttestation.reauthorizationApprovalInstanceId &&
+        payerAttestation.reauthorizationApprovalActionLogId &&
+        payerAttestation.reauthorizationPaymentRequestId &&
+        payerAttestation.reauthorizationContractVersionId &&
+        payerAttestation.reauthorizedByUserId &&
+        payerAttestation.reauthorizedAt
+          ? {
+              reason: payerAttestation.proxyAuthorizationReason,
+              evidenceFileId: payerAttestation.proxyAuthorizationEvidenceFileId,
+              reauthorizationReference: payerAttestation.reauthorizationReference,
+              reauthorizedByUserId: payerAttestation.reauthorizedByUserId,
+          reauthorizedAt: payerAttestation.reauthorizedAt
+        }
+          : null;
+      if (
+        !authorization ||
+        !request.id ||
+        !request.contractVersionId ||
+        payerAttestation.reauthorizationPaymentRequestId !== request.id ||
+        payerAttestation.reauthorizationContractVersionId !== request.contractVersionId
+      ) {
+        throw new ConflictException("跨主体付款的重新授权未绑定当前付款申请和合同版本");
+      }
+      try {
+        assertPayerAttestationFacts({
+          originalDebtorCompanyId: original,
+          approvedPayerCompanyId,
+          actualPayerCompanyId,
+          bankAccountReference: payerAttestation.bankAccountReference,
+          holderCompanyEntityId: payerAttestation.holderCompanyEntityId,
+          holderNameSnapshot: payerAttestation.holderNameSnapshot,
+          holderCreditCodeSnapshot: payerAttestation.holderCreditCodeSnapshot,
+          verificationReference: payerAttestation.verificationReference,
+          verifiedByUserId: payerAttestation.verifiedByUserId,
+          verifiedAt: payerAttestation.verifiedAt,
+          verificationEvidenceFileId: payerAttestation.verificationEvidenceFileId,
+          authorization
+        });
+      } catch (error) {
+        throw new ConflictException(error instanceof Error ? error.message : "付款主体核验事实无效");
+      }
+      if (
+        !/^[0-9a-f]{64}$/u.test(payerAttestation.verificationEvidenceContentSha256) ||
+        payerAttestation.verifiedAt.getTime() > Date.now()
+      ) {
+        throw new ConflictException("银行账户核验证据无效或尚未生效");
+      }
+      const evidenceIds = [
+        payerAttestation.verificationEvidenceFileId,
+        ...(authorization ? [authorization.evidenceFileId] : [])
+      ];
+      const evidenceRows = await Promise.all(
+        evidenceIds.map((id) => tx.fileObject.findUnique({
+          where: { id },
+          select: { id: true, storageStatus: true, contentSha256: true }
+        }))
+      );
+      const verificationEvidence = evidenceRows[0];
+      if (
+        !verificationEvidence ||
+        verificationEvidence.storageStatus !== "active" ||
+        verificationEvidence.contentSha256 !== payerAttestation.verificationEvidenceContentSha256
+      ) {
+        throw new ConflictException("银行账户核验证据不存在、已失效或内容已变化");
+      }
+      if (authorization) {
+        const authorizationEvidence = evidenceRows[1];
+        if (
+          !authorizationEvidence ||
+          authorizationEvidence.storageStatus !== "active" ||
+          authorizationEvidence.contentSha256 !== payerAttestation.proxyAuthorizationEvidenceSha256 ||
+          authorization.reauthorizedAt.getTime() > Date.now() ||
+          authorization.reauthorizedByUserId === actorUserId
+        ) {
+          throw new ConflictException("跨主体付款授权证据不存在、已失效或职责不分离");
+        }
+      }
+    }
+    const actualPayerSnapshot = payerAttestation
+      ? jsonSafe({
+          companyEntityId: actual.id,
+          name: payerAttestation.holderNameSnapshot,
+          unifiedSocialCreditCode: payerAttestation.holderCreditCodeSnapshot
+        })
+      : jsonSafe({
+          companyEntityId: actual.id,
+          name: execution.companyEntityNameSnapshot ?? actual.name,
+          unifiedSocialCreditCode:
+            execution.companyEntityCreditCodeSnapshot ?? actual.unifiedSocialCreditCode
+        });
     return {
-      approvedPayerCompanyId: contractVersion.companyEntityIdSnapshot,
-      actualPayerCompanyId: execution.companyEntityIdSnapshot,
+      approvedPayerCompanyId,
+      actualPayerCompanyId,
       approvedPayerSnapshot: jsonSafe({
         companyEntityId: approved.id,
         companyEntityVersionId: contractVersion.companyEntityVersionId,
@@ -1287,12 +1649,7 @@ export class PayableRegistryService {
         unifiedSocialCreditCode:
           contractVersion.companyEntityCreditCodeSnapshot ?? approvedVersion.unifiedSocialCreditCode ?? approved.unifiedSocialCreditCode
       }),
-      actualPayerSnapshot: jsonSafe({
-        companyEntityId: actual.id,
-        name: execution.companyEntityNameSnapshot ?? actual.name,
-        unifiedSocialCreditCode:
-          execution.companyEntityCreditCodeSnapshot ?? actual.unifiedSocialCreditCode
-      }),
+      actualPayerSnapshot,
       originalDebtorSnapshot: originalDebtorCompanyId
         ? jsonSafe({
             companyEntityId: originalDebtorCompanyId,
@@ -1300,7 +1657,27 @@ export class PayableRegistryService {
             unifiedSocialCreditCode:
               companyById.get(originalDebtorCompanyId)?.unifiedSocialCreditCode
           })
-        : null
+        : null,
+      proxyAuthorizationReason: payerAttestation?.proxyAuthorizationReason ?? null,
+      authorizationEvidenceFileId: payerAttestation?.proxyAuthorizationEvidenceFileId ?? null,
+      authorizationEvidenceContentSha256:
+        payerAttestation?.proxyAuthorizationEvidenceSha256 ?? null,
+      reauthorizationReference: payerAttestation?.reauthorizationReference ?? null,
+      reauthorizationApprovalInstanceId:
+        payerAttestation?.reauthorizationApprovalInstanceId ?? null,
+      reauthorizationApprovalActionLogId:
+        payerAttestation?.reauthorizationApprovalActionLogId ?? null,
+      reauthorizationPaymentRequestId:
+        payerAttestation?.reauthorizationPaymentRequestId ?? null,
+      reauthorizationContractVersionId:
+        payerAttestation?.reauthorizationContractVersionId ?? null,
+      reauthorizedByUserId: payerAttestation?.reauthorizedByUserId ?? null,
+      reauthorizedAt: payerAttestation?.reauthorizedAt ?? null,
+      actualPayerVerificationEvidenceFileId:
+        payerAttestation?.verificationEvidenceFileId ?? null,
+      actualPayerVerificationContentSha256:
+        payerAttestation?.verificationEvidenceContentSha256 ?? null,
+      payerVerificationId: payerAttestation?.payerVerificationId ?? null
     };
   }
 
@@ -1313,6 +1690,20 @@ export class PayableRegistryService {
         id: string;
         voucherFileId: string;
       };
+      request?: {
+        id: string;
+        projectId: string;
+        contractId: string;
+        contractVersionId: string;
+      };
+      allocations?: ReadonlyArray<{
+        amountCents: bigint;
+        sourceType?: string;
+        sourceAggregateId?: string;
+        sourceLineId?: string;
+        confirmedVersionId?: string;
+        debtorCompanyId: string;
+      }>;
     }>,
     payer: Readonly<{
       approvedPayerCompanyId: string;
@@ -1320,6 +1711,19 @@ export class PayableRegistryService {
       approvedPayerSnapshot: Prisma.JsonValue;
       actualPayerSnapshot: Prisma.JsonValue;
       originalDebtorSnapshot: Prisma.JsonValue | null;
+      proxyAuthorizationReason: string | null;
+      authorizationEvidenceFileId: string | null;
+      authorizationEvidenceContentSha256: string | null;
+      reauthorizationReference: string | null;
+      reauthorizedByUserId: string | null;
+      reauthorizedAt: Date | null;
+      actualPayerVerificationEvidenceFileId: string | null;
+      actualPayerVerificationContentSha256: string | null;
+      reauthorizationApprovalInstanceId: string | null;
+      reauthorizationApprovalActionLogId: string | null;
+      reauthorizationPaymentRequestId: string | null;
+      reauthorizationContractVersionId: string | null;
+      payerVerificationId: string | null;
     }>,
     originalDebtorCompanyId: string,
     amountCents: bigint
@@ -1347,6 +1751,31 @@ export class PayableRegistryService {
     const now = new Date();
     const entryId = randomUUID();
     const idempotencyKey = `inter-entity-proxy:${context.settlementCase.id}`;
+    const allocationRows = context.allocations ?? [];
+    const sourceProjectId = context.request?.projectId ?? null;
+    const sourceContractId = context.request?.contractId ?? null;
+    const sourceContractVersionId = context.request?.contractVersionId ?? null;
+    const sourceAggregateIds = Array.from(new Set(
+      allocationRows.map((allocation) => allocation.sourceAggregateId).filter(
+        (value): value is string => Boolean(value)
+      )
+    ));
+    if (
+      !sourceProjectId ||
+      !sourceContractId ||
+      !sourceContractVersionId ||
+      allocationRows.length === 0 ||
+      sourceAggregateIds.length !== 1
+    ) {
+      throw new ConflictException("代付往来缺少完整工资来源与分摊快照");
+    }
+    const allocationAmountCents = allocationRows.reduce(
+      (total, allocation) => total + allocation.amountCents,
+      0n
+    );
+    if (allocationAmountCents !== amountCents) {
+      throw new ConflictException("代付往来金额与核销分摊合计不一致");
+    }
     const payloadFingerprint = commandFingerprint("inter_entity_relationship.proxy_payment", {
       settlementCaseId: context.settlementCase.id,
       paymentExecutionId: context.execution.id,
@@ -1372,7 +1801,24 @@ export class PayableRegistryService {
         amountCents: facts.amountCents,
         currencyCode: facts.currencyCode,
         evidenceFileId: facts.voucherFileId,
-        reason: "跨主体代付",
+        reason: payer.proxyAuthorizationReason ?? "跨主体代付",
+        authorizationEvidenceFileId: payer.authorizationEvidenceFileId ?? undefined,
+        authorizationEvidenceContentSha256:
+          payer.authorizationEvidenceContentSha256 ?? undefined,
+        reauthorizationReference: payer.reauthorizationReference ?? undefined,
+        reauthorizedByUserId: payer.reauthorizedByUserId ?? undefined,
+        reauthorizedAt: payer.reauthorizedAt ?? undefined,
+        actualPayerVerificationEvidenceFileId:
+          payer.actualPayerVerificationEvidenceFileId ?? undefined,
+        actualPayerVerificationContentSha256:
+          payer.actualPayerVerificationContentSha256 ?? undefined,
+        projectId: sourceProjectId,
+        contractId: sourceContractId,
+        contractVersionId: sourceContractVersionId,
+        sourceType: "wage_payable_ref",
+        sourceAggregateId: sourceAggregateIds[0],
+        sourceAllocationCount: allocationRows.length,
+        sourceAllocationAmountCents: allocationAmountCents,
         idempotencyKey,
         payloadFingerprint,
         createdByUserId: actorUserId,
@@ -1382,6 +1828,79 @@ export class PayableRegistryService {
     await tx.interEntityRelationshipEntry.update({
       where: { id: created.id },
       data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: now }
+    });
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "inter_entity_relationship.proxy_payment",
+      businessType: "inter_entity_relationship_entry",
+      businessId: created.id,
+      metadata: {
+        scope: "global",
+        relationshipFingerprint: auditFingerprint("inter_entity_relationship", created.id),
+        settlementCaseFingerprint: auditFingerprint("settlement_case", context.settlementCase.id),
+        paymentExecutionFingerprint: auditFingerprint("payment_execution", context.execution.id),
+        originalDebtorFingerprint: auditFingerprint("company_entity", facts.debtorCompanyId),
+        creditorFingerprint: auditFingerprint("company_entity", facts.creditorCompanyId),
+        approvedPayerFingerprint: auditFingerprint("company_entity", facts.approvedPayerCompanyId),
+        payerVerificationFingerprint: payer.payerVerificationId
+          ? auditFingerprint("payer_verification", payer.payerVerificationId)
+          : null,
+        actualPayerVerificationEvidenceFingerprint:
+          payer.actualPayerVerificationEvidenceFileId
+            ? auditFingerprint(
+                "evidence_file",
+                payer.actualPayerVerificationEvidenceFileId
+              )
+            : null,
+        actualPayerVerificationContentFingerprint:
+          payer.actualPayerVerificationContentSha256
+            ? auditFingerprint(
+                "evidence_content",
+                payer.actualPayerVerificationContentSha256
+              )
+            : null,
+        authorizationEvidenceFingerprint: payer.authorizationEvidenceFileId
+          ? auditFingerprint("evidence_file", payer.authorizationEvidenceFileId)
+          : null,
+        authorizationEvidenceContentFingerprint:
+          payer.authorizationEvidenceContentSha256
+            ? auditFingerprint(
+                "evidence_content",
+                payer.authorizationEvidenceContentSha256
+              )
+            : null,
+        approvalInstanceFingerprint: payer.reauthorizationApprovalInstanceId
+          ? auditFingerprint(
+              "approval_instance",
+              payer.reauthorizationApprovalInstanceId
+            )
+          : null,
+        reauthorizationActionFingerprint: payer.reauthorizationApprovalActionLogId
+          ? auditFingerprint("approval_action", payer.reauthorizationApprovalActionLogId)
+          : null,
+        sourceType: "wage_payable_ref",
+        sourceAggregateFingerprint: auditFingerprint("wage_statement_version", sourceAggregateIds[0]),
+        projectFingerprint: auditFingerprint("project", sourceProjectId),
+        contractFingerprint: auditFingerprint("contract", sourceContractId),
+        contractVersionFingerprint: auditFingerprint("contract_version", sourceContractVersionId),
+        sourceAllocationFingerprints: allocationRows.map((allocation) => ({
+          sourceAggregateFingerprint: allocation.sourceAggregateId
+            ? auditFingerprint("wage_statement_version", allocation.sourceAggregateId)
+            : null,
+          sourceLineFingerprint: allocation.sourceLineId
+            ? auditFingerprint("wage_payable_ref", allocation.sourceLineId)
+            : null,
+          confirmedVersionFingerprint: allocation.confirmedVersionId
+            ? auditFingerprint("wage_statement_version", allocation.confirmedVersionId)
+            : null,
+          amountCentsFingerprint: auditFingerprint(
+            "amount_cents",
+            allocation.amountCents.toString()
+          )
+        })),
+        allocationCount: allocationRows.length,
+        amountCentsFingerprint: auditFingerprint("amount_cents", amountCents.toString())
+      }
     });
     return created;
   }
@@ -1511,6 +2030,16 @@ export class PayableRegistryService {
         : total,
       0n
     );
+    const attestationClient = (tx as unknown as {
+      paymentExecutionPayerAttestation?: {
+        findUnique(args: { where: { paymentExecutionId: string } }): Promise<PayerAttestationRecord | null>;
+      };
+    }).paymentExecutionPayerAttestation;
+    const payerAttestation = attestationClient
+      ? await attestationClient.findUnique({
+          where: { paymentExecutionId: caseSnapshot.paymentExecutionId }
+        })
+      : null;
     return {
       settlementCase,
       execution,
@@ -1519,7 +2048,8 @@ export class PayableRegistryService {
       counterparties,
       allocations,
       wageBindings,
-      otherAllocatedAmountCents
+      otherAllocatedAmountCents,
+      payerAttestation
     };
   }
 

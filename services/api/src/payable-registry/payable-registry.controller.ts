@@ -112,6 +112,7 @@ export class PayableRegistryController {
       relationshipEntryId,
       amountCents: parseAmountCents(input.amountCents),
       evidenceFileId: input.evidenceFileId,
+      evidenceClaimId: input.evidenceClaimId,
       reason: input.reason,
       idempotencyKey: input.idempotencyKey
     });
@@ -148,7 +149,12 @@ export class PayableRegistryController {
       buffer: file.buffer,
       ...(idempotencyKey === undefined ? {} : { idempotencyKey })
     });
-    return { id: uploaded.id };
+    return this.registry.createInterEntityRelationshipEvidenceClaim(
+      user.id,
+      relationshipEntryId,
+      uploaded.id,
+      idempotencyKey
+    );
   }
 }
 

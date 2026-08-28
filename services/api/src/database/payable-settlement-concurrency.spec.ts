@@ -5,6 +5,23 @@ import { PayableRegistryService } from "../payable-registry/payable-registry.ser
 
 const TEST_DATABASE = "jiangkong_payable_settlement_dynamic_test";
 const LIVE_TEST_ENABLED = process.env.RUN_PAYABLE_SETTLEMENT_DATABASE === "1";
+type DatabaseClient = PrismaClient | Prisma.TransactionClient;
+type PayerAuthority = {
+  id: string;
+  reference: string;
+  holderCompanyEntityId: string;
+  holderNameSnapshot: string;
+  holderCreditCodeSnapshot: string;
+  verificationReference: string;
+  verifiedByUserId: string;
+  verifiedAt: Date;
+  verificationEvidenceFileId: string;
+  verificationEvidenceContentSha256: string;
+  status: string;
+  sourceType: string;
+  sourceRecordId: string;
+  createdAt?: Date;
+};
 
 export function payableSettlementDatabaseUrl(value: string | undefined) {
   if (!value || process.env.NODE_ENV === "production") {
@@ -182,6 +199,284 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).resolves.toBe(1);
   });
 
+  it("requires a confirmed cross-company case to carry its proxy relationship root", async () => {
+    const fixture = await createFixture(observer, 1_000n, randomUUID());
+    await observer.payableSettlementAllocation.create({
+      data: allocationData(fixture, "payable-a", 1_000n)
+    });
+    await observer.payableSettlementCase.update({
+      where: { id: fixture.settlementCaseId },
+      data: {
+        status: "submitted",
+        revision: { increment: 1 },
+        submittedByUserId: "submitter",
+        submittedAt: new Date("2026-08-27T08:10:00.000Z")
+      }
+    });
+    await expect(observer.payableSettlementCase.update({
+      where: { id: fixture.settlementCaseId },
+      data: {
+        status: "confirmed",
+        revision: { increment: 1 },
+        confirmedByUserId: "director",
+        confirmedAt: new Date("2026-08-27T08:20:00.000Z")
+      }
+    })).rejects.toThrow("inter_entity_relationship_required");
+    await expect(observer.payableSettlementCase.findUnique({
+      where: { id: fixture.settlementCaseId },
+      select: { status: true, revision: true }
+    })).resolves.toMatchObject({ status: "submitted", revision: 2 });
+  });
+
+  it("requires an immutable server-issued bank-holder authority and evidence SoD", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    const authority = await createPayerAuthority(observer, fixture);
+
+    await expect(observer.paymentExecutionPayerVerification.create({
+      data: authority
+    })).rejects.toThrow("payment_execution_payer_verification_issuer_required");
+    await expect(observer.$queryRaw(
+      Prisma.sql`SELECT * FROM public."jg_issue_payment_execution_payer_verification"(${JSON.stringify(authority)}::JSONB)`
+    )).rejects.toThrow("payment_execution_payer_verification_issuer_role_required");
+
+    await expect(issuePayerAuthority(observer, {
+      ...authority,
+      id: randomUUID(),
+      verifiedByUserId: fixture.actorUserId
+    })).rejects.toThrow("payment_execution_payer_verification_verifier_invalid");
+
+    const created = await issuePayerAuthority(observer, authority);
+    await expect(observer.paymentExecutionPayerVerification.update({
+      where: { id: created.id },
+      data: { holderNameSnapshot: "篡改主体" }
+    })).rejects.toThrow("payment_execution_payer_verification_immutable");
+    await expect(observer.paymentExecutionPayerVerification.delete({
+      where: { id: created.id }
+    })).rejects.toThrow("payment_execution_payer_verification_immutable");
+
+    const attestation = await observer.paymentExecutionPayerAttestation.create({
+      data: {
+        id: randomUUID(),
+        paymentExecutionId: fixture.paymentExecutionId,
+        payerVerificationId: created.id,
+        bankAccountReference: authority.reference,
+        holderCompanyEntityId: authority.holderCompanyEntityId,
+        holderNameSnapshot: authority.holderNameSnapshot,
+        holderCreditCodeSnapshot: authority.holderCreditCodeSnapshot,
+        verificationReference: authority.verificationReference,
+        verifiedByUserId: authority.verifiedByUserId,
+        verifiedAt: authority.verifiedAt,
+        verificationEvidenceFileId: authority.verificationEvidenceFileId,
+        verificationEvidenceContentSha256: authority.verificationEvidenceContentSha256
+      }
+    });
+    await expect(observer.paymentExecutionPayerAttestation.update({
+      where: { id: attestation.id },
+      data: { holderNameSnapshot: "篡改主体" }
+    })).rejects.toThrow("payment_execution_payer_attestation_append_only");
+    await expect(observer.paymentExecutionPayerAttestation.delete({
+      where: { id: attestation.id }
+    })).rejects.toThrow("payment_execution_payer_attestation_append_only");
+
+    // A confirmed relationship root must reuse the immutable PaymentExecution
+    // voucher as its evidence anchor; a different file is a direct-SQL
+    // forgery even when the rest of the subject snapshots look valid.
+    await observer.payableSettlementAllocation.create({
+      data: allocationData(fixture, "payable-a", fixture.amountCents)
+    });
+    await observer.payableSettlementCase.update({
+      where: { id: fixture.settlementCaseId },
+      data: { status: "submitted", revision: { increment: 1 }, submittedByUserId: "submitter", submittedAt: new Date() }
+    });
+    const forgedEvidenceFileId = randomUUID();
+    await observer.fileObject.create({ data: dynamicFile(forgedEvidenceFileId, "forged-relationship-evidence") });
+    const forgedAuthorizationEvidenceFileId = randomUUID();
+    await observer.fileObject.create({ data: dynamicFile(forgedAuthorizationEvidenceFileId, "forged-relationship-authorization") });
+    const forgedActualPayerEvidenceFileId = randomUUID();
+    await observer.fileObject.create({ data: dynamicFile(forgedActualPayerEvidenceFileId, "forged-actual-payer-evidence") });
+    const forgedRoot = await observer.interEntityRelationshipEntry.create({
+      data: {
+        id: randomUUID(),
+        entryKind: "proxy_payment",
+        direction: "increase",
+        status: "draft",
+        paymentExecutionId: fixture.paymentExecutionId,
+        settlementCaseId: fixture.settlementCaseId,
+        originalDebtorCompanyId: randomUUID(),
+        creditorCompanyId: fixture.debtorCompanyId,
+        approvedPayerCompanyId: fixture.debtorCompanyId,
+        debtorSnapshot: { companyEntityId: "forged-debtor" },
+        creditorSnapshot: { companyEntityId: fixture.debtorCompanyId },
+        approvedPayerSnapshot: { companyEntityId: fixture.debtorCompanyId },
+        amountCents: fixture.amountCents,
+        currencyCode: "CNY",
+        evidenceFileId: forgedEvidenceFileId,
+        actualPayerVerificationEvidenceFileId: forgedActualPayerEvidenceFileId,
+        actualPayerVerificationContentSha256: "f".repeat(64),
+        authorizationEvidenceFileId: forgedAuthorizationEvidenceFileId,
+        authorizationEvidenceContentSha256: "f".repeat(64),
+        reauthorizationReference: randomUUID(),
+        reauthorizedByUserId: fixture.actorUserId,
+        reauthorizedAt: new Date("2026-08-27T08:30:00.000Z"),
+        projectId: fixture.projectId,
+        contractId: fixture.contractId,
+        contractVersionId: fixture.contractVersionId,
+        sourceType: "wage_payable_ref",
+        sourceAggregateId: fixture.confirmedVersionId,
+        sourceAllocationCount: 1,
+        sourceAllocationAmountCents: fixture.amountCents,
+        reason: null,
+        idempotencyKey: randomUUID(),
+        payloadFingerprint: "forged-root",
+        createdByUserId: fixture.actorUserId
+      }
+    });
+    await expect(observer.interEntityRelationshipEntry.update({
+      where: { id: forgedRoot.id },
+      data: { status: "confirmed", confirmedByUserId: "director", confirmedAt: new Date() }
+    })).rejects.toThrow("inter_entity_relationship_scope_invalid");
+  });
+
+  it("locks the authority evidence row before freezing its hash", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    const authority = await createPayerAuthority(observer, fixture);
+    let releaseFirst!: () => void;
+    const firstRelease = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let authorityInserted!: () => void;
+    const authorityReady = new Promise<void>((resolve) => {
+      authorityInserted = resolve;
+    });
+    const authorityInsert = first.$transaction(async (tx) => {
+      await issuePayerAuthority(tx, authority);
+      authorityInserted();
+      await firstRelease;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+    await authorityReady;
+
+    let secondStarted!: () => void;
+    const secondReady = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
+    let secondSettled = false;
+    const fileUpdate = second.$transaction(async (tx) => {
+      secondStarted();
+      return tx.fileObject.update({
+        where: { id: authority.verificationEvidenceFileId },
+        data: { contentSha256: "b".repeat(64) }
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted })
+      .then((value) => {
+        secondSettled = true;
+        return value;
+      })
+      .catch((error) => {
+        secondSettled = true;
+        throw error;
+      });
+    await secondReady;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(secondSettled).toBe(false);
+    releaseFirst();
+    await expect(authorityInsert).resolves.toBeUndefined();
+    await expect(fileUpdate).rejects.toThrow("payment_execution_payer_evidence_immutable");
+  });
+
+  it("binds proxy payer attestations to an approved finance-director action and its evidence", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    const authority = await createPayerAuthority(observer, fixture);
+    const createdAuthority = await issuePayerAuthority(observer, authority);
+    const reauthorizerUserId = randomUUID();
+    const reauthorizationEvidenceFileId = randomUUID();
+    const approvalInstanceId = randomUUID();
+    const approvalActionLogId = randomUUID();
+    const position = await observer.position.upsert({
+      where: { key: "finance_director" },
+      update: {},
+      create: { key: "finance_director", name: "财务负责人" }
+    });
+    await observer.user.create({ data: { id: reauthorizerUserId, name: "动态门重新授权人" } });
+    await observer.userPosition.create({
+      data: { id: randomUUID(), userId: reauthorizerUserId, positionId: position.id, projectId: null }
+    });
+    await observer.fileObject.create({
+      data: {
+        ...dynamicFile(reauthorizationEvidenceFileId, "payer-reauthorization"),
+        uploadedByUserId: reauthorizerUserId,
+        contentSha256: "b".repeat(64)
+      }
+    });
+    await observer.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "payment_request",
+        businessType: "payment_request",
+        businessId: fixture.paymentRequestId,
+        status: "approved",
+        currentNodeIndex: 0,
+        frozenNodes: [],
+        applicantUserId: fixture.actorUserId
+      }
+    });
+    await observer.approvalActionLog.create({
+      data: {
+        id: approvalActionLogId,
+        approvalInstanceId,
+        action: "approve",
+        actorUserId: reauthorizerUserId,
+        approvedRoleKey: "finance_director",
+        metadata: {
+          paymentRequestId: fixture.paymentRequestId,
+          contractVersionId: fixture.contractVersionId
+        }
+      }
+    });
+    const proxyData = {
+      id: randomUUID(),
+      paymentExecutionId: fixture.paymentExecutionId,
+      payerVerificationId: createdAuthority.id,
+      bankAccountReference: authority.reference,
+      holderCompanyEntityId: authority.holderCompanyEntityId,
+      holderNameSnapshot: authority.holderNameSnapshot,
+      holderCreditCodeSnapshot: authority.holderCreditCodeSnapshot,
+      verificationReference: authority.verificationReference,
+      verifiedByUserId: authority.verifiedByUserId,
+      verifiedAt: authority.verifiedAt,
+      verificationEvidenceFileId: authority.verificationEvidenceFileId,
+      verificationEvidenceContentSha256: authority.verificationEvidenceContentSha256,
+      proxyAuthorizationReason: "动态门跨主体授权",
+      proxyAuthorizationEvidenceFileId: reauthorizationEvidenceFileId,
+      proxyAuthorizationEvidenceSha256: "b".repeat(64),
+      reauthorizationReference: approvalActionLogId,
+      reauthorizationApprovalInstanceId: approvalInstanceId,
+      reauthorizationApprovalActionLogId: approvalActionLogId,
+      reauthorizationPaymentRequestId: fixture.paymentRequestId,
+      reauthorizationContractVersionId: fixture.contractVersionId,
+      reauthorizedByUserId: reauthorizerUserId,
+      reauthorizedAt: new Date("2026-08-27T08:30:00.000Z")
+    };
+    await expect(observer.paymentExecutionPayerAttestation.create({
+      data: { ...proxyData, reauthorizationReference: randomUUID() }
+    })).rejects.toThrow("payment_execution_payer_attestation_approval_binding_invalid");
+    await expect(observer.paymentExecutionPayerAttestation.create({ data: proxyData })).resolves.toMatchObject({
+      paymentExecutionId: fixture.paymentExecutionId,
+      reauthorizationApprovalActionLogId: approvalActionLogId
+    });
+    await expect(observer.approvalActionLog.update({
+      where: { id: approvalActionLogId },
+      data: { comment: "篡改已绑定审批" }
+    })).rejects.toThrow("payment_execution_payer_approval_binding_immutable");
+    await expect(observer.approvalInstance.update({
+      where: { id: approvalInstanceId },
+      data: { status: "cancelled" }
+    })).rejects.toThrow("payment_execution_payer_approval_binding_immutable");
+    await expect(observer.fileObject.update({
+      where: { id: reauthorizationEvidenceFileId },
+      data: { contentSha256: "c".repeat(64) }
+    })).rejects.toThrow("payment_execution_payer_evidence_immutable");
+  });
+
   it("rejects direct allocations whose typed source coordinates do not match a confirmed wage ref", async () => {
     const fixture = await createFixture(observer, 1_000n);
     const invalidSource = allocationData(fixture, "payable-a", 100n);
@@ -194,8 +489,8 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).rejects.toThrow("payable_settlement_source_not_confirmed");
   });
 
-  it("rejects direct allocations that cross the execution project or payer company", async () => {
-    const fixture = await createFixture(observer, 1_000n);
+  it("keeps project scope while allowing a separately authorized execution payer", async () => {
+    const fixture = await createFixture(observer, 1_000n, randomUUID());
     await expect(observer.payableSettlementAllocation.create({
       data: {
         ...allocationData(fixture, "payable-a", 100n),
@@ -205,10 +500,12 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
 
     await expect(observer.payableSettlementAllocation.create({
       data: {
-        ...allocationData(fixture, "payable-b", 100n),
-        debtorCompanyId: randomUUID()
+        ...allocationData(fixture, "payable-b", 100n)
       }
-    })).rejects.toThrow("payable_settlement_execution_scope_invalid");
+    })).resolves.toMatchObject({ amountCents: 100n });
+    await expect(observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(fixture, "payable-immutable", fixture.paymentExecutionId, 100n)
+    })).resolves.toMatchObject({ amountCents: 100n });
   });
 
   it("rejects direct allocations when the request contract lineage crosses project boundaries", async () => {
@@ -374,6 +671,154 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).resolves.toBe(1);
   });
 
+  it("confirms a cross-company service path while reusing voucher and authorization evidence", async () => {
+    const fixture = await createEligibleServiceFixture(observer, 1_000n, true);
+    const authority = await createPayerAuthority(observer, fixture);
+    const createdAuthority = await issuePayerAuthority(observer, authority);
+    const reauthorizerUserId = randomUUID();
+    const confirmerUserId = randomUUID();
+    const reauthorizationEvidenceFileId = randomUUID();
+    const approvalInstanceId = randomUUID();
+    const approvalActionLogId = randomUUID();
+    const directorPosition = await observer.position.upsert({
+      where: { key: "finance_director" },
+      update: {},
+      create: { key: "finance_director", name: "财务负责人" }
+    });
+    await observer.user.create({ data: { id: reauthorizerUserId, name: "动态门跨主体授权人" } });
+    await observer.user.create({ data: { id: confirmerUserId, name: "动态门核销确认人" } });
+    await observer.userPosition.createMany({
+      data: [
+        { id: randomUUID(), userId: reauthorizerUserId, positionId: directorPosition.id, projectId: null },
+        { id: randomUUID(), userId: confirmerUserId, positionId: directorPosition.id, projectId: null }
+      ]
+    });
+    await observer.fileObject.create({
+      data: {
+        ...dynamicFile(reauthorizationEvidenceFileId, "payer-reauthorization"),
+        uploadedByUserId: reauthorizerUserId,
+        contentSha256: "b".repeat(64)
+      }
+    });
+    await observer.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "payment_request",
+        businessType: "payment_request",
+        businessId: fixture.paymentRequestId,
+        status: "approved",
+        currentNodeIndex: 0,
+        frozenNodes: [],
+        applicantUserId: fixture.actorUserId
+      }
+    });
+    await observer.approvalActionLog.create({
+      data: {
+        id: approvalActionLogId,
+        approvalInstanceId,
+        action: "approve",
+        actorUserId: reauthorizerUserId,
+        approvedRoleKey: "finance_director",
+        metadata: {
+          paymentRequestId: fixture.paymentRequestId,
+          contractVersionId: fixture.contractVersionId
+        }
+      }
+    });
+    await observer.paymentExecutionPayerAttestation.create({
+      data: {
+        id: randomUUID(),
+        paymentExecutionId: fixture.paymentExecutionId,
+        payerVerificationId: createdAuthority.id,
+        bankAccountReference: authority.reference,
+        holderCompanyEntityId: authority.holderCompanyEntityId,
+        holderNameSnapshot: authority.holderNameSnapshot,
+        holderCreditCodeSnapshot: authority.holderCreditCodeSnapshot,
+        verificationReference: authority.verificationReference,
+        verifiedByUserId: authority.verifiedByUserId,
+        verifiedAt: authority.verifiedAt,
+        verificationEvidenceFileId: authority.verificationEvidenceFileId,
+        verificationEvidenceContentSha256: authority.verificationEvidenceContentSha256,
+        proxyAuthorizationReason: "动态门跨主体付款授权",
+        proxyAuthorizationEvidenceFileId: reauthorizationEvidenceFileId,
+        proxyAuthorizationEvidenceSha256: "b".repeat(64),
+        reauthorizationReference: approvalActionLogId,
+        reauthorizationApprovalInstanceId: approvalInstanceId,
+        reauthorizationApprovalActionLogId: approvalActionLogId,
+        reauthorizationPaymentRequestId: fixture.paymentRequestId,
+        reauthorizationContractVersionId: fixture.contractVersionId,
+        reauthorizedByUserId: reauthorizerUserId,
+        reauthorizedAt: new Date("2026-08-27T08:30:00.000Z")
+      }
+    });
+    const service = realService(
+      observer,
+      new AuditService(),
+      async (actorUserId) => actorUserId === confirmerUserId
+        ? ["finance_director"]
+        : ["finance_staff"]
+    );
+    const listed = await service.listPaymentExecutionCandidates(
+      fixture.actorUserId,
+      fixture.payableRef
+    );
+    expect(listed.candidates).toHaveLength(1);
+    const allocated = await service.allocatePaymentExecution(fixture.actorUserId, {
+      payableRef: fixture.payableRef,
+      selectionRef: listed.candidates[0].selectionRef,
+      selectionExpiresAt: listed.candidates[0].expiresAt,
+      amountCents: 1_000n,
+      expectedCaseRevision: fixture.caseRevision,
+      idempotencyKey: randomUUID()
+    }) as unknown as { settlementCaseId: string; revision: number };
+    const submitted = await service.submit(fixture.actorUserId, {
+      settlementCaseId: allocated.settlementCaseId,
+      expectedRevision: allocated.revision,
+      idempotencyKey: randomUUID()
+    }) as unknown as { revision: number };
+    const confirmed = await service.confirm(confirmerUserId, {
+      settlementCaseId: allocated.settlementCaseId,
+      expectedRevision: submitted.revision,
+      idempotencyKey: randomUUID()
+    }) as unknown as { status: string };
+
+    expect(confirmed.status).toBe("confirmed");
+    await expect(observer.interEntityRelationshipEntry.findFirst({
+      where: {
+        settlementCaseId: allocated.settlementCaseId,
+        entryKind: "proxy_payment",
+        direction: "increase",
+        status: "confirmed"
+      },
+      select: {
+        evidenceFileId: true,
+        authorizationEvidenceFileId: true,
+        originalDebtorCompanyId: true,
+        creditorCompanyId: true,
+        approvedPayerCompanyId: true,
+        sourceAllocationCount: true,
+        sourceAllocationAmountCents: true
+      }
+    })).resolves.toMatchObject({
+      evidenceFileId: expect.not.stringContaining(reauthorizationEvidenceFileId),
+      authorizationEvidenceFileId: reauthorizationEvidenceFileId,
+      originalDebtorCompanyId: fixture.debtorCompanyId,
+      creditorCompanyId: fixture.executionPayerCompanyId,
+      approvedPayerCompanyId: fixture.debtorCompanyId,
+      sourceAllocationCount: 1,
+      sourceAllocationAmountCents: 1_000n
+    });
+    const execution = await observer.paymentExecution.findUniqueOrThrow({
+      where: { id: fixture.paymentExecutionId },
+      select: { voucherFileId: true }
+    });
+    const relationship = await observer.interEntityRelationshipEntry.findFirstOrThrow({
+      where: { settlementCaseId: allocated.settlementCaseId, entryKind: "proxy_payment" },
+      select: { evidenceFileId: true }
+    });
+    expect(relationship.evidenceFileId).toBe(execution.voucherFileId);
+  });
+
   it("rolls back case, allocation, receipt and audit when the real service audit step fails", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);
     const service = realService(observer, {
@@ -410,6 +855,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
 type Fixture = Readonly<{
   actorUserId: string;
   paymentExecutionId: string;
+  executionPayerCompanyId: string;
   paymentRequestId: string;
   settlementCaseId: string;
   amountCents: bigint;
@@ -424,7 +870,11 @@ type Fixture = Readonly<{
   payableRefs: Readonly<Record<string, string>>;
 }>;
 
-async function createFixture(client: PrismaClient, amountCents: bigint): Promise<Fixture> {
+async function createFixture(
+  client: PrismaClient,
+  amountCents: bigint,
+  executionCompanyIdSnapshot?: string
+): Promise<Fixture> {
   const actorUserId = randomUUID();
   const paymentExecutionId = randomUUID();
   const settlementCaseId = randomUUID();
@@ -670,7 +1120,7 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
       idempotencyKey: randomUUID(),
       paymentRequestId,
       paymentSubjectType: "our_company",
-      companyEntityIdSnapshot: companyId,
+      companyEntityIdSnapshot: executionCompanyIdSnapshot ?? companyId,
       companyEntityNameSnapshot: "动态门付款主体",
       companyEntityCreditCodeSnapshot: "91310000DYNAMICGATE",
       amountCents,
@@ -691,6 +1141,7 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
   return {
     actorUserId,
     paymentExecutionId,
+    executionPayerCompanyId: executionCompanyIdSnapshot ?? companyId,
     paymentRequestId,
     settlementCaseId,
     amountCents,
@@ -704,6 +1155,70 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
     payeeSubjectId: `employee_user:${actorUserId}`,
     payableRefs
   };
+}
+
+async function createPayerAuthority(
+  client: DatabaseClient,
+  fixture: Pick<Fixture, "debtorCompanyId" | "executionPayerCompanyId">
+): Promise<Omit<PayerAuthority, "createdAt">> {
+  const verifierUserId = randomUUID();
+  const verificationEvidenceFileId = randomUUID();
+  const position = await client.position.upsert({
+    where: { key: "finance_director" },
+    update: {},
+    create: { key: "finance_director", name: "财务负责人" }
+  });
+  await client.user.create({ data: { id: verifierUserId, name: "动态门银行核验人" } });
+  await client.userPosition.create({
+    data: { id: randomUUID(), userId: verifierUserId, positionId: position.id, projectId: null }
+  });
+  await client.fileObject.create({
+    data: {
+      ...dynamicFile(verificationEvidenceFileId, "payer-verification"),
+      uploadedByUserId: verifierUserId,
+      contentSha256: "a".repeat(64)
+    }
+  });
+  return {
+    id: randomUUID(),
+    reference: `bank-authority-${randomUUID()}`,
+    holderCompanyEntityId: fixture.executionPayerCompanyId,
+    holderNameSnapshot: fixture.executionPayerCompanyId === fixture.debtorCompanyId
+      ? "动态门付款主体"
+      : "动态门实际付款主体",
+    holderCreditCodeSnapshot: "91310000DYNAMICGATE",
+    verificationReference: `bank-check-${randomUUID()}`,
+    verifiedByUserId: verifierUserId,
+    verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
+    verificationEvidenceFileId,
+    verificationEvidenceContentSha256: "a".repeat(64),
+    status: "verified",
+    sourceType: "bank_account_legal_holder",
+    sourceRecordId: `bank-record-${randomUUID()}`
+  };
+}
+
+async function issuePayerAuthority(
+  client: DatabaseClient,
+  authority: Omit<PayerAuthority, "createdAt">
+): Promise<PayerAuthority> {
+  const runAsIssuer = async (tx: DatabaseClient) => {
+    await tx.$executeRaw(
+      Prisma.sql`SET LOCAL ROLE "jg_payment_execution_payer_issuer"`
+    );
+    const rows = await tx.$queryRaw<PayerAuthority[]>(
+      Prisma.sql`SELECT * FROM public."jg_issue_payment_execution_payer_verification"(${JSON.stringify(authority)}::JSONB)`
+    );
+    if (rows.length !== 1) {
+      throw new Error("付款主体权威表受控签发未返回唯一记录");
+    }
+    return rows[0];
+  };
+
+  if ("$transaction" in client) {
+    return client.$transaction((tx) => runAsIssuer(tx));
+  }
+  return runAsIssuer(client);
 }
 
 async function allocateWithExecutionLock(
@@ -823,18 +1338,24 @@ function paymentExecutionAllocationData(
 
 function realService(
   client: PrismaClient,
-  audit: Pick<AuditService, "record"> = new AuditService()
+  audit: Pick<AuditService, "record"> = new AuditService(),
+  resolveRoles: (actorUserId: string) => Promise<readonly string[]> = async () => ["finance_staff"]
 ) {
   return new PayableRegistryService(
     client as never,
-    { resolveActiveRoleScopes: async () => ["finance_staff"] } as never,
+    { resolveActiveRoleScopes: resolveRoles } as never,
     audit as AuditService
   );
 }
 
-async function createEligibleServiceFixture(client: PrismaClient, amountCents: bigint) {
+async function createEligibleServiceFixture(
+  client: PrismaClient,
+  amountCents: bigint,
+  crossCompany = false
+) {
   const actorUserId = randomUUID();
   const companyId = randomUUID();
+  const executionPayerCompanyId = crossCompany ? randomUUID() : companyId;
   const companyVersionId = randomUUID();
   const projectId = randomUUID();
   const businessPartyId = randomUUID();
@@ -898,6 +1419,15 @@ async function createEligibleServiceFixture(client: PrismaClient, amountCents: b
       actorUserId
     }
   });
+  if (crossCompany) {
+    await client.companyEntity.create({
+      data: {
+        id: executionPayerCompanyId,
+        name: "动态门实际付款主体",
+        unifiedSocialCreditCode: "91310000DYNAMICGATE"
+      }
+    });
+  }
   await client.contract.create({
     data: {
       id: contractId,
@@ -1117,8 +1647,8 @@ async function createEligibleServiceFixture(client: PrismaClient, amountCents: b
       idempotencyKey: randomUUID(),
       paymentRequestId,
       paymentSubjectType: "our_company",
-      companyEntityIdSnapshot: companyId,
-      companyEntityNameSnapshot: "动态门付款主体",
+      companyEntityIdSnapshot: executionPayerCompanyId,
+      companyEntityNameSnapshot: crossCompany ? "动态门实际付款主体" : "动态门付款主体",
       companyEntityCreditCodeSnapshot: "91310000DYNAMICGATE",
       amountCents,
       paidAt: new Date(),
@@ -1157,6 +1687,12 @@ async function createEligibleServiceFixture(client: PrismaClient, amountCents: b
     actorUserId,
     payableRef,
     paymentExecutionId,
+    executionPayerCompanyId,
+    debtorCompanyId: companyId,
+    paymentRequestId,
+    contractId,
+    contractVersionId,
+    projectId,
     caseRevision: 0
   };
 }

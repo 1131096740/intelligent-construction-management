@@ -19,7 +19,7 @@ describe("PayableRegistryController selection boundary", () => {
     expect(controller).toContain(
       '@Post("inter-entity-relationships/:relationshipEntryId/evidence")'
     );
-    expect(controller).toContain("return { id: uploaded.id };");
+    expect(controller).toContain("createInterEntityRelationshipEvidenceClaim");
     expect(dto).toContain("export class ReturnInterEntityRelationshipDto");
     expect(controller).not.toContain('@Post("drafts")');
     expect(controller).not.toContain("paymentExecutionId");

@@ -766,7 +766,7 @@ describe("PayableRegistryService", () => {
       .rejects.toThrow("确认人必须职责分离");
   });
 
-  it("freshly resolves approved and actual payer facts and records one equal proxy relationship", async () => {
+  it("requires a verified bank-holder attestation before recording a cross-company proxy relationship", async () => {
     const tx = createTransitionHarness({
       paymentExecutorUserId: "executor",
       payableAmountCents: 10_000n
@@ -790,6 +790,50 @@ describe("PayableRegistryService", () => {
       executedByUserId: "executor",
       voucherFileId: "file-1"
     });
+    tx.paymentExecutionPayerAttestation.findUnique.mockResolvedValue({
+      payerVerificationId: "verification-3",
+      bankAccountReference: "bank-account-3",
+      holderCompanyEntityId: "company-3",
+      holderNameSnapshot: "代付公司",
+      holderCreditCodeSnapshot: "credit-3",
+      verificationReference: "bank-check-3",
+      verifiedByUserId: "verifier",
+      verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
+      verificationEvidenceFileId: "verification-file-3",
+      verificationEvidenceContentSha256: "a".repeat(64),
+      proxyAuthorizationReason: "跨主体付款授权",
+      proxyAuthorizationEvidenceFileId: "authorization-file-3",
+      proxyAuthorizationEvidenceSha256: "b".repeat(64),
+      reauthorizationReference: "reauth-3",
+      reauthorizationApprovalInstanceId: "approval-instance-3",
+      reauthorizationApprovalActionLogId: "approval-action-3",
+      reauthorizationPaymentRequestId: "request-1",
+      reauthorizationContractVersionId: "contract-version-1",
+      reauthorizedByUserId: "reauthorizer",
+      reauthorizedAt: new Date("2026-08-27T08:30:00.000Z")
+    });
+    tx.paymentExecutionPayerVerification.findUnique.mockResolvedValue({
+      id: "verification-3",
+      reference: "bank-account-3",
+      holderCompanyEntityId: "company-3",
+      holderNameSnapshot: "代付公司",
+      holderCreditCodeSnapshot: "credit-3",
+      verificationReference: "bank-check-3",
+      verifiedByUserId: "verifier",
+      verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
+      verificationEvidenceFileId: "verification-file-3",
+      verificationEvidenceContentSha256: "a".repeat(64),
+      status: "verified",
+      sourceType: "bank_account_legal_holder",
+      sourceRecordId: "bank-record-3"
+    });
+    tx.fileObject.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve({
+        id: where.id,
+        storageStatus: "active",
+        contentSha256: where.id === "authorization-file-3" ? "b".repeat(64) : "a".repeat(64)
+      })
+    );
     const prisma = {
       $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx))
     };
@@ -810,7 +854,9 @@ describe("PayableRegistryService", () => {
         direction: "increase",
         status: "draft",
         originalDebtorCompanyId: "company-1",
-        creditorCompanyId: "company-3"
+        creditorCompanyId: "company-3",
+        authorizationEvidenceFileId: "authorization-file-3",
+        actualPayerVerificationEvidenceFileId: "verification-file-3"
       }),
       select: { id: true }
     });
@@ -1050,7 +1096,25 @@ describe("PayableRegistryService", () => {
         create: jest.fn().mockResolvedValue({ id: "return-1" }),
         update: jest.fn().mockResolvedValue({ id: "return-1", status: "confirmed" })
       },
-      fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "voucher-return", storageStatus: "active" }) }
+      interEntityRelationshipEvidenceClaim: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "claim-return",
+          relationshipEntryId: "relationship-1",
+          fileId: "voucher-return",
+          uploadedByUserId: "return-director",
+          contentSha256: "c".repeat(64),
+          status: "pending"
+        }),
+        update: jest.fn().mockResolvedValue({ id: "claim-return", status: "consumed" })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "voucher-return",
+          storageStatus: "active",
+          uploadedByUserId: "return-director",
+          contentSha256: "c".repeat(64)
+        })
+      }
     };
     const prisma = {
       $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx))
@@ -1066,6 +1130,7 @@ describe("PayableRegistryService", () => {
       relationshipEntryId: "relationship-1",
       amountCents: 3_000n,
       evidenceFileId: "voucher-return",
+      evidenceClaimId: "claim-return",
       reason: "代付公司部分归还",
       idempotencyKey: "00000000-0000-4000-8000-000000000031"
     })).resolves.toEqual(expect.objectContaining({
@@ -1120,6 +1185,116 @@ describe("PayableRegistryService", () => {
         adjustsEntryId: true
       }
     });
+  });
+
+  it("freezes source and contract allocation snapshots and records a success audit", async () => {
+    const tx = {
+      interEntityRelationshipEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "relationship-1" }),
+        update: jest.fn().mockResolvedValue({ id: "relationship-1", status: "confirmed" })
+      }
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new PayableRegistryService(
+      {} as never,
+      { resolveActiveRoleScopes: jest.fn() } as never,
+      audit as never
+    );
+    const createRelationship = (service as unknown as {
+      createInterEntityRelationship: (
+        tx: unknown,
+        actorUserId: string,
+        context: unknown,
+        payer: unknown,
+        originalDebtorCompanyId: string,
+        amountCents: bigint
+      ) => Promise<unknown>;
+    }).createInterEntityRelationship.bind(service);
+
+    await createRelationship(
+      tx,
+      "director",
+      {
+        settlementCase: { id: "case-1" },
+        execution: { id: "execution-1", voucherFileId: "voucher-1" },
+        request: {
+          id: "request-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1"
+        },
+        allocations: [
+          {
+            amountCents: 6_000n,
+            sourceType: "wage_payable_ref",
+            sourceAggregateId: "version-1",
+            sourceLineId: "payable-1",
+            confirmedVersionId: "version-1",
+            debtorCompanyId: "company-debtor"
+          },
+          {
+            amountCents: 4_000n,
+            sourceType: "wage_payable_ref",
+            sourceAggregateId: "version-1",
+            sourceLineId: "payable-2",
+            confirmedVersionId: "version-1",
+            debtorCompanyId: "company-debtor"
+          }
+        ]
+      },
+      {
+        approvedPayerCompanyId: "company-approved",
+        actualPayerCompanyId: "company-actual",
+        approvedPayerSnapshot: { companyEntityId: "company-approved" },
+        actualPayerSnapshot: { companyEntityId: "company-actual" },
+        originalDebtorSnapshot: { companyEntityId: "company-debtor" },
+        proxyAuthorizationReason: null,
+        authorizationEvidenceFileId: null,
+        authorizationEvidenceContentSha256: null,
+        reauthorizationReference: null,
+        reauthorizedByUserId: null,
+        reauthorizedAt: null,
+        actualPayerVerificationEvidenceFileId: null,
+        actualPayerVerificationContentSha256: null,
+        payerVerificationId: null,
+        reauthorizationApprovalInstanceId: null,
+        reauthorizationApprovalActionLogId: null,
+        reauthorizationPaymentRequestId: null,
+        reauthorizationContractVersionId: null
+      },
+      "company-debtor",
+      10_000n
+    );
+
+    expect(tx.interEntityRelationshipEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        contractId: "contract-1",
+        contractVersionId: "contract-version-1",
+        sourceType: "wage_payable_ref",
+        sourceAggregateId: "version-1",
+        sourceAllocationCount: 2,
+        sourceAllocationAmountCents: 10_000n
+      }),
+      select: { id: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "inter_entity_relationship.proxy_payment",
+      metadata: expect.objectContaining({
+        projectFingerprint: expect.any(String),
+        contractFingerprint: expect.any(String),
+        contractVersionFingerprint: expect.any(String),
+        sourceAllocationFingerprints: expect.arrayContaining([
+          expect.objectContaining({
+            sourceLineFingerprint: expect.any(String),
+            confirmedVersionFingerprint: expect.any(String)
+          })
+        ]),
+        allocationCount: 2,
+        amountCentsFingerprint: expect.any(String)
+      })
+    }));
   });
 });
 
@@ -1186,6 +1361,7 @@ function createTransitionHarness(input: Readonly<{
     paymentRequest: {
       findUnique: jest.fn().mockResolvedValue({
         id: "request-1",
+        contractId: "contract-1",
         contractVersionId: "contract-version-1",
         paymentSubjectType: "our_company",
         projectId: "project-1",
@@ -1268,6 +1444,12 @@ function createTransitionHarness(input: Readonly<{
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: "relationship-1" }),
         update: jest.fn().mockResolvedValue({ id: "relationship-1" })
+      },
+      paymentExecutionPayerAttestation: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecutionPayerVerification: {
+        findUnique: jest.fn().mockResolvedValue(null)
       },
       fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "file-1", storageStatus: "active" }) }
     };

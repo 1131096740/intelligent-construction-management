@@ -84,12 +84,14 @@ export interface InterEntityRelationshipReadModel {
 export interface ReturnInterEntityRelationshipInput {
   amountCents: string;
   evidenceFileId: string;
+  evidenceClaimId: string;
   reason: string;
   idempotencyKey: string;
 }
 
 export interface InterEntityRelationshipEvidenceUploadResult {
   id: string;
+  claimId: string;
 }
 
 export function fetchPayableSettlementWorkbench() {
