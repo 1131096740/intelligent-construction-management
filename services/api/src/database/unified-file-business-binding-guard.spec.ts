@@ -106,6 +106,13 @@ const wageStatementBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const interEntityRelationshipBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260828072000_pol13b_inter_entity_relationship_file_binding/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -130,7 +137,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}`.matchAll(
+    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -149,7 +156,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(81);
+    expect(registered).toHaveLength(82);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -209,6 +216,12 @@ describe("unified file business binding migration", () => {
     );
     expect(wageStatementBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "evidenceFileId" ON "WageApprovedSourceVersion"'
+    );
+    expect(interEntityRelationshipBindingMigration).toContain(
+      "('InterEntityRelationshipEntry', 'evidenceFileId', FALSE)"
+    );
+    expect(interEntityRelationshipBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "evidenceFileId" ON "InterEntityRelationshipEntry"'
     );
     expect(currentBindingMigration).toContain(
       `"correctionType" = 'company_entity'`

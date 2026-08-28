@@ -28,3 +28,17 @@ export class PayableSettlementCaseCommandDto {
   @IsUUID("4", { message: "核销请求格式不正确" })
   idempotencyKey!: string;
 }
+
+export class ReturnInterEntityRelationshipDto {
+  @Matches(/^[1-9]\d*$/u, { message: "归还金额格式不正确" })
+  amountCents!: string;
+
+  @IsRequiredText({ requiredMessage: "归还凭证不能为空", typeMessage: "归还凭证格式不正确", blankMessage: "归还凭证不能为空白" })
+  evidenceFileId!: string;
+
+  @IsRequiredText({ requiredMessage: "归还原因不能为空", typeMessage: "归还原因格式不正确", blankMessage: "归还原因不能为空白" })
+  reason!: string;
+
+  @IsUUID("4", { message: "归还请求格式不正确" })
+  idempotencyKey!: string;
+}

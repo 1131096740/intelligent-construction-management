@@ -38,6 +38,7 @@ function workbenchRow(status: Exclude<WorkbenchStatus, "empty">) {
 async function installHarness(page: Page) {
   const requests: CapturedRequest[] = [];
   let status: WorkbenchStatus = "empty";
+  let relationshipStatus: "open" | "returned" = "open";
 
   await page.addInitScript(() => {
     window.localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify({
@@ -58,7 +59,14 @@ async function installHarness(page: Page) {
     const request = route.request();
     const pathname = new URL(request.url()).pathname.replace(/^\/api/u, "");
     const captured: CapturedRequest = { method: request.method(), pathname };
-    if (request.postData()) captured.body = request.postDataJSON() as Record<string, unknown>;
+    if (request.postData()) {
+      try {
+        captured.body = request.postDataJSON() as Record<string, unknown>;
+      } catch {
+        // Multipart evidence upload is intentionally captured without decoding
+        // the private file payload in this non-production browser harness.
+      }
+    }
     requests.push(captured);
 
     if (pathname === "/me/work-items") {
@@ -110,6 +118,37 @@ async function installHarness(page: Page) {
     if (pathname === "/payable-settlements/workbench") {
       return json(route, status === "empty" ? [] : [workbenchRow(status)]);
     }
+    if (pathname === "/payable-settlements/inter-entity-relationships") {
+      return json(route, [{
+        relationshipEntryId: "relationship-e2e",
+        debtorLabel: "原债务公司",
+        creditorLabel: "实际付款公司",
+        approvedPayerLabel: "批准付款公司",
+        amountCents: "10000",
+        remainingAmountCents: relationshipStatus === "open" ? "10000" : "0",
+        status: relationshipStatus,
+        statusLabel: relationshipStatus === "open" ? "未结" : "已归还"
+      }]);
+    }
+    if (
+      pathname === "/payable-settlements/inter-entity-relationships/relationship-e2e/evidence" &&
+      request.method() === "POST"
+    ) {
+      return json(route, { id: "relationship-return-evidence" });
+    }
+    if (
+      pathname === "/payable-settlements/inter-entity-relationships/relationship-e2e/returns" &&
+      request.method() === "POST"
+    ) {
+      relationshipStatus = "returned";
+      return json(route, {
+        relationshipEntryId: "relationship-e2e",
+        returnEntryId: "relationship-return-e2e",
+        returnedAmountCents: "3000",
+        remainingAmountCents: "7000",
+        status: "open"
+      });
+    }
     if (
       pathname === "/payable-settlements/wage-payable-cases/payable-safe-1/allocations" &&
       request.method() === "POST"
@@ -153,7 +192,7 @@ async function clickTableAction(page: Page, name: "提交" | "确认") {
   await action.click();
 }
 
-test.describe("#220 工资应付核销非生产动态验收", () => {
+test.describe("#220/#221 工资应付核销与跨主体往来非生产动态验收", () => {
   test.setTimeout(60_000);
 
   test("使用 opaque selectionRef 完成真实候选选择、提交和确认闭环", async ({ page }) => {
@@ -203,5 +242,45 @@ test.describe("#220 工资应付核销非生产动态验收", () => {
     expect(browserVisibleText).not.toContain("paymentExecutionId");
     expect(browserVisibleText).not.toContain("PaymentExecution");
     expect(JSON.stringify(requests)).not.toContain("paymentExecutionId");
+  });
+
+  test("使用受控证据上传和 fresh capability 完成跨主体往来部分归还", async ({ page }) => {
+    const requests = await installHarness(page);
+
+    await page.goto("/工资应付核销工作台");
+    await expect(page.getByRole("heading", { name: "工资应付核销工作台" })).toBeVisible();
+    await expect(page.getByText("实际付款公司", { exact: true })).toBeVisible();
+    await page.getByText("追加归还", { exact: true }).click();
+
+    await page.getByPlaceholder(/不超过 100\.00 元/u).fill("30.00");
+    await page.getByPlaceholder("填写可核验的业务原因").fill("跨主体代付部分归还");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "return-evidence.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("non-production-evidence")
+    });
+    await page.getByRole("button", { name: "核对并追加归还" }).click();
+    await expect(page.getByText("确认追加往来归还", { exact: true })).toBeVisible();
+    const evidenceRequestPromise = page.waitForRequest((request) =>
+      request.method() === "POST" && request.url().endsWith("/evidence")
+    );
+    const returnRequestPromise = page.waitForRequest((request) =>
+      request.method() === "POST" && request.url().endsWith("/returns")
+    );
+    await page.getByRole("button", { name: "确认", exact: true }).last().click();
+    await Promise.all([evidenceRequestPromise, returnRequestPromise]);
+    await expect.poll(() => requests.some((item) => item.method === "POST" && item.pathname.endsWith("/returns"))).toBe(true);
+
+    const evidence = mutationRequest(requests, "/evidence");
+    expectFreshCapabilityBefore(requests, evidence);
+    const returned = mutationRequest(requests, "/returns");
+    expectFreshCapabilityBefore(requests, returned);
+    expect(returned.body).toMatchObject({
+      amountCents: "3000",
+      evidenceFileId: "relationship-return-evidence",
+      reason: "跨主体代付部分归还"
+    });
+    expect(JSON.stringify(requests)).not.toContain("paymentExecutionId");
+    expect(await page.locator("body").innerText()).not.toContain("PaymentExecution");
   });
 });

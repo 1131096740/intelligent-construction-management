@@ -10,10 +10,13 @@ describe("payable settlement workbench structure", () => {
   it("wires a real candidate selection and allocation lifecycle without execution UUIDs", () => {
     for (const wrapper of [
       "fetchPaymentExecutionCandidates",
+      "fetchInterEntityRelationships",
       "allocatePayableSettlement",
       "submitPayableSettlement",
       "confirmPayableSettlement",
-      "returnPayableSettlement"
+      "returnPayableSettlement",
+      "returnInterEntityRelationship",
+      "uploadInterEntityRelationshipEvidence"
     ]) {
       expect(page).toContain(wrapper);
     }
@@ -23,6 +26,9 @@ describe("payable settlement workbench structure", () => {
     expect(api).not.toContain("paymentExecutionId");
     expect(page).toContain("over_settled_reconciliation_required");
     expect(page).toContain("超额核销待核对");
+    expect(page).toContain("跨主体代付往来");
+    expect(page).toContain("实际付款主体与原债务主体不一致时");
+    expect(page).not.toContain("paymentExecutionId");
   });
 
   it("freshly rechecks each server capability immediately before its mutation wrapper", () => {
@@ -36,7 +42,7 @@ describe("payable settlement workbench structure", () => {
       expect(page).toContain(`const operationAllowed = capability.${capability}`);
       expect(page).toContain(`return ${wrapper}(`);
     }
-    expect(page.match(/await fetchPayableSettlementCapabilities\(\)/gu)).toHaveLength(4);
+    expect(page.match(/await fetchPayableSettlementCapabilities\(\)/gu)).toHaveLength(6);
   });
 
   it("registers the finance-only navigation and canonical route", () => {

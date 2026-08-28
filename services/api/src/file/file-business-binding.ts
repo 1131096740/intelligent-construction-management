@@ -9,6 +9,7 @@ const FILE_BUSINESS_BINDING_LOCK_KEY = 13;
 export const NON_RECEIPT_FILE_BINDINGS = [
   { table: "User", columns: ["signatureFileId"] },
   { table: "WageApprovedSourceVersion", columns: ["evidenceFileId"] },
+  { table: "InterEntityRelationshipEntry", columns: ["evidenceFileId"] },
   { table: "HandwrittenSignatureVersion", columns: ["fileId"] },
   { table: "ContractVersion", columns: ["taxFactEvidenceFileId"] },
   { table: "ContractTaxFactRevision", columns: ["evidenceFileId"] },

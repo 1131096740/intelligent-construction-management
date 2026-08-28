@@ -216,6 +216,14 @@ describe("PayableRegistryService", () => {
           businessPartyVersionId: "party-version-1"
         }])
       },
+      companyEntity: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.map((id) => ({
+            id,
+            name: id === "company-1" ? "甲公司" : id,
+            unifiedSocialCreditCode: null
+          }))))
+      },
       paymentExecutionWagePayableBinding: {
         findMany: jest.fn().mockImplementation(({ where }: { where?: { wagePayableRefId?: string } }) =>
           where?.wagePayableRefId
@@ -364,6 +372,14 @@ describe("PayableRegistryService", () => {
           businessPartyVersionId: "party-version-1"
         }])
       },
+      companyEntity: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.map((id) => ({
+            id,
+            name: id === "company-1" ? "甲公司" : id,
+            unifiedSocialCreditCode: null
+          }))))
+      },
       paymentExecutionWagePayableBinding: {
         findMany: jest.fn().mockImplementation(({ where }: { where?: { paymentExecutionId?: string; wagePayableRefId?: string; wagePayableRef?: { in?: string[] } } }) =>
           where?.wagePayableRefId || where?.wagePayableRef?.in
@@ -478,7 +494,7 @@ describe("PayableRegistryService", () => {
     });
   });
 
-  it("fails closed when approved and actual payer facts diverge or change after selection", async () => {
+  it("keeps a proxy execution eligible while invalidating a selection after the approved payer changes", async () => {
     const mismatchHarness = createAllocationHarness();
     mismatchHarness.tx.contractVersion.findMany.mockResolvedValue([{
       id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
@@ -487,7 +503,7 @@ describe("PayableRegistryService", () => {
     }]);
     await expect(
       mismatchHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1")
-    ).resolves.toMatchObject({ candidates: [] });
+    ).resolves.toMatchObject({ candidates: [expect.anything()] });
 
     const changedHarness = createAllocationHarness();
     const listed = await changedHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1");
@@ -750,7 +766,7 @@ describe("PayableRegistryService", () => {
       .rejects.toThrow("确认人必须职责分离");
   });
 
-  it("freshly resolves approved and actual payer facts and rejects proxy-payment mismatch", async () => {
+  it("freshly resolves approved and actual payer facts and records one equal proxy relationship", async () => {
     const tx = createTransitionHarness({
       paymentExecutorUserId: "executor",
       payableAmountCents: 10_000n
@@ -762,6 +778,17 @@ describe("PayableRegistryService", () => {
       companyEntityIdSnapshot: "company-2",
       companyEntityVersionId: "company-version-2",
       affiliateBusinessPartyVersionId: null
+    });
+    tx.paymentExecution.findUnique.mockResolvedValue({
+      id: "execution-1",
+      paymentRequestId: "request-1",
+      paymentSubjectType: "our_company",
+      amountCents: 10_000n,
+      companyEntityIdSnapshot: "company-3",
+      companyEntityNameSnapshot: "代付公司",
+      companyEntityCreditCodeSnapshot: "credit-3",
+      executedByUserId: "executor",
+      voucherFileId: "file-1"
     });
     const prisma = {
       $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx))
@@ -776,8 +803,20 @@ describe("PayableRegistryService", () => {
       settlementCaseId: "case-1",
       expectedRevision: 3,
       idempotencyKey: "00000000-0000-4000-8000-000000000028"
-    })).rejects.toThrow("原债务主体与批准付款主体不一致，本票不处理代付");
-    expect(tx.payableSettlementCase.update).not.toHaveBeenCalled();
+    })).resolves.toEqual(expect.objectContaining({ status: "confirmed", revision: 4 }));
+    expect(tx.interEntityRelationshipEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entryKind: "proxy_payment",
+        direction: "increase",
+        status: "draft",
+        originalDebtorCompanyId: "company-1",
+        creditorCompanyId: "company-3"
+      }),
+      select: { id: true }
+    });
+    const createdRoot = tx.interEntityRelationshipEntry.create.mock.calls[0]?.[0]?.data;
+    expect(createdRoot).not.toHaveProperty("confirmedByUserId");
+    expect(createdRoot).not.toHaveProperty("confirmedAt");
   });
 
   it.each([
@@ -973,6 +1012,115 @@ describe("PayableRegistryService", () => {
     })).rejects.toThrow("工资应付余额已变化");
     expect(tx.payableSettlementCase.update).not.toHaveBeenCalled();
   });
+
+  it("records a partial inter-entity return as a new decrease without touching payable allocations", async () => {
+    const root = {
+      id: "relationship-1",
+      entryKind: "proxy_payment",
+      direction: "increase",
+      status: "confirmed",
+      adjustsEntryId: null,
+      paymentExecutionId: "execution-1",
+      settlementCaseId: "case-1",
+      originalDebtorCompanyId: "company-debtor",
+      creditorCompanyId: "company-actual",
+      approvedPayerCompanyId: "company-approved",
+      debtorSnapshot: { companyEntityId: "company-debtor", name: "原债务公司" },
+      creditorSnapshot: { companyEntityId: "company-actual", name: "实际付款公司" },
+      approvedPayerSnapshot: { companyEntityId: "company-approved", name: "批准付款公司" },
+      amountCents: 10_000n,
+      currencyCode: "CNY",
+      evidenceFileId: "voucher-1",
+      createdByUserId: "original-confirm",
+      confirmedByUserId: "original-confirm",
+      adjustments: [{ direction: "decrease", amountCents: 2_000n }],
+      paymentExecution: { executedByUserId: "executor" }
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "director-position" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "director-position", key: "finance_director" }]) },
+      payableSettlementCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({})
+      },
+      interEntityRelationshipEntry: {
+        findUnique: jest.fn().mockResolvedValue(root),
+        create: jest.fn().mockResolvedValue({ id: "return-1" }),
+        update: jest.fn().mockResolvedValue({ id: "return-1", status: "confirmed" })
+      },
+      fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "voucher-return", storageStatus: "active" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx))
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new PayableRegistryService(
+      prisma as never,
+      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_director"]) } as never,
+      audit as never
+    );
+
+    await expect(service.returnInterEntityRelationship("return-director", {
+      relationshipEntryId: "relationship-1",
+      amountCents: 3_000n,
+      evidenceFileId: "voucher-return",
+      reason: "代付公司部分归还",
+      idempotencyKey: "00000000-0000-4000-8000-000000000031"
+    })).resolves.toEqual(expect.objectContaining({
+      relationshipEntryId: "relationship-1",
+      returnedAmountCents: "3000",
+      remainingAmountCents: "5000",
+      status: "open"
+    }));
+    expect(tx.interEntityRelationshipEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entryKind: "proxy_return",
+        direction: "decrease",
+        adjustsEntryId: "relationship-1",
+        status: "draft",
+        amountCents: 3_000n,
+        evidenceFileId: "voucher-return"
+      })
+    });
+    const createdReturn = tx.interEntityRelationshipEntry.create.mock.calls[0]?.[0]?.data;
+    expect(createdReturn).not.toHaveProperty("confirmedByUserId");
+    expect(createdReturn).not.toHaveProperty("confirmedAt");
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "inter_entity_relationship.return"
+    }));
+  });
+
+  it("requires a confirmed root relationship before uploading return evidence", async () => {
+    const findUnique = jest.fn().mockResolvedValue({
+      entryKind: "proxy_payment",
+      direction: "increase",
+      status: "confirmed",
+      adjustsEntryId: null
+    });
+    const service = new PayableRegistryService(
+      { interEntityRelationshipEntry: { findUnique } } as never,
+      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_director"]) } as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(
+      service.assertInterEntityRelationshipEvidenceUpload(
+        "return-director",
+        "relationship-1"
+      )
+    ).resolves.toBeUndefined();
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { id: "relationship-1" },
+      select: {
+        entryKind: true,
+        direction: true,
+        status: true,
+        adjustsEntryId: true
+      }
+    });
+  });
 });
 
 function createTransitionHarness(input: Readonly<{
@@ -1019,7 +1167,7 @@ function createTransitionHarness(input: Readonly<{
         createdByUserId: "creator",
         submittedByUserId: "submitter"
       }),
-      update: jest.fn().mockResolvedValue({
+        update: jest.fn().mockResolvedValue({
         id: "case-1",
         status: "confirmed",
         revision: 4
@@ -1097,9 +1245,32 @@ function createTransitionHarness(input: Readonly<{
         adjustments: input.payableAmountCents === 10_000n
           ? []
           : [{ direction: "decrease", amountCents: 10_000n - input.payableAmountCents }]
-      })
-    }
-  };
+        })
+      },
+      companyEntity: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.map((id) => ({
+            id,
+            name: id,
+            unifiedSocialCreditCode: null,
+            isActive: true
+          }))))
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({
+          companyEntityId: where.id === "company-version-2" ? "company-2" : "company-1",
+          name: where.id === "company-version-2" ? "批准公司" : "甲公司",
+          unifiedSocialCreditCode: where.id === "company-version-2" ? "credit-2" : "credit-1",
+          isActive: true
+        }))
+      },
+      interEntityRelationshipEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "relationship-1" }),
+        update: jest.fn().mockResolvedValue({ id: "relationship-1" })
+      },
+      fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "file-1", storageStatus: "active" }) }
+    };
 }
 
 function createAllocationHarness() {
@@ -1174,6 +1345,14 @@ function createAllocationHarness() {
         id: "party-snapshot-1", contractVersionId: "contract-version-1",
         businessPartyVersionId: "party-version-1"
       }])
+    },
+    companyEntity: {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({
+          id,
+          name: id,
+          unifiedSocialCreditCode: null
+        }))))
     },
     paymentExecutionWagePayableBinding: {
       findMany: jest.fn().mockImplementation(({ where }: { where?: { paymentExecutionId?: string; wagePayableRefId?: string; wagePayableRef?: { in?: string[] } } }) => {

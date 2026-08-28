@@ -1528,6 +1528,27 @@
     },
     {
       "method": "GET",
+      "path": "/payable-settlements/inter-entity-relationships",
+      "normalizedKey": "GET /payable-settlements/inter-entity-relationships",
+      "controller": "PayableRegistryController",
+      "handler": "interEntityRelationships",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/payable-settlements/wage-payable-cases",
       "normalizedKey": "GET /payable-settlements/wage-payable-cases",
       "controller": "PayableRegistryController",
@@ -6586,6 +6607,46 @@
       "requiredPositions": [
         "finance_director",
         "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
+      "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
+      "controller": "PayableRegistryController",
+      "handler": "uploadInterEntityRelationshipEvidence",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
+      "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
+      "controller": "PayableRegistryController",
+      "handler": "returnInterEntityRelationship",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

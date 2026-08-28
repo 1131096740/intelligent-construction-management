@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "670533491e4dbcdd0779ea40500a732f6a723f4b7d8a21e16f68ad03da5c2a70",
+      "sha256": "db73ca96a882a4f5c6c5bdd7a13693015ec50b48e89ec064e0418b3596c177f5",
       "status": "ready",
       "summary": {
-        "routeCount": 525
+        "routeCount": 528
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "9c3566d6115b2091d5333c5feaf82f7549de8aa232edc38daca1b5de76a0d736",
+      "sha256": "ab4bf49b97151f4a81e38618707e261acec651c5671be50818f5021b34e43d69",
       "status": "ready",
       "summary": {
         "apiModuleCount": 23,
-        "exportedFunctionCount": 528,
-        "transportWrapperCount": 508,
+        "exportedFunctionCount": 531,
+        "transportWrapperCount": 511,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 530,
+        "mainRequestBindingCount": 533,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 530,
-        "productionConsumerCount": 402,
+        "requestEdgeCount": 533,
+        "productionConsumerCount": 405,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "f12d54e617c8d4b32d84c17c34bdc9eb56720b71b0ab9dbfced09f38e8de7594",
+      "sha256": "32449f6c21d7cd5dbb4e725b7608dbaf4e3280b3c97caf66bf898df4e0289f0f",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 275,
+        "registeredActionCount": 277,
         "pageActionCount": 53,
-        "backgroundActionCount": 222,
+        "backgroundActionCount": 224,
         "reachableVueFileCount": 134,
         "routeRootCount": 55,
         "totalVueFileCount": 158,
         "parsedVueFileCount": 158,
         "reachableProductionModuleCount": 243,
-        "templateEventDirectiveCount": 907,
+        "templateEventDirectiveCount": 909,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 270,
-        "candidateProductionMutationConsumerCount": 270,
-        "acceptedProductionMutationConsumerCount": 270,
-        "productionMutationConsumerPairCount": 270,
+        "coveredProductionMutationConsumerCount": 272,
+        "candidateProductionMutationConsumerCount": 272,
+        "acceptedProductionMutationConsumerCount": 272,
+        "productionMutationConsumerPairCount": 272,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "64da129e33d28514b5a33ed858e43311d4318e7f878019e3445719d8fe916a47",
+      "sha256": "3c0f4a342173f3fc76e4045d49bc4dc1fc51b9e9361202bce6fb94ecb1257947",
       "status": "ready",
       "summary": {
-        "routeCount": 525,
-        "exactRouteCount": 525,
-        "normalizedRouteCount": 525,
+        "routeCount": 528,
+        "exactRouteCount": 528,
+        "normalizedRouteCount": 528,
         "classificationOverrideCount": 186,
         "consumerSurfaceOverrideCount": 7,
         "classificationOverrideSha256": "c8c406ff3842d7bb2d6b9d2a1c51e50c39f1ed94e5fc4de5f79088d14d1d374c",
         "consumerSurfaceOverrideSha256": "7a075f08796cf22cd1c0a56c9c4b97c8e22f3be8dce5e6d32fed3cee792b8075",
-        "derivedProductionPageCount": 339,
-        "pageRouteCount": 341,
+        "derivedProductionPageCount": 342,
+        "pageRouteCount": 344,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 6,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 393,
+          "web_api_wrapper": 396,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 525,
-    "pageRouteCount": 341,
+    "routeCount": 528,
+    "pageRouteCount": 344,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 6,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 530,
+    "mainRequestBindingCount": 533,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 275,
-    "actionBindingCount": 310,
-    "acceptedActionBindingCount": 290,
+    "registeredActionCount": 277,
+    "actionBindingCount": 312,
+    "acceptedActionBindingCount": 292,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 270,
-    "coveredProductionMutationConsumerPairCount": 270,
+    "productionMutationConsumerPairCount": 272,
+    "coveredProductionMutationConsumerPairCount": 272,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -3829,6 +3829,51 @@
           "method": "GET",
           "path": "/payable-settlements/capabilities",
           "normalizedKey": "GET /payable-settlements/capabilities",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/payable-settlement.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payable-settlements/inter-entity-relationships",
+        "normalizedKey": "GET /payable-settlements/inter-entity-relationships",
+        "controller": "PayableRegistryController",
+        "handler": "interEntityRelationships",
+        "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "fetchInterEntityRelationships",
+          "method": "GET",
+          "path": "/payable-settlements/inter-entity-relationships",
+          "normalizedKey": "GET /payable-settlements/inter-entity-relationships",
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
@@ -18491,6 +18536,146 @@
           },
           "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
           "wrapper": "submitPayableSettlement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
+        "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
+        "controller": "PayableRegistryController",
+        "handler": "uploadInterEntityRelationshipEvidence",
+        "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "uploadInterEntityRelationshipEvidence",
+          "method": "POST",
+          "path": "/payable-settlements/inter-entity-relationships/:param/evidence",
+          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/payable-settlement.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "payable-settlement.inter-entity-return.upload-evidence",
+          "bindingIndex": 0,
+          "identity": "payable-settlement.inter-entity-return.upload-evidence\u0000apps/web-admin/src/api/payable-settlement.api.ts\u0000uploadInterEntityRelationshipEvidence\u0000POST\u0000POST /payable-settlements/inter-entity-relationships/:param/evidence\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "uploadInterEntityRelationshipEvidence",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
+        "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
+        "controller": "PayableRegistryController",
+        "handler": "returnInterEntityRelationship",
+        "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "returnInterEntityRelationship",
+          "method": "POST",
+          "path": "/payable-settlements/inter-entity-relationships/:param/returns",
+          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/payable-settlement.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "payable-settlement.inter-entity-return",
+          "bindingIndex": 0,
+          "identity": "payable-settlement.inter-entity-return\u0000apps/web-admin/src/api/payable-settlement.api.ts\u0000returnInterEntityRelationship\u0000POST\u0000POST /payable-settlements/inter-entity-relationships/:param/returns\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "returnInterEntityRelationship",
           "productionConsumers": [
             "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
           ],

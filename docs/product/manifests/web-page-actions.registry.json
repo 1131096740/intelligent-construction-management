@@ -4653,6 +4653,26 @@
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "returnPayableSettlement" }]
     },
     {
+      "id": "payable-settlement.inter-entity-return.upload-evidence",
+      "usage": "background",
+      "routePaths": ["/工资应付核销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadInterEntityRelationshipEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "uploadInterEntityRelationshipEvidence" }]
+    },
+    {
+      "id": "payable-settlement.inter-entity-return",
+      "usage": "background",
+      "routePaths": ["/工资应付核销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnInterEntityRelationshipWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "returnInterEntityRelationship" }]
+    },
+    {
       "id": "global-invoice.create",
       "usage": "background",
       "routePaths": ["/全局发票与清分分配"],

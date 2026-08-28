@@ -30,6 +30,8 @@ export function assertAllocationSetMatchesPaymentExecution(
   options?: Readonly<{
     wageBindings?: readonly WagePayableBindingFact[];
     otherAllocatedAmountCents?: bigint;
+    allowInterEntityProxy?: boolean;
+    expectedOriginalDebtorCompanyId?: string;
   }>
 ) {
   if (execution.amountCents <= 0n) {
@@ -81,11 +83,20 @@ export function assertAllocationSetMatchesPaymentExecution(
     }
     total += allocation.amountCents;
   }
-  if (first.debtorCompanyId !== execution.approvedPayerCompanyId) {
-    throw new ConflictException("原债务主体与批准付款主体不一致，本票不处理代付");
-  }
-  if (execution.approvedPayerCompanyId !== execution.actualPayerCompanyId) {
-    throw new ConflictException("批准付款主体与实际付款主体不一致，本票不处理代付");
+  if (options?.allowInterEntityProxy) {
+    if (
+      !options.expectedOriginalDebtorCompanyId ||
+      first.debtorCompanyId !== options.expectedOriginalDebtorCompanyId
+    ) {
+      throw new ConflictException("代付核销原债务主体与冻结主体不一致");
+    }
+  } else {
+    if (first.debtorCompanyId !== execution.approvedPayerCompanyId) {
+      throw new ConflictException("原债务主体与批准付款主体不一致，本票不处理代付");
+    }
+    if (execution.approvedPayerCompanyId !== execution.actualPayerCompanyId) {
+      throw new ConflictException("批准付款主体与实际付款主体不一致，本票不处理代付");
+    }
   }
   if (wageBindings.length > 0) {
     if (wageBindingByRef.size !== allocationAmountByRef.size) {

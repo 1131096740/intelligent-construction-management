@@ -1649,6 +1649,7 @@ model PaymentExecution {
   payableSettlementCases          PayableSettlementCase[]
   payableSettlementAllocations    PayableSettlementAllocation[]
   wagePayableBindings              PaymentExecutionWagePayableBinding[]
+  interEntityRelationshipEntries   InterEntityRelationshipEntry[]
 }
 
 // A PaymentExecution may settle several wage creditors. This immutable bridge
@@ -4266,12 +4267,55 @@ model PayableSettlementCase {
   paymentExecution PaymentExecution               @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_payment_execution_fkey")
   allocations      PayableSettlementAllocation[]
   receipts         PayableSettlementCommandReceipt[]
+  interEntityRelationshipEntries InterEntityRelationshipEntry[]
   supersedesCase   PayableSettlementCase?          @relation("PayableSettlementCaseRevision", fields: [supersedesCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_supersedes_case_fkey")
   revisions        PayableSettlementCase[]         @relation("PayableSettlementCaseRevision")
 
   @@unique([paymentExecutionId, revision], map: "PayableSettlementCase_execution_revision_key")
   @@index([status, updatedAt])
   @@index([supersedesCaseId])
+}
+
+// POL-13B: append-only inter-entity relationship entries created when a
+// confirmed payable settlement was paid by a different company. The root
+// increase is tied to the existing PaymentExecution and settlement case;
+// returns are immutable decreases that reference the root entry and never
+// rewrite the supplier payable or payment fact.
+model InterEntityRelationshipEntry {
+  id                       String   @id @default(uuid())
+  entryKind                String
+  direction                String
+  status                   String   @default("draft")
+  adjustsEntryId           String?
+  paymentExecutionId      String?
+  settlementCaseId        String?
+  originalDebtorCompanyId String
+  creditorCompanyId       String
+  approvedPayerCompanyId  String
+  debtorSnapshot           Json
+  creditorSnapshot         Json
+  approvedPayerSnapshot   Json
+  amountCents              BigInt
+  currencyCode             String   @default("CNY")
+  evidenceFileId           String
+  reason                   String?
+  idempotencyKey           String   @unique
+  payloadFingerprint       String
+  createdByUserId          String
+  confirmedByUserId        String?
+  createdAt                DateTime @default(now())
+  confirmedAt              DateTime?
+
+  paymentExecution PaymentExecution? @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+  settlementCase   PayableSettlementCase? @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict)
+  originalEntry    InterEntityRelationshipEntry? @relation("InterEntityRelationshipAdjustments", fields: [adjustsEntryId], references: [id], onDelete: Restrict)
+  adjustments      InterEntityRelationshipEntry[] @relation("InterEntityRelationshipAdjustments")
+
+  @@index([adjustsEntryId])
+  @@index([originalDebtorCompanyId, creditorCompanyId, createdAt])
+  @@index([paymentExecutionId])
+  @@index([settlementCaseId])
+  @@unique([settlementCaseId, entryKind], map: "InterEntityRelationshipEntry_case_kind_key")
 }
 
 model PayableSettlementAllocation {

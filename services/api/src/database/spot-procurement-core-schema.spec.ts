@@ -433,7 +433,10 @@ const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
   "OperatingTakeoverAttachmentLink.fileId",
   // POL-12A is later than the invoice-evidence guard; its source evidence is
   // independently promoted to an exclusive fact in its own terminal migration.
-  "WageApprovedSourceVersion.evidenceFileId"
+  "WageApprovedSourceVersion.evidenceFileId",
+  // POL-13B is later than the invoice-evidence guard; relationship evidence is
+  // registered by its own additive binding migration.
+  "InterEntityRelationshipEntry.evidenceFileId"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>
