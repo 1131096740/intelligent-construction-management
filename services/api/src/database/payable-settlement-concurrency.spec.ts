@@ -290,10 +290,7 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
   const sourceVersionId = randomUUID();
   const statementId = randomUUID();
   const confirmedVersionId = randomUUID();
-  const personLineId = randomUUID();
-  const creditorBreakdownId = randomUUID();
   const serviceBasisBindingId = randomUUID();
-  const projectAllocationId = randomUUID();
   const payableRefs = {
     "payable-a": randomUUID(),
     "payable-b": randomUUID(),
@@ -421,34 +418,6 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
       confirmedAt: new Date()
     }
   });
-  await client.wagePersonLine.create({
-    data: {
-      id: personLineId,
-      statementVersionId: confirmedVersionId,
-      employeeId: randomUUID(),
-      employmentSnapshotId: randomUUID(),
-      employeeSnapshot: { protected: true },
-      employmentSnapshot: { protected: true },
-      periodSnapshot: { wageMonth: "2026-08" },
-      positionCategorySnapshot: { category: "general_worker" },
-      approvedAmountCents: amountCents
-    }
-  });
-  await client.wageCreditorBreakdown.create({
-    data: {
-      id: creditorBreakdownId,
-      personLineId,
-      creditorSubjectType: "employee_user",
-      creditorUserId: actorUserId,
-      creditorSubjectIdentityKey: `employee_user:${actorUserId}`,
-      creditorNameSnapshot: "动态门工资员工",
-      creditorUnifiedIdentitySnapshot: null,
-      creditorVersionFingerprint: "c".repeat(64),
-      creditorCategory: "employee_net_pay",
-      amountCents,
-      sourceSnapshot: { protected: true }
-    }
-  });
   await client.wageServiceBasisBinding.create({
     data: {
       id: serviceBasisBindingId,
@@ -460,18 +429,49 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
       authorityFingerprint: "e".repeat(64)
     }
   });
-  await client.wageProjectAllocation.create({
-    data: {
-      id: projectAllocationId,
-      personLineId,
-      projectId,
-      serviceSnapshotId: randomUUID(),
-      serviceBasisBindingId,
-      serviceSnapshot: { projectId },
-      amountCents
-    }
-  });
   for (const id of Object.values(payableRefs)) {
+    const personLineId = randomUUID();
+    const creditorBreakdownId = randomUUID();
+    const projectAllocationId = randomUUID();
+    await client.wagePersonLine.create({
+      data: {
+        id: personLineId,
+        statementVersionId: confirmedVersionId,
+        employeeId: randomUUID(),
+        employmentSnapshotId: randomUUID(),
+        employeeSnapshot: { protected: true },
+        employmentSnapshot: { protected: true },
+        periodSnapshot: { wageMonth: "2026-08" },
+        positionCategorySnapshot: { category: "general_worker" },
+        approvedAmountCents: amountCents
+      }
+    });
+    await client.wageCreditorBreakdown.create({
+      data: {
+        id: creditorBreakdownId,
+        personLineId,
+        creditorSubjectType: "employee_user",
+        creditorUserId: actorUserId,
+        creditorSubjectIdentityKey: `employee_user:${actorUserId}`,
+        creditorNameSnapshot: "动态门工资员工",
+        creditorUnifiedIdentitySnapshot: null,
+        creditorVersionFingerprint: "c".repeat(64),
+        creditorCategory: "employee_net_pay",
+        amountCents,
+        sourceSnapshot: { protected: true }
+      }
+    });
+    await client.wageProjectAllocation.create({
+      data: {
+        id: projectAllocationId,
+        personLineId,
+        projectId,
+        serviceSnapshotId: randomUUID(),
+        serviceBasisBindingId,
+        serviceSnapshot: { projectId },
+        amountCents
+      }
+    });
     await client.wagePayableRef.create({
       data: {
         id,
