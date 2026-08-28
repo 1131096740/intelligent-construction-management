@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-08-26）
+## 当前结论（更新至 2026-08-28）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -25,6 +25,8 @@
 - [~] POL-12A（Issue #216，2026-08-27）：在隔离 clean candidate 中实现外部已批准工资来源与月度工资承担基础聚合：一公司+自然月唯一单头、人员/组成/债权人/项目分摊五层、不可变来源/服务依据绑定、`draft → submitted → confirmed` 与退回后 `superseded + review_returned` 脱敏投影、职责分离、UUIDv4 幂等与 Serializable 锁；工作台只展示非敏感汇总，批准来源 JSON 仅在浏览器内存中脱敏预览后提交并立即建草稿。来源证据已进入全局 FileObject 独占绑定 guard；四个写动作均以同一用户动作内的 fresh capability read 与服务端 canonical resolver 双重约束，未登记无消费者比例预览 HTTP surface。来源证据哈希漂移、人员/项目/服务依据不一致、非规范月份、金额/受控类别数据库写入均 fail-closed；最大余数仅保留为不替代冻结整数分的纯领域算法。当前验证：API/Web 聚焦回归、API/Web typecheck、API lint、Web UI/业务语言治理、迁移基线、release-manifest 全链（514 routes、page-actions 271/0、route-usage 514/0）与独立最终复审均通过；最终精确候选仍须重新执行隔离 PostgreSQL 16 `wage_statement` 动态组并等待 fixed-head CI。未生成项目成本、payableRef、付款、历史 adapter；未部署、未执行生产迁移或写入生产。
 
 - [x] POL-12B（Issue #217，2026-08-27）：工资经营账正式投影已由 PR #247 合并为 `4f340fed7dafec2f40a62a562b028c848e3f1264`，Issue 已关闭；fixed-head CI `33077531575` 与 main CI `33078051021` 均通过。未部署、未运行生产迁移或写入生产。
+
+- [~] POL-13B（Issue #221，2026-08-28）：在唯一隔离候选中冻结原债务、批准付款和实际付款三方稳定主体；跨主体确认只追加等额主体间往来，部分归还追加不可变反向引用，不重复成本、应付或付款事实。数据库保留项目/合同/来源快照/余额/追加不可变/审计校验，仅按已授权迁移移除执行/批准主体与工资原债务主体的等值限制；往来表 INSERT 强制 `draft`，服务先写无确认审计的草稿再在同一审计事务内确认。工作台/API 只返回中文主体投影，归还凭证使用 `finance_director` 专用受控上传路由并仅返回文件 ID，复用私有文件服务，不放宽通用 `/files`。新增付款主体权威表的数据库受控签发函数与短期事务上下文，直写由 `issuer_required` 触发器拒绝，并保留证据哈希/审批/职责分离及跨公司快照护栏。focused commit `f826102d`（候选基于 live main `5a4829a53a4449770ca1684e35c5227194d15a39`）；窄测、API/Web 全量回归、typecheck、lint、`check:ui`、Prisma/迁移基线、CI 编排、官方 release manifests 与四个 disposable PostgreSQL 16 迁移重放已完成，最终版本 payable 动态 19/19 通过（第三次重放曾暴露缺少 issuer grant，已在第四次重放修复）；现有门统计为 528 routes、511 wrappers/533 bindings、277 actions、0 blocker/0 unclassified、authority 80/22；最终浏览器动态验收 Chromium/WebKit 4/4，通过独立 Standards/Spec 双轴复审 `REVIEW_GREEN`。待 push/PR、fixed-head CI、合并与 Issue 关闭。未部署、未运行生产迁移或写入生产。
 
 - [~] POL-12C（Issue #218，2026-08-27）：工资敏感访问现以独立 `wage_sensitive_read`、`wage_sensitive_download`、`wage_sensitive_export` 动作约束，仅全系统 `finance_staff`/`finance_director` 可用；项目级同名岗、`super_admin` 和其他角色 fail-closed。工资来源证据复用私有文件二次验证、5 分钟短票据、兑现重验与逐次脱敏审计；拒绝访问同样保留 actor、文件、动作与原因码审计。确认事务将有效 standing/scoped 委托双方身份纳入 SoD；管理角色仅取得范围受限的非敏感类别/计数汇总。尚无不可变导出/PDF 制品时 export 在明确授权、二次验证和审计后 fail-closed。当前 commit 已通过受影响 API 264 测试、shared 50 测试、Web 10 测试、API/Web typecheck、`check:ui`、独立安全/规格复审及官方 disposable PostgreSQL 16 动态门（146 migrations、99 tests/40 files、9 groups、remaining=0）；尚待 fixed-head CI、合并与 Issue 关闭。未部署、未运行生产迁移或写入生产。
 

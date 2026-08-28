@@ -433,7 +433,10 @@ const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
   "OperatingTakeoverAttachmentLink.fileId",
   // POL-12A is later than the invoice-evidence guard; its source evidence is
   // independently promoted to an exclusive fact in its own terminal migration.
-  "WageApprovedSourceVersion.evidenceFileId"
+  "WageApprovedSourceVersion.evidenceFileId",
+  // POL-13B is later than the invoice-evidence guard; relationship evidence is
+  // registered by its own additive binding migration.
+  "InterEntityRelationshipEntry.evidenceFileId"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>
@@ -791,6 +794,23 @@ describe("spot procurement core schema", () => {
   )
     ? readFileSync(invoiceEvidenceExclusiveMigrationPath, "utf8")
     : "";
+  const payerAttestationLineageMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260828073000_pol13b_payer_attestation_lineage/migration.sql"
+  );
+  const payerAttestationLineageMigration = existsSync(
+    payerAttestationLineageMigrationPath
+  )
+    ? readFileSync(payerAttestationLineageMigrationPath, "utf8")
+    : "";
+  const payerAuthorityMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql"
+  );
+  const payerAuthorityMigration = existsSync(payerAuthorityMigrationPath)
+    ? readFileSync(payerAuthorityMigrationPath, "utf8")
+    : "";
+  const fileBindingRegistryMigrations = `${exclusiveFileBindingMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}`;
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -1020,7 +1040,9 @@ describe("spot procurement core schema", () => {
       "SpotProcurementPaymentExecution.voucherFileId",
       "SpotProcurementRefund.voucherFileId",
       "SpotProcurementReceiptPhoto.originalFileId",
-      "SpotProcurementReceiptPhoto.watermarkedFileId"
+      "SpotProcurementReceiptPhoto.watermarkedFileId",
+      "InterEntityRelationshipEvidenceClaim.fileId",
+      "PaymentExecutionPayerAttestation.proxyAuthorizationEvidenceFileId",
     ]);
     const expectedBindings = [
       ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
@@ -1048,7 +1070,7 @@ describe("spot procurement core schema", () => {
       )
     );
     const actualBindings = Array.from(
-      exclusiveFileBindingMigration.matchAll(
+      fileBindingRegistryMigrations.matchAll(
         /\('([^']+)', '([^']+)', (TRUE|FALSE)\)/g
       ),
       (match) => ({
@@ -1100,7 +1122,9 @@ describe("spot procurement core schema", () => {
       "NoInvoiceConfirmation.proofFileId",
       "InvoiceExceptionConfirmation.proofFileId",
       "SpotProcurementReceiptPhoto.originalFileId",
-      "SpotProcurementReceiptPhoto.watermarkedFileId"
+      "SpotProcurementReceiptPhoto.watermarkedFileId",
+      "InterEntityRelationshipEvidenceClaim.fileId",
+      "PaymentExecutionPayerAttestation.proxyAuthorizationEvidenceFileId",
     ]);
     const expectedBindings = [
       ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
@@ -1128,7 +1152,7 @@ describe("spot procurement core schema", () => {
       )
     );
     const actualBindings = Array.from(
-      invoiceEvidenceExclusiveMigration.matchAll(
+      `${invoiceEvidenceExclusiveMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}`.matchAll(
         /\('([^']+)', '([^']+)', (TRUE|FALSE)\)/g
       ),
       (match) => ({

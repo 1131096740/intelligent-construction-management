@@ -184,7 +184,7 @@ const GROUPS = [
       RUN_PAYABLE_SETTLEMENT_DATABASE: "1",
       PAYABLE_SETTLEMENT_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 5
+    pendingTests: 19
   },
   {
     id: "wage_statement",

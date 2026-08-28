@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `670533491e4dbcdd0779ea40500a732f6a723f4b7d8a21e16f68ad03da5c2a70` |
-| webApiWrappers | ready | `9c3566d6115b2091d5333c5feaf82f7549de8aa232edc38daca1b5de76a0d736` |
-| webPageActions | ready | `f12d54e617c8d4b32d84c17c34bdc9eb56720b71b0ab9dbfced09f38e8de7594` |
-| routeUsage | ready | `64da129e33d28514b5a33ed858e43311d4318e7f878019e3445719d8fe916a47` |
+| nestRoutes | ready | `db73ca96a882a4f5c6c5bdd7a13693015ec50b48e89ec064e0418b3596c177f5` |
+| webApiWrappers | ready | `ebe40049603dc3a13c01ce8c49503f30dc1995e52337343206e2cff988f3b3e1` |
+| webPageActions | ready | `cff271ac20712462dfcca87ddca39a3ef682cade5067588cba7f59bb2f432bb6` |
+| routeUsage | ready | `3c0f4a342173f3fc76e4045d49bc4dc1fc51b9e9361202bce6fb94ecb1257947` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 525 |
-| pageRouteCount | 341 |
+| routeCount | 528 |
+| pageRouteCount | 344 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 6 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 530 |
+| mainRequestBindingCount | 533 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 275 |
-| actionBindingCount | 310 |
-| acceptedActionBindingCount | 290 |
+| registeredActionCount | 277 |
+| actionBindingCount | 312 |
+| acceptedActionBindingCount | 292 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 270 |
-| coveredProductionMutationConsumerPairCount | 270 |
+| productionMutationConsumerPairCount | 272 |
+| coveredProductionMutationConsumerPairCount | 272 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -117,6 +117,7 @@
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
 | GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
+| GET | /payable-settlements/inter-entity-relationships | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchInterEntityRelationships | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchWagePayableCases | — | not_applicable | — |
 | GET | /payable-settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementWorkbench | — | not_applicable | — |
@@ -374,6 +375,8 @@
 | POST | /payable-settlements/:settlementCaseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#confirmPayableSettlement | payable-settlement.confirm | covered | — |
 | POST | /payable-settlements/:settlementCaseId/return | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnPayableSettlement | payable-settlement.return | covered | — |
 | POST | /payable-settlements/:settlementCaseId/submit | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#submitPayableSettlement | payable-settlement.submit | covered | — |
+| POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
+| POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |

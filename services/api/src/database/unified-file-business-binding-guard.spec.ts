@@ -106,6 +106,27 @@ const wageStatementBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const interEntityRelationshipBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260828072000_pol13b_inter_entity_relationship_file_binding/migration.sql"
+  ),
+  "utf8"
+);
+const payerAttestationBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260828073000_pol13b_payer_attestation_lineage/migration.sql"
+  ),
+  "utf8"
+);
+const payerAuthorityBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -130,7 +151,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}`.matchAll(
+    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -149,7 +170,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(81);
+    expect(registered).toHaveLength(88);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -183,10 +204,12 @@ describe("unified file business binding migration", () => {
       "ContractTakeoverSettlementEvidence.fileId",
       "ExpenseClaimAttachment.fileId",
       "ExpenseClaimPaymentExecution.voucherFileId",
+      "InterEntityRelationshipEvidenceClaim.fileId",
       "InvoiceExceptionConfirmation.proofFileId",
       "InvoiceRecord.fileId",
       "NoInvoiceConfirmation.proofFileId",
       "PaymentExecution.voucherFileId",
+      "PaymentExecutionPayerAttestation.proxyAuthorizationEvidenceFileId",
       "ProjectAffiliateBusinessEvidence.fileId",
       "ProjectAffiliateCompanyContract.fileId",
       "ProjectAffiliateContractFact.evidenceFileId",
@@ -209,6 +232,24 @@ describe("unified file business binding migration", () => {
     );
     expect(wageStatementBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "evidenceFileId" ON "WageApprovedSourceVersion"'
+    );
+    expect(interEntityRelationshipBindingMigration).toContain(
+      "('InterEntityRelationshipEntry', 'evidenceFileId', FALSE)"
+    );
+    expect(payerAttestationBindingMigration).toContain(
+      'DROP TRIGGER IF EXISTS jg_efb_inter_entity_relationship_evidence'
+    );
+    expect(payerAttestationBindingMigration).toContain(
+      'DROP TRIGGER IF EXISTS jg_efb_inter_entity_relationship_authorization_evidence'
+    );
+    expect(payerAttestationBindingMigration).not.toContain(
+      'CREATE TRIGGER jg_efb_inter_entity_relationship_evidence\n'
+    );
+    expect(payerAttestationBindingMigration).toContain(
+      "('InterEntityRelationshipEntry', 'authorizationEvidenceFileId', FALSE)"
+    );
+    expect(payerAttestationBindingMigration).not.toContain(
+      'CREATE TRIGGER jg_efb_inter_entity_relationship_authorization_evidence\n'
     );
     expect(currentBindingMigration).toContain(
       `"correctionType" = 'company_entity'`

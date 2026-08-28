@@ -41,6 +41,16 @@ export class PaymentExecutionOperatingSourceAdapter
     if (!requests.length) return [];
     const rows = await tx.paymentExecution.findMany({
       where: { paymentRequestId: { in: requests.map((request) => request.id) } },
+      include: {
+        payerAttestation: {
+          select: {
+            holderCompanyEntityId: true,
+            holderNameSnapshot: true,
+            holderCreditCodeSnapshot: true,
+            verificationEvidenceContentSha256: true
+          }
+        }
+      },
       orderBy: [{ paidAt: "asc" }, { id: "asc" }]
     });
     return Promise.all(rows.map((row) => this.snapshot(tx, row)));
@@ -51,7 +61,17 @@ export class PaymentExecutionOperatingSourceAdapter
     locator: OperatingSourceLocator
   ): Promise<OperatingSourceSnapshot | null> {
     const row = await tx.paymentExecution.findUnique({
-      where: { id: locator.sourceBusinessId }
+      where: { id: locator.sourceBusinessId },
+      include: {
+        payerAttestation: {
+          select: {
+            holderCompanyEntityId: true,
+            holderNameSnapshot: true,
+            holderCreditCodeSnapshot: true,
+            verificationEvidenceContentSha256: true
+          }
+        }
+      }
     });
     if (!row) return null;
     const request = await tx.paymentRequest.findUnique({
@@ -240,7 +260,11 @@ export class PaymentExecutionOperatingSourceAdapter
       businessPartyVersionId: version.affiliateBusinessPartyVersionId
     });
     const approvedPayer = approvedPayerIdentity(version, request);
-    const actualPayer = actualPayerIdentity(row, affiliate.businessPartyVersionId);
+    const actualPayer = actualPayerIdentity(
+      row,
+      affiliate.businessPartyVersionId,
+      row.payerAttestation
+    );
     const dueAllocations = allocations.filter(
       (allocation) => allocation.allocationType === "contract_due_payment"
     );
@@ -306,6 +330,13 @@ interface PaymentExecutionRow {
   paidAt: Date;
   executedByUserId: string;
   voucherFileId: string;
+  payerAttestationFingerprint?: string | null;
+  payerAttestation?: {
+    holderCompanyEntityId: string;
+    holderNameSnapshot: string;
+    holderCreditCodeSnapshot: string;
+    verificationEvidenceContentSha256: string;
+  } | null;
   createdAt: Date;
 }
 
@@ -349,10 +380,28 @@ function approvedPayerIdentity(
 function actualPayerIdentity(
   row: Pick<
     PaymentExecutionRow,
-    "paymentSubjectType" | "companyEntityIdSnapshot"
+    "paymentSubjectType" | "companyEntityIdSnapshot" | "payerAttestationFingerprint"
   >,
-  affiliateVersionId: string
+  affiliateVersionId: string,
+  payerAttestation?: PaymentExecutionRow["payerAttestation"]
 ): { type: "affiliate" | "our_company"; id: string } {
+  if (payerAttestation) {
+    if (
+      !payerAttestation.holderCompanyEntityId.trim() ||
+      !payerAttestation.holderNameSnapshot.trim() ||
+      !payerAttestation.holderCreditCodeSnapshot.trim() ||
+      !/^[0-9a-f]{64}$/u.test(payerAttestation.verificationEvidenceContentSha256)
+    ) {
+      throw new BadRequestException("付款执行银行法定持有人核验快照不完整");
+    }
+    if (!row.payerAttestationFingerprint) {
+      throw new BadRequestException("付款执行缺少银行法定持有人核验指纹");
+    }
+    return { type: "our_company", id: payerAttestation.holderCompanyEntityId };
+  }
+  if (row.payerAttestationFingerprint) {
+    throw new BadRequestException("付款执行银行法定持有人核验事实缺失");
+  }
   return row.paymentSubjectType === "affiliate"
     ? { type: "affiliate", id: affiliateVersionId }
     : { type: "our_company", id: row.companyEntityIdSnapshot };

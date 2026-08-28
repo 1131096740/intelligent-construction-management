@@ -93,6 +93,33 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     );
   });
 
+  it("projects the server-issued bank-holder snapshot as the actual payer", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx({
+      payerAttestationFingerprint: "f".repeat(64),
+      payerAttestation: {
+        holderCompanyEntityId: "bank-holder-company",
+        holderNameSnapshot: "银行法定持有人",
+        holderCreditCodeSnapshot: "91310000BANKHOLDER",
+        verificationEvidenceContentSha256: "a".repeat(64)
+      }
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "execution-1"
+    });
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input.subjects.actualPayer).toEqual({
+      kind: "participating_company",
+      id: "bank-holder-company"
+    });
+    expect(input.sourceSnapshot).toEqual(
+      expect.objectContaining({ actualPayerId: "bank-holder-company" })
+    );
+  });
+
   it("fails closed when formal executions exceed the approved amount", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx();

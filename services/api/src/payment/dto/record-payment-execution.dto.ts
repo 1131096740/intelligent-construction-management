@@ -10,6 +10,7 @@ import {
 } from "class-validator";
 import {
   IsCanonicalMoneyText,
+  IsMaxUnicodeTextLength,
   IsRequiredText
 } from "../../validation/static-field-validation";
 
@@ -27,6 +28,55 @@ export class WagePayableExecutionBindingDto {
     formatMessage: "工资债权关联金额格式不正确"
   })
   amountCents!: string;
+}
+
+export class PaymentExecutionProxyAuthorizationDto {
+  @IsRequiredText({
+    requiredMessage: "跨主体付款授权原因不能为空",
+    typeMessage: "跨主体付款授权原因必须是文字",
+    blankMessage: "跨主体付款授权原因不能为空白"
+  })
+  @IsMaxUnicodeTextLength({ max: 500, message: "跨主体付款授权原因不能超过 500 个字" })
+  reason!: string;
+
+  @IsRequiredText({
+    requiredMessage: "跨主体付款授权证据不能为空",
+    typeMessage: "跨主体付款授权证据格式不正确",
+    blankMessage: "跨主体付款授权证据不能为空白"
+  })
+  evidenceFileId!: string;
+
+  @IsRequiredText({
+    requiredMessage: "重新授权引用不能为空",
+    typeMessage: "重新授权引用格式不正确",
+    blankMessage: "重新授权引用不能为空白"
+  })
+  reauthorizationReference!: string;
+
+  @IsRequiredText({
+    requiredMessage: "重新授权人不能为空",
+    typeMessage: "重新授权人格式不正确",
+    blankMessage: "重新授权人不能为空白"
+  })
+  reauthorizedByUserId!: string;
+
+  @IsISO8601({}, { message: "重新授权时间格式不正确" })
+  reauthorizedAt!: string;
+}
+
+export class PaymentExecutionPayerAttestationDto {
+  @IsRequiredText({
+    requiredMessage: "服务端银行账户核验引用不能为空",
+    typeMessage: "服务端银行账户核验引用格式不正确",
+    blankMessage: "服务端银行账户核验引用不能为空白"
+  })
+  /** Opaque reference issued by the server-side bank-holder authority. */
+  bankAccountReference!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentExecutionProxyAuthorizationDto)
+  proxyAuthorization?: PaymentExecutionProxyAuthorizationDto;
 }
 
 export class RecordPaymentExecutionDto {
@@ -70,4 +120,9 @@ export class RecordPaymentExecutionDto {
   @ValidateNested({ each: true, message: "工资债权关联格式不正确" })
   @Type(() => WagePayableExecutionBindingDto)
   wagePayableBindings?: WagePayableExecutionBindingDto[];
+
+  @IsOptional()
+  @ValidateNested({ message: "付款主体核验格式不正确" })
+  @Type(() => PaymentExecutionPayerAttestationDto)
+  payerAttestation?: PaymentExecutionPayerAttestationDto;
 }

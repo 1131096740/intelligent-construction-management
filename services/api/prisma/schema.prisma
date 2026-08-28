@@ -72,6 +72,33 @@ model CompanyEntity {
   updatedAt               DateTime @updatedAt
 }
 
+// Server-issued bank-account legal-holder authority.  This is intentionally
+// not a user-maintained bank-account directory: payment execution accepts
+// only the opaque reference issued by the verification authority and freezes
+// the verified holder facts below.
+model PaymentExecutionPayerVerification {
+  id                                String   @id @default(uuid())
+  reference                         String   @unique
+  holderCompanyEntityId             String
+  holderNameSnapshot                String
+  holderCreditCodeSnapshot          String
+  verificationReference             String
+  verifiedByUserId                  String
+  verifiedAt                        DateTime
+  verificationEvidenceFileId        String
+  verificationEvidenceContentSha256 String
+  status                            String   @default("verified")
+  sourceType                        String   @default("bank_account_legal_holder")
+  sourceRecordId                    String
+  issuedByDatabaseRole              String   @default("jg_payment_execution_payer_issuer")
+  createdAt                         DateTime @default(now())
+
+  @@index([holderCompanyEntityId, status])
+  @@index([verificationEvidenceFileId])
+  @@index([verifiedByUserId])
+  @@unique([sourceType, sourceRecordId])
+}
+
 model CompanyEntityVersion {
   id                      String   @id @default(uuid())
   companyEntityId         String
@@ -1644,11 +1671,53 @@ model PaymentExecution {
   paidAt                          DateTime
   executedByUserId                String
   voucherFileId                   String   @unique
+  payerAttestationFingerprint     String?
   createdAt                       DateTime @default(now())
 
-  payableSettlementCases          PayableSettlementCase[]
-  payableSettlementAllocations    PayableSettlementAllocation[]
-  wagePayableBindings              PaymentExecutionWagePayableBinding[]
+  payableSettlementCases         PayableSettlementCase[]
+  payableSettlementAllocations   PayableSettlementAllocation[]
+  wagePayableBindings            PaymentExecutionWagePayableBinding[]
+  interEntityRelationshipEntries InterEntityRelationshipEntry[]
+  payerAttestation               PaymentExecutionPayerAttestation?
+}
+
+// POL-13B: immutable, server-checked payer proof. The ordinary payment
+// request/company snapshot is the approved payer; this record is the only
+// source allowed to establish the actual bank-account legal holder for a
+// cross-entity relationship.
+model PaymentExecutionPayerAttestation {
+  id                                 String    @id @default(uuid())
+  paymentExecutionId                 String    @unique
+  payerVerificationId                String
+  bankAccountReference               String
+  holderCompanyEntityId              String
+  holderNameSnapshot                 String
+  holderCreditCodeSnapshot           String
+  verificationReference              String
+  verifiedByUserId                   String
+  verifiedAt                         DateTime
+  verificationEvidenceFileId         String
+  verificationEvidenceContentSha256  String
+  proxyAuthorizationReason           String?
+  proxyAuthorizationEvidenceFileId   String?
+  proxyAuthorizationEvidenceSha256   String?
+  reauthorizationReference           String?
+  reauthorizationApprovalInstanceId  String?
+  reauthorizationApprovalActionLogId String?
+  reauthorizationPaymentRequestId    String?
+  reauthorizationContractVersionId   String?
+  reauthorizedByUserId               String?
+  reauthorizedAt                     DateTime?
+  createdAt                          DateTime  @default(now())
+
+  paymentExecution PaymentExecution @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+
+  @@index([holderCompanyEntityId])
+  @@index([verificationEvidenceFileId])
+  @@index([proxyAuthorizationEvidenceFileId])
+  @@index([verifiedByUserId])
+  @@index([payerVerificationId])
+  @@index([reauthorizationApprovalActionLogId])
 }
 
 // A PaymentExecution may settle several wage creditors. This immutable bridge
@@ -1656,25 +1725,25 @@ model PaymentExecution {
 // on the payment fact. The bridge is intentionally append-only; #220 consumes
 // it as a read-side eligibility proof.
 model PaymentExecutionWagePayableBinding {
-  id                            String   @id @default(uuid())
-  paymentExecutionId            String
-  wagePayableRefId              String
-  debtorCompanyId               String
-  debtorCompanySnapshot         Json
-  projectId                     String
-  projectSnapshot               Json
-  creditorSubjectType           String
-  creditorUserId                String?
-  creditorBusinessPartyVersionId String?
-  creditorSubjectIdentityKey    String
-  creditorNameSnapshot          String
+  id                              String   @id @default(uuid())
+  paymentExecutionId              String
+  wagePayableRefId                String
+  debtorCompanyId                 String
+  debtorCompanySnapshot           Json
+  projectId                       String
+  projectSnapshot                 Json
+  creditorSubjectType             String
+  creditorUserId                  String?
+  creditorBusinessPartyVersionId  String?
+  creditorSubjectIdentityKey      String
+  creditorNameSnapshot            String
   creditorUnifiedIdentitySnapshot String?
-  creditorVersionFingerprint    String
-  creditorSnapshot              Json
-  amountCents                   BigInt
-  currencyCode                  String   @default("CNY")
-  createdByUserId               String
-  createdAt                     DateTime @default(now())
+  creditorVersionFingerprint      String
+  creditorSnapshot                Json
+  amountCents                     BigInt
+  currencyCode                    String   @default("CNY")
+  createdByUserId                 String
+  createdAt                       DateTime @default(now())
 
   paymentExecution PaymentExecution @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
   wagePayableRef   WagePayableRef   @relation(fields: [wagePayableRefId], references: [id], onDelete: Restrict)
@@ -2311,41 +2380,41 @@ model SpotProcurementRefund {
 }
 
 model InvoiceRecord {
-  id                     String    @id @default(uuid())
+  id                      String    @id @default(uuid())
   // Legacy project/source coordinates remain readable; new writes are governed by the immutable global header below.
-  projectId              String?
-  identityKey            String    @unique
-  identityKind           String    @default("traditional")
-  owningCompanyEntityId  String?
-  direction              String?
-  invoiceType            String
-  voucherType            String?
-  invoiceCode            String?
-  invoiceNumber          String?
-  externalIdentifier     String?
-  issueDate              DateTime  @db.Date
-  sellerName             String
-  sellerTaxId            String?
-  buyerName              String
-  buyerTaxId             String?
+  projectId               String?
+  identityKey             String    @unique
+  identityKind            String    @default("traditional")
+  owningCompanyEntityId   String?
+  direction               String?
+  invoiceType             String
+  voucherType             String?
+  invoiceCode             String?
+  invoiceNumber           String?
+  externalIdentifier      String?
+  issueDate               DateTime  @db.Date
+  sellerName              String
+  sellerTaxId             String?
+  buyerName               String
+  buyerTaxId              String?
   taxExclusiveAmountCents BigInt?
   taxAmountCents          BigInt?
-  totalAmountCents       BigInt
-  allocatableAmountCents BigInt
-  allocatedAmountCents   BigInt    @default(0)
-  status                 String    @default("active")
-  fileId                 String    @unique
-  uploadedByUserId       String
-  sourceBusinessType     String
-  sourceBusinessId       String
-  sourceProcurementId    String?
-  commandIdempotencyKey  String?   @unique
-  commandFingerprint     String?
-  invalidatedAt          DateTime?
-  invalidatedByUserId    String?
-  invalidationReason     String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  totalAmountCents        BigInt
+  allocatableAmountCents  BigInt
+  allocatedAmountCents    BigInt    @default(0)
+  status                  String    @default("active")
+  fileId                  String    @unique
+  uploadedByUserId        String
+  sourceBusinessType      String
+  sourceBusinessId        String
+  sourceProcurementId     String?
+  commandIdempotencyKey   String?   @unique
+  commandFingerprint      String?
+  invalidatedAt           DateTime?
+  invalidatedByUserId     String?
+  invalidationReason      String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@unique([projectId, id])
   @@index([projectId, status])
@@ -2400,18 +2469,18 @@ model InvoiceAllocation {
 }
 
 model InvoiceClearingAllocation {
-  id                    String   @id @default(uuid())
-  invoiceRecordId       String
-  projectId             String
-  clearingCaseId        String
+  id                     String   @id @default(uuid())
+  invoiceRecordId        String
+  projectId              String
+  clearingCaseId         String
   clearingEventVersionId String
-  amountCents           BigInt
-  structuredReasonCode  String?
-  reversesAllocationId  String?
-  createdByUserId       String
-  idempotencyKey        String   @unique
-  requestFingerprint    String
-  createdAt             DateTime @default(now())
+  amountCents            BigInt
+  structuredReasonCode   String?
+  reversesAllocationId   String?
+  createdByUserId        String
+  idempotencyKey         String   @unique
+  requestFingerprint     String
+  createdAt              DateTime @default(now())
 
   @@index([invoiceRecordId, createdAt])
   @@index([projectId, clearingEventVersionId])
@@ -2421,15 +2490,15 @@ model InvoiceClearingAllocation {
 }
 
 model InvoiceLifecycleEvent {
-  id                    String   @id @default(uuid())
-  invoiceRecordId       String
+  id                     String   @id @default(uuid())
+  invoiceRecordId        String
   relatedInvoiceRecordId String?
-  kind                  String
-  reasonCode            String
-  createdByUserId       String
-  idempotencyKey        String   @unique
-  requestFingerprint    String
-  createdAt             DateTime @default(now())
+  kind                   String
+  reasonCode             String
+  createdByUserId        String
+  idempotencyKey         String   @unique
+  requestFingerprint     String
+  createdAt              DateTime @default(now())
 
   @@index([invoiceRecordId, createdAt])
   @@index([relatedInvoiceRecordId])
@@ -2437,12 +2506,12 @@ model InvoiceLifecycleEvent {
 }
 
 model InvoiceRedAllocationReference {
-  id                       String   @id @default(uuid())
-  lifecycleEventId          String
-  redInvoiceRecordId        String
-  blueInvoiceAllocationId   String
-  amountCents               BigInt
-  createdAt                 DateTime @default(now())
+  id                      String   @id @default(uuid())
+  lifecycleEventId        String
+  redInvoiceRecordId      String
+  blueInvoiceAllocationId String
+  amountCents             BigInt
+  createdAt               DateTime @default(now())
 
   @@unique([lifecycleEventId, blueInvoiceAllocationId])
   @@index([redInvoiceRecordId])
@@ -3329,22 +3398,22 @@ model ApprovalDelegation {
 }
 
 model FileObject {
-  id                      String       @id @default(uuid())
-  bucket                  String
-  objectKey               String
-  originalName            String
-  mimeType                String
-  sizeBytes               Int
-  uploadedByUserId        String
-  contentSha256           String?
-  storageStatus           String       @default("active")
+  id                                 String                      @id @default(uuid())
+  bucket                             String
+  objectKey                          String
+  originalName                       String
+  mimeType                           String
+  sizeBytes                          Int
+  uploadedByUserId                   String
+  contentSha256                      String?
+  storageStatus                      String                      @default("active")
   /// 结束申请业务聚合已剥离后，独占对象的最小可重试技术指针。
-  purgeReceiptId          String?
-  supersedesFileObjectId  String?
-  supersedesFileObject    FileObject?  @relation("FileObjectReplacement", fields: [supersedesFileObjectId], references: [id], onDelete: SetNull)
-  supersededByFileObjects FileObject[] @relation("FileObjectReplacement")
+  purgeReceiptId                     String?
+  supersedesFileObjectId             String?
+  supersedesFileObject               FileObject?                 @relation("FileObjectReplacement", fields: [supersedesFileObjectId], references: [id], onDelete: SetNull)
+  supersededByFileObjects            FileObject[]                @relation("FileObjectReplacement")
   wageApprovedSourceEvidenceVersions WageApprovedSourceVersion[] @relation("WageApprovedSourceEvidence")
-  createdAt               DateTime     @default(now())
+  createdAt                          DateTime                    @default(now())
 
   @@index([supersedesFileObjectId])
   @@index([purgeReceiptId])
@@ -3980,9 +4049,9 @@ model WageApprovedSourceVersion {
   createdByUserId     String
   createdAt           DateTime @default(now())
 
-  evidenceFile      FileObject                  @relation("WageApprovedSourceEvidence", fields: [evidenceFileId], references: [id], onDelete: Restrict)
-  statementVersions WageStatementVersion[]
-  commandReceipts  WageApprovedSourceCommandReceipt[]
+  evidenceFile         FileObject                         @relation("WageApprovedSourceEvidence", fields: [evidenceFileId], references: [id], onDelete: Restrict)
+  statementVersions    WageStatementVersion[]
+  commandReceipts      WageApprovedSourceCommandReceipt[]
   serviceBasisBindings WageServiceBasisBinding[]
 
   @@unique([employmentCompanyId, externalReference, sourceVersion], map: "WageApprovedSourceVersion_external_identity_key")
@@ -3992,14 +4061,14 @@ model WageApprovedSourceVersion {
 // 来源创建与工资承担单命令分别使用回执表，避免把来源幂等键错误地挂到尚未
 // 存在的月度单据上；结果快照只保留来源 ID，不复制私有批准载荷或证据内容。
 model WageApprovedSourceCommandReceipt {
-  idempotencyKey String   @id
-  action         String
-  aggregateId    String
+  idempotencyKey   String   @id
+  action           String
+  aggregateId      String
   expectedRevision Int
-  actorUserId    String
-  fingerprint    String
-  resultSnapshot Json
-  createdAt      DateTime @default(now())
+  actorUserId      String
+  fingerprint      String
+  resultSnapshot   Json
+  createdAt        DateTime @default(now())
 
   source WageApprovedSourceVersion @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
 
@@ -4015,21 +4084,21 @@ model WageStatement {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  versions WageStatementVersion[]
+  versions        WageStatementVersion[]
   commandReceipts WageCommandReceipt[]
 
   @@unique([employmentCompanyId, wageMonth], map: "WageStatement_company_month_key")
 }
 
 model WageCommandReceipt {
-  idempotencyKey String   @id
-  action         String
-  aggregateId    String
+  idempotencyKey   String   @id
+  action           String
+  aggregateId      String
   expectedRevision Int
-  actorUserId    String
-  fingerprint    String
-  resultSnapshot Json
-  createdAt      DateTime @default(now())
+  actorUserId      String
+  fingerprint      String
+  resultSnapshot   Json
+  createdAt        DateTime @default(now())
 
   statement WageStatement @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
 
@@ -4037,32 +4106,32 @@ model WageCommandReceipt {
 }
 
 model WageStatementVersion {
-  id                      String   @id @default(uuid())
-  statementId             String
-  revision                Int
-  kind                    String   @default("base")
-  status                  String   @default("draft")
-  sourceVersionId         String
-  sourceSnapshot          Json
+  id                          String    @id @default(uuid())
+  statementId                 String
+  revision                    Int
+  kind                        String    @default("base")
+  status                      String    @default("draft")
+  sourceVersionId             String
+  sourceSnapshot              Json
   // 仅保存工资经营 envelope 的非敏感冻结坐标；人员、金额、债权人和证据仍只留在
   // 受控工资版本/应付引用中，重放时由同一不可变矩阵重新读取。
   operatingProjectionSnapshot Json?
-  createdByUserId         String
-  lastEditedByUserId      String
-  submittedByUserId       String?
-  submittedAt             DateTime?
-  confirmedByUserId       String?
-  confirmedAt             DateTime?
-  reviewReturnedByUserId  String?
-  reviewReturnedAt        DateTime?
-  reviewReturnReason      String?
-  reviewDisposition       String?
-  supersededAt            DateTime?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdByUserId             String
+  lastEditedByUserId          String
+  submittedByUserId           String?
+  submittedAt                 DateTime?
+  confirmedByUserId           String?
+  confirmedAt                 DateTime?
+  reviewReturnedByUserId      String?
+  reviewReturnedAt            DateTime?
+  reviewReturnReason          String?
+  reviewDisposition           String?
+  supersededAt                DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
-  statement     WageStatement              @relation(fields: [statementId], references: [id], onDelete: Restrict)
-  sourceVersion WageApprovedSourceVersion  @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  statement     WageStatement             @relation(fields: [statementId], references: [id], onDelete: Restrict)
+  sourceVersion WageApprovedSourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
   personLines   WagePersonLine[]
   payableRefs   WagePayableRef[]
 
@@ -4092,22 +4161,22 @@ model WageServiceBasisBinding {
 }
 
 model WagePersonLine {
-  id                         String   @id @default(uuid())
-  statementVersionId         String
-  employeeId                 String
-  employmentSnapshotId       String
-  employeeSnapshot           Json
-  employmentSnapshot          Json
-  periodSnapshot              Json
-  positionCategorySnapshot    Json
-  approvedAmountCents         BigInt
-  createdAt                   DateTime @default(now())
+  id                       String   @id @default(uuid())
+  statementVersionId       String
+  employeeId               String
+  employmentSnapshotId     String
+  employeeSnapshot         Json
+  employmentSnapshot       Json
+  periodSnapshot           Json
+  positionCategorySnapshot Json
+  approvedAmountCents      BigInt
+  createdAt                DateTime @default(now())
 
-  statementVersion WageStatementVersion      @relation(fields: [statementVersionId], references: [id], onDelete: Restrict)
-  costComponents   WageCostComponent[]
+  statementVersion   WageStatementVersion    @relation(fields: [statementVersionId], references: [id], onDelete: Restrict)
+  costComponents     WageCostComponent[]
   creditorBreakdowns WageCreditorBreakdown[]
   projectAllocations WageProjectAllocation[]
-  payableRefs       WagePayableRef[]
+  payableRefs        WagePayableRef[]
 
   @@unique([statementVersionId, employeeId, employmentSnapshotId], map: "WagePersonLine_version_employee_employment_key")
   @@index([employeeId])
@@ -4121,7 +4190,7 @@ model WageCostComponent {
   sourceSnapshot Json
   createdAt      DateTime @default(now())
 
-  personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  personLine         WagePersonLine                       @relation(fields: [personLineId], references: [id], onDelete: Restrict)
   projectAllocations WageProjectCostComponentAllocation[]
 
   @@unique([personLineId, componentCode], map: "WageCostComponent_person_component_key")
@@ -4145,11 +4214,11 @@ model WageCreditorBreakdown {
   sourceSnapshot                  Json
   createdAt                       DateTime @default(now())
 
-  personLine                    WagePersonLine      @relation(fields: [personLineId], references: [id], onDelete: Restrict)
-  creditorUser                  User?                @relation("WageCreditorUser", fields: [creditorUserId], references: [id], onDelete: Restrict)
-  creditorBusinessPartyVersion  BusinessPartyVersion? @relation("WageCreditorBusinessPartyVersion", fields: [creditorBusinessPartyVersionId], references: [id], onDelete: Restrict)
-  projectAllocations            WageProjectCreditorAllocation[]
-  payableRefs                   WagePayableRef[]
+  personLine                   WagePersonLine                  @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  creditorUser                 User?                           @relation("WageCreditorUser", fields: [creditorUserId], references: [id], onDelete: Restrict)
+  creditorBusinessPartyVersion BusinessPartyVersion?           @relation("WageCreditorBusinessPartyVersion", fields: [creditorBusinessPartyVersionId], references: [id], onDelete: Restrict)
+  projectAllocations           WageProjectCreditorAllocation[]
+  payableRefs                  WagePayableRef[]
 
   @@unique([personLineId, creditorSubjectId, creditorCategory], map: "WageCreditorBreakdown_person_creditor_category_key")
   @@index([creditorUserId])
@@ -4157,20 +4226,20 @@ model WageCreditorBreakdown {
 }
 
 model WageProjectAllocation {
-  id                String   @id @default(uuid())
-  personLineId      String
-  projectId         String
-  serviceSnapshotId String
+  id                    String   @id @default(uuid())
+  personLineId          String
+  projectId             String
+  serviceSnapshotId     String
   serviceBasisBindingId String
-  serviceSnapshot   Json
-  amountCents       BigInt
-  createdAt         DateTime @default(now())
+  serviceSnapshot       Json
+  amountCents           BigInt
+  createdAt             DateTime @default(now())
 
-  personLine WagePersonLine @relation(fields: [personLineId], references: [id], onDelete: Restrict)
-  serviceBasisBinding WageServiceBasisBinding @relation(fields: [serviceBasisBindingId], references: [id], onDelete: Restrict)
+  personLine           WagePersonLine                       @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  serviceBasisBinding  WageServiceBasisBinding              @relation(fields: [serviceBasisBindingId], references: [id], onDelete: Restrict)
   componentAllocations WageProjectCostComponentAllocation[]
-  creditorAllocations WageProjectCreditorAllocation[]
-  payableRefs         WagePayableRef[]
+  creditorAllocations  WageProjectCreditorAllocation[]
+  payableRefs          WagePayableRef[]
 
   @@unique([personLineId, projectId, serviceSnapshotId], map: "WageProjectAllocation_person_project_service_key")
   @@index([projectId])
@@ -4210,33 +4279,33 @@ model WageProjectCreditorAllocation {
 // 应付引用是 #217 对经营投影的唯一追加式接口。它不记录付款或核销；#220 再以实际核销
 // 计算 remainingPayable、overSettledAmount 和 reconciliation 状态。
 model WagePayableRef {
-  id                   String   @id @default(uuid())
-  confirmedVersionId   String
-  projectAllocationId  String
-  creditorBreakdownId  String
-  debtorCompanyId      String
-  costBearingCompanyId String
-  projectId            String
-  personLineId         String
-  debtorCompanySnapshot Json
+  id                         String   @id @default(uuid())
+  confirmedVersionId         String
+  projectAllocationId        String
+  creditorBreakdownId        String
+  debtorCompanyId            String
+  costBearingCompanyId       String
+  projectId                  String
+  personLineId               String
+  debtorCompanySnapshot      Json
   costBearingCompanySnapshot Json
-  projectSnapshot      Json
-  personSnapshot       Json
-  creditorSnapshot     Json
-  amountCents          BigInt
-  direction            String
-  adjustsPayableRefId  String?
+  projectSnapshot            Json
+  personSnapshot             Json
+  creditorSnapshot           Json
+  amountCents                BigInt
+  direction                  String
+  adjustsPayableRefId        String?
   // A decrease is an immutable debt-side correction only.  #220 alone reads
   // real settlement facts and decides whether reconciliation is required.
-  settlementRecheckRequired Boolean @default(false)
-  createdAt            DateTime @default(now())
+  settlementRecheckRequired  Boolean  @default(false)
+  createdAt                  DateTime @default(now())
 
-  confirmedVersion  WageStatementVersion  @relation(fields: [confirmedVersionId], references: [id], onDelete: Restrict)
-  projectAllocation WageProjectAllocation @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
-  creditorBreakdown WageCreditorBreakdown @relation(fields: [creditorBreakdownId], references: [id], onDelete: Restrict)
-  personLine        WagePersonLine        @relation(fields: [personLineId], references: [id], onDelete: Restrict)
-  adjustsPayableRef WagePayableRef?       @relation("WagePayableRefAdjustments", fields: [adjustsPayableRefId], references: [id], onDelete: Restrict)
-  adjustments       WagePayableRef[]      @relation("WagePayableRefAdjustments")
+  confirmedVersion         WageStatementVersion                 @relation(fields: [confirmedVersionId], references: [id], onDelete: Restrict)
+  projectAllocation        WageProjectAllocation                @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
+  creditorBreakdown        WageCreditorBreakdown                @relation(fields: [creditorBreakdownId], references: [id], onDelete: Restrict)
+  personLine               WagePersonLine                       @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  adjustsPayableRef        WagePayableRef?                      @relation("WagePayableRefAdjustments", fields: [adjustsPayableRefId], references: [id], onDelete: Restrict)
+  adjustments              WagePayableRef[]                     @relation("WagePayableRefAdjustments")
   paymentExecutionBindings PaymentExecutionWagePayableBinding[]
 
   @@index([confirmedVersionId])
@@ -4250,28 +4319,110 @@ model WagePayableRef {
 // exact source snapshot it consumed so later upstream corrections can derive
 // the effective balance without rewriting payment history.
 model PayableSettlementCase {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   paymentExecutionId String
-  status             String   @default("draft")
-  revision           Int      @default(1)
+  status             String    @default("draft")
+  revision           Int       @default(1)
   supersedesCaseId   String?
   createdByUserId    String
   submittedByUserId  String?
   confirmedByUserId  String?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now())
   submittedAt        DateTime?
   confirmedAt        DateTime?
-  updatedAt          DateTime @updatedAt
+  updatedAt          DateTime  @updatedAt
 
-  paymentExecution PaymentExecution               @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_payment_execution_fkey")
-  allocations      PayableSettlementAllocation[]
-  receipts         PayableSettlementCommandReceipt[]
-  supersedesCase   PayableSettlementCase?          @relation("PayableSettlementCaseRevision", fields: [supersedesCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_supersedes_case_fkey")
-  revisions        PayableSettlementCase[]         @relation("PayableSettlementCaseRevision")
+  paymentExecution               PaymentExecution                  @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_payment_execution_fkey")
+  allocations                    PayableSettlementAllocation[]
+  receipts                       PayableSettlementCommandReceipt[]
+  interEntityRelationshipEntries InterEntityRelationshipEntry[]
+  supersedesCase                 PayableSettlementCase?            @relation("PayableSettlementCaseRevision", fields: [supersedesCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_supersedes_case_fkey")
+  revisions                      PayableSettlementCase[]           @relation("PayableSettlementCaseRevision")
 
   @@unique([paymentExecutionId, revision], map: "PayableSettlementCase_execution_revision_key")
   @@index([status, updatedAt])
   @@index([supersedesCaseId])
+}
+
+// POL-13B: append-only inter-entity relationship entries created when a
+// confirmed payable settlement was paid by a different company. The root
+// increase is tied to the existing PaymentExecution and settlement case;
+// returns are immutable decreases that reference the root entry and never
+// rewrite the supplier payable or payment fact.
+model InterEntityRelationshipEntry {
+  id                                    String    @id @default(uuid())
+  entryKind                             String
+  direction                             String
+  status                                String    @default("draft")
+  adjustsEntryId                        String?
+  paymentExecutionId                    String?
+  settlementCaseId                      String?
+  originalDebtorCompanyId               String
+  creditorCompanyId                     String
+  approvedPayerCompanyId                String
+  debtorSnapshot                        Json
+  creditorSnapshot                      Json
+  approvedPayerSnapshot                 Json
+  amountCents                           BigInt
+  currencyCode                          String    @default("CNY")
+  evidenceFileId                        String
+  evidenceClaimId                       String?
+  evidenceUploadedByUserId              String?
+  evidenceContentSha256                 String?
+  authorizationEvidenceFileId           String?
+  authorizationEvidenceContentSha256    String?
+  reauthorizationReference              String?
+  reauthorizedByUserId                  String?
+  reauthorizedAt                        DateTime?
+  actualPayerVerificationEvidenceFileId String?
+  actualPayerVerificationContentSha256  String?
+  projectId                             String?
+  contractId                            String?
+  contractVersionId                     String?
+  sourceType                            String?
+  sourceAggregateId                     String?
+  sourceAllocationCount                 Int?
+  sourceAllocationAmountCents           BigInt?
+  reason                                String?
+  idempotencyKey                        String    @unique
+  payloadFingerprint                    String
+  createdByUserId                       String
+  confirmedByUserId                     String?
+  createdAt                             DateTime  @default(now())
+  confirmedAt                           DateTime?
+
+  paymentExecution PaymentExecution?                      @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+  settlementCase   PayableSettlementCase?                 @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict)
+  originalEntry    InterEntityRelationshipEntry?          @relation("InterEntityRelationshipAdjustments", fields: [adjustsEntryId], references: [id], onDelete: Restrict)
+  adjustments      InterEntityRelationshipEntry[]         @relation("InterEntityRelationshipAdjustments")
+  evidenceClaims   InterEntityRelationshipEvidenceClaim[] @relation("InterEntityRelationshipEvidenceClaims")
+
+  @@unique([settlementCaseId, entryKind], map: "InterEntityRelationshipEntry_case_kind_key")
+  @@index([adjustsEntryId])
+  @@index([originalDebtorCompanyId, creditorCompanyId, createdAt])
+  @@index([paymentExecutionId])
+  @@index([settlementCaseId])
+}
+
+// A return evidence upload is a one-time claim bound to the root relationship,
+// uploader and immutable content hash. The claim is consumed in the same
+// serializable transaction that confirms the append-only decrease.
+model InterEntityRelationshipEvidenceClaim {
+  id                  String    @id @default(uuid())
+  relationshipEntryId String
+  fileId              String    @unique
+  uploadedByUserId    String
+  contentSha256       String
+  status              String    @default("pending")
+  idempotencyKey      String    @unique
+  createdAt           DateTime  @default(now())
+  consumedAt          DateTime?
+  consumedByUserId    String?
+
+  relationshipEntry InterEntityRelationshipEntry @relation("InterEntityRelationshipEvidenceClaims", fields: [relationshipEntryId], references: [id], onDelete: Restrict)
+
+  @@index([relationshipEntryId, status, createdAt])
+  @@index([uploadedByUserId])
 }
 
 model PayableSettlementAllocation {

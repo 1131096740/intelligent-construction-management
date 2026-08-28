@@ -70,6 +70,30 @@ export interface PayableSettlementCommandResult {
   allocatedAmountCents?: string;
 }
 
+export interface InterEntityRelationshipReadModel {
+  relationshipEntryId: string;
+  debtorLabel: string;
+  creditorLabel: string;
+  approvedPayerLabel: string;
+  amountCents: string;
+  remainingAmountCents: string;
+  status: "open" | "returned";
+  statusLabel: string;
+}
+
+export interface ReturnInterEntityRelationshipInput {
+  amountCents: string;
+  evidenceFileId: string;
+  evidenceClaimId: string;
+  reason: string;
+  idempotencyKey: string;
+}
+
+export interface InterEntityRelationshipEvidenceUploadResult {
+  id: string;
+  claimId: string;
+}
+
 export function fetchPayableSettlementWorkbench() {
   return read<PayableSettlementWorkbenchItem[]>(
     "/payable-settlements/workbench",
@@ -88,6 +112,47 @@ export function fetchWagePayableCases() {
   return read<WagePayableCaseOption[]>(
     "/payable-settlements/wage-payable-cases",
     "加载可核销工资应付案件失败"
+  );
+}
+
+export function fetchInterEntityRelationships() {
+  return read<InterEntityRelationshipReadModel[]>(
+    "/payable-settlements/inter-entity-relationships",
+    "加载跨主体代付往来失败"
+  );
+}
+
+export function returnInterEntityRelationship(
+  relationshipEntryId: string,
+  input: ReturnInterEntityRelationshipInput
+) {
+  return post<{
+    relationshipEntryId: string;
+    returnEntryId: string;
+    returnedAmountCents: string;
+    remainingAmountCents: string;
+    status: "open" | "returned";
+  }>(
+    `/payable-settlements/inter-entity-relationships/${encodeURIComponent(relationshipEntryId)}/returns`,
+    input,
+    "归还跨主体代付往来失败"
+  );
+}
+
+export function uploadInterEntityRelationshipEvidence(
+  relationshipEntryId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<InterEntityRelationshipEvidenceUploadResult>(
+    `/payable-settlements/inter-entity-relationships/${encodeURIComponent(relationshipEntryId)}/evidence`,
+    form
   );
 }
 
@@ -153,6 +218,13 @@ async function post<T>(path: string, body: unknown, fallback: string): Promise<T
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }), fallback);
+}
+
+async function postForm<T>(path: string, body: FormData): Promise<T> {
+  return readResponse<T>(await apiFetch(path, {
+    method: "POST",
+    body
+  }), "上传代付往来凭证失败");
 }
 
 async function readResponse<T>(response: Response, fallback: string): Promise<T> {

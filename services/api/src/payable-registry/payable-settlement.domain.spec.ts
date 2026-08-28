@@ -86,4 +86,28 @@ describe("generic payable settlement allocation", () => {
       )
     ).toThrow("核销与其他付款用途合计必须精确等于实际付款金额");
   });
+
+  it("allows a controlled proxy payment when the original debtor and actual payer differ", () => {
+    expect(() =>
+      assertAllocationSetMatchesPaymentExecution(
+        {
+          ...execution,
+          approvedPayerCompanyId: "company-approved",
+          actualPayerCompanyId: "company-actual"
+        },
+        [{
+          payableRef: "payable-1",
+          amountCents: 10_000n,
+          debtorCompanyId: "company-debtor",
+          payeeSubjectType: "business_party",
+          payeeSubjectId: "party-version-1",
+          currencyCode: "CNY"
+        }],
+        {
+          allowInterEntityProxy: true,
+          expectedOriginalDebtorCompanyId: "company-debtor"
+        }
+      )
+    ).not.toThrow();
+  });
 });

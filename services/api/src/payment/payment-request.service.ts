@@ -83,6 +83,9 @@ import {
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
   sumMoneyCents
 } from "./settlement-payment-capacity";
+import {
+  type PayerAttestationAuthorization
+} from "../payable-registry/payer-attestation.domain";
 
 const PAYMENT_POST_MONEY_FIELDS = [
   "requestedAmountCents",
@@ -166,7 +169,14 @@ interface PaymentExecutionFactRow {
   paidAt: Date;
   executedByUserId: string;
   voucherFileId: string;
+  payerAttestationFingerprint?: string | null;
 }
+
+type NormalizedPayerAttestation = Readonly<{
+  bankAccountReference: string;
+  authorization: PayerAttestationAuthorization | null;
+  fingerprint: string;
+}>;
 
 type WagePaymentExecutionResponse = Readonly<{
   id?: never;
@@ -225,6 +235,56 @@ function normalizeWagePayableBindings(
       )
     };
   });
+}
+
+function normalizePayerAttestation(
+  value: RecordPaymentExecutionDto["payerAttestation"] | undefined
+): NormalizedPayerAttestation | null {
+  if (!value) return null;
+  const bankAccountReference = value.bankAccountReference?.trim();
+  if (!bankAccountReference) throw new BadRequestException("服务端银行账户核验引用不能为空");
+  const authorization = value.proxyAuthorization
+    ? {
+        reason: value.proxyAuthorization.reason?.trim() ?? "",
+        evidenceFileId: value.proxyAuthorization.evidenceFileId?.trim() ?? "",
+        reauthorizationReference:
+          value.proxyAuthorization.reauthorizationReference?.trim() ?? "",
+        reauthorizedByUserId:
+          value.proxyAuthorization.reauthorizedByUserId?.trim() ?? "",
+        reauthorizedAt: new Date(value.proxyAuthorization.reauthorizedAt)
+      }
+    : null;
+  if (
+    authorization &&
+    (!authorization.reason ||
+      !authorization.evidenceFileId ||
+      !authorization.reauthorizationReference ||
+      !authorization.reauthorizedByUserId ||
+      Number.isNaN(authorization.reauthorizedAt.getTime()))
+  ) {
+    throw new BadRequestException("跨主体付款授权事实不完整");
+  }
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify({
+        bankAccountReference,
+        authorization: authorization
+          ? {
+              reason: authorization.reason,
+              evidenceFileId: authorization.evidenceFileId,
+              reauthorizationReference: authorization.reauthorizationReference,
+              reauthorizedByUserId: authorization.reauthorizedByUserId,
+              reauthorizedAt: authorization.reauthorizedAt.toISOString()
+            }
+          : null
+      })
+    )
+    .digest("hex");
+  return {
+    bankAccountReference,
+    authorization,
+    fingerprint
+  };
 }
 
 function jsonSafe<T>(value: T): T {
@@ -2971,6 +3031,7 @@ export class PaymentRequestService {
 
     const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于 0");
     const wagePayableBindings = normalizeWagePayableBindings(input.wagePayableBindings);
+    const payerAttestation = normalizePayerAttestation(input.payerAttestation);
     const wageBindingTotalCents = wagePayableBindings.reduce(
       (total, binding) => total + binding.amountCents,
       0n
@@ -3101,7 +3162,8 @@ export class PaymentRequestService {
             voucherFileId,
             companyEntityIdSnapshot,
             companyEntityNameSnapshot,
-            companyEntityCreditCodeSnapshot
+            companyEntityCreditCodeSnapshot,
+            payerAttestationFingerprint: payerAttestation?.fingerprint ?? null
           });
           await this.assertWagePayableBindings(
             tx,
@@ -3242,8 +3304,10 @@ export class PaymentRequestService {
           throw new ForbiddenException("付款凭证必须由当前登记人上传");
         }
 
+        const executionId = randomUUID();
         const execution = await paymentExecutionClient.create({
           data: {
+            ...(payerAttestation ? { id: executionId } : {}),
             idempotencyKey,
             paymentRequestId: payment.id,
             settlementId: payment.settlementId,
@@ -3254,9 +3318,22 @@ export class PaymentRequestService {
             amountCents,
             paidAt,
             executedByUserId: actorUserId,
-            voucherFileId
+            voucherFileId,
+            ...(payerAttestation
+              ? { payerAttestationFingerprint: payerAttestation.fingerprint }
+              : {})
           }
         });
+        if (payerAttestation) {
+          await this.persistPayerAttestation(
+            tx,
+            execution.id ?? executionId,
+            payment.id,
+            payment.contractVersionId,
+            actorUserId,
+            payerAttestation
+          );
+        }
         await this.createWagePayableBindings(
           tx,
           execution.id,
@@ -3381,7 +3458,8 @@ export class PaymentRequestService {
           amountCents,
           paidAt,
           voucherFileId,
-          wagePayableBindings
+          wagePayableBindings,
+          payerAttestation
         });
         if (concurrentExecution) {
           return wagePayableBindings.length > 0
@@ -3413,6 +3491,228 @@ export class PaymentRequestService {
       },
       actorUserId
     );
+  }
+
+  private async assertGlobalFinanceDirectorUser(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    message: string
+  ): Promise<void> {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true }
+    });
+    if (!user?.isActive) throw new ConflictException(message);
+    const assignments = await tx.userPosition.findMany({
+      where: { userId, projectId: null },
+      select: { positionId: true }
+    });
+    const positionIds = [...new Set(assignments.map(({ positionId }) => positionId))];
+    if (!positionIds.length) throw new ConflictException(message);
+    const positions = await tx.position.findMany({
+      where: { id: { in: positionIds } },
+      select: { key: true }
+    });
+    if (!positions.some(({ key }) => key === "finance_director")) {
+      throw new ConflictException(message);
+    }
+  }
+
+  private async persistPayerAttestation(
+    tx: Prisma.TransactionClient,
+    paymentExecutionId: string,
+    paymentRequestId: string,
+    contractVersionId: string,
+    actorUserId: string,
+    attestation: NormalizedPayerAttestation
+  ): Promise<void> {
+    const now = new Date();
+    const authorityClient = (tx as unknown as {
+      paymentExecutionPayerVerification?: {
+        findUnique(args: { where: { reference: string } }): Promise<{
+          id: string;
+          reference: string;
+          holderCompanyEntityId: string;
+          holderNameSnapshot: string;
+          holderCreditCodeSnapshot: string;
+          verificationReference: string;
+          verifiedByUserId: string;
+          verifiedAt: Date;
+          verificationEvidenceFileId: string;
+          verificationEvidenceContentSha256: string;
+          status: string;
+          sourceType: string;
+          sourceRecordId: string;
+        } | null>;
+      };
+    }).paymentExecutionPayerVerification;
+    if (!authorityClient) {
+      throw new ConflictException("银行账户核验权威服务暂不可用，请稍后重试");
+    }
+    const authority = await authorityClient.findUnique({
+      where: { reference: attestation.bankAccountReference }
+    });
+    if (
+      !authority ||
+      authority.status !== "verified" ||
+      authority.sourceType !== "bank_account_legal_holder" ||
+      !authority.sourceRecordId.trim() ||
+      authority.reference !== attestation.bankAccountReference ||
+      authority.verifiedAt.getTime() > now.getTime()
+    ) {
+      throw new ConflictException("服务端银行账户核验引用不存在、已失效或来源不明确");
+    }
+    if (authority.verifiedByUserId === actorUserId) {
+      throw new ConflictException("银行账户核验人与付款执行登记人必须职责分离");
+    }
+    await this.assertGlobalFinanceDirectorUser(
+      tx,
+      authority.verifiedByUserId,
+      "银行账户核验人必须是有效的全系统财务负责人"
+    );
+    const holder = await tx.companyEntity.findUnique({
+      where: { id: authority.holderCompanyEntityId },
+      select: { id: true, isActive: true }
+    });
+    if (!holder?.isActive) throw new ConflictException("银行账户法定持有人主体不存在或已停用");
+    const verificationEvidence = await tx.fileObject.findUnique({
+      where: { id: authority.verificationEvidenceFileId },
+      select: { id: true, uploadedByUserId: true, storageStatus: true, contentSha256: true }
+    });
+    if (
+      !verificationEvidence ||
+      verificationEvidence.storageStatus !== "active" ||
+      verificationEvidence.uploadedByUserId !== authority.verifiedByUserId ||
+      verificationEvidence.contentSha256 !== authority.verificationEvidenceContentSha256 ||
+      !/^[0-9a-f]{64}$/u.test(authority.verificationEvidenceContentSha256)
+    ) {
+      throw new ConflictException("银行账户核验证据不存在、已失效或内容已变化");
+    }
+    let approvalInstanceId: string | null = null;
+    let approvalActionLogId: string | null = null;
+    let authorizationEvidence: {
+      id: string;
+      uploadedByUserId: string;
+      storageStatus: string;
+      contentSha256: string | null;
+    } | null = null;
+    if (attestation.authorization) {
+      const authorization = attestation.authorization;
+      if (authorization.reauthorizedByUserId === actorUserId) {
+        throw new ConflictException("重新授权人与付款执行登记人必须职责分离");
+      }
+      await this.assertGlobalFinanceDirectorUser(
+        tx,
+        authorization.reauthorizedByUserId,
+        "重新授权人必须是有效的全系统财务负责人"
+      );
+      if (authorization.reauthorizedAt.getTime() > now.getTime()) {
+        throw new ConflictException("重新授权时间不能晚于当前时间");
+      }
+      const actionLogClient = (tx as unknown as {
+        approvalActionLog?: {
+          findUnique(args: { where: { id: string } }): Promise<{
+            id: string;
+            approvalInstanceId: string;
+            action: string;
+            actorUserId: string;
+            approvedRoleKey: string | null;
+            createdAt: Date;
+            metadata: unknown;
+          } | null>;
+        };
+      }).approvalActionLog;
+      const instanceClient = (tx as unknown as {
+        approvalInstance?: {
+          findUnique(args: { where: { id: string } }): Promise<{
+            id: string;
+            businessType: string;
+            businessId: string;
+            status: string;
+          } | null>;
+        };
+      }).approvalInstance;
+      if (!actionLogClient || !instanceClient) {
+        throw new ConflictException("重新授权审批记录服务暂不可用，请稍后重试");
+      }
+      const actionLog = await actionLogClient.findUnique({
+        where: { id: authorization.reauthorizationReference }
+      });
+      if (!actionLog) throw new ConflictException("重新授权审批记录不存在或已失效");
+      const approvalInstance = await instanceClient.findUnique({
+        where: { id: actionLog.approvalInstanceId }
+      });
+      const metadata = actionLog.metadata && typeof actionLog.metadata === "object"
+        ? actionLog.metadata as Record<string, unknown>
+        : {};
+      if (
+        !approvalInstance ||
+        approvalInstance.status !== "approved" ||
+        approvalInstance.businessType !== "payment_request" ||
+        approvalInstance.businessId !== paymentRequestId ||
+        actionLog.action !== "approve" ||
+        actionLog.actorUserId !== authorization.reauthorizedByUserId ||
+        actionLog.approvedRoleKey !== "finance_director" ||
+        actionLog.createdAt.getTime() > now.getTime() ||
+        metadata.paymentRequestId !== paymentRequestId ||
+        metadata.contractVersionId !== contractVersionId
+      ) {
+        throw new ConflictException("重新授权审批记录未绑定当前付款申请和合同版本");
+      }
+      approvalInstanceId = approvalInstance.id;
+      approvalActionLogId = actionLog.id;
+      authorizationEvidence = await tx.fileObject.findUnique({
+        where: { id: authorization.evidenceFileId },
+        select: { id: true, uploadedByUserId: true, storageStatus: true, contentSha256: true }
+      });
+      if (
+        !authorizationEvidence ||
+        authorizationEvidence.storageStatus !== "active" ||
+        authorizationEvidence.uploadedByUserId !== authorization.reauthorizedByUserId ||
+        !authorizationEvidence.contentSha256 ||
+        !/^[0-9a-f]{64}$/u.test(authorizationEvidence.contentSha256)
+      ) {
+        throw new ConflictException("跨主体付款授权证据不存在、已失效或内容不完整");
+      }
+    }
+    const attestationClient = (tx as unknown as {
+      paymentExecutionPayerAttestation?: {
+        create(args: { data: Record<string, unknown> }): Promise<unknown>;
+      };
+    }).paymentExecutionPayerAttestation;
+    if (!attestationClient) {
+      throw new ConflictException("付款主体核验服务暂不可用，请稍后重试");
+    }
+    await attestationClient.create({
+      data: {
+        id: randomUUID(),
+        paymentExecutionId,
+        payerVerificationId: authority.id,
+        bankAccountReference: authority.reference,
+        holderCompanyEntityId: authority.holderCompanyEntityId,
+        holderNameSnapshot: authority.holderNameSnapshot,
+        holderCreditCodeSnapshot: authority.holderCreditCodeSnapshot,
+        verificationReference: authority.verificationReference,
+        verifiedByUserId: authority.verifiedByUserId,
+        verifiedAt: authority.verifiedAt,
+        verificationEvidenceFileId: authority.verificationEvidenceFileId,
+        verificationEvidenceContentSha256: authority.verificationEvidenceContentSha256,
+        ...(attestation.authorization
+          ? {
+              proxyAuthorizationReason: attestation.authorization.reason,
+              proxyAuthorizationEvidenceFileId: attestation.authorization.evidenceFileId,
+              proxyAuthorizationEvidenceSha256: authorizationEvidence?.contentSha256,
+              reauthorizationReference: attestation.authorization.reauthorizationReference,
+              reauthorizationApprovalInstanceId: approvalInstanceId,
+              reauthorizationApprovalActionLogId: approvalActionLogId,
+              reauthorizationPaymentRequestId: paymentRequestId,
+              reauthorizationContractVersionId: contractVersionId,
+              reauthorizedByUserId: attestation.authorization.reauthorizedByUserId,
+              reauthorizedAt: attestation.authorization.reauthorizedAt
+            }
+          : {})
+      }
+    });
   }
 
   private async assertWagePayableBindings(
@@ -3612,6 +3912,7 @@ export class PaymentRequestService {
       companyEntityIdSnapshot: string;
       companyEntityNameSnapshot: string;
       companyEntityCreditCodeSnapshot: string;
+      payerAttestationFingerprint: string | null;
     }
   ): void {
     if (
@@ -3626,7 +3927,8 @@ export class PaymentRequestService {
       existing.amountCents !== expected.amountCents ||
       existing.paidAt.getTime() !== expected.paidAt.getTime() ||
       existing.executedByUserId !== expected.actorUserId ||
-      existing.voucherFileId !== expected.voucherFileId
+      existing.voucherFileId !== expected.voucherFileId ||
+      (existing.payerAttestationFingerprint ?? null) !== expected.payerAttestationFingerprint
     ) {
       throw new ConflictException("该付款实付登记幂等键已绑定不同的持久事实");
     }
@@ -3640,6 +3942,7 @@ export class PaymentRequestService {
     paidAt: Date;
     voucherFileId: string;
     wagePayableBindings: readonly NormalizedWagePayableBinding[];
+    payerAttestation: NormalizedPayerAttestation | null;
   }): Promise<PaymentExecutionFactRow | null> {
     if (!this.prisma) return null;
     const executionClient = this.prisma.paymentExecution as unknown as {
@@ -3695,7 +3998,8 @@ export class PaymentRequestService {
       voucherFileId: input.voucherFileId,
       companyEntityIdSnapshot,
       companyEntityNameSnapshot,
-      companyEntityCreditCodeSnapshot
+      companyEntityCreditCodeSnapshot,
+      payerAttestationFingerprint: input.payerAttestation?.fingerprint ?? null
     });
     const bindingClient = (this.prisma as unknown as {
       paymentExecutionWagePayableBinding?: {

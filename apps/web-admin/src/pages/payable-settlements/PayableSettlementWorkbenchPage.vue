@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { MessagePlugin } from "tdesign-vue-next";
+import { MessagePlugin, type UploadFile } from "tdesign-vue-next";
 
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -8,15 +8,19 @@ import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
   allocatePayableSettlement,
   confirmPayableSettlement,
+  fetchInterEntityRelationships,
   fetchPaymentExecutionCandidates,
   fetchPayableSettlementCapabilities,
   fetchPayableSettlementWorkbench,
   fetchWagePayableCases,
+  uploadInterEntityRelationshipEvidence,
+  returnInterEntityRelationship,
   returnPayableSettlement,
   submitPayableSettlement,
   type PayableSettlementCandidate,
   type PayableSettlementCapabilities,
   type PayableSettlementWorkbenchItem,
+  type InterEntityRelationshipReadModel,
   type WagePayableCaseOption
 } from "../../api/payable-settlement.api";
 
@@ -34,6 +38,7 @@ const errorMessage = ref("");
 const capabilities = ref<PayableSettlementCapabilities>({ ...emptyCapabilities });
 const wageCases = ref<WagePayableCaseOption[]>([]);
 const workbench = ref<PayableSettlementWorkbenchItem[]>([]);
+const interEntityRelationships = ref<InterEntityRelationshipReadModel[]>([]);
 const selectedPayableRef = ref("");
 const caseRevision = ref(0);
 const candidates = ref<PayableSettlementCandidate[]>([]);
@@ -42,6 +47,12 @@ const amountYuan = ref("");
 const actionVisible = ref(false);
 const pendingAction = ref<"submit" | "confirm" | "return" | null>(null);
 const pendingCase = ref<PayableSettlementWorkbenchItem | null>(null);
+const relationshipDialogVisible = ref(false);
+const selectedRelationship = ref<InterEntityRelationshipReadModel | null>(null);
+const relationshipAmountYuan = ref("");
+const relationshipReason = ref("");
+const relationshipEvidenceFiles = ref<UploadFile[]>([]);
+const relationshipSubmitting = ref(false);
 
 const wageCaseOptions = computed(() => wageCases.value.map((item) => ({
   value: item.payableRef,
@@ -81,6 +92,15 @@ const workbenchColumns = [
   { colKey: "updatedAt", title: "更新时间", minWidth: 190 },
   { colKey: "actions", title: "操作", minWidth: 220 }
 ];
+const relationshipColumns = [
+  { colKey: "debtorLabel", title: "原债务主体", minWidth: 170 },
+  { colKey: "approvedPayerLabel", title: "批准付款主体", minWidth: 170 },
+  { colKey: "creditorLabel", title: "实际付款主体", minWidth: 170 },
+  { colKey: "amountCents", title: "代付金额（元）", width: 150 },
+  { colKey: "remainingAmountCents", title: "未结余额（元）", width: 150 },
+  { colKey: "statusLabel", title: "往来状态", width: 110 },
+  { colKey: "actions", title: "操作", width: 110 }
+];
 
 onMounted(loadInitial);
 
@@ -88,14 +108,16 @@ async function loadInitial() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    const [serverCapabilities, cases, rows] = await Promise.all([
+    const [serverCapabilities, cases, rows, relationships] = await Promise.all([
       fetchPayableSettlementCapabilities(),
       fetchWagePayableCases(),
-      fetchPayableSettlementWorkbench()
+      fetchPayableSettlementWorkbench(),
+      fetchInterEntityRelationships()
     ]);
     capabilities.value = serverCapabilities;
     wageCases.value = cases;
     workbench.value = rows;
+    interEntityRelationships.value = relationships;
     const firstAllocatable = cases.find((item) => item.status === "allocatable");
     if (!selectedPayableRef.value && firstAllocatable) {
       selectedPayableRef.value = firstAllocatable.payableRef;
@@ -105,6 +127,86 @@ async function loadInitial() {
     errorMessage.value = formatUnknownApiError(error, "加载工资应付核销工作台失败");
   } finally {
     loading.value = false;
+  }
+}
+
+function requestRelationshipReturn(row: InterEntityRelationshipReadModel) {
+  selectedRelationship.value = row;
+  relationshipAmountYuan.value = "";
+  relationshipReason.value = "";
+  relationshipEvidenceFiles.value = [];
+  relationshipDialogVisible.value = false;
+}
+
+async function uploadInterEntityRelationshipEvidenceWithCapability(
+  relationshipEntryId: string,
+  file: File,
+  fileName: string
+) {
+  const capability = await fetchPayableSettlementCapabilities();
+  const operationAllowed = capability.confirm;
+  if (!operationAllowed) throw new Error("当前账号没有追加跨主体代付归还的权限");
+  return uploadInterEntityRelationshipEvidence(
+    relationshipEntryId,
+    file,
+    fileName,
+    crypto.randomUUID()
+  );
+}
+
+async function returnInterEntityRelationshipWithCapability(
+  relationshipEntryId: string,
+  input: Parameters<typeof returnInterEntityRelationship>[1]
+) {
+  const capability = await fetchPayableSettlementCapabilities();
+  const operationAllowed = capability.confirm;
+  if (!operationAllowed) throw new Error("当前账号没有追加跨主体代付归还的权限");
+  return returnInterEntityRelationship(relationshipEntryId, input);
+}
+
+async function executeRelationshipReturn() {
+  const relationship = selectedRelationship.value;
+  if (relationshipSubmitting.value || !relationship || !capabilities.value.confirm) return;
+  let amountCents: string;
+  try {
+    amountCents = yuanTextToCentsText(relationshipAmountYuan.value.trim());
+    if (BigInt(amountCents) <= 0n) throw new Error("金额必须大于零");
+  } catch {
+    errorMessage.value = "请输入正数归还金额";
+    return;
+  }
+  const file = relationshipEvidenceFiles.value[0]?.raw;
+  if (!(file instanceof File)) {
+    errorMessage.value = "请上传本次归还凭证";
+    return;
+  }
+  if (!relationshipReason.value.trim()) {
+    errorMessage.value = "请填写归还原因";
+    return;
+  }
+  relationshipSubmitting.value = true;
+  errorMessage.value = "";
+  try {
+    const uploaded = await uploadInterEntityRelationshipEvidenceWithCapability(
+      relationship.relationshipEntryId,
+      file,
+      file.name
+    );
+    await returnInterEntityRelationshipWithCapability(relationship.relationshipEntryId, {
+      amountCents,
+      evidenceFileId: uploaded.id,
+      evidenceClaimId: uploaded.claimId,
+      reason: relationshipReason.value.trim(),
+      idempotencyKey: crypto.randomUUID()
+    });
+    relationshipDialogVisible.value = false;
+    selectedRelationship.value = null;
+    MessagePlugin.success("跨主体代付归还已追加");
+    interEntityRelationships.value = await fetchInterEntityRelationships();
+  } catch (error) {
+    errorMessage.value = formatUnknownApiError(error, "归还跨主体代付往来失败");
+  } finally {
+    relationshipSubmitting.value = false;
   }
 }
 
@@ -368,12 +470,71 @@ function formatCents(value: string) {
       </t-table>
     </t-card>
 
+    <t-card class="panel" title="跨主体代付往来">
+      <t-alert
+        theme="info"
+        title="独立往来事实"
+        message="实际付款主体与原债务主体不一致时，系统只记录实际付款主体对原债务主体的等额往来；归还不会改写工资应付或付款事实。"
+      />
+      <t-table
+        row-key="relationshipEntryId"
+        :columns="relationshipColumns"
+        :data="interEntityRelationships"
+        :loading="loading"
+        empty="暂无跨主体代付往来"
+      >
+        <template #amountCents="{ row }">{{ formatCents(row.amountCents) }}</template>
+        <template #remainingAmountCents="{ row }">{{ formatCents(row.remainingAmountCents) }}</template>
+        <template #actions="{ row }">
+          <t-link
+            v-if="row.status === 'open' && capabilities.confirm"
+            theme="primary"
+            @click="requestRelationshipReturn(row)"
+          >追加归还</t-link>
+          <span v-else>—</span>
+        </template>
+      </t-table>
+    </t-card>
+
+    <t-card v-if="selectedRelationship" class="panel" title="追加往来归还">
+      <t-form label-align="top" @submit.prevent="relationshipDialogVisible = true">
+        <div class="form-grid">
+          <t-input
+            v-model="relationshipAmountYuan"
+            label="本次归还金额（元）"
+            :placeholder="`不超过 ${formatCents(selectedRelationship.remainingAmountCents)} 元`"
+          />
+          <t-input v-model="relationshipReason" label="归还原因" placeholder="填写可核验的业务原因" />
+          <t-upload
+            v-model="relationshipEvidenceFiles"
+            theme="file-flow"
+            :auto-upload="false"
+            :multiple="false"
+            accept=".pdf,.jpg,.jpeg,.png"
+          />
+        </div>
+        <t-button
+          theme="primary"
+          type="button"
+          :loading="relationshipSubmitting"
+          @click="relationshipDialogVisible = true"
+        >核对并追加归还</t-button>
+      </t-form>
+    </t-card>
+
     <SensitiveActionDialog
       v-model="actionVisible"
       :title="actionTitle"
       :description="actionDescription"
       :loading="submitting"
       @confirm="executeAction"
+    />
+    <SensitiveActionDialog
+      v-model="relationshipDialogVisible"
+      title="确认追加往来归还"
+      description="系统会重新核验未结余额、归还凭证和职责分离；归还只追加往来反向事实，不会改写工资应付或付款记录。"
+      :loading="relationshipSubmitting"
+      @confirm="executeRelationshipReturn"
     />
   </section>
 </template>
