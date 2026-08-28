@@ -670,7 +670,7 @@ async function seedFixture(
   await client.paymentExecutionAllocation.createMany({
     data: [
       allocation(fixture, fixture.settlement1Id, 25_000n, 1),
-      allocation(fixture, fixture.settlement2Id, 35_000n, 2),
+      allocation(fixture, fixture.settlement2Id, 25_000n, 2),
       {
         ...allocation(fixture, `${fixture.prefix}_advance`, 10_000n, 1),
         settlementId: fixture.settlement1Id,
