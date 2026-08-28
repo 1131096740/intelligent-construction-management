@@ -107,6 +107,7 @@ describe("POL-13A payable registry schema", () => {
       'PaymentExecutionAllocation_execution_total_guard',
       'payment_execution_allocation_total_invalid',
       '"allocationType" = \'contract_due_payment\'',
+      'NEW."allocationType" <> \'contract_due_payment\'',
       'source_debtor_company_snapshot IS DISTINCT FROM NEW."debtorCompanySnapshot"',
       'source_project_snapshot IS DISTINCT FROM NEW."projectSnapshot"',
       'source_creditor_snapshot IS DISTINCT FROM NEW."creditorSnapshot"',

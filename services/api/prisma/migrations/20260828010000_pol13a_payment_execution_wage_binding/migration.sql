@@ -268,6 +268,7 @@ DECLARE
   wage_binding_amount_cents BIGINT;
 BEGIN
   IF TG_OP <> 'INSERT' THEN RETURN NEW; END IF;
+  IF NEW."allocationType" <> 'contract_due_payment' THEN RETURN NEW; END IF;
 
   SELECT "amountCents"
   INTO execution_amount_cents
