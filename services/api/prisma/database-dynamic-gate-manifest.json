@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 147,
     "terminalMigration": "20260827300000_pol13a_payable_registry_settlement",
-    "terminalMigrationChecksum": "53ce388714be3c4828eefb48f8ba8d1cd59f62dbfc71daa807b4cc4f1a38e046",
+    "terminalMigrationChecksum": "4c011fbf0d6bb1cd6a0544775739dc9f45a51a29c68181a275c1c2feae585731",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

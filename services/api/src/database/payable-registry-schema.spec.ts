@@ -45,6 +45,8 @@ describe("POL-13A payable registry schema", () => {
     expect(migration).toContain('CREATE TRIGGER "PayableSettlementAllocation_confirmed_immutable"');
     expect(migration).toContain("IF case_status <> 'draft' THEN");
     expect(migration).toContain("IF OLD.\"status\" IN ('confirmed', 'review_returned') THEN");
+    expect(migration).toContain("IF TG_OP = 'INSERT' AND NEW.\"status\" <> 'draft' THEN");
+    expect(migration).toContain("payable_settlement_case_initial_state_invalid");
     expect(migration).toContain("payable_settlement_submitted_audit_immutable");
     expect(migration).toContain("payable_settlement_state_audit_invalid");
   });

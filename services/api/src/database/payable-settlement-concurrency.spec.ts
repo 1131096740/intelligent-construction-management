@@ -130,7 +130,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).rejects.toThrow("payable_settlement_state_audit_invalid");
   });
 
-  it("rejects direct non-draft inserts with incomplete lifecycle audit fields", async () => {
+  it("rejects direct non-draft inserts even with complete lifecycle audit fields", async () => {
     const submitted = await createFixture(observer, 1_000n);
     await expect(observer.payableSettlementCase.create({
       data: {
@@ -138,9 +138,14 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         paymentExecutionId: submitted.paymentExecutionId,
         status: "submitted",
         revision: 2,
-        createdByUserId: "maker"
+        createdByUserId: "maker",
+        submittedByUserId: "submitter",
+        submittedAt: new Date()
       }
-    })).rejects.toThrow("payable_settlement_state_audit_invalid");
+    })).rejects.toThrow("payable_settlement_case_initial_state_invalid");
+    await expect(observer.payableSettlementCase.count({
+      where: { paymentExecutionId: submitted.paymentExecutionId }
+    })).resolves.toBe(1);
 
     const confirmed = await createFixture(observer, 1_000n);
     await expect(observer.payableSettlementCase.create({
@@ -151,9 +156,14 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         revision: 2,
         createdByUserId: "maker",
         submittedByUserId: "submitter",
-        submittedAt: new Date()
+        submittedAt: new Date(),
+        confirmedByUserId: "director",
+        confirmedAt: new Date()
       }
-    })).rejects.toThrow("payable_settlement_state_audit_invalid");
+    })).rejects.toThrow("payable_settlement_case_initial_state_invalid");
+    await expect(observer.payableSettlementCase.count({
+      where: { paymentExecutionId: confirmed.paymentExecutionId }
+    })).resolves.toBe(1);
 
     const returned = await createFixture(observer, 1_000n);
     await expect(observer.payableSettlementCase.create({
@@ -162,9 +172,14 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         paymentExecutionId: returned.paymentExecutionId,
         status: "review_returned",
         revision: 2,
-        createdByUserId: "maker"
+        createdByUserId: "maker",
+        submittedByUserId: "submitter",
+        submittedAt: new Date()
       }
-    })).rejects.toThrow("payable_settlement_state_audit_invalid");
+    })).rejects.toThrow("payable_settlement_case_initial_state_invalid");
+    await expect(observer.payableSettlementCase.count({
+      where: { paymentExecutionId: returned.paymentExecutionId }
+    })).resolves.toBe(1);
   });
 
   it("runs the real service with one durable allocation and receipt under an idempotent race", async () => {
