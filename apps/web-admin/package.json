@@ -24,6 +24,7 @@
     "test:e2e:handwritten-signature": "playwright test --config playwright.handwritten-signature.config.ts",
     "test:e2e:business-grid-canary": "playwright test --config playwright.business-grid-canary.config.ts",
     "test:e2e:settlement-workbench-v2": "playwright test --config playwright.settlement-workbench-v2.config.ts",
+    "test:e2e:payable-settlement": "playwright test --config playwright.payable-settlement.config.ts",
     "test:e2e:project-financing-quota-termination": "playwright test --config playwright.project-financing-quota-termination.config.ts",
     "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "lint": "eslint src --ext .ts,.vue",

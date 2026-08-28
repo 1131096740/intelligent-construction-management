@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 517,
-    "exactRouteCount": 517,
-    "normalizedRouteCount": 517,
+    "routeCount": 525,
+    "exactRouteCount": 525,
+    "normalizedRouteCount": 525,
     "classificationOverrideCount": 186,
     "consumerSurfaceOverrideCount": 7,
     "classificationOverrideSha256": "c8c406ff3842d7bb2d6b9d2a1c51e50c39f1ed94e5fc4de5f79088d14d1d374c",
     "consumerSurfaceOverrideSha256": "7a075f08796cf22cd1c0a56c9c4b97c8e22f3be8dce5e6d32fed3cee792b8075",
-    "derivedProductionPageCount": 331,
-    "pageRouteCount": 333,
+    "derivedProductionPageCount": 339,
+    "pageRouteCount": 341,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 6,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 385,
+      "web_api_wrapper": 393,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 385,
+    "productionWrapperRouteCount": 393,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -3260,6 +3260,182 @@
             "normalizedKey": "GET /organization/permission-integrity",
             "productionConsumers": [
               "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/capabilities",
+      "normalizedKey": "GET /payable-settlements/capabilities",
+      "controller": "PayableRegistryController",
+      "handler": "capabilities",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "fetchPayableSettlementCapabilities",
+            "method": "GET",
+            "normalizedPath": "/payable-settlements/capabilities",
+            "normalizedKey": "GET /payable-settlements/capabilities",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases",
+      "normalizedKey": "GET /payable-settlements/wage-payable-cases",
+      "controller": "PayableRegistryController",
+      "handler": "wagePayableCases",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "fetchWagePayableCases",
+            "method": "GET",
+            "normalizedPath": "/payable-settlements/wage-payable-cases",
+            "normalizedKey": "GET /payable-settlements/wage-payable-cases",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
+      "normalizedKey": "GET /payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+      "controller": "PayableRegistryController",
+      "handler": "paymentExecutionCandidates",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "fetchPaymentExecutionCandidates",
+            "method": "GET",
+            "normalizedPath": "/payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+            "normalizedKey": "GET /payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/workbench",
+      "normalizedKey": "GET /payable-settlements/workbench",
+      "controller": "PayableRegistryController",
+      "handler": "workbench",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "fetchPayableSettlementWorkbench",
+            "method": "GET",
+            "normalizedPath": "/payable-settlements/workbench",
+            "normalizedKey": "GET /payable-settlements/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
             ]
           }
         ],
@@ -13388,6 +13564,180 @@
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/confirm",
+      "normalizedKey": "POST /payable-settlements/:param/confirm",
+      "controller": "PayableRegistryController",
+      "handler": "confirm",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "confirmPayableSettlement",
+            "method": "POST",
+            "normalizedPath": "/payable-settlements/:param/confirm",
+            "normalizedKey": "POST /payable-settlements/:param/confirm",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/return",
+      "normalizedKey": "POST /payable-settlements/:param/return",
+      "controller": "PayableRegistryController",
+      "handler": "returnForReview",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "returnPayableSettlement",
+            "method": "POST",
+            "normalizedPath": "/payable-settlements/:param/return",
+            "normalizedKey": "POST /payable-settlements/:param/return",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/submit",
+      "normalizedKey": "POST /payable-settlements/:param/submit",
+      "controller": "PayableRegistryController",
+      "handler": "submit",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "submitPayableSettlement",
+            "method": "POST",
+            "normalizedPath": "/payable-settlements/:param/submit",
+            "normalizedKey": "POST /payable-settlements/:param/submit",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+      "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
+      "controller": "PayableRegistryController",
+      "handler": "allocatePaymentExecution",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+            "wrapper": "allocatePayableSettlement",
+            "method": "POST",
+            "normalizedPath": "/payable-settlements/wage-payable-cases/:param/allocations",
+            "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",

@@ -42,6 +42,8 @@ export const settlementMaintenanceRoleKeys =
 export const operatingTakeoverRoleKeys =
   ACTION_REQUIRED_ROLES["operating_takeover.manage"];
 export const clearingRoleKeys = ACTION_REQUIRED_ROLES["clearing.read"];
+export const payableSettlementRoleKeys =
+  ACTION_REQUIRED_ROLES["payable_settlement.read"];
 export const businessPartyCreateRoleKeys =
   ACTION_REQUIRED_ROLES["business_party.create"];
 
@@ -128,7 +130,12 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "付款",
     items: [
-      { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys }
+      { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
+      {
+        label: "工资应付核销工作台",
+        path: "/工资应付核销工作台",
+        requiredGlobalRoleKeys: payableSettlementRoleKeys
+      }
     ]
   },
   {
@@ -416,6 +423,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "统一资金办理工作台",
         component: () => import("../pages/funds/FundsWorkbenchPage.vue"),
         meta: { requiredRoleKeys: fundsWorkbenchRoleKeys, title: "统一资金办理工作台" }
+      },
+      {
+        path: "工资应付核销工作台",
+        component: () => import("../pages/payable-settlements/PayableSettlementWorkbenchPage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: payableSettlementRoleKeys,
+          title: "工资应付核销工作台"
+        }
       },
       {
         path: "付款工作台",

@@ -66,6 +66,29 @@ describe("permission policy table", () => {
     expect(canPerform("clearing.confirm", ["super_admin"])).toBe(false);
   });
 
+  it("limits payable settlement reads and writes to the frozen global finance duties", () => {
+    for (const action of [
+      "payable_settlement.read",
+      "payable_settlement.allocate",
+      "payable_settlement.submit"
+    ] as const) {
+      expect(ACTION_REQUIRED_ROLES[action]).toEqual([
+        "finance_staff",
+        "finance_director"
+      ]);
+    }
+    for (const action of [
+      "payable_settlement.confirm",
+      "payable_settlement.return"
+    ] as const) {
+      expect(ACTION_REQUIRED_ROLES[action]).toEqual(["finance_director"]);
+    }
+    expect(canPerform("payable_settlement.allocate", ["finance_staff"])).toBe(true);
+    expect(canPerform("payable_settlement.confirm", ["finance_staff"])).toBe(false);
+    expect(canPerform("payable_settlement.confirm", ["finance_director"])).toBe(true);
+    expect(canPerform("payable_settlement.allocate", ["super_admin"])).toBe(false);
+  });
+
   it("requires independent explicit authority for wage-sensitive reads, downloads, and exports", () => {
     for (const action of [
       "wage_sensitive_read",

@@ -1645,6 +1645,9 @@ model PaymentExecution {
   executedByUserId                String
   voucherFileId                   String   @unique
   createdAt                       DateTime @default(now())
+
+  payableSettlementCases          PayableSettlementCase[]
+  payableSettlementAllocations    PayableSettlementAllocation[]
 }
 
 model PaymentExecutionAllocation {
@@ -4204,4 +4207,75 @@ model WagePayableRef {
   @@index([projectId, debtorCompanyId])
   @@index([projectId, costBearingCompanyId])
   @@index([adjustsPayableRefId])
+}
+
+// POL-13A intentionally references an existing PaymentExecution instead of
+// creating another bank-payment fact. Each confirmed allocation stores the
+// exact source snapshot it consumed so later upstream corrections can derive
+// the effective balance without rewriting payment history.
+model PayableSettlementCase {
+  id                 String   @id @default(uuid())
+  paymentExecutionId String
+  status             String   @default("draft")
+  revision           Int      @default(1)
+  supersedesCaseId   String?
+  createdByUserId    String
+  submittedByUserId  String?
+  confirmedByUserId  String?
+  createdAt          DateTime @default(now())
+  submittedAt        DateTime?
+  confirmedAt        DateTime?
+  updatedAt          DateTime @updatedAt
+
+  paymentExecution PaymentExecution               @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_payment_execution_fkey")
+  allocations      PayableSettlementAllocation[]
+  receipts         PayableSettlementCommandReceipt[]
+  supersedesCase   PayableSettlementCase?          @relation("PayableSettlementCaseRevision", fields: [supersedesCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementCase_supersedes_case_fkey")
+  revisions        PayableSettlementCase[]         @relation("PayableSettlementCaseRevision")
+
+  @@unique([paymentExecutionId, revision], map: "PayableSettlementCase_execution_revision_key")
+  @@index([status, updatedAt])
+  @@index([supersedesCaseId])
+}
+
+model PayableSettlementAllocation {
+  id                   String   @id @default(uuid())
+  settlementCaseId     String
+  paymentExecutionId   String
+  payableRef           String
+  sourceType           String
+  sourceAggregateId    String
+  sourceLineId         String
+  confirmedVersionId   String
+  debtorCompanyId      String
+  payeeSubjectType     String
+  payeeSubjectId       String
+  currencyCode         String
+  beneficiaryProjectId String
+  sourceSnapshot       Json
+  confirmedAmountCents BigInt
+  amountCents          BigInt
+  createdByUserId      String
+  createdAt            DateTime @default(now())
+
+  settlementCase   PayableSettlementCase @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementAllocation_settlement_case_fkey")
+  paymentExecution PaymentExecution      @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementAllocation_payment_execution_fkey")
+
+  @@unique([settlementCaseId, payableRef], map: "PayableSettlementAllocation_case_payable_ref_key")
+  @@index([payableRef, createdAt])
+  @@index([paymentExecutionId])
+}
+
+model PayableSettlementCommandReceipt {
+  id                 String   @id @default(uuid())
+  idempotencyKey     String   @unique
+  payloadFingerprint String
+  action             String
+  settlementCaseId   String?
+  responseSnapshot   Json
+  createdAt          DateTime @default(now())
+
+  settlementCase PayableSettlementCase? @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementCommandReceipt_settlement_case_fkey")
+
+  @@index([settlementCaseId])
 }
