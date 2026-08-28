@@ -142,7 +142,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         submittedByUserId: "submitter",
         submittedAt: new Date()
       }
-    })).rejects.toThrow("payable_settlement_case_initial_state_invalid");
+    })).rejects.toThrow("payable_settlement_state_audit_invalid");
     await expect(observer.payableSettlementCase.count({
       where: { paymentExecutionId: submitted.paymentExecutionId }
     })).resolves.toBe(1);
@@ -160,7 +160,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         confirmedByUserId: "director",
         confirmedAt: new Date()
       }
-    })).rejects.toThrow("payable_settlement_case_initial_state_invalid");
+    })).rejects.toThrow("payable_settlement_state_audit_invalid");
     await expect(observer.payableSettlementCase.count({
       where: { paymentExecutionId: confirmed.paymentExecutionId }
     })).resolves.toBe(1);
@@ -176,7 +176,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         submittedByUserId: "submitter",
         submittedAt: new Date()
       }
-    })).rejects.toThrow("payable_settlement_case_initial_state_invalid");
+    })).rejects.toThrow("payable_settlement_state_audit_invalid");
     await expect(observer.payableSettlementCase.count({
       where: { paymentExecutionId: returned.paymentExecutionId }
     })).resolves.toBe(1);
@@ -743,12 +743,34 @@ async function createEligibleServiceFixture(client: PrismaClient, amountCents: b
       voucherFileId
     }
   });
+  await client.paymentExecutionWagePayableBinding.create({
+    data: {
+      id: randomUUID(),
+      paymentExecutionId,
+      wagePayableRefId: payableRef,
+      debtorCompanyId: companyId,
+      debtorCompanySnapshot: { companyId, name: "动态门付款主体" },
+      projectId,
+      projectSnapshot: { projectId, name: "动态门项目" },
+      creditorSubjectType: "business_party",
+      creditorUserId: null,
+      creditorBusinessPartyVersionId: businessPartyVersionId,
+      creditorSubjectIdentityKey: `business_party:${businessPartyVersionId}`,
+      creditorNameSnapshot: "动态门工资债权机构",
+      creditorUnifiedIdentitySnapshot: null,
+      creditorVersionFingerprint: "c".repeat(64),
+      creditorSnapshot: { subjectType: "business_party", businessPartyVersionId },
+      amountCents,
+      currencyCode: "CNY",
+      createdByUserId: actorUserId
+    }
+  });
 
   return {
     actorUserId,
     payableRef,
     paymentExecutionId,
-    caseRevision: 1
+    caseRevision: 0
   };
 }
 

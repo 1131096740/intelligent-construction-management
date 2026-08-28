@@ -527,7 +527,12 @@ export class PayableRegistryService {
       }
     });
     const contractVersionIds = [...new Set(requests.map((request) => request.contractVersionId))];
-    const [contractVersions, allocatedByExecution, allocatedByPair] = await Promise.all([
+    const [
+      contractVersions,
+      allocatedByExecution,
+      allocatedByPair,
+      paymentExecutionAllocations
+    ] = await Promise.all([
       contractVersionIds.length === 0 ? Promise.resolve([]) : db.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
         select: {
@@ -556,6 +561,10 @@ export class PayableRegistryService {
           settlementCase: { status: { in: ["draft", "submitted", "confirmed"] } }
         },
         _sum: { amountCents: true }
+      }),
+      executionIds.length === 0 ? Promise.resolve([]) : db.paymentExecutionAllocation.findMany({
+        where: { paymentExecutionId: { in: executionIds } },
+        select: { paymentExecutionId: true, amountCents: true }
       })
     ]);
     const requestById = new Map(requests.map((request) => [request.id, request]));
@@ -571,6 +580,16 @@ export class PayableRegistryService {
         `${row.paymentExecutionId}:${row.payableRef}`,
         row._sum.amountCents ?? 0n
       ])
+    );
+    const paymentExecutionAllocatedAmountById = paymentExecutionAllocations.reduce<Map<string, bigint>>(
+      (totals, allocation) => {
+        totals.set(
+          allocation.paymentExecutionId,
+          (totals.get(allocation.paymentExecutionId) ?? 0n) + allocation.amountCents
+        );
+        return totals;
+      },
+      new Map()
     );
     const candidates: EligiblePaymentCandidateState["candidates"][number][] = [];
     for (const execution of executions) {
@@ -610,7 +629,8 @@ export class PayableRegistryService {
         continue;
       }
       const executionAvailableAmountCents = execution.amountCents -
-        (allocatedAmountByExecutionId.get(execution.id) ?? 0n);
+        (allocatedAmountByExecutionId.get(execution.id) ?? 0n) -
+        (paymentExecutionAllocatedAmountById.get(execution.id) ?? 0n);
       const bindingAvailableAmountCents = wageBinding.amountCents -
         (allocatedAmountByExecutionAndPayable.get(`${execution.id}:${payableRef}`) ?? 0n);
       const availableAmountCents = [
@@ -641,7 +661,8 @@ export class PayableRegistryService {
         createdAt: execution.createdAt.toISOString()
       });
       const balanceFingerprint = commandFingerprint("payment_execution_selection_balance", {
-        executionAvailableAmountCents: availableAmountCents.toString(),
+        executionBalanceCents: executionAvailableAmountCents.toString(),
+        wageBindingBalanceCents: bindingAvailableAmountCents.toString(),
         payableRemainingAmountCents: allocatablePayableCents.toString()
       });
       const binding = {

@@ -445,6 +445,20 @@ describe("PayableRegistryService", () => {
     }));
   });
 
+  it("subtracts existing generic PaymentExecution allocations before exposing a wage candidate", async () => {
+    const harness = createAllocationHarness();
+    harness.tx.paymentExecutionAllocation.findMany.mockResolvedValue([{
+      paymentExecutionId: "execution-secret-1",
+      amountCents: 3_000n
+    }]);
+
+    await expect(
+      harness.service.listPaymentExecutionCandidates("finance-user", "payable-1")
+    ).resolves.toMatchObject({
+      candidates: [expect.objectContaining({ availableAmountCents: "7000" })]
+    });
+  });
+
   it("fails closed when approved and actual payer facts diverge or change after selection", async () => {
     const mismatchHarness = createAllocationHarness();
     mismatchHarness.tx.contractVersion.findMany.mockResolvedValue([{
@@ -525,9 +539,10 @@ describe("PayableRegistryService", () => {
       "payable-1"
     );
     const balanceSelected = balanceCandidates.candidates[0];
-    balanceHarness.tx.payableSettlementAllocation.aggregate.mockResolvedValue({
-      _sum: { amountCents: 1_000n }
-    });
+    balanceHarness.tx.paymentExecutionAllocation.findMany.mockResolvedValue([{
+      paymentExecutionId: "execution-secret-1",
+      amountCents: 1n
+    }]);
 
     await expect(balanceHarness.service.allocatePaymentExecution("finance-user", {
       payableRef: "payable-1",
