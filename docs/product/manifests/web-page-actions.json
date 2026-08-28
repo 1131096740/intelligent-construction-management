@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 271,
+    "registeredActionCount": 275,
     "pageActionCount": 53,
-    "backgroundActionCount": 218,
-    "reachableVueFileCount": 133,
-    "routeRootCount": 54,
-    "totalVueFileCount": 157,
-    "parsedVueFileCount": 157,
-    "reachableProductionModuleCount": 241,
-    "templateEventDirectiveCount": 900,
+    "backgroundActionCount": 222,
+    "reachableVueFileCount": 134,
+    "routeRootCount": 55,
+    "totalVueFileCount": 158,
+    "parsedVueFileCount": 158,
+    "reachableProductionModuleCount": 243,
+    "templateEventDirectiveCount": 907,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 266,
-    "candidateProductionMutationConsumerCount": 266,
-    "acceptedProductionMutationConsumerCount": 266,
-    "productionMutationConsumerPairCount": 266,
+    "coveredProductionMutationConsumerCount": 270,
+    "candidateProductionMutationConsumerCount": 270,
+    "acceptedProductionMutationConsumerCount": 270,
+    "productionMutationConsumerPairCount": 270,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 274,
-    "reachableProductionModuleCount": 241,
-    "totalVueFileCount": 157,
-    "parsedVueFileCount": 157
+    "totalProductionModuleCount": 276,
+    "reachableProductionModuleCount": 243,
+    "totalVueFileCount": 158,
+    "parsedVueFileCount": 158
   },
   "actions": [
     {
@@ -9365,6 +9365,272 @@
             "localCallChain": [
               "uploadOperatingTakeoverFileWithCapability",
               "uploadOperatingTakeoverSourceFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payable-settlement.allocate",
+      "usage": "background",
+      "routePaths": [
+        "/工资应付核销工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资应付核销工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "allocatePayableSettlementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 138,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.allocate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "allocatePayableSettlement",
+          "method": "POST",
+          "path": "/payable-settlements/wage-payable-cases/:param/allocations",
+          "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+            "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
+            "controller": "PayableRegistryController",
+            "handler": "allocatePaymentExecution",
+            "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "allocatePayableSettlementWithCapability",
+              "allocatePayableSettlement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payable-settlement.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/工资应付核销工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资应付核销工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmPayableSettlementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 158,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "confirmPayableSettlement",
+          "method": "POST",
+          "path": "/payable-settlements/:param/confirm",
+          "normalizedKey": "POST /payable-settlements/:param/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payable-settlements/:settlementCaseId/confirm",
+            "normalizedKey": "POST /payable-settlements/:param/confirm",
+            "controller": "PayableRegistryController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmPayableSettlementWithCapability",
+              "confirmPayableSettlement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payable-settlement.return",
+      "usage": "background",
+      "routePaths": [
+        "/工资应付核销工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资应付核销工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnPayableSettlementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 168,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.return",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "returnPayableSettlement",
+          "method": "POST",
+          "path": "/payable-settlements/:param/return",
+          "normalizedKey": "POST /payable-settlements/:param/return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payable-settlements/:settlementCaseId/return",
+            "normalizedKey": "POST /payable-settlements/:param/return",
+            "controller": "PayableRegistryController",
+            "handler": "returnForReview",
+            "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnPayableSettlementWithCapability",
+              "returnPayableSettlement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payable-settlement.submit",
+      "usage": "background",
+      "routePaths": [
+        "/工资应付核销工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资应付核销工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitPayableSettlementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 148,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.submit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+          "wrapper": "submitPayableSettlement",
+          "method": "POST",
+          "path": "/payable-settlements/:param/submit",
+          "normalizedKey": "POST /payable-settlements/:param/submit",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payable-settlements/:settlementCaseId/submit",
+            "normalizedKey": "POST /payable-settlements/:param/submit",
+            "controller": "PayableRegistryController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitPayableSettlementWithCapability",
+              "submitPayableSettlement"
             ]
           },
           "ticketFollowups": []

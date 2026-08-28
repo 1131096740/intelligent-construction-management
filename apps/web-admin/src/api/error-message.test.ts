@@ -26,4 +26,9 @@ describe("API error messages", () => {
     );
     expect(formatApiErrorMessage("Unexpected backend detail", 400, "提交失败")).toBe("提交失败：400");
   });
+
+  it("maps internal money units and coordination fields to a safe business fallback", () => {
+    expect(formatApiErrorMessage("核销金额必须按分填写为正整数", 400, "保存失败")).toBe("保存失败：400");
+    expect(formatApiErrorMessage("工资应付案件修订号无效", 409, "保存失败")).toBe("保存失败：409");
+  });
 });

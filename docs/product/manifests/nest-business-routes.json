@@ -1507,6 +1507,90 @@
     },
     {
       "method": "GET",
+      "path": "/payable-settlements/capabilities",
+      "normalizedKey": "GET /payable-settlements/capabilities",
+      "controller": "PayableRegistryController",
+      "handler": "capabilities",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases",
+      "normalizedKey": "GET /payable-settlements/wage-payable-cases",
+      "controller": "PayableRegistryController",
+      "handler": "wagePayableCases",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
+      "normalizedKey": "GET /payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+      "controller": "PayableRegistryController",
+      "handler": "paymentExecutionCandidates",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/workbench",
+      "normalizedKey": "GET /payable-settlements/workbench",
+      "controller": "PayableRegistryController",
+      "handler": "workbench",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/payments",
       "normalizedKey": "GET /payments",
       "controller": "PaymentController",
@@ -6441,6 +6525,88 @@
         "general_manager",
         "material_director",
         "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/confirm",
+      "normalizedKey": "POST /payable-settlements/:param/confirm",
+      "controller": "PayableRegistryController",
+      "handler": "confirm",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/return",
+      "normalizedKey": "POST /payable-settlements/:param/return",
+      "controller": "PayableRegistryController",
+      "handler": "returnForReview",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/submit",
+      "normalizedKey": "POST /payable-settlements/:param/submit",
+      "controller": "PayableRegistryController",
+      "handler": "submit",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+      "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
+      "controller": "PayableRegistryController",
+      "handler": "allocatePaymentExecution",
+      "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

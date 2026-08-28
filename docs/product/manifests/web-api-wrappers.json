@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 22,
-    "exportedFunctionCount": 520,
-    "transportWrapperCount": 500,
+    "apiModuleCount": 23,
+    "exportedFunctionCount": 528,
+    "transportWrapperCount": 508,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 522,
+    "mainRequestBindingCount": 530,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 522,
-    "productionConsumerCount": 394,
+    "requestEdgeCount": 530,
+    "productionConsumerCount": 402,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 274,
-    "reachableProductionModuleCount": 241
+    "productionModuleCount": 276,
+    "reachableProductionModuleCount": 243
   },
   "wrappers": [
     {
@@ -11883,6 +11883,249 @@
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
       "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "allocatePayableSettlement",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 151,
+          "method": "POST",
+          "path": "/payable-settlements/wage-payable-cases/:param/allocations",
+          "normalizedPath": "/payable-settlements/wage-payable-cases/:param/allocations",
+          "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "allocatePayableSettlement",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmPayableSettlement",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 151,
+          "method": "POST",
+          "path": "/payable-settlements/:param/confirm",
+          "normalizedPath": "/payable-settlements/:param/confirm",
+          "normalizedKey": "POST /payable-settlements/:param/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmPayableSettlement",
+              "lifecycle",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPayableSettlementCapabilities",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 147,
+          "method": "GET",
+          "path": "/payable-settlements/capabilities",
+          "normalizedPath": "/payable-settlements/capabilities",
+          "normalizedKey": "GET /payable-settlements/capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPayableSettlementCapabilities",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPayableSettlementWorkbench",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 147,
+          "method": "GET",
+          "path": "/payable-settlements/workbench",
+          "normalizedPath": "/payable-settlements/workbench",
+          "normalizedKey": "GET /payable-settlements/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPayableSettlementWorkbench",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPaymentExecutionCandidates",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 147,
+          "method": "GET",
+          "path": "/payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+          "normalizedPath": "/payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+          "normalizedKey": "GET /payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentExecutionCandidates",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchWagePayableCases",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 147,
+          "method": "GET",
+          "path": "/payable-settlements/wage-payable-cases",
+          "normalizedPath": "/payable-settlements/wage-payable-cases",
+          "normalizedKey": "GET /payable-settlements/wage-payable-cases",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchWagePayableCases",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "returnPayableSettlement",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 151,
+          "method": "POST",
+          "path": "/payable-settlements/:param/return",
+          "normalizedPath": "/payable-settlements/:param/return",
+          "normalizedKey": "POST /payable-settlements/:param/return",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnPayableSettlement",
+              "lifecycle",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "submitPayableSettlement",
+      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 151,
+          "method": "POST",
+          "path": "/payable-settlements/:param/submit",
+          "normalizedPath": "/payable-settlements/:param/submit",
+          "normalizedKey": "POST /payable-settlements/:param/submit",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitPayableSettlement",
+              "lifecycle",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/payable-settlement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {

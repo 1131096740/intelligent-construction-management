@@ -4613,6 +4613,46 @@
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "confirmWageStatement" }]
     },
     {
+      "id": "payable-settlement.allocate",
+      "usage": "background",
+      "routePaths": ["/工资应付核销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "allocatePayableSettlementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.allocate" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "allocatePayableSettlement" }]
+    },
+    {
+      "id": "payable-settlement.submit",
+      "usage": "background",
+      "routePaths": ["/工资应付核销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitPayableSettlementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.submit" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "submitPayableSettlement" }]
+    },
+    {
+      "id": "payable-settlement.confirm",
+      "usage": "background",
+      "routePaths": ["/工资应付核销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmPayableSettlementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "confirmPayableSettlement" }]
+    },
+    {
+      "id": "payable-settlement.return",
+      "usage": "background",
+      "routePaths": ["/工资应付核销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnPayableSettlementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.return" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts", "name": "returnPayableSettlement" }]
+    },
+    {
       "id": "global-invoice.create",
       "usage": "background",
       "routePaths": ["/全局发票与清分分配"],

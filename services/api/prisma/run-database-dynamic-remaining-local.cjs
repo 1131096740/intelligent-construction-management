@@ -177,6 +177,16 @@ const GROUPS = [
     requiresOperatingLedgerWriteSecret: true
   },
   {
+    id: "payable_settlement",
+    database: "jiangkong_payable_settlement_dynamic_test",
+    files: ["src/database/payable-settlement-concurrency.spec.ts"],
+    flags: {
+      RUN_PAYABLE_SETTLEMENT_DATABASE: "1",
+      PAYABLE_SETTLEMENT_DATABASE_URL: "databaseUrl"
+    },
+    pendingTests: 5
+  },
+  {
     id: "wage_statement",
     database: "jiangkong_wage_statement_dynamic_test",
     files: ["src/database/wage-statement-constraints.spec.ts"],

@@ -1,0 +1,306 @@
+-- POL-13A: closed generic payable-settlement cases reference the existing
+-- PaymentExecution fact. No bank-payment table is introduced here.
+CREATE TABLE "PayableSettlementCase" (
+  "id" TEXT NOT NULL,
+  "paymentExecutionId" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'draft',
+  "revision" INTEGER NOT NULL DEFAULT 1,
+  "supersedesCaseId" TEXT,
+  "createdByUserId" TEXT NOT NULL,
+  "submittedByUserId" TEXT,
+  "confirmedByUserId" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "submittedAt" TIMESTAMP(3),
+  "confirmedAt" TIMESTAMP(3),
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "PayableSettlementCase_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "PayableSettlementCase_status_check" CHECK ("status" IN ('draft', 'submitted', 'review_returned', 'confirmed')),
+  CONSTRAINT "PayableSettlementCase_revision_check" CHECK ("revision" > 0)
+);
+
+CREATE TABLE "PayableSettlementAllocation" (
+  "id" TEXT NOT NULL,
+  "settlementCaseId" TEXT NOT NULL,
+  "paymentExecutionId" TEXT NOT NULL,
+  "payableRef" TEXT NOT NULL,
+  "sourceType" TEXT NOT NULL,
+  "sourceAggregateId" TEXT NOT NULL,
+  "sourceLineId" TEXT NOT NULL,
+  "confirmedVersionId" TEXT NOT NULL,
+  "debtorCompanyId" TEXT NOT NULL,
+  "payeeSubjectType" TEXT NOT NULL,
+  "payeeSubjectId" TEXT NOT NULL,
+  "currencyCode" TEXT NOT NULL,
+  "beneficiaryProjectId" TEXT NOT NULL,
+  "sourceSnapshot" JSONB NOT NULL,
+  "confirmedAmountCents" BIGINT NOT NULL,
+  "amountCents" BIGINT NOT NULL,
+  "createdByUserId" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "PayableSettlementAllocation_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "PayableSettlementAllocation_amount_check" CHECK ("amountCents" > 0),
+  CONSTRAINT "PayableSettlementAllocation_confirmed_amount_check" CHECK ("confirmedAmountCents" > 0),
+  CONSTRAINT "PayableSettlementAllocation_currency_check" CHECK ("currencyCode" = 'CNY')
+);
+
+CREATE TABLE "PayableSettlementCommandReceipt" (
+  "id" TEXT NOT NULL,
+  "idempotencyKey" TEXT NOT NULL,
+  "payloadFingerprint" TEXT NOT NULL,
+  "action" TEXT NOT NULL,
+  "settlementCaseId" TEXT,
+  "responseSnapshot" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "PayableSettlementCommandReceipt_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "PayableSettlementCase_execution_revision_key"
+  ON "PayableSettlementCase"("paymentExecutionId", "revision");
+CREATE INDEX "PayableSettlementCase_status_updatedAt_idx"
+  ON "PayableSettlementCase"("status", "updatedAt");
+CREATE INDEX "PayableSettlementCase_supersedesCaseId_idx"
+  ON "PayableSettlementCase"("supersedesCaseId");
+CREATE UNIQUE INDEX "PayableSettlementAllocation_case_payable_ref_key"
+  ON "PayableSettlementAllocation"("settlementCaseId", "payableRef");
+CREATE INDEX "PayableSettlementAllocation_payableRef_createdAt_idx"
+  ON "PayableSettlementAllocation"("payableRef", "createdAt");
+CREATE INDEX "PayableSettlementAllocation_paymentExecutionId_idx"
+  ON "PayableSettlementAllocation"("paymentExecutionId");
+CREATE UNIQUE INDEX "PayableSettlementCommandReceipt_idempotencyKey_key"
+  ON "PayableSettlementCommandReceipt"("idempotencyKey");
+CREATE INDEX "PayableSettlementCommandReceipt_settlementCaseId_idx"
+  ON "PayableSettlementCommandReceipt"("settlementCaseId");
+
+ALTER TABLE "PayableSettlementCase"
+  ADD CONSTRAINT "PayableSettlementCase_payment_execution_fkey"
+  FOREIGN KEY ("paymentExecutionId") REFERENCES "PaymentExecution"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayableSettlementCase"
+  ADD CONSTRAINT "PayableSettlementCase_supersedes_case_fkey"
+  FOREIGN KEY ("supersedesCaseId") REFERENCES "PayableSettlementCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayableSettlementAllocation"
+  ADD CONSTRAINT "PayableSettlementAllocation_settlement_case_fkey"
+  FOREIGN KEY ("settlementCaseId") REFERENCES "PayableSettlementCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayableSettlementAllocation"
+  ADD CONSTRAINT "PayableSettlementAllocation_payment_execution_fkey"
+  FOREIGN KEY ("paymentExecutionId") REFERENCES "PaymentExecution"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayableSettlementCommandReceipt"
+  ADD CONSTRAINT "PayableSettlementCommandReceipt_settlement_case_fkey"
+  FOREIGN KEY ("settlementCaseId") REFERENCES "PayableSettlementCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Submitted payloads are frozen. A returned or confirmed case is terminal;
+-- corrections create a new revision instead of rewriting the old payload.
+CREATE FUNCTION guard_confirmed_payable_settlement_case()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- Creation is always an inert draft.  Submitted/confirmed lifecycle
+    -- states must be reached only through the transactional SoD, balance,
+    -- and audit-gated commands.
+    NEW."status" := 'draft';
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    IF OLD."status" <> 'draft' THEN
+      RAISE EXCEPTION 'payable_settlement_frozen_case_immutable';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD."status" IN ('confirmed', 'review_returned') THEN
+      RAISE EXCEPTION 'payable_settlement_confirmed_case_immutable';
+    END IF;
+    IF NEW."paymentExecutionId" <> OLD."paymentExecutionId"
+       OR NEW."createdByUserId" <> OLD."createdByUserId"
+       OR NEW."createdAt" <> OLD."createdAt"
+       OR NEW."supersedesCaseId" IS DISTINCT FROM OLD."supersedesCaseId" THEN
+      RAISE EXCEPTION 'payable_settlement_case_identity_immutable';
+    END IF;
+    IF OLD."status" = 'submitted'
+       AND (NEW."submittedByUserId" IS DISTINCT FROM OLD."submittedByUserId"
+         OR NEW."submittedAt" IS DISTINCT FROM OLD."submittedAt") THEN
+      RAISE EXCEPTION 'payable_settlement_submitted_audit_immutable';
+    END IF;
+    IF OLD."status" = 'submitted' AND NEW."status" NOT IN ('confirmed', 'review_returned') THEN
+      RAISE EXCEPTION 'payable_settlement_submitted_transition_invalid';
+    END IF;
+    IF OLD."status" = 'draft' AND NEW."status" NOT IN ('draft', 'submitted') THEN
+      RAISE EXCEPTION 'payable_settlement_draft_transition_invalid';
+    END IF;
+    IF NEW."revision" <> OLD."revision" + 1 THEN
+      RAISE EXCEPTION 'payable_settlement_revision_invalid';
+    END IF;
+  END IF;
+  IF (NEW."status" = 'draft'
+        AND (NEW."submittedByUserId" IS NOT NULL OR NEW."submittedAt" IS NOT NULL
+          OR NEW."confirmedByUserId" IS NOT NULL OR NEW."confirmedAt" IS NOT NULL))
+     OR (NEW."status" = 'submitted'
+        AND (NEW."submittedByUserId" IS NULL OR NEW."submittedAt" IS NULL
+          OR NEW."confirmedByUserId" IS NOT NULL OR NEW."confirmedAt" IS NOT NULL))
+     OR (NEW."status" = 'confirmed'
+        AND (NEW."submittedByUserId" IS NULL OR NEW."submittedAt" IS NULL
+          OR NEW."confirmedByUserId" IS NULL OR NEW."confirmedAt" IS NULL))
+     OR (NEW."status" = 'review_returned'
+        AND (NEW."submittedByUserId" IS NULL OR NEW."submittedAt" IS NULL
+          OR NEW."confirmedByUserId" IS NOT NULL OR NEW."confirmedAt" IS NOT NULL)) THEN
+    RAISE EXCEPTION 'payable_settlement_state_audit_invalid';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION guard_confirmed_payable_settlement_allocation()
+RETURNS TRIGGER AS $$
+DECLARE
+  case_status TEXT;
+  case_payment_execution_id TEXT;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW."settlementCaseId" <> OLD."settlementCaseId" THEN
+    RAISE EXCEPTION 'payable_settlement_allocation_case_immutable';
+  END IF;
+  SELECT "status", "paymentExecutionId"
+  INTO case_status, case_payment_execution_id
+  FROM "PayableSettlementCase"
+  WHERE "id" = CASE WHEN TG_OP = 'INSERT' THEN NEW."settlementCaseId" ELSE OLD."settlementCaseId" END;
+  IF case_status IS NULL THEN
+    RAISE EXCEPTION 'payable_settlement_case_missing';
+  END IF;
+  IF case_status <> 'draft' THEN
+    RAISE EXCEPTION 'payable_settlement_confirmed_allocation_immutable';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  IF case_payment_execution_id <> NEW."paymentExecutionId" THEN
+    RAISE EXCEPTION 'payable_settlement_allocation_execution_mismatch';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- The typed allocation columns must retain the immutable source coordinates;
+-- JSON snapshots are explanatory only and cannot be used to bypass this
+-- boundary.  The service still owns the serializable cross-row balance check.
+CREATE FUNCTION guard_payable_settlement_allocation_source()
+RETURNS TRIGGER AS $$
+DECLARE
+  source_confirmed_version_id TEXT;
+  source_debtor_company_id TEXT;
+  source_project_id TEXT;
+  source_amount_cents BIGINT;
+  source_effective_amount_cents BIGINT;
+  source_payee_subject_type TEXT;
+  source_payee_subject_id TEXT;
+  execution_amount_cents BIGINT;
+  execution_company_entity_id TEXT;
+  execution_payment_subject_type TEXT;
+  request_project_id TEXT;
+  request_contract_id TEXT;
+  request_payment_subject_type TEXT;
+  contract_version_contract_id TEXT;
+  contract_project_id TEXT;
+  contract_company_entity_id TEXT;
+  contract_signing_subject_type TEXT;
+  contract_type_key TEXT;
+BEGIN
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  IF NEW."sourceType" <> 'wage_payable_ref' THEN
+    RAISE EXCEPTION 'payable_settlement_source_type_invalid';
+  END IF;
+
+  SELECT ref."confirmedVersionId", ref."debtorCompanyId", ref."projectId",
+         ref."amountCents", breakdown."creditorSubjectType",
+         breakdown."creditorSubjectIdentityKey"
+  INTO source_confirmed_version_id, source_debtor_company_id, source_project_id,
+       source_amount_cents, source_payee_subject_type, source_payee_subject_id
+  FROM "WagePayableRef" ref
+  INNER JOIN "WageCreditorBreakdown" breakdown
+    ON breakdown."id" = ref."creditorBreakdownId"
+  INNER JOIN "WageStatementVersion" version
+    ON version."id" = ref."confirmedVersionId"
+  WHERE ref."id" = NEW."payableRef"
+    AND ref."direction" = 'increase'
+    AND ref."adjustsPayableRefId" IS NULL
+    AND version."status" = 'confirmed';
+  IF NOT FOUND OR source_payee_subject_type IS NULL OR source_payee_subject_id IS NULL THEN
+    RAISE EXCEPTION 'payable_settlement_source_not_confirmed';
+  END IF;
+
+  -- Keep the typed allocation tied to the same project and payer facts as the
+  -- existing PaymentExecution.  Service checks are still required for fresh
+  -- authorization and balance, but this trigger prevents direct SQL writers
+  -- from crossing the project/company boundary.
+  SELECT execution."amountCents", execution."companyEntityIdSnapshot",
+         execution."paymentSubjectType", request."projectId", request."contractId",
+         request."paymentSubjectType", version."contractId", version."companyEntityIdSnapshot",
+         version."signingSubjectType", contract."projectId", contract."contractTypeKey"
+  INTO execution_amount_cents, execution_company_entity_id,
+       execution_payment_subject_type, request_project_id, request_contract_id,
+       request_payment_subject_type, contract_version_contract_id,
+       contract_company_entity_id, contract_signing_subject_type,
+       contract_project_id, contract_type_key
+  FROM "PaymentExecution" execution
+  INNER JOIN "PaymentRequest" request
+    ON request."id" = execution."paymentRequestId"
+  INNER JOIN "ContractVersion" version
+    ON version."id" = request."contractVersionId"
+  INNER JOIN "Contract" contract
+    ON contract."id" = request."contractId"
+  WHERE execution."id" = NEW."paymentExecutionId";
+  IF NOT FOUND
+     OR execution_payment_subject_type IS DISTINCT FROM 'our_company'
+     OR request_payment_subject_type IS DISTINCT FROM 'our_company'
+     OR contract_signing_subject_type IS DISTINCT FROM 'our_company'
+     OR contract_type_key IS DISTINCT FROM 'labor_subcontract'
+     OR execution_company_entity_id IS NULL
+     OR contract_company_entity_id IS NULL
+     OR request_project_id IS NULL
+     OR request_contract_id IS NULL
+     OR contract_version_contract_id IS DISTINCT FROM request_contract_id
+     OR contract_project_id IS DISTINCT FROM request_project_id THEN
+    RAISE EXCEPTION 'payable_settlement_execution_scope_invalid';
+  END IF;
+  IF execution_company_entity_id IS DISTINCT FROM NEW."debtorCompanyId"
+     OR contract_company_entity_id IS DISTINCT FROM NEW."debtorCompanyId"
+     OR request_project_id IS DISTINCT FROM NEW."beneficiaryProjectId" THEN
+    RAISE EXCEPTION 'payable_settlement_execution_scope_invalid';
+  END IF;
+
+  SELECT source_amount_cents + COALESCE(SUM(
+    CASE adjustment."direction"
+      WHEN 'increase' THEN adjustment."amountCents"
+      WHEN 'decrease' THEN -adjustment."amountCents"
+      ELSE 0
+    END
+  ), 0)
+  INTO source_effective_amount_cents
+  FROM "WagePayableRef" adjustment
+  WHERE adjustment."adjustsPayableRefId" = NEW."payableRef";
+  IF source_effective_amount_cents < 0 THEN
+    RAISE EXCEPTION 'payable_settlement_source_balance_invalid';
+  END IF;
+
+  IF NEW."amountCents" > execution_amount_cents THEN
+    RAISE EXCEPTION 'payable_settlement_execution_amount_invalid';
+  END IF;
+
+  IF NEW."sourceAggregateId" IS DISTINCT FROM source_confirmed_version_id
+     OR NEW."sourceLineId" IS DISTINCT FROM NEW."payableRef"
+     OR NEW."confirmedVersionId" IS DISTINCT FROM source_confirmed_version_id
+     OR NEW."debtorCompanyId" IS DISTINCT FROM source_debtor_company_id
+     OR NEW."payeeSubjectType" IS DISTINCT FROM source_payee_subject_type
+     OR NEW."payeeSubjectId" IS DISTINCT FROM source_payee_subject_id
+     OR NEW."beneficiaryProjectId" IS DISTINCT FROM source_project_id
+     OR NEW."confirmedAmountCents" IS DISTINCT FROM source_amount_cents
+     OR NEW."amountCents" > source_effective_amount_cents THEN
+    RAISE EXCEPTION 'payable_settlement_source_snapshot_invalid';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "PayableSettlementCase_confirmed_immutable"
+  BEFORE INSERT OR UPDATE OR DELETE ON "PayableSettlementCase"
+  FOR EACH ROW EXECUTE FUNCTION guard_confirmed_payable_settlement_case();
+CREATE TRIGGER "PayableSettlementAllocation_confirmed_immutable"
+  BEFORE INSERT OR UPDATE OR DELETE ON "PayableSettlementAllocation"
+  FOR EACH ROW EXECUTE FUNCTION guard_confirmed_payable_settlement_allocation();
+CREATE TRIGGER "PayableSettlementAllocation_source_guard"
+  BEFORE INSERT OR UPDATE OR DELETE ON "PayableSettlementAllocation"
+  FOR EACH ROW EXECUTE FUNCTION guard_payable_settlement_allocation_source();

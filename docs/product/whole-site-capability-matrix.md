@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `32a6605f579637b6a91904c963ee4d178a723c310ceec058d50e9bb305761e75` |
-| webApiWrappers | ready | `3d5e30653c03685d713647d2d7951e59253b68c94ffc80d4502c36347a0ad4cd` |
-| webPageActions | ready | `26de356528d219b4c55fb070e3d2a6297712b1632c9a8dbd7abf1e3eb0d153e4` |
-| routeUsage | ready | `335309b8925db5d39d7282db5b1ba9f264623acaf9bd75c28255c498f4e1f1b2` |
+| nestRoutes | ready | `670533491e4dbcdd0779ea40500a732f6a723f4b7d8a21e16f68ad03da5c2a70` |
+| webApiWrappers | ready | `9c3566d6115b2091d5333c5feaf82f7549de8aa232edc38daca1b5de76a0d736` |
+| webPageActions | ready | `f12d54e617c8d4b32d84c17c34bdc9eb56720b71b0ab9dbfced09f38e8de7594` |
+| routeUsage | ready | `64da129e33d28514b5a33ed858e43311d4318e7f878019e3445719d8fe916a47` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 517 |
-| pageRouteCount | 333 |
+| routeCount | 525 |
+| pageRouteCount | 341 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 6 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 522 |
+| mainRequestBindingCount | 530 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 271 |
-| actionBindingCount | 306 |
-| acceptedActionBindingCount | 286 |
+| registeredActionCount | 275 |
+| actionBindingCount | 310 |
+| acceptedActionBindingCount | 290 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 266 |
-| coveredProductionMutationConsumerPairCount | 266 |
+| productionMutationConsumerPairCount | 270 |
+| coveredProductionMutationConsumerPairCount | 270 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -116,6 +116,10 @@
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | — |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
+| GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
+| GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
+| GET | /payable-settlements/wage-payable-cases | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchWagePayableCases | — | not_applicable | — |
+| GET | /payable-settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementWorkbench | — | not_applicable | — |
 | GET | /payments/:paymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentActionCapability | — | not_applicable | — |
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
@@ -367,6 +371,10 @@
 | POST | /organization/role-changes/batch-preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch | — | not_applicable | — |
 | POST | /organization/role-changes/preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval | — | not_applicable | — |
 | POST | /organization/users | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#createOrganizationUser | — | not_applicable | — |
+| POST | /payable-settlements/:settlementCaseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#confirmPayableSettlement | payable-settlement.confirm | covered | — |
+| POST | /payable-settlements/:settlementCaseId/return | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnPayableSettlement | payable-settlement.return | covered | — |
+| POST | /payable-settlements/:settlementCaseId/submit | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#submitPayableSettlement | payable-settlement.submit | covered | — |
+| POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |
 | POST | /payments/:paymentId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | payment-detail.remind | covered | — |

@@ -61,6 +61,13 @@ export function formatApiErrorMessage(message: string, status: number, fallback:
     return "请选择当前单据下可用的业务文件后再提交。";
   }
 
+  // Internal money units and coordination fields are API details, not
+  // business language.  Keep them out of any page-level error surface even
+  // when a backend message contains only Chinese text.
+  if (/(?:按分|整数分|正整数分|修订号|候选引用|幂等键|UUID|selectionRef|paymentExecutionId|payableRef)/iu.test(text)) {
+    return statusText(status, fallback);
+  }
+
   if (/[A-Za-z_][A-Za-z0-9_]*/.test(text)) {
     return statusText(status, fallback);
   }

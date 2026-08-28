@@ -233,6 +233,7 @@ describe("PaymentRequestService", () => {
       code: string;
       projectId: string;
       contractId: string;
+      contractTypeKey: string;
       contractVersionId: string;
       paymentTermsVersionId: string;
       paymentTermsStageId: string | null;
@@ -255,6 +256,7 @@ describe("PaymentRequestService", () => {
       code: "FK-2026-012",
       projectId: "project-1",
       contractId: "contract-1",
+      contractTypeKey: "labor_subcontract",
       contractVersionId: "contract-version-1",
       settlementId: "settlement-1",
       sourceType: "settlement",
@@ -432,6 +434,173 @@ describe("PaymentRequestService", () => {
     );
   });
 
+  it("rejects an incomplete wage-creditor matrix before opening the payment transaction", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(paymentService.recordExecution("payment-1", "cashier-1", {
+      ...paymentExecutionCoordinates,
+      amountCents: "30000",
+      paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      wagePayableBindings: [{
+        payableRef: "00000000-0000-4000-8000-000000000031",
+        amountCents: "29999"
+      }]
+    })).rejects.toThrow("工资债权关联金额必须完整等于本次实付金额");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("freezes multiple employee and business-party wage creditors on one payment execution", async () => {
+    const fixture = hardenedPaymentExecutionFixture();
+    const employeeRef = "00000000-0000-4000-8000-000000000032";
+    const institutionRef = "00000000-0000-4000-8000-000000000033";
+    const wagePayableRow = (input: {
+      id: string;
+      subjectType: "employee_user" | "business_party";
+      identityKey: string;
+      name: string;
+      amountCents: bigint;
+    }) => ({
+      id: input.id,
+      confirmedVersionId: "version-1",
+      projectAllocationId: "project-allocation-1",
+      creditorBreakdownId: `creditor-${input.id}`,
+      debtorCompanyId: "company-1",
+      costBearingCompanyId: "company-1",
+      projectId: "project-1",
+      personLineId: "person-line-1",
+      amountCents: input.amountCents,
+      direction: "increase",
+      adjustsPayableRefId: null,
+      debtorCompanySnapshot: { companyId: "company-1" },
+      projectSnapshot: { projectId: "project-1" },
+      creditorSnapshot: {
+        subjectType: input.subjectType,
+        identityKey: input.identityKey,
+        name: input.name
+      },
+      confirmedVersion: { status: "confirmed" },
+      creditorBreakdown: {
+        creditorSubjectType: input.subjectType,
+        creditorUserId: input.subjectType === "employee_user" ? "user-1" : null,
+        creditorBusinessPartyVersionId: input.subjectType === "business_party" ? "party-version-1" : null,
+        creditorSubjectIdentityKey: input.identityKey,
+        creditorNameSnapshot: input.name,
+        creditorUnifiedIdentitySnapshot: input.subjectType === "business_party" ? "统一社会信用代码-1" : null,
+        creditorVersionFingerprint: "version-fingerprint-1"
+      },
+      adjustments: []
+    });
+    const payableRows = [
+      wagePayableRow({
+        id: employeeRef,
+        subjectType: "employee_user",
+        identityKey: "employee_user:user-1",
+        name: "员工冻结名",
+        amountCents: 20_000n
+      }),
+      wagePayableRow({
+        id: institutionRef,
+        subjectType: "business_party",
+        identityKey: "business_party:party-version-1",
+        name: "代发机构冻结名",
+        amountCents: 10_000n
+      })
+    ];
+    const tx = fixture.tx as typeof fixture.tx & {
+      wagePayableRef: { findMany: jest.Mock };
+      paymentExecutionWagePayableBinding: { findMany: jest.Mock; create: jest.Mock };
+    };
+    tx.wagePayableRef = {
+      findMany: jest.fn().mockResolvedValue(payableRows)
+    };
+    tx.paymentExecutionWagePayableBinding = {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({})
+    };
+
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      fixture.prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+
+    const result = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+      ...paymentExecutionCoordinates,
+      amountCents: "30000",
+      paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      wagePayableBindings: [
+        { payableRef: employeeRef, amountCents: "20000" },
+        { payableRef: institutionRef, amountCents: "10000" }
+      ]
+    });
+
+    expect(result).toEqual({
+      amountCents: "30000",
+      paidAt: new Date("2026-06-22T00:00:00.000Z"),
+      paymentSubjectType: "our_company"
+    });
+    for (const forbiddenField of [
+      "id",
+      "idempotencyKey",
+      "paymentRequestId",
+      "settlementId",
+      "executedByUserId",
+      "voucherFileId",
+      "companyEntityIdSnapshot",
+      "companyEntityNameSnapshot",
+      "companyEntityCreditCodeSnapshot"
+    ]) {
+      expect(result).not.toHaveProperty(forbiddenField);
+    }
+    expect(JSON.stringify(result)).not.toContain("execution-hardened-1");
+    const auditMetadata = audit.record.mock.calls.at(-1)?.[1]?.metadata;
+    expect(auditMetadata).toEqual(expect.objectContaining({ executionFingerprint: expect.any(String) }));
+    expect(auditMetadata).not.toHaveProperty("executionId");
+    expect(auditMetadata).not.toHaveProperty("voucherFileId");
+    expect(JSON.stringify(auditMetadata)).not.toContain("execution-hardened-1");
+
+    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenCalledTimes(2);
+    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        paymentExecutionId: "execution-hardened-1",
+        wagePayableRefId: employeeRef,
+        creditorSubjectType: "employee_user",
+        creditorUserId: "user-1",
+        creditorBusinessPartyVersionId: null,
+        creditorSubjectIdentityKey: "employee_user:user-1",
+        amountCents: 20_000n
+      })
+    });
+    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        paymentExecutionId: "execution-hardened-1",
+        wagePayableRefId: institutionRef,
+        creditorSubjectType: "business_party",
+        creditorUserId: null,
+        creditorBusinessPartyVersionId: "party-version-1",
+        creditorSubjectIdentityKey: "business_party:party-version-1",
+        amountCents: 10_000n
+      })
+    });
+  });
+
   it("rejects payment request creation when the service is unavailable", async () => {
     await expect(
       service.create({
@@ -441,6 +610,82 @@ describe("PaymentRequestService", () => {
       })
     ).rejects.toThrow("付款申请创建服务暂不可用，请稍后重试或联系管理员");
   });
+
+  it.each(["P2002", "P2034"])(
+    "redacts a wage-bound idempotent replay after %s",
+    async (code) => {
+      const existingExecution = {
+        id: "execution-wage-replay",
+        idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
+        paymentRequestId: "payment-1",
+        settlementId: "settlement-1",
+        paymentSubjectType: "our_company",
+        companyEntityIdSnapshot: "company-1",
+        companyEntityNameSnapshot: "建工智管建设有限公司",
+        companyEntityCreditCodeSnapshot: "91310000TEST000001",
+        amountCents: 30_000n,
+        paidAt: new Date("2026-06-22T00:00:00.000Z"),
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      };
+      const prisma = {
+        $transaction: jest.fn().mockRejectedValue({ code }),
+        paymentExecution: {
+          findUnique: jest.fn().mockResolvedValue(existingExecution)
+        },
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "payment-1",
+            settlementId: "settlement-1",
+            contractVersionId: "contract-version-1",
+            paymentSubjectType: "our_company"
+          })
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            signingSubjectType: "our_company",
+            companyEntityIdSnapshot: "company-1",
+            companyEntityNameSnapshot: "建工智管建设有限公司",
+            companyEntityCreditCodeSnapshot: "91310000TEST000001"
+          })
+        },
+        paymentExecutionWagePayableBinding: {
+          findMany: jest.fn().mockResolvedValue([{
+            wagePayableRefId: "00000000-0000-4000-8000-000000000031",
+            amountCents: 30_000n
+          }])
+        }
+      };
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      await expect(
+        paymentService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "30000",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password",
+          wagePayableBindings: [{
+            payableRef: "00000000-0000-4000-8000-000000000031",
+            amountCents: "30000"
+          }]
+        })
+      ).resolves.toEqual({
+        amountCents: "30000",
+        paidAt: new Date("2026-06-22T00:00:00.000Z"),
+        paymentSubjectType: "our_company"
+      });
+    }
+  );
 
   it("rejects payment request before settlement is effective", () => {
     expect(() =>
