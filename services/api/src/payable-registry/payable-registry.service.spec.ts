@@ -467,6 +467,7 @@ describe("PayableRegistryService", () => {
     const harness = createAllocationHarness();
     harness.tx.paymentExecutionAllocation.findMany.mockResolvedValue([{
       paymentExecutionId: "execution-secret-1",
+      allocationType: "contract_due_payment",
       amountCents: 3_000n
     }]);
 
@@ -559,6 +560,7 @@ describe("PayableRegistryService", () => {
     const balanceSelected = balanceCandidates.candidates[0];
     balanceHarness.tx.paymentExecutionAllocation.findMany.mockResolvedValue([{
       paymentExecutionId: "execution-secret-1",
+      allocationType: "contract_due_payment",
       amountCents: 1n
     }]);
 

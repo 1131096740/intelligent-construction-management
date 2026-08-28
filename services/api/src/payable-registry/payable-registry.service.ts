@@ -572,7 +572,7 @@ export class PayableRegistryService {
       }),
       executionIds.length === 0 ? Promise.resolve([]) : db.paymentExecutionAllocation.findMany({
         where: { paymentExecutionId: { in: executionIds } },
-        select: { paymentExecutionId: true, amountCents: true }
+        select: { paymentExecutionId: true, allocationType: true, amountCents: true }
       })
     ]);
     const requestById = new Map(requests.map((request) => [request.id, request]));
@@ -592,6 +592,7 @@ export class PayableRegistryService {
     );
     const paymentExecutionAllocatedAmountById = paymentExecutionAllocations.reduce<Map<string, bigint>>(
       (totals, allocation) => {
+        if (allocation.allocationType !== "contract_due_payment") return totals;
         totals.set(
           allocation.paymentExecutionId,
           (totals.get(allocation.paymentExecutionId) ?? 0n) + allocation.amountCents
@@ -1018,7 +1019,7 @@ export class PayableRegistryService {
       }),
       tx.paymentExecutionAllocation.findMany({
         where: { paymentExecutionId: caseSnapshot.paymentExecutionId },
-        select: { amountCents: true },
+        select: { allocationType: true, amountCents: true },
         orderBy: [{ allocationOrder: "asc" }, { id: "asc" }]
       })
     ]);
@@ -1070,7 +1071,9 @@ export class PayableRegistryService {
         }))
       : [];
     const otherAllocatedAmountCents = paymentExecutionAllocations.reduce(
-      (total, allocation) => total + allocation.amountCents,
+      (total, allocation) => allocation.allocationType === "contract_due_payment"
+        ? total + allocation.amountCents
+        : total,
       0n
     );
     return {

@@ -213,7 +213,8 @@ BEGIN
   SELECT COALESCE(SUM("amountCents"), 0)
   INTO existing_payment_execution_allocation_amount_cents
   FROM "PaymentExecutionAllocation"
-  WHERE "paymentExecutionId" = NEW."paymentExecutionId";
+  WHERE "paymentExecutionId" = NEW."paymentExecutionId"
+    AND "allocationType" = 'contract_due_payment';
 
   SELECT COALESCE(SUM("amountCents"), 0)
   INTO existing_execution_binding_amount_cents
@@ -280,7 +281,8 @@ BEGIN
   SELECT COALESCE(SUM("amountCents"), 0)
   INTO generic_allocation_amount_cents
   FROM "PaymentExecutionAllocation"
-  WHERE "paymentExecutionId" = NEW."paymentExecutionId";
+  WHERE "paymentExecutionId" = NEW."paymentExecutionId"
+    AND "allocationType" = 'contract_due_payment';
   SELECT COALESCE(SUM("amountCents"), 0)
   INTO wage_binding_amount_cents
   FROM "PaymentExecutionWagePayableBinding"
