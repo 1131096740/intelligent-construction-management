@@ -1,9 +1,22 @@
 import {
+  PayableSourceAdapterRegistry,
   WagePayableSourceAdapter,
   deriveEffectiveWagePayableAmount
 } from "./wage-payable-source.adapter";
 
 describe("WagePayableSourceAdapter", () => {
+  it("keeps the payable source registry closed and complete for registered adapters", () => {
+    const adapter = new WagePayableSourceAdapter();
+    const registry = new PayableSourceAdapterRegistry([adapter], ["wage_payable_ref"]);
+
+    expect(registry.list()).toEqual([adapter]);
+    expect(registry.require("wage_payable_ref")).toBe(adapter);
+    expect(() => registry.require("unregistered_source")).toThrow("缺少应付来源适配器");
+    expect(() => new PayableSourceAdapterRegistry([adapter, adapter])).toThrow("应付来源适配器重复");
+    expect(() => new PayableSourceAdapterRegistry([], ["wage_payable_ref"]).assertComplete())
+      .toThrow("缺少应付来源适配器");
+  });
+
   it("publishes only an immutable opaque wage reference and never infers a source by name, date or amount", () => {
     const adapter = new WagePayableSourceAdapter();
 
@@ -11,6 +24,7 @@ describe("WagePayableSourceAdapter", () => {
       adapter.toRegisteredPayable({
         id: "6b1e37ea-6c7e-4af9-8a52-b9ccbe7701dd",
         confirmedVersionId: "wage-version-1",
+        confirmedVersion: { status: "confirmed" },
         projectAllocationId: "allocation-1",
         creditorBreakdownId: "creditor-1",
         debtorCompanyId: "company-1",
@@ -55,6 +69,7 @@ describe("WagePayableSourceAdapter", () => {
       adapter.toRegisteredPayable({
         id: "negative-ref",
         confirmedVersionId: "wage-version-2",
+        confirmedVersion: { status: "confirmed" },
         projectAllocationId: "allocation-2",
         creditorBreakdownId: "creditor-2",
         debtorCompanyId: "company-1",
@@ -78,6 +93,7 @@ describe("WagePayableSourceAdapter", () => {
       adapter.toRegisteredPayable({
         id: "positive-adjustment-ref",
         confirmedVersionId: "wage-version-3",
+        confirmedVersion: { status: "confirmed" },
         projectAllocationId: "allocation-3",
         creditorBreakdownId: "creditor-3",
         debtorCompanyId: "company-1",
@@ -115,11 +131,30 @@ describe("WagePayableSourceAdapter", () => {
     ).toThrow("工资应付引用尚未确认");
   });
 
+  it("fails closed when the confirmed wage version relation is absent", () => {
+    expect(() =>
+      new WagePayableSourceAdapter().toRegisteredPayable({
+        id: "missing-version-relation",
+        confirmedVersionId: "wage-version-missing",
+        projectAllocationId: "allocation-missing",
+        creditorBreakdownId: "creditor-missing",
+        debtorCompanyId: "company-1",
+        projectId: "project-1",
+        amountCents: 1n,
+        direction: "increase",
+        debtorCompanySnapshot: { companyId: "company-1" },
+        projectSnapshot: { projectId: "project-1" },
+        creditorSnapshot: { subjectType: "employee_user", identityKey: "user-1" }
+      })
+    ).toThrow("工资应付引用尚未确认");
+  });
+
   it("fails closed when the frozen creditor snapshot drifts from the authoritative creditor breakdown", () => {
     expect(() =>
       new WagePayableSourceAdapter().toRegisteredPayable({
         id: "drifted-ref",
         confirmedVersionId: "wage-version-4",
+        confirmedVersion: { status: "confirmed" },
         projectAllocationId: "allocation-4",
         creditorBreakdownId: "creditor-4",
         debtorCompanyId: "company-1",

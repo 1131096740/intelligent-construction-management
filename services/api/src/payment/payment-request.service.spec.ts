@@ -233,6 +233,7 @@ describe("PaymentRequestService", () => {
       code: string;
       projectId: string;
       contractId: string;
+      contractTypeKey: string;
       contractVersionId: string;
       paymentTermsVersionId: string;
       paymentTermsStageId: string | null;
@@ -255,6 +256,7 @@ describe("PaymentRequestService", () => {
       code: "FK-2026-012",
       projectId: "project-1",
       contractId: "contract-1",
+      contractTypeKey: "labor_subcontract",
       contractVersionId: "contract-version-1",
       settlementId: "settlement-1",
       sourceType: "settlement",
@@ -537,7 +539,7 @@ describe("PaymentRequestService", () => {
       projectFunding as never
     );
 
-    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+    const result = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
       ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
@@ -548,6 +550,14 @@ describe("PaymentRequestService", () => {
         { payableRef: institutionRef, amountCents: "10000" }
       ]
     });
+
+    expect(result).not.toHaveProperty("id");
+    expect(JSON.stringify(result)).not.toContain("execution-hardened-1");
+    const auditMetadata = audit.record.mock.calls.at(-1)?.[1]?.metadata;
+    expect(auditMetadata).toEqual(expect.objectContaining({ executionFingerprint: expect.any(String) }));
+    expect(auditMetadata).not.toHaveProperty("executionId");
+    expect(auditMetadata).not.toHaveProperty("voucherFileId");
+    expect(JSON.stringify(auditMetadata)).not.toContain("execution-hardened-1");
 
     expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenCalledTimes(2);
     expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(1, {

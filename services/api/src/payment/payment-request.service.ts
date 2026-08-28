@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
@@ -63,7 +63,7 @@ import type { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archiv
 import type { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import {
   deriveEffectiveWagePayableAmount,
-  WagePayableSourceAdapter
+  payableSourceAdapterRegistry
 } from "../payable-registry/wage-payable-source.adapter";
 import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import {
@@ -102,8 +102,28 @@ const SETTLEMENT_PAYMENT_CONTRACT_TYPES = new Set([
   "professional_subcontract"
 ]);
 
-function paymentPostResponseToApi<T>(value: T) {
-  return mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
+function auditFingerprint(kind: string, value: string) {
+  return createHash("sha256")
+    .update(JSON.stringify({ kind, value }))
+    .digest("hex");
+}
+
+function paymentPostResponseToApi<T>(
+  value: T,
+  options?: Readonly<{ omitExecutionId?: boolean }>
+) {
+  const response = mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
+  if (
+    !options?.omitExecutionId ||
+    response === null ||
+    typeof response !== "object" ||
+    Array.isArray(response)
+  ) {
+    return response;
+  }
+  const safeResponse = { ...(response as Record<string, unknown>) };
+  delete safeResponse.id;
+  return safeResponse as typeof response;
 }
 
 interface PaymentApprovalAssignment {
@@ -129,6 +149,7 @@ interface PaymentExecutionLockRow {
   code: string;
   projectId: string;
   contractId: string;
+  contractTypeKey?: string;
   contractVersionId: string;
   paymentTermsVersionId?: string;
   paymentTermsStageId?: string | null;
@@ -1677,6 +1698,7 @@ export class PaymentRequestService {
         payment."code",
         payment."projectId",
         payment."contractId",
+        contract."contractTypeKey",
         payment."contractVersionId",
         payment."paymentTermsVersionId",
         payment."paymentTermsStageId",
@@ -1695,6 +1717,8 @@ export class PaymentRequestService {
       FROM "PaymentRequest" payment
       INNER JOIN "ContractVersion" version
         ON version."id" = payment."contractVersionId"
+      INNER JOIN "Contract" contract
+        ON contract."id" = payment."contractId"
       WHERE payment."id" = ${paymentId} OR payment."code" = ${paymentId}
       LIMIT 1
       FOR UPDATE OF payment, version
@@ -3299,10 +3323,12 @@ export class PaymentRequestService {
           metadata: {
             code: payment.code,
             projectId: payment.projectId,
-            executionId: execution.id,
+            ...(wagePayableBindings.length > 0
+              ? { executionFingerprint: auditFingerprint("payment_execution", execution.id) }
+              : { executionId: execution.id }),
             amountCents: moneyCentsToApi(amountCents),
             paidAt: paidAt.toISOString(),
-            voucherFileId,
+            ...(wagePayableBindings.length > 0 ? {} : { voucherFileId }),
             idempotencyKey,
             payer: {
               paymentSubjectType: "our_company",
@@ -3334,7 +3360,9 @@ export class PaymentRequestService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
 
-      return paymentPostResponseToApi(execution);
+      return paymentPostResponseToApi(execution, {
+        omitExecutionId: wagePayableBindings.length > 0
+      });
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = paymentPrismaErrorCode(error);
@@ -3349,7 +3377,9 @@ export class PaymentRequestService {
           wagePayableBindings
         });
         if (concurrentExecution) {
-          return paymentPostResponseToApi(concurrentExecution);
+          return paymentPostResponseToApi(concurrentExecution, {
+            omitExecutionId: wagePayableBindings.length > 0
+          });
         }
         throw new ConflictException(
           code === "P2034"
@@ -3440,6 +3470,9 @@ export class PaymentRequestService {
     if (!bindingClient) {
       throw new ConflictException("工资债权关联服务暂不可用，请稍后重试");
     }
+    if (payment.contractTypeKey !== "labor_subcontract") {
+      throw new ConflictException("工资债权关联仅适用于劳动分包付款");
+    }
     const payableRefIds = bindings.map((binding) => binding.payableRef);
     const existingForExecution = await bindingClient.findMany({
       where: { paymentExecutionId },
@@ -3507,7 +3540,7 @@ export class PaymentRequestService {
 
     for (const binding of bindings) {
       const payable = payableById.get(binding.payableRef)!;
-      const registered = new WagePayableSourceAdapter().toRegisteredPayable(payable);
+      const registered = payableSourceAdapterRegistry.require("wage_payable_ref").toRegisteredPayable(payable);
       if (
         registered.beneficiaryProjectId !== payment.projectId ||
         registered.debtorCompanyId !== payment.companyEntityIdSnapshot

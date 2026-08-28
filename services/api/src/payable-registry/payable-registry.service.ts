@@ -18,8 +18,8 @@ import {
 } from "./payment-execution-selection-ref.service";
 import {
   deriveEffectiveWagePayableAmount,
+  payableSourceAdapterRegistry,
   type RegisteredPayable,
-  WagePayableSourceAdapter
 } from "./wage-payable-source.adapter";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -116,7 +116,7 @@ export class PayableRegistryService {
     });
     const cases = [];
     for (const row of rows) {
-      const registered = new WagePayableSourceAdapter().toRegisteredPayable(row);
+      const registered = payableSourceAdapterRegistry.require("wage_payable_ref").toRegisteredPayable(row);
       const effectiveAmountCents = deriveEffectiveWagePayableAmount(
         row.amountCents,
         row.adjustments
@@ -414,7 +414,7 @@ export class PayableRegistryService {
     if (!payable || payable.confirmedVersion.status !== "confirmed") {
       throw new NotFoundException("工资应付案件不存在或尚未确认");
     }
-    const registered = new WagePayableSourceAdapter().toRegisteredPayable(payable);
+    const registered = payableSourceAdapterRegistry.require("wage_payable_ref").toRegisteredPayable(payable);
     const caseRevision = await this.loadPayableCaseRevision(db, payableRef);
     const effectiveAmountCents = deriveEffectiveWagePayableAmount(
       payable.amountCents,
@@ -519,6 +519,7 @@ export class PayableRegistryService {
       where: { id: { in: requestIds } },
       select: {
         id: true,
+        contractId: true,
         projectId: true,
         contractVersionId: true,
         status: true,
@@ -527,16 +528,23 @@ export class PayableRegistryService {
       }
     });
     const contractVersionIds = [...new Set(requests.map((request) => request.contractVersionId))];
+    const contractIds = [...new Set(requests.map((request) => request.contractId))];
     const [
+      contracts,
       contractVersions,
       allocatedByExecution,
       allocatedByPair,
       paymentExecutionAllocations
     ] = await Promise.all([
+      contractIds.length === 0 ? Promise.resolve([]) : db.contract.findMany({
+        where: { id: { in: contractIds } },
+        select: { id: true, projectId: true, contractTypeKey: true }
+      }),
       contractVersionIds.length === 0 ? Promise.resolve([]) : db.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
         select: {
           id: true,
+          contractId: true,
           status: true,
           signingSubjectType: true,
           companyEntityIdSnapshot: true,
@@ -568,6 +576,7 @@ export class PayableRegistryService {
       })
     ]);
     const requestById = new Map(requests.map((request) => [request.id, request]));
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const contractVersionById = new Map(contractVersions.map((version) => [version.id, version]));
     const bindingByExecutionId = new Map(
       wageBindings.map((binding) => [binding.paymentExecutionId, binding])
@@ -598,8 +607,10 @@ export class PayableRegistryService {
       const contractVersion = request
         ? contractVersionById.get(request.contractVersionId)
         : undefined;
+      const contract = request ? contractById.get(request.contractId) : undefined;
       if (
         !request ||
+        !contract ||
         !contractVersion ||
         !wageBinding ||
         wageBinding.wagePayableRefId !== payableRef ||
@@ -616,9 +627,12 @@ export class PayableRegistryService {
         (wageBinding.creditorVersionFingerprint ?? null) !==
           (payable.creditorBreakdown.creditorVersionFingerprint ?? null) ||
         request.projectId !== registered.beneficiaryProjectId ||
+        contract.projectId !== request.projectId ||
+        contractVersion.contractId !== request.contractId ||
         request.paymentSubjectType !== "our_company" ||
         execution.paymentSubjectType !== "our_company" ||
         !["paid", "partially_paid"].includes(request.status) ||
+        contract.contractTypeKey !== "labor_subcontract" ||
         contractVersion.status !== "effective" ||
         contractVersion.signingSubjectType !== "our_company" ||
         !contractVersion.companyEntityIdSnapshot ||
@@ -644,7 +658,10 @@ export class PayableRegistryService {
         paymentRequestId: request.id,
         paymentRequestStatus: request.status,
         paymentRequestUpdatedAt: request.updatedAt.toISOString(),
+        contractId: request.contractId,
+        contractProjectId: contract.projectId,
         contractVersionId: contractVersion.id,
+        contractTypeKey: contract.contractTypeKey,
         contractVersionStatus: contractVersion.status,
         contractVersionUpdatedAt: contractVersion.updatedAt.toISOString(),
         approvedPayerCompanyId: contractVersion.companyEntityIdSnapshot,
@@ -801,7 +818,15 @@ export class PayableRegistryService {
       }
 
       if (action !== "return") {
-        const { execution, request, contractVersion, counterparties, allocations, wageBindings } = context;
+        const {
+          execution,
+          request,
+          contractVersion,
+          counterparties,
+          allocations,
+          wageBindings,
+          otherAllocatedAmountCents
+        } = context;
         if (action === "confirm" && execution.executedByUserId === actorUserId) {
           throw new ForbiddenException("付款执行人与确认人必须职责分离");
         }
@@ -817,7 +842,10 @@ export class PayableRegistryService {
           id: execution.id, amountCents: execution.amountCents, currencyCode: "CNY",
           approvedPayerCompanyId: payer.approvedPayerCompanyId,
           actualPayerCompanyId: payer.actualPayerCompanyId
-        }, allocations.map(toSettlementAllocationInput), { wageBindings });
+        }, allocations.map(toSettlementAllocationInput), {
+          wageBindings,
+          otherAllocatedAmountCents
+        });
         await this.assertCurrentPayableBalances(tx, settlementCaseId, allocations);
       }
       const now = new Date();
@@ -959,6 +987,9 @@ export class PayableRegistryService {
     await tx.$queryRaw(
       Prisma.sql`SELECT "id" FROM "PaymentExecution" WHERE "id" = ${caseSnapshot.paymentExecutionId} FOR UPDATE`
     );
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "PaymentExecutionAllocation" WHERE "paymentExecutionId" = ${caseSnapshot.paymentExecutionId} ORDER BY "id" FOR UPDATE`
+    );
     for (const payableRef of payableRefs) {
       await tx.$queryRaw(
         Prisma.sql`SELECT "id" FROM "WagePayableRef" WHERE "id" = ${payableRef} OR "adjustsPayableRefId" = ${payableRef} ORDER BY "id" FOR UPDATE`
@@ -971,7 +1002,7 @@ export class PayableRegistryService {
       Prisma.sql`SELECT "id" FROM "PayableSettlementAllocation" WHERE "settlementCaseId" = ${settlementCaseId} ORDER BY "payableRef", "id" FOR UPDATE`
     );
 
-    const [settlementCase, execution, request, contractVersion, counterparties, allocations] = await Promise.all([
+    const [settlementCase, execution, request, contractVersion, counterparties, allocations, paymentExecutionAllocations] = await Promise.all([
       tx.payableSettlementCase.findUnique({ where: { id: settlementCaseId } }),
       tx.paymentExecution.findUnique({ where: { id: caseSnapshot.paymentExecutionId } }),
       tx.paymentRequest.findUnique({ where: { id: executionSnapshot.paymentRequestId } }),
@@ -984,6 +1015,11 @@ export class PayableRegistryService {
       tx.payableSettlementAllocation.findMany({
         where: { settlementCaseId },
         orderBy: [{ payableRef: "asc" }, { id: "asc" }]
+      }),
+      tx.paymentExecutionAllocation.findMany({
+        where: { paymentExecutionId: caseSnapshot.paymentExecutionId },
+        select: { amountCents: true },
+        orderBy: [{ allocationOrder: "asc" }, { id: "asc" }]
       })
     ]);
     if (!settlementCase || settlementCase.paymentExecutionId !== caseSnapshot.paymentExecutionId) {
@@ -1033,7 +1069,20 @@ export class PayableRegistryService {
           amountCents: binding.amountCents
         }))
       : [];
-    return { settlementCase, execution, request, contractVersion, counterparties, allocations, wageBindings };
+    const otherAllocatedAmountCents = paymentExecutionAllocations.reduce(
+      (total, allocation) => total + allocation.amountCents,
+      0n
+    );
+    return {
+      settlementCase,
+      execution,
+      request,
+      contractVersion,
+      counterparties,
+      allocations,
+      wageBindings,
+      otherAllocatedAmountCents
+    };
   }
 
   private async assertTransactionFinanceWriter(
@@ -1144,7 +1193,7 @@ export class PayableRegistryService {
       if (!payable) {
         throw new ConflictException("工资应付余额已变化，请刷新后重试");
       }
-      const current = new WagePayableSourceAdapter().toRegisteredPayable(payable);
+      const current = payableSourceAdapterRegistry.require("wage_payable_ref").toRegisteredPayable(payable);
       const caseAllocations = allocations.filter((allocation) => allocation.payableRef === payableRef);
       if (
         caseAllocations.some((allocation) =>

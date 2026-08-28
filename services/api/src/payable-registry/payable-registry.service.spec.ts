@@ -181,24 +181,30 @@ describe("PayableRegistryService", () => {
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([
           {
-            id: "request-1", projectId: "project-1", contractVersionId: "contract-version-1",
+            id: "request-1", contractId: "contract-1", projectId: "project-1", contractVersionId: "contract-version-1",
             status: "paid", paymentSubjectType: "our_company", updatedAt: new Date("2026-08-27T08:59:00.000Z")
           },
           {
-            id: "request-2", projectId: "project-2", contractVersionId: "contract-version-2",
+            id: "request-2", contractId: "contract-2", projectId: "project-2", contractVersionId: "contract-version-2",
             status: "paid", paymentSubjectType: "our_company", updatedAt: new Date("2026-08-27T09:59:00.000Z")
           }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", projectId: "project-1", contractTypeKey: "labor_subcontract" },
+          { id: "contract-2", projectId: "project-2", contractTypeKey: "labor_subcontract" }
         ])
       },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([
           {
-            id: "contract-version-1", status: "effective", signingSubjectType: "our_company",
+            id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
             companyEntityIdSnapshot: "company-1", companyEntityVersionId: "company-version-1",
             affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T08:58:00.000Z")
           },
           {
-            id: "contract-version-2", status: "effective", signingSubjectType: "our_company",
+            id: "contract-version-2", contractId: "contract-2", status: "effective", signingSubjectType: "our_company",
             companyEntityIdSnapshot: "company-1", companyEntityVersionId: "company-version-1",
             affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T09:58:00.000Z")
           }
@@ -260,6 +266,14 @@ describe("PayableRegistryService", () => {
     expect(audit.record).not.toHaveBeenCalled();
     expect(prisma).not.toHaveProperty("paymentExecutionSelectionGrant");
 
+    tx.contract.findMany.mockResolvedValue([
+      { id: "contract-1", projectId: "project-1", contractTypeKey: "material_purchase" },
+      { id: "contract-2", projectId: "project-2", contractTypeKey: "labor_subcontract" }
+    ]);
+    await expect(
+      service.listPaymentExecutionCandidates("finance-user", "payable-1")
+    ).resolves.toMatchObject({ candidates: [] });
+
     payable.creditorSnapshot = {
       subjectType: "employee_user",
       identityKey: "employee_user:user-1",
@@ -274,7 +288,7 @@ describe("PayableRegistryService", () => {
     await expect(
       service.listPaymentExecutionCandidates("finance-user", "payable-1")
     ).resolves.toMatchObject({ candidates: [] });
-    expect(tx.paymentExecution.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.paymentExecution.findMany).toHaveBeenCalledTimes(3);
   });
 
   it("allocates exactly one freshly authorized opaque selection in one serializable transaction without exposing the execution id", async () => {
@@ -316,6 +330,7 @@ describe("PayableRegistryService", () => {
     };
     const request = {
       id: "request-1",
+      contractId: "contract-1",
       projectId: "project-1",
       contractVersionId: "contract-version-1",
       status: "paid",
@@ -333,9 +348,12 @@ describe("PayableRegistryService", () => {
         findUnique: jest.fn().mockResolvedValue(execution)
       },
       paymentRequest: { findMany: jest.fn().mockResolvedValue([request]) },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-1", projectId: "project-1", contractTypeKey: "labor_subcontract" }])
+      },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([{
-          id: "contract-version-1", status: "effective", signingSubjectType: "our_company",
+          id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
           companyEntityIdSnapshot: "company-1", companyEntityVersionId: "company-version-1",
           affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T08:58:00.000Z")
         }])
@@ -462,7 +480,7 @@ describe("PayableRegistryService", () => {
   it("fails closed when approved and actual payer facts diverge or change after selection", async () => {
     const mismatchHarness = createAllocationHarness();
     mismatchHarness.tx.contractVersion.findMany.mockResolvedValue([{
-      id: "contract-version-1", status: "effective", signingSubjectType: "our_company",
+      id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
       companyEntityIdSnapshot: "company-2", companyEntityVersionId: "company-version-2",
       affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T08:58:00.000Z")
     }]);
@@ -474,7 +492,7 @@ describe("PayableRegistryService", () => {
     const listed = await changedHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1");
     const selected = listed.candidates[0];
     changedHarness.tx.contractVersion.findMany.mockResolvedValue([{
-      id: "contract-version-1", status: "effective", signingSubjectType: "our_company",
+      id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
       companyEntityIdSnapshot: "company-2", companyEntityVersionId: "company-version-2",
       affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T09:58:00.000Z")
     }]);
@@ -1046,6 +1064,9 @@ function createTransitionHarness(input: Readonly<{
       findMany: jest.fn().mockResolvedValue([allocation]),
       aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } })
     },
+    paymentExecutionAllocation: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     wagePayableRef: {
       findUnique: jest.fn().mockResolvedValue({
         id: "payable-1",
@@ -1116,9 +1137,10 @@ function createAllocationHarness() {
     paidAt: new Date("2026-08-27T09:00:00.000Z"),
     createdAt: new Date("2026-08-27T09:01:00.000Z")
   };
-  const request = {
-    id: "request-1",
-    projectId: "project-1",
+    const request = {
+      id: "request-1",
+      contractId: "contract-1",
+      projectId: "project-1",
     contractVersionId: "contract-version-1",
     status: "paid",
     paymentSubjectType: "our_company",
@@ -1135,9 +1157,12 @@ function createAllocationHarness() {
       findUnique: jest.fn().mockResolvedValue(execution)
     },
     paymentRequest: { findMany: jest.fn().mockResolvedValue([request]) },
+    contract: {
+      findMany: jest.fn().mockResolvedValue([{ id: "contract-1", projectId: "project-1", contractTypeKey: "labor_subcontract" }])
+    },
     contractVersion: {
       findMany: jest.fn().mockResolvedValue([{
-        id: "contract-version-1", status: "effective", signingSubjectType: "our_company",
+        id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
         companyEntityIdSnapshot: "company-1", companyEntityVersionId: "company-version-1",
         affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T08:58:00.000Z")
       }])

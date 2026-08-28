@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 148,
     "terminalMigration": "20260828010000_pol13a_payment_execution_wage_binding",
-    "terminalMigrationChecksum": "eae40e964ed0aa1b62e2cfa653ff3eca36ff3684d9318c15fc8f152ee75f6734",
+    "terminalMigrationChecksum": "3937aa6e107207e6f7eb7de955a9fbc54a770b7a88cfbafa038c2c70171dcf04",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

@@ -1,4 +1,4 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 
 export type RegisteredPayable = Readonly<{
   payableRef: string;
@@ -35,18 +35,26 @@ type WagePayableRow = Readonly<{
   confirmedVersion?: Readonly<{ status: string }>;
 }>;
 
-export class WagePayableSourceAdapter {
-  toRegisteredPayable(row: WagePayableRow): RegisteredPayable {
-    if (row.confirmedVersion && row.confirmedVersion.status !== "confirmed") {
+export interface PayableSourceAdapter {
+  readonly sourceType: string;
+  toRegisteredPayable(row: unknown): RegisteredPayable;
+}
+
+export class WagePayableSourceAdapter implements PayableSourceAdapter {
+  readonly sourceType = "wage_payable_ref";
+
+  toRegisteredPayable(row: unknown): RegisteredPayable {
+    const wageRow = asWagePayableRow(row);
+    if (!wageRow.confirmedVersion || wageRow.confirmedVersion.status !== "confirmed") {
       throw new ConflictException("工资应付引用尚未确认");
     }
-    if (row.direction !== "increase" || row.adjustsPayableRefId !== undefined && row.adjustsPayableRefId !== null) {
+    if (wageRow.direction !== "increase" || wageRow.adjustsPayableRefId !== undefined && wageRow.adjustsPayableRefId !== null) {
       throw new ConflictException("工资应付调整引用不能直接用于新增核销");
     }
-    if (row.amountCents <= 0n) {
+    if (wageRow.amountCents <= 0n) {
       throw new ConflictException("工资应付确认金额必须大于零");
     }
-    const creditor = objectValue(row.creditorSnapshot, "工资债权人快照不完整");
+    const creditor = objectValue(wageRow.creditorSnapshot, "工资债权人快照不完整");
     const payeeSubjectType = creditor.subjectType;
     const payeeSubjectId = creditor.identityKey;
     if (
@@ -59,33 +67,102 @@ export class WagePayableSourceAdapter {
       throw new ConflictException("工资债权人快照不完整");
     }
     if (
-      !row.creditorBreakdown ||
-      row.creditorBreakdown.creditorSubjectType !== payeeSubjectType ||
-      row.creditorBreakdown.creditorSubjectIdentityKey !== payeeSubjectId ||
-      row.creditorBreakdown.creditorNameSnapshot !== creditor.name
+      !wageRow.creditorBreakdown ||
+      wageRow.creditorBreakdown.creditorSubjectType !== payeeSubjectType ||
+      wageRow.creditorBreakdown.creditorSubjectIdentityKey !== payeeSubjectId ||
+      wageRow.creditorBreakdown.creditorNameSnapshot !== creditor.name
     ) {
       throw new ConflictException("工资债权人快照与确认明细不一致");
     }
-    const debtor = objectValue(row.debtorCompanySnapshot, "工资原债务主体快照不完整");
-    const project = objectValue(row.projectSnapshot, "工资受益项目快照不完整");
-    if (debtor.companyId !== row.debtorCompanyId || project.projectId !== row.projectId) {
+    const debtor = objectValue(wageRow.debtorCompanySnapshot, "工资原债务主体快照不完整");
+    const project = objectValue(wageRow.projectSnapshot, "工资受益项目快照不完整");
+    if (debtor.companyId !== wageRow.debtorCompanyId || project.projectId !== wageRow.projectId) {
       throw new ConflictException("工资应付引用与冻结快照不一致");
     }
     return Object.freeze({
-      payableRef: row.id,
+      payableRef: wageRow.id,
       sourceType: "wage_payable_ref",
-      sourceAggregateId: row.confirmedVersionId,
-      sourceLineId: row.id,
-      confirmedVersionId: row.confirmedVersionId,
-      debtorCompanyId: row.debtorCompanyId,
+      sourceAggregateId: wageRow.confirmedVersionId,
+      sourceLineId: wageRow.id,
+      confirmedVersionId: wageRow.confirmedVersionId,
+      debtorCompanyId: wageRow.debtorCompanyId,
       payeeSubjectType,
       payeeSubjectId: payeeSubjectId.trim(),
       currencyCode: "CNY",
-      beneficiaryProjectId: row.projectId,
-      confirmedAmountCents: row.amountCents
+      beneficiaryProjectId: wageRow.projectId,
+      confirmedAmountCents: wageRow.amountCents
     });
   }
 }
+
+export class PayableSourceAdapterRegistry {
+  private readonly adapters: readonly PayableSourceAdapter[];
+  private readonly adaptersBySourceType: ReadonlyMap<string, PayableSourceAdapter>;
+  private readonly requiredSourceTypes?: readonly string[];
+
+  constructor(
+    adapters: readonly PayableSourceAdapter[],
+    requiredSourceTypes?: readonly string[]
+  ) {
+    const copied = [...adapters];
+    const bySourceType = new Map<string, PayableSourceAdapter>();
+    for (const adapter of copied) {
+      const sourceType = requiredText(adapter.sourceType, "应付来源适配器类型不能为空");
+      if (sourceType !== adapter.sourceType) {
+        throw new BadRequestException("应付来源适配器类型不能包含首尾空格");
+      }
+      if (bySourceType.has(sourceType)) {
+        throw new BadRequestException(`应付来源适配器重复：${sourceType}`);
+      }
+      bySourceType.set(sourceType, adapter);
+    }
+    this.adapters = Object.freeze(copied);
+    this.adaptersBySourceType = bySourceType;
+    this.requiredSourceTypes = requiredSourceTypes
+      ? Object.freeze(
+          requiredSourceTypes.map((sourceType) =>
+            requiredText(sourceType, "应付来源类型目录不能包含空类型")
+          )
+        )
+      : undefined;
+    if (
+      this.requiredSourceTypes &&
+      new Set(this.requiredSourceTypes).size !== this.requiredSourceTypes.length
+    ) {
+      throw new BadRequestException("应付来源类型目录不能包含重复类型");
+    }
+  }
+
+  list(): readonly PayableSourceAdapter[] {
+    return this.adapters;
+  }
+
+  require(sourceType: string): PayableSourceAdapter {
+    const normalized = requiredText(sourceType, "应付来源类型不能为空");
+    const adapter = this.adaptersBySourceType.get(normalized);
+    if (!adapter) {
+      throw new BadRequestException(`缺少应付来源适配器：${normalized}`);
+    }
+    return adapter;
+  }
+
+  assertComplete(): void {
+    if (!this.requiredSourceTypes?.length) {
+      throw new BadRequestException("应付来源类型目录尚未配置，不能执行一致性校验");
+    }
+    const missing = this.requiredSourceTypes.filter(
+      (sourceType) => !this.adaptersBySourceType.has(sourceType)
+    );
+    if (missing.length > 0) {
+      throw new BadRequestException(`缺少应付来源适配器：${missing.join("、")}`);
+    }
+  }
+}
+
+export const payableSourceAdapterRegistry = new PayableSourceAdapterRegistry(
+  [new WagePayableSourceAdapter()],
+  ["wage_payable_ref"]
+);
 
 export function deriveEffectiveWagePayableAmount(
   confirmedAmountCents: bigint,
@@ -113,4 +190,17 @@ function objectValue(value: unknown, message: string): Record<string, unknown> {
     throw new ConflictException(message);
   }
   return value as Record<string, unknown>;
+}
+
+function asWagePayableRow(value: unknown): WagePayableRow {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ConflictException("工资应付引用快照不完整");
+  }
+  return value as WagePayableRow;
+}
+
+function requiredText(value: string, message: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new BadRequestException(message);
+  return normalized;
 }

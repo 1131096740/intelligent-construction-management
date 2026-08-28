@@ -194,6 +194,152 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).rejects.toThrow("payable_settlement_source_not_confirmed");
   });
 
+  it("rejects direct allocations that cross the execution project or payer company", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    await expect(observer.payableSettlementAllocation.create({
+      data: {
+        ...allocationData(fixture, "payable-a", 100n),
+        beneficiaryProjectId: randomUUID()
+      }
+    })).rejects.toThrow("payable_settlement_execution_scope_invalid");
+
+    await expect(observer.payableSettlementAllocation.create({
+      data: {
+        ...allocationData(fixture, "payable-b", 100n),
+        debtorCompanyId: randomUUID()
+      }
+    })).rejects.toThrow("payable_settlement_execution_scope_invalid");
+  });
+
+  it("rejects direct allocations when the request contract lineage crosses project boundaries", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    const rogueProjectId = randomUUID();
+    const rogueContractId = randomUUID();
+    const rogueContractVersionId = randomUUID();
+    await observer.project.create({
+      data: { id: rogueProjectId, code: `DYN-ROGUE-${rogueProjectId}`, name: "跨项目合同" }
+    });
+    await observer.contract.create({
+      data: {
+        id: rogueContractId,
+        projectId: rogueProjectId,
+        code: `DYN-ROGUE-CONTRACT-${rogueContractId}`,
+        name: "跨项目工资付款合同",
+        counterparty: "跨项目测试相对方",
+        companyEntityId: fixture.debtorCompanyId,
+        companyEntityName: "动态门付款主体",
+        contractTypeKey: "labor_subcontract",
+        ownerUserId: fixture.actorUserId
+      }
+    });
+    await observer.contractVersion.create({
+      data: {
+        id: rogueContractVersionId,
+        contractId: rogueContractId,
+        versionNo: 1,
+        changeType: "original",
+        status: "draft",
+        amountCents: fixture.amountCents,
+        signingSubjectType: "our_company",
+        companyEntityIdSnapshot: fixture.debtorCompanyId,
+        draftData: {},
+        templateSnapshot: {},
+        clauseSnapshot: {}
+      }
+    });
+    await observer.paymentRequest.update({
+      where: { id: fixture.paymentRequestId },
+      data: { contractId: rogueContractId, contractVersionId: rogueContractVersionId }
+    });
+
+    await expect(observer.payableSettlementAllocation.create({
+      data: allocationData(fixture, "payable-a", 100n)
+    })).rejects.toThrow("payable_settlement_execution_scope_invalid");
+    await expect(observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(fixture, "payable-a", fixture.paymentExecutionId, 100n)
+    })).rejects.toThrow("payment_execution_wage_binding_scope_invalid");
+  });
+
+  it("rejects a direct allocation whose amount exceeds the existing execution", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    await expect(observer.payableSettlementAllocation.create({
+      data: allocationData(fixture, "payable-a", fixture.amountCents + 1n)
+    })).rejects.toThrow("payable_settlement_execution_amount_invalid");
+  });
+
+  it("enforces the cumulative wage-binding amount for one payment execution", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    await observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(fixture, "payable-a", fixture.paymentExecutionId, 700n)
+    });
+
+    await expect(observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(fixture, "payable-b", fixture.paymentExecutionId, 400n)
+    })).rejects.toThrow("payment_execution_wage_binding_execution_balance_invalid");
+    await expect(observer.paymentExecutionWagePayableBinding.count({
+      where: { paymentExecutionId: fixture.paymentExecutionId }
+    })).resolves.toBe(1);
+  });
+
+  it("enforces cumulative wage-binding balance for one source ref across executions", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    await observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(fixture, "payable-a", fixture.paymentExecutionId, 700n)
+    });
+
+    const secondVoucherFileId = randomUUID();
+    const secondPaymentExecutionId = randomUUID();
+    await observer.fileObject.create({
+      data: dynamicFile(secondVoucherFileId, "payment-voucher-second")
+    });
+    await observer.paymentExecution.create({
+      data: {
+        id: secondPaymentExecutionId,
+        idempotencyKey: randomUUID(),
+        paymentRequestId: fixture.paymentRequestId,
+        paymentSubjectType: "our_company",
+        companyEntityIdSnapshot: fixture.debtorCompanyId,
+        companyEntityNameSnapshot: "动态门付款主体",
+        companyEntityCreditCodeSnapshot: "91310000DYNAMICGATE",
+        amountCents: fixture.amountCents,
+        paidAt: new Date(),
+        executedByUserId: fixture.actorUserId,
+        voucherFileId: secondVoucherFileId
+      }
+    });
+
+    await expect(observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(fixture, "payable-a", secondPaymentExecutionId, 400n)
+    })).rejects.toThrow("payment_execution_wage_binding_source_balance_invalid");
+    await expect(observer.paymentExecutionWagePayableBinding.count({
+      where: { wagePayableRefId: fixture.payableRefs["payable-a"] }
+    })).resolves.toBe(1);
+  });
+
+  it("enforces one execution total across generic allocations and wage bindings in either write order", async () => {
+    const genericFirst = await createFixture(observer, 1_000n);
+    await observer.paymentExecutionAllocation.create({
+      data: paymentExecutionAllocationData(genericFirst, 700n)
+    });
+    await expect(observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(genericFirst, "payable-a", genericFirst.paymentExecutionId, 400n)
+    })).rejects.toThrow("payment_execution_wage_binding_execution_balance_invalid");
+    await expect(observer.paymentExecutionWagePayableBinding.count({
+      where: { paymentExecutionId: genericFirst.paymentExecutionId }
+    })).resolves.toBe(0);
+
+    const wageFirst = await createFixture(observer, 1_000n);
+    await observer.paymentExecutionWagePayableBinding.create({
+      data: wageBindingData(wageFirst, "payable-a", wageFirst.paymentExecutionId, 700n)
+    });
+    await expect(observer.paymentExecutionAllocation.create({
+      data: paymentExecutionAllocationData(wageFirst, 400n)
+    })).rejects.toThrow("payment_execution_allocation_total_invalid");
+    await expect(observer.paymentExecutionAllocation.count({
+      where: { paymentExecutionId: wageFirst.paymentExecutionId }
+    })).resolves.toBe(0);
+  });
+
   it("runs the real service with one durable allocation and receipt under an idempotent race", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);
     const service = realService(observer);
@@ -264,11 +410,15 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
 type Fixture = Readonly<{
   actorUserId: string;
   paymentExecutionId: string;
+  paymentRequestId: string;
   settlementCaseId: string;
   amountCents: bigint;
   confirmedVersionId: string;
   debtorCompanyId: string;
   projectId: string;
+  contractId: string;
+  contractVersionId: string;
+  paymentTermsVersionId: string;
   payeeSubjectType: "employee_user";
   payeeSubjectId: string;
   payableRefs: Readonly<Record<string, string>>;
@@ -342,7 +492,7 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
       counterparty: "动态门付款相对方",
       companyEntityId: companyId,
       companyEntityName: "动态门付款主体",
-      contractTypeKey: "material_purchase",
+      contractTypeKey: "labor_subcontract",
       ownerUserId: actorUserId
     }
   });
@@ -541,11 +691,15 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
   return {
     actorUserId,
     paymentExecutionId,
+    paymentRequestId,
     settlementCaseId,
     amountCents,
     confirmedVersionId,
     debtorCompanyId: companyId,
     projectId,
+    contractId,
+    contractVersionId,
+    paymentTermsVersionId,
     payeeSubjectType: "employee_user",
     payeeSubjectId: `employee_user:${actorUserId}`,
     payableRefs
@@ -597,6 +751,72 @@ function allocationData(fixture: Fixture, payableRef: string, amountCents: bigin
     sourceSnapshot: { payableRef: resolvedPayableRef },
     confirmedAmountCents: fixture.amountCents,
     amountCents,
+    createdByUserId: fixture.actorUserId
+  };
+}
+
+function wageBindingData(
+  fixture: Fixture,
+  payableRef: string,
+  paymentExecutionId: string,
+  amountCents: bigint
+) {
+  const resolvedPayableRef = fixture.payableRefs[payableRef] ?? payableRef;
+  return {
+    id: randomUUID(),
+    paymentExecutionId,
+    wagePayableRefId: resolvedPayableRef,
+    debtorCompanyId: fixture.debtorCompanyId,
+    debtorCompanySnapshot: { companyId: fixture.debtorCompanyId },
+    projectId: fixture.projectId,
+    projectSnapshot: { projectId: fixture.projectId },
+    creditorSubjectType: "employee_user",
+    creditorUserId: fixture.actorUserId,
+    creditorBusinessPartyVersionId: null,
+    creditorSubjectIdentityKey: `employee_user:${fixture.actorUserId}`,
+    creditorNameSnapshot: "动态门工资员工",
+    creditorUnifiedIdentitySnapshot: null,
+    creditorVersionFingerprint: "c".repeat(64),
+    creditorSnapshot: {
+      subjectType: "employee_user",
+      userId: fixture.actorUserId,
+      identityKey: `employee_user:${fixture.actorUserId}`
+    },
+    amountCents,
+    currencyCode: "CNY",
+    createdByUserId: fixture.actorUserId
+  };
+}
+
+function paymentExecutionAllocationData(
+  fixture: Fixture,
+  amountCents: bigint,
+  allocationOrder = 1
+) {
+  return {
+    id: randomUUID(),
+    paymentExecutionId: fixture.paymentExecutionId,
+    paymentRequestId: fixture.paymentRequestId,
+    projectId: fixture.projectId,
+    contractId: fixture.contractId,
+    contractVersionId: fixture.contractVersionId,
+    settlementId: randomUUID(),
+    sourceType: "contract_due",
+    allocationType: "contract_due_payment",
+    sourceRowId: `dynamic-total-${randomUUID()}`,
+    paymentTermsVersionId: fixture.paymentTermsVersionId,
+    stageType: "progress",
+    stageId: null,
+    stageName: null,
+    triggerAnchor: null,
+    dueDays: null,
+    ratioBps: null,
+    fixedAmountCents: null,
+    sourceEffectiveAt: new Date("2026-08-01T00:00:00.000Z"),
+    expectedPayableAt: new Date("2026-08-31T00:00:00.000Z"),
+    sourcePayableAmountCents: fixture.amountCents,
+    amountCents,
+    allocationOrder,
     createdByUserId: fixture.actorUserId
   };
 }

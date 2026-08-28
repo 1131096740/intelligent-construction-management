@@ -27,7 +27,10 @@ export type WagePayableBindingFact = Readonly<{
 export function assertAllocationSetMatchesPaymentExecution(
   execution: ExistingPaymentExecutionForSettlement,
   allocations: readonly PayableSettlementAllocationInput[],
-  options?: Readonly<{ wageBindings?: readonly WagePayableBindingFact[] }>
+  options?: Readonly<{
+    wageBindings?: readonly WagePayableBindingFact[];
+    otherAllocatedAmountCents?: bigint;
+  }>
 ) {
   if (execution.amountCents <= 0n) {
     throw new ConflictException("实际付款金额必须大于零");
@@ -37,6 +40,10 @@ export function assertAllocationSetMatchesPaymentExecution(
   }
   const [first] = allocations;
   const wageBindings = options?.wageBindings ?? [];
+  const otherAllocatedAmountCents = options?.otherAllocatedAmountCents ?? 0n;
+  if (otherAllocatedAmountCents < 0n || otherAllocatedAmountCents > execution.amountCents) {
+    throw new ConflictException("其他付款用途金额无效");
+  }
   const wageBindingByRef = new Map(wageBindings.map((binding) => [binding.payableRef, binding]));
   let total = 0n;
   const allocationAmountByRef = new Map<string, bigint>();
@@ -90,7 +97,7 @@ export function assertAllocationSetMatchesPaymentExecution(
       }
     }
   }
-  if (total !== execution.amountCents) {
-    throw new ConflictException("全部核销金额必须精确等于实际付款金额");
+  if (total + otherAllocatedAmountCents !== execution.amountCents) {
+    throw new ConflictException("核销与其他付款用途合计必须精确等于实际付款金额");
   }
 }

@@ -188,6 +188,16 @@ DECLARE
   source_payee_subject_type TEXT;
   source_payee_subject_id TEXT;
   execution_amount_cents BIGINT;
+  execution_company_entity_id TEXT;
+  execution_payment_subject_type TEXT;
+  request_project_id TEXT;
+  request_contract_id TEXT;
+  request_payment_subject_type TEXT;
+  contract_version_contract_id TEXT;
+  contract_project_id TEXT;
+  contract_company_entity_id TEXT;
+  contract_signing_subject_type TEXT;
+  contract_type_key TEXT;
 BEGIN
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   IF NEW."sourceType" <> 'wage_payable_ref' THEN
@@ -212,6 +222,46 @@ BEGIN
     RAISE EXCEPTION 'payable_settlement_source_not_confirmed';
   END IF;
 
+  -- Keep the typed allocation tied to the same project and payer facts as the
+  -- existing PaymentExecution.  Service checks are still required for fresh
+  -- authorization and balance, but this trigger prevents direct SQL writers
+  -- from crossing the project/company boundary.
+  SELECT execution."amountCents", execution."companyEntityIdSnapshot",
+         execution."paymentSubjectType", request."projectId", request."contractId",
+         request."paymentSubjectType", version."contractId", version."companyEntityIdSnapshot",
+         version."signingSubjectType", contract."projectId", contract."contractTypeKey"
+  INTO execution_amount_cents, execution_company_entity_id,
+       execution_payment_subject_type, request_project_id, request_contract_id,
+       request_payment_subject_type, contract_version_contract_id,
+       contract_company_entity_id, contract_signing_subject_type,
+       contract_project_id, contract_type_key
+  FROM "PaymentExecution" execution
+  INNER JOIN "PaymentRequest" request
+    ON request."id" = execution."paymentRequestId"
+  INNER JOIN "ContractVersion" version
+    ON version."id" = request."contractVersionId"
+  INNER JOIN "Contract" contract
+    ON contract."id" = request."contractId"
+  WHERE execution."id" = NEW."paymentExecutionId";
+  IF NOT FOUND
+     OR execution_payment_subject_type IS DISTINCT FROM 'our_company'
+     OR request_payment_subject_type IS DISTINCT FROM 'our_company'
+     OR contract_signing_subject_type IS DISTINCT FROM 'our_company'
+     OR contract_type_key IS DISTINCT FROM 'labor_subcontract'
+     OR execution_company_entity_id IS NULL
+     OR contract_company_entity_id IS NULL
+     OR request_project_id IS NULL
+     OR request_contract_id IS NULL
+     OR contract_version_contract_id IS DISTINCT FROM request_contract_id
+     OR contract_project_id IS DISTINCT FROM request_project_id THEN
+    RAISE EXCEPTION 'payable_settlement_execution_scope_invalid';
+  END IF;
+  IF execution_company_entity_id IS DISTINCT FROM NEW."debtorCompanyId"
+     OR contract_company_entity_id IS DISTINCT FROM NEW."debtorCompanyId"
+     OR request_project_id IS DISTINCT FROM NEW."beneficiaryProjectId" THEN
+    RAISE EXCEPTION 'payable_settlement_execution_scope_invalid';
+  END IF;
+
   SELECT source_amount_cents + COALESCE(SUM(
     CASE adjustment."direction"
       WHEN 'increase' THEN adjustment."amountCents"
@@ -226,22 +276,18 @@ BEGIN
     RAISE EXCEPTION 'payable_settlement_source_balance_invalid';
   END IF;
 
-  SELECT "amountCents"
-  INTO execution_amount_cents
-  FROM "PaymentExecution"
-  WHERE "id" = NEW."paymentExecutionId";
-  IF NOT FOUND OR NEW."amountCents" > execution_amount_cents THEN
+  IF NEW."amountCents" > execution_amount_cents THEN
     RAISE EXCEPTION 'payable_settlement_execution_amount_invalid';
   END IF;
 
-  IF NEW."sourceAggregateId" <> source_confirmed_version_id
-     OR NEW."sourceLineId" <> NEW."payableRef"
-     OR NEW."confirmedVersionId" <> source_confirmed_version_id
-     OR NEW."debtorCompanyId" <> source_debtor_company_id
-     OR NEW."payeeSubjectType" <> source_payee_subject_type
-     OR NEW."payeeSubjectId" <> source_payee_subject_id
-     OR NEW."beneficiaryProjectId" <> source_project_id
-     OR NEW."confirmedAmountCents" <> source_amount_cents
+  IF NEW."sourceAggregateId" IS DISTINCT FROM source_confirmed_version_id
+     OR NEW."sourceLineId" IS DISTINCT FROM NEW."payableRef"
+     OR NEW."confirmedVersionId" IS DISTINCT FROM source_confirmed_version_id
+     OR NEW."debtorCompanyId" IS DISTINCT FROM source_debtor_company_id
+     OR NEW."payeeSubjectType" IS DISTINCT FROM source_payee_subject_type
+     OR NEW."payeeSubjectId" IS DISTINCT FROM source_payee_subject_id
+     OR NEW."beneficiaryProjectId" IS DISTINCT FROM source_project_id
+     OR NEW."confirmedAmountCents" IS DISTINCT FROM source_amount_cents
      OR NEW."amountCents" > source_effective_amount_cents THEN
     RAISE EXCEPTION 'payable_settlement_source_snapshot_invalid';
   END IF;

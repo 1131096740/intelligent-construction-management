@@ -19,12 +19,12 @@ import {
  * company/project snapshots are re-read and frozen by the payment transaction.
  */
 export class WagePayableExecutionBindingDto {
-  @IsUUID("4", { message: "工资应付引用必须是 UUID" })
+  @IsUUID("4", { message: "工资应付引用格式不正确" })
   payableRef!: string;
 
   @IsCanonicalMoneyText({
     typeMessage: "工资债权关联金额格式不正确",
-    formatMessage: "工资债权关联金额必须按分填写为 0 或更大的整数"
+    formatMessage: "工资债权关联金额格式不正确"
   })
   amountCents!: string;
 }
@@ -38,12 +38,12 @@ export class RecordPaymentExecutionDto {
   @IsISO8601({}, { message: "预期付款申请版本格式不正确" })
   expectedPaymentUpdatedAt!: string;
 
-  @IsUUID("4", { message: "付款实付登记幂等键必须是 UUID" })
+  @IsUUID("4", { message: "付款实付登记请求格式不正确" })
   idempotencyKey!: string;
 
   @IsCanonicalMoneyText({
     typeMessage: "实付金额格式不正确",
-    formatMessage: "实付金额必须按分填写为 0 或更大的整数"
+    formatMessage: "实付金额格式不正确"
   })
   amountCents!: string;
 

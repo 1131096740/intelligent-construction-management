@@ -78,7 +78,7 @@ export class PayableRegistryController {
 
 function parseAmountCents(value: string) {
   if (!/^[1-9]\d*$/u.test(value)) {
-    throw new BadRequestException("核销金额必须为正整数分");
+    throw new BadRequestException("核销金额格式不正确");
   }
   return BigInt(value);
 }

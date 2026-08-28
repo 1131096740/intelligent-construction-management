@@ -70,9 +70,12 @@ describe("POL-13A payable registry schema", () => {
       "payable_settlement_source_not_confirmed",
       "payable_settlement_source_balance_invalid",
       "payable_settlement_execution_amount_invalid",
+      "payable_settlement_execution_scope_invalid",
       "payable_settlement_source_snapshot_invalid",
+      'contract_version_contract_id IS DISTINCT FROM request_contract_id',
+      'contract_project_id IS DISTINCT FROM request_project_id',
       'NEW."sourceType" <> \'wage_payable_ref\'',
-      'NEW."confirmedAmountCents" <> source_amount_cents'
+      'NEW."confirmedAmountCents" IS DISTINCT FROM source_amount_cents'
     ]) {
       expect(migration).toContain(marker);
     }
@@ -89,6 +92,23 @@ describe("POL-13A payable registry schema", () => {
       'FOREIGN KEY ("paymentExecutionId") REFERENCES "PaymentExecution"("id")',
       'FOREIGN KEY ("wagePayableRefId") REFERENCES "WagePayableRef"("id")',
       'CREATE FUNCTION guard_payment_execution_wage_payable_binding_immutable()',
+      'CREATE FUNCTION guard_payment_execution_wage_payable_binding_scope()',
+      'PaymentExecutionWagePayableBinding_scope_guard',
+      'payment_execution_wage_binding_scope_invalid',
+      'contract."contractTypeKey"',
+      "contract_type_key IS DISTINCT FROM 'labor_subcontract'",
+      'payment_execution_wage_binding_source_invalid',
+      'payment_execution_wage_binding_execution_balance_invalid',
+      'payment_execution_wage_binding_source_balance_invalid',
+      'contract_version_contract_id IS DISTINCT FROM request_contract_id',
+      'contract_project_id IS DISTINCT FROM request_project_id',
+      'existing_payment_execution_allocation_amount_cents',
+      'guard_payment_execution_allocation_total()',
+      'PaymentExecutionAllocation_execution_total_guard',
+      'payment_execution_allocation_total_invalid',
+      'source_debtor_company_snapshot IS DISTINCT FROM NEW."debtorCompanySnapshot"',
+      'source_project_snapshot IS DISTINCT FROM NEW."projectSnapshot"',
+      'source_creditor_snapshot IS DISTINCT FROM NEW."creditorSnapshot"',
       'BEFORE INSERT OR UPDATE OR DELETE ON "PaymentExecutionWagePayableBinding"'
     ]) {
       expect(bindingMigration).toContain(marker);
