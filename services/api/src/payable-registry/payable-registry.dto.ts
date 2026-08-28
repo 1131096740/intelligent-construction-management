@@ -13,7 +13,7 @@ export class AllocatePaymentExecutionDto {
   amountCents!: string;
 
   @IsInt({ message: "工资案件修订号必须是整数" })
-  @Min(1, { message: "工资案件修订号必须大于零" })
+  @Min(0, { message: "工资案件修订号不能为负数" })
   expectedCaseRevision!: number;
 
   @IsUUID("4", { message: "核销幂等键必须是 UUID" })

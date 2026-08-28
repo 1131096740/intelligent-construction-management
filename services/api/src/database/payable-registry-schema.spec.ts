@@ -5,6 +5,10 @@ const migration = readFileSync(
   resolve(__dirname, "../../prisma/migrations/20260827300000_pol13a_payable_registry_settlement/migration.sql"),
   "utf8"
 );
+const bindingMigration = readFileSync(
+  resolve(__dirname, "../../prisma/migrations/20260828010000_pol13a_payment_execution_wage_binding/migration.sql"),
+  "utf8"
+);
 const schema = readFileSync(resolve(__dirname, "../../prisma/schema.prisma"), "utf8");
 
 describe("POL-13A payable registry schema", () => {
@@ -45,8 +49,8 @@ describe("POL-13A payable registry schema", () => {
     expect(migration).toContain('CREATE TRIGGER "PayableSettlementAllocation_confirmed_immutable"');
     expect(migration).toContain("IF case_status <> 'draft' THEN");
     expect(migration).toContain("IF OLD.\"status\" IN ('confirmed', 'review_returned') THEN");
-    expect(migration).toContain("IF TG_OP = 'INSERT' AND NEW.\"status\" <> 'draft' THEN");
-    expect(migration).toContain("payable_settlement_case_initial_state_invalid");
+    expect(migration).toContain("IF TG_OP = 'INSERT' THEN");
+    expect(migration).toContain('NEW."status" := \'draft\';');
     expect(migration).toContain("payable_settlement_submitted_audit_immutable");
     expect(migration).toContain("payable_settlement_state_audit_invalid");
   });
@@ -56,5 +60,23 @@ describe("POL-13A payable registry schema", () => {
     expect(schema).toMatch(/paymentExecution\s+PaymentExecution\s+@relation/u);
     expect(migration).toContain("PayableSettlementAllocation_payment_execution_fkey");
     expect(migration).toContain('case_payment_execution_id <> NEW."paymentExecutionId"');
+  });
+
+  it("freezes the wage creditor subject and payment bridge without creating a second payment fact", () => {
+    for (const marker of [
+      'CREATE TABLE "PaymentExecutionWagePayableBinding"',
+      'PaymentExecutionWagePayableBinding_execution_ref_key',
+      'PaymentExecutionWagePayableBinding_subject_union_check',
+      'PaymentExecutionWagePayableBinding_version_fingerprint_check',
+      "'employee_user'",
+      "'business_party'",
+      'FOREIGN KEY ("paymentExecutionId") REFERENCES "PaymentExecution"("id")',
+      'FOREIGN KEY ("wagePayableRefId") REFERENCES "WagePayableRef"("id")',
+      'CREATE FUNCTION guard_payment_execution_wage_payable_binding_immutable()',
+      'BEFORE INSERT OR UPDATE OR DELETE ON "PaymentExecutionWagePayableBinding"'
+    ]) {
+      expect(bindingMigration).toContain(marker);
+    }
+    expect(bindingMigration).not.toContain('NEW.status');
   });
 });

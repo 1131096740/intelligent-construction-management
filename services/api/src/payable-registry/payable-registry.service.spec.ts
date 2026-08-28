@@ -47,6 +47,9 @@ describe("PayableRegistryService", () => {
       payableSettlementAllocation: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 2_000n } })
       },
+      payableSettlementCase: {
+        findMany: jest.fn().mockResolvedValue([{ revision: 3 }])
+      },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({ name: "甲公司" }) },
       project: { findUnique: jest.fn().mockResolvedValue({ code: "XM-01", name: "一号项目" }) }
     };
@@ -58,15 +61,26 @@ describe("PayableRegistryService", () => {
 
     const result = await service.listWagePayableCases("finance-user");
 
-    expect(result).toEqual([expect.objectContaining({
-      payableRef: "payable-1",
-      caseRevision: 3,
-      displayLabel: "XM-01 · 一号项目 · 工资代发机构",
-      debtorCompanyLabel: "甲公司",
-      status: "allocatable",
-      statusLabel: "可核销",
-      remainingAmountCents: "10000"
-    })]);
+    expect(result).toEqual([
+      expect.objectContaining({
+        payableRef: "payable-1",
+        caseRevision: 3,
+        displayLabel: "XM-01 · 一号项目 · 工资代发机构",
+        debtorCompanyLabel: "甲公司",
+        creditorLabel: "工资代发机构",
+        status: "allocatable",
+        statusLabel: "可核销",
+        remainingAmountCents: "10000"
+      }),
+      expect.objectContaining({
+        payableRef: "payable-person",
+        caseRevision: 3,
+        displayLabel: "XM-01 · 一号项目 · \u5458\u5de5\u51c0\u4ed8",
+        creditorLabel: "员工净付",
+        status: "allocatable",
+        remainingAmountCents: "10000"
+      })
+    ]);
     expect(JSON.stringify(result)).not.toContain("不应暴露的人员");
     expect(prisma.wagePayableRef.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
   });
@@ -196,10 +210,33 @@ describe("PayableRegistryService", () => {
           businessPartyVersionId: "party-version-1"
         }])
       },
+      paymentExecutionWagePayableBinding: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { wagePayableRefId?: string } }) =>
+          where?.wagePayableRefId
+            ? Promise.resolve([{
+                paymentExecutionId: "execution-secret-1",
+                wagePayableRefId: "payable-1",
+                debtorCompanyId: "company-1",
+                projectId: "project-1",
+                creditorSubjectType: "business_party",
+                creditorUserId: null,
+                creditorBusinessPartyVersionId: "party-version-1",
+                creditorSubjectIdentityKey: "business_party:party-version-1",
+                creditorNameSnapshot: "工资代发机构",
+                creditorUnifiedIdentitySnapshot: null,
+                creditorVersionFingerprint: null,
+                amountCents: 10_000n
+              }])
+            : Promise.resolve([])
+        )
+      },
       paymentExecutionAllocation: { findMany: jest.fn().mockResolvedValue([]) },
       payableSettlementAllocation: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 2_000n } }),
         groupBy: jest.fn().mockResolvedValue([{ paymentExecutionId: "execution-secret-1", _sum: { amountCents: 2_000n } }])
+      },
+      payableSettlementCase: {
+        findMany: jest.fn().mockResolvedValue([{ revision: 3 }])
       }
     };
     const prisma = { ...tx };
@@ -237,7 +274,7 @@ describe("PayableRegistryService", () => {
     await expect(
       service.listPaymentExecutionCandidates("finance-user", "payable-1")
     ).resolves.toMatchObject({ candidates: [] });
-    expect(tx.paymentExecution.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.paymentExecution.findMany).toHaveBeenCalledTimes(2);
   });
 
   it("allocates exactly one freshly authorized opaque selection in one serializable transaction without exposing the execution id", async () => {
@@ -309,6 +346,26 @@ describe("PayableRegistryService", () => {
           businessPartyVersionId: "party-version-1"
         }])
       },
+      paymentExecutionWagePayableBinding: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { paymentExecutionId?: string; wagePayableRefId?: string; wagePayableRef?: { in?: string[] } } }) =>
+          where?.wagePayableRefId || where?.wagePayableRef?.in
+            ? Promise.resolve([{
+                paymentExecutionId: "execution-secret-1",
+                wagePayableRefId: "payable-1",
+                debtorCompanyId: "company-1",
+                projectId: "project-1",
+                creditorSubjectType: "business_party",
+                creditorUserId: null,
+                creditorBusinessPartyVersionId: "party-version-1",
+                creditorSubjectIdentityKey: "business_party:party-version-1",
+                creditorNameSnapshot: "工资代发机构",
+                creditorUnifiedIdentitySnapshot: null,
+                creditorVersionFingerprint: null,
+                amountCents: 10_000n
+              }])
+            : Promise.resolve([])
+        )
+      },
       paymentExecutionAllocation: { findMany: jest.fn().mockResolvedValue([]) },
       payableSettlementAllocation: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
@@ -317,6 +374,7 @@ describe("PayableRegistryService", () => {
         create: jest.fn().mockResolvedValue({ id: "allocation-1" })
       },
       payableSettlementCase: {
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({
           id: "settlement-case-1",
@@ -351,7 +409,7 @@ describe("PayableRegistryService", () => {
       selectionRef: selected.selectionRef,
       selectionExpiresAt: selected.expiresAt,
       amountCents: 4_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000021"
     });
 
@@ -411,33 +469,35 @@ describe("PayableRegistryService", () => {
       selectionRef: selected.selectionRef,
       selectionExpiresAt: selected.expiresAt,
       amountCents: 1_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000027"
     })).rejects.toThrow("付款候选已失效，请刷新后重新选择");
   });
 
-  it("fails closed when a contract has zero or multiple party_b snapshots", async () => {
-    const zeroHarness = createAllocationHarness();
-    zeroHarness.tx.contractPartySnapshot.findMany.mockResolvedValue([]);
+  it("fails closed when the immutable wage creditor bridge is missing or diverges", async () => {
+    const missingHarness = createAllocationHarness();
+    missingHarness.tx.paymentExecutionWagePayableBinding.findMany.mockResolvedValue([]);
     await expect(
-      zeroHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1")
+      missingHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1")
     ).resolves.toMatchObject({ candidates: [] });
 
-    const multipleHarness = createAllocationHarness();
-    multipleHarness.tx.contractPartySnapshot.findMany.mockResolvedValue([
-      {
-        id: "party-snapshot-1",
-        contractVersionId: "contract-version-1",
-        businessPartyVersionId: "party-version-1"
-      },
-      {
-        id: "party-snapshot-2",
-        contractVersionId: "contract-version-1",
-        businessPartyVersionId: "party-version-1"
-      }
-    ]);
+    const divergedHarness = createAllocationHarness();
+    divergedHarness.tx.paymentExecutionWagePayableBinding.findMany.mockResolvedValue([{
+      paymentExecutionId: "execution-secret-1",
+      wagePayableRefId: "payable-1",
+      debtorCompanyId: "company-1",
+      projectId: "project-1",
+      creditorSubjectType: "business_party",
+      creditorUserId: null,
+      creditorBusinessPartyVersionId: "different-party-version",
+      creditorSubjectIdentityKey: "business_party:different-party-version",
+      creditorNameSnapshot: "工资代发机构",
+      creditorUnifiedIdentitySnapshot: null,
+      creditorVersionFingerprint: null,
+      amountCents: 10_000n
+    }]);
     await expect(
-      multipleHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1")
+      divergedHarness.service.listPaymentExecutionCandidates("finance-user", "payable-1")
     ).resolves.toMatchObject({ candidates: [] });
   });
 
@@ -454,7 +514,7 @@ describe("PayableRegistryService", () => {
       selectionRef: actorSelected.selectionRef,
       selectionExpiresAt: actorSelected.expiresAt,
       amountCents: 4_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000022"
     })).rejects.toThrow("付款候选已失效，请刷新后重新选择");
     expect(actorHarness.tx.payableSettlementAllocation.create).not.toHaveBeenCalled();
@@ -474,7 +534,7 @@ describe("PayableRegistryService", () => {
       selectionRef: balanceSelected.selectionRef,
       selectionExpiresAt: balanceSelected.expiresAt,
       amountCents: 4_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000023"
     })).rejects.toThrow("付款候选已失效，请刷新后重新选择");
     expect(balanceHarness.tx.payableSettlementAllocation.create).not.toHaveBeenCalled();
@@ -487,7 +547,7 @@ describe("PayableRegistryService", () => {
       selectionRef: "pes1.invalid",
       selectionExpiresAt: new Date(Date.now() + 60_000).toISOString(),
       amountCents: 1_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000024"
     })).rejects.toThrow("付款候选已失效，请刷新后重新选择");
 
@@ -506,7 +566,7 @@ describe("PayableRegistryService", () => {
       selectionRef: candidates.candidates[0].selectionRef,
       selectionExpiresAt: candidates.candidates[0].expiresAt,
       amountCents: 1_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000025"
     })).rejects.toThrow("付款候选已失效，请刷新后重新选择");
     expect(multipleHarness.tx.payableSettlementAllocation.create).not.toHaveBeenCalled();
@@ -521,7 +581,7 @@ describe("PayableRegistryService", () => {
       selectionRef: selected.selectionRef,
       selectionExpiresAt: selected.expiresAt,
       amountCents: 4_000n,
-      expectedCaseRevision: 3,
+      expectedCaseRevision: 0,
       idempotencyKey: "00000000-0000-4000-8000-000000000026"
     } as const;
     harness.prisma.$transaction.mockImplementationOnce(() => Promise.reject({ code: "P2034" }));
@@ -1073,6 +1133,27 @@ function createAllocationHarness() {
         businessPartyVersionId: "party-version-1"
       }])
     },
+    paymentExecutionWagePayableBinding: {
+      findMany: jest.fn().mockImplementation(({ where }: { where?: { paymentExecutionId?: string; wagePayableRefId?: string; wagePayableRef?: { in?: string[] } } }) => {
+        if (where?.wagePayableRefId || where?.wagePayableRef?.in) {
+          return Promise.resolve([{
+            paymentExecutionId: "execution-secret-1",
+            wagePayableRefId: "payable-1",
+            debtorCompanyId: "company-1",
+            projectId: "project-1",
+            creditorSubjectType: "business_party",
+            creditorUserId: null,
+            creditorBusinessPartyVersionId: "party-version-1",
+            creditorSubjectIdentityKey: "business_party:party-version-1",
+            creditorNameSnapshot: "工资代发机构",
+            creditorUnifiedIdentitySnapshot: null,
+            creditorVersionFingerprint: null,
+            amountCents: 10_000n
+          }]);
+        }
+        return Promise.resolve([]);
+      })
+    },
     paymentExecutionAllocation: { findMany: jest.fn().mockResolvedValue([]) },
     payableSettlementAllocation: {
       aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
@@ -1081,6 +1162,7 @@ function createAllocationHarness() {
       create: jest.fn().mockResolvedValue({ id: "allocation-1" })
     },
     payableSettlementCase: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({
         id: "settlement-case-1",

@@ -92,8 +92,11 @@ ALTER TABLE "PayableSettlementCommandReceipt"
 CREATE FUNCTION guard_confirmed_payable_settlement_case()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF TG_OP = 'INSERT' AND NEW."status" <> 'draft' THEN
-    RAISE EXCEPTION 'payable_settlement_case_initial_state_invalid';
+  IF TG_OP = 'INSERT' THEN
+    -- Creation is always an inert draft.  Submitted/confirmed lifecycle
+    -- states must be reached only through the transactional SoD, balance,
+    -- and audit-gated commands.
+    NEW."status" := 'draft';
   END IF;
   IF TG_OP = 'DELETE' THEN
     IF OLD."status" <> 'draft' THEN

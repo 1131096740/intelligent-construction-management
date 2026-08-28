@@ -1648,6 +1648,41 @@ model PaymentExecution {
 
   payableSettlementCases          PayableSettlementCase[]
   payableSettlementAllocations    PayableSettlementAllocation[]
+  wagePayableBindings              PaymentExecutionWagePayableBinding[]
+}
+
+// A PaymentExecution may settle several wage creditors. This immutable bridge
+// freezes the source WagePayableRef identity without making a fake single payee
+// on the payment fact. The bridge is intentionally append-only; #220 consumes
+// it as a read-side eligibility proof.
+model PaymentExecutionWagePayableBinding {
+  id                            String   @id @default(uuid())
+  paymentExecutionId            String
+  wagePayableRefId              String
+  debtorCompanyId               String
+  debtorCompanySnapshot         Json
+  projectId                     String
+  projectSnapshot               Json
+  creditorSubjectType           String
+  creditorUserId                String?
+  creditorBusinessPartyVersionId String?
+  creditorSubjectIdentityKey    String
+  creditorNameSnapshot          String
+  creditorUnifiedIdentitySnapshot String?
+  creditorVersionFingerprint    String
+  creditorSnapshot              Json
+  amountCents                   BigInt
+  currencyCode                  String   @default("CNY")
+  createdByUserId               String
+  createdAt                     DateTime @default(now())
+
+  paymentExecution PaymentExecution @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+  wagePayableRef   WagePayableRef   @relation(fields: [wagePayableRefId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentExecutionId, wagePayableRefId], map: "PaymentExecutionWagePayableBinding_execution_ref_key")
+  @@index([wagePayableRefId])
+  @@index([paymentExecutionId])
+  @@index([projectId, debtorCompanyId])
 }
 
 model PaymentExecutionAllocation {
@@ -4202,6 +4237,7 @@ model WagePayableRef {
   personLine        WagePersonLine        @relation(fields: [personLineId], references: [id], onDelete: Restrict)
   adjustsPayableRef WagePayableRef?       @relation("WagePayableRefAdjustments", fields: [adjustsPayableRefId], references: [id], onDelete: Restrict)
   adjustments       WagePayableRef[]      @relation("WagePayableRefAdjustments")
+  paymentExecutionBindings PaymentExecutionWagePayableBinding[]
 
   @@index([confirmedVersionId])
   @@index([projectId, debtorCompanyId])

@@ -7,7 +7,10 @@ import { canPerform, type RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
-import { assertAllocationSetMatchesPaymentExecution } from "./payable-settlement.domain";
+import {
+  assertAllocationSetMatchesPaymentExecution,
+  type WagePayableBindingFact
+} from "./payable-settlement.domain";
 import { derivePayableSettlementBalance } from "./payable-registry.domain";
 import {
   type PaymentExecutionSelectionBinding,
@@ -103,7 +106,9 @@ export class PayableRegistryService {
           select: {
             creditorSubjectType: true,
             creditorSubjectIdentityKey: true,
-            creditorNameSnapshot: true
+            creditorNameSnapshot: true,
+            creditorUnifiedIdentitySnapshot: true,
+            creditorVersionFingerprint: true
           }
         },
         adjustments: { select: { direction: true, amountCents: true } }
@@ -112,7 +117,6 @@ export class PayableRegistryService {
     const cases = [];
     for (const row of rows) {
       const registered = new WagePayableSourceAdapter().toRegisteredPayable(row);
-      if (registered.payeeSubjectType !== "business_party") continue;
       const effectiveAmountCents = deriveEffectiveWagePayableAmount(
         row.amountCents,
         row.adjustments
@@ -150,12 +154,16 @@ export class PayableRegistryService {
       if (!company || !project) {
         throw new ConflictException("工资应付案件的公司或项目档案不完整");
       }
+      const caseRevision = await this.loadPayableCaseRevision(this.prisma, row.id);
+      const creditorLabel = registered.payeeSubjectType === "employee_user"
+        ? "员工净付"
+        : row.creditorBreakdown.creditorNameSnapshot;
       cases.push({
         payableRef: row.id,
-        caseRevision: row.confirmedVersion.revision,
-        displayLabel: `${project.code} · ${project.name} · ${row.creditorBreakdown.creditorNameSnapshot}`,
+        caseRevision,
+        displayLabel: `${project.code} · ${project.name} · ${creditorLabel}`,
         debtorCompanyLabel: company.name,
-        creditorLabel: row.creditorBreakdown.creditorNameSnapshot,
+        creditorLabel,
         status: overSettled ? "over_settled_reconciliation_required" : "allocatable",
         statusLabel: overSettled ? "超额核销待核对" : "可核销",
         remainingAmountCents: overSettled ? "0" : allocatableAmountCents.toString(),
@@ -185,7 +193,7 @@ export class PayableRegistryService {
     const payableRef = requiredText(input.payableRef, "工资应付案件不能为空");
     const selectionRef = requiredText(input.selectionRef, "付款候选引用不能为空");
     const selectionExpiresAt = requiredText(input.selectionExpiresAt, "付款候选有效期不能为空");
-    if (!Number.isInteger(input.expectedCaseRevision) || input.expectedCaseRevision < 1) {
+    if (!Number.isInteger(input.expectedCaseRevision) || input.expectedCaseRevision < 0) {
       throw new ConflictException("工资应付案件修订号无效");
     }
     if (input.amountCents <= 0n) throw new ConflictException("核销金额必须大于零");
@@ -270,6 +278,10 @@ export class PayableRegistryService {
         where: { paymentExecutionId: current.paymentExecutionId },
         orderBy: [{ revision: "desc" }, { id: "desc" }]
       });
+      const nextRevision = Math.max(
+        beforeLock.caseRevision,
+        latest?.revision ?? 0
+      ) + 1;
       let settlementCase: { id: string; status: string; revision: number };
       if (!latest || latest.status === "review_returned") {
         settlementCase = await tx.payableSettlementCase.create({
@@ -277,7 +289,7 @@ export class PayableRegistryService {
             id: randomUUID(),
             paymentExecutionId: current.paymentExecutionId,
             status: "draft",
-            revision: (latest?.revision ?? 0) + 1,
+            revision: nextRevision,
             ...(latest ? { supersedesCaseId: latest.id } : {}),
             createdByUserId: actorUserId
           },
@@ -331,7 +343,7 @@ export class PayableRegistryService {
       if (latest?.status === "draft") {
         settlementCase = await tx.payableSettlementCase.update({
           where: { id: settlementCase.id },
-          data: { revision: { increment: 1 } },
+          data: { revision: nextRevision },
           select: { id: true, status: true, revision: true }
         });
       }
@@ -391,7 +403,9 @@ export class PayableRegistryService {
           select: {
             creditorSubjectType: true,
             creditorSubjectIdentityKey: true,
-            creditorNameSnapshot: true
+            creditorNameSnapshot: true,
+            creditorUnifiedIdentitySnapshot: true,
+            creditorVersionFingerprint: true
           }
         },
         adjustments: { select: { direction: true, amountCents: true } }
@@ -401,6 +415,7 @@ export class PayableRegistryService {
       throw new NotFoundException("工资应付案件不存在或尚未确认");
     }
     const registered = new WagePayableSourceAdapter().toRegisteredPayable(payable);
+    const caseRevision = await this.loadPayableCaseRevision(db, payableRef);
     const effectiveAmountCents = deriveEffectiveWagePayableAmount(
       payable.amountCents,
       payable.adjustments
@@ -429,17 +444,62 @@ export class PayableRegistryService {
     if (allocatablePayableCents < 0n) {
       throw new ConflictException("该工资应付存在超额待确认核销，必须先完成核对");
     }
-    if (allocatablePayableCents === 0n || registered.payeeSubjectType !== "business_party") {
+    if (allocatablePayableCents === 0n) {
       return {
         confirmedVersionId: payable.confirmedVersionId,
-        caseRevision: payable.confirmedVersion.revision,
+        caseRevision,
         registered,
         allocatablePayableCents,
         candidates: []
       };
     }
 
+    type WageBindingCandidateRow = {
+      paymentExecutionId: string;
+      wagePayableRefId: string;
+      debtorCompanyId: string;
+      projectId: string;
+      creditorSubjectType: string;
+      creditorUserId: string | null;
+      creditorBusinessPartyVersionId: string | null;
+      creditorSubjectIdentityKey: string;
+      creditorNameSnapshot: string;
+      creditorUnifiedIdentitySnapshot: string | null;
+      creditorVersionFingerprint: string | null;
+      amountCents: bigint;
+    };
+    const bindingClient = (db as unknown as {
+      paymentExecutionWagePayableBinding?: {
+        findMany(args: Record<string, unknown>): Promise<WageBindingCandidateRow[]>;
+      };
+    }).paymentExecutionWagePayableBinding;
+    if (!bindingClient) {
+      return { confirmedVersionId: payable.confirmedVersionId, caseRevision, registered, allocatablePayableCents, candidates: [] };
+    }
+    const wageBindings = await bindingClient.findMany({
+      where: { wagePayableRefId: payableRef },
+      orderBy: [{ createdAt: "desc" }, { paymentExecutionId: "asc" }],
+      take: 100,
+      select: {
+        paymentExecutionId: true,
+        wagePayableRefId: true,
+        debtorCompanyId: true,
+        projectId: true,
+        creditorSubjectType: true,
+        creditorUserId: true,
+        creditorBusinessPartyVersionId: true,
+        creditorSubjectIdentityKey: true,
+        creditorNameSnapshot: true,
+        creditorUnifiedIdentitySnapshot: true,
+        creditorVersionFingerprint: true,
+        amountCents: true
+      }
+    });
+    if (wageBindings.length === 0) {
+      return { confirmedVersionId: payable.confirmedVersionId, caseRevision, registered, allocatablePayableCents, candidates: [] };
+    }
     const executions = await db.paymentExecution.findMany({
+      where: { id: { in: [...new Set(wageBindings.map((binding) => binding.paymentExecutionId))] } },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }, { id: "asc" }],
       take: 100,
       select: {
@@ -467,7 +527,7 @@ export class PayableRegistryService {
       }
     });
     const contractVersionIds = [...new Set(requests.map((request) => request.contractVersionId))];
-    const [contractVersions, counterparties, contractAllocations, allocatedByExecution] = await Promise.all([
+    const [contractVersions, allocatedByExecution, allocatedByPair] = await Promise.all([
       contractVersionIds.length === 0 ? Promise.resolve([]) : db.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
         select: {
@@ -480,15 +540,6 @@ export class PayableRegistryService {
           updatedAt: true
         }
       }),
-      contractVersionIds.length === 0 ? Promise.resolve([]) : db.contractPartySnapshot.findMany({
-        where: { contractVersionId: { in: contractVersionIds }, roleKey: "party_b" },
-        select: { id: true, contractVersionId: true, businessPartyVersionId: true },
-        orderBy: [{ contractVersionId: "asc" }, { displayOrder: "asc" }, { id: "asc" }]
-      }),
-      executionIds.length === 0 ? Promise.resolve([]) : db.paymentExecutionAllocation.findMany({
-        where: { paymentExecutionId: { in: executionIds } },
-        select: { paymentExecutionId: true }
-      }),
       executionIds.length === 0 ? Promise.resolve([]) : db.payableSettlementAllocation.groupBy({
         by: ["paymentExecutionId"],
         where: {
@@ -496,24 +547,34 @@ export class PayableRegistryService {
           settlementCase: { status: { in: ["draft", "submitted", "confirmed"] } }
         },
         _sum: { amountCents: true }
+      }),
+      executionIds.length === 0 ? Promise.resolve([]) : db.payableSettlementAllocation.groupBy({
+        by: ["paymentExecutionId", "payableRef"],
+        where: {
+          paymentExecutionId: { in: executionIds },
+          payableRef,
+          settlementCase: { status: { in: ["draft", "submitted", "confirmed"] } }
+        },
+        _sum: { amountCents: true }
       })
     ]);
     const requestById = new Map(requests.map((request) => [request.id, request]));
     const contractVersionById = new Map(contractVersions.map((version) => [version.id, version]));
-    const counterpartiesByContractVersion = new Map<string, typeof counterparties>();
-    for (const counterparty of counterparties) {
-      const rows = counterpartiesByContractVersion.get(counterparty.contractVersionId) ?? [];
-      rows.push(counterparty);
-      counterpartiesByContractVersion.set(counterparty.contractVersionId, rows);
-    }
-    const contractAllocatedExecutionIds = new Set(
-      contractAllocations.map((allocation) => allocation.paymentExecutionId)
+    const bindingByExecutionId = new Map(
+      wageBindings.map((binding) => [binding.paymentExecutionId, binding])
     );
     const allocatedAmountByExecutionId = new Map(
       allocatedByExecution.map((row) => [row.paymentExecutionId, row._sum.amountCents ?? 0n])
     );
+    const allocatedAmountByExecutionAndPayable = new Map(
+      allocatedByPair.map((row) => [
+        `${row.paymentExecutionId}:${row.payableRef}`,
+        row._sum.amountCents ?? 0n
+      ])
+    );
     const candidates: EligiblePaymentCandidateState["candidates"][number][] = [];
     for (const execution of executions) {
+      const wageBinding = bindingByExecutionId.get(execution.id);
       const request = requestById.get(execution.paymentRequestId);
       const contractVersion = request
         ? contractVersionById.get(request.contractVersionId)
@@ -521,6 +582,20 @@ export class PayableRegistryService {
       if (
         !request ||
         !contractVersion ||
+        !wageBinding ||
+        wageBinding.wagePayableRefId !== payableRef ||
+        wageBinding.debtorCompanyId !== registered.debtorCompanyId ||
+        wageBinding.projectId !== registered.beneficiaryProjectId ||
+        wageBinding.creditorSubjectType !== registered.payeeSubjectType ||
+        wageBinding.creditorSubjectIdentityKey !== registered.payeeSubjectId ||
+        (registered.payeeSubjectType === "employee_user"
+          ? wageBinding.creditorUserId !== registered.payeeSubjectId.slice("employee_user:".length)
+          : wageBinding.creditorBusinessPartyVersionId !== registered.payeeSubjectId.slice("business_party:".length)) ||
+        wageBinding.creditorNameSnapshot !== payable.creditorBreakdown.creditorNameSnapshot ||
+        (wageBinding.creditorUnifiedIdentitySnapshot ?? null) !==
+          (payable.creditorBreakdown.creditorUnifiedIdentitySnapshot ?? null) ||
+        (wageBinding.creditorVersionFingerprint ?? null) !==
+          (payable.creditorBreakdown.creditorVersionFingerprint ?? null) ||
         request.projectId !== registered.beneficiaryProjectId ||
         request.paymentSubjectType !== "our_company" ||
         execution.paymentSubjectType !== "our_company" ||
@@ -534,17 +609,15 @@ export class PayableRegistryService {
       ) {
         continue;
       }
-      const counterpartyRows = counterpartiesByContractVersion.get(request.contractVersionId) ?? [];
-      const counterparty = counterpartyRows.length === 1 ? counterpartyRows[0] : null;
-      if (
-        !counterparty?.businessPartyVersionId ||
-        registered.payeeSubjectId !== `business_party:${counterparty.businessPartyVersionId}`
-      ) {
-        continue;
-      }
-      if (contractAllocatedExecutionIds.has(execution.id)) continue;
-      const availableAmountCents = execution.amountCents -
+      const executionAvailableAmountCents = execution.amountCents -
         (allocatedAmountByExecutionId.get(execution.id) ?? 0n);
+      const bindingAvailableAmountCents = wageBinding.amountCents -
+        (allocatedAmountByExecutionAndPayable.get(`${execution.id}:${payableRef}`) ?? 0n);
+      const availableAmountCents = [
+        executionAvailableAmountCents,
+        bindingAvailableAmountCents,
+        allocatablePayableCents
+      ].reduce((minimum, value) => value < minimum ? value : minimum);
       if (availableAmountCents <= 0n) continue;
       const executionFingerprint = commandFingerprint("payment_execution_selection", {
         paymentExecutionId: execution.id,
@@ -559,7 +632,10 @@ export class PayableRegistryService {
         actualPayerCompanyId: execution.companyEntityIdSnapshot,
         paymentRequestSubjectType: request.paymentSubjectType,
         paymentExecutionSubjectType: execution.paymentSubjectType,
-        counterpartyVersionId: counterparty.businessPartyVersionId,
+        payableRef,
+        wageBindingAmountCents: wageBinding.amountCents.toString(),
+        wageBindingSubjectType: wageBinding.creditorSubjectType,
+        wageBindingSubjectIdentityKey: wageBinding.creditorSubjectIdentityKey,
         amountCents: execution.amountCents.toString(),
         paidAt: execution.paidAt.toISOString(),
         createdAt: execution.createdAt.toISOString()
@@ -575,7 +651,7 @@ export class PayableRegistryService {
         projectId: registered.beneficiaryProjectId,
         paymentExecutionId: execution.id,
         executionFingerprint,
-        caseRevision: payable.confirmedVersion.revision,
+        caseRevision,
         balanceFingerprint
       } satisfies PaymentExecutionSelectionBinding;
       const issued = this.selectionRefs.issue(binding, now);
@@ -597,11 +673,30 @@ export class PayableRegistryService {
     }
     return {
       confirmedVersionId: payable.confirmedVersionId,
-      caseRevision: payable.confirmedVersion.revision,
+      caseRevision,
       registered,
       allocatablePayableCents,
       candidates
     };
+  }
+
+  private async loadPayableCaseRevision(
+    db: PayableRegistryDb,
+    payableRef: string
+  ): Promise<number> {
+    const caseClient = (db as unknown as {
+      payableSettlementCase?: {
+        findMany(args: Record<string, unknown>): Promise<Array<{ revision: number }>>;
+      };
+    }).payableSettlementCase;
+    if (!caseClient || typeof caseClient.findMany !== "function") return 0;
+    const rows = await caseClient.findMany({
+      where: { allocations: { some: { payableRef } } },
+      orderBy: [{ revision: "desc" }, { id: "desc" }],
+      take: 1,
+      select: { revision: true }
+    });
+    return rows[0]?.revision ?? 0;
   }
 
   async listWorkbench(actorUserId: string) {
@@ -685,7 +780,7 @@ export class PayableRegistryService {
       }
 
       if (action !== "return") {
-        const { execution, request, contractVersion, counterparties, allocations } = context;
+        const { execution, request, contractVersion, counterparties, allocations, wageBindings } = context;
         if (action === "confirm" && execution.executedByUserId === actorUserId) {
           throw new ForbiddenException("付款执行人与确认人必须职责分离");
         }
@@ -695,26 +790,77 @@ export class PayableRegistryService {
         ) {
           throw new ForbiddenException("核销编辑人与确认人必须职责分离");
         }
-        assertCurrentPaymentRequestContext(request, execution, counterparties, allocations);
+        assertCurrentPaymentRequestContext(request, execution, counterparties, allocations, wageBindings);
         const payer = resolvePayerCompanies(request, contractVersion, execution);
         assertAllocationSetMatchesPaymentExecution({
           id: execution.id, amountCents: execution.amountCents, currencyCode: "CNY",
           approvedPayerCompanyId: payer.approvedPayerCompanyId,
           actualPayerCompanyId: payer.actualPayerCompanyId
-        }, allocations.map(toSettlementAllocationInput));
+        }, allocations.map(toSettlementAllocationInput), { wageBindings });
         await this.assertCurrentPayableBalances(tx, settlementCaseId, allocations);
       }
       const now = new Date();
-      const row = await tx.payableSettlementCase.update({ where: { id: settlementCaseId }, data: {
-        status: action === "submit" ? "submitted" : action === "confirm" ? "confirmed" : "review_returned",
-        revision: { increment: 1 },
-        ...(action === "submit" ? { submittedByUserId: actorUserId, submittedAt: now } : {}),
-        ...(action === "confirm" ? { confirmedByUserId: actorUserId, confirmedAt: now } : {})
-      } });
-      const response = safeSettlementCaseResponse(row);
+      let row;
+      let successorCase: typeof context.settlementCase | null = null;
+      if (action === "return") {
+        // A returned submission remains an immutable historical revision. The
+        // next editable draft is created in this same transaction and carries
+        // forward the frozen allocation snapshots for a new review cycle.
+        row = await tx.payableSettlementCase.update({ where: { id: settlementCaseId }, data: {
+          status: "review_returned",
+          revision: { increment: 1 }
+        } });
+        successorCase = await tx.payableSettlementCase.create({
+          data: {
+            id: randomUUID(),
+            paymentExecutionId: settlementCase.paymentExecutionId,
+            status: "draft",
+            revision: row.revision + 1,
+            supersedesCaseId: settlementCaseId,
+            createdByUserId: actorUserId
+          }
+        });
+        for (const allocation of context.allocations) {
+          await tx.payableSettlementAllocation.create({
+            data: {
+              id: randomUUID(),
+              settlementCaseId: successorCase.id,
+              paymentExecutionId: allocation.paymentExecutionId,
+              payableRef: allocation.payableRef,
+              sourceType: allocation.sourceType,
+              sourceAggregateId: allocation.sourceAggregateId,
+              sourceLineId: allocation.sourceLineId,
+              confirmedVersionId: allocation.confirmedVersionId,
+              debtorCompanyId: allocation.debtorCompanyId,
+              payeeSubjectType: allocation.payeeSubjectType,
+              payeeSubjectId: allocation.payeeSubjectId,
+              currencyCode: allocation.currencyCode,
+              beneficiaryProjectId: allocation.beneficiaryProjectId,
+          sourceSnapshot: allocation.sourceSnapshot as Prisma.InputJsonValue,
+              confirmedAmountCents: allocation.confirmedAmountCents,
+              amountCents: allocation.amountCents,
+              createdByUserId: actorUserId
+            }
+          });
+        }
+      } else {
+        row = await tx.payableSettlementCase.update({ where: { id: settlementCaseId }, data: {
+          status: action === "submit" ? "submitted" : "confirmed",
+          revision: { increment: 1 },
+          ...(action === "submit" ? { submittedByUserId: actorUserId, submittedAt: now } : {}),
+          ...(action === "confirm" ? { confirmedByUserId: actorUserId, confirmedAt: now } : {})
+        } });
+      }
+      const response = action === "return" && successorCase
+        ? {
+            ...safeSettlementCaseResponse(successorCase),
+            returnedSettlementCaseId: settlementCaseId,
+            supersedesCaseId: settlementCaseId
+          }
+        : safeSettlementCaseResponse(row);
       await tx.payableSettlementCommandReceipt.create({ data: {
         id: randomUUID(), idempotencyKey, payloadFingerprint: fingerprint, action: actionName,
-        settlementCaseId, responseSnapshot: response
+        settlementCaseId: successorCase?.id ?? settlementCaseId, responseSnapshot: response
       } });
       const totalAmountCents = context.allocations.reduce(
         (total, allocation) => total + allocation.amountCents,
@@ -740,6 +886,9 @@ export class PayableRegistryService {
           idempotencyKeyFingerprint: auditFingerprint("idempotency_key", idempotencyKey),
           payloadFingerprint: fingerprint,
           settlementCaseFingerprint: auditFingerprint("settlement_case", settlementCaseId),
+          ...(successorCase ? {
+            successorSettlementCaseFingerprint: auditFingerprint("settlement_case", successorCase.id)
+          } : {}),
           paymentExecutionFingerprint: auditFingerprint(
             "payment_execution",
             context.execution.id
@@ -837,7 +986,33 @@ export class PayableRegistryService {
     ) {
       throw new ConflictException("核销明细已被更新，请刷新后重试");
     }
-    return { settlementCase, execution, request, contractVersion, counterparties, allocations };
+    const bindingClient = (tx as unknown as {
+      paymentExecutionWagePayableBinding?: {
+        findMany(args: Record<string, unknown>): Promise<Array<{
+          wagePayableRefId: string;
+          creditorSubjectType: string;
+          creditorSubjectIdentityKey: string;
+          amountCents: bigint;
+        }>>;
+      };
+    }).paymentExecutionWagePayableBinding;
+    const wageBindings: WagePayableBindingFact[] = bindingClient
+      ? (await bindingClient.findMany({
+          where: { paymentExecutionId: caseSnapshot.paymentExecutionId },
+          select: {
+            wagePayableRefId: true,
+            creditorSubjectType: true,
+            creditorSubjectIdentityKey: true,
+            amountCents: true
+          }
+        })).map((binding) => ({
+          payableRef: binding.wagePayableRefId,
+          payeeSubjectType: binding.creditorSubjectType as WagePayableBindingFact["payeeSubjectType"],
+          payeeSubjectId: binding.creditorSubjectIdentityKey,
+          amountCents: binding.amountCents
+        }))
+      : [];
+    return { settlementCase, execution, request, contractVersion, counterparties, allocations, wageBindings };
   }
 
   private async assertTransactionFinanceWriter(
@@ -1092,7 +1267,9 @@ function assertCurrentPaymentRequestContext(
     beneficiaryProjectId: string;
     payeeSubjectType: string;
     payeeSubjectId: string;
-  }>[]
+    payableRef: string;
+  }>[],
+  wageBindings: readonly WagePayableBindingFact[] = []
 ) {
   if (!["paid", "partially_paid"].includes(request.status)) {
     throw new ConflictException("付款申请状态已变化，请刷新后重试");
@@ -1103,15 +1280,29 @@ function assertCurrentPaymentRequestContext(
   if (allocations.some((allocation) => allocation.beneficiaryProjectId !== request.projectId)) {
     throw new ConflictException("付款申请项目与核销明细不一致");
   }
-  if (counterparties.length !== 1 || !counterparties[0].businessPartyVersionId) {
-    throw new ConflictException("合同当前未冻结唯一收款方，请刷新后重试");
-  }
-  const approvedPayeeSubjectId = `business_party:${counterparties[0].businessPartyVersionId}`;
-  if (allocations.some((allocation) =>
-    allocation.payeeSubjectType !== "business_party" ||
-    allocation.payeeSubjectId !== approvedPayeeSubjectId
-  )) {
-    throw new ConflictException("合同收款方与核销明细不一致");
+  if (wageBindings.length > 0) {
+    const wageBindingByRef = new Map(
+      wageBindings.map((binding) => [binding.payableRef, binding])
+    );
+    if (allocations.some((allocation) => {
+      const binding = wageBindingByRef.get(allocation.payableRef);
+      return !binding ||
+        binding.payeeSubjectType !== allocation.payeeSubjectType ||
+        binding.payeeSubjectId !== allocation.payeeSubjectId;
+    })) {
+      throw new ConflictException("工资债权人与核销明细不一致");
+    }
+  } else {
+    if (counterparties.length !== 1 || !counterparties[0].businessPartyVersionId) {
+      throw new ConflictException("合同当前未冻结唯一收款方，请刷新后重试");
+    }
+    const approvedPayeeSubjectId = `business_party:${counterparties[0].businessPartyVersionId}`;
+    if (allocations.some((allocation) =>
+      allocation.payeeSubjectType !== "business_party" ||
+      allocation.payeeSubjectId !== approvedPayeeSubjectId
+    )) {
+      throw new ConflictException("合同收款方与核销明细不一致");
+    }
   }
 }
 

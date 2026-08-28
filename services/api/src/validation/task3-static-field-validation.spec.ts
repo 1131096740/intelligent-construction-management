@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import { getMetadataStorage, validate } from "class-validator";
 import { AssignPaymentApprovalDto } from "../payment/dto/assign-payment-approval.dto";
 import { CreatePaymentRequestDto } from "../payment/dto/create-payment-request.dto";
