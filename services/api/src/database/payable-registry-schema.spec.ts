@@ -62,6 +62,22 @@ describe("POL-13A payable registry schema", () => {
     expect(migration).toContain('case_payment_execution_id <> NEW."paymentExecutionId"');
   });
 
+  it("enforces the typed wage source boundary at the database trigger", () => {
+    for (const marker of [
+      'CREATE FUNCTION guard_payable_settlement_allocation_source()',
+      'CREATE TRIGGER "PayableSettlementAllocation_source_guard"',
+      "payable_settlement_source_type_invalid",
+      "payable_settlement_source_not_confirmed",
+      "payable_settlement_source_balance_invalid",
+      "payable_settlement_execution_amount_invalid",
+      "payable_settlement_source_snapshot_invalid",
+      'NEW."sourceType" <> \'wage_payable_ref\'',
+      'NEW."confirmedAmountCents" <> source_amount_cents'
+    ]) {
+      expect(migration).toContain(marker);
+    }
+  });
+
   it("freezes the wage creditor subject and payment bridge without creating a second payment fact", () => {
     for (const marker of [
       'CREATE TABLE "PaymentExecutionWagePayableBinding"',

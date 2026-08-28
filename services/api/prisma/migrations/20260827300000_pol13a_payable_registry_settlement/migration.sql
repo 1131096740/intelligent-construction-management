@@ -174,9 +174,87 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- The typed allocation columns must retain the immutable source coordinates;
+-- JSON snapshots are explanatory only and cannot be used to bypass this
+-- boundary.  The service still owns the serializable cross-row balance check.
+CREATE FUNCTION guard_payable_settlement_allocation_source()
+RETURNS TRIGGER AS $$
+DECLARE
+  source_confirmed_version_id TEXT;
+  source_debtor_company_id TEXT;
+  source_project_id TEXT;
+  source_amount_cents BIGINT;
+  source_effective_amount_cents BIGINT;
+  source_payee_subject_type TEXT;
+  source_payee_subject_id TEXT;
+  execution_amount_cents BIGINT;
+BEGIN
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  IF NEW."sourceType" <> 'wage_payable_ref' THEN
+    RAISE EXCEPTION 'payable_settlement_source_type_invalid';
+  END IF;
+
+  SELECT ref."confirmedVersionId", ref."debtorCompanyId", ref."projectId",
+         ref."amountCents", breakdown."creditorSubjectType",
+         breakdown."creditorSubjectIdentityKey"
+  INTO source_confirmed_version_id, source_debtor_company_id, source_project_id,
+       source_amount_cents, source_payee_subject_type, source_payee_subject_id
+  FROM "WagePayableRef" ref
+  INNER JOIN "WageCreditorBreakdown" breakdown
+    ON breakdown."id" = ref."creditorBreakdownId"
+  INNER JOIN "WageStatementVersion" version
+    ON version."id" = ref."confirmedVersionId"
+  WHERE ref."id" = NEW."payableRef"
+    AND ref."direction" = 'increase'
+    AND ref."adjustsPayableRefId" IS NULL
+    AND version."status" = 'confirmed';
+  IF NOT FOUND OR source_payee_subject_type IS NULL OR source_payee_subject_id IS NULL THEN
+    RAISE EXCEPTION 'payable_settlement_source_not_confirmed';
+  END IF;
+
+  SELECT source_amount_cents + COALESCE(SUM(
+    CASE adjustment."direction"
+      WHEN 'increase' THEN adjustment."amountCents"
+      WHEN 'decrease' THEN -adjustment."amountCents"
+      ELSE 0
+    END
+  ), 0)
+  INTO source_effective_amount_cents
+  FROM "WagePayableRef" adjustment
+  WHERE adjustment."adjustsPayableRefId" = NEW."payableRef";
+  IF source_effective_amount_cents < 0 THEN
+    RAISE EXCEPTION 'payable_settlement_source_balance_invalid';
+  END IF;
+
+  SELECT "amountCents"
+  INTO execution_amount_cents
+  FROM "PaymentExecution"
+  WHERE "id" = NEW."paymentExecutionId";
+  IF NOT FOUND OR NEW."amountCents" > execution_amount_cents THEN
+    RAISE EXCEPTION 'payable_settlement_execution_amount_invalid';
+  END IF;
+
+  IF NEW."sourceAggregateId" <> source_confirmed_version_id
+     OR NEW."sourceLineId" <> NEW."payableRef"
+     OR NEW."confirmedVersionId" <> source_confirmed_version_id
+     OR NEW."debtorCompanyId" <> source_debtor_company_id
+     OR NEW."payeeSubjectType" <> source_payee_subject_type
+     OR NEW."payeeSubjectId" <> source_payee_subject_id
+     OR NEW."beneficiaryProjectId" <> source_project_id
+     OR NEW."confirmedAmountCents" <> source_amount_cents
+     OR NEW."amountCents" > source_effective_amount_cents THEN
+    RAISE EXCEPTION 'payable_settlement_source_snapshot_invalid';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER "PayableSettlementCase_confirmed_immutable"
   BEFORE INSERT OR UPDATE OR DELETE ON "PayableSettlementCase"
   FOR EACH ROW EXECUTE FUNCTION guard_confirmed_payable_settlement_case();
 CREATE TRIGGER "PayableSettlementAllocation_confirmed_immutable"
   BEFORE INSERT OR UPDATE OR DELETE ON "PayableSettlementAllocation"
   FOR EACH ROW EXECUTE FUNCTION guard_confirmed_payable_settlement_allocation();
+CREATE TRIGGER "PayableSettlementAllocation_source_guard"
+  BEFORE INSERT OR UPDATE OR DELETE ON "PayableSettlementAllocation"
+  FOR EACH ROW EXECUTE FUNCTION guard_payable_settlement_allocation_source();

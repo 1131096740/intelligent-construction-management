@@ -182,6 +182,18 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).resolves.toBe(1);
   });
 
+  it("rejects direct allocations whose typed source coordinates do not match a confirmed wage ref", async () => {
+    const fixture = await createFixture(observer, 1_000n);
+    const invalidSource = allocationData(fixture, "payable-a", 100n);
+    await expect(observer.payableSettlementAllocation.create({
+      data: {
+        ...invalidSource,
+        payableRef: randomUUID(),
+        sourceLineId: randomUUID()
+      }
+    })).rejects.toThrow("payable_settlement_source_not_confirmed");
+  });
+
   it("runs the real service with one durable allocation and receipt under an idempotent race", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);
     const service = realService(observer);
@@ -250,9 +262,16 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
 });
 
 type Fixture = Readonly<{
+  actorUserId: string;
   paymentExecutionId: string;
   settlementCaseId: string;
   amountCents: bigint;
+  confirmedVersionId: string;
+  debtorCompanyId: string;
+  projectId: string;
+  payeeSubjectType: "employee_user";
+  payeeSubjectId: string;
+  payableRefs: Readonly<Record<string, string>>;
 }>;
 
 async function createFixture(client: PrismaClient, amountCents: bigint): Promise<Fixture> {
@@ -267,6 +286,19 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
   const contractId = randomUUID();
   const contractVersionId = randomUUID();
   const paymentTermsVersionId = randomUUID();
+  const evidenceFileId = randomUUID();
+  const sourceVersionId = randomUUID();
+  const statementId = randomUUID();
+  const confirmedVersionId = randomUUID();
+  const personLineId = randomUUID();
+  const creditorBreakdownId = randomUUID();
+  const serviceBasisBindingId = randomUUID();
+  const projectAllocationId = randomUUID();
+  const payableRefs = {
+    "payable-a": randomUUID(),
+    "payable-b": randomUUID(),
+    "payable-immutable": randomUUID()
+  } as const;
   await client.user.create({
     data: { id: actorUserId, name: "动态门并发操作人" }
   });
@@ -346,6 +378,125 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
       originalText: "动态门付款条款"
     }
   });
+  await client.fileObject.create({ data: dynamicFile(evidenceFileId, "wage-source") });
+  await client.wageApprovedSourceVersion.create({
+    data: {
+      id: sourceVersionId,
+      employmentCompanyId: companyId,
+      wageMonth: "2026-08",
+      periodStart: new Date("2026-08-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-08-31T00:00:00.000Z"),
+      sourceType: "external_approved_wage",
+      externalReference: `external-${sourceVersionId}`,
+      sourceVersion: "v1",
+      basisDate: new Date("2026-08-31T00:00:00.000Z"),
+      evidenceFileId,
+      evidenceSha256: "a".repeat(64),
+      sourceFingerprint: "b".repeat(64),
+      sourceSnapshot: { source: "payable-settlement-dynamic-test" },
+      createdByUserId: actorUserId
+    }
+  });
+  await client.wageStatement.create({
+    data: {
+      id: statementId,
+      employmentCompanyId: companyId,
+      wageMonth: "2026-08",
+      currentRevision: 1,
+      createdByUserId: actorUserId
+    }
+  });
+  await client.wageStatementVersion.create({
+    data: {
+      id: confirmedVersionId,
+      statementId,
+      revision: 1,
+      kind: "base",
+      status: "confirmed",
+      sourceVersionId,
+      sourceSnapshot: { sourceVersionId },
+      createdByUserId: actorUserId,
+      lastEditedByUserId: actorUserId,
+      confirmedByUserId: actorUserId,
+      confirmedAt: new Date()
+    }
+  });
+  await client.wagePersonLine.create({
+    data: {
+      id: personLineId,
+      statementVersionId: confirmedVersionId,
+      employeeId: randomUUID(),
+      employmentSnapshotId: randomUUID(),
+      employeeSnapshot: { protected: true },
+      employmentSnapshot: { protected: true },
+      periodSnapshot: { wageMonth: "2026-08" },
+      positionCategorySnapshot: { category: "general_worker" },
+      approvedAmountCents: amountCents
+    }
+  });
+  await client.wageCreditorBreakdown.create({
+    data: {
+      id: creditorBreakdownId,
+      personLineId,
+      creditorSubjectType: "employee_user",
+      creditorUserId: actorUserId,
+      creditorSubjectIdentityKey: `employee_user:${actorUserId}`,
+      creditorNameSnapshot: "动态门工资员工",
+      creditorUnifiedIdentitySnapshot: null,
+      creditorVersionFingerprint: "c".repeat(64),
+      creditorCategory: "employee_net_pay",
+      amountCents,
+      sourceSnapshot: { protected: true }
+    }
+  });
+  await client.wageServiceBasisBinding.create({
+    data: {
+      id: serviceBasisBindingId,
+      sourceVersionId,
+      projectId,
+      serviceSnapshotId: randomUUID(),
+      serviceMonth: "2026-08",
+      evidenceSha256: "d".repeat(64),
+      authorityFingerprint: "e".repeat(64)
+    }
+  });
+  await client.wageProjectAllocation.create({
+    data: {
+      id: projectAllocationId,
+      personLineId,
+      projectId,
+      serviceSnapshotId: randomUUID(),
+      serviceBasisBindingId,
+      serviceSnapshot: { projectId },
+      amountCents
+    }
+  });
+  for (const id of Object.values(payableRefs)) {
+    await client.wagePayableRef.create({
+      data: {
+        id,
+        confirmedVersionId,
+        projectAllocationId,
+        creditorBreakdownId,
+        debtorCompanyId: companyId,
+        costBearingCompanyId: companyId,
+        projectId,
+        personLineId,
+        debtorCompanySnapshot: { companyId },
+        costBearingCompanySnapshot: { companyId },
+        projectSnapshot: { projectId },
+        personSnapshot: { protected: true },
+        creditorSnapshot: {
+          subjectType: "employee_user",
+          identityKey: `employee_user:${actorUserId}`,
+          name: "动态门工资员工"
+        },
+        amountCents,
+        direction: "increase",
+        settlementRecheckRequired: false
+      }
+    });
+  }
   await client.paymentRequest.create({
     data: {
       id: paymentRequestId,
@@ -387,7 +538,18 @@ async function createFixture(client: PrismaClient, amountCents: bigint): Promise
       createdByUserId: actorUserId
     }
   });
-  return { paymentExecutionId, settlementCaseId, amountCents };
+  return {
+    actorUserId,
+    paymentExecutionId,
+    settlementCaseId,
+    amountCents,
+    confirmedVersionId,
+    debtorCompanyId: companyId,
+    projectId,
+    payeeSubjectType: "employee_user",
+    payeeSubjectId: `employee_user:${actorUserId}`,
+    payableRefs
+  };
 }
 
 async function allocateWithExecutionLock(
@@ -417,24 +579,25 @@ async function allocateWithExecutionLock(
 }
 
 function allocationData(fixture: Fixture, payableRef: string, amountCents: bigint) {
+  const resolvedPayableRef = fixture.payableRefs[payableRef] ?? payableRef;
   return {
     id: randomUUID(),
     settlementCaseId: fixture.settlementCaseId,
     paymentExecutionId: fixture.paymentExecutionId,
-    payableRef,
+    payableRef: resolvedPayableRef,
     sourceType: "wage_payable_ref",
-    sourceAggregateId: "confirmed-version",
-    sourceLineId: payableRef,
-    confirmedVersionId: "confirmed-version",
-    debtorCompanyId: "debtor-company",
-    payeeSubjectType: "business_party",
-    payeeSubjectId: "business_party:creditor-version",
+    sourceAggregateId: fixture.confirmedVersionId,
+    sourceLineId: resolvedPayableRef,
+    confirmedVersionId: fixture.confirmedVersionId,
+    debtorCompanyId: fixture.debtorCompanyId,
+    payeeSubjectType: fixture.payeeSubjectType,
+    payeeSubjectId: fixture.payeeSubjectId,
     currencyCode: "CNY",
-    beneficiaryProjectId: "beneficiary-project",
-    sourceSnapshot: { payableRef },
-    confirmedAmountCents: amountCents,
+    beneficiaryProjectId: fixture.projectId,
+    sourceSnapshot: { payableRef: resolvedPayableRef },
+    confirmedAmountCents: fixture.amountCents,
     amountCents,
-    createdByUserId: "maker"
+    createdByUserId: fixture.actorUserId
   };
 }
 
