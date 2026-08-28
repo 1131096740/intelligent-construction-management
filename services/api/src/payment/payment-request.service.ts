@@ -108,22 +108,8 @@ function auditFingerprint(kind: string, value: string) {
     .digest("hex");
 }
 
-function paymentPostResponseToApi<T>(
-  value: T,
-  options?: Readonly<{ omitExecutionId?: boolean }>
-) {
-  const response = mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
-  if (
-    !options?.omitExecutionId ||
-    response === null ||
-    typeof response !== "object" ||
-    Array.isArray(response)
-  ) {
-    return response;
-  }
-  const safeResponse = { ...(response as Record<string, unknown>) };
-  delete safeResponse.id;
-  return safeResponse as typeof response;
+function paymentPostResponseToApi<T>(value: T) {
+  return mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
 }
 
 interface PaymentApprovalAssignment {
@@ -180,6 +166,27 @@ interface PaymentExecutionFactRow {
   paidAt: Date;
   executedByUserId: string;
   voucherFileId: string;
+}
+
+type WagePaymentExecutionResponse = Readonly<{
+  id?: never;
+  amountCents: string;
+  paidAt: Date;
+  paymentSubjectType: string;
+}>;
+
+function wagePaymentExecutionResponseToApi(
+  value: PaymentExecutionFactRow
+): WagePaymentExecutionResponse {
+  const response = mapBigIntMoneyFieldsToApi(value, ["amountCents"]) as Record<
+    string,
+    unknown
+  >;
+  return {
+    amountCents: String(response.amountCents),
+    paidAt: response.paidAt as Date,
+    paymentSubjectType: String(response.paymentSubjectType)
+  };
 }
 
 type NormalizedWagePayableBinding = Readonly<{
@@ -3360,9 +3367,9 @@ export class PaymentRequestService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
 
-      return paymentPostResponseToApi(execution, {
-        omitExecutionId: wagePayableBindings.length > 0
-      });
+      return wagePayableBindings.length > 0
+        ? wagePaymentExecutionResponseToApi(execution)
+        : paymentPostResponseToApi(execution);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = paymentPrismaErrorCode(error);
@@ -3377,9 +3384,9 @@ export class PaymentRequestService {
           wagePayableBindings
         });
         if (concurrentExecution) {
-          return paymentPostResponseToApi(concurrentExecution, {
-            omitExecutionId: wagePayableBindings.length > 0
-          });
+          return wagePayableBindings.length > 0
+            ? wagePaymentExecutionResponseToApi(concurrentExecution)
+            : paymentPostResponseToApi(concurrentExecution);
         }
         throw new ConflictException(
           code === "P2034"

@@ -779,7 +779,6 @@ function wageBindingData(
     creditorVersionFingerprint: "c".repeat(64),
     creditorSnapshot: {
       subjectType: "employee_user",
-      userId: fixture.actorUserId,
       identityKey: `employee_user:${fixture.actorUserId}`
     },
     amountCents,
@@ -1132,9 +1131,9 @@ async function createEligibleServiceFixture(client: PrismaClient, amountCents: b
       paymentExecutionId,
       wagePayableRefId: payableRef,
       debtorCompanyId: companyId,
-      debtorCompanySnapshot: { companyId, name: "动态门付款主体" },
+      debtorCompanySnapshot: { companyId },
       projectId,
-      projectSnapshot: { projectId, name: "动态门项目" },
+      projectSnapshot: { projectId },
       creditorSubjectType: "business_party",
       creditorUserId: null,
       creditorBusinessPartyVersionId: businessPartyVersionId,
@@ -1142,7 +1141,11 @@ async function createEligibleServiceFixture(client: PrismaClient, amountCents: b
       creditorNameSnapshot: "动态门工资债权机构",
       creditorUnifiedIdentitySnapshot: null,
       creditorVersionFingerprint: "c".repeat(64),
-      creditorSnapshot: { subjectType: "business_party", businessPartyVersionId },
+      creditorSnapshot: {
+        subjectType: "business_party",
+        identityKey: `business_party:${businessPartyVersionId}`,
+        name: "动态门工资债权机构"
+      },
       amountCents,
       currencyCode: "CNY",
       createdByUserId: actorUserId
