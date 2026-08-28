@@ -86,7 +86,10 @@ async function installHarness(page: Page) {
         displayLabel: "XM-01 · 工资代发机构",
         debtorCompanyLabel: "甲公司",
         creditorLabel: "工资代发机构",
-        remainingAmountCents: "10000"
+        status: "allocatable",
+        statusLabel: "可核销",
+        remainingAmountCents: "10000",
+        overSettledAmountCents: "0"
       }]);
     }
     if (pathname === "/payable-settlements/wage-payable-cases/payable-safe-1/payment-execution-candidates") {
@@ -160,14 +163,14 @@ test.describe("#220 工资应付核销非生产动态验收", () => {
     await expect(page.getByRole("heading", { name: "工资应付核销工作台" })).toBeVisible();
     await expect(page.getByRole("textbox", {
       name: "选择已确认且仍有余额的工资应付案件"
-    })).toHaveValue("XM-01 · 工资代发机构 · 可核销 10000 分");
+    })).toHaveValue("XM-01 · 工资代发机构 · 可核销 100.00 元");
 
     const candidateSelect = page.getByRole("textbox", {
       name: "选择服务端当前允许核销的付款"
     });
     await candidateSelect.click();
-    await page.getByText("2026-08-27 · 甲公司 · 候选01 · 可用 10000 分", { exact: true }).click();
-    await page.getByPlaceholder("例如 400000").fill("10000");
+    await page.getByText("2026-08-27 · 甲公司 · 候选01 · 可用 100.00 元", { exact: true }).click();
+    await page.getByPlaceholder("例如 4000.00").fill("100.00");
     await page.getByRole("button", { name: "保存核销草稿" }).click();
 
     await expect(page.getByText("草稿", { exact: true })).toBeVisible();

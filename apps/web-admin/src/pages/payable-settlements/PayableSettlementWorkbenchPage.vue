@@ -4,6 +4,7 @@ import { MessagePlugin } from "tdesign-vue-next";
 
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { formatUnknownApiError } from "../../api/error-message";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
   allocatePayableSettlement,
   confirmPayableSettlement,
@@ -37,7 +38,7 @@ const selectedPayableRef = ref("");
 const caseRevision = ref(0);
 const candidates = ref<PayableSettlementCandidate[]>([]);
 const selectedCandidateRef = ref("");
-const amountCents = ref("");
+const amountYuan = ref("");
 const actionVisible = ref(false);
 const pendingAction = ref<"submit" | "confirm" | "return" | null>(null);
 const pendingCase = ref<PayableSettlementWorkbenchItem | null>(null);
@@ -45,8 +46,8 @@ const pendingCase = ref<PayableSettlementWorkbenchItem | null>(null);
 const wageCaseOptions = computed(() => wageCases.value.map((item) => ({
   value: item.payableRef,
   label: item.status === "over_settled_reconciliation_required"
-    ? `${item.displayLabel} · 超额核销待核对 ${item.overSettledAmountCents} 分`
-    : `${item.displayLabel} · 可核销 ${item.remainingAmountCents} 分`,
+    ? `${item.displayLabel} · 超额核销待核对 ${formatCents(item.overSettledAmountCents ?? "0")} 元`
+    : `${item.displayLabel} · 可核销 ${formatCents(item.remainingAmountCents)} 元`,
   disabled: item.status === "over_settled_reconciliation_required"
 })));
 const overSettledCases = computed(() => wageCases.value.filter(
@@ -54,7 +55,7 @@ const overSettledCases = computed(() => wageCases.value.filter(
 ));
 const candidateOptions = computed(() => candidates.value.map((item) => ({
   value: item.selectionRef,
-  label: `${item.displayLabel} · 可用 ${item.availableAmountCents} 分`
+  label: `${item.displayLabel} · 可用 ${formatCents(item.availableAmountCents)} 元`
 })));
 const selectedCandidate = computed(() =>
   candidates.value.find((item) => item.selectionRef === selectedCandidateRef.value) ?? null
@@ -76,8 +77,7 @@ const actionDescription = computed(() => {
 
 const workbenchColumns = [
   { colKey: "statusLabel", title: "状态", width: 120 },
-  { colKey: "allocatedAmountCents", title: "已分配金额（分）", width: 170 },
-  { colKey: "revision", title: "修订", width: 90 },
+  { colKey: "allocatedAmountCents", title: "已分配金额（元）", width: 170 },
   { colKey: "updatedAt", title: "更新时间", minWidth: 190 },
   { colKey: "actions", title: "操作", minWidth: 220 }
 ];
@@ -111,7 +111,7 @@ async function loadInitial() {
 async function refreshCandidates() {
   candidates.value = [];
   selectedCandidateRef.value = "";
-  amountCents.value = "";
+  amountYuan.value = "";
   caseRevision.value = 0;
   if (!selectedPayableRef.value) return;
   const selectedCase = wageCases.value.find(
@@ -178,15 +178,23 @@ async function returnPayableSettlementWithCapability(
 async function allocateSelectedPayment() {
   if (submitting.value || !capabilities.value.allocate) return;
   const selected = selectedCandidate.value;
-  if (!selected || !selectedPayableRef.value || !/^[1-9]\d*$/u.test(amountCents.value)) {
-    errorMessage.value = "请选择付款候选并填写正整数分的核销金额";
+  if (!selected || !selectedPayableRef.value) {
+    errorMessage.value = "请选择付款候选并填写正数金额";
+    return;
+  }
+  let normalizedAmountCents: string;
+  try {
+    normalizedAmountCents = yuanTextToCentsText(amountYuan.value.trim());
+    if (BigInt(normalizedAmountCents) <= 0n) throw new Error("金额必须大于零");
+  } catch {
+    errorMessage.value = "请选择付款候选并填写正数金额";
     return;
   }
   const frozenAttempt = Object.freeze({
     payableRef: selectedPayableRef.value,
     selectionRef: selected.selectionRef,
     selectionExpiresAt: selected.expiresAt,
-    amountCents: amountCents.value,
+    amountCents: normalizedAmountCents,
     expectedCaseRevision: caseRevision.value,
     idempotencyKey: crypto.randomUUID()
   });
@@ -258,13 +266,21 @@ function formatDate(value: string) {
     minute: "2-digit"
   }).format(new Date(value));
 }
+
+function formatCents(value: string) {
+  try {
+    return centsTextToYuanText(value);
+  } catch {
+    return "金额待核对";
+  }
+}
 </script>
 
 <template>
   <section class="payable-settlement-page">
     <header>
       <div>
-        <p class="eyebrow">POL-13A · 工资应付核销</p>
+        <p class="eyebrow">工资应付核销</p>
         <h1>工资应付核销工作台</h1>
         <p>从服务端筛选的已执行付款中明确选择并核销；页面不会展示或提交付款技术编号。</p>
       </div>
@@ -299,8 +315,8 @@ function formatDate(value: string) {
               placeholder="选择服务端当前允许核销的付款"
             />
           </t-form-item>
-          <t-form-item label="本次核销金额（整数分）">
-            <t-input v-model="amountCents" placeholder="例如 400000" />
+          <t-form-item label="本次核销金额（元）">
+            <t-input v-model="amountYuan" placeholder="例如 4000.00" />
           </t-form-item>
         </div>
         <t-alert
@@ -329,6 +345,7 @@ function formatDate(value: string) {
         empty="暂无核销案件"
       >
         <template #updatedAt="{ row }">{{ formatDate(row.updatedAt) }}</template>
+        <template #allocatedAmountCents="{ row }">{{ formatCents(row.allocatedAmountCents) }}</template>
         <template #actions="{ row }">
           <t-space>
             <t-link
