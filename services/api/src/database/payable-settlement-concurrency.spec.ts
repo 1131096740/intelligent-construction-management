@@ -779,7 +779,8 @@ function wageBindingData(
     creditorVersionFingerprint: "c".repeat(64),
     creditorSnapshot: {
       subjectType: "employee_user",
-      identityKey: `employee_user:${fixture.actorUserId}`
+      identityKey: `employee_user:${fixture.actorUserId}`,
+      name: "动态门工资员工"
     },
     amountCents,
     currencyCode: "CNY",
