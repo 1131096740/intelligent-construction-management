@@ -195,6 +195,17 @@ const GROUPS = [
       WAGE_STATEMENT_DATABASE_URL: "databaseUrl"
     },
     pendingTests: 4
+  },
+  {
+    id: "fund_movement",
+    database: "jiangkong_fund_movement_dynamic_test",
+    files: ["src/database/fund-movement-concurrency.spec.ts"],
+    flags: {
+      RUN_FUND_MOVEMENT_DATABASE: "1",
+      FUND_MOVEMENT_DATABASE_URL: "databaseUrl"
+    },
+    pendingTests: 5,
+    requiresOperatingLedgerWriteSecret: true
   }
 ];
 

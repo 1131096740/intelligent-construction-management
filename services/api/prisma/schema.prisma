@@ -8,23 +8,29 @@ datasource db {
 }
 
 model User {
-  id                               String                            @id @default(uuid())
-  phone                            String?                           @unique
-  name                             String
-  departmentId                     String?
-  wxOpenid                         String?                           @unique
-  passwordHash                     String?
-  mustChangePassword               Boolean                           @default(true)
-  lastLoginAt                      DateTime?
-  isActive                         Boolean                           @default(true)
+  id                                 String                            @id @default(uuid())
+  phone                              String?                           @unique
+  name                               String
+  departmentId                       String?
+  wxOpenid                           String?                           @unique
+  passwordHash                       String?
+  mustChangePassword                 Boolean                           @default(true)
+  lastLoginAt                        DateTime?
+  isActive                           Boolean                           @default(true)
   // 旧上传签名只用于历史单据预览与回退；新审批从不可变 Canvas 版本取快照。
-  signatureFileId                  String?
-  handwrittenSignatureVersions     HandwrittenSignatureVersion[]
-  handwrittenSignatureHandoffs     HandwrittenSignatureHandoff[]
-  businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
-  wageCreditorBreakdowns           WageCreditorBreakdown[]           @relation("WageCreditorUser")
-  createdAt                        DateTime                          @default(now())
-  updatedAt                        DateTime                          @updatedAt
+  signatureFileId                    String?
+  handwrittenSignatureVersions       HandwrittenSignatureVersion[]
+  handwrittenSignatureHandoffs       HandwrittenSignatureHandoff[]
+  businessEntrySubmissionSnapshots   BusinessEntrySubmissionSnapshot[]
+  wageCreditorBreakdowns             WageCreditorBreakdown[]           @relation("WageCreditorUser")
+  fundMovementsCreated               FundMovement[]                    @relation("FundMovementCreatedBy")
+  fundMovementsSubmitted             FundMovement[]                    @relation("FundMovementSubmittedBy")
+  fundMovementsConfirmed             FundMovement[]                    @relation("FundMovementConfirmedBy")
+  fundMovementLegsCreated            FundMovementLeg[]                 @relation("FundMovementLegCreatedBy")
+  fundMovementRelationshipsCreated   FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipCreatedBy")
+  fundMovementRelationshipsConfirmed FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipConfirmedBy")
+  createdAt                          DateTime                          @default(now())
+  updatedAt                          DateTime                          @updatedAt
 
   @@index([departmentId])
 }
@@ -61,15 +67,20 @@ model HandwrittenSignatureHandoff {
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
 model CompanyEntity {
-  id                      String   @id @default(uuid())
-  name                    String
-  unifiedSocialCreditCode String?
-  registeredAddress       String?
-  dataStatus              String   @default("legacy_incomplete")
-  currentVersionNo        Int      @default(0)
-  isActive                Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                                  String                          @id @default(uuid())
+  name                                String
+  unifiedSocialCreditCode             String?
+  registeredAddress                   String?
+  dataStatus                          String                          @default("legacy_incomplete")
+  currentVersionNo                    Int                             @default(0)
+  isActive                            Boolean                         @default(true)
+  fundMovementsAsSource               FundMovement[]                  @relation("FundMovementSourceCompany")
+  fundMovementsAsBeneficiary          FundMovement[]                  @relation("FundMovementBeneficiaryCompany")
+  fundMovementLegs                    FundMovementLeg[]               @relation("FundMovementLegCompany")
+  fundMovementRelationshipsAsDebtor   FundMovementRelationshipEntry[] @relation("FundMovementRelationshipDebtorCompany")
+  fundMovementRelationshipsAsCreditor FundMovementRelationshipEntry[] @relation("FundMovementRelationshipCreditorCompany")
+  createdAt                           DateTime                        @default(now())
+  updatedAt                           DateTime                        @updatedAt
 }
 
 // Server-issued bank-account legal-holder authority.  This is intentionally
@@ -93,10 +104,10 @@ model PaymentExecutionPayerVerification {
   issuedByDatabaseRole              String   @default("jg_payment_execution_payer_issuer")
   createdAt                         DateTime @default(now())
 
+  @@unique([sourceType, sourceRecordId])
   @@index([holderCompanyEntityId, status])
   @@index([verificationEvidenceFileId])
   @@index([verifiedByUserId])
-  @@unique([sourceType, sourceRecordId])
 }
 
 model CompanyEntityVersion {
@@ -167,17 +178,22 @@ model UserPosition {
 }
 
 model Project {
-  id                               String                            @id @default(uuid())
-  code                             String                            @unique
-  name                             String
-  operatingLedgerEffectiveDate     DateTime?                         @db.Date
-  takeoverCompletedDate            DateTime?                         @db.Date
-  takeoverStatus                   String                            @default("preparing")
-  constructionEnterpriseLockedAt   DateTime?
-  businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
-  isActive                         Boolean                           @default(true)
-  createdAt                        DateTime                          @default(now())
-  updatedAt                        DateTime                          @updatedAt
+  id                                     String                            @id @default(uuid())
+  code                                   String                            @unique
+  name                                   String
+  operatingLedgerEffectiveDate           DateTime?                         @db.Date
+  takeoverCompletedDate                  DateTime?                         @db.Date
+  takeoverStatus                         String                            @default("preparing")
+  constructionEnterpriseLockedAt         DateTime?
+  businessEntrySubmissionSnapshots       BusinessEntrySubmissionSnapshot[]
+  fundMovementsAsSource                  FundMovement[]                    @relation("FundMovementSourceProject")
+  fundMovementsAsBeneficiary             FundMovement[]                    @relation("FundMovementBeneficiaryProject")
+  fundMovementLegs                       FundMovementLeg[]                 @relation("FundMovementLegProject")
+  fundMovementRelationshipsAsSource      FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipSourceProject")
+  fundMovementRelationshipsAsBeneficiary FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipBeneficiaryProject")
+  isActive                               Boolean                           @default(true)
+  createdAt                              DateTime                          @default(now())
+  updatedAt                              DateTime                          @updatedAt
 }
 
 // 项目挂靠企业只通过显式映射生效；变更时结束旧行并新增快照，不覆盖历史事实。
@@ -224,27 +240,27 @@ model ProjectParticipatingCompany {
 
 // 正式经营事实信封只允许追加；更正和冲销通过新增事实引用原事实。
 model OperatingFact {
-  id                                   String                 @id @default(uuid())
+  id                                   String   @id @default(uuid())
   projectId                            String
   sourceType                           String
   sourceBusinessId                     String
   sourceVersion                        Int
   sourceBusinessCode                   String
   occurredAt                           DateTime
-  recordedAt                           DateTime               @default(now())
+  recordedAt                           DateTime @default(now())
   confirmedAt                          DateTime
   affiliateAssignmentId                String
   affiliateBusinessPartyVersionId      String
   affiliateNameSnapshot                String
   affiliateCreditCodeSnapshot          String?
-  operatingLedgerEffectiveDateSnapshot DateTime               @db.Date
+  operatingLedgerEffectiveDateSnapshot DateTime @db.Date
   isBeforeOperatingLedgerEffectiveDate Boolean
   historicalTakeoverBatchId            String?
   factKind                             String
   operatingLevel                       String
   evidenceLevel                        String
   amountCents                          BigInt
-  currencyCode                         String                 @default("CNY")
+  currencyCode                         String   @default("CNY")
   direction                            String
   debtorSubjectKind                    String?
   debtorSubjectId                      String?
@@ -261,17 +277,19 @@ model OperatingFact {
   subjectSnapshot                      Json
   sourceSnapshot                       Json
   basisSnapshot                        Json?
-  entryKind                            String                 @default("original")
+  entryKind                            String   @default("original")
   adjustsFactId                        String?
-  idempotencyKey                       String                 @unique
+  idempotencyKey                       String   @unique
   recordedByUserId                     String
   confirmedByUserId                    String
-  status                               String                 @default("confirmed")
-  createdAt                            DateTime               @default(now())
-  impacts                              OperatingImpactEntry[] @relation("OperatingFactImpacts")
-  clearingImpactLinks                  ClearingImpactLink[]   @relation("ClearingImpactFact")
-  originalFact                         OperatingFact?         @relation("OperatingFactAdjustments", fields: [adjustsFactId], references: [id], onDelete: Restrict)
-  adjustments                          OperatingFact[]        @relation("OperatingFactAdjustments")
+  status                               String   @default("confirmed")
+  createdAt                            DateTime @default(now())
+
+  fundMovementLegs    FundMovementLeg[]      @relation("FundMovementLegOperatingFact")
+  impacts             OperatingImpactEntry[] @relation("OperatingFactImpacts")
+  clearingImpactLinks ClearingImpactLink[]   @relation("ClearingImpactFact")
+  originalFact        OperatingFact?         @relation("OperatingFactAdjustments", fields: [adjustsFactId], references: [id], onDelete: Restrict)
+  adjustments         OperatingFact[]        @relation("OperatingFactAdjustments")
 
   @@unique([sourceType, sourceBusinessId])
   @@unique([id, projectId], map: "OperatingFact_id_projectId_key")
@@ -1679,6 +1697,167 @@ model PaymentExecution {
   wagePayableBindings            PaymentExecutionWagePayableBinding[]
   interEntityRelationshipEntries InterEntityRelationshipEntry[]
   payerAttestation               PaymentExecutionPayerAttestation?
+  fundMovements                  FundMovement[]                       @relation("FundMovementPaymentExecution")
+  fundMovementLegs               FundMovementLeg[]                    @relation("FundMovementLegPaymentExecution")
+}
+
+// POL-13C: an explicit, immutable project/company fund movement aggregate.
+// The aggregate references an existing PaymentExecution when one exists; it
+// never creates a second bank-payment fact.  All formal effects are carried
+// by its append-only legs and relationship entries.
+model FundMovement {
+  id                         String    @id @default(uuid())
+  kind                       String
+  status                     String    @default("draft")
+  revision                   Int       @default(1)
+  paymentExecutionId         String?
+  sourceProjectId            String
+  beneficiaryProjectId       String
+  sourceCompanyEntityId      String
+  beneficiaryCompanyEntityId String
+  paymentAmountCents         BigInt
+  projectFundUsedCents       BigInt
+  companyAdvanceCents        BigInt
+  profitAuthorizationId      String?
+  payloadFingerprint         String
+  idempotencyKey             String    @unique
+  createdByUserId            String
+  submittedByUserId          String?
+  confirmedByUserId          String?
+  createdAt                  DateTime  @default(now())
+  submittedAt                DateTime?
+  confirmedAt                DateTime?
+  updatedAt                  DateTime  @updatedAt
+
+  paymentExecution    PaymentExecution?               @relation("FundMovementPaymentExecution", fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+  sourceProject       Project                         @relation("FundMovementSourceProject", fields: [sourceProjectId], references: [id], onDelete: Restrict)
+  beneficiaryProject  Project                         @relation("FundMovementBeneficiaryProject", fields: [beneficiaryProjectId], references: [id], onDelete: Restrict)
+  sourceCompany       CompanyEntity                   @relation("FundMovementSourceCompany", fields: [sourceCompanyEntityId], references: [id], onDelete: Restrict)
+  beneficiaryCompany  CompanyEntity                   @relation("FundMovementBeneficiaryCompany", fields: [beneficiaryCompanyEntityId], references: [id], onDelete: Restrict)
+  createdBy           User                            @relation("FundMovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  submittedBy         User?                           @relation("FundMovementSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  confirmedBy         User?                           @relation("FundMovementConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  legs                FundMovementLeg[]
+  relationshipEntries FundMovementRelationshipEntry[]
+  receipts            FundMovementCommandReceipt[]
+
+  // A real PaymentExecution can be projected by at most one fund movement;
+  // nullable uniqueness still permits non-payment movements to omit it.
+  @@unique([paymentExecutionId], map: "FundMovement_payment_execution_unique")
+  @@index([status, updatedAt])
+  @@index([paymentExecutionId])
+  @@index([sourceProjectId, beneficiaryProjectId])
+  @@index([sourceCompanyEntityId, beneficiaryCompanyEntityId])
+}
+
+// One leg owns one project's projection.  Typed source/contract snapshots
+// are retained on the leg so later master-data changes cannot rewrite the
+// movement's accounting context.
+model FundMovementLeg {
+  id                          String   @id @default(uuid())
+  movementId                  String
+  legNo                       Int
+  role                        String
+  projectId                   String
+  companyEntityId             String
+  counterpartyProjectId       String?
+  counterpartyCompanyEntityId String?
+  direction                   String
+  amountCents                 BigInt
+  projectFundUsedCents        BigInt
+  companyAdvanceCents         BigInt
+  paymentExecutionId          String?
+  relationshipEntryId         String?
+  sourceType                  String?
+  sourceAggregateId           String?
+  sourceAllocationCount       Int?
+  sourceAllocationAmountCents BigInt?
+  contractId                  String?
+  contractVersionId           String?
+  operatingFactId             String?
+  sourceSnapshot              Json
+  idempotencyKey              String   @unique
+  createdByUserId             String
+  createdAt                   DateTime @default(now())
+
+  movement              FundMovement                    @relation(fields: [movementId], references: [id], onDelete: Restrict)
+  project               Project                         @relation("FundMovementLegProject", fields: [projectId], references: [id], onDelete: Restrict)
+  company               CompanyEntity                   @relation("FundMovementLegCompany", fields: [companyEntityId], references: [id], onDelete: Restrict)
+  paymentExecution      PaymentExecution?               @relation("FundMovementLegPaymentExecution", fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+  operatingFact         OperatingFact?                  @relation("FundMovementLegOperatingFact", fields: [operatingFactId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy             User                            @relation("FundMovementLegCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  relationshipEntries   FundMovementRelationshipEntry[] @relation("FundMovementLegRelationship")
+  relationshipEntryById FundMovementRelationshipEntry?  @relation("FundMovementLegPointer", fields: [relationshipEntryId], references: [id], onDelete: Restrict)
+
+  @@unique([movementId, legNo], map: "FundMovementLeg_movement_leg_no_key")
+  @@unique([relationshipEntryId], map: "FundMovementLeg_relationship_entry_unique")
+  @@unique([operatingFactId], map: "FundMovementLeg_operating_fact_unique")
+  @@index([projectId, createdAt])
+  @@index([movementId, role])
+  @@index([paymentExecutionId])
+}
+
+// Project-internal receivable/payable is separate from POL-13B's legal-entity
+// proxy relationship.  It is append-only and carries source, contract and
+// allocation snapshots for cross-company/project movements.
+model FundMovementRelationshipEntry {
+  id                          String    @id @default(uuid())
+  movementId                  String
+  legId                       String?
+  entryKind                   String
+  direction                   String
+  status                      String    @default("draft")
+  adjustsEntryId              String?
+  sourceProjectId             String
+  beneficiaryProjectId        String
+  debtorCompanyEntityId       String
+  creditorCompanyEntityId     String
+  sourceType                  String?
+  sourceAggregateId           String?
+  sourceAllocationCount       Int?
+  sourceAllocationAmountCents BigInt?
+  contractId                  String?
+  contractVersionId           String?
+  amountCents                 BigInt
+  currencyCode                String    @default("CNY")
+  sourceSnapshot              Json
+  payloadFingerprint          String
+  idempotencyKey              String    @unique
+  createdByUserId             String
+  confirmedByUserId           String?
+  createdAt                   DateTime  @default(now())
+  confirmedAt                 DateTime?
+
+  movement           FundMovement                    @relation(fields: [movementId], references: [id], onDelete: Restrict)
+  leg                FundMovementLeg?                @relation("FundMovementLegRelationship", fields: [legId], references: [id], onDelete: Restrict)
+  project            Project                         @relation("FundMovementRelationshipSourceProject", fields: [sourceProjectId], references: [id], onDelete: Restrict)
+  beneficiaryProject Project                         @relation("FundMovementRelationshipBeneficiaryProject", fields: [beneficiaryProjectId], references: [id], onDelete: Restrict)
+  debtorCompany      CompanyEntity                   @relation("FundMovementRelationshipDebtorCompany", fields: [debtorCompanyEntityId], references: [id], onDelete: Restrict)
+  creditorCompany    CompanyEntity                   @relation("FundMovementRelationshipCreditorCompany", fields: [creditorCompanyEntityId], references: [id], onDelete: Restrict)
+  createdBy          User                            @relation("FundMovementRelationshipCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  confirmedBy        User?                           @relation("FundMovementRelationshipConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  legPointer         FundMovementLeg?                @relation("FundMovementLegPointer")
+  originalEntry      FundMovementRelationshipEntry?  @relation("FundMovementRelationshipAdjustments", fields: [adjustsEntryId], references: [id], onDelete: Restrict)
+  adjustments        FundMovementRelationshipEntry[] @relation("FundMovementRelationshipAdjustments")
+
+  @@index([movementId, status])
+  @@index([sourceProjectId, beneficiaryProjectId, createdAt])
+  @@index([debtorCompanyEntityId, creditorCompanyEntityId, createdAt])
+  @@index([adjustsEntryId])
+}
+
+model FundMovementCommandReceipt {
+  id                 String   @id @default(uuid())
+  idempotencyKey     String   @unique
+  payloadFingerprint String
+  action             String
+  movementId         String?
+  responseSnapshot   Json
+  createdAt          DateTime @default(now())
+
+  movement FundMovement? @relation(fields: [movementId], references: [id], onDelete: Restrict)
+
+  @@index([movementId])
 }
 
 // POL-13B: immutable, server-checked payer proof. The ordinary payment
