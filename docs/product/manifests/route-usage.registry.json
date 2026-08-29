@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 528,
-    "classificationOverrideCount": 186,
-    "derivedProductionPageCount": 342,
-    "classificationOverrideSha256": "c8c406ff3842d7bb2d6b9d2a1c51e50c39f1ed94e5fc4de5f79088d14d1d374c",
-    "consumerSurfaceOverrideSha256": "7a075f08796cf22cd1c0a56c9c4b97c8e22f3be8dce5e6d32fed3cee792b8075",
+    "routeCount": 533,
+    "classificationOverrideCount": 190,
+    "derivedProductionPageCount": 343,
+    "classificationOverrideSha256": "22af4dc79b36cb89a6fc4a8f468b38dad9758b8a81d5eecc750b882f66abdcc2",
+    "consumerSurfaceOverrideSha256": "2fd8a92fe9294455566075847ba99cec98674cbcf201f4f40ae6c3de919cc7ae",
     "usageCounts": {
-      "page": 344,
+      "page": 345,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 6,
+      "internal_task": 10,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 396,
+      "web_api_wrapper": 397,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 4,
+      "operator_endpoint": 8,
       "none": 120
     }
   },
@@ -1140,6 +1140,30 @@
       "path": "/projects/:projectId/operating-takeovers/:batchId/attachments",
       "usage": "external_takeover",
       "reason": "historical_operating_takeover_external_workbench"
+    },
+    {
+      "method": "GET",
+      "path": "/fund-movements/:movementId",
+      "usage": "internal_task",
+      "reason": "pol_13c_controlled_fund_movement_operator_read_model"
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements",
+      "usage": "internal_task",
+      "reason": "pol_13c_controlled_fund_movement_operator_command"
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements/:movementId/confirm",
+      "usage": "internal_task",
+      "reason": "pol_13c_controlled_fund_movement_operator_command"
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements/:movementId/submit",
+      "usage": "internal_task",
+      "reason": "pol_13c_controlled_fund_movement_operator_command"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1192,6 +1216,30 @@
       "path": "/wage-statements/:statementId/sensitive-export-ticket",
       "consumerSurface": "operator_endpoint",
       "reason": "wage_sensitive_export_fail_closed_controlled_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/fund-movements/:movementId",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_13c_controlled_fund_movement_operator_read_model"
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_13c_controlled_fund_movement_operator_command"
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements/:movementId/confirm",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_13c_controlled_fund_movement_operator_command"
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements/:movementId/submit",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_13c_controlled_fund_movement_operator_command"
     }
   ]
 }

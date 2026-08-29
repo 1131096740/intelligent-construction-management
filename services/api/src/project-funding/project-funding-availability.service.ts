@@ -15,6 +15,7 @@ import {
 
 export type ProjectFundingExecutionType =
   | "payment_execution"
+  | "fund_movement"
   | "project_expense_execution"
   | "spot_procurement_payment_execution"
   | "expense_claim_payment_execution"

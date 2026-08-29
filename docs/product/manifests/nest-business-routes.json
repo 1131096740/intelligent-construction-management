@@ -1272,6 +1272,48 @@
     },
     {
       "method": "GET",
+      "path": "/fund-movements",
+      "normalizedKey": "GET /fund-movements",
+      "controller": "FundMovementController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-movement/fund-movement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/fund-movements/:movementId",
+      "normalizedKey": "GET /fund-movements/:param",
+      "controller": "FundMovementController",
+      "handler": "get",
+      "sourceFile": "services/api/src/fund-movement/fund-movement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/funds-workbench",
       "normalizedKey": "GET /funds-workbench",
       "controller": "FundsWorkbenchController",
@@ -6160,6 +6202,68 @@
       "guardAuthorization": "authenticated_only",
       "isPublic": false,
       "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements",
+      "normalizedKey": "POST /fund-movements",
+      "controller": "FundMovementController",
+      "handler": "create",
+      "sourceFile": "services/api/src/fund-movement/fund-movement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements/:movementId/confirm",
+      "normalizedKey": "POST /fund-movements/:param/confirm",
+      "controller": "FundMovementController",
+      "handler": "confirm",
+      "sourceFile": "services/api/src/fund-movement/fund-movement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-movements/:movementId/submit",
+      "normalizedKey": "POST /fund-movements/:param/submit",
+      "controller": "FundMovementController",
+      "handler": "submit",
+      "sourceFile": "services/api/src/fund-movement/fund-movement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,

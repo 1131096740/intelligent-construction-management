@@ -12,12 +12,12 @@
     "registeredActionCount": 277,
     "pageActionCount": 53,
     "backgroundActionCount": 224,
-    "reachableVueFileCount": 134,
-    "routeRootCount": 55,
-    "totalVueFileCount": 158,
-    "parsedVueFileCount": 158,
-    "reachableProductionModuleCount": 243,
-    "templateEventDirectiveCount": 909,
+    "reachableVueFileCount": 135,
+    "routeRootCount": 56,
+    "totalVueFileCount": 159,
+    "parsedVueFileCount": 159,
+    "reachableProductionModuleCount": 245,
+    "templateEventDirectiveCount": 912,
     "propCallbackDirectiveCount": 7,
     "coveredProductionMutationConsumerCount": 272,
     "candidateProductionMutationConsumerCount": 272,
@@ -26,10 +26,10 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 276,
-    "reachableProductionModuleCount": 243,
-    "totalVueFileCount": 158,
-    "parsedVueFileCount": 158
+    "totalProductionModuleCount": 278,
+    "reachableProductionModuleCount": 245,
+    "totalVueFileCount": 159,
+    "parsedVueFileCount": 159
   },
   "actions": [
     {

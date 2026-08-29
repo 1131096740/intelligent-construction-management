@@ -21,6 +21,7 @@ import { ContractEndedApplicationRetentionModule } from "./contract-ended-retent
 import { ContractEndedApplicationPurgeModule } from "./contract-ended-purge/contract-ended-application-purge.module";
 import { ExpenseClaimModule } from "./expense-claim/expense-claim.module";
 import { FundsWorkbenchModule } from "./funds-workbench/funds-workbench.module";
+import { FundMovementModule } from "./fund-movement/fund-movement.module";
 import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
@@ -60,6 +61,7 @@ import { WageStatementModule } from "./wage-statement/wage-statement.module";
     ProjectExpenseModule,
     ExpenseClaimModule,
     FundsWorkbenchModule,
+    FundMovementModule,
     SpotProcurementModule,
     WageStatementModule,
     InvoiceLedgerModule,

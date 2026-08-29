@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 23,
-    "exportedFunctionCount": 531,
-    "transportWrapperCount": 511,
+    "apiModuleCount": 24,
+    "exportedFunctionCount": 532,
+    "transportWrapperCount": 512,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 533,
+    "mainRequestBindingCount": 534,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 533,
-    "productionConsumerCount": 405,
+    "requestEdgeCount": 534,
+    "productionConsumerCount": 406,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 276,
-    "reachableProductionModuleCount": 243
+    "productionModuleCount": 278,
+    "reachableProductionModuleCount": 245
   },
   "wrappers": [
     {
@@ -10931,6 +10931,35 @@
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundMovements",
+      "apiFile": "apps/web-admin/src/api/fund-movement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 54,
+          "method": "GET",
+          "path": "/fund-movements",
+          "normalizedPath": "/fund-movements",
+          "normalizedKey": "GET /fund-movements",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundMovements"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-movement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/FundMovementPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
