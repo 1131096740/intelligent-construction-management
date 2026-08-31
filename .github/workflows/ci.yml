@@ -183,6 +183,7 @@ jobs:
           - project_expense_finance
           - project_expense_receipt
           - settlement_draft_lifecycle
+          - fund_execution_v7
           - remaining_dynamic_postgresql16
     steps:
       - name: Checkout
