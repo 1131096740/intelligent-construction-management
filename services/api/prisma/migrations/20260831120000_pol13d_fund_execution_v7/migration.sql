@@ -3056,6 +3056,36 @@ CREATE TRIGGER "ExecutionAllocationConsequence_insert_guard"
   BEFORE INSERT ON "ExecutionAllocationConsequence"
   FOR EACH ROW EXECUTE FUNCTION guard_execution_consequence_insert();
 
+-- Both observation evidence references are immutable, non-exclusive snapshots:
+-- the payer-verification proof is intentionally reused from its authority row,
+-- while the transaction proof remains visible to the global file-binding and
+-- replacement-chain guards.  Register both in the one canonical inventory.
+SELECT pg_advisory_xact_lock(190731, 13);
+ALTER FUNCTION jg_file_business_binding_columns()
+  RENAME TO jg_file_business_binding_columns_before_pol13d_fund_execution;
+CREATE FUNCTION jg_file_business_binding_columns()
+RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT * FROM jg_file_business_binding_columns_before_pol13d_fund_execution()
+  UNION ALL
+  VALUES
+    ('VerifiedBankTransactionObservation', 'verificationEvidenceFileId', FALSE),
+    ('VerifiedBankTransactionObservation', 'transactionEvidenceFileId', FALSE);
+$$;
+
+CREATE TRIGGER jg_efb_verified_bank_observation_verification_evidence
+BEFORE INSERT OR UPDATE OF "verificationEvidenceFileId"
+ON "VerifiedBankTransactionObservation"
+FOR EACH ROW EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding(
+  'verificationEvidenceFileId', 'false'
+);
+CREATE TRIGGER jg_efb_verified_bank_observation_transaction_evidence
+BEFORE INSERT OR UPDATE OF "transactionEvidenceFileId"
+ON "VerifiedBankTransactionObservation"
+FOR EACH ROW EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding(
+  'transactionEvidenceFileId', 'false'
+);
+
 DO $$
 DECLARE
   table_name TEXT;

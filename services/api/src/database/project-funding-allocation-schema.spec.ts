@@ -10,6 +10,10 @@ describe("project funding allocation schema", () => {
     process.cwd(),
     "prisma/migrations/20260728120000_project_funding_allocation/migration.sql"
   );
+  const fundExecutionMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260831120000_pol13d_fund_execution_v7/migration.sql"
+  );
 
   it("defines one append-only execution funding ledger shared by every payment source", () => {
     expect(schema).toMatch(/model ProjectFundingAllocation \{/u);
@@ -20,8 +24,27 @@ describe("project funding allocation schema", () => {
     expect(schema).toMatch(/direction\s+String/u);
     expect(schema).toMatch(/reversalOfAllocationId\s+String\?/u);
     expect(schema).toMatch(/reversalKey\s+String\s+@default\("original"\)/u);
-    expect(schema).toMatch(
+    expect(schema).not.toMatch(
       /@@unique\(\[executionType, executionId, sourceKey, direction, reversalKey\]/u
+    );
+    const fundExecutionMigration = readFileSync(
+      fundExecutionMigrationPath,
+      "utf8"
+    );
+    expect(fundExecutionMigration).toContain(
+      'CREATE UNIQUE INDEX "ProjectFundingAllocation_legacy_exec_source_dir_reversal_key"'
+    );
+    expect(fundExecutionMigration).toContain(
+      'WHERE "executionAllocationLineId" IS NULL'
+    );
+    expect(fundExecutionMigration).toContain(
+      'CREATE UNIQUE INDEX "ProjectFundingAllocation_shared_line_source_dir_reversal_key"'
+    );
+    expect(fundExecutionMigration).toContain(
+      '"executionAllocationLineId", "sourceKey", "direction", "reversalKey"'
+    );
+    expect(fundExecutionMigration).toContain(
+      'WHERE "executionAllocationLineId" IS NOT NULL'
     );
   });
 

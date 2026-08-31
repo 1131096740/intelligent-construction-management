@@ -11,6 +11,7 @@ import {
 import {
   IsCanonicalMoneyText,
   IsMaxUnicodeTextLength,
+  IsOptionalNonBlankText,
   IsRequiredText
 } from "../../validation/static-field-validation";
 
@@ -126,9 +127,7 @@ export class RecordPaymentExecutionDto {
   @Type(() => PaymentExecutionPayerAttestationDto)
   payerAttestation?: PaymentExecutionPayerAttestationDto;
 
-  @IsOptional()
-  @IsRequiredText({
-    requiredMessage: "银行流水候选不能为空",
+  @IsOptionalNonBlankText({
     typeMessage: "银行流水候选格式不正确",
     blankMessage: "银行流水候选不能为空白"
   })
