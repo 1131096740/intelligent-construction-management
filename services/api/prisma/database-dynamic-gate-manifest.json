@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 156,
     "terminalMigration": "20260831120000_pol13d_fund_execution_v7",
-    "terminalMigrationChecksum": "54560c8d8988fcc5c0c9cbe50d43756ab665fc79b29e39f02b727427b6868c38",
+    "terminalMigrationChecksum": "ba0191fb772baa5b5328c431bd005cf7633b84662eaf6418075af319cf527ebe",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
