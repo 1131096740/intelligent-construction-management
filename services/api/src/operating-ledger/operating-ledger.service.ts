@@ -396,7 +396,7 @@ export class OperatingLedgerService {
       where: { id: adjustsFactId },
       include: {
         impacts: true,
-        adjustments: { select: { id: true, entryKind: true } }
+        adjustments: { select: { id: true, entryKind: true, amountCents: true } }
       }
     });
     const expectedSubjects = subjectColumns(input.subjects);
@@ -414,7 +414,8 @@ export class OperatingLedgerService {
       original.factKind !== input.factKind ||
       original.operatingLevel !== input.operatingLevel ||
       original.evidenceLevel !== input.evidenceLevel ||
-      original.amountCents !== input.amountCents ||
+      input.amountCents <= 0n ||
+      input.amountCents > original.amountCents ||
       original.currencyCode !== input.currencyCode ||
       inverseFactDirection(original.direction) !== input.direction ||
       original.affiliateAssignmentId !== input.affiliateAssignmentId ||
@@ -435,7 +436,8 @@ export class OperatingLedgerService {
       actorUserId,
       "reversal",
       "source_actor",
-      original.occurredAt
+      original.occurredAt,
+      true
     );
   }
 
@@ -533,7 +535,8 @@ export class OperatingLedgerService {
     actorUserId: string,
     entryKind: OperatingFactEntryKind,
     confirmationAuthority: "actor" | "frozen_source" | "source_actor" = "actor",
-    ownershipOccurredAt: Date = rawInput.occurredAt
+    ownershipOccurredAt: Date = rawInput.occurredAt,
+    allowPartialReversal = false
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
@@ -565,7 +568,11 @@ export class OperatingLedgerService {
         ? null
         : await this.assertAdjustmentTarget(tx, input.projectId, adjustsFactId!);
     if (entryKind === "reversal" && adjustmentTarget) {
-      assertReversalImpacts(adjustmentTarget.impacts, input.impacts);
+      assertReversalImpacts(
+        adjustmentTarget.impacts,
+        input.impacts,
+        allowPartialReversal
+      );
     }
 
     const existing = await tx.operatingFact.findUnique({
@@ -577,10 +584,23 @@ export class OperatingLedgerService {
       },
       include: { impacts: true }
     });
+    if (entryKind === "reversal" && adjustmentTarget && allowPartialReversal) {
+      const reversedAmountCents = adjustmentTarget.adjustments
+        .filter(
+          (adjustment) =>
+            adjustment.entryKind === "reversal" &&
+            adjustment.id !== existing?.id
+        )
+        .reduce((total, adjustment) => total + adjustment.amountCents, 0n);
+      if (reversedAmountCents + input.amountCents > adjustmentTarget.amountCents) {
+        throw new BadRequestException("累计冲销金额不得超过原经营事实金额");
+      }
+    }
 
     if (existing) {
       if (
         entryKind === "reversal" &&
+        !allowPartialReversal &&
         adjustmentTarget?.adjustments.some(
           (adjustment) => adjustment.entryKind === "reversal" && adjustment.id !== existing.id
         )
@@ -605,6 +625,7 @@ export class OperatingLedgerService {
     }
     if (
       entryKind === "reversal" &&
+      !allowPartialReversal &&
       adjustmentTarget?.adjustments.some((adjustment) => adjustment.entryKind === "reversal")
     ) {
       throw new BadRequestException("同一原经营事实不允许重复冲销");
@@ -982,7 +1003,7 @@ export class OperatingLedgerService {
       where: { id: adjustsFactId },
       include: {
         impacts: true,
-        adjustments: { select: { id: true, entryKind: true } }
+        adjustments: { select: { id: true, entryKind: true, amountCents: true } }
       }
     });
     if (!original) throw new NotFoundException("原经营事实不存在，请刷新后重试");
@@ -1070,7 +1091,8 @@ function assertReversalImpacts(
     costCategoryCode: string | null;
     fundPurpose: string | null;
   }>,
-  reversalImpacts: OperatingImpactInput[]
+  reversalImpacts: OperatingImpactInput[],
+  allowPartialReversal = false
 ) {
   const originalKeys = new Set(originalImpacts.map((impact) => impact.sourceImpactKey));
   const reversalKeys = new Set(reversalImpacts.map((impact) => impact.sourceImpactKey));
@@ -1091,7 +1113,10 @@ function assertReversalImpacts(
     }
     if (
       originalImpact.impactKind !== reversalImpact.impactKind ||
-      originalImpact.amountCents !== reversalImpact.amountCents ||
+      (allowPartialReversal
+        ? reversalImpact.amountCents <= 0n ||
+          reversalImpact.amountCents > originalImpact.amountCents
+        : originalImpact.amountCents !== reversalImpact.amountCents) ||
       inverseImpactDirection(originalImpact.direction) !== reversalImpact.direction ||
       (originalImpact.subjectRole ?? null) !== (reversalImpact.subjectRole ?? null) ||
       (originalImpact.subjectKind ?? null) !== (reversalImpact.subject?.kind ?? null) ||

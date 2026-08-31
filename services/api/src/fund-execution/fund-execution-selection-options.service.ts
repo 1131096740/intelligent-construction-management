@@ -15,6 +15,10 @@ import {
   type RegisteredPayable
 } from "../payable-registry/wage-payable-source.adapter";
 import {
+  loadPayableSettlementAllocationTotals,
+  payableSettlementAllocationTotalsFor
+} from "../payable-registry/payable-settlement-balance-authority";
+import {
   ProjectFundingAvailabilityService,
   type FundingAllocationPlan
 } from "../project-funding/project-funding-availability.service";
@@ -861,31 +865,9 @@ export class FundExecutionSelectionOptionsService {
     });
     if (!rows.length) return [];
     const payableRefs = rows.map(({ id }) => id);
-    const allocated = await tx.$queryRaw<
-      Array<{ payableRef: string; allocatedAmountCents: bigint }>
-    >(Prisma.sql`
-      SELECT allocation."payableRef",
-             COALESCE(SUM(CASE allocation."direction"
-               WHEN 'reverse' THEN -allocation."amountCents"
-               ELSE allocation."amountCents" END), 0)::BIGINT AS "allocatedAmountCents"
-      FROM "PayableSettlementAllocation" allocation
-      WHERE allocation."payableRef" IN (${Prisma.join(payableRefs)})
-        AND (
-          (allocation."settlementCaseId" IS NOT NULL AND EXISTS (
-            SELECT 1 FROM "PayableSettlementCase" case_row
-            WHERE case_row."id" = allocation."settlementCaseId"
-              AND case_row."status" IN ('draft', 'submitted', 'confirmed')
-          ))
-          OR (allocation."fundExecutionId" IS NOT NULL AND EXISTS (
-            SELECT 1 FROM "FundExecutionCase" fund_case
-            WHERE fund_case."id" = allocation."fundExecutionCaseId"
-              AND fund_case."status" = 'confirmed'
-          ))
-        )
-      GROUP BY allocation."payableRef"
-    `);
-    const allocatedByPayable = new Map(
-      allocated.map((row) => [row.payableRef, row.allocatedAmountCents])
+    const allocationTotals = await loadPayableSettlementAllocationTotals(
+      tx,
+      payableRefs
     );
     const projectIds = [...new Set(rows.map(({ projectId }) => projectId))];
     const companyIds = [...new Set(rows.map(({ debtorCompanyId }) => debtorCompanyId))];
@@ -909,7 +891,10 @@ export class FundExecutionSelectionOptionsService {
         row.amountCents,
         row.adjustments
       );
-      const available = effective - (allocatedByPayable.get(row.id) ?? 0n);
+      const available = effective - payableSettlementAllocationTotalsFor(
+        allocationTotals,
+        row.id
+      ).activeAmountCents;
       const projectName = projectById.get(row.projectId);
       const debtorName = companyById.get(row.debtorCompanyId);
       if (available <= 0n || !projectName || !debtorName) return [];
@@ -1139,7 +1124,9 @@ export class FundExecutionSelectionOptionsService {
              payment."id" AS "targetExecutionId",
              request."code" AS "businessCode",
              'outflow'::TEXT AS "direction",
-             payment."amountCents", 'CNY'::TEXT AS "currencyCode",
+             (payment."amountCents" - COALESCE(reversed."amountCents", 0))::BIGINT
+               AS "amountCents",
+             'CNY'::TEXT AS "currencyCode",
              payment."paidAt" AS "occurredAt",
              payment."idempotencyKey" AS "payloadFingerprint"
       FROM "PaymentExecution" payment
@@ -1148,27 +1135,33 @@ export class FundExecutionSelectionOptionsService {
       INNER JOIN "BankTransactionClaim" claim
         ON claim."paymentExecutionId" = payment."id"
        AND claim."targetType" = 'payment_execution'
-      WHERE NOT EXISTS (
-        SELECT 1 FROM "FundExecution" reverse_execution
-         WHERE reverse_execution."reversesPaymentExecutionId" = payment."id"
-      )
+      LEFT JOIN LATERAL (
+        SELECT SUM(reverse_execution."amountCents")::BIGINT AS "amountCents"
+        FROM "FundExecution" reverse_execution
+        WHERE reverse_execution."reversesPaymentExecutionId" = payment."id"
+      ) reversed ON TRUE
+      WHERE payment."amountCents" > COALESCE(reversed."amountCents", 0)
       UNION ALL
       SELECT 'fund_execution'::TEXT AS "targetType",
              execution."id" AS "targetExecutionId",
              NULL::TEXT AS "businessCode", execution."direction",
-             execution."amountCents", execution."currencyCode",
+             (execution."amountCents" - COALESCE(reversed."amountCents", 0))::BIGINT
+               AS "amountCents",
+             execution."currencyCode",
              execution."occurredAt", execution."payloadFingerprint"
       FROM "FundExecution" execution
+      LEFT JOIN LATERAL (
+        SELECT SUM(reverse_execution."amountCents")::BIGINT AS "amountCents"
+        FROM "FundExecution" reverse_execution
+        WHERE reverse_execution."reversesFundExecutionId" = execution."id"
+      ) reversed ON TRUE
       WHERE execution."executionKind" = 'bank_transaction'
         AND EXISTS (
           SELECT 1 FROM "FundExecutionCase" case_row
            WHERE case_row."fundExecutionId" = execution."id"
              AND case_row."status" = 'confirmed'
         )
-        AND NOT EXISTS (
-          SELECT 1 FROM "FundExecution" reverse_execution
-           WHERE reverse_execution."reversesFundExecutionId" = execution."id"
-        )
+        AND execution."amountCents" > COALESCE(reversed."amountCents", 0)
       ORDER BY "occurredAt" DESC, "targetExecutionId"
       LIMIT 100
     `);

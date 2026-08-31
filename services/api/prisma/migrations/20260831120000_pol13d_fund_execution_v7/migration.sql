@@ -159,9 +159,9 @@ CREATE UNIQUE INDEX "FundExecution_idempotencyKey_key"
   ON "FundExecution"("idempotencyKey");
 CREATE INDEX "FundExecution_direction_occurredAt_idx"
   ON "FundExecution"("direction", "occurredAt");
-CREATE UNIQUE INDEX "FundExecution_reverses_payment_key"
+CREATE INDEX "FundExecution_reverses_payment_idx"
   ON "FundExecution"("reversesPaymentExecutionId");
-CREATE UNIQUE INDEX "FundExecution_reverses_fund_key"
+CREATE INDEX "FundExecution_reverses_fund_idx"
   ON "FundExecution"("reversesFundExecutionId");
 
 ALTER TABLE "FundExecution"
@@ -2016,6 +2016,70 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'fund_execution_case_sod_invalid';
   END IF;
+  IF case_record."confirmedByUserId" IS NOT NULL AND EXISTS (
+    WITH RECURSIVE identity_closure("userId") AS (
+      SELECT case_record."confirmedByUserId"
+      UNION
+      SELECT CASE
+        WHEN delegation."fromUserId" = closure."userId"
+          THEN delegation."toUserId"
+        ELSE delegation."fromUserId"
+      END
+      FROM identity_closure closure
+      INNER JOIN "ApprovalDelegation" delegation
+        ON closure."userId" IN (delegation."fromUserId", delegation."toUserId")
+       AND delegation."enabled" = TRUE
+       AND delegation."startsAt" <= CURRENT_TIMESTAMP
+       AND delegation."endsAt" > CURRENT_TIMESTAMP
+       AND ((delegation."actionKey" IS NULL
+             AND delegation."resourceType" IS NULL
+             AND delegation."resourceId" IS NULL)
+         OR (delegation."actionKey" = 'fund_execution_case.approve'
+             AND delegation."resourceType" = 'fund_execution_case'
+             AND delegation."resourceId" = case_record."caseKey"))
+    ), prohibited("userId") AS (
+      SELECT execution."handledByUserId"
+        FROM "FundExecution" execution
+       WHERE execution."id" = case_record."fundExecutionId"
+      UNION
+      SELECT execution."paymentExecutedByUserId"
+        FROM "FundExecution" execution
+       WHERE execution."id" = case_record."fundExecutionId"
+      UNION
+      SELECT revision_case."createdByUserId"
+        FROM "FundExecutionCase" revision_case
+       WHERE revision_case."caseKey" = case_record."caseKey"
+      UNION
+      SELECT revision_case."commandActorUserId"
+        FROM "FundExecutionCase" revision_case
+       WHERE revision_case."caseKey" = case_record."caseKey"
+         AND revision_case."auditAction" IN (
+           'create_case', 'update_case', 'submit_case', 'return_case'
+         )
+      UNION
+      SELECT revision_case."submittedByUserId"
+        FROM "FundExecutionCase" revision_case
+       WHERE revision_case."caseKey" = case_record."caseKey"
+      UNION
+      SELECT revision_case."returnedByUserId"
+        FROM "FundExecutionCase" revision_case
+       WHERE revision_case."caseKey" = case_record."caseKey"
+      UNION
+      SELECT action_log."actorUserId"
+        FROM "ApprovalActionLog" action_log
+       WHERE action_log."approvalInstanceId" = case_record."approvalInstanceId"
+      UNION
+      SELECT action_log."representedUserId"
+        FROM "ApprovalActionLog" action_log
+       WHERE action_log."approvalInstanceId" = case_record."approvalInstanceId"
+    )
+    SELECT 1
+      FROM identity_closure closure
+      INNER JOIN prohibited ON prohibited."userId" = closure."userId"
+     WHERE prohibited."userId" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'fund_execution_case_sod_invalid';
+  END IF;
 
   IF case_record."revision" = 1 THEN
     IF case_record."status" <> 'draft'
@@ -2347,6 +2411,24 @@ BEGIN
         RAISE EXCEPTION 'execution_allocation_canonical_axis_binding_invalid';
       END IF;
 
+      IF line_record."reversalOfAllocationLineId" IS NULL THEN
+        IF consequence_record."originalConsequenceId" IS NOT NULL THEN
+          RAISE EXCEPTION 'execution_allocation_original_consequence_reference_invalid';
+        END IF;
+      ELSE
+        SELECT original.* INTO original_consequence
+          FROM "ExecutionAllocationConsequence" original
+         WHERE original."id" = consequence_record."originalConsequenceId"
+           AND original."axisEffectId" = original_effect."id";
+        IF NOT FOUND
+           OR consequence_record."consequenceType" IS DISTINCT FROM original_consequence."consequenceType"
+           OR consequence_record."consequenceIdentity" IS DISTINCT FROM original_consequence."consequenceIdentity"
+           OR consequence_record."sliceIdentity" IS DISTINCT FROM original_consequence."sliceIdentity"
+           OR consequence_record."amountCents" > original_consequence."amountCents" THEN
+          RAISE EXCEPTION 'execution_allocation_reversal_consequence_identity_invalid';
+        END IF;
+      END IF;
+
       IF consequence_record."consequenceType" = 'payable_settlement_allocation' THEN
         SELECT allocation.*, allocation.xmin::TEXT::BIGINT AS creating_xid
           INTO payable_record
@@ -2366,6 +2448,12 @@ BEGIN
              OR payable_record."fundExecutionCaseId" IS DISTINCT FROM line_record."fundExecutionCaseId")) THEN
           RAISE EXCEPTION 'execution_allocation_payable_adapter_invalid';
         END IF;
+        IF line_record."reversalOfAllocationLineId" IS NOT NULL THEN
+          IF payable_record."reversalOfAllocationId"
+               IS DISTINCT FROM original_consequence."payableSettlementAllocationId" THEN
+            RAISE EXCEPTION 'execution_allocation_reversal_consequence_identity_invalid';
+          END IF;
+        END IF;
       ELSIF consequence_record."consequenceType" = 'project_funding_allocation' THEN
         SELECT allocation.*, allocation.xmin::TEXT::BIGINT AS creating_xid
           INTO project_fund_record
@@ -2380,6 +2468,12 @@ BEGIN
            OR project_fund_record."amountCents" IS DISTINCT FROM consequence_record."amountCents"
            OR project_fund_record.creating_xid IS DISTINCT FROM line_record."createdTransactionId" THEN
           RAISE EXCEPTION 'execution_allocation_project_fund_adapter_invalid';
+        END IF;
+        IF line_record."reversalOfAllocationLineId" IS NOT NULL THEN
+          IF project_fund_record."reversalOfAllocationId"
+               IS DISTINCT FROM original_consequence."projectFundingAllocationId" THEN
+            RAISE EXCEPTION 'execution_allocation_reversal_consequence_identity_invalid';
+          END IF;
         END IF;
       ELSIF consequence_record."consequenceType" = 'inter_entity_relationship_entry' THEN
         SELECT relationship.*, relationship.xmin::TEXT::BIGINT AS creating_xid
@@ -2398,6 +2492,12 @@ BEGIN
            OR (line_record."executionType" = 'payment_execution'
              AND relationship_record."paymentExecutionId" IS DISTINCT FROM line_record."paymentExecutionId") THEN
           RAISE EXCEPTION 'execution_allocation_relationship_adapter_invalid';
+        END IF;
+        IF line_record."reversalOfAllocationLineId" IS NOT NULL THEN
+          IF relationship_record."adjustsEntryId"
+               IS DISTINCT FROM original_consequence."interEntityRelationshipEntryId" THEN
+            RAISE EXCEPTION 'execution_allocation_reversal_consequence_identity_invalid';
+          END IF;
         END IF;
       ELSE
         SELECT fact.*, impact."id" AS impact_id,
@@ -2427,6 +2527,12 @@ BEGIN
            OR operating_record.fact_creating_xid IS DISTINCT FROM line_record."createdTransactionId"
            OR operating_record.impact_creating_xid IS DISTINCT FROM line_record."createdTransactionId" THEN
           RAISE EXCEPTION 'execution_allocation_operating_adapter_invalid';
+        END IF;
+        IF line_record."reversalOfAllocationLineId" IS NOT NULL THEN
+          IF operating_record."adjustsFactId"
+               IS DISTINCT FROM original_consequence."operatingFactId" THEN
+            RAISE EXCEPTION 'execution_allocation_reversal_consequence_identity_invalid';
+          END IF;
         END IF;
         IF line_record."executionType" = 'fund_execution' THEN
           SELECT case_row."revision" INTO case_revision
@@ -2464,31 +2570,7 @@ BEGIN
         END IF;
       END IF;
 
-      IF line_record."reversalOfAllocationLineId" IS NULL THEN
-        IF consequence_record."originalConsequenceId" IS NOT NULL THEN
-          RAISE EXCEPTION 'execution_allocation_original_consequence_reference_invalid';
-        END IF;
-      ELSE
-        SELECT original.* INTO original_consequence
-          FROM "ExecutionAllocationConsequence" original
-         WHERE original."id" = consequence_record."originalConsequenceId"
-           AND original."axisEffectId" = original_effect."id";
-        IF NOT FOUND
-           OR consequence_record."sequence" IS DISTINCT FROM original_consequence."sequence"
-           OR consequence_record."consequenceType" IS DISTINCT FROM original_consequence."consequenceType"
-           OR consequence_record."consequenceIdentity" IS DISTINCT FROM original_consequence."consequenceIdentity"
-           OR consequence_record."sliceIdentity" IS DISTINCT FROM original_consequence."sliceIdentity"
-           OR consequence_record."amountCents" > original_consequence."amountCents"
-           OR (consequence_record."consequenceType" = 'payable_settlement_allocation'
-             AND payable_record."reversalOfAllocationId" IS DISTINCT FROM original_consequence."payableSettlementAllocationId")
-           OR (consequence_record."consequenceType" = 'project_funding_allocation'
-             AND project_fund_record."reversalOfAllocationId" IS DISTINCT FROM original_consequence."projectFundingAllocationId")
-           OR (consequence_record."consequenceType" = 'inter_entity_relationship_entry'
-             AND relationship_record."adjustsEntryId" IS DISTINCT FROM original_consequence."interEntityRelationshipEntryId")
-           OR (consequence_record."consequenceType" = 'operating_fact_impact'
-             AND operating_record."adjustsFactId" IS DISTINCT FROM original_consequence."operatingFactId") THEN
-          RAISE EXCEPTION 'execution_allocation_reversal_consequence_identity_invalid';
-        END IF;
+      IF line_record."reversalOfAllocationLineId" IS NOT NULL THEN
         SELECT COALESCE(SUM(reverse_consequence."amountCents"), 0)
           INTO reversed_amount
           FROM "ExecutionAllocationConsequence" reverse_consequence
@@ -2636,6 +2718,9 @@ DECLARE
   line_count INTEGER;
   line_amount BIGINT;
   target_direction TEXT;
+  target_amount BIGINT;
+  target_holder_company_id TEXT;
+  reversed_amount BIGINT;
 BEGIN
   SELECT execution.* INTO execution_record
     FROM "FundExecution" execution
@@ -2665,12 +2750,41 @@ BEGIN
   IF execution_record."executionKind" = 'reversal' THEN
     IF execution_record."reversesPaymentExecutionId" IS NOT NULL THEN
       target_direction := 'outflow';
+      SELECT payment."amountCents", target_observation."holderCompanyEntityId",
+             COALESCE(SUM(reverse_execution."amountCents"), 0)
+        INTO target_amount, target_holder_company_id, reversed_amount
+        FROM "PaymentExecution" payment
+        INNER JOIN "BankTransactionClaim" target_claim
+          ON target_claim."paymentExecutionId" = payment."id"
+         AND target_claim."targetType" = 'payment_execution'
+        INNER JOIN "VerifiedBankTransactionObservation" target_observation
+          ON target_observation."id" = target_claim."observationId"
+        LEFT JOIN "FundExecution" reverse_execution
+          ON reverse_execution."reversesPaymentExecutionId" = payment."id"
+       WHERE payment."id" = execution_record."reversesPaymentExecutionId"
+       GROUP BY payment."amountCents", target_observation."holderCompanyEntityId";
     ELSE
-      SELECT original."direction" INTO target_direction
+      SELECT original."direction", original."amountCents",
+             target_observation."holderCompanyEntityId",
+             COALESCE(SUM(reverse_execution."amountCents"), 0)
+        INTO target_direction, target_amount, target_holder_company_id,
+             reversed_amount
         FROM "FundExecution" original
-       WHERE original."id" = execution_record."reversesFundExecutionId";
+        INNER JOIN "BankTransactionClaim" target_claim
+          ON target_claim."fundExecutionId" = original."id"
+         AND target_claim."targetType" = 'fund_execution'
+        INNER JOIN "VerifiedBankTransactionObservation" target_observation
+          ON target_observation."id" = target_claim."observationId"
+        LEFT JOIN "FundExecution" reverse_execution
+          ON reverse_execution."reversesFundExecutionId" = original."id"
+       WHERE original."id" = execution_record."reversesFundExecutionId"
+       GROUP BY original."direction", original."amountCents",
+                target_observation."holderCompanyEntityId";
     END IF;
-    IF target_direction IS NULL OR target_direction = execution_record."direction" THEN
+    IF target_direction IS NULL
+       OR target_direction = execution_record."direction"
+       OR target_holder_company_id IS DISTINCT FROM observation_record."holderCompanyEntityId"
+       OR reversed_amount > target_amount THEN
       RAISE EXCEPTION 'fund_execution_reversal_direction_invalid';
     END IF;
   END IF;
@@ -3085,6 +3199,216 @@ ON "VerifiedBankTransactionObservation"
 FOR EACH ROW EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding(
   'transactionEvidenceFileId', 'false'
 );
+
+-- FundExecution reversal facts may consume one deterministic slice at a time.
+-- All other operating-ledger reversal callers retain the historical exact,
+-- single-reversal contract.
+CREATE OR REPLACE FUNCTION "validateOperatingImpactEntryReferences"()
+RETURNS TRIGGER AS $$
+DECLARE
+  fact_occurred_at TIMESTAMP(3);
+  fact_affiliate_assignment_id TEXT;
+  fact_affiliate_version_id TEXT;
+  fact_evidence_level TEXT;
+  fact_entry_kind TEXT;
+  fact_adjusts_fact_id TEXT;
+  fact_recorded_by_user_id TEXT;
+  fact_source_type TEXT;
+  fact_fund_execution_id TEXT;
+  original_impact_id TEXT;
+  original_impact_kind TEXT;
+  original_impact_amount BIGINT;
+  original_impact_direction TEXT;
+  original_subject_role TEXT;
+  original_subject_kind TEXT;
+  original_subject_id TEXT;
+  original_cost_category_code TEXT;
+  original_fund_purpose TEXT;
+  original_impact_snapshot JSONB;
+  is_fund_execution_reversal BOOLEAN := FALSE;
+  reversed_impact_amount BIGINT;
+BEGIN
+  SELECT fact."occurredAt", fact."affiliateAssignmentId",
+         fact."affiliateBusinessPartyVersionId", fact."evidenceLevel",
+         fact."entryKind", fact."adjustsFactId", fact."recordedByUserId",
+         fact."sourceType", fact."fundExecutionId"
+    INTO fact_occurred_at, fact_affiliate_assignment_id,
+         fact_affiliate_version_id, fact_evidence_level, fact_entry_kind,
+         fact_adjusts_fact_id, fact_recorded_by_user_id, fact_source_type,
+         fact_fund_execution_id
+    FROM "OperatingFact" fact
+   WHERE fact."id" = NEW."factId"
+     AND fact."projectId" = NEW."projectId"
+     AND fact."sourceType" = NEW."sourceType"
+     AND fact."sourceBusinessId" = NEW."sourceBusinessId";
+  IF fact_occurred_at IS NULL THEN
+    RAISE EXCEPTION '影响分录必须引用同一项目、同一来源的经营事实'
+      USING ERRCODE = '23514';
+  END IF;
+  IF fact_evidence_level = 'C' AND NEW."impactKind" <> 'evidence_gap_notice' THEN
+    RAISE EXCEPTION 'C级证据只能登记缺口提示，不能产生正式经营影响'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW."subjectKind" IS NOT NULL
+     AND NEW."subjectKind" NOT IN ('construction_enterprise', 'participating_company') THEN
+    RAISE EXCEPTION '当前经营账尚未接入该影响主体种类，不能登记正式分录'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW."subjectKind" = 'construction_enterprise' AND NOT EXISTS (
+    SELECT 1 FROM "ProjectAffiliateAssignment" assignment
+     WHERE assignment."id" = fact_affiliate_assignment_id
+       AND assignment."projectId" = NEW."projectId"
+       AND assignment."businessPartyVersionId" = fact_affiliate_version_id
+       AND (NEW."subjectId" = assignment."businessPartyId"
+         OR NEW."subjectId" = assignment."businessPartyVersionId")
+       AND assignment."effectiveFrom" <= fact_occurred_at::DATE
+       AND (assignment."endedAt" IS NULL
+         OR assignment."endedAt" > fact_occurred_at::DATE)
+  ) THEN
+    RAISE EXCEPTION '影响分录引用的施工企业在事实日无效'
+      USING ERRCODE = '23514';
+  END IF;
+  IF NEW."subjectKind" = 'participating_company' AND NOT EXISTS (
+    SELECT 1 FROM "ProjectParticipatingCompany" participant
+     WHERE participant."projectId" = NEW."projectId"
+       AND (NEW."subjectId" = participant."companyEntityId"
+         OR NEW."subjectId" = participant."companyEntityVersionId")
+       AND participant."effectiveFrom" <= fact_occurred_at::DATE
+       AND (participant."endedAt" IS NULL
+         OR participant."endedAt" > fact_occurred_at::DATE)
+  ) THEN
+    RAISE EXCEPTION '影响分录引用的我方公司未在本项目事实日参与'
+      USING ERRCODE = '23514';
+  END IF;
+  IF fact_entry_kind = 'reversal' THEN
+    is_fund_execution_reversal := fact_source_type = 'fund_execution'
+      AND EXISTS (
+        SELECT 1 FROM "FundExecution" execution
+         WHERE execution."id" = fact_fund_execution_id
+           AND execution."executionKind" = 'reversal'
+      );
+    SELECT original_impact."id", original_impact."impactKind",
+           original_impact."amountCents", original_impact."direction",
+           original_impact."subjectRole", original_impact."subjectKind",
+           original_impact."subjectId", original_impact."costCategoryCode",
+           original_impact."fundPurpose", original_impact."impactSnapshot"
+      INTO original_impact_id, original_impact_kind, original_impact_amount,
+           original_impact_direction, original_subject_role,
+           original_subject_kind, original_subject_id,
+           original_cost_category_code, original_fund_purpose,
+           original_impact_snapshot
+      FROM "OperatingImpactEntry" original_impact
+     WHERE original_impact."factId" = fact_adjusts_fact_id
+       AND original_impact."sourceImpactKey" = NEW."sourceImpactKey";
+    IF NOT FOUND THEN
+      RAISE EXCEPTION '冲销必须逐笔引用原经营影响分录'
+        USING ERRCODE = '23514';
+    END IF;
+    IF original_impact_kind <> NEW."impactKind"
+       OR (is_fund_execution_reversal
+         AND (NEW."amountCents" <= 0 OR NEW."amountCents" > original_impact_amount))
+       OR (NOT is_fund_execution_reversal
+         AND original_impact_amount <> NEW."amountCents")
+       OR ((original_impact_direction = 'increase' AND NEW."direction" <> 'decrease')
+         OR (original_impact_direction = 'decrease' AND NEW."direction" <> 'increase')
+         OR (original_impact_direction = 'notice' AND NEW."direction" <> 'notice'))
+       OR original_subject_role IS DISTINCT FROM NEW."subjectRole"
+       OR original_subject_kind IS DISTINCT FROM NEW."subjectKind"
+       OR original_subject_id IS DISTINCT FROM NEW."subjectId"
+       OR original_cost_category_code IS DISTINCT FROM NEW."costCategoryCode"
+       OR original_fund_purpose IS DISTINCT FROM NEW."fundPurpose"
+       OR (is_fund_execution_reversal AND (
+         NEW."impactSnapshot" ->> 'originalOperatingImpactEntryId'
+           IS DISTINCT FROM original_impact_id))
+       OR (NOT is_fund_execution_reversal
+         AND original_impact_snapshot IS DISTINCT FROM NEW."impactSnapshot") THEN
+      RAISE EXCEPTION '冲销分录必须使用原分录身份、容量并登记反向影响'
+        USING ERRCODE = '23514';
+    END IF;
+    IF is_fund_execution_reversal THEN
+      SELECT COALESCE(SUM(reverse_impact."amountCents"), 0)
+        INTO reversed_impact_amount
+        FROM "OperatingFact" reverse_fact
+        INNER JOIN "OperatingImpactEntry" reverse_impact
+          ON reverse_impact."factId" = reverse_fact."id"
+       WHERE reverse_fact."adjustsFactId" = fact_adjusts_fact_id
+         AND reverse_fact."entryKind" = 'reversal'
+         AND reverse_impact."sourceImpactKey" = NEW."sourceImpactKey";
+      IF reversed_impact_amount + NEW."amountCents" > original_impact_amount THEN
+        RAISE EXCEPTION '经营影响累计冲销金额超过原分录'
+          USING ERRCODE = '23514';
+      END IF;
+    END IF;
+  END IF;
+  IF current_setting('app.operating_ledger_actor', true)
+       IS DISTINCT FROM fact_recorded_by_user_id THEN
+    RAISE EXCEPTION '正式经营影响必须通过已授权的经营账服务登记'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION "validateOperatingReversalImpactSet"()
+RETURNS TRIGGER AS $$
+DECLARE
+  original_impact_count BIGINT;
+  reversal_impact_count BIGINT;
+  is_fund_execution_reversal BOOLEAN;
+BEGIN
+  IF NEW."entryKind" <> 'reversal' THEN RETURN NEW; END IF;
+  is_fund_execution_reversal := NEW."sourceType" = 'fund_execution'
+    AND EXISTS (
+      SELECT 1 FROM "FundExecution" execution
+       WHERE execution."id" = NEW."fundExecutionId"
+         AND execution."executionKind" = 'reversal'
+    );
+  IF NOT is_fund_execution_reversal AND EXISTS (
+    SELECT 1 FROM "OperatingFact" other
+     WHERE other."adjustsFactId" = NEW."adjustsFactId"
+       AND other."entryKind" = 'reversal'
+       AND other."id" <> NEW."id"
+  ) THEN
+    RAISE EXCEPTION '同一原经营事实不允许重复冲销'
+      USING ERRCODE = '23514';
+  END IF;
+  SELECT COUNT(*)::BIGINT INTO original_impact_count
+    FROM "OperatingImpactEntry" WHERE "factId" = NEW."adjustsFactId";
+  SELECT COUNT(*)::BIGINT INTO reversal_impact_count
+    FROM "OperatingImpactEntry" WHERE "factId" = NEW."id";
+  IF original_impact_count <> reversal_impact_count OR EXISTS (
+    SELECT 1 FROM "OperatingImpactEntry" original_impact
+     WHERE original_impact."factId" = NEW."adjustsFactId"
+       AND NOT EXISTS (
+         SELECT 1 FROM "OperatingImpactEntry" reversal_impact
+          WHERE reversal_impact."factId" = NEW."id"
+            AND reversal_impact."sourceImpactKey"
+              = original_impact."sourceImpactKey"
+       )
+  ) THEN
+    RAISE EXCEPTION '冲销必须覆盖原经营事实的全部影响分录'
+      USING ERRCODE = '23514';
+  END IF;
+  IF is_fund_execution_reversal AND EXISTS (
+    SELECT 1 FROM "OperatingImpactEntry" original_impact
+     WHERE original_impact."factId" = NEW."adjustsFactId"
+       AND (
+         SELECT COALESCE(SUM(reverse_impact."amountCents"), 0)
+           FROM "OperatingFact" reverse_fact
+           INNER JOIN "OperatingImpactEntry" reverse_impact
+             ON reverse_impact."factId" = reverse_fact."id"
+          WHERE reverse_fact."adjustsFactId" = NEW."adjustsFactId"
+            AND reverse_fact."entryKind" = 'reversal'
+            AND reverse_impact."sourceImpactKey"
+              = original_impact."sourceImpactKey"
+       ) > original_impact."amountCents"
+  ) THEN
+    RAISE EXCEPTION '经营影响累计冲销金额超过原分录'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 DO $$
 DECLARE

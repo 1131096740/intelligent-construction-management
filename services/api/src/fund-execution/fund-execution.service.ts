@@ -16,6 +16,7 @@ import { PrismaService } from "../database/prisma.service";
 import {
   EXECUTION_ALLOCATION_AXES,
   assertFundExecutionConfirmationSeparation,
+  planReverseExecutionAxisEffects,
   type FundExecutionApprovalDelegation
 } from "./fund-execution.domain";
 import { FundExecutionCanonicalAdapterService } from "./fund-execution-canonical-adapter.service";
@@ -132,6 +133,7 @@ type ReversalConsequence = Readonly<{
   consequenceIdentity: string;
   sliceIdentity: string | null;
   amountCents: bigint;
+  consequenceFingerprint: string;
 }>;
 
 type ReversalDraftSelection = Readonly<{
@@ -149,8 +151,11 @@ type ReversalDraftSelection = Readonly<{
 
 type ReversalSource = Readonly<{
   direction: "inflow" | "outflow";
-  amountCents: bigint;
+  originalAmountCents: bigint;
+  alreadyReversedAmountCents: bigint;
+  remainingAmountCents: bigint;
   currencyCode: string;
+  holderCompanyEntityId: string;
   lines: readonly ReversalLine[];
   effects: readonly ReversalEffect[];
   consequences: readonly ReversalConsequence[];
@@ -593,11 +598,14 @@ export class FundExecutionService {
           const expectedDirection = oppositeDirection(source.direction);
           if (
             observation.direction !== expectedDirection ||
-            observation.amountCents !== source.amountCents ||
-            observation.currencyCode !== source.currencyCode
+            observation.amountCents <= 0n ||
+            observation.amountCents > source.remainingAmountCents ||
+            target.amountCents !== source.remainingAmountCents ||
+            observation.currencyCode !== source.currencyCode ||
+            observation.holderCompanyEntityId !== source.holderCompanyEntityId
           ) {
             throw new ConflictException(
-              "反向银行流水与原资金执行的金额、币种或方向不一致"
+              "反向银行流水与原资金执行的剩余金额、币种、方向或账户持有人不一致"
             );
           }
 
@@ -607,7 +615,8 @@ export class FundExecutionService {
           const selections = await this.buildReversalDraftSelections(
             tx,
             source,
-            expectedDirection
+            expectedDirection,
+            observation.amountCents
           );
           const executionPayloadFingerprint = fundExecutionCommandFingerprint(
             "create_case",
@@ -616,6 +625,8 @@ export class FundExecutionService {
               targetType,
               targetExecutionId,
               observationFingerprint: observation.payloadFingerprint,
+              alreadyReversedAmountCents: source.alreadyReversedAmountCents,
+              reverseAmountCents: observation.amountCents,
               sourceLineFingerprints: source.lines.map((line) => ({
                 id: line.id,
                 amountCents: line.amountCents,
@@ -1141,10 +1152,23 @@ export class FundExecutionService {
               where: { id: predecessor.fundExecutionId }
             });
             if (!execution) throw new ConflictException("资金执行事实不存在");
-            const delegations = await this.activeDelegationEdges(
-              tx,
-              predecessor.caseKey
-            );
+            const [delegations, caseRevisions, approvalActions] =
+              await Promise.all([
+                this.activeDelegationEdges(tx, predecessor.caseKey),
+                tx.fundExecutionCase.findMany({
+                  where: { caseKey: predecessor.caseKey },
+                  select: {
+                    createdByUserId: true,
+                    commandActorUserId: true,
+                    submittedByUserId: true,
+                    returnedByUserId: true
+                  }
+                }),
+                tx.approvalActionLog.findMany({
+                  where: { approvalInstanceId: predecessor.approvalInstanceId! },
+                  select: { actorUserId: true, representedUserId: true }
+                })
+              ]);
             try {
               assertFundExecutionConfirmationSeparation({
                 confirmerUserId: actorUserId,
@@ -1153,6 +1177,24 @@ export class FundExecutionService {
                 finalApprovalActorUserId: freeze.finalApprovalActorUserId,
                 finalApprovalRepresentedUserId:
                   freeze.finalApprovalRepresentedUserId,
+                caseParticipantUserIds: [
+                  ...new Set(
+                    caseRevisions.flatMap((revision) => [
+                      revision.createdByUserId,
+                      revision.commandActorUserId,
+                      revision.submittedByUserId,
+                      revision.returnedByUserId
+                    ].filter((userId): userId is string => Boolean(userId)))
+                  )
+                ],
+                approvalParticipantUserIds: [
+                  ...new Set(
+                    approvalActions.flatMap((approval) => [
+                      approval.actorUserId,
+                      approval.representedUserId
+                    ].filter((userId): userId is string => Boolean(userId)))
+                  )
+                ],
                 delegations
               });
             } catch (error) {
@@ -1230,18 +1272,20 @@ export class FundExecutionService {
     let direction: "inflow" | "outflow";
     let amountCents: bigint;
     let currencyCode: string;
+    let holderCompanyEntityId: string;
     if (targetType === "payment_execution") {
       const [payment] = await tx.$queryRaw<
-        Array<{ id: string; amountCents: bigint }>
+        Array<{ id: string; amountCents: bigint; holderCompanyEntityId: string }>
       >(Prisma.sql`
-        SELECT payment."id", payment."amountCents"
+        SELECT payment."id", payment."amountCents",
+               observation."holderCompanyEntityId"
         FROM "PaymentExecution" payment
+        INNER JOIN "BankTransactionClaim" claim
+          ON claim."paymentExecutionId" = payment."id"
+         AND claim."targetType" = 'payment_execution'
+        INNER JOIN "VerifiedBankTransactionObservation" observation
+          ON observation."id" = claim."observationId"
         WHERE payment."id" = ${targetExecutionId}
-          AND EXISTS (
-            SELECT 1 FROM "BankTransactionClaim" claim
-            WHERE claim."paymentExecutionId" = payment."id"
-              AND claim."targetType" = 'payment_execution'
-          )
         FOR UPDATE
       `);
       if (!payment) {
@@ -1252,6 +1296,7 @@ export class FundExecutionService {
       direction = "outflow";
       amountCents = payment.amountCents;
       currencyCode = "CNY";
+      holderCompanyEntityId = payment.holderCompanyEntityId;
     } else {
       const [execution] = await tx.$queryRaw<
         Array<{
@@ -1260,11 +1305,18 @@ export class FundExecutionService {
           amountCents: bigint;
           currencyCode: string;
           executionKind: string;
+          holderCompanyEntityId: string;
         }>
       >(Prisma.sql`
         SELECT execution."id", execution."direction", execution."amountCents",
-               execution."currencyCode", execution."executionKind"
+               execution."currencyCode", execution."executionKind",
+               observation."holderCompanyEntityId"
         FROM "FundExecution" execution
+        INNER JOIN "BankTransactionClaim" claim
+          ON claim."fundExecutionId" = execution."id"
+         AND claim."targetType" = 'fund_execution'
+        INNER JOIN "VerifiedBankTransactionObservation" observation
+          ON observation."id" = claim."observationId"
         WHERE execution."id" = ${targetExecutionId}
         FOR UPDATE
       `);
@@ -1278,6 +1330,26 @@ export class FundExecutionService {
       direction = execution.direction;
       amountCents = execution.amountCents;
       currencyCode = execution.currencyCode;
+      holderCompanyEntityId = execution.holderCompanyEntityId;
+    }
+
+    const [reversed] = await tx.$queryRaw<Array<{ amountCents: bigint }>>(
+      targetType === "payment_execution"
+        ? Prisma.sql`
+            SELECT COALESCE(SUM(reverse_execution."amountCents"), 0)::BIGINT AS "amountCents"
+            FROM "FundExecution" reverse_execution
+            WHERE reverse_execution."reversesPaymentExecutionId" = ${targetExecutionId}
+          `
+        : Prisma.sql`
+            SELECT COALESCE(SUM(reverse_execution."amountCents"), 0)::BIGINT AS "amountCents"
+            FROM "FundExecution" reverse_execution
+            WHERE reverse_execution."reversesFundExecutionId" = ${targetExecutionId}
+          `
+    );
+    const alreadyReversedAmountCents = reversed?.amountCents ?? 0n;
+    const remainingAmountCents = amountCents - alreadyReversedAmountCents;
+    if (remainingAmountCents <= 0n) {
+      throw new ConflictException("原资金执行已无可反向余额");
     }
 
     const lines = await tx.$queryRaw<ReversalLine[]>(
@@ -1290,7 +1362,7 @@ export class FundExecutionService {
             WHERE line."paymentExecutionId" = ${targetExecutionId}
               AND line."executionType" = 'payment_execution'
               AND line."reversalOfAllocationLineId" IS NULL
-            ORDER BY line."id"
+            ORDER BY line."lineNo", line."id"
             FOR UPDATE
           `
         : Prisma.sql`
@@ -1304,7 +1376,7 @@ export class FundExecutionService {
             WHERE line."fundExecutionId" = ${targetExecutionId}
               AND line."executionType" = 'fund_execution'
               AND line."reversalOfAllocationLineId" IS NULL
-            ORDER BY line."id"
+            ORDER BY line."lineNo", line."id"
             FOR UPDATE OF line
           `
     );
@@ -1350,7 +1422,7 @@ export class FundExecutionService {
       SELECT consequence."id", consequence."axisEffectId",
              consequence."sequence", consequence."consequenceType",
              consequence."consequenceIdentity", consequence."sliceIdentity",
-             consequence."amountCents"
+             consequence."amountCents", consequence."consequenceFingerprint"
       FROM "ExecutionAllocationConsequence" consequence
       WHERE consequence."axisEffectId" IN (${Prisma.join(effectIds)})
       ORDER BY consequence."axisEffectId", consequence."sequence"
@@ -1376,8 +1448,11 @@ export class FundExecutionService {
     }
     return {
       direction,
-      amountCents,
+      originalAmountCents: amountCents,
+      alreadyReversedAmountCents,
+      remainingAmountCents,
       currencyCode,
+      holderCompanyEntityId,
       lines,
       effects,
       consequences
@@ -1387,14 +1462,46 @@ export class FundExecutionService {
   private async buildReversalDraftSelections(
     tx: Transaction,
     source: ReversalSource,
-    direction: "inflow" | "outflow"
+    direction: "inflow" | "outflow",
+    reverseAmountCents: bigint
   ): Promise<readonly ReversalDraftSelection[]> {
     const selections: ReversalDraftSelection[] = [];
+    let offset = source.alreadyReversedAmountCents;
+    let remaining = reverseAmountCents;
     for (const line of [...source.lines].sort(
       (left, right) => left.lineNo - right.lineNo || left.id.localeCompare(right.id)
     )) {
+      const lineOffset = offset < line.amountCents ? offset : line.amountCents;
+      offset -= lineOffset;
+      const available = line.amountCents - lineOffset;
+      const selectedAmountCents = remaining < available ? remaining : available;
+      remaining -= selectedAmountCents;
+      if (selectedAmountCents <= 0n) continue;
       const projectId = await this.reversalLineProjectId(tx, line.id);
       const allocationLineId = randomUUID();
+      const reversePlans = planReverseExecutionAxisEffects(
+        EXECUTION_ALLOCATION_AXES.map((axis) => {
+          const effect = source.effects.find(
+            (candidate) =>
+              candidate.executionAllocationLineId === line.id &&
+              candidate.axis === axis
+          );
+          if (!effect) {
+            throw new ConflictException("原资金执行缺少逐轴冻结事实");
+          }
+          return {
+            id: effect.id,
+            axis,
+            status: effect.status as "applied" | "not_applicable",
+            amountCents: effect.amountCents,
+            consequences: source.consequences
+              .filter((consequence) => consequence.axisEffectId === effect.id)
+              .sort((left, right) => left.sequence - right.sequence)
+          };
+        }),
+        selectedAmountCents,
+        lineOffset
+      );
       for (const axis of EXECUTION_ALLOCATION_AXES) {
         const effect = source.effects.find(
           (candidate) =>
@@ -1402,19 +1509,18 @@ export class FundExecutionService {
             candidate.axis === axis
         );
         if (!effect) throw new ConflictException("原资金执行缺少逐轴冻结事实");
-        const originalConsequences = source.consequences
-          .filter((consequence) => consequence.axisEffectId === effect.id)
-          .sort((left, right) => left.sequence - right.sequence);
+        const reversePlan = reversePlans.find((plan) => plan.axis === axis);
+        if (!reversePlan) throw new ConflictException("反向逐轴切片计划不完整");
         const optionSnapshot = {
           version: 1,
           axis,
-          status: effect.status,
+          status: reversePlan.status,
           axisIdentity: effect.axisIdentity,
           line: {
             lineNo: line.lineNo,
             allocationLineId,
             direction,
-            amountCents: line.amountCents.toString(),
+            amountCents: selectedAmountCents.toString(),
             currencyCode: line.currencyCode,
             businessType: line.businessType,
             businessId: line.businessId,
@@ -1425,24 +1531,26 @@ export class FundExecutionService {
           canonical: {
             reversalOfAllocationLineId: line.id,
             originalAxisEffectId: effect.id,
-            originalConsequenceIds: originalConsequences.map(({ id }) => id)
+            originalConsequenceIds: reversePlan.consequences.map(
+              ({ originalConsequenceId }) => originalConsequenceId
+            )
           }
         } as const;
-        const consequencePlanSnapshot = originalConsequences.map(
+        const consequencePlanSnapshot = reversePlan.consequences.map(
           (consequence) => ({
             sequence: consequence.sequence,
             consequenceType: consequence.consequenceType,
             consequenceIdentity: consequence.consequenceIdentity,
             sliceIdentity: consequence.sliceIdentity,
             amountCents: consequence.amountCents.toString(),
-            originalConsequenceId: consequence.id
+            originalConsequenceId: consequence.originalConsequenceId
           })
         );
         selections.push({
           lineNo: line.lineNo,
           axis,
-          status: effect.status,
-          amountCents: effect.amountCents,
+          status: reversePlan.status,
+          amountCents: reversePlan.amountCents,
           axisIdentity: effect.axisIdentity,
           optionSnapshot: optionSnapshot as unknown as Prisma.InputJsonValue,
           optionFingerprint: await this.jsonbFingerprint(tx, optionSnapshot),
@@ -1455,6 +1563,9 @@ export class FundExecutionService {
           originalAxisEffectId: effect.id
         });
       }
+    }
+    if (remaining !== 0n) {
+      throw new ConflictException("反向金额未完整映射到原共享分配行");
     }
     return selections;
   }

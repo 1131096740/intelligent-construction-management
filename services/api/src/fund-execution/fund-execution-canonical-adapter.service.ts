@@ -859,7 +859,8 @@ export class FundExecutionCanonicalAdapterService {
       line.lineNo !== context.lineNo ||
       line.direction !== context.execution.direction ||
       line.direction === originalLine.direction ||
-      BigInt(line.amountCents) !== originalLine.amountCents ||
+      BigInt(line.amountCents) <= 0n ||
+      BigInt(line.amountCents) > originalLine.amountCents ||
       line.currencyCode !== originalLine.currencyCode ||
       line.businessType !== originalLine.businessType ||
       line.businessId !== originalLine.businessId ||
@@ -941,11 +942,11 @@ export class FundExecutionCanonicalAdapterService {
         if (
           !original ||
           original.axisEffectId !== selected.selection.originalAxisEffectId ||
-          original.sequence !== plan.sequence ||
           original.consequenceType !== plan.consequenceType ||
           original.consequenceIdentity !== plan.consequenceIdentity ||
           original.sliceIdentity !== plan.sliceIdentity ||
-          original.amountCents !== BigInt(plan.amountCents)
+          BigInt(plan.amountCents) <= 0n ||
+          BigInt(plan.amountCents) > original.amountCents
         ) {
           throw new ConflictException("反向 canonical 后果未精确复制原冻结身份");
         }
@@ -955,7 +956,8 @@ export class FundExecutionCanonicalAdapterService {
             context,
             line.allocationLineId,
             axis,
-            original
+            original,
+            BigInt(plan.amountCents)
           )
         );
       }
@@ -974,7 +976,8 @@ export class FundExecutionCanonicalAdapterService {
     context: ReversalLineContext,
     allocationLineId: string,
     axis: ExecutionAllocationAxis,
-    original: StoredConsequence
+    original: StoredConsequence,
+    amountCents: bigint
   ): Promise<CanonicalBinding> {
     if (axis === "payable") {
       if (!original.payableSettlementAllocationId) {
@@ -1003,7 +1006,7 @@ export class FundExecutionCanonicalAdapterService {
           beneficiaryProjectId: payable.beneficiaryProjectId,
           sourceSnapshot: payable.sourceSnapshot as Prisma.InputJsonValue,
           confirmedAmountCents: payable.confirmedAmountCents,
-          amountCents: original.amountCents,
+          amountCents,
           direction: "reverse",
           reversalOfAllocationId: payable.id,
           createdByUserId: context.input.actorUserId
@@ -1028,7 +1031,7 @@ export class FundExecutionCanonicalAdapterService {
         businessId: allocation.businessId,
         executionAllocationLineId: allocationLineId,
         originalAllocationId: allocation.id,
-        amountCents: original.amountCents,
+        amountCents,
         occurredAt: context.execution.occurredAt,
         reversalKey: `fund-execution:${allocationLineId}:${allocation.id}`,
         reason: context.caseReason,
@@ -1063,7 +1066,7 @@ export class FundExecutionCanonicalAdapterService {
             relationship.creditorSnapshot as Prisma.InputJsonValue,
           approvedPayerSnapshot:
             relationship.approvedPayerSnapshot as Prisma.InputJsonValue,
-          amountCents: original.amountCents,
+          amountCents,
           currencyCode: relationship.currencyCode,
           evidenceFileId: relationship.evidenceFileId,
           evidenceContentSha256: relationship.evidenceContentSha256,
@@ -1084,7 +1087,7 @@ export class FundExecutionCanonicalAdapterService {
           payloadFingerprint: fundExecutionCommandFingerprint("confirm_case", {
             allocationLineId,
             originalRelationshipEntryId: relationship.id,
-            amountCents: original.amountCents
+            amountCents
           }),
           createdByUserId: context.input.actorUserId,
           confirmedByUserId: context.input.actorUserId,
@@ -1100,7 +1103,8 @@ export class FundExecutionCanonicalAdapterService {
       tx,
       context,
       allocationLineId,
-      original
+      original,
+      amountCents
     );
   }
 
@@ -1108,7 +1112,8 @@ export class FundExecutionCanonicalAdapterService {
     tx: Transaction,
     context: ReversalLineContext,
     allocationLineId: string,
-    original: StoredConsequence
+    original: StoredConsequence,
+    amountCents: bigint
   ): Promise<CanonicalBinding> {
     const fact = await tx.operatingFact.findUnique({
       where: { id: original.operatingFactId! },
@@ -1127,7 +1132,7 @@ export class FundExecutionCanonicalAdapterService {
       idempotencyKey: `fund-execution:${allocationLineId}:operating-impact`,
       sourceImpactKey: originalImpact.sourceImpactKey,
       impactKind: originalImpact.impactKind as OperatingImpactInput["impactKind"],
-      amountCents: original.amountCents,
+      amountCents,
       direction: inverseImpactDirection(originalImpact.direction),
       ...(originalImpact.subjectRole
         ? {
@@ -1180,7 +1185,7 @@ export class FundExecutionCanonicalAdapterService {
         fact.operatingLevel as AppendOperatingFactInput["operatingLevel"],
       evidenceLevel:
         fact.evidenceLevel as AppendOperatingFactInput["evidenceLevel"],
-      amountCents: original.amountCents,
+      amountCents,
       currencyCode: fact.currencyCode,
       direction: context.execution.direction as "inflow" | "outflow",
       isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(

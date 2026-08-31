@@ -26,23 +26,47 @@ const runnerPath = path.join(
   "run-database-dynamic-gate-local.cjs"
 );
 
-test("manifest derives all 123 pending tests as executable local coverage", () => {
+test("manifest derives all 136 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 42,
-    fullyPendingSuites: 32,
-    partiallyPendingSuites: 10,
-    pendingTests: 123,
-    coveredFiles: 42,
-    coveredTests: 123,
+    pendingFiles: 44,
+    fullyPendingSuites: 33,
+    partiallyPendingSuites: 11,
+    pendingTests: 136,
+    coveredFiles: 44,
+    coveredTests: 136,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
+  });
+});
+
+test("canonical manifest executes all 12 fund execution v7 PG tests", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "fund_execution_v7"
+  );
+
+  assert.deepEqual(group, {
+    id: "fund_execution_v7",
+    pendingTests: 12,
+    testFiles: [
+      {
+        path: "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
+        pendingTests: 12,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "node",
+      path: "services/api/prisma/verify-fund-execution-v7.cjs"
+    },
+    state: "executable_local_runner"
   });
 });
 
@@ -52,7 +76,31 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=25，派生值=123/u
+    /inventory\.coveredTests=25，派生值=136/u
+  );
+});
+
+test("manifest validation fails closed when any RUN_* gated PG spec is unregistered", () => {
+  const manifest = structuredClone(loadManifest());
+  const groupIndex = manifest.coveredGroups.findIndex(
+    (group) => group.id === "fund_execution_v7"
+  );
+  assert.notEqual(groupIndex, -1);
+  const [removed] = manifest.coveredGroups.splice(groupIndex, 1);
+  manifest.inventory.pendingFiles -= removed.testFiles.length;
+  manifest.inventory.fullyPendingSuites -= removed.testFiles.filter(
+    (file) => file.suiteStatus === "fully_pending"
+  ).length;
+  manifest.inventory.partiallyPendingSuites -= removed.testFiles.filter(
+    (file) => file.suiteStatus === "partial_pending"
+  ).length;
+  manifest.inventory.pendingTests -= removed.pendingTests;
+  manifest.inventory.coveredFiles -= removed.testFiles.length;
+  manifest.inventory.coveredTests -= removed.pendingTests;
+
+  assert.throws(
+    () => validateManifest(manifest),
+    /RUN_\* gated PG spec 未登记：services\/api\/src\/fund-execution\/fund-execution-service\.pg\.spec\.ts/u
   );
 });
 

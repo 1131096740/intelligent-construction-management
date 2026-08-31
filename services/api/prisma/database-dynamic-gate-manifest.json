@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 156,
     "terminalMigration": "20260831120000_pol13d_fund_execution_v7",
-    "terminalMigrationChecksum": "ba0191fb772baa5b5328c431bd005cf7633b84662eaf6418075af319cf527ebe",
+    "terminalMigrationChecksum": "b5da7726346f5d307c1f0bbd7c832c129e260611e5344d09d9b7b59c5ceace21",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 42,
-    "fullyPendingSuites": 32,
-    "partiallyPendingSuites": 10,
-    "pendingTests": 123,
-    "coveredFiles": 42,
-    "coveredTests": 123,
+    "pendingFiles": 44,
+    "fullyPendingSuites": 33,
+    "partiallyPendingSuites": 11,
+    "pendingTests": 136,
+    "coveredFiles": 44,
+    "coveredTests": 136,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,9 +174,30 @@
       "state": "executable_local_runner"
     },
     {
-      "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 99,
+      "id": "fund_execution_v7",
+      "pendingTests": 12,
       "testFiles": [
+        {
+          "path": "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
+          "pendingTests": 12,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/verify-fund-execution-v7.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "remaining_dynamic_postgresql16",
+      "pendingTests": 100,
+      "testFiles": [
+        {
+          "path": "services/api/src/contract/contract-approval-route.service.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
           "pendingTests": 6,

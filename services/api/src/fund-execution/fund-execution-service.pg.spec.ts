@@ -30,16 +30,24 @@ const REVIEWER_DELEGATE_USER_ID = "10000000-0000-4000-8000-000000000006";
 const SCOPED_DELEGATE_USER_ID = "10000000-0000-4000-8000-000000000007";
 const COMPANY_ID = "11000000-0000-4000-8000-000000000001";
 const COMPANY_VERSION_ID = "11000000-0000-4000-8000-000000000002";
+const OTHER_COMPANY_ID = "11000000-0000-4000-8000-000000000003";
+const OTHER_COMPANY_VERSION_ID = "11000000-0000-4000-8000-000000000004";
 const PROJECT_ID = "12000000-0000-4000-8000-000000000001";
 const AFFILIATE_PARTY_ID = "13000000-0000-4000-8000-000000000001";
 const AFFILIATE_VERSION_ID = "13000000-0000-4000-8000-000000000002";
 const AFFILIATE_ASSIGNMENT_ID = "13000000-0000-4000-8000-000000000003";
 const PARTICIPANT_ID = "14000000-0000-4000-8000-000000000001";
 const PAYER_VERIFICATION_ID = "15000000-0000-4000-8000-000000000001";
+const OTHER_PAYER_VERIFICATION_ID = "15000000-0000-4000-8000-000000000002";
 const VERIFICATION_FILE_ID = "16000000-0000-4000-8000-000000000001";
 const RETURN_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000002";
 const CONFIRM_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000003";
 const SIGNATURE_FILE_ID = "16000000-0000-4000-8000-000000000004";
+const REVERSE_TRANSACTION_FILE_ID_1 = "16000000-0000-4000-8000-000000000005";
+const REVERSE_TRANSACTION_FILE_ID_2 = "16000000-0000-4000-8000-000000000006";
+const OTHER_VERIFICATION_FILE_ID = "16000000-0000-4000-8000-000000000007";
+const HOLDER_MISMATCH_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000008";
+const SOD_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000009";
 const SIGNATURE_VERSION_ID = "17000000-0000-4000-8000-000000000001";
 const OCCURRED_AT = new Date("2026-08-31T04:00:00.000Z");
 
@@ -319,6 +327,147 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     });
   });
 
+  it("不同实际账户持有人的反向流水在 Claim 创建前失败关闭", async () => {
+    if (!confirmFlow) throw new Error("confirmed source flow missing");
+    await observationService.record({
+      reference: "PG-REVERSE-HOLDER-MISMATCH",
+      payerVerificationId: OTHER_PAYER_VERIFICATION_ID,
+      transactionSourceType: "pg_test_bank_statement",
+      transactionSourceId: "pg-reverse-holder-mismatch",
+      transactionSourceIdentity: createHash("sha256")
+        .update("pg-test:reverse-holder-mismatch")
+        .digest("hex"),
+      transactionEvidenceFileId: HOLDER_MISMATCH_TRANSACTION_FILE_ID,
+      transactionExecutedByUserId: EXECUTOR_USER_ID,
+      amountCents: 1_000n,
+      currencyCode: "CNY",
+      direction: "outflow",
+      occurredAt: new Date("2026-08-31T04:30:00.000Z"),
+      createdByUserId: ACTOR_USER_ID,
+      auditRequestId: randomUUID()
+    });
+    const targets = await options.listReversalTargets(ACTOR_USER_ID);
+    expect(targets).toHaveLength(1);
+    const observation = (
+      await options.listObservationCandidates(ACTOR_USER_ID)
+    ).find(({ summary }) => summary.includes("PG 测试其他账户公司"));
+    if (!observation) throw new Error("holder mismatch observation missing");
+    await expect(
+      service.createReversalCase(ACTOR_USER_ID, {
+        targetSelectionRef: targets[0]!.targetSelectionRef,
+        observationSelectionRef: observation.selectionRef,
+        reason: "账户持有人不一致必须拒绝",
+        idempotencyKey: randomUUID()
+      })
+    ).rejects.toThrow("账户持有人不一致");
+  });
+
+  it("同一原执行按 4000+6000 两次累计反向并逐轴精确切片", async () => {
+    if (!confirmFlow) throw new Error("confirmed source flow missing");
+    const originalExecutionId = confirmFlow.create.fundExecutionId;
+
+    const first = await createAndConfirmReversal({
+      targetExecutionId: originalExecutionId,
+      reference: "PG-REVERSE-OBSERVATION-1",
+      sourceId: "pg-reverse-source-1",
+      transactionFileId: REVERSE_TRANSACTION_FILE_ID_1,
+      amountCents: 4_000n,
+      occurredAt: new Date("2026-08-31T05:00:00.000Z")
+    });
+    const firstLines = await prisma.executionAllocationLine.findMany({
+      where: { fundExecutionId: first.fundExecutionId }
+    });
+    expect(firstLines).toHaveLength(1);
+    expect(firstLines[0]!.amountCents).toBe(4_000n);
+
+    const second = await createAndConfirmReversal({
+      targetExecutionId: originalExecutionId,
+      reference: "PG-REVERSE-OBSERVATION-2",
+      sourceId: "pg-reverse-source-2",
+      transactionFileId: REVERSE_TRANSACTION_FILE_ID_2,
+      amountCents: 6_000n,
+      occurredAt: new Date("2026-08-31T06:00:00.000Z")
+    });
+    const secondLines = await prisma.executionAllocationLine.findMany({
+      where: { fundExecutionId: second.fundExecutionId }
+    });
+    expect(secondLines).toHaveLength(1);
+    expect(secondLines[0]!.amountCents).toBe(6_000n);
+
+    const reversals = await prisma.fundExecution.findMany({
+      where: { reversesFundExecutionId: originalExecutionId },
+      orderBy: { occurredAt: "asc" },
+      select: { amountCents: true }
+    });
+    expect(reversals.map(({ amountCents }) => amountCents)).toEqual([
+      4_000n,
+      6_000n
+    ]);
+    const targets = await options.listReversalTargets(ACTOR_USER_ID);
+    expect(targets).toHaveLength(0);
+  });
+
+  it("曾编辑案件的财务总监不得随后确认同一案件", async () => {
+    await observationService.record({
+      reference: "PG-SOD-EDITOR-OBSERVATION",
+      payerVerificationId: PAYER_VERIFICATION_ID,
+      transactionSourceType: "pg_test_bank_statement",
+      transactionSourceId: "pg-sod-editor-source",
+      transactionSourceIdentity: createHash("sha256")
+        .update("pg-test:sod-editor")
+        .digest("hex"),
+      transactionEvidenceFileId: SOD_TRANSACTION_FILE_ID,
+      transactionExecutedByUserId: EXECUTOR_USER_ID,
+      amountCents: 10_000n,
+      currencyCode: "CNY",
+      direction: "inflow",
+      occurredAt: new Date("2026-08-31T07:00:00.000Z"),
+      createdByUserId: ACTOR_USER_ID,
+      auditRequestId: randomUUID()
+    });
+    const observation = (
+      await options.listObservationCandidates(ACTOR_USER_ID)
+    ).find(({ summary }) => summary.startsWith("入账"));
+    if (!observation) throw new Error("SoD observation missing");
+    const created = await service.createCase(ACTOR_USER_ID, {
+      observationSelectionRef: observation.selectionRef,
+      reason: "确认人历史参与链测试",
+      idempotencyKey: randomUUID()
+    });
+    const plans = await options.listCasePlans(created.caseId, CONFIRMER_USER_ID);
+    const updated = await service.updateCase(CONFIRMER_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: created.revision,
+      reason: "财务总监曾编辑",
+      selectionRefs: plans[0]!.lines.flatMap((line) =>
+        line.axes.map(({ selectionRef }) => selectionRef)
+      ),
+      idempotencyKey: randomUUID()
+    });
+    const submitted = await service.submitCase(ACTOR_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: updated.revision,
+      idempotencyKey: randomUUID()
+    });
+    await service.reviewApproval(REVIEWER_USER_ID, {
+      caseId: created.caseId,
+      action: "approve",
+      comment: "财务主管同意"
+    });
+    await service.reviewApproval(CHAIRMAN_USER_ID, {
+      caseId: created.caseId,
+      action: "approve",
+      comment: "董事长同意"
+    });
+    await expect(
+      service.confirmCase(CONFIRMER_USER_ID, {
+        caseId: created.caseId,
+        expectedRevision: submitted.revision,
+        idempotencyKey: randomUUID()
+      })
+    ).rejects.toThrow("案件经办链和全部审批自然人分离");
+  });
+
   it("所有首次执行回执来自 production service，重放不增加聚合修订", async () => {
     expect(returnFlow).toBeDefined();
     expect(confirmFlow).toBeDefined();
@@ -487,6 +636,66 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     });
     return receipts.map(({ action }) => action);
   }
+
+  async function createAndConfirmReversal(input: {
+    targetExecutionId: string;
+    reference: string;
+    sourceId: string;
+    transactionFileId: string;
+    amountCents: bigint;
+    occurredAt: Date;
+  }) {
+    await observationService.record({
+      reference: input.reference,
+      payerVerificationId: PAYER_VERIFICATION_ID,
+      transactionSourceType: "pg_test_bank_statement",
+      transactionSourceId: input.sourceId,
+      transactionSourceIdentity: createHash("sha256")
+        .update(`pg-test:${input.sourceId}`)
+        .digest("hex"),
+      transactionEvidenceFileId: input.transactionFileId,
+      transactionExecutedByUserId: EXECUTOR_USER_ID,
+      amountCents: input.amountCents,
+      currencyCode: "CNY",
+      direction: "outflow",
+      occurredAt: input.occurredAt,
+      createdByUserId: ACTOR_USER_ID,
+      auditRequestId: randomUUID()
+    });
+    const targets = await options.listReversalTargets(ACTOR_USER_ID);
+    expect(targets).toHaveLength(1);
+    const target = targets[0]!;
+    const observation = (
+      await options.listObservationCandidates(ACTOR_USER_ID)
+    ).find(({ summary }) => summary.includes("PG 测试参与公司"));
+    if (!observation) throw new Error("reversal observation missing");
+    const created = await service.createReversalCase(ACTOR_USER_ID, {
+      targetSelectionRef: target.targetSelectionRef,
+      observationSelectionRef: observation.selectionRef,
+      reason: `累计反向 ${input.amountCents.toString()}`,
+      idempotencyKey: randomUUID()
+    });
+    const submitted = await service.submitCase(ACTOR_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: created.revision,
+      idempotencyKey: randomUUID()
+    });
+    await service.reviewApproval(REVIEWER_USER_ID, {
+      caseId: created.caseId,
+      action: "approve",
+      comment: "财务主管同意反向"
+    });
+    await service.reviewApproval(CHAIRMAN_USER_ID, {
+      caseId: created.caseId,
+      action: "approve",
+      comment: "董事长同意反向"
+    });
+    return service.confirmCase(CONFIRMER_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: submitted.revision,
+      idempotencyKey: randomUUID()
+    });
+  }
 });
 
 async function seedExternalDomainFixtures(prisma: PrismaClient) {
@@ -584,6 +793,29 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
       actorRoleKey: "finance_staff"
     }
   });
+  await prisma.companyEntity.create({
+    data: {
+      id: OTHER_COMPANY_ID,
+      name: "PG 测试其他账户公司",
+      unifiedSocialCreditCode: "91310000PGTEST0003",
+      dataStatus: "complete",
+      currentVersionNo: 1,
+      isActive: true
+    }
+  });
+  await prisma.companyEntityVersion.create({
+    data: {
+      id: OTHER_COMPANY_VERSION_ID,
+      companyEntityId: OTHER_COMPANY_ID,
+      versionNo: 1,
+      name: "PG 测试其他账户公司",
+      unifiedSocialCreditCode: "91310000PGTEST0003",
+      isActive: true,
+      action: "pg_fixture",
+      actorUserId: ACTOR_USER_ID,
+      actorRoleKey: "finance_staff"
+    }
+  });
   await prisma.businessParty.create({
     data: {
       id: AFFILIATE_PARTY_ID,
@@ -643,7 +875,20 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
       fileFixture(VERIFICATION_FILE_ID, "payer-verification.pdf", REVIEWER_USER_ID),
       fileFixture(RETURN_TRANSACTION_FILE_ID, "return-bank.pdf", ACTOR_USER_ID),
       fileFixture(CONFIRM_TRANSACTION_FILE_ID, "confirm-bank.pdf", ACTOR_USER_ID),
-      fileFixture(SIGNATURE_FILE_ID, "chairman-signature.png", CHAIRMAN_USER_ID)
+      fileFixture(SIGNATURE_FILE_ID, "chairman-signature.png", CHAIRMAN_USER_ID),
+      fileFixture(REVERSE_TRANSACTION_FILE_ID_1, "reverse-1-bank.pdf", ACTOR_USER_ID),
+      fileFixture(REVERSE_TRANSACTION_FILE_ID_2, "reverse-2-bank.pdf", ACTOR_USER_ID),
+      fileFixture(
+        OTHER_VERIFICATION_FILE_ID,
+        "other-verification.pdf",
+        REVIEWER_USER_ID
+      ),
+      fileFixture(
+        HOLDER_MISMATCH_TRANSACTION_FILE_ID,
+        "holder-mismatch-bank.pdf",
+        ACTOR_USER_ID
+      ),
+      fileFixture(SOD_TRANSACTION_FILE_ID, "sod-editor-bank.pdf", ACTOR_USER_ID)
     ]
   });
   await prisma.handwrittenSignatureVersion.create({
@@ -675,6 +920,25 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
         status: "verified",
         sourceType: "bank_account_legal_holder",
         sourceRecordId: "pg-payer-source-001"
+      })}::JSONB
+    )
+  `;
+  await prisma.$queryRaw`
+    SELECT * FROM public."jg_issue_payment_execution_payer_verification_trusted"(
+      ${JSON.stringify({
+        id: OTHER_PAYER_VERIFICATION_ID,
+        reference: "PG-PAYER-VERIFICATION-OTHER",
+        holderCompanyEntityId: OTHER_COMPANY_ID,
+        holderNameSnapshot: "PG 测试其他账户公司",
+        holderCreditCodeSnapshot: "91310000PGTEST0003",
+        verificationReference: "PG-BANK-VERIFY-002",
+        verifiedByUserId: REVIEWER_USER_ID,
+        verifiedAt: "2026-08-30T04:10:00.000Z",
+        verificationEvidenceFileId: OTHER_VERIFICATION_FILE_ID,
+        verificationEvidenceContentSha256: SHA256,
+        status: "verified",
+        sourceType: "bank_account_legal_holder",
+        sourceRecordId: "pg-payer-source-002"
       })}::JSONB
     )
   `;
