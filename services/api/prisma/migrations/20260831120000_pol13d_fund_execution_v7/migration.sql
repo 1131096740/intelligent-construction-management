@@ -3250,7 +3250,10 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
   IF NEW."subjectKind" IS NOT NULL
-     AND NEW."subjectKind" NOT IN ('construction_enterprise', 'participating_company') THEN
+     AND NEW."subjectKind" NOT IN (
+       'owner', 'construction_enterprise', 'participating_company',
+       'downstream_counterparty', 'employee'
+     ) THEN
     RAISE EXCEPTION '当前经营账尚未接入该影响主体种类，不能登记正式分录'
       USING ERRCODE = '23514';
   END IF;
