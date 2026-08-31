@@ -62,6 +62,10 @@ export interface OperatingImpactInput {
   fundPurpose?: string;
   description?: string;
   impactSnapshot?: Prisma.InputJsonObject;
+  paymentExecutionId?: string;
+  fundExecutionId?: string;
+  fundExecutionCaseId?: string;
+  executionAllocationLineId?: string;
 }
 
 export interface AppendOperatingFactInput {
@@ -91,6 +95,9 @@ export interface AppendOperatingFactInput {
   subjects: OperatingFactSubjects;
   impacts: OperatingImpactInput[];
   adjustsFactId?: string;
+  paymentExecutionId?: string;
+  fundExecutionId?: string;
+  fundExecutionCaseId?: string;
 }
 
 export interface AppendOperatingFactCorrectionInput extends AppendOperatingFactInput {
@@ -376,6 +383,62 @@ export class OperatingLedgerService {
     );
   }
 
+  async appendFundExecutionReversalInTransaction(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactInput,
+    actorUserId: string
+  ): Promise<OperatingFactWriteResult> {
+    const adjustsFactId = requiredText(
+      input.adjustsFactId,
+      "资金反向执行必须引用原经营事实"
+    );
+    const original = await tx.operatingFact.findUnique({
+      where: { id: adjustsFactId },
+      include: {
+        impacts: true,
+        adjustments: { select: { id: true, entryKind: true } }
+      }
+    });
+    const expectedSubjects = subjectColumns(input.subjects);
+    const sourceSnapshot = input.sourceSnapshot as Record<string, unknown>;
+    if (
+      input.sourceType !== "fund_execution" ||
+      !input.fundExecutionId ||
+      !input.fundExecutionCaseId ||
+      sourceSnapshot.originalOperatingFactId !== adjustsFactId ||
+      !original ||
+      original.projectId !== input.projectId ||
+      !["payment_execution", "fund_execution"].includes(original.sourceType) ||
+      original.entryKind !== "original" ||
+      original.status !== "confirmed" ||
+      original.factKind !== input.factKind ||
+      original.operatingLevel !== input.operatingLevel ||
+      original.evidenceLevel !== input.evidenceLevel ||
+      original.amountCents !== input.amountCents ||
+      original.currencyCode !== input.currencyCode ||
+      inverseFactDirection(original.direction) !== input.direction ||
+      original.affiliateAssignmentId !== input.affiliateAssignmentId ||
+      original.affiliateBusinessPartyVersionId !==
+        input.affiliateBusinessPartyVersionId ||
+      original.affiliateNameSnapshot !== input.affiliateNameSnapshot ||
+      (original.affiliateCreditCodeSnapshot ?? null) !==
+        (input.affiliateCreditCodeSnapshot ?? null) ||
+      !sameFactSubjects(original, expectedSubjects)
+    ) {
+      throw new BadRequestException(
+        "资金反向执行必须精确复制原经营事实的冻结归属与主体"
+      );
+    }
+    return this.appendEnvelope(
+      tx,
+      input,
+      actorUserId,
+      "reversal",
+      "source_actor",
+      original.occurredAt
+    );
+  }
+
   async appendCorrection(
     input: AppendOperatingFactCorrectionInput,
     actorUserId: string
@@ -469,7 +532,8 @@ export class OperatingLedgerService {
     rawInput: AppendOperatingFactInput,
     actorUserId: string,
     entryKind: OperatingFactEntryKind,
-    confirmationAuthority: "actor" | "frozen_source" | "source_actor" = "actor"
+    confirmationAuthority: "actor" | "frozen_source" | "source_actor" = "actor",
+    ownershipOccurredAt: Date = rawInput.occurredAt
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
@@ -477,9 +541,14 @@ export class OperatingLedgerService {
       tx,
       input,
       actorUserId,
-      confirmationAuthority
+      confirmationAuthority,
+      ownershipOccurredAt
     );
-    const subjectSnapshot = await this.factSubjectSnapshot(tx, input);
+    const subjectSnapshot = await this.factSubjectSnapshot(
+      tx,
+      input,
+      ownershipOccurredAt
+    );
 
     await tx.$executeRaw(
       Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.sourceType}:${input.sourceBusinessId}`}, 0))`
@@ -527,7 +596,8 @@ export class OperatingLedgerService {
           existing.projectId,
           input,
           impact,
-          actorUserId
+          actorUserId,
+          ownershipOccurredAt
         );
         if (!impactIds.includes(result.id)) impactIds.push(result.id);
       }
@@ -572,7 +642,10 @@ export class OperatingLedgerService {
         adjustsFactId,
         idempotencyKey: input.idempotencyKey,
         confirmedByUserId: input.confirmedByUserId,
-        status: "confirmed"
+        status: "confirmed",
+        paymentExecutionId: input.paymentExecutionId,
+        fundExecutionId: input.fundExecutionId,
+        fundExecutionCaseId: input.fundExecutionCaseId
       },
       actorUserId
     );
@@ -585,7 +658,8 @@ export class OperatingLedgerService {
         created.projectId,
         input,
         impact,
-        actorUserId
+        actorUserId,
+        ownershipOccurredAt
       );
       impactIds.push(result.id);
     }
@@ -598,9 +672,15 @@ export class OperatingLedgerService {
     projectId: string,
     input: AppendOperatingFactInput,
     impact: OperatingImpactInput,
-    actorUserId: string
+    actorUserId: string,
+    ownershipOccurredAt: Date = input.occurredAt
   ) {
-    const impactSnapshot = await this.impactSnapshotWithSubject(tx, input, impact);
+    const impactSnapshot = await this.impactSnapshotWithSubject(
+      tx,
+      input,
+      impact,
+      ownershipOccurredAt
+    );
     const existing = await tx.operatingImpactEntry.findUnique({
       where: {
         sourceType_sourceBusinessId_sourceImpactKey: {
@@ -634,7 +714,11 @@ export class OperatingLedgerService {
         costCategoryCode: impact.costCategoryCode,
         fundPurpose: impact.fundPurpose,
         description: impact.description,
-        impactSnapshot
+        impactSnapshot,
+        paymentExecutionId: impact.paymentExecutionId,
+        fundExecutionId: impact.fundExecutionId,
+        fundExecutionCaseId: impact.fundExecutionCaseId,
+        executionAllocationLineId: impact.executionAllocationLineId
       },
       actorUserId
     );
@@ -643,9 +727,15 @@ export class OperatingLedgerService {
   private async impactSnapshotWithSubject(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
-    impact: OperatingImpactInput
+    impact: OperatingImpactInput,
+    ownershipOccurredAt: Date = input.occurredAt
   ): Promise<Prisma.InputJsonObject> {
-    const subjectSnapshot = await this.resolveImpactSubjectSnapshot(tx, input, impact.subject);
+    const subjectSnapshot = await this.resolveImpactSubjectSnapshot(
+      tx,
+      input,
+      impact.subject,
+      ownershipOccurredAt
+    );
     const snapshot = impact.impactSnapshot ?? {};
     if (!subjectSnapshot) return snapshot;
     return { ...snapshot, subjectSnapshot };
@@ -653,14 +743,16 @@ export class OperatingLedgerService {
 
   private async factSubjectSnapshot(
     tx: OperatingLedgerTransaction,
-    input: AppendOperatingFactInput
+    input: AppendOperatingFactInput,
+    ownershipOccurredAt: Date = input.occurredAt
   ): Promise<Prisma.InputJsonObject> {
     const snapshot: Record<string, unknown> = {};
     for (const [role, subject] of Object.entries(input.subjects)) {
       const subjectSnapshot = await this.resolveImpactSubjectSnapshot(
         tx,
         input,
-        subject
+        subject,
+        ownershipOccurredAt
       );
       if (subjectSnapshot) snapshot[role] = subjectSnapshot;
     }
@@ -670,7 +762,8 @@ export class OperatingLedgerService {
   private async resolveImpactSubjectSnapshot(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
-    subject?: OperatingSubjectReference
+    subject?: OperatingSubjectReference,
+    ownershipOccurredAt: Date = input.occurredAt
   ) {
     if (!subject) return undefined;
     if (subject.kind === "construction_enterprise") {
@@ -679,8 +772,8 @@ export class OperatingLedgerService {
           id: input.affiliateAssignmentId,
           projectId: input.projectId,
           AND: [
-            { effectiveFrom: { lte: input.occurredAt } },
-            { OR: [{ endedAt: null }, { endedAt: { gt: input.occurredAt } }] }
+            { effectiveFrom: { lte: ownershipOccurredAt } },
+            { OR: [{ endedAt: null }, { endedAt: { gt: ownershipOccurredAt } }] }
           ]
         },
         select: {
@@ -708,8 +801,8 @@ export class OperatingLedgerService {
           projectId: input.projectId,
           AND: [
             { OR: [{ companyEntityId: subject.id }, { companyEntityVersionId: subject.id }] },
-            { effectiveFrom: { lte: input.occurredAt } },
-            { OR: [{ endedAt: null }, { endedAt: { gt: input.occurredAt } }] }
+            { effectiveFrom: { lte: ownershipOccurredAt } },
+            { OR: [{ endedAt: null }, { endedAt: { gt: ownershipOccurredAt } }] }
           ]
         },
         select: {
@@ -738,7 +831,8 @@ export class OperatingLedgerService {
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
     actorUserId: string,
-    confirmationAuthority: "actor" | "frozen_source" | "source_actor"
+    confirmationAuthority: "actor" | "frozen_source" | "source_actor",
+    ownershipOccurredAt: Date = input.occurredAt
   ): Promise<{
     effectiveDate: Date;
   }> {
@@ -795,8 +889,8 @@ export class OperatingLedgerService {
         projectId: input.projectId,
         businessPartyVersionId: input.affiliateBusinessPartyVersionId,
         AND: [
-          { effectiveFrom: { lte: input.occurredAt } },
-          { OR: [{ endedAt: null }, { endedAt: { gt: input.occurredAt } }] }
+          { effectiveFrom: { lte: ownershipOccurredAt } },
+          { OR: [{ endedAt: null }, { endedAt: { gt: ownershipOccurredAt } }] }
         ]
       },
       select: {
@@ -832,8 +926,8 @@ export class OperatingLedgerService {
           projectId: input.projectId,
           AND: [
             { OR: [{ companyEntityId: subject.id }, { companyEntityVersionId: subject.id }] },
-            { effectiveFrom: { lte: input.occurredAt } },
-            { OR: [{ endedAt: null }, { endedAt: { gt: input.occurredAt } }] }
+            { effectiveFrom: { lte: ownershipOccurredAt } },
+            { OR: [{ endedAt: null }, { endedAt: { gt: ownershipOccurredAt } }] }
           ]
         },
         select: { id: true }
@@ -917,7 +1011,10 @@ function normalizeFactInput(input: AppendOperatingFactInput): AppendOperatingFac
     historicalTakeoverBatchId: optionalText(input.historicalTakeoverBatchId),
     subjects: normalizeFactSubjects(input.subjects),
     impacts: input.impacts.map(normalizeImpactInput),
-    adjustsFactId: optionalText(input.adjustsFactId)
+    adjustsFactId: optionalText(input.adjustsFactId),
+    paymentExecutionId: optionalText(input.paymentExecutionId),
+    fundExecutionId: optionalText(input.fundExecutionId),
+    fundExecutionCaseId: optionalText(input.fundExecutionCaseId)
   };
 }
 
@@ -939,7 +1036,11 @@ function normalizeImpactInput(impact: OperatingImpactInput): OperatingImpactInpu
     sourceImpactKey: requiredText(impact.sourceImpactKey, "来源影响键不能为空"),
     subject: normalizeSubjectReference(impact.subject, "影响分录主体不能为空"),
     fundPurpose: optionalText(impact.fundPurpose),
-    description: optionalText(impact.description)
+    description: optionalText(impact.description),
+    paymentExecutionId: optionalText(impact.paymentExecutionId),
+    fundExecutionId: optionalText(impact.fundExecutionId),
+    fundExecutionCaseId: optionalText(impact.fundExecutionCaseId),
+    executionAllocationLineId: optionalText(impact.executionAllocationLineId)
   };
 }
 
@@ -1007,6 +1108,12 @@ function inverseImpactDirection(direction: string): string {
   if (direction === "increase") return "decrease";
   if (direction === "decrease") return "increase";
   return "notice";
+}
+
+function inverseFactDirection(direction: string): string {
+  if (direction === "inflow") return "outflow";
+  if (direction === "outflow") return "inflow";
+  return "neutral";
 }
 
 function validateFactInput(input: AppendOperatingFactInput) {
@@ -1218,6 +1325,9 @@ function assertCompatibleFact(
     entryKind: string;
     adjustsFactId: string | null;
     confirmedByUserId: string;
+    paymentExecutionId?: string | null;
+    fundExecutionId?: string | null;
+    fundExecutionCaseId?: string | null;
   },
   input: AppendOperatingFactInput,
   entryKind: OperatingFactEntryKind,
@@ -1247,6 +1357,9 @@ function assertCompatibleFact(
     existing.entryKind === entryKind,
     existing.adjustsFactId === (entryKind === "original" ? null : input.adjustsFactId),
     existing.confirmedByUserId === input.confirmedByUserId,
+    (existing.paymentExecutionId ?? null) === (input.paymentExecutionId ?? null),
+    (existing.fundExecutionId ?? null) === (input.fundExecutionId ?? null),
+    (existing.fundExecutionCaseId ?? null) === (input.fundExecutionCaseId ?? null),
     (existing.debtorSubjectKind ?? null) === (expectedSubjects.debtorSubjectKind ?? null),
     (existing.debtorSubjectId ?? null) === (expectedSubjects.debtorSubjectId ?? null),
     (existing.creditorSubjectKind ?? null) === (expectedSubjects.creditorSubjectKind ?? null),
@@ -1283,6 +1396,10 @@ function assertCompatibleImpact(
     fundPurpose: string | null;
     description: string | null;
     impactSnapshot: Prisma.JsonValue;
+    paymentExecutionId?: string | null;
+    fundExecutionId?: string | null;
+    fundExecutionCaseId?: string | null;
+    executionAllocationLineId?: string | null;
   },
   factId: string,
   projectId: string,
@@ -1301,6 +1418,11 @@ function assertCompatibleImpact(
     (existing.costCategoryCode ?? null) !== (impact.costCategoryCode ?? null) ||
     (existing.fundPurpose ?? null) !== (impact.fundPurpose ?? null) ||
     (existing.description ?? null) !== (impact.description ?? null) ||
+    (existing.paymentExecutionId ?? null) !== (impact.paymentExecutionId ?? null) ||
+    (existing.fundExecutionId ?? null) !== (impact.fundExecutionId ?? null) ||
+    (existing.fundExecutionCaseId ?? null) !== (impact.fundExecutionCaseId ?? null) ||
+    (existing.executionAllocationLineId ?? null) !==
+      (impact.executionAllocationLineId ?? null) ||
     !sameJson(existing.impactSnapshot, impactSnapshot)
   ) {
     throw new BadRequestException("同一来源影响键已登记不同分录，不能覆盖原分录");
@@ -1407,7 +1529,10 @@ function operatingFactWritePayload(data: Record<string, unknown>): Prisma.Sql {
       ${data.adjustsFactId}::text,
       ${data.idempotencyKey}::text,
       ${data.confirmedByUserId}::text,
-      ${data.status}::text
+      ${data.status}::text,
+      ${data.paymentExecutionId}::text,
+      ${data.fundExecutionId}::text,
+      ${data.fundExecutionCaseId}::text
     )::public."OperatingLedgerFactWritePayload"
   `;
 }
@@ -1431,7 +1556,11 @@ function operatingImpactWritePayload(data: Record<string, unknown>): Prisma.Sql 
       ${data.costCategoryCode}::text,
       ${data.fundPurpose}::text,
       ${data.description}::text,
-      ${jsonbWriteValue(data.impactSnapshot)}
+      ${jsonbWriteValue(data.impactSnapshot)},
+      ${data.paymentExecutionId}::text,
+      ${data.fundExecutionId}::text,
+      ${data.fundExecutionCaseId}::text,
+      ${data.executionAllocationLineId}::text
     )::public."OperatingLedgerImpactWritePayload"
   `;
 }

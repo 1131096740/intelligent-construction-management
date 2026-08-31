@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `64c620d19827dbc63ffd17b7708950783c87d99d8ddc0e85182d0f65e81c0787` |
-| webApiWrappers | ready | `fe3283d1980dc66fc136e382af89f40b53dd83e39c10c93edd5c2fa9dc9fa881` |
-| webPageActions | ready | `ebbb6e37ab6474f2520524191bff6f4773a46908af5a8cdb953c6d1e2808e6d2` |
-| routeUsage | ready | `900db481a0fb9fe138ecc82c60cdf846489ca9a3077535c1ff753a0b9b2d7a56` |
+| nestRoutes | ready | `6b1cb3589ebae444fe5f977c37c46a6f8af6b789e4ce3e5f020eacb2f39a6672` |
+| webApiWrappers | ready | `28745d320ff19186623239cd50cb3a2c9bd7fb4a8b3bed53dda1a1145f9f6ac4` |
+| webPageActions | ready | `43046a3be592022649bbe70f485b95a0cfc17f050cc35f012f8bd6b24af02e0a` |
+| routeUsage | ready | `98dd354f6eee8da834839219bd2aeed977c47035c77d7dfb15b9a71936f98662` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 533 |
-| pageRouteCount | 345 |
+| routeCount | 547 |
+| pageRouteCount | 359 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 10 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 534 |
+| mainRequestBindingCount | 548 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 277 |
-| actionBindingCount | 312 |
-| acceptedActionBindingCount | 292 |
+| registeredActionCount | 286 |
+| actionBindingCount | 321 |
+| acceptedActionBindingCount | 301 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 272 |
-| coveredProductionMutationConsumerPairCount | 272 |
+| productionMutationConsumerPairCount | 280 |
+| coveredProductionMutationConsumerPairCount | 280 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -104,6 +104,12 @@
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | contract-file.download-private-file-by-ticket | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
+| GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
+| GET | /fund-executions/cases/:caseId/classification-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseOptions | — | not_applicable | — |
+| GET | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseActions | — | not_applicable | — |
+| GET | /fund-executions/cases | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCases | — | not_applicable | — |
+| GET | /fund-executions/observation-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionObservationOptions | — | not_applicable | — |
+| GET | /fund-executions/reversal-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionReversalOptions | — | not_applicable | — |
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
@@ -215,6 +221,8 @@
 | PATCH | /contract-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion | — | not_applicable | — |
 | PATCH | /contract-workbench/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft | — | not_applicable | — |
 | PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
+| PATCH | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionCase | fund-execution.case.update | covered | — |
+| PATCH | /fund-executions/cases/:caseId/reversal | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionReversalReason | fund-execution.reversal.update-reason | covered | — |
 | PATCH | /organization/departments/:departmentId | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | — | not_applicable | — |
 | PATCH | /organization/users/:userId | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | — | not_applicable | — |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update | covered | — |
@@ -356,6 +364,12 @@
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file | covered | — |
+| POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
+| POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
+| POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
+| POST | /fund-executions/cases/:caseId/submit | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#submitFundExecutionCase | fund-execution.case.submit | covered | — |
+| POST | /fund-executions/cases | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#createFundExecutionCase | fund-execution.case.create | covered | — |
+| POST | /fund-executions/reversals | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#createFundExecutionReversal | fund-execution.reversal.create | covered | — |
 | POST | /fund-movements/:movementId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /fund-movements/:movementId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /fund-movements | internal_task | operator_endpoint | — | — | not_applicable | — |

@@ -31,6 +31,13 @@ export const fundMovementRoleKeys = [
   "finance_director"
 ] as const satisfies readonly RoleKey[];
 
+export const fundExecutionRoleKeys = [
+  "finance_staff",
+  "finance_director",
+  "chairman",
+  "general_manager"
+] as const satisfies readonly RoleKey[];
+
 export const projectOperationsRoleKeys = [
   ...fundsOverviewRoleKeys,
   "employee",
@@ -136,6 +143,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "付款",
     items: [
       { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
+      {
+        label: "资金执行案件",
+        path: "/资金执行案件",
+        requiredGlobalRoleKeys: fundExecutionRoleKeys
+      },
       {
         label: "资金移动工作台",
         path: "/资金移动工作台",
@@ -438,6 +450,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "资金移动工作台",
         component: () => import("../pages/fund-movements/FundMovementPage.vue"),
         meta: { requiredGlobalRoleKeys: fundMovementRoleKeys, title: "资金移动工作台" }
+      },
+      {
+        path: "资金执行案件",
+        component: () => import("../pages/fund-executions/FundExecutionWorkbenchPage.vue"),
+        meta: { requiredGlobalRoleKeys: fundExecutionRoleKeys, title: "资金执行案件" }
       },
       {
         path: "工资应付核销工作台",

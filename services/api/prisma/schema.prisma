@@ -283,6 +283,9 @@ model OperatingFact {
   recordedByUserId                     String
   confirmedByUserId                    String
   status                               String   @default("confirmed")
+  paymentExecutionId                   String?
+  fundExecutionId                      String?
+  fundExecutionCaseId                  String?
   createdAt                            DateTime @default(now())
 
   fundMovementLegs    FundMovementLeg[]      @relation("FundMovementLegOperatingFact")
@@ -301,26 +304,30 @@ model OperatingFact {
 }
 
 model OperatingImpactEntry {
-  id                  String               @id @default(uuid())
-  factId              String
-  projectId           String
-  sourceType          String
-  sourceBusinessId    String
-  sourceImpactKey     String
-  idempotencyKey      String               @unique
-  impactKind          String
-  amountCents         BigInt
-  direction           String
-  subjectRole         String?
-  subjectKind         String?
-  subjectId           String?
-  costCategoryCode    String?
-  fundPurpose         String?
-  description         String?
-  impactSnapshot      Json
-  createdAt           DateTime             @default(now())
-  fact                OperatingFact        @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
-  clearingImpactLinks ClearingImpactLink[] @relation("ClearingImpactEntry")
+  id                        String               @id @default(uuid())
+  factId                    String
+  projectId                 String
+  sourceType                String
+  sourceBusinessId          String
+  sourceImpactKey           String
+  idempotencyKey            String               @unique
+  impactKind                String
+  amountCents               BigInt
+  direction                 String
+  subjectRole               String?
+  subjectKind               String?
+  subjectId                 String?
+  costCategoryCode          String?
+  fundPurpose               String?
+  description               String?
+  impactSnapshot            Json
+  paymentExecutionId        String?
+  fundExecutionId           String?
+  fundExecutionCaseId       String?
+  executionAllocationLineId String?
+  createdAt                 DateTime             @default(now())
+  fact                      OperatingFact        @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+  clearingImpactLinks       ClearingImpactLink[] @relation("ClearingImpactEntry")
 
   @@unique([factId, sourceImpactKey])
   @@unique([sourceType, sourceBusinessId, sourceImpactKey], map: "OperatingImpactEntry_source_impact_key")
@@ -1699,6 +1706,265 @@ model PaymentExecution {
   payerAttestation               PaymentExecutionPayerAttestation?
   fundMovements                  FundMovement[]                       @relation("FundMovementPaymentExecution")
   fundMovementLegs               FundMovementLeg[]                    @relation("FundMovementLegPaymentExecution")
+}
+
+// POL-13D v7: a server-issued, immutable observation of one verified bank
+// transaction. It freezes the complete active payer-verification authority
+// together with the transaction amount, direction, time, and source identity.
+model VerifiedBankTransactionObservation {
+  id                                String   @id @default(uuid())
+  reference                         String   @unique
+  payerVerificationId               String
+  payerVerificationReference        String
+  holderCompanyEntityId             String
+  holderNameSnapshot                String
+  holderCreditCodeSnapshot          String
+  verificationReference             String
+  verifiedByUserId                  String
+  verifiedAt                        DateTime
+  verificationEvidenceFileId        String
+  verificationEvidenceContentSha256 String
+  verificationSourceType            String
+  verificationSourceRecordId        String
+  verificationIssuedByDatabaseRole  String
+  transactionSourceType             String
+  transactionSourceId               String
+  transactionSourceIdentity         String   @unique
+  transactionEvidenceFileId         String
+  transactionEvidenceContentSha256  String
+  transactionExecutedByUserId       String
+  amountCents                       BigInt
+  currencyCode                      String   @default("CNY")
+  direction                         String
+  occurredAt                        DateTime
+  payloadFingerprint                String
+  createdByUserId                   String
+  auditAction                       String
+  auditRequestId                    String
+  createdTransactionId              BigInt
+  createdBackendPid                 Int
+  createdAt                         DateTime @default(now())
+
+  @@unique([transactionSourceType, transactionSourceId], map: "VerifiedBankTransactionObservation_source_key")
+  @@index([payerVerificationId])
+  @@index([holderCompanyEntityId, occurredAt])
+  @@index([verificationEvidenceFileId])
+}
+
+// One observation is consumed exactly once and targets either the existing
+// PaymentExecution authority or the dedicated FundExecution authority.
+model BankTransactionClaim {
+  id                      String   @id @default(uuid())
+  observationId           String   @unique
+  selectionRefFingerprint String
+  targetType              String
+  paymentExecutionId      String?  @unique
+  fundExecutionId         String?  @unique
+  createdByUserId         String
+  auditAction             String
+  auditRequestId          String
+  createdTransactionId    BigInt
+  createdBackendPid       Int
+  createdAt               DateTime @default(now())
+
+  @@index([targetType, createdAt])
+}
+
+// A FundExecution is the immutable account-layer fact for quarantine,
+// resolution, refund, or returned-payment handling. Resolution adds a case and
+// shared allocations to this same fact; it never creates a second execution.
+model FundExecution {
+  id                         String   @id @default(uuid())
+  idempotencyKey             String   @unique
+  executionKind              String   @default("bank_transaction")
+  direction                  String
+  amountCents                BigInt
+  currencyCode               String   @default("CNY")
+  occurredAt                 DateTime
+  reversesPaymentExecutionId String?  @unique
+  reversesFundExecutionId    String?  @unique
+  payloadFingerprint         String
+  createdByUserId            String
+  handledByUserId            String
+  paymentExecutedByUserId    String
+  auditAction                String
+  auditRequestId             String
+  createdTransactionId       BigInt
+  createdBackendPid          Int
+  createdAt                  DateTime @default(now())
+
+  @@index([direction, occurredAt])
+}
+
+// Case lifecycle is append-only: every state is a new revision in one caseKey
+// chain. A returned state may only be followed by a new draft successor.
+model FundExecutionCase {
+  id                             String    @id @default(uuid())
+  caseKey                        String
+  fundExecutionId                String
+  revision                       Int
+  status                         String
+  predecessorCaseId              String?   @unique
+  returnedFromCaseId             String?   @unique
+  approvalInstanceId             String?
+  reason                         String
+  approvalInstanceSnapshot       Json?
+  approvalInstanceFingerprint    String?
+  approvalActionLogSnapshot      Json?
+  approvalActionLogCount         Int?
+  approvalActionLogFingerprint   String?
+  finalApprovalActionLogId       String?
+  finalApprovalActionFingerprint String?
+  payloadFingerprint             String
+  idempotencyKey                 String    @unique
+  createdByUserId                String
+  commandActorUserId             String
+  submittedByUserId              String?
+  submittedAt                    DateTime?
+  returnedByUserId               String?
+  returnedAt                     DateTime?
+  returnReason                   String?
+  confirmedByUserId              String?
+  confirmedAt                    DateTime?
+  auditAction                    String
+  auditRequestId                 String
+  createdTransactionId           BigInt
+  createdBackendPid              Int
+  createdAt                      DateTime  @default(now())
+
+  @@unique([fundExecutionId, revision], map: "FundExecutionCase_execution_revision_key")
+  @@unique([caseKey, revision], map: "FundExecutionCase_key_revision_key")
+  @@index([fundExecutionId, status, createdAt])
+  @@index([approvalInstanceId])
+}
+
+model FundExecutionCaseAxisSelection {
+  id                         String   @id @default(uuid())
+  fundExecutionCaseId        String
+  allocationLineNo           Int
+  axis                       String
+  status                     String
+  amountCents                BigInt
+  axisIdentity               String
+  selectionSource            String
+  originalAxisEffectId       String?
+  optionSnapshot             Json
+  optionFingerprint          String
+  consequencePlanSnapshot    Json
+  consequencePlanFingerprint String
+  createdByUserId            String
+  auditRequestId             String
+  createdTransactionId       BigInt
+  createdBackendPid          Int
+  createdAt                  DateTime @default(now())
+
+  @@unique([fundExecutionCaseId, allocationLineNo, axis], map: "FundExecutionCaseAxisSelection_case_line_axis_key")
+  @@index([fundExecutionCaseId, allocationLineNo])
+  @@index([originalAxisEffectId])
+}
+
+model FundExecutionCommandReceipt {
+  id                   String   @id @default(uuid())
+  idempotencyKey       String   @unique
+  payloadFingerprint   String
+  action               String
+  fundExecutionId      String
+  fundExecutionCaseId  String?
+  expectedRevision     Int?
+  responseSnapshot     Json
+  createdByUserId      String
+  auditRequestId       String
+  createdTransactionId BigInt
+  createdBackendPid    Int
+  createdAt            DateTime @default(now())
+
+  @@index([fundExecutionId, createdAt])
+  @@index([fundExecutionCaseId])
+}
+
+// PaymentExecution and FundExecution share this immutable allocation seam.
+// Reversals add a new FundExecution line and point back to the exact source
+// line; they never update or delete the original line.
+model ExecutionAllocationLine {
+  id                         String   @id @default(uuid())
+  executionType              String
+  executionId                String
+  paymentExecutionId         String?
+  fundExecutionId            String?
+  fundExecutionCaseId        String?
+  lineNo                     Int
+  direction                  String
+  amountCents                BigInt
+  currencyCode               String   @default("CNY")
+  businessType               String
+  businessId                 String
+  sourceIdentity             String
+  sliceIdentity              String
+  reversalOfAllocationLineId String?
+  reversalSequence           Int?
+  reversalReason             String?
+  payloadFingerprint         String
+  createdByUserId            String
+  auditRequestId             String
+  createdTransactionId       BigInt
+  createdBackendPid          Int
+  createdAt                  DateTime @default(now())
+
+  @@unique([executionType, executionId, lineNo], map: "ExecutionAllocationLine_execution_line_key")
+  @@unique([executionType, executionId, sliceIdentity], map: "ExecutionAllocationLine_execution_slice_key")
+  @@index([paymentExecutionId])
+  @@index([fundExecutionId, fundExecutionCaseId])
+  @@index([reversalOfAllocationLineId])
+}
+
+model ExecutionAllocationAxisEffect {
+  id                        String   @id @default(uuid())
+  executionAllocationLineId String
+  axis                      String
+  axisIdentity              String
+  status                    String
+  amountCents               BigInt
+  originalAxisEffectId      String?
+  createdByUserId           String
+  auditRequestId            String
+  createdTransactionId      BigInt
+  createdBackendPid         Int
+  createdAt                 DateTime @default(now())
+
+  @@unique([executionAllocationLineId, axis], map: "ExecutionAllocationAxisEffect_line_axis_key")
+  @@unique([executionAllocationLineId, axisIdentity], map: "ExecutionAllocationAxisEffect_line_identity_key")
+  @@index([originalAxisEffectId])
+}
+
+// Typed FK columns keep the consequence manifest attached to the existing
+// canonical payable, project-fund, relationship, and operating authorities.
+model ExecutionAllocationConsequence {
+  id                             String   @id @default(uuid())
+  axisEffectId                   String
+  sequence                       Int
+  consequenceType                String
+  consequenceIdentity            String
+  sliceIdentity                  String?
+  amountCents                    BigInt
+  consequenceFingerprint         String
+  payableSettlementAllocationId  String?
+  projectFundingAllocationId     String?
+  interEntityRelationshipEntryId String?
+  operatingFactId                String?
+  operatingImpactEntryId         String?
+  originalConsequenceId          String?
+  createdByUserId                String
+  auditRequestId                 String
+  createdTransactionId           BigInt
+  createdBackendPid              Int
+  createdAt                      DateTime @default(now())
+
+  @@unique([axisEffectId, sequence], map: "ExecutionAllocationConsequence_effect_sequence_key")
+  @@index([payableSettlementAllocationId])
+  @@index([projectFundingAllocationId])
+  @@index([interEntityRelationshipEntryId])
+  @@index([operatingFactId, operatingImpactEntryId])
+  @@index([originalConsequenceId])
 }
 
 // POL-13C: an explicit, immutable project/company fund movement aggregate.
@@ -3488,28 +3754,29 @@ model ProjectFinancingQuotaUsage {
 }
 
 model ProjectFundingAllocation {
-  id                     String   @id @default(uuid())
-  projectId              String
-  executionType          String
-  executionId            String
-  businessType           String
-  businessId             String
-  sourceType             String
-  sourceKey              String
-  sourceId               String?
-  direction              String
-  amountCents            BigInt
-  occurredAt             DateTime
-  createdByUserId        String
-  reversalOfAllocationId String?
-  reversalKey            String   @default("original")
-  reason                 String?
-  createdAt              DateTime @default(now())
+  id                        String   @id @default(uuid())
+  projectId                 String
+  executionType             String
+  executionId               String
+  businessType              String
+  businessId                String
+  sourceType                String
+  sourceKey                 String
+  sourceId                  String?
+  direction                 String
+  amountCents               BigInt
+  occurredAt                DateTime
+  createdByUserId           String
+  executionAllocationLineId String?
+  reversalOfAllocationId    String?
+  reversalKey               String   @default("original")
+  reason                    String?
+  createdAt                 DateTime @default(now())
 
-  @@unique([executionType, executionId, sourceKey, direction, reversalKey], map: "ProjectFundingAllocation_exec_source_dir_reversal_key")
   @@index([projectId, createdAt])
   @@index([sourceId, createdAt])
   @@index([businessType, businessId])
+  @@index([executionAllocationLineId])
   @@index([reversalOfAllocationId])
 }
 
@@ -4536,6 +4803,9 @@ model InterEntityRelationshipEntry {
   adjustsEntryId                        String?
   paymentExecutionId                    String?
   settlementCaseId                      String?
+  fundExecutionId                       String?
+  fundExecutionCaseId                   String?
+  executionAllocationLineId             String?
   originalDebtorCompanyId               String
   creditorCompanyId                     String
   approvedPayerCompanyId                String
@@ -4581,6 +4851,8 @@ model InterEntityRelationshipEntry {
   @@index([originalDebtorCompanyId, creditorCompanyId, createdAt])
   @@index([paymentExecutionId])
   @@index([settlementCaseId])
+  @@index([fundExecutionId, fundExecutionCaseId])
+  @@index([executionAllocationLineId])
 }
 
 // A return evidence upload is a one-time claim bound to the root relationship,
@@ -4605,31 +4877,39 @@ model InterEntityRelationshipEvidenceClaim {
 }
 
 model PayableSettlementAllocation {
-  id                   String   @id @default(uuid())
-  settlementCaseId     String
-  paymentExecutionId   String
-  payableRef           String
-  sourceType           String
-  sourceAggregateId    String
-  sourceLineId         String
-  confirmedVersionId   String
-  debtorCompanyId      String
-  payeeSubjectType     String
-  payeeSubjectId       String
-  currencyCode         String
-  beneficiaryProjectId String
-  sourceSnapshot       Json
-  confirmedAmountCents BigInt
-  amountCents          BigInt
-  createdByUserId      String
-  createdAt            DateTime @default(now())
+  id                        String   @id @default(uuid())
+  settlementCaseId          String?
+  paymentExecutionId        String?
+  fundExecutionId           String?
+  fundExecutionCaseId       String?
+  executionAllocationLineId String?
+  payableRef                String
+  sourceType                String
+  sourceAggregateId         String
+  sourceLineId              String
+  confirmedVersionId        String
+  debtorCompanyId           String
+  payeeSubjectType          String
+  payeeSubjectId            String
+  currencyCode              String
+  beneficiaryProjectId      String
+  sourceSnapshot            Json
+  confirmedAmountCents      BigInt
+  amountCents               BigInt
+  direction                 String?
+  reversalOfAllocationId    String?
+  createdByUserId           String
+  createdAt                 DateTime @default(now())
 
-  settlementCase   PayableSettlementCase @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementAllocation_settlement_case_fkey")
-  paymentExecution PaymentExecution      @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementAllocation_payment_execution_fkey")
+  settlementCase   PayableSettlementCase? @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementAllocation_settlement_case_fkey")
+  paymentExecution PaymentExecution?      @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict, map: "PayableSettlementAllocation_payment_execution_fkey")
 
   @@unique([settlementCaseId, payableRef], map: "PayableSettlementAllocation_case_payable_ref_key")
   @@index([payableRef, createdAt])
   @@index([paymentExecutionId])
+  @@index([fundExecutionId, fundExecutionCaseId])
+  @@index([executionAllocationLineId])
+  @@index([reversalOfAllocationId])
 }
 
 model PayableSettlementCommandReceipt {

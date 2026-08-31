@@ -459,6 +459,69 @@ describe("PaymentRequestService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("fails closed before the transaction when a bank Claim lacks server-verifiable payer authority", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("payment-1", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password",
+        observationSelectionRef: "server-signed-observation-selection",
+        wagePayableBindings: [
+          {
+            payableRef: "00000000-0000-4000-8000-000000000031",
+            amountCents: "30000"
+          }
+        ]
+      })
+    ).rejects.toThrow("认领银行流水的付款执行必须提交服务端付款账户核验引用");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before the transaction when the shared Claim allocator is unavailable", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("payment-1", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password",
+        observationSelectionRef: "server-signed-observation-selection",
+        payerAttestation: {
+          bankAccountReference: "server-payer-verification-reference"
+        },
+        wagePayableBindings: [
+          {
+            payableRef: "00000000-0000-4000-8000-000000000031",
+            amountCents: "30000"
+          }
+        ]
+      })
+    ).rejects.toThrow("付款执行共享分配服务暂不可用，请稍后重试");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
   it("freezes multiple employee and business-party wage creditors on one payment execution", async () => {
     const fixture = hardenedPaymentExecutionFixture();
     const employeeRef = "00000000-0000-4000-8000-000000000032";
@@ -599,6 +662,185 @@ describe("PaymentRequestService", () => {
         amountCents: 10_000n
       })
     });
+  });
+
+  it("routes a claimed PaymentExecution through the shared allocator in the same transaction and forces deferred contracts", async () => {
+    const fixture = hardenedPaymentExecutionFixture();
+    const tx = fixture.tx as typeof fixture.tx & {
+      $executeRawUnsafe: jest.Mock;
+      wagePayableRef: { findMany: jest.Mock };
+      paymentExecutionWagePayableBinding: {
+        findMany: jest.Mock;
+        create: jest.Mock;
+      };
+      paymentExecutionPayerVerification: { findUnique: jest.Mock };
+      companyEntity: { findUnique: jest.Mock };
+      fileObject: { findUnique: jest.Mock };
+      paymentExecutionPayerAttestation: { create: jest.Mock };
+    };
+    const verifiedAt = new Date("2026-06-20T00:00:00.000Z");
+    tx.$executeRawUnsafe = jest.fn().mockResolvedValue(0);
+    tx.wagePayableRef = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: "00000000-0000-4000-8000-000000000034",
+          confirmedVersionId: "version-1",
+          projectAllocationId: "project-allocation-1",
+          creditorBreakdownId: "creditor-1",
+          debtorCompanyId: "company-1",
+          costBearingCompanyId: "company-1",
+          projectId: "project-1",
+          personLineId: "person-line-1",
+          amountCents: 30_000n,
+          direction: "increase",
+          adjustsPayableRefId: null,
+          debtorCompanySnapshot: { companyId: "company-1" },
+          projectSnapshot: { projectId: "project-1" },
+          creditorSnapshot: {
+            subjectType: "employee_user",
+            identityKey: "employee_user:user-1",
+            name: "测试员工"
+          },
+          confirmedVersion: { status: "confirmed" },
+          creditorBreakdown: {
+            creditorSubjectType: "employee_user",
+            creditorUserId: "user-1",
+            creditorBusinessPartyVersionId: null,
+            creditorSubjectIdentityKey: "employee_user:user-1",
+            creditorNameSnapshot: "测试员工",
+            creditorUnifiedIdentitySnapshot: null,
+            creditorVersionFingerprint: "version-fingerprint-1"
+          },
+          adjustments: []
+        }
+      ])
+    };
+    tx.paymentExecutionWagePayableBinding = {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({})
+    };
+    tx.paymentExecutionPayerVerification = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "payer-verification-1",
+        reference: "server-payer-verification-reference",
+        holderCompanyEntityId: "company-1",
+        holderNameSnapshot: "建工智管建设有限公司",
+        holderCreditCodeSnapshot: "91310000TEST000001",
+        verificationReference: "verification-record-1",
+        verifiedByUserId: "finance-director-1",
+        verifiedAt,
+        verificationEvidenceFileId: "verification-evidence-1",
+        verificationEvidenceContentSha256: "a".repeat(64),
+        status: "verified",
+        sourceType: "bank_account_legal_holder",
+        sourceRecordId: "bank-source-record-1"
+      })
+    };
+    tx.user.findUnique = jest.fn().mockResolvedValue({ id: "user", isActive: true });
+    tx.userPosition.findMany = jest.fn(
+      ({ where }: { where: { userId: string; projectId?: string | null } }) =>
+        Promise.resolve(
+          where.userId === "finance-director-1" && where.projectId === null
+            ? [{ positionId: "finance-director-position" }]
+            : []
+        )
+    );
+    tx.position.findMany = jest.fn().mockResolvedValue([
+      { id: "finance-director-position", key: "finance_director" }
+    ]);
+    tx.companyEntity = {
+      findUnique: jest.fn().mockResolvedValue({ id: "company-1", isActive: true })
+    };
+    tx.fileObject = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "verification-evidence-1",
+        uploadedByUserId: "finance-director-1",
+        storageStatus: "active",
+        contentSha256: "a".repeat(64)
+      })
+    };
+    tx.paymentExecutionPayerAttestation = {
+      create: jest.fn().mockResolvedValue({})
+    };
+    const sharedAllocations = {
+      materializeInTransaction: jest.fn().mockResolvedValue({
+        allocationLineCount: 1
+      }),
+      assertReplayInTransaction: jest.fn()
+    };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      fixture.prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never,
+      undefined,
+      operatingSources as never,
+      sharedAllocations as never
+    );
+
+    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+      ...paymentExecutionCoordinates,
+      amountCents: "30000",
+      paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      observationSelectionRef: "server-signed-observation-selection",
+      payerAttestation: {
+        bankAccountReference: "server-payer-verification-reference"
+      },
+      wagePayableBindings: [
+        {
+          payableRef: "00000000-0000-4000-8000-000000000034",
+          amountCents: "30000"
+        }
+      ]
+    });
+
+    expect(tx.paymentExecutionPayerAttestation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        paymentExecutionId: "execution-hardened-1",
+        payerVerificationId: "payer-verification-1",
+        holderCompanyEntityId: "company-1",
+        verifiedByUserId: "finance-director-1",
+        verificationEvidenceContentSha256: "a".repeat(64)
+      })
+    });
+    expect(sharedAllocations.materializeInTransaction).toHaveBeenCalledWith(tx, {
+      actorUserId: "cashier-1",
+      auditRequestId: paymentExecutionCoordinates.idempotencyKey,
+      observationSelectionRef: "server-signed-observation-selection",
+      paymentExecutionId: "execution-hardened-1",
+      paymentRequestId: "payment-1",
+      projectId: "project-1",
+      amountCents: 30_000n,
+      occurredAt: new Date("2026-06-22T00:00:00.000Z"),
+      wagePayableBindings: [
+        {
+          payableRef: "00000000-0000-4000-8000-000000000034",
+          amountCents: 30_000n
+        }
+      ]
+    });
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).not.toHaveBeenCalled();
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
+      "SET CONSTRAINTS ALL IMMEDIATE"
+    );
+    expect(
+      sharedAllocations.materializeInTransaction.mock.invocationCallOrder[0]
+    ).toBeLessThan(tx.paymentRequest.update.mock.invocationCallOrder[0]);
+    expect(audit.record.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$executeRawUnsafe.mock.invocationCallOrder[0]
+    );
   });
 
   it("rejects payment request creation when the service is unavailable", async () => {

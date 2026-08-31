@@ -4,6 +4,14 @@ import { describe, expect, it } from "vitest";
 const workbench = readFileSync(new URL("./PaymentWorkbenchPage.vue", import.meta.url), "utf8");
 const ledger = readFileSync(new URL("./PaymentListPage.vue", import.meta.url), "utf8");
 const detail = readFileSync(new URL("./PaymentDetailPage.vue", import.meta.url), "utf8");
+const coreFlowApi = readFileSync(
+  new URL("../../api/core-flow-read.api.ts", import.meta.url),
+  "utf8"
+);
+const fundExecutionApi = readFileSync(
+  new URL("../../api/fund-execution.api.ts", import.meta.url),
+  "utf8"
+);
 
 describe("payment workbench structure", () => {
   it("keeps creation in an independent workbench and the management page as a ledger", () => {
@@ -132,5 +140,15 @@ describe("payment workbench structure", () => {
     expect(detail).not.toContain(
       "recordPaymentExecution(currentPaymentId()"
     );
+  });
+
+  it("fails closed without a complete server-owned payment claim plan", () => {
+    expect(detail).not.toContain("同时认领已核验银行流水");
+    expect(detail).not.toContain("claimPaymentObservation");
+    expect(detail).not.toContain("paymentObservationSelectionRef");
+    expect(detail).not.toContain("fetchFundExecutionObservationOptions");
+    expect(coreFlowApi).not.toContain("observationSelectionRef");
+    expect(fundExecutionApi).not.toContain('"payment_execution"');
+    expect(detail).not.toMatch(/payableRef|bankAccountReference/u);
   });
 });

@@ -619,6 +619,7 @@ describe("web admin routes", () => {
       { label: "合同模板库", path: "/合同模板库" },
       { label: "结算工作台", path: "/结算工作台" },
       { label: "资金办理工作台", path: "/统一资金办理工作台" },
+      { label: "资金执行案件", path: "/资金执行案件" },
       { label: "资金移动工作台", path: "/资金移动工作台" },
       { label: "工资应付核销工作台", path: "/工资应付核销工作台" },
       { label: "零星采购工作台", path: "/零星采购工作台" },

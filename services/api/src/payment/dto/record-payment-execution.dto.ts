@@ -125,4 +125,13 @@ export class RecordPaymentExecutionDto {
   @ValidateNested({ message: "付款主体核验格式不正确" })
   @Type(() => PaymentExecutionPayerAttestationDto)
   payerAttestation?: PaymentExecutionPayerAttestationDto;
+
+  @IsOptional()
+  @IsRequiredText({
+    requiredMessage: "银行流水候选不能为空",
+    typeMessage: "银行流水候选格式不正确",
+    blankMessage: "银行流水候选不能为空白"
+  })
+  @IsMaxUnicodeTextLength({ max: 256, message: "银行流水候选格式不正确" })
+  observationSelectionRef?: string;
 }

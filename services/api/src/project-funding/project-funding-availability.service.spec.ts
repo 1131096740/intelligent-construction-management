@@ -177,8 +177,18 @@ describe("ProjectFundingAvailabilityService", () => {
       projectCashAmountCents: 8_000n,
       financingQuotaAmountCents: 4_000n,
       allocations: [
-        { sourceType: "project_cash", sourceId: null, amountCents: 8_000n },
-        { sourceType: "financing_quota", sourceId: "quota-1", amountCents: 4_000n }
+        {
+          id: expect.any(String),
+          sourceType: "project_cash",
+          sourceId: null,
+          amountCents: 8_000n
+        },
+        {
+          id: expect.any(String),
+          sourceType: "financing_quota",
+          sourceId: "quota-1",
+          amountCents: 4_000n
+        }
       ]
     });
     expect(tx.projectFundingAllocation.createMany).toHaveBeenCalledWith({
@@ -464,7 +474,12 @@ describe("ProjectFundingAvailabilityService", () => {
       projectCashAmountCents: 12_000n,
       financingQuotaAmountCents: 0n,
       allocations: [
-        { sourceType: "project_cash", sourceId: null, amountCents: 12_000n }
+        {
+          id: "existing",
+          sourceType: "project_cash",
+          sourceId: null,
+          amountCents: 12_000n
+        }
       ]
     });
     expect(tx.$queryRaw).not.toHaveBeenCalled();

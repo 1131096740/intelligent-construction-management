@@ -417,6 +417,39 @@ describe("OperatingLedgerService", () => {
     ).rejects.toThrow("员工借款还款冲销引用的原经营事实不一致");
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
+
+  it("reverses a fund execution from the original frozen ownership date after the assignment ended", async () => {
+    const originalOccurredAt = new Date("2026-08-14T00:00:00.000Z");
+    const assignment = {
+      ...assignmentRecord(),
+      endedAt: new Date("2026-08-20T00:00:00.000Z")
+    };
+    const input = fundExecutionReversalInput();
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      project: projectRecord(),
+      assignment,
+      originalFact: fundExecutionOriginalFact(originalOccurredAt)
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await expect(
+      service.appendFundExecutionReversalInTransaction(
+        prisma as never,
+        input,
+        "actor-1"
+      )
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+
+    for (const call of prisma.projectAffiliateAssignment.findFirst.mock.calls) {
+      expect(call[0].where.AND[0].effectiveFrom.lte).toEqual(originalOccurredAt);
+      expect(call[0].where.AND[1].OR[1].endedAt.gt).toEqual(originalOccurredAt);
+    }
+    for (const call of prisma.projectParticipatingCompany.findFirst.mock.calls) {
+      expect(call[0].where.AND[1].effectiveFrom.lte).toEqual(originalOccurredAt);
+      expect(call[0].where.AND[2].OR[1].endedAt.gt).toEqual(originalOccurredAt);
+    }
+  });
 });
 
 function baseInput(projectId = "project-1") {
@@ -554,6 +587,103 @@ function employeeLoanRepaymentFact() {
   };
 }
 
+function fundExecutionReversalInput() {
+  return {
+    ...baseInput(),
+    sourceType: "fund_execution",
+    sourceBusinessId: "reverse-line-1",
+    sourceBusinessCode: "资金反向执行-fund-reverse-1",
+    idempotencyKey: "fund-execution:reverse-line-1:operating-fact",
+    occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+    sourceSnapshot: {
+      fundExecutionId: "fund-reverse-1",
+      fundExecutionCaseId: "case-reverse-1",
+      originalOperatingFactId: "fact-1"
+    },
+    basisSnapshot: { originalOperatingFactId: "fact-1" },
+    factKind: "fund_movement" as const,
+    direction: "inflow" as const,
+    subjects: {
+      actualPayer: {
+        kind: "participating_company" as const,
+        id: "company-1"
+      },
+      payee: {
+        kind: "downstream_counterparty" as const,
+        id: "counterparty-version-1"
+      }
+    },
+    impacts: [
+      {
+        idempotencyKey: "fund-execution:reverse-line-1:operating-impact",
+        sourceImpactKey: "original-line-1",
+        impactKind: "company_project_funds_decrease" as const,
+        amountCents: 1000n,
+        direction: "increase" as const,
+        subjectRole: "actual_payer" as const,
+        subject: {
+          kind: "participating_company" as const,
+          id: "company-1"
+        },
+        fundExecutionId: "fund-reverse-1",
+        fundExecutionCaseId: "case-reverse-1",
+        executionAllocationLineId: "reverse-line-1"
+      }
+    ],
+    adjustsFactId: "fact-1",
+    fundExecutionId: "fund-reverse-1",
+    fundExecutionCaseId: "case-reverse-1"
+  };
+}
+
+function fundExecutionOriginalFact(occurredAt: Date) {
+  return {
+    id: "fact-1",
+    projectId: "project-1",
+    sourceType: "payment_execution",
+    sourceBusinessId: "original-line-1",
+    occurredAt,
+    status: "confirmed",
+    factKind: "fund_movement",
+    operatingLevel: "project",
+    evidenceLevel: "A",
+    entryKind: "original",
+    amountCents: 1000n,
+    currencyCode: "CNY",
+    direction: "outflow",
+    affiliateAssignmentId: "assignment-1",
+    affiliateBusinessPartyVersionId: "affiliate-version-1",
+    affiliateNameSnapshot: "施工企业",
+    affiliateCreditCodeSnapshot: "91110000000000000A",
+    debtorSubjectKind: null,
+    debtorSubjectId: null,
+    creditorSubjectKind: null,
+    creditorSubjectId: null,
+    approvedPayerSubjectKind: null,
+    approvedPayerSubjectId: null,
+    actualPayerSubjectKind: "participating_company",
+    actualPayerSubjectId: "company-1",
+    payeeSubjectKind: "downstream_counterparty",
+    payeeSubjectId: "counterparty-version-1",
+    costBearingCompanySubjectKind: null,
+    costBearingCompanySubjectId: null,
+    impacts: [
+      {
+        sourceImpactKey: "original-line-1",
+        impactKind: "company_project_funds_decrease",
+        amountCents: 1000n,
+        direction: "decrease",
+        subjectRole: "actual_payer",
+        subjectKind: "participating_company",
+        subjectId: "company-1",
+        costCategoryCode: null,
+        fundPurpose: null
+      }
+    ],
+    adjustments: []
+  };
+}
+
 function projectRecord(id = "project-1") {
   return {
     id,
@@ -572,7 +702,7 @@ function assignmentRecord() {
     affiliateNameSnapshot: "施工企业",
     affiliateCreditCodeSnapshot: "91110000000000000A",
     effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
-    endedAt: null
+    endedAt: null as Date | null
   };
 }
 

@@ -36,6 +36,8 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { PaymentExecutionSharedAllocationService } from "../fund-execution/payment-execution-shared-allocation.service";
+import { fundExecutionSelectionRefFingerprint } from "../fund-execution/fund-execution-selection-ref.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
 import {
@@ -363,7 +365,9 @@ export class PaymentRequestService {
     private readonly takeoverBalances?: ContractTakeoverBalanceService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional()
+    private readonly sharedAllocations?: PaymentExecutionSharedAllocationService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -3032,6 +3036,15 @@ export class PaymentRequestService {
     const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于 0");
     const wagePayableBindings = normalizeWagePayableBindings(input.wagePayableBindings);
     const payerAttestation = normalizePayerAttestation(input.payerAttestation);
+    const observationSelectionRef = input.observationSelectionRef?.trim() || null;
+    if (observationSelectionRef && !payerAttestation) {
+      throw new BadRequestException(
+        "认领银行流水的付款执行必须提交服务端付款账户核验引用"
+      );
+    }
+    if (observationSelectionRef && !this.sharedAllocations) {
+      throw new Error("付款执行共享分配服务暂不可用，请稍后重试");
+    }
     const wageBindingTotalCents = wagePayableBindings.reduce(
       (total, binding) => total + binding.amountCents,
       0n
@@ -3172,22 +3185,63 @@ export class PaymentRequestService {
             actorUserId,
             wagePayableBindings
           );
-          await projectFunding.allocateExecution(tx, {
-            projectId: payment.projectId,
-            executionType: "payment_execution",
-            executionId: existingExecution.id,
-            businessType: "payment_request",
-            businessId: payment.id,
-            amountCents,
-            occurredAt: paidAt,
-            actorUserId
-          });
-          await this.appendOperatingPaymentExecution(
-            tx,
-            payment.projectId,
-            existingExecution.id,
-            actorUserId
-          );
+          const claimClient = (tx as unknown as {
+            bankTransactionClaim?: {
+              findUnique(args: {
+                where: { paymentExecutionId: string };
+              }): Promise<{ id: string } | null>;
+            };
+          }).bankTransactionClaim;
+          if (!claimClient && observationSelectionRef) {
+            throw new ConflictException(
+              "共享银行认领服务暂不可用，请刷新后重试"
+            );
+          }
+          const existingClaim = claimClient
+            ? await claimClient.findUnique({
+                where: { paymentExecutionId: existingExecution.id }
+              })
+            : null;
+          if (existingClaim) {
+            if (!observationSelectionRef || !this.sharedAllocations) {
+              throw new ConflictException(
+                "该付款执行已认领银行流水，重放必须携带原短效选择引用"
+              );
+            }
+            await this.sharedAllocations.assertReplayInTransaction(tx, {
+              actorUserId,
+              auditRequestId: idempotencyKey,
+              observationSelectionRef,
+              paymentExecutionId: existingExecution.id,
+              paymentRequestId: payment.id,
+              projectId: payment.projectId,
+              amountCents,
+              occurredAt: paidAt,
+              wagePayableBindings
+            });
+          } else {
+            if (observationSelectionRef) {
+              throw new ConflictException(
+                "既有付款执行不得事后补建银行认领或共享分配"
+              );
+            }
+            await projectFunding.allocateExecution(tx, {
+              projectId: payment.projectId,
+              executionType: "payment_execution",
+              executionId: existingExecution.id,
+              businessType: "payment_request",
+              businessId: payment.id,
+              amountCents,
+              occurredAt: paidAt,
+              actorUserId
+            });
+            await this.appendOperatingPaymentExecution(
+              tx,
+              payment.projectId,
+              existingExecution.id,
+              actorUserId
+            );
+          }
           return existingExecution;
         }
 
@@ -3341,16 +3395,31 @@ export class PaymentRequestService {
           actorUserId,
           wagePayableBindings
         );
-        const fundingAllocation = await projectFunding.allocateExecution(tx, {
-          projectId: payment.projectId,
-          executionType: "payment_execution",
-          executionId: execution.id,
-          businessType: "payment_request",
-          businessId: payment.id,
-          amountCents,
-          occurredAt: paidAt,
-          actorUserId
-        });
+        const sharedAllocation = observationSelectionRef
+          ? await this.sharedAllocations!.materializeInTransaction(tx, {
+              actorUserId,
+              auditRequestId: idempotencyKey,
+              observationSelectionRef,
+              paymentExecutionId: execution.id,
+              paymentRequestId: payment.id,
+              projectId: payment.projectId,
+              amountCents,
+              occurredAt: paidAt,
+              wagePayableBindings
+            })
+          : null;
+        const fundingAllocation = sharedAllocation
+          ? null
+          : await projectFunding.allocateExecution(tx, {
+              projectId: payment.projectId,
+              executionType: "payment_execution",
+              executionId: execution.id,
+              businessType: "payment_request",
+              businessId: payment.id,
+              amountCents,
+              occurredAt: paidAt,
+              actorUserId
+            });
 
         if (payment.sourceType === "contract_due" && !payment.settlementId) {
           try {
@@ -3392,12 +3461,14 @@ export class PaymentRequestService {
           });
         }
 
-        await this.appendOperatingPaymentExecution(
-          tx,
-          payment.projectId,
-          execution.id,
-          actorUserId
-        );
+        if (!sharedAllocation) {
+          await this.appendOperatingPaymentExecution(
+            tx,
+            payment.projectId,
+            execution.id,
+            actorUserId
+          );
+        }
 
         await this.audit.record(tx, {
           actorUserId,
@@ -3420,25 +3491,38 @@ export class PaymentRequestService {
               companyEntityNameSnapshot,
               companyEntityCreditCodeSnapshot
             },
-            funding: {
-              kind: fundingAllocation.kind,
-              projectCashAmountCents: moneyCentsToApi(
-                fundingAllocation.projectCashAmountCents
-              ),
-              financingQuotaAmountCents: moneyCentsToApi(
-                fundingAllocation.financingQuotaAmountCents
-              ),
-              allocations: fundingAllocation.allocations.map((allocation) => ({
-                sourceType: allocation.sourceType,
-                sourceId: allocation.sourceId,
-                amountCents: moneyCentsToApi(allocation.amountCents)
-              }))
-            },
+            funding: fundingAllocation
+              ? {
+                  kind: fundingAllocation.kind,
+                  projectCashAmountCents: moneyCentsToApi(
+                    fundingAllocation.projectCashAmountCents
+                  ),
+                  financingQuotaAmountCents: moneyCentsToApi(
+                    fundingAllocation.financingQuotaAmountCents
+                  ),
+                  allocations: fundingAllocation.allocations.map(
+                    (allocation) => ({
+                      sourceType: allocation.sourceType,
+                      sourceId: allocation.sourceId,
+                      amountCents: moneyCentsToApi(allocation.amountCents)
+                    })
+                  )
+                }
+              : {
+                  kind: "shared_execution_allocation",
+                  allocationLineCount: sharedAllocation!.allocationLineCount
+                },
             fromStatus: payment.status,
             toStatus: newPaymentStatus
           }
         });
 
+        if (sharedAllocation) {
+          // Claimed executions depend on deferred shared-allocation contracts.
+          // Evaluate them before the interactive transaction callback returns
+          // so a rejected COMMIT cannot be reported to the caller as success.
+          await tx.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE");
+        }
         return execution;
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
@@ -3459,7 +3543,8 @@ export class PaymentRequestService {
           paidAt,
           voucherFileId,
           wagePayableBindings,
-          payerAttestation
+          payerAttestation,
+          observationSelectionRef
         });
         if (concurrentExecution) {
           return wagePayableBindings.length > 0
@@ -3943,6 +4028,7 @@ export class PaymentRequestService {
     voucherFileId: string;
     wagePayableBindings: readonly NormalizedWagePayableBinding[];
     payerAttestation: NormalizedPayerAttestation | null;
+    observationSelectionRef: string | null;
   }): Promise<PaymentExecutionFactRow | null> {
     if (!this.prisma) return null;
     const executionClient = this.prisma.paymentExecution as unknown as {
@@ -4027,6 +4113,33 @@ export class PaymentRequestService {
       }
     } else if (input.wagePayableBindings.length > 0) {
       throw new ConflictException("工资债权关联服务暂不可用，请稍后重试");
+    }
+    const claimClient = (this.prisma as unknown as {
+      bankTransactionClaim?: {
+        findUnique(args: {
+          where: { paymentExecutionId: string };
+        }): Promise<{ selectionRefFingerprint: string } | null>;
+      };
+    }).bankTransactionClaim;
+    if (!claimClient) {
+      if (input.observationSelectionRef) {
+        throw new ConflictException("共享银行认领服务暂不可用，请刷新后重试");
+      }
+      return existing;
+    }
+    const claim = await claimClient.findUnique({
+      where: { paymentExecutionId: existing.id }
+    });
+    if (claim) {
+      if (
+        !input.observationSelectionRef ||
+        claim.selectionRefFingerprint !==
+          fundExecutionSelectionRefFingerprint(input.observationSelectionRef)
+      ) {
+        throw new ConflictException("该付款实付登记已绑定不同的银行流水候选");
+      }
+    } else if (input.observationSelectionRef) {
+      throw new ConflictException("该付款实付登记尚未建立共享银行认领");
     }
     return existing;
   }
