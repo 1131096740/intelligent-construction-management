@@ -24,6 +24,7 @@ describe("PaymentRequestService execution subject", () => {
       paidAmountCents: 0n
     };
     const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
       $queryRaw: jest.fn().mockResolvedValue([payment]),
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
