@@ -429,4 +429,25 @@ CREATE TRIGGER "ClearingAllocation_pol214_balance_guard"
 BEFORE INSERT ON "ClearingAllocation"
 FOR EACH ROW EXECUTE FUNCTION "pol214_clearing_allocation_guard"();
 
+-- Evidence is an immutable, non-exclusive authority snapshot. Extend the
+-- canonical file-binding inventory and protect the reference at the database
+-- boundary so later file replacement/deletion cannot alter the authority.
+SELECT pg_advisory_xact_lock(190731, 214);
+ALTER FUNCTION jg_file_business_binding_columns()
+  RENAME TO jg_file_business_binding_columns_before_pol214_affiliate_clearing_authority;
+CREATE FUNCTION jg_file_business_binding_columns()
+RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT * FROM jg_file_business_binding_columns_before_pol214_affiliate_clearing_authority()
+  UNION ALL
+  VALUES ('AffiliateClearingAuthorityVersion', 'evidenceFileId', FALSE);
+$$;
+
+CREATE TRIGGER jg_efb_affiliate_clearing_authority_evidence
+BEFORE INSERT OR UPDATE OF "evidenceFileId"
+ON "AffiliateClearingAuthorityVersion"
+FOR EACH ROW EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding(
+  'evidenceFileId', 'false'
+);
+
 COMMIT;
