@@ -218,6 +218,66 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     );
   });
 
+  it("最终审批节点退回后仅全局财务总监可原子生成 successor draft", async () => {
+    const flow = await createIsolatedSubmittedFlow("chairman-return");
+    await expect(
+      service.reviewApproval(REVIEWER_USER_ID, {
+        caseId: flow.create.caseId,
+        action: "approve",
+        comment: "财务主管同意后流转最终节点"
+      })
+    ).resolves.toEqual({
+      caseId: flow.create.caseId,
+      status: "in_progress"
+    });
+    await expect(
+      service.reviewApproval(CHAIRMAN_USER_ID, {
+        caseId: flow.create.caseId,
+        action: "return_to_applicant",
+        comment: "董事长退回申请人"
+      })
+    ).resolves.toEqual({
+      caseId: flow.create.caseId,
+      status: "returned_to_applicant"
+    });
+
+    await expect(
+      service.returnCase(CHAIRMAN_USER_ID, {
+        caseId: flow.create.caseId,
+        expectedRevision: flow.submit.revision,
+        reason: "最终审批人不得生成退回修改稿",
+        idempotencyKey: randomUUID()
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const roleSpy = jest
+      .spyOn(
+        service as unknown as {
+          assertRole: (...args: readonly unknown[]) => Promise<void>;
+        },
+        "assertRole"
+      )
+      .mockResolvedValueOnce(undefined);
+    await expect(
+      service.returnCase(CHAIRMAN_USER_ID, {
+        caseId: flow.create.caseId,
+        expectedRevision: flow.submit.revision,
+        reason: "绕过服务角色检查也必须由数据库拒绝",
+        idempotencyKey: randomUUID()
+      })
+    ).rejects.toThrow(/fund_execution_case_global_finance_director_required/u);
+    roleSpy.mockRestore();
+
+    await expect(
+      service.returnCase(REVIEWER_USER_ID, {
+        caseId: flow.create.caseId,
+        expectedRevision: flow.submit.revision,
+        reason: "全局财务总监根据最终审批意见生成修改稿",
+        idempotencyKey: randomUUID()
+      })
+    ).resolves.toMatchObject({ status: "draft", revision: 4 });
+  });
+
   it("独立首次执行 create→update→submit 后进入 approval-approved→confirm", async () => {
     confirmFlow = await createUpdateSubmitFlow({
       reference: "PG-CONFIRM-OBSERVATION",

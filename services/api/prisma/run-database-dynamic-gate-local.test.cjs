@@ -54,7 +54,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 149 pending tests as executable local coverage", () => {
+test("manifest derives all 150 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -63,9 +63,9 @@ test("manifest derives all 149 pending tests as executable local coverage", () =
     pendingFiles: 44,
     fullyPendingSuites: 33,
     partiallyPendingSuites: 11,
-    pendingTests: 149,
+    pendingTests: 150,
     coveredFiles: 44,
-    coveredTests: 149,
+    coveredTests: 150,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -74,7 +74,7 @@ test("manifest derives all 149 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all 25 fund execution v7 PG tests", () => {
+test("canonical manifest executes all 26 fund execution v7 PG tests", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "fund_execution_v7"
@@ -82,11 +82,11 @@ test("canonical manifest executes all 25 fund execution v7 PG tests", () => {
 
   assert.deepEqual(group, {
     id: "fund_execution_v7",
-    pendingTests: 25,
+    pendingTests: 26,
     testFiles: [
       {
         path: "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
-        pendingTests: 25,
+        pendingTests: 26,
         suiteStatus: "fully_pending"
       }
     ],
@@ -100,11 +100,11 @@ test("canonical manifest executes all 25 fund execution v7 PG tests", () => {
 
 test("manifest validation fails closed when inventory totals drift", () => {
   const manifest = structuredClone(loadManifest());
-  manifest.inventory.coveredTests = 25;
+  manifest.inventory.coveredTests = 26;
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=25，派生值=149/u
+    /inventory\.coveredTests=26，派生值=150/u
   );
 });
 

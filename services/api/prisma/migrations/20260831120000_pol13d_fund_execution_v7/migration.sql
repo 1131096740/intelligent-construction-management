@@ -2013,6 +2013,18 @@ BEGIN
        )) THEN
     RAISE EXCEPTION 'fund_execution_case_sod_invalid';
   END IF;
+  IF case_record."returnedByUserId" IS NOT NULL AND NOT EXISTS (
+    SELECT 1
+      FROM "UserPosition" user_position
+      INNER JOIN "Position" position ON position."id" = user_position."positionId"
+      INNER JOIN "User" returner ON returner."id" = user_position."userId"
+     WHERE user_position."userId" = case_record."returnedByUserId"
+       AND user_position."projectId" IS NULL
+       AND position."key" = 'finance_director'
+       AND returner."isActive" = TRUE
+  ) THEN
+    RAISE EXCEPTION 'fund_execution_case_global_finance_director_required';
+  END IF;
   IF case_record."confirmedByUserId" IS NOT NULL
      AND (case_record."confirmedByUserId" IS DISTINCT FROM case_record."commandActorUserId"
        OR case_record."confirmedByUserId" IN (

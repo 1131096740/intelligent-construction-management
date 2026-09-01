@@ -1781,8 +1781,8 @@ model FundExecution {
   amountCents                BigInt
   currencyCode               String   @default("CNY")
   occurredAt                 DateTime
-  reversesPaymentExecutionId String?  @unique
-  reversesFundExecutionId    String?  @unique
+  reversesPaymentExecutionId String?
+  reversesFundExecutionId    String?
   payloadFingerprint         String
   createdByUserId            String
   handledByUserId            String
@@ -1794,6 +1794,8 @@ model FundExecution {
   createdAt                  DateTime @default(now())
 
   @@index([direction, occurredAt])
+  @@index([reversesPaymentExecutionId], map: "FundExecution_reverses_payment_idx")
+  @@index([reversesFundExecutionId], map: "FundExecution_reverses_fund_idx")
 }
 
 // Case lifecycle is append-only: every state is a new revision in one caseKey

@@ -471,7 +471,7 @@ export class FundExecutionService {
               canReview: Boolean(reviewIdentity),
               canAppendReturnedDraft:
                 row.approvalStatus === "returned_to_applicant" &&
-                row.lastApprovalActorUserId === actorUserId,
+                actorRoles.includes("finance_director"),
               canConfirm:
                 row.approvalStatus === "approved" &&
                 actorRoles.includes("finance_director")
@@ -483,17 +483,23 @@ export class FundExecutionService {
 
   async getCase(actorUserId: string, caseId: string) {
     const caseKey = requiredText(caseId, "资金执行案件不能为空");
-    const listedCase = (await this.listCases(actorUserId)).find(
-      (item) => item.caseRef === caseKey
-    );
-    if (!listedCase) throw new NotFoundException("资金执行案件不存在");
     return this.prisma.$transaction(async (tx) => {
       await this.assertReader(tx, actorUserId, caseKey);
+      const actorRoles = await this.globalRoleKeys(tx, actorUserId);
+      const delegations = await this.activeDelegationsTo(tx, actorUserId, caseKey);
+      const activeDelegators = await Promise.all(
+        delegations.map(async ({ fromUserId, resourceId }) => ({
+          userId: fromUserId,
+          resourceId,
+          roleKeys: await this.globalRoleKeys(tx, fromUserId)
+        }))
+      );
       const [row] = await tx.$queryRaw<
         Array<{
           internalCaseId: string;
           caseId: string;
           status: string;
+          auditAction: string;
           revision: number;
           reason: string;
           executionKind: string;
@@ -502,16 +508,25 @@ export class FundExecutionService {
           currencyCode: string;
           occurredAt: Date;
           approvalStatus: string | null;
+          approvalCurrentNodeIndex: number | null;
+          approvalFrozenNodes: Prisma.JsonValue | null;
+          classificationLineCount: number;
           returnReason: string | null;
           createdAt: Date;
         }>
       >(Prisma.sql`
         SELECT case_row."id" AS "internalCaseId",
                case_row."caseKey" AS "caseId", case_row."status",
-               case_row."revision", case_row."reason",
+               case_row."auditAction", case_row."revision", case_row."reason",
                execution."executionKind", execution."direction",
                execution."amountCents", execution."currencyCode",
                execution."occurredAt", approval."status" AS "approvalStatus",
+               approval."currentNodeIndex" AS "approvalCurrentNodeIndex",
+               approval."frozenNodes" AS "approvalFrozenNodes",
+               (SELECT COUNT(DISTINCT selection."allocationLineNo")::INTEGER
+                  FROM "FundExecutionCaseAxisSelection" selection
+                 WHERE selection."fundExecutionCaseId" = case_row."id")
+                 AS "classificationLineCount",
                case_row."returnReason", case_row."createdAt"
         FROM "FundExecutionCase" case_row
         INNER JOIN "FundExecution" execution
@@ -527,6 +542,27 @@ export class FundExecutionService {
         where: { fundExecutionCaseId: row.internalCaseId },
         orderBy: [{ allocationLineNo: "asc" }, { axis: "asc" }]
       });
+      const nodes = Array.isArray(row.approvalFrozenNodes)
+        ? row.approvalFrozenNodes
+        : [];
+      const node =
+        row.approvalCurrentNodeIndex === null
+          ? null
+          : nodes[row.approvalCurrentNodeIndex];
+      const reviewIdentity =
+        row.status === "submitted" &&
+        row.approvalStatus === "in_progress" &&
+        node &&
+        typeof node === "object" &&
+        !Array.isArray(node)
+          ? resolveApprovalReviewIdentity({
+              node: node as Record<string, unknown>,
+              actorUserId,
+              actorRoleKeys: actorRoles,
+              activeDelegators
+            })
+          : null;
+      const isReversal = row.executionKind === "reversal";
       return {
         caseId: row.caseId,
         status: row.status,
@@ -542,7 +578,18 @@ export class FundExecutionService {
         createdAt: row.createdAt,
         summary: executionSummary(row),
         classificationLines: publicClassificationLines(selections),
-        actions: listedCase.actions
+        actions: fundExecutionCaseActions({
+          status: row.status,
+          isReversal,
+          hasCompleteClassification: row.classificationLineCount > 0,
+          canReview: Boolean(reviewIdentity),
+          canAppendReturnedDraft:
+            row.approvalStatus === "returned_to_applicant" &&
+            actorRoles.includes("finance_director"),
+          canConfirm:
+            row.approvalStatus === "approved" &&
+            actorRoles.includes("finance_director")
+        })
       };
     });
   }
@@ -1083,6 +1130,8 @@ export class FundExecutionService {
             await this.assertRole(tx, actorUserId, FINANCE_WRITER_ROLES);
           } else if (action === "confirm_case") {
             await this.assertRole(tx, actorUserId, ["finance_director"]);
+          } else if (action === "return_case") {
+            await this.assertRole(tx, actorUserId, ["finance_director"]);
           } else {
             await this.assertActiveUser(tx, actorUserId);
           }
@@ -1140,10 +1189,9 @@ export class FundExecutionService {
             }
             if (
               action === "return_case" &&
-              (freeze.finalApprovalAction !== "return_to_applicant" ||
-                freeze.finalApprovalActorUserId !== actorUserId)
+              freeze.finalApprovalAction !== "return_to_applicant"
             ) {
-              throw new ConflictException("退回审批动作与当前操作人不一致");
+              throw new ConflictException("退回审批动作证据不完整");
             }
             if (
               action === "confirm_case" &&
@@ -2265,7 +2313,7 @@ function fundExecutionCaseActions(input: {
       "return_case",
       "生成退回修改稿",
       input.status === "submitted" && input.canAppendReturnedDraft,
-      "只有完成退回审批动作的操作人可以生成修改稿"
+      "审批退回后仅全局财务总监可以生成修改稿"
     ),
     action(
       "confirm_case",

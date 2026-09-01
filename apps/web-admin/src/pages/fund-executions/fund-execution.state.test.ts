@@ -2,12 +2,43 @@ import { describe, expect, it } from "vitest";
 
 import {
   caseAllowsClassification,
+  createFundExecutionIdempotencyLease,
   flattenClassificationPlan,
   selectedClassificationPlan,
   type FundExecutionClassificationPlan
 } from "./fund-execution.state";
 
 describe("fund execution web state", () => {
+  it("leases one key for the same payload and rotates only after a payload change or success", () => {
+    const issuedKeys = [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "33333333-3333-4333-8333-333333333333"
+    ];
+    const lease = createFundExecutionIdempotencyLease(() => issuedKeys.shift()!);
+    const originalPayload = {
+      observationSelectionRef: "observation-ref",
+      reason: "暂存待分类"
+    };
+
+    expect(lease.acquire("create-case", originalPayload)).toBe(
+      "11111111-1111-4111-8111-111111111111"
+    );
+    expect(lease.acquire("create-case", {
+      reason: "暂存待分类",
+      observationSelectionRef: "observation-ref"
+    })).toBe("11111111-1111-4111-8111-111111111111");
+
+    const changedPayload = { ...originalPayload, reason: "原样资料已补充" };
+    expect(lease.acquire("create-case", changedPayload)).toBe(
+      "22222222-2222-4222-8222-222222222222"
+    );
+    lease.complete("create-case", changedPayload);
+    expect(lease.acquire("create-case", changedPayload)).toBe(
+      "33333333-3333-4333-8333-333333333333"
+    );
+  });
+
   it("submits every line through exactly four server-issued axis refs", () => {
     const plan = classificationPlan();
 

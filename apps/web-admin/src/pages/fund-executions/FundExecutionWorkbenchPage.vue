@@ -32,6 +32,7 @@ import { centsTextToYuanText } from "../../lib/money";
 import {
   FUND_EXECUTION_AXIS_LABELS,
   caseAllowsClassification,
+  createFundExecutionIdempotencyLease,
   flattenClassificationPlan,
   selectedClassificationPlan,
   selectionIsExpired
@@ -58,6 +59,7 @@ const pendingAction = ref<PendingAction | null>(null);
 const pendingActionCase = ref<FundExecutionCaseListItem | null>(null);
 const pendingApprovalComment = ref("");
 const actionError = ref("");
+const idempotencyLease = createFundExecutionIdempotencyLease();
 
 const createForm = reactive({
   mode: "quarantine" as CreateMode,
@@ -216,7 +218,6 @@ async function submitCreate() {
     errorMessage.value = "请填写本次资金执行的业务原因";
     return;
   }
-  const idempotencyKey = crypto.randomUUID();
   submitting.value = true;
   errorMessage.value = "";
   try {
@@ -230,26 +231,35 @@ async function submitCreate() {
       ) {
         throw new Error("请选择仍可反向执行的原业务事项");
       }
-      await createFundExecutionReversalWithCapability({
+      const command = "create-reversal";
+      const payload = {
         targetSelectionRef: target.targetSelectionRef,
         observationSelectionRef: observation.selectionRef,
-        reason,
-        idempotencyKey
+        reason
+      };
+      await createFundExecutionReversalWithCapability({
+        ...payload,
+        idempotencyKey: idempotencyLease.acquire(command, payload)
       });
+      idempotencyLease.complete(command, payload);
       MessagePlugin.success("反向资金执行案件已创建，原分类已由系统沿用");
     } else {
-      await createFundExecutionCaseWithCapability({
+      const command = "create-case";
+      const payload = {
         observationSelectionRef: observation.selectionRef,
-        reason,
-        idempotencyKey
+        reason
+      };
+      await createFundExecutionCaseWithCapability({
+        ...payload,
+        idempotencyKey: idempotencyLease.acquire(command, payload)
       });
+      idempotencyLease.complete(command, payload);
       MessagePlugin.success("待分类资金执行案件已创建");
     }
     clearCreateForm();
     await loadWorkbench();
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "创建资金执行案件失败");
-    await refreshOptionsAfterFailure();
   } finally {
     submitting.value = false;
   }
@@ -259,21 +269,6 @@ function clearCreateForm() {
   createForm.observationSelectionRef = "";
   createForm.targetSelectionRef = "";
   createForm.reason = "";
-}
-
-async function refreshOptionsAfterFailure() {
-  const [observations, reversals] = await Promise.all([
-    fetchFundExecutionObservationOptions("fund_execution_case").catch(() => []),
-    fetchFundExecutionReversalOptions().catch(() => [])
-  ]);
-  observationOptions.value = observations;
-  reversalOptions.value = reversals;
-  if (!observations.some(({ selectionRef }) => selectionRef === createForm.observationSelectionRef)) {
-    createForm.observationSelectionRef = "";
-  }
-  if (!reversals.some(({ targetSelectionRef }) => targetSelectionRef === createForm.targetSelectionRef)) {
-    createForm.targetSelectionRef = "";
-  }
 }
 
 async function openCase(row: FundExecutionCaseListItem) {
@@ -322,19 +317,22 @@ async function saveClassification() {
   submitting.value = true;
   errorMessage.value = "";
   try {
-    await updateFundExecutionCaseWithCapability(row.caseRef, {
+    const command = `update-classification:${row.caseRef}`;
+    const payload = {
       expectedRevision: row.revision,
       reason,
-      selections: flattenClassificationPlan(plan),
-      idempotencyKey: crypto.randomUUID()
+      selections: flattenClassificationPlan(plan)
+    };
+    await updateFundExecutionCaseWithCapability(row.caseRef, {
+      ...payload,
+      idempotencyKey: idempotencyLease.acquire(command, payload)
     });
+    idempotencyLease.complete(command, payload);
     MessagePlugin.success("逐轴分类修改稿已保存");
     closeCaseDrawer();
     await loadWorkbench();
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "保存逐轴分类失败");
-    classificationPlans.value = [];
-    selectedPlanIndex.value = "";
   } finally {
     submitting.value = false;
   }
@@ -354,11 +352,16 @@ async function saveReversalReason() {
   submitting.value = true;
   errorMessage.value = "";
   try {
-    await updateFundExecutionReversalReasonWithCapability(row.caseRef, {
+    const command = `update-reversal-reason:${row.caseRef}`;
+    const payload = {
       expectedRevision: row.revision,
-      reason,
-      idempotencyKey: crypto.randomUUID()
+      reason
+    };
+    await updateFundExecutionReversalReasonWithCapability(row.caseRef, {
+      ...payload,
+      idempotencyKey: idempotencyLease.acquire(command, payload)
     });
+    idempotencyLease.complete(command, payload);
     MessagePlugin.success("反向资金执行原因已保存");
     closeCaseDrawer();
     await loadWorkbench();
@@ -495,21 +498,35 @@ async function executePendingAction(values: { reason: string; password: string }
   submitting.value = true;
   actionError.value = "";
   try {
-    const command = {
-      expectedRevision: row.revision,
-      idempotencyKey: crypto.randomUUID()
-    };
     if (action === "submit_case") {
-      await submitFundExecutionCaseWithCapability(row.caseRef, command);
+      const command = `submit-case:${row.caseRef}`;
+      const payload = { expectedRevision: row.revision };
+      await submitFundExecutionCaseWithCapability(row.caseRef, {
+        ...payload,
+        idempotencyKey: idempotencyLease.acquire(command, payload)
+      });
+      idempotencyLease.complete(command, payload);
     }
     if (action === "return_case") {
-      await returnFundExecutionCaseWithCapability(row.caseRef, {
-        ...command,
+      const command = `return-case:${row.caseRef}`;
+      const payload = {
+        expectedRevision: row.revision,
         reason: values.reason
+      };
+      await returnFundExecutionCaseWithCapability(row.caseRef, {
+        ...payload,
+        idempotencyKey: idempotencyLease.acquire(command, payload)
       });
+      idempotencyLease.complete(command, payload);
     }
     if (action === "confirm_case") {
-      await confirmFundExecutionCaseWithCapability(row.caseRef, command);
+      const command = `confirm-case:${row.caseRef}`;
+      const payload = { expectedRevision: row.revision };
+      await confirmFundExecutionCaseWithCapability(row.caseRef, {
+        ...payload,
+        idempotencyKey: idempotencyLease.acquire(command, payload)
+      });
+      idempotencyLease.complete(command, payload);
     }
     if (action === "approve") {
       await approveFundExecutionCaseWithCapability(

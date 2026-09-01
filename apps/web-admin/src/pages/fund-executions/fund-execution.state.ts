@@ -20,6 +20,49 @@ export const FUND_EXECUTION_AXIS_LABELS: Record<FundExecutionAxis, string> = {
   operating: "经营"
 };
 
+type IdempotencyKeyLease = {
+  fingerprint: string;
+  idempotencyKey: string;
+};
+
+export function createFundExecutionIdempotencyLease(
+  issueIdempotencyKey: () => string = () => crypto.randomUUID()
+) {
+  const leases = new Map<string, IdempotencyKeyLease>();
+
+  return {
+    acquire(command: string, payload: unknown) {
+      const fingerprint = payloadFingerprint(payload);
+      const current = leases.get(command);
+      if (current?.fingerprint === fingerprint) return current.idempotencyKey;
+
+      const idempotencyKey = issueIdempotencyKey();
+      leases.set(command, { fingerprint, idempotencyKey });
+      return idempotencyKey;
+    },
+    complete(command: string, payload: unknown) {
+      const current = leases.get(command);
+      if (current?.fingerprint === payloadFingerprint(payload)) {
+        leases.delete(command);
+      }
+    }
+  };
+}
+
+function payloadFingerprint(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    return `[${value.map(payloadFingerprint).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${payloadFingerprint(item)}`)
+      .join(",")}}`;
+  }
+  return `${typeof value}:${JSON.stringify(value)}`;
+}
+
 export function caseAllowsClassification(
   item: Pick<FundExecutionCaseListItem, "executionKind" | "actions">
 ) {
