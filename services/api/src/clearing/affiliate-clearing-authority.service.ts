@@ -152,7 +152,9 @@ export class AffiliateClearingAuthorityService {
         effectiveTo: true
       }
     });
+    const now = new Date();
     for (const authority of authorityVersions) {
+      if (!isEffective(authority.effectiveFrom, authority.effectiveTo, now)) continue;
       const wageLines = await this.prisma.assignedWageAuthorityLine.findMany({
         where: { authorityVersionId: authority.id },
         orderBy: [{ wageMonth: "desc" }, { coverageKey: "asc" }],
@@ -178,7 +180,7 @@ export class AffiliateClearingAuthorityService {
         select: { obligationId: true, capCents: true, effectiveFrom: true, effectiveTo: true, obligationFingerprint: true, evidenceLevel: true }
       });
       options.push(
-        ...obligations.map((obligation) => ({
+        ...obligations.filter((obligation) => isEffective(obligation.effectiveFrom, obligation.effectiveTo, now)).map((obligation) => ({
           selectionRef: this.selectionRefs.issue(
             this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "guarantee", obligation.obligationId, 1)
           ),
@@ -437,6 +439,7 @@ export class AffiliateClearingAuthorityService {
       } else {
         const obligations = await database.guaranteeObligationVersion.findMany({ where: { authorityVersionId: authority.id, enabled: true } });
         for (const obligation of obligations) {
+          if (!isEffective(obligation.effectiveFrom, obligation.effectiveTo, now)) continue;
           const binding = this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "guarantee", obligation.obligationId, authority.versionNo);
           if (!this.selectionRefs.matches(input.selectionRef, binding, now)) continue;
           const tranche = input.guaranteeTrancheAmountCents !== undefined
@@ -573,8 +576,10 @@ export class AffiliateClearingAuthorityService {
 
   private resolveGuarantee(actorUserId: string, contract: AuthorityContract, input: CreateGuaranteeObligationVersionDto, effectiveFrom: Date, effectiveTo: Date | null) {
     const fingerprint = this.contractFingerprint(contract);
-    const selectionMatches = this.selectionRefs.matches(input.selectionRef, this.selectionBinding(actorUserId, contract.id, fingerprint, "guarantee", contract.id, 0))
-      || this.selectionRefs.matches(input.selectionRef, this.selectionBinding(actorUserId, contract.id, fingerprint, "contract", contract.id, 0));
+    const selectionMatches = this.selectionRefs.matches(
+      input.selectionRef,
+      this.selectionBinding(actorUserId, contract.id, fingerprint, "contract", undefined, 0)
+    );
     if (!selectionMatches) throw new ConflictException("authority selectionRef 已失效");
     const base = assertMoneyWithinPostgresBigInt(input.baseAmountCents);
     const returnCondition = requiredText(input.returnCondition, "保证金返还条件不能为空");

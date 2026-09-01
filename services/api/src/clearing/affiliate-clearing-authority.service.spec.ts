@@ -186,4 +186,86 @@ describe("#214 AffiliateClearingAuthorityService", () => {
     ).rejects.toThrow("authority selectionRef 已失效");
     expect(tx.affiliateClearingAuthorityVersion.create).not.toHaveBeenCalled();
   });
+
+  it("uses the server-issued contract selectionRef to create a guarantee obligation", async () => {
+    const { service, tx, selection } = harness();
+
+    await service.createAuthority("finance-staff", {
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      expectedRevision: 0,
+      contractSelectionRef: CONTRACT_REF,
+      effectiveFrom: "2026-08-01",
+      evidenceRef: "file-selection-ref",
+      wageLines: [],
+      guaranteeObligations: [{
+        selectionRef: CONTRACT_REF,
+        baseAmountCents: "100000",
+        calculationMode: "RATE_BPS",
+        rateBps: 1000,
+        returnCondition: "协议结算后确认退回"
+      }]
+    });
+
+    expect(tx.guaranteeObligationVersion.create).toHaveBeenCalled();
+    expect(selection.matches.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({
+      purpose: "contract",
+      selectedKey: ""
+    }));
+  });
+
+  it("does not resolve an expired guarantee obligation into a new clearing case", async () => {
+    const now = new Date();
+    const { roles, selection, audit } = harness();
+    const prisma = {
+      affiliateClearingAuthorityVersion: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "authority-1",
+          projectId: "project-1",
+          constructionEnterpriseAssignmentId: "assignment-1",
+          authoritySnapshotRef: "acv-1",
+          authorityFingerprint: "c".repeat(64),
+          versionNo: 1,
+          coverageKind: "ROLE_SUMMARY",
+          effectiveFrom: new Date(now.getTime() - 86_400_000),
+          effectiveTo: null,
+          status: "confirmed"
+        }])
+      },
+      guaranteeObligationVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            obligationId: "expired",
+            enabled: true,
+            effectiveFrom: new Date(now.getTime() - 172_800_000),
+            effectiveTo: new Date(now.getTime() - 86_400_000),
+            capCents: 1000n,
+            currencyCode: "CNY"
+          },
+          {
+            obligationId: "active",
+            enabled: true,
+            effectiveFrom: new Date(now.getTime() - 86_400_000),
+            effectiveTo: null,
+            capCents: 2000n,
+            currencyCode: "CNY"
+          }
+        ])
+      }
+    };
+    selection.matches.mockReturnValue(true);
+    const service = new AffiliateClearingAuthorityService(
+      prisma as never,
+      roles as never,
+      selection as never,
+      audit as never
+    );
+
+    const result = await service.resolveCaseSelection("finance-staff", {
+      idempotencyKey: "44444444-4444-4444-8444-444444444444",
+      expectedRevision: 0,
+      selectionRef: "fac1.guarantee-selection-ref"
+    }, "deposit");
+
+    expect(result.governedSubjectKey).toContain("/active");
+  });
 });

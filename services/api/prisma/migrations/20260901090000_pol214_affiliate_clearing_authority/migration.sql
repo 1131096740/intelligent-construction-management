@@ -154,8 +154,13 @@ CREATE TABLE "GuaranteeObligationVersion" (
     length(btrim("obligationId")) > 0
     AND "versionNo" > 0
     AND "calculationMode" IN ('FIXED_AMOUNT', 'RATE_BPS')
-    AND (("calculationMode" = 'FIXED_AMOUNT' AND "fixedAmountCents" > 0 AND "rateBps" IS NULL)
-      OR ("calculationMode" = 'RATE_BPS' AND "rateBps" BETWEEN 0 AND 10000 AND "fixedAmountCents" IS NULL))
+    AND (("calculationMode" = 'FIXED_AMOUNT' AND "fixedAmountCents" IS NOT NULL AND "fixedAmountCents" > 0 AND "rateBps" IS NULL AND "capCents" = "fixedAmountCents")
+      OR ("calculationMode" = 'RATE_BPS'
+        AND "rateBps" IS NOT NULL
+        AND "rateBps" BETWEEN 1 AND 10000
+        AND "fixedAmountCents" IS NULL
+        AND ("baseAmountCents"::numeric * "rateBps"::numeric) % 10000 = 0
+        AND "capCents"::numeric * 10000 = "baseAmountCents"::numeric * "rateBps"::numeric))
     AND "baseAmountCents" > 0
     AND "capCents" > 0
     AND "currencyCode" = 'CNY'
@@ -242,7 +247,7 @@ END;
 $$;
 
 CREATE TRIGGER "AffiliateClearingAuthorityVersion_nonoverlap"
-BEFORE INSERT ON "AffiliateClearingAuthorityVersion"
+BEFORE INSERT OR UPDATE OF "affiliateCompanyContractId", "effectiveFrom", "effectiveTo" ON "AffiliateClearingAuthorityVersion"
 FOR EACH ROW EXECUTE FUNCTION "pol214_authority_nonoverlap_guard"();
 
 CREATE OR REPLACE FUNCTION "pol214_authority_immutable_guard"()
@@ -261,6 +266,31 @@ RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF OLD."status" = 'confirmed' THEN
     RAISE EXCEPTION 'POL-214 confirmed authority rows are immutable';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM "AssignedWageAuthorityLine" line WHERE line."authorityVersionId" = OLD."id"
+    UNION ALL
+    SELECT 1 FROM "GuaranteeObligationVersion" obligation WHERE obligation."authorityVersionId" = OLD."id"
+  ) AND (
+    OLD."projectId" IS DISTINCT FROM NEW."projectId"
+    OR OLD."constructionEnterpriseAssignmentId" IS DISTINCT FROM NEW."constructionEnterpriseAssignmentId"
+    OR OLD."affiliateCompanyContractId" IS DISTINCT FROM NEW."affiliateCompanyContractId"
+    OR OLD."protocolNameSnapshot" IS DISTINCT FROM NEW."protocolNameSnapshot"
+    OR OLD."protocolReferenceSnapshot" IS DISTINCT FROM NEW."protocolReferenceSnapshot"
+    OR OLD."assignmentNameSnapshot" IS DISTINCT FROM NEW."assignmentNameSnapshot"
+    OR OLD."assignmentCreditCodeSnapshot" IS DISTINCT FROM NEW."assignmentCreditCodeSnapshot"
+    OR OLD."versionNo" IS DISTINCT FROM NEW."versionNo"
+    OR OLD."supersedesVersionId" IS DISTINCT FROM NEW."supersedesVersionId"
+    OR OLD."effectiveFrom" IS DISTINCT FROM NEW."effectiveFrom"
+    OR OLD."effectiveTo" IS DISTINCT FROM NEW."effectiveTo"
+    OR OLD."coverageKind" IS DISTINCT FROM NEW."coverageKind"
+    OR OLD."evidenceFileId" IS DISTINCT FROM NEW."evidenceFileId"
+    OR OLD."evidenceSha256" IS DISTINCT FROM NEW."evidenceSha256"
+    OR OLD."evidenceManifestSha256" IS DISTINCT FROM NEW."evidenceManifestSha256"
+    OR OLD."authoritySnapshotRef" IS DISTINCT FROM NEW."authoritySnapshotRef"
+    OR OLD."authorityFingerprint" IS DISTINCT FROM NEW."authorityFingerprint"
+  ) THEN
+    RAISE EXCEPTION 'POL-214 authority source snapshot is immutable after child append';
   END IF;
   RETURN NEW;
 END;
@@ -344,7 +374,7 @@ END;
 $$;
 
 CREATE TRIGGER "GuaranteeObligationVersion_nonoverlap"
-BEFORE INSERT ON "GuaranteeObligationVersion"
+BEFORE INSERT OR UPDATE OF "obligationId", "effectiveFrom", "effectiveTo" ON "GuaranteeObligationVersion"
 FOR EACH ROW EXECUTE FUNCTION "pol214_guarantee_nonoverlap_guard"();
 
 -- A confirmed guarantee withholding is a financial reservation. Lock the case
