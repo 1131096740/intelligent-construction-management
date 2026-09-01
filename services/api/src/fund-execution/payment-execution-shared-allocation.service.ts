@@ -9,7 +9,8 @@ import {
 } from "../operating-ledger/formal-operating-source.helpers";
 import {
   OperatingLedgerService,
-  type AppendOperatingFactInput
+  type AppendOperatingFactInput,
+  type OperatingSubjectReference
 } from "../operating-ledger/operating-ledger.service";
 import {
   deriveEffectiveWagePayableAmount,
