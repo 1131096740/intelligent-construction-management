@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `6b1cb3589ebae444fe5f977c37c46a6f8af6b789e4ce3e5f020eacb2f39a6672` |
-| webApiWrappers | ready | `28745d320ff19186623239cd50cb3a2c9bd7fb4a8b3bed53dda1a1145f9f6ac4` |
-| webPageActions | ready | `ed950b630479d81ffa7aa7e76c79874728ff52c750b39d93fc915e90257f8560` |
-| routeUsage | ready | `98dd354f6eee8da834839219bd2aeed977c47035c77d7dfb15b9a71936f98662` |
+| nestRoutes | ready | `233108ead3955548f078000c9cccd762a4d6786c2637a3c4b718db4fd982d417` |
+| webApiWrappers | ready | `85fbd115f17ac6082c3ec58c3a355f787360004f2ad374ab5e91b8361870075a` |
+| webPageActions | ready | `4ca0d50f92592018ed0d5bca031c113741506382a75315e77f3d713e9061e902` |
+| routeUsage | ready | `3e70f5ce73f5d3a889ea529f4752c83caeca0ff6ebf7a8dfdafe71262a8dacc0` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 547 |
-| pageRouteCount | 359 |
+| routeCount | 553 |
+| pageRouteCount | 361 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 10 |
+| internalTaskRouteCount | 14 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 548 |
+| mainRequestBindingCount | 550 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -47,6 +47,8 @@
 | DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | DELETE | /projects/:projectId/participating-companies/:participantId | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#removeProjectParticipatingCompany | project-operating-profile.remove-participating-company | covered | — |
 | DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#deleteSpotProcurementReceiptPhoto | spot-procurement-receipt.photo.remove | covered | — |
+| GET | /affiliate-clearing-authorities/allocation-options/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingAllocationOptions | — | not_applicable | — |
+| GET | /affiliate-clearing-authorities/options | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchAffiliateClearingAuthorityOptions | — | not_applicable | — |
 | GET | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listApprovalDelegations | — | not_applicable | — |
 | GET | /approval-delegations/user-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationUserOptions | — | not_applicable | — |
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
@@ -239,6 +241,10 @@
 | PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.draft.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | spot-procurement-receipt.draft.update | covered | — |
 | PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
+| POST | /affiliate-clearing-authorities/:authorityId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /affiliate-clearing-authorities/:authorityId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /affiliate-clearing-authorities/:authorityId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /affiliate-clearing-authorities | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /approval-delegations | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | not_applicable | — |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |

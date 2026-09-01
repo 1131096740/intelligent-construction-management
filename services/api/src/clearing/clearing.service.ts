@@ -42,6 +42,9 @@ import {
   type ClearingAllocationInput,
   type ClearingConfirmationPlan
 } from "./clearing-domain";
+import { AffiliateClearingAuthorityService } from "./affiliate-clearing-authority.service";
+import { assertGuaranteeWithholdingWithinCap } from "./affiliate-clearing-authority.domain";
+import { AffiliateClearingSelectionRefService } from "./affiliate-clearing-selection-ref.service";
 import type {
   AttestClearingEventDto,
   ClearingCommandDto,
@@ -59,6 +62,17 @@ type ActorIdentity = {
   delegatorUserId: string | null;
   actorIds: string[];
 };
+type ResolvedCreateClearingCaseInput = CreateClearingCaseDto & {
+  projectId: string;
+  constructionEnterpriseAssignmentId: string;
+  governedSubjectKey: string;
+  authoritativeGrossCapCents: string | bigint;
+  authorityVersionId?: string;
+  authoritySnapshotRef?: string;
+  sourceDiscriminator?: string;
+  coverageKind?: string;
+  periodStart?: Date | null;
+};
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CLEARING_SOURCE_TYPE = "clearing_event_version";
@@ -70,7 +84,9 @@ export class ClearingService {
     private readonly prisma: PrismaService,
     private readonly roles: CompanyRoleResolverService,
     private readonly ledger: OperatingLedgerService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly authorities?: AffiliateClearingAuthorityService,
+    private readonly selectionRefs?: AffiliateClearingSelectionRefService
   ) {}
 
   async capabilities(actorUserId: string) {
@@ -145,21 +161,32 @@ export class ClearingService {
 
   async createCase(actorUserId: string, input: CreateClearingCaseDto) {
     validateCaseInput(input);
+    const effectiveInput = await this.resolveAuthorityCaseInput(actorUserId, input);
     const identity = await this.resolveIdentity(
       actorUserId,
-      input.delegatorUserId,
+      effectiveInput.delegatorUserId,
       "clearing.prepare",
       "clearing_project",
-      input.projectId
+      effectiveInput.projectId
     );
-    const fingerprint = commandFingerprint("clearing.case.create", "new", input, identity);
+    const fingerprint = commandFingerprint("clearing.case.create", "new", effectiveInput, identity);
     return this.serializable(async (tx) => {
-      const replay = await this.replay(tx, input.idempotencyKey, fingerprint);
+      const replay = await this.replay(tx, effectiveInput.idempotencyKey, fingerprint);
       if (replay) return replay;
+      const transactionInput = await this.resolveAuthorityCaseInput(actorUserId, input, tx);
+      const transactionFingerprint = commandFingerprint(
+        "clearing.case.create",
+        "new",
+        transactionInput,
+        identity
+      );
+      if (transactionFingerprint !== fingerprint) {
+        throw new ConflictException("authority selectionRef 在事务内解析结果已变化，拒绝写入");
+      }
       const assignment = await tx.projectAffiliateAssignment.findFirst({
         where: {
-          id: input.constructionEnterpriseAssignmentId,
-          projectId: input.projectId,
+          id: transactionInput.constructionEnterpriseAssignmentId,
+          projectId: transactionInput.projectId,
           endedAt: null
         },
         select: { id: true }
@@ -169,31 +196,73 @@ export class ClearingService {
         identity,
         "clearing.prepare",
         "clearing_project",
-        input.projectId
+        transactionInput.projectId
       );
       const id = randomUUID();
       const row = await tx.clearingCase.create({
         data: {
           id,
-          projectId: input.projectId,
-          constructionEnterpriseAssignmentId: input.constructionEnterpriseAssignmentId,
-          category: input.category,
-          governedSubjectKey: requiredText(input.governedSubjectKey, "受控事项键不能为空"),
-          authoritativeGrossCapCents: positiveCents(input.authoritativeGrossCapCents),
+          projectId: transactionInput.projectId,
+          constructionEnterpriseAssignmentId: transactionInput.constructionEnterpriseAssignmentId,
+          category: transactionInput.category,
+          governedSubjectKey: requiredText(transactionInput.governedSubjectKey, "受控事项键不能为空"),
+          authoritativeGrossCapCents: positiveCents(transactionInput.authoritativeGrossCapCents),
+          authorityVersionId: transactionInput.authorityVersionId,
+          authoritySnapshotRef: transactionInput.authoritySnapshotRef,
+          sourceDiscriminator: transactionInput.sourceDiscriminator,
+          coverageKind: transactionInput.coverageKind,
+          periodStart: transactionInput.periodStart,
           createdByUserId: identity.actualUserId
         }
       });
       const result = jsonSafe(row);
-      await this.receipt(tx, input, "clearing.case.create", id, fingerprint, identity, result);
+      await this.receipt(tx, transactionInput, "clearing.case.create", id, transactionFingerprint, identity, result);
       await this.audit.record(tx, {
         actorUserId,
         action: "clearing.case.create",
         businessType: "clearing_case",
         businessId: id,
-        metadata: auditMetadata(identity, input.expectedRevision)
+        metadata: auditMetadata(identity, transactionInput.expectedRevision)
       });
       return result;
     });
+  }
+
+  private async resolveAuthorityCaseInput(
+    actorUserId: string,
+    input: CreateClearingCaseDto,
+    tx?: Tx
+  ): Promise<ResolvedCreateClearingCaseInput> {
+    if (!isAuthorityClearingCategory(input.category)) {
+      return {
+        ...input,
+        projectId: requiredText(input.projectId, "项目不能为空"),
+        constructionEnterpriseAssignmentId: requiredText(input.constructionEnterpriseAssignmentId, "施工企业档案不能为空"),
+        governedSubjectKey: requiredText(input.governedSubjectKey, "受控事项键不能为空"),
+        authoritativeGrossCapCents: requiredText(input.authoritativeGrossCapCents, "权威上限不能为空")
+      };
+    }
+    if (!this.authorities) throw new ConflictException("#214 权威来源服务未注册，必须失败关闭");
+    const selectionRef = requiredText(input.authoritySelectionRef, "#214 清算必须使用服务端 authority selectionRef");
+    const resolved = await this.authorities.resolveCaseSelection(actorUserId, {
+      idempotencyKey: input.idempotencyKey,
+      expectedRevision: input.expectedRevision,
+      delegatorUserId: input.delegatorUserId,
+      selectionRef,
+      guaranteeTrancheAmountCents: input.guaranteeTrancheAmountCents
+    }, input.category, tx);
+    return {
+      ...input,
+      projectId: resolved.projectId,
+      constructionEnterpriseAssignmentId: resolved.constructionEnterpriseAssignmentId,
+      governedSubjectKey: resolved.governedSubjectKey,
+      authoritativeGrossCapCents: resolved.authoritativeGrossCapCents.toString(),
+      authorityVersionId: resolved.authorityVersionId,
+      authoritySnapshotRef: resolved.authoritySnapshotRef,
+      sourceDiscriminator: resolved.sourceDiscriminator,
+      coverageKind: resolved.coverageKind,
+      periodStart: resolved.periodStart
+    };
   }
 
   async createEvent(actorUserId: string, caseId: string, input: CreateClearingEventDto) {
@@ -211,6 +280,7 @@ export class ClearingService {
       if (replay) return replay;
       const clearingCase = await this.lockCase(tx, caseId);
       assertRevision(clearingCase.revision, input.expectedRevision);
+      const effectiveEventInput = authorityEventInput(clearingCase, input);
       await this.revalidateIdentity(
         identity,
         "clearing.prepare",
@@ -237,10 +307,10 @@ export class ClearingService {
           clearingCaseId: clearingCase.id,
           versionNo: 1,
           workflowStatus: "draft",
-          amountCents: positiveCents(input.amountCents),
-          payableRef: optionalText(input.payableRef),
-          evidenceLevel: input.evidenceLevel,
-          payloadSnapshot: jsonObject(input.payload),
+          amountCents: positiveCents(effectiveEventInput.amountCents),
+          payableRef: effectiveEventInput.payableRef,
+          evidenceLevel: effectiveEventInput.evidenceLevel,
+          payloadSnapshot: jsonObject(effectiveEventInput.payload),
           actorSetSnapshot: identity.actorIds,
           fingerprint,
           createdByUserId: identity.actualUserId
@@ -422,6 +492,8 @@ export class ClearingService {
         eventId
       );
       const current = await this.currentVersion(tx, event);
+      const clearingCase = await this.lockCase(tx, event.clearingCaseId);
+      const effectiveEventInput = authorityEventInput(clearingCase, input);
       const nextVersionNo = event.currentVersionNo + 1;
       const versionId = randomUUID();
       await tx.clearingEventVersion.create({
@@ -431,10 +503,10 @@ export class ClearingService {
           clearingCaseId: event.clearingCaseId,
           versionNo: nextVersionNo,
           workflowStatus: "draft",
-          amountCents: positiveCents(input.amountCents),
-          payableRef: optionalText(input.payableRef),
-          evidenceLevel: input.evidenceLevel,
-          payloadSnapshot: jsonObject(input.payload),
+          amountCents: positiveCents(effectiveEventInput.amountCents),
+          payableRef: effectiveEventInput.payableRef,
+          evidenceLevel: effectiveEventInput.evidenceLevel,
+          payloadSnapshot: jsonObject(effectiveEventInput.payload),
           actorSetSnapshot: mergeActorIds(actorIds(current.actorSetSnapshot), identity.actorIds),
           fingerprint,
           previousVersionId: current.id,
@@ -518,8 +590,20 @@ export class ClearingService {
         );
       }
 
+      if (clearingCase.sourceDiscriminator === "construction_enterprise_guarantee" && event.kind === "withheld") {
+        const currentWithheld = await this.confirmedGuaranteeWithheld(tx, clearingCase.id);
+        try {
+          assertGuaranteeWithholdingWithinCap(clearingCase.authoritativeGrossCapCents, currentWithheld, version.amountCents);
+        } catch (error) {
+          throw new ConflictException(error instanceof Error ? error.message : "保证金暂扣累计金额超过权威上限");
+        }
+      }
+      if (clearingCase.sourceDiscriminator && input.allocations.some((allocation) => allocation.sourceEventVersionId)) {
+        throw new BadRequestException("#214 分配不得提交客户端事件版本 ID，必须使用服务端权威额度或业务 selectionRef");
+      }
+
       const confirmedAgainstCapCents = await this.confirmedAgainstCap(tx, clearingCase.id);
-      const allocations = await this.allocationInputs(tx, clearingCase, event.kind as ClearingEventKind, input);
+      const allocations = await this.allocationInputs(tx, clearingCase, event.kind as ClearingEventKind, input, identity.actualUserId);
       const plan = buildClearingConfirmationPlan({
         kind: event.kind as ClearingEventKind,
         amountCents: version.amountCents,
@@ -871,7 +955,8 @@ export class ClearingService {
     tx: Tx,
     clearingCase: ClearingCase,
     kind: ClearingEventKind,
-    input: ConfirmClearingEventDto
+    input: ConfirmClearingEventDto,
+    actorUserId: string
   ): Promise<ClearingAllocationInput[]> {
     const confirmedAgainstCapCents = await this.confirmedAgainstCap(tx, clearingCase.id);
     const output: ClearingAllocationInput[] = [];
@@ -887,9 +972,33 @@ export class ClearingService {
         });
         continue;
       }
-      const sourceId = requiredText(allocation.sourceEventVersionId, "清算分配必须引用来源事件版本");
+      let sourceId = allocation.sourceEventVersionId;
+      if (clearingCase.sourceDiscriminator && allocation.sourceSelectionRef) {
+        if (!this.selectionRefs || !clearingCase.authoritySnapshotRef) throw new ConflictException("#214 分配 selectionRef 服务未注册，必须失败关闭");
+        const candidates = await tx.clearingEventVersion.findMany({
+          where: { clearingCaseId: clearingCase.id, workflowStatus: "confirmed" },
+          include: { clearingEvent: true, confirmation: true }
+        });
+        const selected = candidates.find((candidate) =>
+          candidate.confirmation &&
+          candidate.clearingEvent.kind === allocation.sourceKind &&
+          this.selectionRefs?.matches(
+            allocation.sourceSelectionRef ?? "",
+            {
+              actorUserId,
+              authorityVersionId: clearingCase.id,
+              authorityFingerprint: clearingCase.authoritySnapshotRef ?? "",
+              purpose: "allocation",
+              selectedKey: candidate.id,
+              revision: clearingCase.revision
+            }
+          )
+        );
+        sourceId = selected?.id;
+      }
+      const resolvedSourceId = requiredText(sourceId, "清算分配必须引用服务端业务选项");
       const source = await tx.clearingEventVersion.findUnique({
-        where: { id: sourceId },
+        where: { id: resolvedSourceId },
         include: { clearingEvent: true, confirmation: true }
       });
       if (
@@ -901,11 +1010,11 @@ export class ClearingService {
         throw new BadRequestException("清算分配来源不存在、未确认或类型不一致");
       }
       const used = await tx.clearingAllocation.aggregate({
-        where: { sourceEventVersionId: sourceId },
+        where: { sourceEventVersionId: resolvedSourceId },
         _sum: { amountCents: true }
       });
       output.push({
-        sourceEventVersionId: sourceId,
+        sourceEventVersionId: resolvedSourceId,
         sourceKind: allocation.sourceKind,
         amountCents,
         sourceRemainingCents: source.amountCents - (used._sum.amountCents ?? 0n)
@@ -925,6 +1034,28 @@ export class ClearingService {
       JOIN "ClearingConfirmation" c ON c."eventVersionId" = v.id
       WHERE e."clearingCaseId" = ${caseId}
         AND e.kind IN ('final_confirmed', 'supplemental')
+    `);
+    return rows[0]?.total ?? 0n;
+  }
+
+  private async confirmedGuaranteeWithheld(tx: Tx, caseId: string): Promise<bigint> {
+    const rows = await tx.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+      SELECT (
+        COALESCE((
+          SELECT SUM(v."amountCents")
+          FROM "ClearingEvent" e
+          JOIN "ClearingEventVersion" v ON v."clearingEventId" = e.id
+          JOIN "ClearingConfirmation" c ON c."eventVersionId" = v.id
+          WHERE e."clearingCaseId" = ${caseId} AND e.kind = 'withheld'
+        ), 0) -
+        COALESCE((
+          SELECT SUM(a."amountCents")
+          FROM "ClearingAllocation" a
+          JOIN "ClearingEventVersion" source ON source.id = a."sourceEventVersionId"
+          JOIN "ClearingEvent" sourceEvent ON sourceEvent.id = source."clearingEventId"
+          WHERE sourceEvent."clearingCaseId" = ${caseId} AND a."sourceKind" = 'withheld'
+        ), 0)
+      )::bigint AS total
     `);
     return rows[0]?.total ?? 0n;
   }
@@ -1049,21 +1180,86 @@ function validateCaseInput(input: CreateClearingCaseDto) {
   if (input.expectedRevision !== 0) {
     throw new ConflictException("新建清算事项的 expectedRevision 必须为 0");
   }
+  if (!isClearingCategory(input.category)) throw new BadRequestException("清分分类不正确");
+  if (isAuthorityClearingCategory(input.category)) {
+    requiredText(input.authoritySelectionRef, "#214 清算必须使用服务端 authority selectionRef");
+    if (
+      input.projectId !== undefined ||
+      input.constructionEnterpriseAssignmentId !== undefined ||
+      input.governedSubjectKey !== undefined ||
+      input.authoritativeGrossCapCents !== undefined
+    ) {
+      throw new BadRequestException("#214 客户端不得提交项目、assignment、受控事项键或权威金额");
+    }
+    if (input.guaranteeTrancheAmountCents !== undefined) positiveCents(input.guaranteeTrancheAmountCents);
+    return;
+  }
   requiredText(input.projectId, "项目不能为空");
   requiredText(input.constructionEnterpriseAssignmentId, "施工企业档案不能为空");
-  if (!isClearingCategory(input.category)) throw new BadRequestException("清分分类不正确");
   requiredText(input.governedSubjectKey, "受控事项键不能为空");
   positiveCents(input.authoritativeGrossCapCents);
+}
+
+function isAuthorityClearingCategory(category: CreateClearingCaseDto["category"]): category is "assigned_management_salary" | "deposit" {
+  return category === "assigned_management_salary" || category === "deposit";
 }
 
 function validateEventInput(input: CreateClearingEventDto) {
   validateCommand(input);
   if (!isClearingEventKind(input.kind)) throw new BadRequestException("清分事件类型不正确");
-  positiveCents(input.amountCents);
-  if (!['A', 'B'].includes(input.evidenceLevel)) throw new BadRequestException("清分正式流程只接受 A/B 级证据");
-  if (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) {
-    throw new BadRequestException("清分事件必须保留对象快照");
+  if (input.amountCents !== undefined) positiveCents(input.amountCents);
+  if (input.evidenceLevel !== undefined && !['A', 'B'].includes(input.evidenceLevel)) throw new BadRequestException("清分正式流程只接受 A/B 级证据");
+  if (input.payload !== undefined && (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload))) {
+    throw new BadRequestException("清分事件业务快照格式不正确");
   }
+}
+
+function authorityEventInput(
+  clearingCase: ClearingCase,
+  input: CreateClearingEventDto
+): {
+  amountCents: string;
+  payableRef: string | null;
+  evidenceLevel: "A" | "B";
+  payload: Record<string, unknown>;
+} {
+  if (!clearingCase.sourceDiscriminator) {
+    if (input.amountCents === undefined || input.evidenceLevel === undefined || input.payload === undefined) {
+      throw new BadRequestException("清分事件必须提供金额、证据等级和业务快照");
+    }
+    return {
+      amountCents: input.amountCents,
+      payableRef: optionalText(input.payableRef),
+      evidenceLevel: input.evidenceLevel,
+      payload: input.payload
+    };
+  }
+  if (
+    clearingCase.sourceDiscriminator !== "construction_enterprise_assigned_wage" &&
+    clearingCase.sourceDiscriminator !== "construction_enterprise_guarantee"
+  ) {
+    throw new ConflictException("清算事项来源判别器不受支持，必须失败关闭");
+  }
+  if (input.payableRef?.trim()) throw new BadRequestException("#214 不接受客户端应付或付款引用");
+  if (input.payload && Object.keys(input.payload).length) throw new BadRequestException("#214 不接受客户端冻结业务 JSON");
+  const businessReason = requiredText(input.businessReason, "#214 清算事件必须填写业务原因");
+  const evidenceRef = optionalText(input.evidenceRef);
+  const cap = BigInt(clearingCase.authoritativeGrossCapCents);
+  const amount = clearingCase.sourceDiscriminator === "construction_enterprise_assigned_wage"
+    ? cap
+    : positiveCents(input.amountCents);
+  if (amount > cap) throw new ConflictException("#214 清算事件金额超过服务端权威上限");
+  return {
+    amountCents: amount.toString(),
+    payableRef: null,
+    evidenceLevel: clearingCase.coverageKind === "ROLE_SUMMARY" ? "B" : "A",
+    payload: {
+      sourceDiscriminator: clearingCase.sourceDiscriminator,
+      authoritySnapshotRef: clearingCase.authoritySnapshotRef,
+      businessReason,
+      ...(evidenceRef ? { evidenceRef } : {})
+    }
+  };
 }
 
 function validateCommand(input: ClearingCommandDto) {
@@ -1092,9 +1288,19 @@ function validateAllocationInputs(value: unknown): void {
       !sourceKinds.has(String(allocation.sourceKind)) ||
       typeof allocation.amountCents !== "string" ||
       (allocation.sourceEventVersionId !== undefined &&
-        typeof allocation.sourceEventVersionId !== "string")
+        typeof allocation.sourceEventVersionId !== "string") ||
+      (allocation.sourceSelectionRef !== undefined &&
+        typeof allocation.sourceSelectionRef !== "string") ||
+      (allocation.sourceEventVersionId !== undefined && allocation.sourceSelectionRef !== undefined)
     ) {
       throw new BadRequestException("清算分配格式不正确");
+    }
+    if (
+      allocation.sourceKind !== "authority_cap" &&
+      allocation.sourceEventVersionId === undefined &&
+      allocation.sourceSelectionRef === undefined
+    ) {
+      throw new BadRequestException("清算分配必须引用服务端业务选项");
     }
   }
 }

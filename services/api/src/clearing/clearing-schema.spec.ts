@@ -10,6 +10,13 @@ describe("POL-11A clearing schema artifact", () => {
     ),
     "utf8"
   );
+  const authorityMigration = readFileSync(
+    join(
+      __dirname,
+      "../../prisma/migrations/20260901090000_pol214_affiliate_clearing_authority/migration.sql"
+    ),
+    "utf8"
+  );
 
   it("keeps stable case/event identities separate from immutable submitted versions", () => {
     expect(schema).toContain("model ClearingCase {");
@@ -60,5 +67,30 @@ describe("POL-11A clearing schema artifact", () => {
       expect(migration).toContain(`CREATE TRIGGER "${table}_immutable"`);
     }
     expect(migration).toContain("BEFORE UPDATE OR DELETE");
+  });
+
+  it("defines the minimum immutable authority source layer without reusing #105 wage models", () => {
+    expect(schema).toContain("model AffiliateClearingAuthorityVersion {");
+    expect(schema).toContain("model AssignedWageAuthorityLine {");
+    expect(schema).toContain("model GuaranteeObligationVersion {");
+    expect(schema).toContain("authoritySnapshotRef");
+    expect(schema).toContain("wageMonth                          DateTime @db.Date");
+    expect(schema).toContain("coverageKind                       String");
+    expect(authorityMigration).toContain('CREATE TABLE "AffiliateClearingAuthorityVersion"');
+    expect(authorityMigration).toContain('CREATE TABLE "AssignedWageAuthorityLine"');
+    expect(authorityMigration).toContain('CREATE TABLE "GuaranteeObligationVersion"');
+    expect(authorityMigration).toContain('CONSTRAINT "AssignedWageAuthorityLine_natural_key" UNIQUE');
+    expect(authorityMigration).toContain("POL-214 confirmed authority rows are immutable");
+    expect(authorityMigration).toContain("POL-214 guarantee obligation effective ranges overlap");
+    expect(authorityMigration).toContain("pg_advisory_xact_lock");
+  });
+
+  it("keeps authority lifecycle and child coverage fail-closed", () => {
+    expect(authorityMigration).toContain("'draft', 'submitted', 'confirmed', 'returned'");
+    expect(authorityMigration).toContain("'PERSON', 'ROLE_SUMMARY'");
+    expect(authorityMigration).toContain('"personAuthorityKey" IS NULL');
+    expect(authorityMigration).toContain("AssignedWageAuthorityLine_parent_consistency");
+    expect(authorityMigration).toContain("GuaranteeObligationVersion_nonoverlap");
+    expect(authorityMigration).toContain('"ClearingCase_authority_fields_check"');
   });
 });

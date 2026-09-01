@@ -62,6 +62,32 @@ export interface ClearingCaseReadModel {
   currencyCode: "CNY";
   updatedAt: string;
   events: ClearingEventReadModel[];
+  authoritySnapshotRef?: string | null;
+  sourceDiscriminator?: string | null;
+  coverageKind?: string | null;
+  periodStart?: string | null;
+}
+
+export interface AffiliateClearingAuthorityOption {
+  selectionRef: string;
+  optionKind: "contract" | "person" | "role" | "assigned_wage" | "guarantee";
+  label?: string;
+  affiliateName?: string;
+  constructionEnterpriseName?: string;
+  authoritySnapshotRef?: string;
+  coverageKind?: string;
+  period?: string;
+  grossCapCents?: string;
+  evidenceLevel?: "A" | "B";
+  authorityFingerprint?: string;
+}
+
+export interface ClearingAllocationOption {
+  selectionRef: string;
+  sourceKind: "withheld" | "final_confirmed" | "supplemental";
+  amountCents: string;
+  remainingCents: string;
+  evidenceLevel: "A" | "B";
 }
 
 export interface ClearingCommandResult {
@@ -111,6 +137,21 @@ async function patchJson<T>(path: string, body: unknown, fallback: string): Prom
 
 export function fetchClearingCapabilities() {
   return readJson<ClearingCapabilities>("/clearing-cases/capabilities", "加载清分权限失败");
+}
+
+export function fetchAffiliateClearingAuthorityOptions(projectId?: string) {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  return readJson<{ options: AffiliateClearingAuthorityOption[] }>(
+    `/affiliate-clearing-authorities/options${query}`,
+    "加载挂靠清算权威选项失败"
+  );
+}
+
+export function fetchClearingAllocationOptions(caseId: string) {
+  return readJson<{ options: ClearingAllocationOption[] }>(
+    `/affiliate-clearing-authorities/allocation-options/${encodeURIComponent(caseId)}`,
+    "加载清分分配选项失败"
+  );
 }
 
 export function fetchClearingCases(projectId?: string) {

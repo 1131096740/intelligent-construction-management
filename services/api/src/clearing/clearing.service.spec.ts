@@ -10,6 +10,7 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
   prisma?: Record<string, unknown>;
   tx?: TTx;
   ledgerResult?: { id: string; impactIds: string[] };
+  authorities?: { resolveCaseSelection: jest.Mock };
 }) {
   const tx = input?.tx ?? ({} as TTx);
   const prisma = {
@@ -33,7 +34,7 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
   };
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
   return {
-    service: new ClearingService(prisma as never, roleResolver as never, ledger as never, audit as never),
+    service: new ClearingService(prisma as never, roleResolver as never, ledger as never, audit as never, input?.authorities as never),
     prisma,
     roleResolver,
     ledger,
@@ -43,6 +44,144 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
 }
 
 describe("ClearingService", () => {
+  it("requires #214 controlled categories to use a server authority selectionRef", async () => {
+    const { service } = serviceWith();
+
+    await expect(service.createCase("finance-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 0,
+      category: "deposit"
+    })).rejects.toThrow("#214 清算必须使用服务端 authority selectionRef");
+  });
+
+  it("derives #214 case coordinates and cap from the authority service", async () => {
+    const txClient = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      },
+      projectAffiliateAssignment: { findFirst: jest.fn().mockResolvedValue({ id: "assignment-1" }) },
+      clearingCase: { create: jest.fn().mockImplementation(({ data }) => ({ ...data, revision: 1 })) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const authorities = {
+      resolveCaseSelection: jest.fn().mockResolvedValue({
+        projectId: "project-authoritative",
+        constructionEnterpriseAssignmentId: "assignment-authoritative",
+        category: "deposit",
+        governedSubjectKey: "construction_enterprise_guarantee/project-authoritative/assignment-authoritative/obl-1",
+        authoritativeGrossCapCents: 50000n,
+        currencyCode: "CNY",
+        authorityVersionId: "authority-1",
+        authoritySnapshotRef: "acv_public-snapshot",
+        sourceDiscriminator: "construction_enterprise_guarantee",
+        coverageKind: "ROLE_SUMMARY",
+        periodStart: null
+      })
+    };
+    const { service, tx } = serviceWith({ tx: txClient, authorities });
+
+    await service.createCase("finance-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 0,
+      category: "deposit",
+      authoritySelectionRef: "fac1.short-lived"
+    });
+
+    expect(authorities.resolveCaseSelection).toHaveBeenCalledWith("finance-1", expect.objectContaining({ selectionRef: "fac1.short-lived" }), "deposit", undefined);
+    expect(authorities.resolveCaseSelection).toHaveBeenLastCalledWith(
+      "finance-1",
+      expect.objectContaining({ selectionRef: "fac1.short-lived" }),
+      "deposit",
+      tx
+    );
+    expect(tx.clearingCase.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-authoritative",
+        constructionEnterpriseAssignmentId: "assignment-authoritative",
+        governedSubjectKey: "construction_enterprise_guarantee/project-authoritative/assignment-authoritative/obl-1",
+        authoritativeGrossCapCents: 50000n,
+        authorityVersionId: "authority-1",
+        sourceDiscriminator: "construction_enterprise_guarantee"
+      })
+    });
+  });
+
+  it("derives #214 event amount, evidence level and snapshot on the server", async () => {
+    const txClient = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "case-1" }]),
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          projectId: "project-1",
+          constructionEnterpriseAssignmentId: "assignment-1",
+          revision: 1,
+          authoritativeGrossCapCents: 12345n,
+          sourceDiscriminator: "construction_enterprise_assigned_wage",
+          authoritySnapshotRef: "acv-snapshot",
+          coverageKind: "PERSON"
+        }),
+        update: jest.fn().mockResolvedValue({ revision: 2 })
+      },
+      clearingEvent: { create: jest.fn().mockImplementation(({ data }) => data) },
+      clearingEventVersion: { create: jest.fn().mockImplementation(({ data }) => data) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const { service, tx } = serviceWith({ tx: txClient });
+
+    await service.createEvent("finance-1", "case-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 1,
+      kind: "withheld",
+      businessReason: "按已确认权威工资来源生成暂扣"
+    });
+
+    expect(tx.clearingEventVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amountCents: 12345n,
+        evidenceLevel: "A",
+        payableRef: null,
+        payloadSnapshot: {
+          sourceDiscriminator: "construction_enterprise_assigned_wage",
+          authoritySnapshotRef: "acv-snapshot",
+          businessReason: "按已确认权威工资来源生成暂扣"
+        }
+      })
+    });
+  });
+
+  it("rejects client JSON and payable references for #214 events before writing", async () => {
+    const tx = {
+      clearingCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "case-1" }]),
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          revision: 1,
+          authoritativeGrossCapCents: 12345n,
+          sourceDiscriminator: "construction_enterprise_guarantee",
+          authoritySnapshotRef: "acv-snapshot",
+          coverageKind: "ROLE_SUMMARY"
+        })
+      }
+    };
+    const { service } = serviceWith({ tx });
+
+    await expect(service.createEvent("finance-1", "case-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 1,
+      kind: "withheld",
+      amountCents: "100",
+      payableRef: "payable-must-not-be-accepted",
+      payload: { authoritativeGrossCapCents: 100 },
+      businessReason: "测试"
+    })).rejects.toThrow("#214 不接受客户端应付或付款引用");
+  });
+
   it("requires revision zero when creating a new case", async () => {
     const { service } = serviceWith();
 

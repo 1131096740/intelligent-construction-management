@@ -22,6 +22,7 @@
     "verify:spot-procurement-concurrency:local": "node prisma/run-spot-procurement-concurrency-local.cjs",
     "preverify:payment-approval-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:payment-approval-concurrency:local": "node prisma/run-payment-approval-concurrency-local.cjs",
+    "verify:pol214-authority-concurrency:local": "node prisma/run-pol214-authority-concurrency-local.cjs",
     "preverify:contract-template-scenario-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:contract-template-scenario-concurrency:local": "node prisma/run-contract-template-scenario-concurrency-local.cjs",
     "preverify:draft-lifecycle:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",

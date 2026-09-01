@@ -7,19 +7,23 @@ export interface ClearingCommandDto {
 }
 
 export interface CreateClearingCaseDto extends ClearingCommandDto {
-  projectId: string;
-  constructionEnterpriseAssignmentId: string;
+  projectId?: string;
+  constructionEnterpriseAssignmentId?: string;
   category: ClearingCategory;
-  governedSubjectKey: string;
-  authoritativeGrossCapCents: string;
+  governedSubjectKey?: string;
+  authoritativeGrossCapCents?: string;
+  authoritySelectionRef?: string;
+  guaranteeTrancheAmountCents?: string;
 }
 
 export interface CreateClearingEventDto extends ClearingCommandDto {
   kind: ClearingEventKind;
-  amountCents: string;
-  evidenceLevel: "A" | "B";
+  amountCents?: string;
+  evidenceLevel?: "A" | "B";
   payableRef?: string;
-  payload: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  businessReason?: string;
+  evidenceRef?: string;
 }
 
 export interface SubmitClearingEventDto extends ClearingCommandDto {}
@@ -28,6 +32,7 @@ export interface AttestClearingEventDto extends ClearingCommandDto {}
 
 export interface ClearingAllocationDto {
   sourceEventVersionId?: string;
+  sourceSelectionRef?: string;
   sourceKind: "authority_cap" | "withheld" | "final_confirmed" | "supplemental";
   amountCents: string;
 }
