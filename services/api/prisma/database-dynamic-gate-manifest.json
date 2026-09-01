@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 157,
     "terminalMigration": "20260901090000_pol214_affiliate_clearing_authority",
-    "terminalMigrationChecksum": "57f170a8a3044a626689cd14c44cf8555153ca17e3b40dfda679db3de8000fde",
+    "terminalMigrationChecksum": "df7ff728511f6101ba21c4e56b2636c535eeb651ff24c8d326fcc74025b41692",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
