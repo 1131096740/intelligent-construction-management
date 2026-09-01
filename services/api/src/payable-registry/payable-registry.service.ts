@@ -19,6 +19,10 @@ import {
 } from "./inter-entity-relationship.domain";
 import { derivePayableSettlementBalance } from "./payable-registry.domain";
 import {
+  loadPayableSettlementAllocationTotals,
+  payableSettlementAllocationTotalsFor
+} from "./payable-settlement-balance-authority";
+import {
   type PaymentExecutionSelectionBinding,
   PaymentExecutionSelectionRefService
 } from "./payment-execution-selection-ref.service";
@@ -157,6 +161,10 @@ export class PayableRegistryService {
         adjustments: { select: { direction: true, amountCents: true } }
       }
     });
+    const allocationTotals = await loadPayableSettlementAllocationTotals(
+      this.prisma,
+      rows.map(({ id }) => id)
+    );
     const cases = [];
     for (const row of rows) {
       const registered = payableSourceAdapterRegistry.require("wage_payable_ref").toRegisteredPayable(row);
@@ -164,25 +172,17 @@ export class PayableRegistryService {
         row.amountCents,
         row.adjustments
       );
-      const [confirmed, active] = await Promise.all([
-        this.prisma.payableSettlementAllocation.aggregate({
-          where: { payableRef: row.id, settlementCase: { status: "confirmed" } },
-          _sum: { amountCents: true }
-        }),
-        this.prisma.payableSettlementAllocation.aggregate({
-          where: {
-            payableRef: row.id,
-            settlementCase: { status: { in: ["draft", "submitted", "confirmed"] } }
-          },
-          _sum: { amountCents: true }
-        })
-      ]);
+      const totals = payableSettlementAllocationTotalsFor(
+        allocationTotals,
+        row.id
+      );
       const confirmedBalance = derivePayableSettlementBalance({
         effectiveAmountCents,
-        validSettledAmountCents: confirmed._sum.amountCents ?? 0n
+        validSettledAmountCents: totals.confirmedAmountCents
       });
       const overSettled = confirmedBalance.overSettledAmountCents > 0n;
-      const allocatableAmountCents = effectiveAmountCents - (active._sum.amountCents ?? 0n);
+      const allocatableAmountCents =
+        effectiveAmountCents - totals.activeAmountCents;
       if (!overSettled && allocatableAmountCents <= 0n) continue;
       const [company, project] = await Promise.all([
         this.prisma.companyEntity.findUnique({
@@ -463,27 +463,19 @@ export class PayableRegistryService {
       payable.amountCents,
       payable.adjustments
     );
-    const [confirmed, active] = await Promise.all([
-      db.payableSettlementAllocation.aggregate({
-        where: { payableRef, settlementCase: { status: "confirmed" } },
-        _sum: { amountCents: true }
-      }),
-      db.payableSettlementAllocation.aggregate({
-        where: {
-          payableRef,
-          settlementCase: { status: { in: ["draft", "submitted", "confirmed"] } }
-        },
-        _sum: { amountCents: true }
-      })
-    ]);
+    const allocationTotals = payableSettlementAllocationTotalsFor(
+      await loadPayableSettlementAllocationTotals(db, [payableRef]),
+      payableRef
+    );
     const confirmedBalance = derivePayableSettlementBalance({
       effectiveAmountCents,
-      validSettledAmountCents: confirmed._sum.amountCents ?? 0n
+      validSettledAmountCents: allocationTotals.confirmedAmountCents
     });
     if (confirmedBalance.overSettledAmountCents > 0n) {
       throw new ConflictException("该工资应付已超额核销，必须先完成核对");
     }
-    const allocatablePayableCents = effectiveAmountCents - (active._sum.amountCents ?? 0n);
+    const allocatablePayableCents =
+      effectiveAmountCents - allocationTotals.activeAmountCents;
     if (allocatablePayableCents < 0n) {
       throw new ConflictException("该工资应付存在超额待确认核销，必须先完成核对");
     }
@@ -2143,6 +2135,11 @@ export class PayableRegistryService {
     }>[]
   ) {
     const payableRefs = Array.from(new Set(allocations.map(({ payableRef }) => payableRef))).sort();
+    const allocationTotals = await loadPayableSettlementAllocationTotals(
+      tx,
+      payableRefs,
+      { excludeSettlementCaseId: settlementCaseId }
+    );
     for (const payableRef of payableRefs) {
       const payable = await tx.wagePayableRef.findUnique({
         where: { id: payableRef },
@@ -2179,14 +2176,10 @@ export class PayableRegistryService {
       ) {
         throw new ConflictException("工资应付身份或版本已变化，请刷新后重试");
       }
-      const confirmed = await tx.payableSettlementAllocation.aggregate({
-        where: {
-          payableRef,
-          settlementCaseId: { not: settlementCaseId },
-          settlementCase: { status: "confirmed" }
-        },
-        _sum: { amountCents: true }
-      });
+      const totals = payableSettlementAllocationTotalsFor(
+        allocationTotals,
+        payableRef
+      );
       const effectiveAmountCents = deriveEffectiveWagePayableAmount(
         payable.amountCents,
         payable.adjustments
@@ -2197,7 +2190,8 @@ export class PayableRegistryService {
       );
       const balance = derivePayableSettlementBalance({
         effectiveAmountCents,
-        validSettledAmountCents: (confirmed._sum.amountCents ?? 0n) + currentCaseAmountCents
+        validSettledAmountCents:
+          totals.confirmedAmountCents + currentCaseAmountCents
       });
       if (balance.overSettledAmountCents > 0n) {
         throw new ConflictException("工资应付余额已变化，请刷新后重试");

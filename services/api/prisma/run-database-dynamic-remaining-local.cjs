@@ -139,6 +139,7 @@ const GROUPS = [
     id: "generic_database_constraints",
     database: "jiangkong_database_dynamic_misc",
     files: [
+      "src/contract/contract-approval-route.service.spec.ts",
       "src/database/settlement-contract-cap-concurrency.spec.ts",
       "src/database/contract-change-limit-transaction.spec.ts",
       "src/database/project-affiliate-business-fact-db.spec.ts",
@@ -157,6 +158,7 @@ const GROUPS = [
     ],
     flags: {
       DATABASE_URL: "databaseUrl",
+      RUN_CONTRACT_ROUTE_CONCURRENCY: "1",
       RUN_SETTLEMENT_CONTRACT_CAP_CONCURRENCY: "1",
       RUN_CONTRACT_CHANGE_LIMIT_DATABASE: "1",
       RUN_PROJECT_AFFILIATE_BUSINESS_DB_TESTS: "1",
@@ -173,7 +175,7 @@ const GROUPS = [
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 41,
+    pendingTests: 42,
     requiresOperatingLedgerWriteSecret: true
   },
   {

@@ -127,6 +127,13 @@ const payerAuthorityBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const fundExecutionBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260831120000_pol13d_fund_execution_v7/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -151,7 +158,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}`.matchAll(
+    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -170,7 +177,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(88);
+    expect(registered).toHaveLength(90);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -190,6 +197,12 @@ describe("unified file business binding migration", () => {
     );
     expect(upstreamFundBindingMigration).toContain(
       "('ProjectUpstreamSettlement','confirmationSignatureFileId',FALSE)"
+    );
+    expect(fundExecutionBindingMigration).toContain(
+      "('VerifiedBankTransactionObservation', 'verificationEvidenceFileId', FALSE)"
+    );
+    expect(fundExecutionBindingMigration).toContain(
+      "('VerifiedBankTransactionObservation', 'transactionEvidenceFileId', FALSE)"
     );
   });
 

@@ -496,7 +496,10 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         ...allocationData(fixture, "payable-a", 100n),
         beneficiaryProjectId: randomUUID()
       }
-    })).rejects.toThrow("payable_settlement_execution_scope_invalid");
+    })).rejects.toThrow("payable_settlement_source_snapshot_invalid");
+    await expect(observer.payableSettlementAllocation.count({
+      where: { paymentExecutionId: fixture.paymentExecutionId }
+    })).resolves.toBe(0);
 
     await expect(observer.payableSettlementAllocation.create({
       data: {

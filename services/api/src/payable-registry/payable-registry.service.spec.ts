@@ -43,6 +43,18 @@ describe("PayableRegistryService", () => {
       }
     };
     const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          payableRef: "payable-1",
+          confirmedAmountCents: 2_000n,
+          activeAmountCents: 2_000n
+        },
+        {
+          payableRef: "payable-person",
+          confirmedAmountCents: 2_000n,
+          activeAmountCents: 2_000n
+        }
+      ]),
       wagePayableRef: { findMany: jest.fn().mockResolvedValue([businessPayable, employeePayable]) },
       payableSettlementAllocation: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 2_000n } })
@@ -116,6 +128,13 @@ describe("PayableRegistryService", () => {
       .mockResolvedValueOnce({ _sum: { amountCents: 9_000n } })
       .mockResolvedValueOnce({ _sum: { amountCents: 9_000n } });
     const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          payableRef: "payable-over-settled",
+          confirmedAmountCents: 9_000n,
+          activeAmountCents: 9_000n
+        }
+      ]),
       wagePayableRef: { findMany: jest.fn().mockResolvedValue([payable]) },
       payableSettlementAllocation: { aggregate },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({ name: "甲公司" }) },
@@ -176,6 +195,13 @@ describe("PayableRegistryService", () => {
       }
     ];
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          payableRef: "payable-1",
+          confirmedAmountCents: 2_000n,
+          activeAmountCents: 2_000n
+        }
+      ]),
       wagePayableRef: { findUnique: jest.fn().mockResolvedValue(payable) },
       paymentExecution: { findMany: jest.fn().mockResolvedValue(executions) },
       paymentRequest: {

@@ -3202,6 +3202,9 @@ describe("core flow read API client", () => {
         idempotencyKey
       })
     );
+    expect(String(fetchMock.mock.calls[2]?.[1]?.body)).not.toMatch(
+      /observationSelectionRef|observationId|payerVerificationId|payableRef|bankAccountReference/u
+    );
   });
 
   it("coalesces rapid payment execution confirms before preflight into one GET, upload and POST", async () => {

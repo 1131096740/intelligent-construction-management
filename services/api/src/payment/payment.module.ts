@@ -3,6 +3,7 @@ import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
+import { FundExecutionModule } from "../fund-execution/fund-execution.module";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
 import { ContractTakeoverModule } from "../contract-takeover/contract-takeover.module";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
@@ -18,6 +19,7 @@ import { PaymentRequestService } from "./payment-request.service";
     AuthModule,
     ContractTakeoverModule,
     FileModule,
+    FundExecutionModule,
     OperatingLedgerModule,
     ProjectFundingModule
   ],

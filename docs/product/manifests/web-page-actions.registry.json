@@ -4741,6 +4741,96 @@
       "semantic": "business_write",
       "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "clearing.confirm" },
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/global-invoice.api.ts", "name": "reverseGlobalInvoiceAllocation" }]
+    },
+    {
+      "id": "fund-execution.case.create",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createFundExecutionCaseWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.createCase" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "createFundExecutionCase" }]
+    },
+    {
+      "id": "fund-execution.reversal.create",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createFundExecutionReversalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.createReversal" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "createFundExecutionReversal" }]
+    },
+    {
+      "id": "fund-execution.case.update",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateFundExecutionCaseWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "update_case" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "updateFundExecutionCase" }]
+    },
+    {
+      "id": "fund-execution.reversal.update-reason",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateFundExecutionReversalReasonWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "update_case" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "updateFundExecutionReversalReason" }]
+    },
+    {
+      "id": "fund-execution.case.submit",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitFundExecutionCaseWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "submit_case" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "submitFundExecutionCase" }]
+    },
+    {
+      "id": "fund-execution.case.return",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnFundExecutionCaseWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "return_case" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "returnFundExecutionCase" }]
+    },
+    {
+      "id": "fund-execution.case.confirm",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmFundExecutionCaseWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "confirm_case" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "confirmFundExecutionCase" }]
+    },
+    {
+      "id": "fund-execution.case.review-approve",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "approveFundExecutionCaseWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "approve" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "reviewFundExecutionCase", "variant": "approve" }]
+    },
+    {
+      "id": "fund-execution.case.review-return",
+      "usage": "background",
+      "routePaths": ["/资金执行案件"],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnFundExecutionApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "return_approval" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "reviewFundExecutionCase", "variant": "return_to_applicant" }]
     }
   ]
 }

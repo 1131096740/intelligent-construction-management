@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 277,
+    "registeredActionCount": 286,
     "pageActionCount": 53,
-    "backgroundActionCount": 224,
-    "reachableVueFileCount": 135,
-    "routeRootCount": 56,
-    "totalVueFileCount": 159,
-    "parsedVueFileCount": 159,
-    "reachableProductionModuleCount": 245,
-    "templateEventDirectiveCount": 912,
+    "backgroundActionCount": 233,
+    "reachableVueFileCount": 136,
+    "routeRootCount": 57,
+    "totalVueFileCount": 160,
+    "parsedVueFileCount": 160,
+    "reachableProductionModuleCount": 248,
+    "templateEventDirectiveCount": 927,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 272,
-    "candidateProductionMutationConsumerCount": 272,
-    "acceptedProductionMutationConsumerCount": 272,
-    "productionMutationConsumerPairCount": 272,
+    "coveredProductionMutationConsumerCount": 280,
+    "candidateProductionMutationConsumerCount": 280,
+    "acceptedProductionMutationConsumerCount": 280,
+    "productionMutationConsumerPairCount": 280,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 278,
-    "reachableProductionModuleCount": 245,
-    "totalVueFileCount": 159,
-    "parsedVueFileCount": 159
+    "totalProductionModuleCount": 281,
+    "reachableProductionModuleCount": 248,
+    "totalVueFileCount": 160,
+    "parsedVueFileCount": 160
   },
   "actions": [
     {
@@ -8381,6 +8381,608 @@
             "localCallChain": [
               "submitExpenseClaimWithCapability",
               "submitExpenseClaim"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmFundExecutionCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 445,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "confirm_case",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "confirmFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/confirm",
+          "normalizedKey": "POST /fund-executions/cases/:param/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/cases/:caseId/confirm",
+            "normalizedKey": "POST /fund-executions/cases/:param/confirm",
+            "controller": "FundExecutionController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmFundExecutionCaseWithCapability",
+              "confirmFundExecutionCase"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.create",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createFundExecutionCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 379,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.createCase",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "createFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases",
+          "normalizedKey": "POST /fund-executions/cases",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/cases",
+            "normalizedKey": "POST /fund-executions/cases",
+            "controller": "FundExecutionController",
+            "handler": "create",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createFundExecutionCaseWithCapability",
+              "createFundExecutionCase"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.return",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnFundExecutionCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 433,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "return_case",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "returnFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/return",
+          "normalizedKey": "POST /fund-executions/cases/:param/return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/cases/:caseId/return",
+            "normalizedKey": "POST /fund-executions/cases/:param/return",
+            "controller": "FundExecutionController",
+            "handler": "returnCase",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnFundExecutionCaseWithCapability",
+              "returnFundExecutionCase"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.review-approve",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveFundExecutionCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 457,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "approve",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "reviewFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/approval-actions",
+          "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/cases/:caseId/approval-actions",
+            "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+            "controller": "FundExecutionController",
+            "handler": "review",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "approveFundExecutionCaseWithCapability",
+              "reviewFundExecutionCase"
+            ],
+            "variant": "approve"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.review-return",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnFundExecutionApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 469,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "return_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "reviewFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/approval-actions",
+          "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/cases/:caseId/approval-actions",
+            "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+            "controller": "FundExecutionController",
+            "handler": "review",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnFundExecutionApprovalWithCapability",
+              "reviewFundExecutionCase"
+            ],
+            "variant": "return_to_applicant"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.submit",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitFundExecutionCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 421,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "submit_case",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "submitFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/submit",
+          "normalizedKey": "POST /fund-executions/cases/:param/submit",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/cases/:caseId/submit",
+            "normalizedKey": "POST /fund-executions/cases/:param/submit",
+            "controller": "FundExecutionController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitFundExecutionCaseWithCapability",
+              "submitFundExecutionCase"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.case.update",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateFundExecutionCaseWithCapability",
+        "kind": "background_call",
+        "sourceLine": 397,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "update_case",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "updateFundExecutionCase",
+          "method": "PATCH",
+          "path": "/fund-executions/cases/:param",
+          "normalizedKey": "PATCH /fund-executions/cases/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/fund-executions/cases/:caseId",
+            "normalizedKey": "PATCH /fund-executions/cases/:param",
+            "controller": "FundExecutionController",
+            "handler": "update",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateFundExecutionCaseWithCapability",
+              "updateFundExecutionCase"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.reversal.create",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createFundExecutionReversalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 388,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.createReversal",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "createFundExecutionReversal",
+          "method": "POST",
+          "path": "/fund-executions/reversals",
+          "normalizedKey": "POST /fund-executions/reversals",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-executions/reversals",
+            "normalizedKey": "POST /fund-executions/reversals",
+            "controller": "FundExecutionController",
+            "handler": "reverse",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createFundExecutionReversalWithCapability",
+              "createFundExecutionReversal"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-execution.reversal.update-reason",
+      "usage": "background",
+      "routePaths": [
+        "/资金执行案件"
+      ],
+      "ownerRoutePaths": [
+        "/资金执行案件"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateFundExecutionReversalReasonWithCapability",
+        "kind": "background_call",
+        "sourceLine": 409,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "freshCase.actions",
+        "key": "update_case",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "updateFundExecutionReversalReason",
+          "method": "PATCH",
+          "path": "/fund-executions/cases/:param/reversal",
+          "normalizedKey": "PATCH /fund-executions/cases/:param/reversal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/fund-executions/cases/:caseId/reversal",
+            "normalizedKey": "PATCH /fund-executions/cases/:param/reversal",
+            "controller": "FundExecutionController",
+            "handler": "updateReversal",
+            "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateFundExecutionReversalReasonWithCapability",
+              "updateFundExecutionReversalReason"
             ]
           },
           "ticketFollowups": []

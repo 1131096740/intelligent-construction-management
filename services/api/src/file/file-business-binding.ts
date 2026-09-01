@@ -25,6 +25,10 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "PaymentExecutionPayerVerification",
     columns: ["verificationEvidenceFileId"]
   },
+  {
+    table: "VerifiedBankTransactionObservation",
+    columns: ["verificationEvidenceFileId", "transactionEvidenceFileId"]
+  },
   { table: "InterEntityRelationshipEvidenceClaim", columns: ["fileId"] },
   { table: "HandwrittenSignatureVersion", columns: ["fileId"] },
   { table: "ContractVersion", columns: ["taxFactEvidenceFileId"] },

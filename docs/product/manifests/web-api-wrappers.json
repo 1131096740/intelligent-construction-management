@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 24,
-    "exportedFunctionCount": 532,
-    "transportWrapperCount": 512,
+    "apiModuleCount": 25,
+    "exportedFunctionCount": 546,
+    "transportWrapperCount": 526,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 534,
+    "mainRequestBindingCount": 548,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 534,
-    "productionConsumerCount": 406,
+    "requestEdgeCount": 548,
+    "productionConsumerCount": 420,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 278,
-    "reachableProductionModuleCount": 245
+    "productionModuleCount": 281,
+    "reachableProductionModuleCount": 248
   },
   "wrappers": [
     {
@@ -10931,6 +10931,435 @@
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmFundExecutionCase",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/confirm",
+          "normalizedPath": "/fund-executions/cases/:param/confirm",
+          "normalizedKey": "POST /fund-executions/cases/:param/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmFundExecutionCase",
+              "lifecycle",
+              "post",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createFundExecutionCase",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "POST",
+          "path": "/fund-executions/cases",
+          "normalizedPath": "/fund-executions/cases",
+          "normalizedKey": "POST /fund-executions/cases",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createFundExecutionCase",
+              "post",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createFundExecutionReversal",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "POST",
+          "path": "/fund-executions/reversals",
+          "normalizedPath": "/fund-executions/reversals",
+          "normalizedKey": "POST /fund-executions/reversals",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createFundExecutionReversal",
+              "post",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundExecutionCapabilities",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/fund-executions/capabilities",
+          "normalizedPath": "/fund-executions/capabilities",
+          "normalizedKey": "GET /fund-executions/capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundExecutionCapabilities",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundExecutionCaseActions",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/fund-executions/cases/:param",
+          "normalizedPath": "/fund-executions/cases/:param",
+          "normalizedKey": "GET /fund-executions/cases/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundExecutionCaseActions",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundExecutionCaseOptions",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/fund-executions/cases/:param/classification-options",
+          "normalizedPath": "/fund-executions/cases/:param/classification-options",
+          "normalizedKey": "GET /fund-executions/cases/:param/classification-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundExecutionCaseOptions",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundExecutionCases",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/fund-executions/cases",
+          "normalizedPath": "/fund-executions/cases",
+          "normalizedKey": "GET /fund-executions/cases",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundExecutionCases",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundExecutionObservationOptions",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/fund-executions/observation-options?:param",
+          "normalizedPath": "/fund-executions/observation-options",
+          "normalizedKey": "GET /fund-executions/observation-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundExecutionObservationOptions",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundExecutionReversalOptions",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/fund-executions/reversal-options",
+          "normalizedPath": "/fund-executions/reversal-options",
+          "normalizedKey": "GET /fund-executions/reversal-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundExecutionReversalOptions",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "returnFundExecutionCase",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/return",
+          "normalizedPath": "/fund-executions/cases/:param/return",
+          "normalizedKey": "POST /fund-executions/cases/:param/return",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnFundExecutionCase",
+              "lifecycle",
+              "post",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reviewFundExecutionCase",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/approval-actions",
+          "normalizedPath": "/fund-executions/cases/:param/approval-actions",
+          "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewFundExecutionCase",
+              "post",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "submitFundExecutionCase",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/submit",
+          "normalizedPath": "/fund-executions/cases/:param/submit",
+          "normalizedKey": "POST /fund-executions/cases/:param/submit",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitFundExecutionCase",
+              "lifecycle",
+              "post",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateFundExecutionCase",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "PATCH",
+          "path": "/fund-executions/cases/:param",
+          "normalizedPath": "/fund-executions/cases/:param",
+          "normalizedKey": "PATCH /fund-executions/cases/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateFundExecutionCase",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateFundExecutionReversalReason",
+      "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 271,
+          "method": "PATCH",
+          "path": "/fund-executions/cases/:param/reversal",
+          "normalizedPath": "/fund-executions/cases/:param/reversal",
+          "normalizedKey": "PATCH /fund-executions/cases/:param/reversal",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateFundExecutionReversalReason",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/fund-execution.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {

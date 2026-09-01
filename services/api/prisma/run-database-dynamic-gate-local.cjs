@@ -5,6 +5,7 @@ const { spawn } = require("node:child_process");
 const {
   existsSync,
   readFileSync,
+  readdirSync,
   statSync
 } = require("node:fs");
 const { mkdtemp, rm } = require("node:fs/promises");
@@ -22,6 +23,7 @@ const manifestPath = path.join(
   "database-dynamic-gate-manifest.json"
 );
 const migrationRoot = path.join(__dirname, "migrations");
+const apiSourceRoot = path.join(root, "services", "api", "src");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
@@ -55,6 +57,42 @@ function loadJson(filePath) {
 
 function loadManifest(filePath = manifestPath) {
   return loadJson(filePath);
+}
+
+function discoverRunGatedPgSpecPaths(directory = apiSourceRoot) {
+  const discovered = [];
+  const visit = (currentDirectory) => {
+    for (const entry of readdirSync(currentDirectory, { withFileTypes: true })) {
+      const absolutePath = path.join(currentDirectory, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolutePath);
+        continue;
+      }
+      if (!entry.isFile() || !/\.spec\.ts$/u.test(entry.name)) continue;
+      const source = readFileSync(absolutePath, "utf8");
+      if (
+        !/process\.env(?:\.RUN_[A-Z0-9_]+|\[\s*["']RUN_[A-Z0-9_]+["']\s*\])/u.test(
+          source
+        )
+      ) {
+        continue;
+      }
+      discovered.push(
+        path.relative(root, absolutePath).split(path.sep).join("/")
+      );
+    }
+  };
+  visit(directory);
+  return discovered.sort();
+}
+
+function assertRunGatedPgSpecsRegistered(registeredPaths) {
+  const unregistered = discoverRunGatedPgSpecPaths().filter(
+    (filePath) => !registeredPaths.has(filePath)
+  );
+  if (unregistered.length > 0) {
+    fail(`RUN_* gated PG spec 未登记：${unregistered.join(", ")}`);
+  }
 }
 
 function validateRunner(runner, groupId, rootPackage, apiPackage) {
@@ -205,6 +243,8 @@ function validateManifest(manifest) {
     if (file.suiteStatus === "fully_pending") fullyPendingSuites += 1;
     else partiallyPendingSuites += 1;
   }
+
+  assertRunGatedPgSpecsRegistered(seenPaths);
 
   const derived = {
     pendingFiles: seenPaths.size,
@@ -643,9 +683,11 @@ module.exports = {
   assertExecutionArguments,
   assertLocalDockerEndpoint,
   assertRepositoryState,
+  assertRunGatedPgSpecsRegistered,
   assertSafeExecutionEnvironment,
   createChildEnvironment,
   createProbeEnvironment,
+  discoverRunGatedPgSpecPaths,
   executeGate,
   inheritedDatabaseTargetNames,
   isLocalDockerSocketEndpoint,

@@ -183,6 +183,10 @@ describe("payment execution page ownership", () => {
       expect(
         executionRuntime.createAttemptState
       ).toHaveBeenCalledTimes(1);
+      expect(input).not.toHaveProperty("observationSelectionRef");
+      expect(JSON.stringify(input)).not.toMatch(
+        /payableRef|bankAccountReference/u
+      );
     } finally {
       scope.stop();
     }

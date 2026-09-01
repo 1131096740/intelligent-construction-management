@@ -20,24 +20,52 @@ const {
   GROUPS: remainingGroups,
   selectGroups: selectRemainingGroups
 } = require("./run-database-dynamic-remaining-local.cjs");
+const {
+  probePostgresReady
+} = require("./verify-fund-execution-v7.cjs");
 
 const runnerPath = path.join(
   __dirname,
   "run-database-dynamic-gate-local.cjs"
 );
 
-test("manifest derives all 123 pending tests as executable local coverage", () => {
+test("fund execution verifier waits for the final postgres PID 1", () => {
+  const bootstrapCalls = [];
+  const bootstrapSpawn = (_command, args) => {
+    bootstrapCalls.push(args);
+    return {
+      status: 0,
+      stdout: "docker-entrypoint.sh\n"
+    };
+  };
+  assert.equal(probePostgresReady("fund-v7", bootstrapSpawn), false);
+  assert.equal(bootstrapCalls.length, 1);
+  assert.deepEqual(bootstrapCalls[0].slice(-2), ["cat", "/proc/1/comm"]);
+
+  const finalCalls = [];
+  const finalSpawn = (_command, args) => {
+    finalCalls.push(args);
+    return args.includes("pg_isready")
+      ? { status: 0, stdout: "accepting connections\n" }
+      : { status: 0, stdout: "postgres\n" };
+  };
+  assert.equal(probePostgresReady("fund-v7", finalSpawn), true);
+  assert.equal(finalCalls.length, 2);
+  assert.equal(finalCalls[1].includes("pg_isready"), true);
+});
+
+test("manifest derives all 150 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 42,
-    fullyPendingSuites: 32,
-    partiallyPendingSuites: 10,
-    pendingTests: 123,
-    coveredFiles: 42,
-    coveredTests: 123,
+    pendingFiles: 44,
+    fullyPendingSuites: 33,
+    partiallyPendingSuites: 11,
+    pendingTests: 150,
+    coveredFiles: 44,
+    coveredTests: 150,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -46,13 +74,61 @@ test("manifest derives all 123 pending tests as executable local coverage", () =
   });
 });
 
+test("canonical manifest executes all 26 fund execution v7 PG tests", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "fund_execution_v7"
+  );
+
+  assert.deepEqual(group, {
+    id: "fund_execution_v7",
+    pendingTests: 26,
+    testFiles: [
+      {
+        path: "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
+        pendingTests: 26,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "node",
+      path: "services/api/prisma/verify-fund-execution-v7.cjs"
+    },
+    state: "executable_local_runner"
+  });
+});
+
 test("manifest validation fails closed when inventory totals drift", () => {
   const manifest = structuredClone(loadManifest());
-  manifest.inventory.coveredTests = 25;
+  manifest.inventory.coveredTests = 26;
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=25，派生值=123/u
+    /inventory\.coveredTests=26，派生值=150/u
+  );
+});
+
+test("manifest validation fails closed when any RUN_* gated PG spec is unregistered", () => {
+  const manifest = structuredClone(loadManifest());
+  const groupIndex = manifest.coveredGroups.findIndex(
+    (group) => group.id === "fund_execution_v7"
+  );
+  assert.notEqual(groupIndex, -1);
+  const [removed] = manifest.coveredGroups.splice(groupIndex, 1);
+  manifest.inventory.pendingFiles -= removed.testFiles.length;
+  manifest.inventory.fullyPendingSuites -= removed.testFiles.filter(
+    (file) => file.suiteStatus === "fully_pending"
+  ).length;
+  manifest.inventory.partiallyPendingSuites -= removed.testFiles.filter(
+    (file) => file.suiteStatus === "partial_pending"
+  ).length;
+  manifest.inventory.pendingTests -= removed.pendingTests;
+  manifest.inventory.coveredFiles -= removed.testFiles.length;
+  manifest.inventory.coveredTests -= removed.pendingTests;
+
+  assert.throws(
+    () => validateManifest(manifest),
+    /RUN_\* gated PG spec 未登记：services\/api\/src\/fund-execution\/fund-execution-service\.pg\.spec\.ts/u
   );
 });
 

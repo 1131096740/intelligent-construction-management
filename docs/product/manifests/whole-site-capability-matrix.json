@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "64c620d19827dbc63ffd17b7708950783c87d99d8ddc0e85182d0f65e81c0787",
+      "sha256": "6b1cb3589ebae444fe5f977c37c46a6f8af6b789e4ce3e5f020eacb2f39a6672",
       "status": "ready",
       "summary": {
-        "routeCount": 533
+        "routeCount": 547
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "fe3283d1980dc66fc136e382af89f40b53dd83e39c10c93edd5c2fa9dc9fa881",
+      "sha256": "28745d320ff19186623239cd50cb3a2c9bd7fb4a8b3bed53dda1a1145f9f6ac4",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 24,
-        "exportedFunctionCount": 532,
-        "transportWrapperCount": 512,
+        "apiModuleCount": 25,
+        "exportedFunctionCount": 546,
+        "transportWrapperCount": 526,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 534,
+        "mainRequestBindingCount": 548,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 534,
-        "productionConsumerCount": 406,
+        "requestEdgeCount": 548,
+        "productionConsumerCount": 420,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "ebbb6e37ab6474f2520524191bff6f4773a46908af5a8cdb953c6d1e2808e6d2",
+      "sha256": "ed950b630479d81ffa7aa7e76c79874728ff52c750b39d93fc915e90257f8560",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 277,
+        "registeredActionCount": 286,
         "pageActionCount": 53,
-        "backgroundActionCount": 224,
-        "reachableVueFileCount": 135,
-        "routeRootCount": 56,
-        "totalVueFileCount": 159,
-        "parsedVueFileCount": 159,
-        "reachableProductionModuleCount": 245,
-        "templateEventDirectiveCount": 912,
+        "backgroundActionCount": 233,
+        "reachableVueFileCount": 136,
+        "routeRootCount": 57,
+        "totalVueFileCount": 160,
+        "parsedVueFileCount": 160,
+        "reachableProductionModuleCount": 248,
+        "templateEventDirectiveCount": 927,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 272,
-        "candidateProductionMutationConsumerCount": 272,
-        "acceptedProductionMutationConsumerCount": 272,
-        "productionMutationConsumerPairCount": 272,
+        "coveredProductionMutationConsumerCount": 280,
+        "candidateProductionMutationConsumerCount": 280,
+        "acceptedProductionMutationConsumerCount": 280,
+        "productionMutationConsumerPairCount": 280,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "900db481a0fb9fe138ecc82c60cdf846489ca9a3077535c1ff753a0b9b2d7a56",
+      "sha256": "98dd354f6eee8da834839219bd2aeed977c47035c77d7dfb15b9a71936f98662",
       "status": "ready",
       "summary": {
-        "routeCount": 533,
-        "exactRouteCount": 533,
-        "normalizedRouteCount": 533,
+        "routeCount": 547,
+        "exactRouteCount": 547,
+        "normalizedRouteCount": 547,
         "classificationOverrideCount": 190,
         "consumerSurfaceOverrideCount": 11,
         "classificationOverrideSha256": "22af4dc79b36cb89a6fc4a8f468b38dad9758b8a81d5eecc750b882f66abdcc2",
         "consumerSurfaceOverrideSha256": "2fd8a92fe9294455566075847ba99cec98674cbcf201f4f40ae6c3de919cc7ae",
-        "derivedProductionPageCount": 343,
-        "pageRouteCount": 345,
+        "derivedProductionPageCount": 357,
+        "pageRouteCount": 359,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 10,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 397,
+          "web_api_wrapper": 411,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 533,
-    "pageRouteCount": 345,
+    "routeCount": 547,
+    "pageRouteCount": 359,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 10,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 534,
+    "mainRequestBindingCount": 548,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 277,
-    "actionBindingCount": 312,
-    "acceptedActionBindingCount": 292,
+    "registeredActionCount": 286,
+    "actionBindingCount": 321,
+    "acceptedActionBindingCount": 301,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 272,
-    "coveredProductionMutationConsumerPairCount": 272,
+    "productionMutationConsumerPairCount": 280,
+    "coveredProductionMutationConsumerPairCount": 280,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -3302,6 +3302,270 @@
       "usage": "page",
       "consumerSurface": "signed_ticket_delivery",
       "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-executions/capabilities",
+        "normalizedKey": "GET /fund-executions/capabilities",
+        "controller": "FundExecutionController",
+        "handler": "capabilities",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionCapabilities",
+          "method": "GET",
+          "path": "/fund-executions/capabilities",
+          "normalizedKey": "GET /fund-executions/capabilities",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-executions/cases/:caseId/classification-options",
+        "normalizedKey": "GET /fund-executions/cases/:param/classification-options",
+        "controller": "FundExecutionController",
+        "handler": "classificationOptions",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionCaseOptions",
+          "method": "GET",
+          "path": "/fund-executions/cases/:param/classification-options",
+          "normalizedKey": "GET /fund-executions/cases/:param/classification-options",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-executions/cases/:caseId",
+        "normalizedKey": "GET /fund-executions/cases/:param",
+        "controller": "FundExecutionController",
+        "handler": "detail",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionCaseActions",
+          "method": "GET",
+          "path": "/fund-executions/cases/:param",
+          "normalizedKey": "GET /fund-executions/cases/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-executions/cases",
+        "normalizedKey": "GET /fund-executions/cases",
+        "controller": "FundExecutionController",
+        "handler": "list",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionCases",
+          "method": "GET",
+          "path": "/fund-executions/cases",
+          "normalizedKey": "GET /fund-executions/cases",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-executions/observation-options",
+        "normalizedKey": "GET /fund-executions/observation-options",
+        "controller": "FundExecutionController",
+        "handler": "observationOptions",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionObservationOptions",
+          "method": "GET",
+          "path": "/fund-executions/observation-options?:param",
+          "normalizedKey": "GET /fund-executions/observation-options",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-executions/reversal-options",
+        "normalizedKey": "GET /fund-executions/reversal-options",
+        "controller": "FundExecutionController",
+        "handler": "reversalOptions",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionReversalOptions",
+          "method": "GET",
+          "path": "/fund-executions/reversal-options",
+          "normalizedKey": "GET /fund-executions/reversal-options",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -8845,6 +9109,150 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/fund-executions/cases/:caseId",
+        "normalizedKey": "PATCH /fund-executions/cases/:param",
+        "controller": "FundExecutionController",
+        "handler": "update",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "updateFundExecutionCase",
+          "method": "PATCH",
+          "path": "/fund-executions/cases/:param",
+          "normalizedKey": "PATCH /fund-executions/cases/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.case.update",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.update\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000updateFundExecutionCase\u0000PATCH\u0000PATCH /fund-executions/cases/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "update_case",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "updateFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/fund-executions/cases/:caseId/reversal",
+        "normalizedKey": "PATCH /fund-executions/cases/:param/reversal",
+        "controller": "FundExecutionController",
+        "handler": "updateReversal",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "updateFundExecutionReversalReason",
+          "method": "PATCH",
+          "path": "/fund-executions/cases/:param/reversal",
+          "normalizedKey": "PATCH /fund-executions/cases/:param/reversal",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.reversal.update-reason",
+          "bindingIndex": 0,
+          "identity": "fund-execution.reversal.update-reason\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000updateFundExecutionReversalReason\u0000PATCH\u0000PATCH /fund-executions/cases/:param/reversal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "update_case",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "updateFundExecutionReversalReason",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -17391,6 +17799,455 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-executions/cases/:caseId/approval-actions",
+        "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+        "controller": "FundExecutionController",
+        "handler": "review",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "reviewFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/approval-actions",
+          "normalizedKey": "POST /fund-executions/cases/:param/approval-actions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.case.review-approve",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.review-approve\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000reviewFundExecutionCase\u0000POST\u0000POST /fund-executions/cases/:param/approval-actions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "approve",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "reviewFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "fund-execution.case.review-return",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.review-return\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000reviewFundExecutionCase\u0000POST\u0000POST /fund-executions/cases/:param/approval-actions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "return_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "reviewFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-executions/cases/:caseId/confirm",
+        "normalizedKey": "POST /fund-executions/cases/:param/confirm",
+        "controller": "FundExecutionController",
+        "handler": "confirm",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "confirmFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/confirm",
+          "normalizedKey": "POST /fund-executions/cases/:param/confirm",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.case.confirm",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.confirm\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000confirmFundExecutionCase\u0000POST\u0000POST /fund-executions/cases/:param/confirm\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "confirm_case",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "confirmFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-executions/cases/:caseId/return",
+        "normalizedKey": "POST /fund-executions/cases/:param/return",
+        "controller": "FundExecutionController",
+        "handler": "returnCase",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "returnFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/return",
+          "normalizedKey": "POST /fund-executions/cases/:param/return",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.case.return",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.return\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000returnFundExecutionCase\u0000POST\u0000POST /fund-executions/cases/:param/return\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "return_case",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "returnFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-executions/cases/:caseId/submit",
+        "normalizedKey": "POST /fund-executions/cases/:param/submit",
+        "controller": "FundExecutionController",
+        "handler": "submit",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "submitFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases/:param/submit",
+          "normalizedKey": "POST /fund-executions/cases/:param/submit",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.case.submit",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.submit\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000submitFundExecutionCase\u0000POST\u0000POST /fund-executions/cases/:param/submit\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "freshCase.actions",
+            "key": "submit_case",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "submitFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-executions/cases",
+        "normalizedKey": "POST /fund-executions/cases",
+        "controller": "FundExecutionController",
+        "handler": "create",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "createFundExecutionCase",
+          "method": "POST",
+          "path": "/fund-executions/cases",
+          "normalizedKey": "POST /fund-executions/cases",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.case.create",
+          "bindingIndex": 0,
+          "identity": "fund-execution.case.create\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000createFundExecutionCase\u0000POST\u0000POST /fund-executions/cases\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.createCase",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "createFundExecutionCase",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-executions/reversals",
+        "normalizedKey": "POST /fund-executions/reversals",
+        "controller": "FundExecutionController",
+        "handler": "reverse",
+        "sourceFile": "services/api/src/fund-execution/fund-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "createFundExecutionReversal",
+          "method": "POST",
+          "path": "/fund-executions/reversals",
+          "normalizedKey": "POST /fund-executions/reversals",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/fund-execution.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-execution.reversal.create",
+          "bindingIndex": 0,
+          "identity": "fund-execution.reversal.create\u0000apps/web-admin/src/api/fund-execution.api.ts\u0000createFundExecutionReversal\u0000POST\u0000POST /fund-executions/reversals\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.createReversal",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "createFundExecutionReversal",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

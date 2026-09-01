@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 155,
-    "terminalMigration": "20260829090000_pol13c_fund_movement",
-    "terminalMigrationChecksum": "37e03e23152830d31b7654d140a95500a5e23fd45507832d67222f74d5b8448b",
+    "expectedDirectoryCount": 156,
+    "terminalMigration": "20260831120000_pol13d_fund_execution_v7",
+    "terminalMigrationChecksum": "a166b7105343f6a19b629de1ba64073a167106731e114eb273db2a848dc22378",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 42,
-    "fullyPendingSuites": 32,
-    "partiallyPendingSuites": 10,
-    "pendingTests": 123,
-    "coveredFiles": 42,
-    "coveredTests": 123,
+    "pendingFiles": 44,
+    "fullyPendingSuites": 33,
+    "partiallyPendingSuites": 11,
+    "pendingTests": 150,
+    "coveredFiles": 44,
+    "coveredTests": 150,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,9 +174,30 @@
       "state": "executable_local_runner"
     },
     {
-      "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 99,
+      "id": "fund_execution_v7",
+      "pendingTests": 26,
       "testFiles": [
+        {
+          "path": "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
+          "pendingTests": 26,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/verify-fund-execution-v7.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "remaining_dynamic_postgresql16",
+      "pendingTests": 100,
+      "testFiles": [
+        {
+          "path": "services/api/src/contract/contract-approval-route.service.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
           "pendingTests": 6,
