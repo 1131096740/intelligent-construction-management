@@ -32,6 +32,10 @@ import {
   type FundExecutionResolvedAxisSelection
 } from "./fund-execution-axis-plan";
 import {
+  executionOperatingPayee,
+  stableExecutionIdentity
+} from "./fund-execution-canonical-identity";
+import {
   EXECUTION_ALLOCATION_AXES,
   type ExecutionAllocationAxis,
   type ExecutionAllocationAxisStatus
@@ -476,7 +480,7 @@ export class FundExecutionSelectionOptionsService {
         context.observation.holderCompanyEntityId,
         payable.registered.debtorCompanyId
       );
-      const sliceIdentity = this.stableIdentity("outflow-slice", {
+      const sliceIdentity = stableExecutionIdentity("outflow-slice", {
         fundExecutionId: context.execution.id,
         payableRef: payable.registered.payableRef,
         amountCents: line.amountCents.toString()
@@ -526,7 +530,7 @@ export class FundExecutionSelectionOptionsService {
         this.axisDraft(
           "project_fund",
           "applied",
-          `project_fund:${line.projectId}:${this.stableIdentity("funding", lineFunding)}`,
+          `project_fund:${line.projectId}:${stableExecutionIdentity("funding", lineFunding)}`,
           `占用 ${line.projectName} 的正式项目资金来源`,
           lineSnapshot,
           { projectId: line.projectId, allocations: lineFunding },
@@ -585,7 +589,7 @@ export class FundExecutionSelectionOptionsService {
           {
             affiliate: projectContext.affiliate,
             participant: projectContext.participant,
-            payee: this.operatingPayee(payable.registered),
+            payee: executionOperatingPayee(payable.registered),
             impactKind: "company_project_funds_decrease",
             observationEvidence: this.observationEvidence(context.observation)
           },
@@ -609,7 +613,7 @@ export class FundExecutionSelectionOptionsService {
       now
     );
     return {
-      planKey: this.stableIdentity("outflow-plan", {
+      planKey: stableExecutionIdentity("outflow-plan", {
         executionId: context.execution.id,
         lines: lines.map((line) => ({
           payableRef: line.payable!.registered.payableRef,
@@ -672,7 +676,7 @@ export class FundExecutionSelectionOptionsService {
         context.observation.holderCompanyEntityId,
         context.observation.holderCompanyEntityId
       );
-      const sliceIdentity = this.stableIdentity("inflow-slice", {
+      const sliceIdentity = stableExecutionIdentity("inflow-slice", {
         fundExecutionId: context.execution.id,
         projectId: participant.projectId
       });
@@ -744,7 +748,7 @@ export class FundExecutionSelectionOptionsService {
         )
       ];
       plans.push({
-        planKey: this.stableIdentity("inflow-plan", {
+        planKey: stableExecutionIdentity("inflow-plan", {
           executionId: context.execution.id,
           projectId: participant.projectId
         }),
@@ -1071,7 +1075,7 @@ export class FundExecutionSelectionOptionsService {
       observationId: observation.id,
       observationFingerprint: observation.payloadFingerprint,
       payerVerificationId: observation.payerVerificationId,
-      payerVerificationFingerprint: this.stableIdentity(
+      payerVerificationFingerprint: stableExecutionIdentity(
         "payer-verification",
         {
           reference: observation.payerVerificationReference,
@@ -1281,20 +1285,6 @@ export class FundExecutionSelectionOptionsService {
     };
   }
 
-  private operatingPayee(registered: RegisteredPayable) {
-    const prefix = `${registered.payeeSubjectType}:`;
-    const id = registered.payeeSubjectId.startsWith(prefix)
-      ? registered.payeeSubjectId.slice(prefix.length)
-      : registered.payeeSubjectId;
-    return {
-      kind:
-        registered.payeeSubjectType === "employee_user"
-          ? "employee"
-          : "downstream_counterparty",
-      id
-    };
-  }
-
   private jsonPayable(registered: RegisteredPayable) {
     return {
       ...registered,
@@ -1314,12 +1304,6 @@ export class FundExecutionSelectionOptionsService {
     };
   }
 
-  private stableIdentity(namespace: string, value: unknown) {
-    return createHash("sha256")
-      .update(`${namespace}:${this.canonicalJson(value)}`)
-      .digest("hex");
-  }
-
   private deterministicUuid(namespace: string, ...parts: string[]) {
     const hex = createHash("sha256")
       .update([namespace, ...parts].join(":"))
@@ -1332,23 +1316,6 @@ export class FundExecutionSelectionOptionsService {
     return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
   }
 
-  private canonicalJson(value: unknown): string {
-    if (typeof value === "bigint") return JSON.stringify(value.toString());
-    if (value instanceof Date) return JSON.stringify(value.toISOString());
-    if (Array.isArray(value)) {
-      return `[${value.map((item) => this.canonicalJson(item)).join(",")}]`;
-    }
-    if (value && typeof value === "object") {
-      return `{${Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(
-          ([key, nested]) =>
-            `${JSON.stringify(key)}:${this.canonicalJson(nested)}`
-        )
-        .join(",")}}`;
-    }
-    return JSON.stringify(value);
-  }
 }
 
 function moneySummary(value: bigint) {

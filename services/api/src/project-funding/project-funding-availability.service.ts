@@ -306,49 +306,14 @@ export class ProjectFundingAvailabilityService {
       projectCashSourceAmountCents: projectCashReceipts,
       allocationSummary: { netUsedBySource }
     } = await this.assertPersistedProjectFundingLedgerCoverage(tx, input.projectId);
-    const projectCashUsed = netUsedBySource.get("project_cash") ?? 0n;
-    const projectCashAvailable = projectCashReceipts - projectCashUsed;
-    let remaining = input.amountCents;
-    const allocations: FundingAllocationPlan[] = [];
-
-    if (projectCashAvailable > 0n) {
-      const amount =
-        projectCashAvailable >= remaining ? remaining : projectCashAvailable;
-      allocations.push({
-        sourceType: "project_cash",
-        sourceId: null,
-        amountCents: amount
-      });
-      remaining -= amount;
-    }
-
-    let availableQuotaCents = 0n;
-    for (const quota of quotas) {
-      const sourceKey = this.financingSourceKey(quota.id);
-      const quotaAmount = dbMoneyToBigInt(quota.amountCents, "项目垫资额度");
-      const quotaUsed = netUsedBySource.get(sourceKey) ?? 0n;
-      if (quotaUsed > quotaAmount) {
-        throw new ConflictException("项目垫资额度占用超过批准金额");
-      }
-      const available = quotaAmount - quotaUsed;
-      availableQuotaCents += available;
-      if (remaining === 0n || available === 0n) continue;
-      const amount = available >= remaining ? remaining : available;
-      allocations.push({
-        sourceType: "financing_quota",
-        sourceId: quota.id,
-        amountCents: amount
-      });
-      remaining -= amount;
-    }
-
-    if (remaining > 0n) {
-      throw new BadRequestException(
-        `项目可用资金不足，当前最多可实际支付 ${
-          projectCashAvailable + availableQuotaCents
-        } 分`
-      );
-    }
+    const allocations = this.planAllocation(
+      input.amountCents,
+      projectCashReceipts,
+      netUsedBySource,
+      quotas,
+      (availableCents) =>
+        `项目可用资金不足，当前最多可实际支付 ${availableCents} 分`
+    );
 
     const expected = input.expectedAllocations;
     if (
@@ -754,12 +719,15 @@ export class ProjectFundingAvailabilityService {
     amountCents: bigint,
     projectCashSourceAmountCents: bigint,
     netUsedBySource: ReadonlyMap<string, bigint>,
-    quotas: readonly Readonly<{ id: string; amountCents: bigint }>[]
+    quotas: readonly Readonly<{ id: string; amountCents: bigint }>[],
+    insufficientMessage: (availableCents: bigint) => string = () =>
+      "项目可用资金不足，不能完成本次正式分配"
   ): readonly FundingAllocationPlan[] {
     let remaining = amountCents;
     const allocations: FundingAllocationPlan[] = [];
     const projectCashAvailable =
       projectCashSourceAmountCents - (netUsedBySource.get("project_cash") ?? 0n);
+    let availableQuotaCents = 0n;
     if (projectCashAvailable > 0n) {
       const amount = projectCashAvailable >= remaining ? remaining : projectCashAvailable;
       allocations.push({ sourceType: "project_cash", sourceId: null, amountCents: amount });
@@ -771,7 +739,11 @@ export class ProjectFundingAvailabilityService {
       const available =
         dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
         (netUsedBySource.get(sourceKey) ?? 0n);
-      if (available <= 0n) continue;
+      if (available < 0n) {
+        throw new ConflictException("项目垫资额度占用超过批准金额");
+      }
+      availableQuotaCents += available;
+      if (available === 0n) continue;
       const amount = available >= remaining ? remaining : available;
       allocations.push({
         sourceType: "financing_quota",
@@ -781,7 +753,9 @@ export class ProjectFundingAvailabilityService {
       remaining -= amount;
     }
     if (remaining > 0n) {
-      throw new BadRequestException("项目可用资金不足，不能完成本次正式分配");
+      throw new BadRequestException(
+        insufficientMessage(projectCashAvailable + availableQuotaCents)
+      );
     }
     return allocations;
   }

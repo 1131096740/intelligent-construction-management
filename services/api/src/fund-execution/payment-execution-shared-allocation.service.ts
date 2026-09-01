@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   occurredBeforeEffectiveDate,
@@ -9,8 +9,7 @@ import {
 } from "../operating-ledger/formal-operating-source.helpers";
 import {
   OperatingLedgerService,
-  type AppendOperatingFactInput,
-  type OperatingSubjectReference
+  type AppendOperatingFactInput
 } from "../operating-ledger/operating-ledger.service";
 import {
   deriveEffectiveWagePayableAmount,
@@ -19,6 +18,10 @@ import {
 } from "../payable-registry/wage-payable-source.adapter";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { fundExecutionCommandFingerprint } from "./fund-execution-command-receipt";
+import {
+  executionOperatingPayee as operatingPayee,
+  stableExecutionIdentity as stableIdentity
+} from "./fund-execution-canonical-identity";
 import { EXECUTION_ALLOCATION_AXES, type ExecutionAllocationAxis } from "./fund-execution.domain";
 import { FundExecutionSelectionOptionsService } from "./fund-execution-selection-options.service";
 import { fundExecutionSelectionRefFingerprint } from "./fund-execution-selection-ref.service";
@@ -750,20 +753,6 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function operatingPayee(registered: RegisteredPayable): OperatingSubjectReference {
-  const prefix = `${registered.payeeSubjectType}:`;
-  const id = registered.payeeSubjectId.startsWith(prefix)
-    ? registered.payeeSubjectId.slice(prefix.length)
-    : registered.payeeSubjectId;
-  return {
-    kind:
-      registered.payeeSubjectType === "employee_user"
-        ? "employee"
-        : "downstream_counterparty",
-    id
-  };
-}
-
 function companySnapshot(company: {
   id: string;
   name: string;
@@ -777,25 +766,4 @@ function companySnapshot(company: {
     name: company.name,
     creditCode: company.unifiedSocialCreditCode.trim()
   };
-}
-
-function stableIdentity(namespace: string, value: unknown) {
-  return createHash("sha256")
-    .update(`${namespace}:${canonicalJson(value)}`)
-    .digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (typeof value === "bigint") return JSON.stringify(value.toString());
-  if (value instanceof Date) return JSON.stringify(value.toISOString());
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
