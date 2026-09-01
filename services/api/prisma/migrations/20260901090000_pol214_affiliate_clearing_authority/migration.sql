@@ -400,7 +400,7 @@ BEGIN
     INTO case_record FROM "ClearingCase" WHERE "id" = target_case_id FOR UPDATE;
   IF NEW."sourceKind" = 'authority_cap' THEN
     IF NEW."sourceEventVersionId" IS NOT NULL THEN RAISE EXCEPTION 'authority-cap allocation cannot have a source version'; END IF;
-    SELECT COALESCE(SUM("amountCents"), 0)::bigint INTO used_amount
+    SELECT COALESCE(SUM(a."amountCents"), 0)::bigint INTO used_amount
       FROM "ClearingAllocation" a
       JOIN "ClearingEventVersion" target ON target."id" = a."eventVersionId"
      WHERE target."clearingCaseId" = target_case_id AND a."sourceKind" = 'authority_cap';
