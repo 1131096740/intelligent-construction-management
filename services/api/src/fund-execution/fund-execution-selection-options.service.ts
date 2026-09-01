@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -140,12 +141,21 @@ export class FundExecutionSelectionOptionsService {
     private readonly projectFunding: ProjectFundingAvailabilityService
   ) {}
 
+  async capabilities(actorUserId: string) {
+    await this.assertGlobalFinanceActor(actorUserId);
+    return {
+      createCase: true,
+      createReversal: true
+    };
+  }
+
   async listObservationCandidates(
     actorUserId: string,
     now = new Date(),
     purpose: "fund_execution_case" | "payment_execution" =
       "fund_execution_case"
   ) {
+    await this.assertGlobalFinanceActor(actorUserId);
     const observations = (
       await this.loadUnclaimedObservations(this.prisma)
     ).filter(
@@ -163,6 +173,7 @@ export class FundExecutionSelectionOptionsService {
   }
 
   async listReversalTargets(actorUserId: string, now = new Date()) {
+    await this.assertGlobalFinanceActor(actorUserId);
     const targets = await this.loadAvailableReversalTargets(this.prisma);
     return targets.map((target) => ({
       targetSelectionRef: this.selectionRefs.issueReversalTarget(
@@ -255,6 +266,7 @@ export class FundExecutionSelectionOptionsService {
   }
 
   async listCasePlans(caseKey: string, actorUserId: string, now = new Date()) {
+    await this.assertGlobalFinanceActor(actorUserId);
     const plans = await this.prisma.$transaction((tx) =>
       this.buildPlansInTransaction(tx, caseKey, actorUserId, now)
     );
@@ -263,6 +275,28 @@ export class FundExecutionSelectionOptionsService {
       expiresAt: fundExecutionSelectionExpiresAt(now).toISOString(),
       lines: this.publicLines(plan)
     }));
+  }
+
+  private async assertGlobalFinanceActor(actorUserId: string) {
+    const [actor] = await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT user_row."id"
+      FROM "User" user_row
+      WHERE user_row."id" = ${actorUserId}
+        AND user_row."isActive" = TRUE
+        AND EXISTS (
+          SELECT 1
+          FROM "UserPosition" user_position
+          INNER JOIN "Position" position
+            ON position."id" = user_position."positionId"
+          WHERE user_position."userId" = user_row."id"
+            AND user_position."projectId" IS NULL
+            AND position."key" IN ('finance_staff', 'finance_director')
+        )
+      FOR KEY SHARE
+    `);
+    if (!actor) {
+      throw new ForbiddenException("当前用户没有资金执行操作权限");
+    }
   }
 
   async resolveCasePlanInTransaction(
@@ -1105,7 +1139,11 @@ export class FundExecutionSelectionOptionsService {
       Prisma.sql`
         SELECT item.ordinality::BIGINT AS ordinal,
                encode(public.digest(item.value::TEXT, 'sha256'), 'hex') AS fingerprint
-        FROM jsonb_array_elements(CAST(${JSON.stringify(values)} AS JSONB))
+        FROM jsonb_array_elements(CAST(${JSON.stringify(
+          values,
+          (_key, value) =>
+            typeof value === "bigint" ? value.toString() : value
+        )} AS JSONB))
           WITH ORDINALITY AS item(value, ordinality)
         ORDER BY item.ordinality
       `

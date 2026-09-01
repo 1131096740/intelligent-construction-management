@@ -1004,6 +1004,9 @@ export class FundExecutionService {
             actorUserId,
             representedUserId: identity.representedUserId,
             approvedRoleKey: identity.approvedRoleKey,
+            metadata: {
+              fundExecutionApprovalStep: instance.currentNodeIndex + 1
+            },
             comment
           }
         });
@@ -1025,6 +1028,9 @@ export class FundExecutionService {
           actorUserId,
           representedUserId: identity.representedUserId,
           approvedRoleKey: identity.approvedRoleKey,
+          metadata: {
+            fundExecutionApprovalStep: instance.currentNodeIndex + 1
+          },
           comment: input.comment?.trim() || null,
           signatureFileIdSnapshot: signature.fileId,
           signatureSha256Snapshot: signature.sha256,
@@ -1960,8 +1966,10 @@ export class FundExecutionService {
       SELECT DISTINCT position."key" AS key
       FROM "UserPosition" user_position
       INNER JOIN "Position" position ON position."id" = user_position."positionId"
+      INNER JOIN "User" user_row ON user_row."id" = user_position."userId"
       WHERE user_position."userId" = ${actorUserId}
         AND user_position."projectId" IS NULL
+        AND user_row."isActive" = TRUE
       ORDER BY position."key"
     `);
     return rows.map(({ key }) => key);
@@ -1973,7 +1981,7 @@ export class FundExecutionService {
     caseId?: string
   ) {
     const now = new Date();
-    return tx.approvalDelegation.findMany({
+    const delegations = await tx.approvalDelegation.findMany({
       where: {
         toUserId: actorUserId,
         enabled: true,
@@ -1990,6 +1998,30 @@ export class FundExecutionService {
       },
       select: { fromUserId: true, toUserId: true, resourceId: true }
     });
+    if (!delegations.length) return [];
+    const activeUsers = await tx.user.findMany({
+      where: {
+        id: {
+          in: Array.from(
+            new Set([
+              actorUserId,
+              ...delegations.flatMap(({ fromUserId, toUserId }) => [
+                fromUserId,
+                toUserId
+              ])
+            ])
+          )
+        },
+        isActive: true
+      },
+      select: { id: true }
+    });
+    const activeUserIds = new Set(activeUsers.map(({ id }) => id));
+    if (!activeUserIds.has(actorUserId)) return [];
+    return delegations.filter(
+      ({ fromUserId, toUserId }) =>
+        activeUserIds.has(fromUserId) && activeUserIds.has(toUserId)
+    );
   }
 
   private async activeDelegationEdges(
@@ -1997,7 +2029,7 @@ export class FundExecutionService {
     caseId: string
   ): Promise<readonly FundExecutionApprovalDelegation[]> {
     const now = new Date();
-    return tx.approvalDelegation.findMany({
+    const delegations = await tx.approvalDelegation.findMany({
       where: {
         enabled: true,
         startsAt: { lte: now },
@@ -2013,6 +2045,28 @@ export class FundExecutionService {
       },
       select: { fromUserId: true, toUserId: true }
     });
+    if (!delegations.length) return [];
+    const activeUsers = await tx.user.findMany({
+      where: {
+        id: {
+          in: Array.from(
+            new Set(
+              delegations.flatMap(({ fromUserId, toUserId }) => [
+                fromUserId,
+                toUserId
+              ])
+            )
+          )
+        },
+        isActive: true
+      },
+      select: { id: true }
+    });
+    const activeUserIds = new Set(activeUsers.map(({ id }) => id));
+    return delegations.filter(
+      ({ fromUserId, toUserId }) =>
+        activeUserIds.has(fromUserId) && activeUserIds.has(toUserId)
+    );
   }
 
   private async recordAudit(
@@ -2274,17 +2328,19 @@ function jsonObject(value: Prisma.JsonValue): Record<string, unknown> {
 function isRefreshableConcurrencyError(error: unknown) {
   const code =
     error && typeof error === "object"
-      ? String(
-          (error as { code?: unknown }).code ??
-            (error as { meta?: { code?: unknown } }).meta?.code ??
-            ""
-        )
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
+  const databaseCode =
+    error && typeof error === "object"
+      ? String((error as { meta?: { code?: unknown } }).meta?.code ?? "")
       : "";
   const message = error instanceof Error ? error.message : "";
   return (
     code === "40001" ||
     code === "40P01" ||
     code === "P2034" ||
+    databaseCode === "40001" ||
+    databaseCode === "40P01" ||
     /40001|40P01|deadlock|serialization/iu.test(message)
   );
 }

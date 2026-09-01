@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 156,
     "terminalMigration": "20260831120000_pol13d_fund_execution_v7",
-    "terminalMigrationChecksum": "e761f11e088efbc07af8cd21aaf78a59ec9b3e31e949a4712ac6aa9c346bac9f",
+    "terminalMigrationChecksum": "6495460f3e6afd48e95d41e09ce41e0db28193e5259a700a886e5efad61280b3",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 44,
     "fullyPendingSuites": 33,
     "partiallyPendingSuites": 11,
-    "pendingTests": 136,
+    "pendingTests": 149,
     "coveredFiles": 44,
-    "coveredTests": 136,
+    "coveredTests": 149,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -175,11 +175,11 @@
     },
     {
       "id": "fund_execution_v7",
-      "pendingTests": 12,
+      "pendingTests": 25,
       "testFiles": [
         {
           "path": "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
-          "pendingTests": 12,
+          "pendingTests": 25,
           "suiteStatus": "fully_pending"
         }
       ],

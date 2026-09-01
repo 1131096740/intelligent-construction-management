@@ -33,6 +33,7 @@ import {
   FUND_EXECUTION_AXIS_LABELS,
   caseAllowsClassification,
   flattenClassificationPlan,
+  selectedClassificationPlan,
   selectionIsExpired
 } from "./fund-execution.state";
 
@@ -93,10 +94,9 @@ const reversalSelectOptions = computed(() =>
     disabled: selectionIsExpired(option.expiresAt)
   }))
 );
-const selectedPlan = computed(() => {
-  const index = Number(selectedPlanIndex.value);
-  return Number.isInteger(index) ? classificationPlans.value[index] ?? null : null;
-});
+const selectedPlan = computed(() =>
+  selectedClassificationPlan(classificationPlans.value, selectedPlanIndex.value)
+);
 const caseSummary = computed(() => ({
   total: cases.value.length,
   draft: cases.value.filter(({ status }) => status === "draft").length,

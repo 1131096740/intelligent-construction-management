@@ -552,7 +552,6 @@ export class ProjectFundingAvailabilityService {
     if (
       !original ||
       original.projectId !== input.projectId ||
-      original.amountCents !== input.amountCents ||
       original.businessType !== input.businessType ||
       original.businessId !== input.businessId
     ) {

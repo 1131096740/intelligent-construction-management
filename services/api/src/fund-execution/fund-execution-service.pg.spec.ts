@@ -28,6 +28,14 @@ const CHAIRMAN_USER_ID = "10000000-0000-4000-8000-000000000004";
 const EXECUTOR_USER_ID = "10000000-0000-4000-8000-000000000005";
 const REVIEWER_DELEGATE_USER_ID = "10000000-0000-4000-8000-000000000006";
 const SCOPED_DELEGATE_USER_ID = "10000000-0000-4000-8000-000000000007";
+const INACTIVE_DELEGATE_USER_ID = "10000000-0000-4000-8000-000000000008";
+const INACTIVE_DELEGATOR_USER_ID = "10000000-0000-4000-8000-000000000009";
+const INACTIVE_DELEGATOR_DELEGATE_USER_ID =
+  "10000000-0000-4000-8000-000000000010";
+const BOUNDARY_ACTIVE_DELEGATE_USER_ID =
+  "10000000-0000-4000-8000-000000000011";
+const BOUNDARY_EXPIRED_DELEGATE_USER_ID =
+  "10000000-0000-4000-8000-000000000012";
 const COMPANY_ID = "11000000-0000-4000-8000-000000000001";
 const COMPANY_VERSION_ID = "11000000-0000-4000-8000-000000000002";
 const OTHER_COMPANY_ID = "11000000-0000-4000-8000-000000000003";
@@ -48,6 +56,9 @@ const REVERSE_TRANSACTION_FILE_ID_2 = "16000000-0000-4000-8000-000000000006";
 const OTHER_VERIFICATION_FILE_ID = "16000000-0000-4000-8000-000000000007";
 const HOLDER_MISMATCH_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000008";
 const SOD_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000009";
+const OUTFLOW_TRANSACTION_FILE_ID = "16000000-0000-4000-8000-000000000010";
+const PROJECT_RECEIPT_FILE_ID = "16000000-0000-4000-8000-000000000011";
+const WAGE_SOURCE_FILE_ID = "16000000-0000-4000-8000-000000000012";
 const SIGNATURE_VERSION_ID = "17000000-0000-4000-8000-000000000001";
 const OCCURRED_AT = new Date("2026-08-31T04:00:00.000Z");
 
@@ -73,6 +84,11 @@ type Flow = Readonly<{
   }>;
   submit: FundExecutionCommandResponse;
 }>;
+
+type UpdatedFlow = Pick<
+  Flow,
+  "createInput" | "create" | "updateInput" | "update"
+>;
 
 describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
   const prisma = new PrismaClient();
@@ -327,6 +343,220 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     });
   });
 
+  it("inactive delegate 或 delegator 均不能读取或审批", async () => {
+    const scenarios = [
+      {
+        label: "inactive-delegate",
+        fromUserId: REVIEWER_USER_ID,
+        toUserId: INACTIVE_DELEGATE_USER_ID
+      },
+      {
+        label: "inactive-delegator",
+        fromUserId: INACTIVE_DELEGATOR_USER_ID,
+        toUserId: INACTIVE_DELEGATOR_DELEGATE_USER_ID
+      }
+    ];
+    const outcomes: Array<{
+      label: string;
+      readError: unknown;
+      reviewError: unknown;
+    }> = [];
+
+    for (const scenario of scenarios) {
+      const flow = await createIsolatedSubmittedFlow(scenario.label);
+      await prisma.approvalDelegation.create({
+        data: {
+          id: randomUUID(),
+          fromUserId: scenario.fromUserId,
+          toUserId: scenario.toUserId,
+          actionKey: "fund_execution_case.approve",
+          resourceType: "fund_execution_case",
+          resourceId: flow.create.caseId,
+          startsAt: new Date("2026-01-01T00:00:00.000Z"),
+          endsAt: new Date("2027-01-01T00:00:00.000Z"),
+          enabled: true
+        }
+      });
+      const readError = await service
+        .listCases(scenario.toUserId)
+        .then(() => null, (error: unknown) => error);
+      const reviewError = await service
+        .reviewApproval(scenario.toUserId, {
+          caseId: flow.create.caseId,
+          action: "approve",
+          comment: `${scenario.label} 不得审批`
+        })
+        .then(() => null, (error: unknown) => error);
+      outcomes.push({ label: scenario.label, readError, reviewError });
+    }
+
+    for (const outcome of outcomes) {
+      expect(outcome.readError).toBeInstanceOf(ForbiddenException);
+      expect(outcome.reviewError).toBeInstanceOf(ForbiddenException);
+    }
+  });
+
+  it("delegation 采用 startsAt <= now < endsAt 半开区间", async () => {
+    const flow = await createIsolatedSubmittedFlow("delegation-boundary");
+    const boundary = new Date("2026-09-01T08:00:00.000Z");
+    await prisma.approvalDelegation.createMany({
+      data: [
+        {
+          id: randomUUID(),
+          fromUserId: REVIEWER_USER_ID,
+          toUserId: BOUNDARY_EXPIRED_DELEGATE_USER_ID,
+          actionKey: "fund_execution_case.approve",
+          resourceType: "fund_execution_case",
+          resourceId: flow.create.caseId,
+          startsAt: new Date("2026-08-31T08:00:00.000Z"),
+          endsAt: boundary,
+          enabled: true
+        },
+        {
+          id: randomUUID(),
+          fromUserId: REVIEWER_USER_ID,
+          toUserId: BOUNDARY_ACTIVE_DELEGATE_USER_ID,
+          actionKey: "fund_execution_case.approve",
+          resourceType: "fund_execution_case",
+          resourceId: flow.create.caseId,
+          startsAt: boundary,
+          endsAt: new Date("2026-09-02T08:00:00.000Z"),
+          enabled: true
+        }
+      ]
+    });
+
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "queueMicrotask",
+        "setImmediate",
+        "clearImmediate",
+        "setInterval",
+        "clearInterval",
+        "setTimeout",
+        "clearTimeout"
+      ]
+    });
+    jest.setSystemTime(boundary);
+    try {
+      await expect(
+        service.listCases(BOUNDARY_EXPIRED_DELEGATE_USER_ID)
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        service.reviewApproval(BOUNDARY_EXPIRED_DELEGATE_USER_ID, {
+          caseId: flow.create.caseId,
+          action: "approve",
+          comment: "endsAt 等于 now 已失效"
+        })
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        service.listCases(BOUNDARY_ACTIVE_DELEGATE_USER_ID)
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ caseRef: flow.create.caseId })
+        ])
+      );
+      await expect(
+        service.reviewApproval(BOUNDARY_ACTIVE_DELEGATE_USER_ID, {
+          caseId: flow.create.caseId,
+          action: "approve",
+          comment: "startsAt 等于 now 已生效"
+        })
+      ).resolves.toEqual({
+        caseId: flow.create.caseId,
+        status: "in_progress"
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("数据库 SoD 忽略任一方 inactive 的委托闭包", async () => {
+    const flow = await createIsolatedSubmittedFlow("inactive-delegation-sod");
+    await service.reviewApproval(REVIEWER_USER_ID, {
+      caseId: flow.create.caseId,
+      action: "approve",
+      comment: "财务主管直接审批"
+    });
+    await service.reviewApproval(CHAIRMAN_USER_ID, {
+      caseId: flow.create.caseId,
+      action: "approve",
+      comment: "董事长直接审批"
+    });
+    await prisma.approvalDelegation.create({
+      data: {
+        id: randomUUID(),
+        fromUserId: ACTOR_USER_ID,
+        toUserId: CONFIRMER_USER_ID,
+        actionKey: "fund_execution_case.approve",
+        resourceType: "fund_execution_case",
+        resourceId: flow.create.caseId,
+        startsAt: new Date("2026-01-01T00:00:00.000Z"),
+        endsAt: new Date("2027-01-01T00:00:00.000Z"),
+        enabled: true
+      }
+    });
+    await prisma.user.update({
+      where: { id: ACTOR_USER_ID },
+      data: { isActive: false }
+    });
+
+    try {
+      await expect(
+        service.confirmCase(CONFIRMER_USER_ID, {
+          caseId: flow.create.caseId,
+          expectedRevision: flow.submit.revision,
+          idempotencyKey: randomUUID()
+        })
+      ).resolves.toMatchObject({ status: "confirmed", revision: 4 });
+    } finally {
+      await prisma.user.update({
+        where: { id: ACTOR_USER_ID },
+        data: { isActive: true }
+      });
+    }
+  });
+
+  it("相同 createdAt 的合法审批按冻结步骤而非随机 UUID 确认", async () => {
+    const flow = await createIsolatedSubmittedFlow("same-time-approval");
+    await service.reviewApproval(REVIEWER_USER_ID, {
+      caseId: flow.create.caseId,
+      action: "approve",
+      comment: "财务主管同意"
+    });
+    await service.reviewApproval(CHAIRMAN_USER_ID, {
+      caseId: flow.create.caseId,
+      action: "approve",
+      comment: "董事长同意"
+    });
+    const submittedCase = await prisma.fundExecutionCase.findFirstOrThrow({
+      where: { caseKey: flow.create.caseId, status: "submitted" }
+    });
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL session_replication_role = replica");
+      await tx.$executeRaw`
+        UPDATE "ApprovalActionLog"
+        SET "createdAt" = '2026-09-01T08:00:00.000Z'::TIMESTAMPTZ,
+            "id" = CASE "approvedRoleKey"
+              WHEN 'finance_director'
+                THEN 'ffffffff-ffff-4fff-8fff-fffffffffff1'
+              ELSE '00000000-0000-4000-8000-0000000000f2'
+            END
+        WHERE "approvalInstanceId" = ${submittedCase.approvalInstanceId}
+      `;
+      await tx.$executeRawUnsafe("SET LOCAL session_replication_role = origin");
+    });
+
+    await expect(
+      service.confirmCase(CONFIRMER_USER_ID, {
+        caseId: flow.create.caseId,
+        expectedRevision: flow.submit.revision,
+        idempotencyKey: randomUUID()
+      })
+    ).resolves.toMatchObject({ status: "confirmed", revision: 4 });
+  });
+
   it("不同实际账户持有人的反向流水在 Claim 创建前失败关闭", async () => {
     if (!confirmFlow) throw new Error("confirmed source flow missing");
     await observationService.record({
@@ -347,7 +577,7 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       auditRequestId: randomUUID()
     });
     const targets = await options.listReversalTargets(ACTOR_USER_ID);
-    expect(targets).toHaveLength(1);
+    expect(targets.length).toBeGreaterThan(0);
     const observation = (
       await options.listObservationCandidates(ACTOR_USER_ID)
     ).find(({ summary }) => summary.includes("PG 测试其他账户公司"));
@@ -363,15 +593,42 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
   });
 
   it("同一原执行按 4000+6000 两次累计反向并逐轴精确切片", async () => {
-    if (!confirmFlow) throw new Error("confirmed source flow missing");
-    const originalExecutionId = confirmFlow.create.fundExecutionId;
+    const original = await createAndConfirmAppliedProjectFundOutflow();
+    const originalExecutionId = original.fundExecutionId;
+    const originalLine = await prisma.executionAllocationLine.findFirstOrThrow({
+      where: { fundExecutionId: originalExecutionId }
+    });
+    const originalProjectFundEffect =
+      await prisma.executionAllocationAxisEffect.findFirstOrThrow({
+        where: {
+          executionAllocationLineId: originalLine.id,
+          axis: "project_fund"
+        }
+      });
+    expect(originalProjectFundEffect).toMatchObject({
+      status: "applied",
+      amountCents: 10_000n,
+      originalAxisEffectId: null
+    });
+    const originalProjectFundConsequence =
+      await prisma.executionAllocationConsequence.findFirstOrThrow({
+        where: { axisEffectId: originalProjectFundEffect.id }
+      });
+    const originalProjectFundAllocation =
+      await prisma.projectFundingAllocation.findUniqueOrThrow({
+        where: {
+          id: originalProjectFundConsequence.projectFundingAllocationId!
+        }
+      });
+    expect(originalProjectFundAllocation.amountCents).toBe(10_000n);
 
     const first = await createAndConfirmReversal({
-      targetExecutionId: originalExecutionId,
+      targetSummaryNeedle: "· 出账 ·",
       reference: "PG-REVERSE-OBSERVATION-1",
       sourceId: "pg-reverse-source-1",
       transactionFileId: REVERSE_TRANSACTION_FILE_ID_1,
       amountCents: 4_000n,
+      direction: "inflow",
       occurredAt: new Date("2026-08-31T05:00:00.000Z")
     });
     const firstLines = await prisma.executionAllocationLine.findMany({
@@ -379,13 +636,44 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     });
     expect(firstLines).toHaveLength(1);
     expect(firstLines[0]!.amountCents).toBe(4_000n);
+    const firstProjectFundEffect =
+      await prisma.executionAllocationAxisEffect.findFirstOrThrow({
+        where: {
+          executionAllocationLineId: firstLines[0]!.id,
+          axis: "project_fund"
+        }
+      });
+    expect(firstProjectFundEffect).toMatchObject({
+      status: "applied",
+      amountCents: 4_000n,
+      originalAxisEffectId: originalProjectFundEffect.id
+    });
+    const firstProjectFundConsequence =
+      await prisma.executionAllocationConsequence.findFirstOrThrow({
+        where: { axisEffectId: firstProjectFundEffect.id }
+      });
+    expect(firstProjectFundConsequence).toMatchObject({
+      amountCents: 4_000n,
+      originalConsequenceId: originalProjectFundConsequence.id
+    });
+    await expect(
+      prisma.projectFundingAllocation.findUniqueOrThrow({
+        where: {
+          id: firstProjectFundConsequence.projectFundingAllocationId!
+        }
+      })
+    ).resolves.toMatchObject({
+      amountCents: 4_000n,
+      reversalOfAllocationId: originalProjectFundAllocation.id
+    });
 
     const second = await createAndConfirmReversal({
-      targetExecutionId: originalExecutionId,
+      targetSummaryNeedle: "· 出账 ·",
       reference: "PG-REVERSE-OBSERVATION-2",
       sourceId: "pg-reverse-source-2",
       transactionFileId: REVERSE_TRANSACTION_FILE_ID_2,
       amountCents: 6_000n,
+      direction: "inflow",
       occurredAt: new Date("2026-08-31T06:00:00.000Z")
     });
     const secondLines = await prisma.executionAllocationLine.findMany({
@@ -404,7 +692,9 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       6_000n
     ]);
     const targets = await options.listReversalTargets(ACTOR_USER_ID);
-    expect(targets).toHaveLength(0);
+    expect(
+      targets.some(({ summary }) => summary.includes("· 出账 ·"))
+    ).toBe(false);
   });
 
   it("曾编辑案件的财务总监不得随后确认同一案件", async () => {
@@ -522,10 +812,292 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     ).rejects.toThrow(/FundExecutionCommandReceipt_(action|shape)_check/u);
   });
 
-  it.each(["40P01", "P2034"])(
-    "%s 在三次事务尝试后映射为可刷新 409",
-    async (code) => {
-      const transaction = jest.fn().mockRejectedValue({ code });
+  it("migration contract 拒绝缺首 route 节点与缺第一审批动作", async () => {
+    if (!confirmFlow) throw new Error("confirmed contract probe flow missing");
+    const confirmedCase = await prisma.fundExecutionCase.findFirstOrThrow({
+      where: { caseKey: confirmFlow.create.caseId, status: "confirmed" }
+    });
+    if (!confirmedCase.approvalInstanceId) {
+      throw new Error("confirmed contract probe approval missing");
+    }
+
+    const routeError = await prisma
+      .$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          "SET LOCAL session_replication_role = replica"
+        );
+        await tx.$executeRaw`
+          UPDATE "ApprovalInstance"
+          SET "frozenNodes" = jsonb_build_array("frozenNodes" -> -1)
+          WHERE "id" = ${confirmedCase.approvalInstanceId}
+        `;
+        await tx.$executeRaw`
+          UPDATE "FundExecutionCase" case_row
+          SET "approvalInstanceSnapshot" = to_jsonb(instance),
+              "approvalInstanceFingerprint" = encode(
+                public.digest(to_jsonb(instance)::TEXT, 'sha256'),
+                'hex'
+              )
+          FROM "ApprovalInstance" instance
+          WHERE case_row."id" = ${confirmedCase.id}
+            AND instance."id" = ${confirmedCase.approvalInstanceId}
+        `;
+        await tx.$executeRawUnsafe(
+          "SET LOCAL session_replication_role = origin"
+        );
+        await tx.$executeRaw`
+          SELECT assert_fund_execution_case_contract(${confirmedCase.id})
+        `;
+        throw new Error("RED: migration accepted route without first node");
+      })
+      .then(() => null, (error: unknown) => error);
+
+    const actionError = await prisma
+      .$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          "SET LOCAL session_replication_role = replica"
+        );
+        await tx.$executeRaw`
+          DELETE FROM "ApprovalActionLog"
+          WHERE "approvalInstanceId" = ${confirmedCase.approvalInstanceId}
+            AND "action" = 'approve'
+            AND "approvedRoleKey" = 'finance_director'
+        `;
+        await tx.$executeRaw`
+          WITH frozen_logs AS (
+            SELECT COALESCE(
+                     jsonb_agg(
+                       to_jsonb(action_log)
+                       ORDER BY action_log."createdAt", action_log."id"
+                     ),
+                     '[]'::JSONB
+                   ) AS snapshot,
+                   COUNT(*)::INTEGER AS count
+            FROM "ApprovalActionLog" action_log
+            WHERE action_log."approvalInstanceId" =
+              ${confirmedCase.approvalInstanceId}
+          )
+          UPDATE "FundExecutionCase" case_row
+          SET "approvalActionLogSnapshot" = frozen_logs.snapshot,
+              "approvalActionLogCount" = frozen_logs.count,
+              "approvalActionLogFingerprint" = encode(
+                public.digest(frozen_logs.snapshot::TEXT, 'sha256'),
+                'hex'
+              )
+          FROM frozen_logs
+          WHERE case_row."id" = ${confirmedCase.id}
+        `;
+        await tx.$executeRawUnsafe(
+          "SET LOCAL session_replication_role = origin"
+        );
+        await tx.$executeRaw`
+          SELECT assert_fund_execution_case_contract(${confirmedCase.id})
+        `;
+        throw new Error("RED: migration accepted logs without first approval");
+      })
+      .then(() => null, (error: unknown) => error);
+
+    const message = (error: unknown) =>
+      error instanceof Error ? error.message : String(error);
+    expect({
+      route: message(routeError),
+      action: message(actionError)
+    }).toEqual({
+      route: expect.stringMatching(/fund_execution_case_approval/u),
+      action: expect.stringMatching(/fund_execution_case_approval/u)
+    });
+  });
+
+  it.each(["swapped", "extra", "wrong_mode"] as const)(
+    "migration contract 拒绝 frozenNodes %s 篡改",
+    async (mutation) => {
+      const error = await runConfirmedContractMutation(
+        "approval_instance",
+        `RED: migration accepted frozenNodes ${mutation}`,
+        async (tx, context) => {
+          if (mutation === "swapped") {
+            await tx.$executeRaw`
+              UPDATE "ApprovalInstance"
+              SET "frozenNodes" = jsonb_build_array(
+                "frozenNodes" -> 1,
+                "frozenNodes" -> 0
+              )
+              WHERE "id" = ${context.approvalInstanceId}
+            `;
+          } else if (mutation === "extra") {
+            await tx.$executeRaw`
+              UPDATE "ApprovalInstance"
+              SET "frozenNodes" = "frozenNodes" ||
+                jsonb_build_array("frozenNodes" -> -1)
+              WHERE "id" = ${context.approvalInstanceId}
+            `;
+          } else {
+            await tx.$executeRaw`
+              UPDATE "ApprovalInstance"
+              SET "frozenNodes" = jsonb_set(
+                "frozenNodes",
+                '{0,mode}',
+                '"all"'::JSONB,
+                false
+              )
+              WHERE "id" = ${context.approvalInstanceId}
+            `;
+          }
+        }
+      );
+
+      expect(contractProbeMessage(error)).toMatch(
+        /fund_execution_case_approval_instance_freeze_invalid/u
+      );
+    }
+  );
+
+  it.each(["wrong_step", "duplicate"] as const)(
+    "migration contract 拒绝 confirmed action %s 篡改",
+    async (mutation) => {
+      const duplicateActionId = randomUUID();
+      const error = await runConfirmedContractMutation(
+        "approval_actions",
+        `RED: migration accepted confirmed action ${mutation}`,
+        async (tx, context) => {
+          if (mutation === "wrong_step") {
+            await tx.$executeRaw`
+              UPDATE "ApprovalActionLog"
+              SET "metadata" = '{"fundExecutionApprovalStep":2}'::JSONB
+              WHERE "approvalInstanceId" = ${context.approvalInstanceId}
+                AND "approvedRoleKey" = 'finance_director'
+            `;
+          } else {
+            await tx.$executeRaw`
+              INSERT INTO "ApprovalActionLog"(
+                "id", "approvalInstanceId", "action", "actorUserId",
+                "comment", "metadata", "approvedRoleKey",
+                "signatureFileIdSnapshot", "signatureSha256Snapshot",
+                "signatureVersionIdSnapshot", "representedUserId", "createdAt"
+              )
+              SELECT
+                ${duplicateActionId}, action_log."approvalInstanceId",
+                action_log."action", action_log."actorUserId",
+                action_log."comment", action_log."metadata",
+                action_log."approvedRoleKey",
+                action_log."signatureFileIdSnapshot",
+                action_log."signatureSha256Snapshot",
+                action_log."signatureVersionIdSnapshot",
+                action_log."representedUserId",
+                action_log."createdAt" + INTERVAL '1 millisecond'
+              FROM "ApprovalActionLog" action_log
+              WHERE action_log."approvalInstanceId" =
+                ${context.approvalInstanceId}
+                AND action_log."approvedRoleKey" = 'finance_director'
+              LIMIT 1
+            `;
+          }
+        }
+      );
+
+      expect(contractProbeMessage(error)).toMatch(
+        /fund_execution_case_approval_action_chain_invalid/u
+      );
+    }
+  );
+
+  it.each(["inactive_actor", "inactive_represented_user"] as const)(
+    "migration contract 拒绝 ApprovalActionLog %s",
+    async (mutation) => {
+      const error = await runConfirmedContractMutation(
+        "approval_actions",
+        `RED: migration accepted ${mutation}`,
+        async (tx, context) => {
+          if (mutation === "inactive_actor") {
+            await tx.$executeRaw`
+              UPDATE "ApprovalActionLog"
+              SET "actorUserId" = ${INACTIVE_DELEGATE_USER_ID}
+              WHERE "approvalInstanceId" = ${context.approvalInstanceId}
+                AND "approvedRoleKey" = 'finance_director'
+            `;
+          } else {
+            await tx.$executeRaw`
+              UPDATE "ApprovalActionLog"
+              SET "representedUserId" = ${INACTIVE_DELEGATOR_USER_ID}
+              WHERE "approvalInstanceId" = ${context.approvalInstanceId}
+                AND "approvedRoleKey" = 'finance_director'
+            `;
+          }
+        }
+      );
+
+      expect(contractProbeMessage(error)).toMatch(
+        /fund_execution_case_approval_action_identity_invalid/u
+      );
+    }
+  );
+
+  it("真实 PostgreSQL 40P01 经 production service 三次重试后映射为可刷新 409", async () => {
+    const firstLock = Math.floor(Math.random() * 1_000_000_000) + 1;
+    const secondLock = firstLock + 1;
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstReady = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondReady = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const first = prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${firstLock})`;
+      releaseFirst();
+      await secondReady;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${secondLock})`;
+    });
+    const second = prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${secondLock})`;
+      releaseSecond();
+      await firstReady;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${firstLock})`;
+    });
+    const outcomes = await Promise.allSettled([first, second]);
+    const deadlock = outcomes.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === "rejected"
+    );
+    expect(deadlock).toBeDefined();
+
+    const transaction = jest.fn().mockRejectedValue(deadlock!.reason);
+    const failingService = new FundExecutionService(
+      { $transaction: transaction } as never,
+      audit,
+      options,
+      canonicalAdapter
+    );
+    let caught: unknown;
+    try {
+      await failingService.submitCase(ACTOR_USER_ID, {
+        caseId: "concurrency-mapping-case",
+        expectedRevision: 1,
+        idempotencyKey: randomUUID()
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ConflictException);
+    expect((caught as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: "FUND_EXECUTION_REFRESH_REQUIRED"
+    });
+    expect(transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { label: "P2034", error: { code: "P2034" } },
+    {
+      label: "P2010/meta.40P01",
+      error: { code: "P2010", meta: { code: "40P01" } }
+    }
+  ])(
+    "$label 在三次事务尝试后映射为可刷新 409",
+    async ({ error }) => {
+      const transaction = jest.fn().mockRejectedValue(error);
       const failingService = new FundExecutionService(
         { $transaction: transaction } as never,
         audit,
@@ -553,12 +1125,89 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     }
   );
 
-  async function createUpdateSubmitFlow(input: {
+  async function runConfirmedContractMutation(
+    snapshot: "approval_instance" | "approval_actions",
+    sentinel: string,
+    mutate: (
+      tx: Prisma.TransactionClient,
+      context: { caseId: string; approvalInstanceId: string }
+    ) => Promise<void>
+  ) {
+    if (!confirmFlow) throw new Error("confirmed contract probe flow missing");
+    const confirmedCase = await prisma.fundExecutionCase.findFirstOrThrow({
+      where: { caseKey: confirmFlow.create.caseId, status: "confirmed" }
+    });
+    const approvalInstanceId = confirmedCase.approvalInstanceId;
+    if (!approvalInstanceId) {
+      throw new Error("confirmed contract probe approval missing");
+    }
+    const context = { caseId: confirmedCase.id, approvalInstanceId };
+
+    return prisma
+      .$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          "SET LOCAL session_replication_role = replica"
+        );
+        await mutate(tx, context);
+        if (snapshot === "approval_instance") {
+          await tx.$executeRaw`
+            UPDATE "FundExecutionCase" case_row
+            SET "approvalInstanceSnapshot" = to_jsonb(instance),
+                "approvalInstanceFingerprint" = encode(
+                  public.digest(to_jsonb(instance)::TEXT, 'sha256'),
+                  'hex'
+                )
+            FROM "ApprovalInstance" instance
+            WHERE case_row."id" = ${context.caseId}
+              AND instance."id" = ${context.approvalInstanceId}
+          `;
+        } else {
+          await tx.$executeRaw`
+            WITH frozen_logs AS (
+              SELECT COALESCE(
+                       jsonb_agg(
+                         to_jsonb(action_log)
+                         ORDER BY action_log."createdAt", action_log."id"
+                       ),
+                       '[]'::JSONB
+                     ) AS snapshot,
+                     COUNT(*)::INTEGER AS count
+              FROM "ApprovalActionLog" action_log
+              WHERE action_log."approvalInstanceId" =
+                ${context.approvalInstanceId}
+            )
+            UPDATE "FundExecutionCase" case_row
+            SET "approvalActionLogSnapshot" = frozen_logs.snapshot,
+                "approvalActionLogCount" = frozen_logs.count,
+                "approvalActionLogFingerprint" = encode(
+                  public.digest(frozen_logs.snapshot::TEXT, 'sha256'),
+                  'hex'
+                )
+            FROM frozen_logs
+            WHERE case_row."id" = ${context.caseId}
+          `;
+        }
+        await tx.$executeRawUnsafe(
+          "SET LOCAL session_replication_role = origin"
+        );
+        await tx.$executeRaw`
+          SELECT assert_fund_execution_case_contract(${context.caseId})
+        `;
+        throw new Error(sentinel);
+      })
+      .then(() => null, (error: unknown) => error);
+  }
+
+  function contractProbeMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  async function createUpdatedFlow(input: {
     reference: string;
     sourceId: string;
     transactionFileId: string;
     reason: string;
-  }): Promise<Flow> {
+  }): Promise<UpdatedFlow> {
     await observationService.record({
       reference: input.reference,
       payerVerificationId: PAYER_VERIFICATION_ID,
@@ -576,7 +1225,9 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       createdByUserId: ACTOR_USER_ID,
       auditRequestId: randomUUID()
     });
-    const candidates = await options.listObservationCandidates(ACTOR_USER_ID);
+    const candidates = (
+      await options.listObservationCandidates(ACTOR_USER_ID)
+    ).filter(({ summary }) => summary.startsWith("入账"));
     expect(candidates).toHaveLength(1);
     const createInput = {
       observationSelectionRef: candidates[0]!.selectionRef,
@@ -608,9 +1259,24 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       updated
     );
 
+    return {
+      createInput,
+      create: created,
+      updateInput,
+      update: updated
+    };
+  }
+
+  async function createUpdateSubmitFlow(input: {
+    reference: string;
+    sourceId: string;
+    transactionFileId: string;
+    reason: string;
+  }): Promise<Flow> {
+    const flow = await createUpdatedFlow(input);
     const submitInput = {
-      caseId: created.caseId,
-      expectedRevision: updated.revision,
+      caseId: flow.create.caseId,
+      expectedRevision: flow.update.revision,
       idempotencyKey: randomUUID()
     };
     const submitted = await service.submitCase(ACTOR_USER_ID, submitInput);
@@ -619,13 +1285,27 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       submitted
     );
     return {
-      createInput,
-      create: created,
-      updateInput,
-      update: updated,
+      ...flow,
       submitInput,
       submit: submitted
     };
+  }
+
+  async function createIsolatedSubmittedFlow(label: string) {
+    const transactionFileId = randomUUID();
+    await prisma.fileObject.create({
+      data: fileFixture(
+        transactionFileId,
+        `${label}-${transactionFileId}.pdf`,
+        ACTOR_USER_ID
+      )
+    });
+    return createUpdateSubmitFlow({
+      reference: `PG-${label.toUpperCase()}`,
+      sourceId: `pg-${label}-${randomUUID()}`,
+      transactionFileId,
+      reason: `PG ${label}`
+    });
   }
 
   async function commandReceiptActions(fundExecutionId: string) {
@@ -637,12 +1317,85 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     return receipts.map(({ action }) => action);
   }
 
+  async function createAndConfirmAppliedProjectFundOutflow() {
+    await observationService.record({
+      reference: "PG-APPLIED-PROJECT-FUND-OUTFLOW",
+      payerVerificationId: PAYER_VERIFICATION_ID,
+      transactionSourceType: "pg_test_bank_statement",
+      transactionSourceId: "pg-applied-project-fund-outflow",
+      transactionSourceIdentity: createHash("sha256")
+        .update("pg-test:applied-project-fund-outflow")
+        .digest("hex"),
+      transactionEvidenceFileId: OUTFLOW_TRANSACTION_FILE_ID,
+      transactionExecutedByUserId: EXECUTOR_USER_ID,
+      amountCents: 10_000n,
+      currencyCode: "CNY",
+      direction: "outflow",
+      occurredAt: new Date("2026-08-31T04:45:00.000Z"),
+      createdByUserId: ACTOR_USER_ID,
+      auditRequestId: randomUUID()
+    });
+    const observation = (
+      await options.listObservationCandidates(ACTOR_USER_ID)
+    ).find(
+      ({ summary }) =>
+        summary.startsWith("出账") && summary.includes("PG 测试参与公司")
+    );
+    if (!observation) throw new Error("applied project fund outflow missing");
+    const created = await service.createCase(ACTOR_USER_ID, {
+      observationSelectionRef: observation.selectionRef,
+      reason: "独立 project_fund applied 部分反向源",
+      idempotencyKey: randomUUID()
+    });
+    const plans = await options.listCasePlans(created.caseId, ACTOR_USER_ID);
+    const appliedPlan = plans.find((plan) =>
+      plan.lines.some((line) =>
+        line.axes.some(
+          ({ axis, status }) => axis === "project_fund" && status === "applied"
+        )
+      )
+    );
+    if (!appliedPlan) {
+      throw new Error("server did not offer an applied project_fund plan");
+    }
+    const updated = await service.updateCase(ACTOR_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: created.revision,
+      reason: "选择服务端 project_fund applied 方案",
+      selectionRefs: appliedPlan.lines.flatMap((line) =>
+        line.axes.map(({ selectionRef }) => selectionRef)
+      ),
+      idempotencyKey: randomUUID()
+    });
+    const submitted = await service.submitCase(ACTOR_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: updated.revision,
+      idempotencyKey: randomUUID()
+    });
+    await service.reviewApproval(REVIEWER_USER_ID, {
+      caseId: created.caseId,
+      action: "approve",
+      comment: "财务主管同意 applied project_fund 出账"
+    });
+    await service.reviewApproval(CHAIRMAN_USER_ID, {
+      caseId: created.caseId,
+      action: "approve",
+      comment: "董事长同意 applied project_fund 出账"
+    });
+    return service.confirmCase(CONFIRMER_USER_ID, {
+      caseId: created.caseId,
+      expectedRevision: submitted.revision,
+      idempotencyKey: randomUUID()
+    });
+  }
+
   async function createAndConfirmReversal(input: {
-    targetExecutionId: string;
+    targetSummaryNeedle: string;
     reference: string;
     sourceId: string;
     transactionFileId: string;
     amountCents: bigint;
+    direction: "inflow" | "outflow";
     occurredAt: Date;
   }) {
     await observationService.record({
@@ -657,17 +1410,23 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       transactionExecutedByUserId: EXECUTOR_USER_ID,
       amountCents: input.amountCents,
       currencyCode: "CNY",
-      direction: "outflow",
+      direction: input.direction,
       occurredAt: input.occurredAt,
       createdByUserId: ACTOR_USER_ID,
       auditRequestId: randomUUID()
     });
     const targets = await options.listReversalTargets(ACTOR_USER_ID);
-    expect(targets).toHaveLength(1);
-    const target = targets[0]!;
+    const target = targets.find(({ summary }) =>
+      summary.includes(input.targetSummaryNeedle)
+    );
+    if (!target) throw new Error("reversal target missing");
     const observation = (
       await options.listObservationCandidates(ACTOR_USER_ID)
-    ).find(({ summary }) => summary.includes("PG 测试参与公司"));
+    ).find(
+      ({ summary }) =>
+        summary.startsWith(input.direction === "inflow" ? "入账" : "出账") &&
+        summary.includes("PG 测试参与公司")
+    );
     if (!observation) throw new Error("reversal observation missing");
     const created = await service.createReversalCase(ACTOR_USER_ID, {
       targetSelectionRef: target.targetSelectionRef,
@@ -715,6 +1474,31 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
         id: SCOPED_DELEGATE_USER_ID,
         name: "资金执行限定案件审批受托人",
         isActive: true
+      },
+      {
+        id: INACTIVE_DELEGATE_USER_ID,
+        name: "停用审批受托人",
+        isActive: false
+      },
+      {
+        id: INACTIVE_DELEGATOR_USER_ID,
+        name: "停用审批委托人",
+        isActive: false
+      },
+      {
+        id: INACTIVE_DELEGATOR_DELEGATE_USER_ID,
+        name: "停用委托人的在用受托人",
+        isActive: true
+      },
+      {
+        id: BOUNDARY_ACTIVE_DELEGATE_USER_ID,
+        name: "半开区间生效受托人",
+        isActive: true
+      },
+      {
+        id: BOUNDARY_EXPIRED_DELEGATE_USER_ID,
+        name: "半开区间失效受托人",
+        isActive: true
       }
     ]
   });
@@ -749,6 +1533,12 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
       {
         id: randomUUID(),
         userId: CONFIRMER_USER_ID,
+        positionId: financeDirectorPositionId,
+        projectId: null
+      },
+      {
+        id: randomUUID(),
+        userId: INACTIVE_DELEGATOR_USER_ID,
         positionId: financeDirectorPositionId,
         projectId: null
       },
@@ -888,9 +1678,30 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
         "holder-mismatch-bank.pdf",
         ACTOR_USER_ID
       ),
-      fileFixture(SOD_TRANSACTION_FILE_ID, "sod-editor-bank.pdf", ACTOR_USER_ID)
+      fileFixture(SOD_TRANSACTION_FILE_ID, "sod-editor-bank.pdf", ACTOR_USER_ID),
+      fileFixture(
+        OUTFLOW_TRANSACTION_FILE_ID,
+        "applied-project-fund-outflow.pdf",
+        ACTOR_USER_ID
+      ),
+      fileFixture(PROJECT_RECEIPT_FILE_ID, "project-receipt.pdf", ACTOR_USER_ID),
+      fileFixture(WAGE_SOURCE_FILE_ID, "wage-source.pdf", ACTOR_USER_ID)
     ]
   });
+  await prisma.projectReceipt.create({
+    data: {
+      id: randomUUID(),
+      projectId: PROJECT_ID,
+      receivedAt: new Date("2026-08-30T00:00:00.000Z"),
+      amountCents: 10_000n,
+      payerName: "PG 项目资金来源",
+      sourceType: "other",
+      description: "project_fund applied 测试资金来源",
+      voucherFileId: PROJECT_RECEIPT_FILE_ID,
+      recordedByUserId: ACTOR_USER_ID
+    }
+  });
+  await seedWagePayableFixture(prisma);
   await prisma.handwrittenSignatureVersion.create({
     data: {
       id: SIGNATURE_VERSION_ID,
@@ -942,6 +1753,132 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
       })}::JSONB
     )
   `;
+}
+
+async function seedWagePayableFixture(prisma: PrismaClient) {
+  const sourceVersionId = randomUUID();
+  const statementId = randomUUID();
+  const confirmedVersionId = randomUUID();
+  const serviceBasisBindingId = randomUUID();
+  const personLineId = randomUUID();
+  const creditorBreakdownId = randomUUID();
+  const projectAllocationId = randomUUID();
+  await prisma.wageApprovedSourceVersion.create({
+    data: {
+      id: sourceVersionId,
+      employmentCompanyId: COMPANY_ID,
+      wageMonth: "2026-08",
+      periodStart: new Date("2026-08-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-08-31T00:00:00.000Z"),
+      sourceType: "external_approved_wage",
+      externalReference: "pg-fund-v7-wage-source",
+      sourceVersion: "v1",
+      basisDate: new Date("2026-08-31T00:00:00.000Z"),
+      evidenceFileId: WAGE_SOURCE_FILE_ID,
+      evidenceSha256: SHA256,
+      sourceFingerprint: "b".repeat(64),
+      sourceSnapshot: { source: "fund-execution-v7-pg" },
+      createdByUserId: ACTOR_USER_ID
+    }
+  });
+  await prisma.wageStatement.create({
+    data: {
+      id: statementId,
+      employmentCompanyId: COMPANY_ID,
+      wageMonth: "2026-08",
+      currentRevision: 1,
+      createdByUserId: ACTOR_USER_ID
+    }
+  });
+  await prisma.wageStatementVersion.create({
+    data: {
+      id: confirmedVersionId,
+      statementId,
+      revision: 1,
+      kind: "base",
+      status: "confirmed",
+      sourceVersionId,
+      sourceSnapshot: { sourceVersionId },
+      createdByUserId: ACTOR_USER_ID,
+      lastEditedByUserId: ACTOR_USER_ID,
+      confirmedByUserId: REVIEWER_USER_ID,
+      confirmedAt: new Date("2026-08-30T01:00:00.000Z")
+    }
+  });
+  await prisma.wageServiceBasisBinding.create({
+    data: {
+      id: serviceBasisBindingId,
+      sourceVersionId,
+      projectId: PROJECT_ID,
+      serviceSnapshotId: randomUUID(),
+      serviceMonth: "2026-08",
+      evidenceSha256: "d".repeat(64),
+      authorityFingerprint: "e".repeat(64)
+    }
+  });
+  await prisma.wagePersonLine.create({
+    data: {
+      id: personLineId,
+      statementVersionId: confirmedVersionId,
+      employeeId: randomUUID(),
+      employmentSnapshotId: randomUUID(),
+      employeeSnapshot: { protected: true },
+      employmentSnapshot: { protected: true },
+      periodSnapshot: { wageMonth: "2026-08" },
+      positionCategorySnapshot: { category: "general_worker" },
+      approvedAmountCents: 10_000n
+    }
+  });
+  await prisma.wageCreditorBreakdown.create({
+    data: {
+      id: creditorBreakdownId,
+      personLineId,
+      creditorSubjectType: "employee_user",
+      creditorUserId: ACTOR_USER_ID,
+      creditorSubjectIdentityKey: `employee_user:${ACTOR_USER_ID}`,
+      creditorNameSnapshot: "PG 工资债权人",
+      creditorUnifiedIdentitySnapshot: null,
+      creditorVersionFingerprint: "c".repeat(64),
+      creditorCategory: "employee_net_pay",
+      amountCents: 10_000n,
+      sourceSnapshot: { protected: true }
+    }
+  });
+  await prisma.wageProjectAllocation.create({
+    data: {
+      id: projectAllocationId,
+      personLineId,
+      projectId: PROJECT_ID,
+      serviceSnapshotId: randomUUID(),
+      serviceBasisBindingId,
+      serviceSnapshot: { projectId: PROJECT_ID },
+      amountCents: 10_000n
+    }
+  });
+  await prisma.wagePayableRef.create({
+    data: {
+      id: randomUUID(),
+      confirmedVersionId,
+      projectAllocationId,
+      creditorBreakdownId,
+      debtorCompanyId: COMPANY_ID,
+      costBearingCompanyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      personLineId,
+      debtorCompanySnapshot: { companyId: COMPANY_ID },
+      costBearingCompanySnapshot: { companyId: COMPANY_ID },
+      projectSnapshot: { projectId: PROJECT_ID },
+      personSnapshot: { protected: true },
+      creditorSnapshot: {
+        subjectType: "employee_user",
+        identityKey: `employee_user:${ACTOR_USER_ID}`,
+        name: "PG 工资债权人"
+      },
+      amountCents: 10_000n,
+      direction: "increase",
+      settlementRecheckRequired: false
+    }
+  });
 }
 
 function fileFixture(id: string, name: string, uploadedByUserId: string) {

@@ -1881,6 +1881,20 @@ DECLARE
   final_action RECORD;
   frozen_logs JSONB;
   frozen_log_count INTEGER;
+  canonical_approval_nodes CONSTANT JSONB := '[
+    {
+      "name": "财务主管",
+      "mode": "any",
+      "roleKeys": ["finance_director"],
+      "approvedRoleKeys": []
+    },
+    {
+      "name": "董事长/总经理",
+      "mode": "any",
+      "roleKeys": ["chairman", "general_manager"],
+      "approvedRoleKeys": []
+    }
+  ]'::JSONB;
   execution_kind TEXT;
   execution_amount BIGINT;
   selection_count INTEGER;
@@ -2028,6 +2042,12 @@ BEGIN
       FROM identity_closure closure
       INNER JOIN "ApprovalDelegation" delegation
         ON closure."userId" IN (delegation."fromUserId", delegation."toUserId")
+      INNER JOIN "User" delegation_from_user
+        ON delegation_from_user."id" = delegation."fromUserId"
+       AND delegation_from_user."isActive" = TRUE
+      INNER JOIN "User" delegation_to_user
+        ON delegation_to_user."id" = delegation."toUserId"
+       AND delegation_to_user."isActive" = TRUE
        AND delegation."enabled" = TRUE
        AND delegation."startsAt" <= CURRENT_TIMESTAMP
        AND delegation."endsAt" > CURRENT_TIMESTAMP
@@ -2129,15 +2149,7 @@ BEGIN
        OR approval_record."businessType" IS DISTINCT FROM 'fund_execution_case'
        OR approval_record."businessId" IS DISTINCT FROM case_record."caseKey"
        OR approval_record."status" IS DISTINCT FROM 'in_progress'
-       OR jsonb_typeof(approval_record."frozenNodes") <> 'array'
-       OR jsonb_array_length(approval_record."frozenNodes") = 0
-       OR jsonb_typeof(approval_record."frozenNodes" -> -1 -> 'roleKeys')
-         IS DISTINCT FROM 'array'
-       OR jsonb_array_length(
-         approval_record."frozenNodes" -> -1 -> 'roleKeys'
-       ) <> 2
-       OR NOT (approval_record."frozenNodes" -> -1 -> 'roleKeys' ? 'chairman')
-       OR NOT (approval_record."frozenNodes" -> -1 -> 'roleKeys' ? 'general_manager')
+       OR approval_record."frozenNodes" IS DISTINCT FROM canonical_approval_nodes
        OR approval_record."applicantUserId" IS DISTINCT FROM case_record."submittedByUserId" THEN
       RAISE EXCEPTION 'fund_execution_case_approval_binding_invalid';
     END IF;
@@ -2152,15 +2164,7 @@ BEGIN
        OR approval_record."flowType" IS DISTINCT FROM 'fund_execution_case.approve'
        OR approval_record."businessType" IS DISTINCT FROM 'fund_execution_case'
        OR approval_record."businessId" IS DISTINCT FROM case_record."caseKey"
-       OR jsonb_typeof(approval_record."frozenNodes") <> 'array'
-       OR jsonb_array_length(approval_record."frozenNodes") = 0
-       OR jsonb_typeof(approval_record."frozenNodes" -> -1 -> 'roleKeys')
-         IS DISTINCT FROM 'array'
-       OR jsonb_array_length(
-         approval_record."frozenNodes" -> -1 -> 'roleKeys'
-       ) <> 2
-       OR NOT (approval_record."frozenNodes" -> -1 -> 'roleKeys' ? 'chairman')
-       OR NOT (approval_record."frozenNodes" -> -1 -> 'roleKeys' ? 'general_manager')
+       OR approval_record."frozenNodes" IS DISTINCT FROM canonical_approval_nodes
        OR (case_record."status" = 'confirmed' AND approval_record."status" <> 'approved')
        OR (case_record."auditAction" = 'return_case'
          AND approval_record."status" <> 'returned_to_applicant')
@@ -2181,6 +2185,80 @@ BEGIN
          public.digest(frozen_logs::TEXT, 'sha256'), 'hex') THEN
       RAISE EXCEPTION 'fund_execution_case_approval_action_freeze_invalid';
     END IF;
+    IF case_record."status" = 'confirmed' AND (
+      frozen_log_count <> 2
+      OR (SELECT COUNT(*)
+            FROM "ApprovalActionLog" action_log
+           WHERE action_log."approvalInstanceId" =
+             case_record."approvalInstanceId"
+             AND action_log."action" = 'approve'
+             AND action_log."approvedRoleKey" = 'finance_director'
+             AND action_log."metadata" =
+               '{"fundExecutionApprovalStep":1}'::JSONB) <> 1
+      OR (SELECT COUNT(*)
+            FROM "ApprovalActionLog" action_log
+           WHERE action_log."approvalInstanceId" =
+             case_record."approvalInstanceId"
+             AND action_log."action" = 'approve'
+             AND action_log."approvedRoleKey" IN (
+               'chairman', 'general_manager'
+             )
+             AND action_log."metadata" =
+               '{"fundExecutionApprovalStep":2}'::JSONB) <> 1
+    ) THEN
+      RAISE EXCEPTION 'fund_execution_case_approval_action_chain_invalid';
+    END IF;
+    IF case_record."auditAction" = 'return_case' AND NOT (
+      (frozen_log_count = 1
+       AND (SELECT COUNT(*)
+              FROM "ApprovalActionLog" action_log
+             WHERE action_log."approvalInstanceId" =
+               case_record."approvalInstanceId"
+               AND action_log."action" = 'return_to_applicant'
+               AND action_log."approvedRoleKey" = 'finance_director'
+               AND action_log."metadata" =
+                 '{"fundExecutionApprovalStep":1}'::JSONB) = 1)
+      OR
+      (frozen_log_count = 2
+       AND (SELECT COUNT(*)
+              FROM "ApprovalActionLog" action_log
+             WHERE action_log."approvalInstanceId" =
+               case_record."approvalInstanceId"
+               AND action_log."action" = 'approve'
+               AND action_log."approvedRoleKey" = 'finance_director'
+               AND action_log."metadata" =
+                 '{"fundExecutionApprovalStep":1}'::JSONB) = 1
+       AND (SELECT COUNT(*)
+              FROM "ApprovalActionLog" action_log
+             WHERE action_log."approvalInstanceId" =
+               case_record."approvalInstanceId"
+               AND action_log."action" = 'return_to_applicant'
+               AND action_log."approvedRoleKey" IN (
+                 'chairman', 'general_manager'
+               )
+               AND action_log."metadata" =
+                 '{"fundExecutionApprovalStep":2}'::JSONB) = 1)
+    ) THEN
+      RAISE EXCEPTION 'fund_execution_case_approval_action_chain_invalid';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+        FROM "ApprovalActionLog" action_log
+        LEFT JOIN "User" actor
+          ON actor."id" = action_log."actorUserId"
+        LEFT JOIN "User" represented_user
+          ON represented_user."id" = action_log."representedUserId"
+       WHERE action_log."approvalInstanceId" = case_record."approvalInstanceId"
+         AND (
+           actor."isActive" IS DISTINCT FROM TRUE
+           OR (
+             action_log."representedUserId" IS NOT NULL
+             AND represented_user."isActive" IS DISTINCT FROM TRUE
+           )
+         )
+    ) THEN
+      RAISE EXCEPTION 'fund_execution_case_approval_action_identity_invalid';
+    END IF;
     SELECT action_log.* INTO final_action
       FROM "ApprovalActionLog" action_log
      WHERE action_log."approvalInstanceId" = case_record."approvalInstanceId"
@@ -2189,7 +2267,6 @@ BEGIN
           AND action_log."approvedRoleKey" IN ('chairman', 'general_manager'))
          OR (case_record."auditAction" = 'return_case'
           AND action_log."action" = 'return_to_applicant'))
-     ORDER BY action_log."createdAt" DESC, action_log."id" DESC
      LIMIT 1;
     IF NOT FOUND
        OR final_action."id" IS DISTINCT FROM case_record."finalApprovalActionLogId"

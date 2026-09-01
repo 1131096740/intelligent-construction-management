@@ -20,13 +20,41 @@ const {
   GROUPS: remainingGroups,
   selectGroups: selectRemainingGroups
 } = require("./run-database-dynamic-remaining-local.cjs");
+const {
+  probePostgresReady
+} = require("./verify-fund-execution-v7.cjs");
 
 const runnerPath = path.join(
   __dirname,
   "run-database-dynamic-gate-local.cjs"
 );
 
-test("manifest derives all 136 pending tests as executable local coverage", () => {
+test("fund execution verifier waits for the final postgres PID 1", () => {
+  const bootstrapCalls = [];
+  const bootstrapSpawn = (_command, args) => {
+    bootstrapCalls.push(args);
+    return {
+      status: 0,
+      stdout: "docker-entrypoint.sh\n"
+    };
+  };
+  assert.equal(probePostgresReady("fund-v7", bootstrapSpawn), false);
+  assert.equal(bootstrapCalls.length, 1);
+  assert.deepEqual(bootstrapCalls[0].slice(-2), ["cat", "/proc/1/comm"]);
+
+  const finalCalls = [];
+  const finalSpawn = (_command, args) => {
+    finalCalls.push(args);
+    return args.includes("pg_isready")
+      ? { status: 0, stdout: "accepting connections\n" }
+      : { status: 0, stdout: "postgres\n" };
+  };
+  assert.equal(probePostgresReady("fund-v7", finalSpawn), true);
+  assert.equal(finalCalls.length, 2);
+  assert.equal(finalCalls[1].includes("pg_isready"), true);
+});
+
+test("manifest derives all 149 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -35,9 +63,9 @@ test("manifest derives all 136 pending tests as executable local coverage", () =
     pendingFiles: 44,
     fullyPendingSuites: 33,
     partiallyPendingSuites: 11,
-    pendingTests: 136,
+    pendingTests: 149,
     coveredFiles: 44,
-    coveredTests: 136,
+    coveredTests: 149,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -46,7 +74,7 @@ test("manifest derives all 136 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all 12 fund execution v7 PG tests", () => {
+test("canonical manifest executes all 25 fund execution v7 PG tests", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "fund_execution_v7"
@@ -54,11 +82,11 @@ test("canonical manifest executes all 12 fund execution v7 PG tests", () => {
 
   assert.deepEqual(group, {
     id: "fund_execution_v7",
-    pendingTests: 12,
+    pendingTests: 25,
     testFiles: [
       {
         path: "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
-        pendingTests: 12,
+        pendingTests: 25,
         suiteStatus: "fully_pending"
       }
     ],
@@ -76,7 +104,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=25，派生值=136/u
+    /inventory\.coveredTests=25，派生值=149/u
   );
 });
 

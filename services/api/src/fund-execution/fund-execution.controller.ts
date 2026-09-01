@@ -31,11 +31,8 @@ export class FundExecutionController {
 
   @Get("capabilities")
   @RequirePositions("finance_staff", "finance_director")
-  capabilities() {
-    return {
-      createCase: true,
-      createReversal: true
-    };
+  capabilities(@CurrentUser() user: AuthenticatedUser) {
+    return this.options.capabilities(user.id);
   }
 
   @Get("cases/:caseId")

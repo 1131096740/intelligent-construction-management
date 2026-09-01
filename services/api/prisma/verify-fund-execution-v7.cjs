@@ -77,14 +77,26 @@ function psql(containerName, sql) {
   );
 }
 
+function probePostgresReady(containerName, spawn = spawnSync) {
+  const init = spawn(
+    docker,
+    ["exec", containerName, "cat", "/proc/1/comm"],
+    { encoding: "utf8" }
+  );
+  if (init.status !== 0 || String(init.stdout ?? "").trim() !== "postgres") {
+    return false;
+  }
+  const ready = spawn(
+    docker,
+    ["exec", containerName, "pg_isready", "-U", databaseUser, "-d", databaseName],
+    { encoding: "utf8" }
+  );
+  return ready.status === 0;
+}
+
 function waitForPostgres(containerName) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const result = spawnSync(
-      docker,
-      ["exec", containerName, "pg_isready", "-U", databaseUser, "-d", databaseName],
-      { encoding: "utf8" }
-    );
-    if (result.status === 0) return;
+    if (probePostgresReady(containerName)) return;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
   }
   throw new Error("disposable PostgreSQL 16 在 30 秒内未就绪");
@@ -225,5 +237,6 @@ module.exports = {
   assertLocalDockerEndpoint,
   main,
   migrationDirectories,
+  probePostgresReady,
   runServicePostgresSpec
 };

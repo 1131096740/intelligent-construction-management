@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   caseAllowsClassification,
   flattenClassificationPlan,
+  selectedClassificationPlan,
   type FundExecutionClassificationPlan
 } from "./fund-execution.state";
 
@@ -20,6 +21,13 @@ describe("fund execution web state", () => {
       { selectionRef: "line-2-relationship" },
       { selectionRef: "line-2-operating" }
     ]);
+  });
+
+  it("does not treat an empty radio selection as the first classification plan", () => {
+    const plans = [classificationPlan()];
+
+    expect(selectedClassificationPlan(plans, "")).toBeNull();
+    expect(selectedClassificationPlan(plans, "0")).toBe(plans[0]);
   });
 
   it("fails closed when a server plan omits, duplicates or invents an axis", () => {

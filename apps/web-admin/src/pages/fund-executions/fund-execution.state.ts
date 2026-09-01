@@ -28,6 +28,14 @@ export function caseAllowsClassification(
   );
 }
 
+export function selectedClassificationPlan(
+  plans: readonly FundExecutionClassificationPlan[],
+  selectedPlanIndex: string
+) {
+  if (!/^(?:0|[1-9]\d*)$/u.test(selectedPlanIndex)) return null;
+  return plans[Number(selectedPlanIndex)] ?? null;
+}
+
 export function flattenClassificationPlan(
   plan: FundExecutionClassificationPlan
 ): Array<{ selectionRef: string }> {

@@ -276,8 +276,10 @@ describe("PaymentRequestService", () => {
 
   function paymentExecutionGuardTx<T extends object>(tx: T): T {
     const current = tx as T & {
+      $executeRaw?: unknown;
       paymentRequest?: Record<string, unknown>;
       paymentExecution?: Record<string, unknown>;
+      contractVersion?: Record<string, unknown>;
       user?: Record<string, unknown>;
       userPosition?: Record<string, unknown>;
       projectMember?: Record<string, unknown>;
@@ -286,16 +288,26 @@ describe("PaymentRequestService", () => {
     const existingPaymentFindFirst = current.paymentRequest?.findFirst as
       | ((args: unknown) => Promise<Record<string, unknown> | null | undefined>)
       | undefined;
+    const stablePaymentIdentity = {
+      id: "payment-1",
+      projectId: "project-1",
+      settlementId: "settlement-1",
+      contractVersionId: "contract-version-1",
+      paymentSubjectType: "our_company"
+    };
     return Object.assign(tx, {
+      $executeRaw:
+        current.$executeRaw ?? jest.fn().mockResolvedValue(1),
       paymentRequest: {
         ...(current.paymentRequest ?? {}),
         findFirst: jest.fn(async (args: unknown) => {
           const existing = await existingPaymentFindFirst?.(args);
           if (existing === null) return null;
           if (existing === undefined) {
-            return { id: "payment-1", projectId: "project-1" };
+            return stablePaymentIdentity;
           }
           return {
+            ...stablePaymentIdentity,
             ...existing,
             projectId: existing.projectId ?? "project-1"
           };
@@ -307,6 +319,19 @@ describe("PaymentRequestService", () => {
           current.paymentExecution?.findUnique ??
           current.paymentExecution?.findFirst ??
           jest.fn().mockResolvedValue(null)
+      },
+      contractVersion: {
+        ...(current.contractVersion ?? {}),
+        findUnique:
+          current.contractVersion?.findUnique ??
+          jest.fn().mockResolvedValue({
+            signingSubjectType: "our_company",
+            companyEntityIdSnapshot: "company-1",
+            companyEntityNameSnapshot: "建工智管建设有限公司",
+            companyEntityCreditCodeSnapshot: "91310000TEST000001"
+          }),
+        findMany:
+          current.contractVersion?.findMany ?? jest.fn().mockResolvedValue([])
       },
       user: {
         ...(current.user ?? {}),
@@ -329,6 +354,20 @@ describe("PaymentRequestService", () => {
         findMany: current.position?.findMany ?? jest.fn().mockResolvedValue([])
       }
     });
+  }
+
+  function concurrentPaymentExecutionPrisma<T extends object>(
+    code: string,
+    tx: T
+  ) {
+    const guardedTx = paymentExecutionGuardTx(tx);
+    const transaction = jest
+      .fn()
+      .mockRejectedValueOnce({ code })
+      .mockImplementationOnce(
+        async (callback: (client: T) => Promise<unknown>) => callback(guardedTx)
+      );
+    return Object.assign(guardedTx, { $transaction: transaction });
   }
 
   function paymentExecutionService(
@@ -372,7 +411,10 @@ describe("PaymentRequestService", () => {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: payment.id,
-          projectId: payment.projectId
+          projectId: payment.projectId,
+          settlementId: payment.settlementId,
+          contractVersionId: payment.contractVersionId,
+          paymentSubjectType: payment.paymentSubjectType
         }),
         update: jest.fn().mockResolvedValue({
           id: payment.id,
@@ -870,8 +912,7 @@ describe("PaymentRequestService", () => {
         executedByUserId: "cashier-1",
         voucherFileId: "file-1"
       };
-      const prisma = {
-        $transaction: jest.fn().mockRejectedValue({ code }),
+      const prisma = concurrentPaymentExecutionPrisma(code, {
         paymentExecution: {
           findUnique: jest.fn().mockResolvedValue(existingExecution)
         },
@@ -897,7 +938,7 @@ describe("PaymentRequestService", () => {
             amountCents: 30_000n
           }])
         }
-      };
+      });
       const paymentService = paymentExecutionService(
         new PaymentAmountService(),
         prisma as never,
@@ -5918,7 +5959,7 @@ describe("PaymentRequestService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("replays the same voucher-backed payment execution without duplicate business writes", async () => {
+  it("returns an exact payment execution receipt before password confirmation or project funding locks", async () => {
     projectFunding.allocateExecution.mockResolvedValue({
       kind: "replayed",
       projectCashAmountCents: 30_000n,
@@ -5992,7 +6033,8 @@ describe("PaymentRequestService", () => {
       amountCents: "30000"
     });
 
-    expect(projectFunding.allocateExecution).toHaveBeenCalledTimes(1);
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(projectFunding.lockFundingContext).not.toHaveBeenCalled();
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();
@@ -6264,8 +6306,7 @@ describe("PaymentRequestService", () => {
         executedByUserId: "cashier-1",
         voucherFileId: "file-1"
       };
-      const prisma = {
-        $transaction: jest.fn().mockRejectedValue({ code }),
+      const prisma = concurrentPaymentExecutionPrisma(code, {
         paymentExecution: {
           findUnique: jest.fn().mockResolvedValue(existingExecution)
         },
@@ -6285,7 +6326,7 @@ describe("PaymentRequestService", () => {
             companyEntityCreditCodeSnapshot: "91310000TEST000001"
           })
         }
-      };
+      });
       const paymentService = paymentExecutionService(
         new PaymentAmountService(),
         prisma as never,
@@ -6315,8 +6356,7 @@ describe("PaymentRequestService", () => {
   it.each(["P2002", "P2034"])(
     "rejects a non-exact concurrent winner after %s",
     async (code) => {
-      const prisma = {
-        $transaction: jest.fn().mockRejectedValue({ code }),
+      const prisma = concurrentPaymentExecutionPrisma(code, {
         paymentExecution: {
           findUnique: jest.fn().mockResolvedValue({
             id: "execution-winner-1",
@@ -6349,7 +6389,7 @@ describe("PaymentRequestService", () => {
             companyEntityCreditCodeSnapshot: "91310000TEST000001"
           })
         }
-      };
+      });
       const paymentService = paymentExecutionService(
         new PaymentAmountService(),
         prisma as never,

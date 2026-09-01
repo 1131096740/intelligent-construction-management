@@ -3087,12 +3087,39 @@ export class PaymentRequestService {
       throw new Error("登记实付确认服务暂不可用，请稍后重试或联系管理员");
     }
 
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
     const files = this.files;
     const projectFunding = this.projectFunding;
 
     try {
       const execution = await this.prisma.$transaction(async (tx) => {
+        await this.lockPaymentExecutionReceipt(tx, idempotencyKey);
+        const paymentExecutionClient = tx.paymentExecution as unknown as {
+          findUnique(args: {
+            where: { idempotencyKey: string };
+          }): Promise<PaymentExecutionFactRow | null>;
+          create(args: {
+            data: Record<string, unknown>;
+          }): Promise<PaymentExecutionFactRow>;
+        };
+        const existingExecution = await paymentExecutionClient.findUnique({
+          where: { idempotencyKey }
+        });
+        if (existingExecution) {
+          await this.assertPaymentExecutionReceiptReplay(tx, existingExecution, {
+            paymentId,
+            actorUserId,
+            idempotencyKey,
+            amountCents,
+            paidAt,
+            voucherFileId,
+            wagePayableBindings,
+            payerAttestation,
+            observationSelectionRef
+          });
+          return existingExecution;
+        }
+
+        await this.auth!.confirmPassword(actorUserId, input.confirmationPassword);
         const fundingScope = await tx.paymentRequest.findFirst({
           where: {
             OR: [{ id: paymentId }, { code: paymentId }]
@@ -3151,98 +3178,6 @@ export class PaymentRequestService {
           throw new ConflictException(
             "付款合同缺少完整的我方付款主体快照，请先补齐合同主体后重试"
           );
-        }
-
-        const paymentExecutionClient = tx.paymentExecution as unknown as {
-          findUnique(args: {
-            where: { idempotencyKey: string };
-          }): Promise<PaymentExecutionFactRow | null>;
-          create(args: {
-            data: Record<string, unknown>;
-          }): Promise<PaymentExecutionFactRow>;
-        };
-        const existingExecution = await paymentExecutionClient.findUnique({
-          where: { idempotencyKey }
-        });
-        if (existingExecution) {
-          this.assertSamePaymentExecutionFacts(existingExecution, {
-            idempotencyKey,
-            paymentRequestId: payment.id,
-            settlementId: payment.settlementId,
-            amountCents,
-            paidAt,
-            actorUserId,
-            voucherFileId,
-            companyEntityIdSnapshot,
-            companyEntityNameSnapshot,
-            companyEntityCreditCodeSnapshot,
-            payerAttestationFingerprint: payerAttestation?.fingerprint ?? null
-          });
-          await this.assertWagePayableBindings(
-            tx,
-            existingExecution.id,
-            payment,
-            actorUserId,
-            wagePayableBindings
-          );
-          const claimClient = (tx as unknown as {
-            bankTransactionClaim?: {
-              findUnique(args: {
-                where: { paymentExecutionId: string };
-              }): Promise<{ id: string } | null>;
-            };
-          }).bankTransactionClaim;
-          if (!claimClient && observationSelectionRef) {
-            throw new ConflictException(
-              "共享银行认领服务暂不可用，请刷新后重试"
-            );
-          }
-          const existingClaim = claimClient
-            ? await claimClient.findUnique({
-                where: { paymentExecutionId: existingExecution.id }
-              })
-            : null;
-          if (existingClaim) {
-            if (!observationSelectionRef || !this.sharedAllocations) {
-              throw new ConflictException(
-                "该付款执行已认领银行流水，重放必须携带原短效选择引用"
-              );
-            }
-            await this.sharedAllocations.assertReplayInTransaction(tx, {
-              actorUserId,
-              auditRequestId: idempotencyKey,
-              observationSelectionRef,
-              paymentExecutionId: existingExecution.id,
-              paymentRequestId: payment.id,
-              projectId: payment.projectId,
-              amountCents,
-              occurredAt: paidAt,
-              wagePayableBindings
-            });
-          } else {
-            if (observationSelectionRef) {
-              throw new ConflictException(
-                "既有付款执行不得事后补建银行认领或共享分配"
-              );
-            }
-            await projectFunding.allocateExecution(tx, {
-              projectId: payment.projectId,
-              executionType: "payment_execution",
-              executionId: existingExecution.id,
-              businessType: "payment_request",
-              businessId: payment.id,
-              amountCents,
-              occurredAt: paidAt,
-              actorUserId
-            });
-            await this.appendOperatingPaymentExecution(
-              tx,
-              payment.projectId,
-              existingExecution.id,
-              actorUserId
-            );
-          }
-          return existingExecution;
         }
 
         if (payment.updatedAt.getTime() !== expectedPaymentUpdatedAt.getTime()) {
@@ -3800,30 +3735,6 @@ export class PaymentRequestService {
     });
   }
 
-  private async assertWagePayableBindings(
-    tx: Prisma.TransactionClient,
-    paymentExecutionId: string,
-    payment: PaymentExecutionLockRow,
-    actorUserId: string,
-    bindings: readonly NormalizedWagePayableBinding[]
-  ) {
-    const bindingClient = (tx as unknown as {
-      paymentExecutionWagePayableBinding?: { findMany: (...args: never[]) => Promise<unknown[]> };
-    }).paymentExecutionWagePayableBinding;
-    // Older test fixtures and pre-bridge executions have no client/model. In
-    // that compatibility case an empty payload is equivalent to no bridge;
-    // a non-empty payload remains fail-closed in persistWagePayableBindings.
-    if (!bindingClient && !bindings.length) return;
-    await this.persistWagePayableBindings(
-      tx,
-      paymentExecutionId,
-      payment,
-      actorUserId,
-      bindings,
-      false
-    );
-  }
-
   private async createWagePayableBindings(
     tx: Prisma.TransactionClient,
     paymentExecutionId: string,
@@ -3984,6 +3895,157 @@ export class PaymentRequestService {
     }
   }
 
+  private async lockPaymentExecutionReceipt(
+    tx: Prisma.TransactionClient,
+    idempotencyKey: string
+  ) {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`payment_execution:${idempotencyKey}`}, 0)
+      )
+    `);
+  }
+
+  private async assertPaymentExecutionReceiptReplay(
+    tx: Prisma.TransactionClient,
+    existing: PaymentExecutionFactRow,
+    input: {
+      paymentId: string;
+      actorUserId: string;
+      idempotencyKey: string;
+      amountCents: bigint;
+      paidAt: Date;
+      voucherFileId: string;
+      wagePayableBindings: readonly NormalizedWagePayableBinding[];
+      payerAttestation: NormalizedPayerAttestation | null;
+      observationSelectionRef: string | null;
+    }
+  ) {
+    const payment = await tx.paymentRequest.findFirst({
+      where: {
+        OR: [{ id: input.paymentId }, { code: input.paymentId }]
+      },
+      select: {
+        id: true,
+        projectId: true,
+        settlementId: true,
+        contractVersionId: true,
+        paymentSubjectType: true
+      }
+    });
+    if (!payment || payment.paymentSubjectType !== "our_company") {
+      throw new ConflictException("该付款实付登记幂等键已绑定不同的付款申请");
+    }
+    const version = await tx.contractVersion.findUnique({
+      where: { id: payment.contractVersionId },
+      select: {
+        signingSubjectType: true,
+        companyEntityIdSnapshot: true,
+        companyEntityNameSnapshot: true,
+        companyEntityCreditCodeSnapshot: true
+      }
+    });
+    const companyEntityIdSnapshot = version?.companyEntityIdSnapshot?.trim();
+    const companyEntityNameSnapshot = version?.companyEntityNameSnapshot?.trim();
+    const companyEntityCreditCodeSnapshot =
+      version?.companyEntityCreditCodeSnapshot?.trim();
+    if (
+      version?.signingSubjectType !== "our_company" ||
+      !companyEntityIdSnapshot ||
+      !companyEntityNameSnapshot ||
+      !companyEntityCreditCodeSnapshot
+    ) {
+      throw new ConflictException("该付款实付登记幂等键的付款主体证据不完整");
+    }
+    this.assertSamePaymentExecutionFacts(existing, {
+      idempotencyKey: input.idempotencyKey,
+      paymentRequestId: payment.id,
+      settlementId: payment.settlementId,
+      amountCents: input.amountCents,
+      paidAt: input.paidAt,
+      actorUserId: input.actorUserId,
+      voucherFileId: input.voucherFileId,
+      companyEntityIdSnapshot,
+      companyEntityNameSnapshot,
+      companyEntityCreditCodeSnapshot,
+      payerAttestationFingerprint: input.payerAttestation?.fingerprint ?? null
+    });
+
+    const bindingClient = (tx as unknown as {
+      paymentExecutionWagePayableBinding?: {
+        findMany(args: {
+          where: { paymentExecutionId: string };
+          select: { wagePayableRefId: true; amountCents: true };
+        }): Promise<Array<{ wagePayableRefId: string; amountCents: bigint }>>;
+      };
+    }).paymentExecutionWagePayableBinding;
+    if (!bindingClient && input.wagePayableBindings.length > 0) {
+      throw new ConflictException("工资债权关联服务暂不可用，请稍后重试");
+    }
+    const persistedBindings = bindingClient
+      ? await bindingClient.findMany({
+          where: { paymentExecutionId: existing.id },
+          select: { wagePayableRefId: true, amountCents: true }
+        })
+      : [];
+    if (
+      persistedBindings.length !== input.wagePayableBindings.length ||
+      persistedBindings.some((persisted) => {
+        const requested = input.wagePayableBindings.find(
+          (binding) => binding.payableRef === persisted.wagePayableRefId
+        );
+        return !requested || requested.amountCents !== persisted.amountCents;
+      })
+    ) {
+      throw new ConflictException("幂等键已用于不同工资债权关联载荷");
+    }
+
+    const claimClient = (tx as unknown as {
+      bankTransactionClaim?: {
+        findUnique(args: {
+          where: { paymentExecutionId: string };
+        }): Promise<{ selectionRefFingerprint: string } | null>;
+      };
+    }).bankTransactionClaim;
+    if (!claimClient) {
+      if (input.observationSelectionRef) {
+        throw new ConflictException("共享银行认领服务暂不可用，请刷新后重试");
+      }
+      return;
+    }
+    const claim = await claimClient.findUnique({
+      where: { paymentExecutionId: existing.id }
+    });
+    if (!claim) {
+      if (input.observationSelectionRef) {
+        throw new ConflictException("该付款实付登记尚未建立共享银行认领");
+      }
+      return;
+    }
+    if (!input.observationSelectionRef || !this.sharedAllocations) {
+      throw new ConflictException(
+        "该付款执行已认领银行流水，重放必须携带原短效选择引用"
+      );
+    }
+    if (
+      claim.selectionRefFingerprint !==
+      fundExecutionSelectionRefFingerprint(input.observationSelectionRef)
+    ) {
+      throw new ConflictException("该付款实付登记已绑定不同的银行流水候选");
+    }
+    await this.sharedAllocations.assertReplayInTransaction(tx, {
+      actorUserId: input.actorUserId,
+      auditRequestId: input.idempotencyKey,
+      observationSelectionRef: input.observationSelectionRef,
+      paymentExecutionId: existing.id,
+      paymentRequestId: payment.id,
+      projectId: payment.projectId,
+      amountCents: input.amountCents,
+      occurredAt: input.paidAt,
+      wagePayableBindings: input.wagePayableBindings
+    });
+  }
+
   private assertSamePaymentExecutionFacts(
     existing: PaymentExecutionFactRow,
     expected: {
@@ -4031,117 +4093,15 @@ export class PaymentRequestService {
     observationSelectionRef: string | null;
   }): Promise<PaymentExecutionFactRow | null> {
     if (!this.prisma) return null;
-    const executionClient = this.prisma.paymentExecution as unknown as {
-      findUnique(args: {
-        where: { idempotencyKey: string };
-      }): Promise<PaymentExecutionFactRow | null>;
-    };
-    const existing = await executionClient.findUnique({
-      where: { idempotencyKey: input.idempotencyKey }
-    });
-    if (!existing) return null;
-
-    const payment = await this.prisma.paymentRequest.findFirst({
-      where: {
-        OR: [{ id: input.paymentId }, { code: input.paymentId }]
-      },
-      select: {
-        id: true,
-        settlementId: true,
-        contractVersionId: true,
-        paymentSubjectType: true
-      }
-    });
-    if (!payment || payment.paymentSubjectType !== "our_company") return null;
-    const version = await this.prisma.contractVersion.findUnique({
-      where: { id: payment.contractVersionId },
-      select: {
-        signingSubjectType: true,
-        companyEntityIdSnapshot: true,
-        companyEntityNameSnapshot: true,
-        companyEntityCreditCodeSnapshot: true
-      }
-    });
-    const companyEntityIdSnapshot = version?.companyEntityIdSnapshot?.trim();
-    const companyEntityNameSnapshot = version?.companyEntityNameSnapshot?.trim();
-    const companyEntityCreditCodeSnapshot =
-      version?.companyEntityCreditCodeSnapshot?.trim();
-    if (
-      version?.signingSubjectType !== "our_company" ||
-      !companyEntityIdSnapshot ||
-      !companyEntityNameSnapshot ||
-      !companyEntityCreditCodeSnapshot
-    ) {
-      return null;
-    }
-    this.assertSamePaymentExecutionFacts(existing, {
-      idempotencyKey: input.idempotencyKey,
-      paymentRequestId: payment.id,
-      settlementId: payment.settlementId,
-      amountCents: input.amountCents,
-      paidAt: input.paidAt,
-      actorUserId: input.actorUserId,
-      voucherFileId: input.voucherFileId,
-      companyEntityIdSnapshot,
-      companyEntityNameSnapshot,
-      companyEntityCreditCodeSnapshot,
-      payerAttestationFingerprint: input.payerAttestation?.fingerprint ?? null
-    });
-    const bindingClient = (this.prisma as unknown as {
-      paymentExecutionWagePayableBinding?: {
-        findMany(args: {
-          where: { paymentExecutionId: string };
-          select: { wagePayableRefId: true; amountCents: true };
-        }): Promise<Array<{ wagePayableRefId: string; amountCents: bigint }>>;
-      };
-    }).paymentExecutionWagePayableBinding;
-    if (bindingClient) {
-      const persisted = await bindingClient.findMany({
-        where: { paymentExecutionId: existing.id },
-        select: { wagePayableRefId: true, amountCents: true }
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockPaymentExecutionReceipt(tx, input.idempotencyKey);
+      const existing = await tx.paymentExecution.findUnique({
+        where: { idempotencyKey: input.idempotencyKey }
       });
-      if (
-        persisted.length !== input.wagePayableBindings.length ||
-        persisted.some((row) => {
-          const requested = input.wagePayableBindings.find(
-            (binding) => binding.payableRef === row.wagePayableRefId
-          );
-          return !requested || requested.amountCents !== row.amountCents;
-        })
-      ) {
-        throw new ConflictException("该付款实付登记幂等键已绑定不同的工资债权关联");
-      }
-    } else if (input.wagePayableBindings.length > 0) {
-      throw new ConflictException("工资债权关联服务暂不可用，请稍后重试");
-    }
-    const claimClient = (this.prisma as unknown as {
-      bankTransactionClaim?: {
-        findUnique(args: {
-          where: { paymentExecutionId: string };
-        }): Promise<{ selectionRefFingerprint: string } | null>;
-      };
-    }).bankTransactionClaim;
-    if (!claimClient) {
-      if (input.observationSelectionRef) {
-        throw new ConflictException("共享银行认领服务暂不可用，请刷新后重试");
-      }
+      if (!existing) return null;
+      await this.assertPaymentExecutionReceiptReplay(tx, existing, input);
       return existing;
-    }
-    const claim = await claimClient.findUnique({
-      where: { paymentExecutionId: existing.id }
     });
-    if (claim) {
-      if (
-        !input.observationSelectionRef ||
-        claim.selectionRefFingerprint !==
-          fundExecutionSelectionRefFingerprint(input.observationSelectionRef)
-      ) {
-        throw new ConflictException("该付款实付登记已绑定不同的银行流水候选");
-      }
-    } else if (input.observationSelectionRef) {
-      throw new ConflictException("该付款实付登记尚未建立共享银行认领");
-    }
-    return existing;
   }
 
   private paymentExecutionBlockedMessage(status: string) {
