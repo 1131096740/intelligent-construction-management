@@ -27,6 +27,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
 > = Object.freeze({
   ApprovalDelegationController: "approval",
   ApprovalFormController: "approval",
+  AffiliateClearingAuthorityController: "finance",
   AuthController: "account",
   BusinessEntryDefinitionController: "project",
   BusinessPartyController: "master_data",

@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 547,
-    "classificationOverrideCount": 190,
-    "derivedProductionPageCount": 357,
-    "classificationOverrideSha256": "22af4dc79b36cb89a6fc4a8f468b38dad9758b8a81d5eecc750b882f66abdcc2",
-    "consumerSurfaceOverrideSha256": "2fd8a92fe9294455566075847ba99cec98674cbcf201f4f40ae6c3de919cc7ae",
+    "routeCount": 553,
+    "classificationOverrideCount": 194,
+    "derivedProductionPageCount": 359,
+    "classificationOverrideSha256": "78cf568bf4bb87c62802c6c7685c004a9c07841a3090a5caaf2c8ca47677e359",
+    "consumerSurfaceOverrideSha256": "2d5166379c14d9c2f4d34cb21c6b298b8c0fed80c5d2fa5e12221c546c7c5dee",
     "usageCounts": {
-      "page": 359,
+      "page": 361,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 10,
+      "internal_task": 14,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 411,
+      "web_api_wrapper": 413,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 8,
+      "operator_endpoint": 12,
       "none": 120
     }
   },
@@ -1164,6 +1164,30 @@
       "path": "/fund-movements/:movementId/submit",
       "usage": "internal_task",
       "reason": "pol_13c_controlled_fund_movement_operator_command"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities",
+      "usage": "internal_task",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities/:authorityId/confirm",
+      "usage": "internal_task",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities/:authorityId/return",
+      "usage": "internal_task",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities/:authorityId/submit",
+      "usage": "internal_task",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1240,6 +1264,30 @@
       "path": "/fund-movements/:movementId/submit",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_13c_controlled_fund_movement_operator_command"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities/:authorityId/confirm",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities/:authorityId/return",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/affiliate-clearing-authorities/:authorityId/submit",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
     }
   ]
 }

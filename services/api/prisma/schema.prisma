@@ -346,6 +346,11 @@ model ClearingCase {
   revision                           Int             @default(1)
   authoritativeGrossCapCents         BigInt
   currencyCode                       String          @default("CNY")
+  authorityVersionId                 String?
+  authoritySnapshotRef               String?
+  sourceDiscriminator                String?
+  coverageKind                       String?
+  periodStart                        DateTime?       @db.Date
   createdByUserId                    String
   createdAt                          DateTime        @default(now())
   updatedAt                          DateTime        @updatedAt
@@ -3574,6 +3579,115 @@ model ProjectAffiliateCompanyContract {
   @@index([affiliateBusinessPartyVersionId])
   @@index([companyEntityId])
   @@index([companyEntityVersionId])
+}
+
+// POL-214 最小财务权威来源层。协议、名册/岗位、工资规则与保证金义务只在服务端冻结，
+// 不承载 HR、工资核算、通用协议或付款事实。
+model AffiliateClearingAuthorityVersion {
+  id                                 String    @id @default(uuid())
+  projectId                          String
+  constructionEnterpriseAssignmentId String
+  affiliateCompanyContractId         String
+  protocolNameSnapshot               String
+  protocolReferenceSnapshot          String
+  assignmentNameSnapshot             String
+  assignmentCreditCodeSnapshot       String?
+  versionNo                          Int       @default(1)
+  supersedesVersionId                String?
+  effectiveFrom                      DateTime  @db.Date
+  effectiveTo                        DateTime? @db.Date
+  coverageKind                       String
+  evidenceFileId                     String
+  evidenceSha256                     String
+  evidenceManifestSha256             String
+  status                             String    @default("draft")
+  authoritySnapshotRef               String    @unique
+  authorityFingerprint               String    @unique
+  idempotencyKey                     String    @unique
+  requestFingerprint                 String
+  createdByUserId                    String
+  submittedByUserId                  String?
+  submittedAt                        DateTime?
+  confirmedByUserId                  String?
+  confirmedAt                        DateTime?
+  returnedByUserId                   String?
+  returnedAt                         DateTime?
+  returnReason                       String?
+  createdAt                          DateTime  @default(now())
+  updatedAt                          DateTime  @updatedAt
+
+  @@unique([affiliateCompanyContractId, versionNo])
+  @@index([projectId, status, effectiveFrom])
+  @@index([constructionEnterpriseAssignmentId, status])
+  @@index([coverageKind, status])
+}
+
+model AssignedWageAuthorityLine {
+  id                                 String   @id @default(uuid())
+  authorityVersionId                 String
+  projectId                          String
+  constructionEnterpriseAssignmentId String
+  affiliateCompanyContractId         String
+  coverageKind                       String
+  coverageKey                        String
+  personAuthorityKey                 String?
+  personNameSnapshot                 String?
+  roleCategoryKey                    String?
+  roleNameSnapshot                   String?
+  employerNameSnapshot               String
+  employerCreditCodeSnapshot         String?
+  wageMonth                          DateTime @db.Date
+  amountRuleVersion                  Int
+  amountMode                         String
+  approvedAmountCents                BigInt
+  grossCapCents                      BigInt
+  currencyCode                       String   @default("CNY")
+  midMonthPolicy                     String
+  evidenceLevel                      String
+  evidenceCoordinate                 String
+  evidenceSha256                     String
+  lineFingerprint                    String
+  createdAt                          DateTime @default(now())
+
+  @@unique([authorityVersionId, wageMonth, coverageKind, coverageKey])
+  @@index([projectId, constructionEnterpriseAssignmentId, wageMonth])
+  @@index([coverageKey, wageMonth])
+  @@index([affiliateCompanyContractId, wageMonth])
+}
+
+model GuaranteeObligationVersion {
+  id                                 String    @id @default(uuid())
+  authorityVersionId                 String
+  projectId                          String
+  constructionEnterpriseAssignmentId String
+  affiliateCompanyContractId         String
+  obligationId                       String
+  versionNo                          Int       @default(1)
+  supersedesVersionId                String?
+  baseAmountCents                    BigInt
+  calculationMode                    String
+  rateBps                            Int?
+  fixedAmountCents                   BigInt?
+  capCents                           BigInt
+  currencyCode                       String    @default("CNY")
+  effectiveFrom                      DateTime  @db.Date
+  effectiveTo                        DateTime? @db.Date
+  returnCondition                    String
+  enabled                            Boolean   @default(true)
+  disabledAt                         DateTime?
+  disableReason                      String?
+  evidenceLevel                      String
+  evidenceCoordinate                 String
+  evidenceSha256                     String
+  obligationFingerprint              String    @unique
+  createdByUserId                    String
+  confirmedByUserId                  String?
+  confirmedAt                        DateTime?
+  createdAt                          DateTime  @default(now())
+
+  @@unique([obligationId, versionNo])
+  @@index([projectId, constructionEnterpriseAssignmentId, obligationId])
+  @@index([authorityVersionId, enabled, effectiveFrom])
 }
 
 model ProjectProxyPayment {

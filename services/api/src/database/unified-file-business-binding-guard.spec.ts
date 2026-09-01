@@ -134,6 +134,13 @@ const fundExecutionBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const affiliateClearingAuthorityBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260901090000_pol214_affiliate_clearing_authority/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -158,7 +165,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-    `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -177,7 +184,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(90);
+    expect(registered).toHaveLength(91);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(

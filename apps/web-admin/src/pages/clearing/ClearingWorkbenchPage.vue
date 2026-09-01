@@ -9,7 +9,9 @@ import {
   confirmClearingEvent,
   createClearingCase,
   createClearingEvent,
+  fetchAffiliateClearingAuthorityOptions,
   fetchClearingCapabilities,
+  fetchClearingAllocationOptions,
   fetchClearingCase,
   fetchClearingCases,
   reviseClearingEvent,
@@ -18,7 +20,8 @@ import {
   submitClearingEvent,
   type ClearingCapabilities,
   type ClearingCaseReadModel,
-  type ClearingEventReadModel
+  type ClearingEventReadModel,
+  type ClearingAllocationOption
 } from "../../api/clearing.api";
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
 import { fetchProjectOperatingProfile } from "../../api/project-operating-profile.api";
@@ -47,6 +50,8 @@ const projects = ref<ProjectOptionReadModel[]>([]);
 const selectedProjectId = ref("");
 const capabilities = ref<ClearingCapabilities>({ ...emptyCapabilities });
 const cases = ref<ClearingCaseReadModel[]>([]);
+const authorityOptions = ref<import("../../api/clearing.api").AffiliateClearingAuthorityOption[]>([]);
+const allocationOptions = ref<ClearingAllocationOption[]>([]);
 const detail = ref<ClearingCaseReadModel | null>(null);
 const caseDialogVisible = ref(false);
 const eventDialogVisible = ref(false);
@@ -57,8 +62,10 @@ const editingEvent = ref<ClearingEventReadModel | null>(null);
 
 const caseForm = reactive({
   projectId: "",
-  governedSubjectKey: "",
   category: "management_fee",
+  authoritySelectionRef: "",
+  guaranteeTrancheAmountCents: "",
+  governedSubjectKey: "",
   authoritativeGrossCapCents: ""
 });
 const eventForm = reactive({
@@ -66,11 +73,14 @@ const eventForm = reactive({
   amountCents: "",
   evidenceLevel: "A",
   payableRef: "",
-  payloadText: "{}"
+  payloadText: "{}",
+  businessReason: "",
+  evidenceRef: ""
 });
 const confirmationForm = reactive({
   sourceKind: "authority_cap",
   sourceEventVersionId: "",
+  sourceSelectionRef: "",
   amountCents: "",
   pairedWithheldAmountCents: ""
 });
@@ -90,12 +100,29 @@ const categoryOptions = [
   { value: "assigned_management_salary", label: "委派管理人员工资" },
   { value: "other_controlled_deduction", label: "其他受控扣项" }
 ];
+const authorityCategoryValues = new Set(["deposit", "assigned_management_salary"]);
+const authorityCaseOptions = computed(() => authorityOptions.value.filter((option) =>
+  caseForm.category === "deposit" ? option.optionKind === "guarantee" : option.optionKind === "assigned_wage"
+));
+const isAuthorityCase = computed(() => Boolean(detail.value?.sourceDiscriminator));
 const sourceKindOptions = [
   { value: "authority_cap", label: "权威毛额上限" },
   { value: "withheld", label: "已确认暂扣" },
   { value: "final_confirmed", label: "已确认最终扣项" },
   { value: "supplemental", label: "已确认补扣" }
 ];
+const visibleSourceKindOptions = computed(() =>
+  isAuthorityCase.value
+    ? [
+        sourceKindOptions[0],
+        ...Array.from(new Set(allocationOptions.value.map((option) => option.sourceKind))).map((kind) => ({
+          value: kind,
+          label: kind === "withheld" ? "已确认暂扣" : kind === "final_confirmed" ? "已确认最终扣项" : "已确认补扣"
+        }))
+      ]
+    : sourceKindOptions
+);
+const visibleAllocationOptions = computed(() => allocationOptions.value.filter((option) => option.sourceKind === confirmationForm.sourceKind));
 const timeline = computed(() => detail.value ? clearingTimeline(detail.value) : []);
 const actionTitle = computed(() => ({
   submit: "提交清分事件",
@@ -120,7 +147,7 @@ const requiresAllocation = computed(() =>
 );
 
 const caseColumns = [
-  { colKey: "governedSubjectKey", title: "受控事项", minWidth: 180 },
+  { colKey: "subject", title: "受控事项", minWidth: 180 },
   { colKey: "category", title: "分类", width: 140 },
   { colKey: "authoritativeGrossCapCents", title: "权威毛额（分）", width: 150 },
   { colKey: "revision", title: "修订", width: 80 },
@@ -155,7 +182,7 @@ async function loadInitial() {
     capabilities.value = capability;
     projects.value = projectRows;
     if (!selectedProjectId.value && projectRows[0]) selectedProjectId.value = projectRows[0].id;
-    await loadCases();
+    await Promise.all([loadCases(), loadAuthorityOptions()]);
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "加载清分工作台失败");
   } finally {
@@ -172,11 +199,15 @@ async function loadCases() {
   }
 }
 
+async function loadAuthorityOptions() {
+  authorityOptions.value = (await fetchAffiliateClearingAuthorityOptions(selectedProjectId.value || undefined)).options;
+}
+
 async function changeProject() {
   detail.value = null;
   loading.value = true;
   try {
-    await loadCases();
+    await Promise.all([loadCases(), loadAuthorityOptions()]);
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "加载清分事项失败");
   } finally {
@@ -188,6 +219,7 @@ async function openCase(row: ClearingCaseReadModel) {
   loading.value = true;
   try {
     detail.value = await fetchClearingCase(row.id);
+    allocationOptions.value = (await fetchClearingAllocationOptions(row.id)).options;
   } finally {
     loading.value = false;
   }
@@ -199,6 +231,8 @@ function openCaseCreate() {
   caseForm.governedSubjectKey = "";
   caseForm.category = "management_fee";
   caseForm.authoritativeGrossCapCents = "";
+  caseForm.authoritySelectionRef = "";
+  caseForm.guaranteeTrancheAmountCents = "";
   caseDialogVisible.value = true;
 }
 
@@ -206,19 +240,33 @@ async function saveCase() {
   if (!capabilities.value.availableActions.includes("clearing.prepare")) return;
   submitting.value = true;
   try {
-    const profile = await fetchProjectOperatingProfile(caseForm.projectId);
-    if (!profile.constructionEnterprise?.assignmentId) {
-      throw new Error("项目尚未设置有效施工企业档案");
-    }
-    await createClearingCaseWithCapability({
+    const base = {
       idempotencyKey: crypto.randomUUID(),
       expectedRevision: 0,
-      projectId: caseForm.projectId,
-      constructionEnterpriseAssignmentId: profile.constructionEnterprise.assignmentId,
-      category: caseForm.category,
-      governedSubjectKey: caseForm.governedSubjectKey.trim(),
-      authoritativeGrossCapCents: caseForm.authoritativeGrossCapCents
-    });
+      category: caseForm.category
+    };
+    if (authorityCategoryValues.has(caseForm.category)) {
+      if (!caseForm.authoritySelectionRef) throw new Error("请选择服务端权威业务选项");
+      await createClearingCaseWithCapability({
+        ...base,
+        authoritySelectionRef: caseForm.authoritySelectionRef,
+        guaranteeTrancheAmountCents: caseForm.category === "deposit"
+          ? caseForm.guaranteeTrancheAmountCents || undefined
+          : undefined
+      });
+    } else {
+      const profile = await fetchProjectOperatingProfile(caseForm.projectId);
+      if (!profile.constructionEnterprise?.assignmentId) {
+        throw new Error("项目尚未设置有效施工企业档案");
+      }
+      await createClearingCaseWithCapability({
+        ...base,
+        projectId: caseForm.projectId,
+        constructionEnterpriseAssignmentId: profile.constructionEnterprise.assignmentId,
+        governedSubjectKey: caseForm.governedSubjectKey.trim(),
+        authoritativeGrossCapCents: caseForm.authoritativeGrossCapCents
+      });
+    }
     caseDialogVisible.value = false;
     selectedProjectId.value = caseForm.projectId;
     await loadCases();
@@ -238,6 +286,8 @@ function openEventCreate() {
   eventForm.evidenceLevel = "A";
   eventForm.payableRef = "";
   eventForm.payloadText = "{}";
+  eventForm.businessReason = "";
+  eventForm.evidenceRef = "";
   eventDialogVisible.value = true;
 }
 
@@ -251,6 +301,8 @@ function openEventRevision(event: ClearingEventReadModel) {
   eventForm.evidenceLevel = current.evidenceLevel;
   eventForm.payableRef = current.payableRef ?? "";
   eventForm.payloadText = JSON.stringify(current.payloadSnapshot, null, 2);
+  eventForm.businessReason = typeof current.payloadSnapshot.businessReason === "string" ? current.payloadSnapshot.businessReason : "";
+  eventForm.evidenceRef = typeof current.payloadSnapshot.evidenceRef === "string" ? current.payloadSnapshot.evidenceRef : "";
   eventDialogVisible.value = true;
 }
 
@@ -259,19 +311,25 @@ async function saveEvent() {
   if (!detail.value) return;
   submitting.value = true;
   try {
-    const payload = JSON.parse(eventForm.payloadText) as unknown;
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-      throw new Error("业务快照必须是 JSON 对象");
-    }
-    const body = {
+    const base = {
       idempotencyKey: crypto.randomUUID(),
       expectedRevision: editingEvent.value?.revision ?? detail.value.revision,
       kind: eventForm.kind,
-      amountCents: eventForm.amountCents,
-      evidenceLevel: eventForm.evidenceLevel,
-      payableRef: eventForm.payableRef.trim() || undefined,
-      payload
     };
+    const body = isAuthorityCase.value
+      ? {
+          ...base,
+          amountCents: detail.value.sourceDiscriminator === "construction_enterprise_guarantee" ? eventForm.amountCents : undefined,
+          businessReason: eventForm.businessReason.trim(),
+          evidenceRef: eventForm.evidenceRef.trim() || undefined
+        }
+      : {
+          ...base,
+          amountCents: eventForm.amountCents,
+          evidenceLevel: eventForm.evidenceLevel,
+          payableRef: eventForm.payableRef.trim() || undefined,
+          payload: JSON.parse(eventForm.payloadText) as Record<string, unknown>
+        };
     const isRevision = Boolean(editingEvent.value);
     if (editingEvent.value) await reviseClearingEventWithCapability(editingEvent.value.id, body);
     else await createClearingEventWithCapability(detail.value.id, body);
@@ -290,8 +348,11 @@ function requestAction(action: "submit" | "attest" | "confirm" | "return" | "reo
   pendingAction.value = action;
   selectedEvent.value = event;
   const current = event.versions.find((version) => version.versionNo === event.currentVersionNo);
-  confirmationForm.sourceKind = event.kind === "returned" ? "final_confirmed" : "authority_cap";
+  confirmationForm.sourceKind = isAuthorityCase.value
+    ? event.kind === "returned" ? allocationOptions.value[0]?.sourceKind ?? "withheld" : "authority_cap"
+    : event.kind === "returned" ? "final_confirmed" : "authority_cap";
   confirmationForm.sourceEventVersionId = "";
+  confirmationForm.sourceSelectionRef = "";
   confirmationForm.amountCents = current?.amountCents ?? "";
   confirmationForm.pairedWithheldAmountCents = event.kind === "pending_reconciliation" ? current?.amountCents ?? "" : "";
   actionDialogVisible.value = true;
@@ -330,7 +391,10 @@ async function executeAction(values: { reason: string }) {
             sourceKind: confirmationForm.sourceKind,
             sourceEventVersionId: confirmationForm.sourceKind === "authority_cap"
               ? undefined
-              : confirmationForm.sourceEventVersionId.trim(),
+              : isAuthorityCase.value ? undefined : confirmationForm.sourceEventVersionId.trim(),
+            sourceSelectionRef: isAuthorityCase.value && confirmationForm.sourceKind !== "authority_cap"
+              ? confirmationForm.sourceSelectionRef
+              : undefined,
             amountCents: confirmationForm.amountCents
           }]
         : [];
@@ -355,6 +419,7 @@ async function executeAction(values: { reason: string }) {
 async function refreshDetail() {
   if (!detail.value) return;
   detail.value = await fetchClearingCase(detail.value.id);
+  allocationOptions.value = (await fetchClearingAllocationOptions(detail.value.id)).options;
   await loadCases();
 }
 
@@ -439,6 +504,20 @@ function currentAmount(event: ClearingEventReadModel) {
   return event.versions.find((version) => version.versionNo === event.currentVersionNo)?.amountCents ?? "—";
 }
 
+function displaySubject(row: ClearingCaseReadModel) {
+  if (row.sourceDiscriminator === "construction_enterprise_assigned_wage") {
+    return `派驻工资 · ${row.coverageKind === "ROLE_SUMMARY" ? "岗位汇总" : "人员"}`;
+  }
+  if (row.sourceDiscriminator === "construction_enterprise_guarantee") return "保证金义务";
+  return row.governedSubjectKey;
+}
+
+function authorityOptionLabel(option: import("../../api/clearing.api").AffiliateClearingAuthorityOption) {
+  const cap = option.grossCapCents ? ` · 上限 ${option.grossCapCents} 分` : "";
+  const period = option.period ? ` · ${option.period}` : "";
+  return `${option.label ?? "权威业务选项"}${period}${cap}`;
+}
+
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
 }
@@ -476,16 +555,21 @@ function formatDate(value: string | null) {
         :loading="loading"
         empty="暂无清分事项"
         @row-click="openCase"
-      />
+      >
+        <template #subject="{ row }">{{ displaySubject(row) }}</template>
+      </t-table>
     </t-card>
 
-    <t-card v-if="detail" class="panel" :title="`事项：${detail.governedSubjectKey}`">
+    <t-card v-if="detail" class="panel" :title="`事项：${displaySubject(detail)}`">
       <template #actions>
         <t-button v-if="capabilities.prepare" theme="primary" @click="openEventCreate">新增事件草稿</t-button>
       </template>
       <t-descriptions bordered :column="2">
-        <t-descriptions-item label="项目">{{ detail.projectId }}</t-descriptions-item>
-        <t-descriptions-item label="施工企业档案">{{ detail.constructionEnterpriseAssignmentId }}</t-descriptions-item>
+        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="项目">{{ detail.projectId }}</t-descriptions-item>
+        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="施工企业档案">{{ detail.constructionEnterpriseAssignmentId }}</t-descriptions-item>
+        <t-descriptions-item v-if="detail.sourceDiscriminator" label="权威快照">{{ detail.authoritySnapshotRef }}</t-descriptions-item>
+        <t-descriptions-item v-if="detail.sourceDiscriminator" label="来源">{{ detail.sourceDiscriminator === "construction_enterprise_guarantee" ? "服务端保证金义务" : "服务端派驻工资" }}</t-descriptions-item>
+        <t-descriptions-item v-if="detail.sourceDiscriminator" label="覆盖方式">{{ detail.coverageKind === "ROLE_SUMMARY" ? "岗位汇总（不含人员）" : "服务端人员身份" }}</t-descriptions-item>
         <t-descriptions-item label="权威毛额（分）">{{ detail.authoritativeGrossCapCents }}</t-descriptions-item>
         <t-descriptions-item label="事项修订">{{ detail.revision }}</t-descriptions-item>
       </t-descriptions>
@@ -516,18 +600,39 @@ function formatDate(value: string | null) {
       <t-form label-align="top">
         <t-form-item label="项目"><t-select v-model="caseForm.projectId" :options="projectOptions" /></t-form-item>
         <t-form-item label="分类"><t-select v-model="caseForm.category" :options="categoryOptions" /></t-form-item>
-        <t-form-item label="受控事项键"><t-input v-model="caseForm.governedSubjectKey" /></t-form-item>
-        <t-form-item label="权威毛额（整数分）"><t-input v-model="caseForm.authoritativeGrossCapCents" /></t-form-item>
+        <template v-if="authorityCategoryValues.has(caseForm.category)">
+          <t-form-item label="服务端权威业务选项">
+            <t-select
+              v-model="caseForm.authoritySelectionRef"
+              :options="authorityCaseOptions.map((option) => ({ value: option.selectionRef, label: authorityOptionLabel(option) }))"
+              placeholder="选择已确认权威快照"
+            />
+          </t-form-item>
+          <t-form-item v-if="caseForm.category === 'deposit'" label="本次暂扣金额（整数分，可不超过服务端上限）">
+            <t-input v-model="caseForm.guaranteeTrancheAmountCents" />
+          </t-form-item>
+          <t-alert theme="info" :close="false" message="协议、人员/岗位、规则、上限和快照均由服务端派生；客户端只提交短效 selectionRef。" />
+        </template>
+        <template v-else>
+          <t-form-item label="受控事项键"><t-input v-model="caseForm.governedSubjectKey" /></t-form-item>
+          <t-form-item label="权威毛额（整数分）"><t-input v-model="caseForm.authoritativeGrossCapCents" /></t-form-item>
+        </template>
       </t-form>
     </t-dialog>
 
     <t-dialog v-model:visible="eventDialogVisible" :header="editingEvent ? '修订清分事件草稿' : '新增清分事件草稿'" :confirm-btn="{ loading: submitting }" @confirm="saveEvent">
       <t-form label-align="top">
         <t-form-item label="事件类型"><t-select v-model="eventForm.kind" :options="clearingKindOptions" /></t-form-item>
-        <t-form-item label="金额（整数分）"><t-input v-model="eventForm.amountCents" /></t-form-item>
-        <t-form-item label="证据等级"><t-select v-model="eventForm.evidenceLevel" :options="[{ value: 'A', label: 'A' }, { value: 'B', label: 'B' }]" /></t-form-item>
-        <t-form-item label="应付引用（可选，仅引用不自动建应付）"><t-input v-model="eventForm.payableRef" /></t-form-item>
-        <t-form-item label="冻结业务快照 JSON"><t-textarea v-model="eventForm.payloadText" :autosize="{ minRows: 4, maxRows: 8 }" /></t-form-item>
+        <t-form-item v-if="!isAuthorityCase" label="金额（整数分）"><t-input v-model="eventForm.amountCents" /></t-form-item>
+        <t-form-item v-else-if="detail?.sourceDiscriminator === 'construction_enterprise_guarantee'" label="本次保证金暂扣金额（整数分）"><t-input v-model="eventForm.amountCents" /></t-form-item>
+        <t-form-item v-if="!isAuthorityCase" label="证据等级"><t-select v-model="eventForm.evidenceLevel" :options="[{ value: 'A', label: 'A' }, { value: 'B', label: 'B' }]" /></t-form-item>
+        <t-form-item v-if="!isAuthorityCase" label="应付引用（可选，仅引用不自动建应付）"><t-input v-model="eventForm.payableRef" /></t-form-item>
+        <template v-if="isAuthorityCase">
+          <t-form-item label="业务原因"><t-input v-model="eventForm.businessReason" /></t-form-item>
+          <t-form-item label="证据引用（可选）"><t-input v-model="eventForm.evidenceRef" /></t-form-item>
+          <t-alert theme="info" :close="false" message="正式金额、证据等级和冻结快照由服务端 authority case 派生；不接受客户端 JSON 或应付/付款引用。" />
+        </template>
+        <t-form-item v-else label="冻结业务快照 JSON"><t-textarea v-model="eventForm.payloadText" :autosize="{ minRows: 4, maxRows: 8 }" /></t-form-item>
       </t-form>
     </t-dialog>
 
@@ -543,11 +648,19 @@ function formatDate(value: string | null) {
         <template v-if="requiresAllocation">
           <label>
             <span>分配来源</span>
-            <t-select v-model="confirmationForm.sourceKind" :options="sourceKindOptions" />
+            <t-select v-model="confirmationForm.sourceKind" :options="visibleSourceKindOptions" />
           </label>
-          <label v-if="confirmationForm.sourceKind !== 'authority_cap'">
+          <label v-if="confirmationForm.sourceKind !== 'authority_cap' && !isAuthorityCase">
             <span>来源事件版本 ID</span>
             <t-input v-model="confirmationForm.sourceEventVersionId" />
+          </label>
+          <label v-if="confirmationForm.sourceKind !== 'authority_cap' && isAuthorityCase">
+            <span>服务端分配业务选项</span>
+            <t-select
+              v-model="confirmationForm.sourceSelectionRef"
+              :options="visibleAllocationOptions.map((option) => ({ value: option.selectionRef, label: `${option.sourceKind === 'withheld' ? '暂扣' : option.sourceKind === 'final_confirmed' ? '最终扣项' : '补扣'} · 可用 ${option.remainingCents} 分` }))"
+              placeholder="选择服务端已确认余额"
+            />
           </label>
           <label>
             <span>本次分配金额（分）</span>
