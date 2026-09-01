@@ -57,6 +57,27 @@ type PublicAuthorityValue = {
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const AUTHORITY_ACTION_PREFIX = "clearing.authority";
+const ROLE_LABELS: Readonly<Record<string, string>> = {
+  chairman: "董事长",
+  general_manager: "总经理",
+  project_manager: "项目经理",
+  contract_director: "合同部主管",
+  contract_staff: "合同员",
+  budget_director: "预算部主管",
+  budget_staff: "预算员",
+  finance_director: "财务主管",
+  finance_staff: "财务员",
+  material_director: "物资主管",
+  material_staff: "物资员",
+  engineering_department_member: "工程部成员",
+  engineering_department_director: "工程部主管",
+  engineering_director: "工程部主管",
+  engineering_foreman: "施工队长",
+  engineering_tech: "技术员",
+  comprehensive_director: "综合部主管",
+  employee: "员工",
+  super_admin: "系统管理员"
+};
 
 @Injectable()
 export class AffiliateClearingAuthorityService {
@@ -126,14 +147,18 @@ export class AffiliateClearingAuthorityService {
         orderBy: { positionKey: "asc" }
       });
       options.push(
-        ...roles.map((role) => ({
+        ...roles.flatMap((role) => {
+          const label = ROLE_LABELS[role.positionKey];
+          if (!label) return [];
+          return [{
           selectionRef: this.selectionRefs.issue(
             this.selectionBinding(actorUserId, contract.id, contractFingerprint, "role", role.positionKey, 0)
           ),
           optionKind: "role",
-          label: role.positionKey,
+          label,
           coverageKind: "ROLE_SUMMARY"
-        }))
+          }];
+        })
       );
     }
 
@@ -503,10 +528,15 @@ export class AffiliateClearingAuthorityService {
 
   private async resolveRoleCategories(tx: AuthorityTx, projectId: string) {
     const rows = await tx.projectMember.findMany({ where: { projectId }, select: { positionKey: true }, distinct: ["positionKey"] });
-    return new Set(rows.map((row) => row.positionKey));
+    return new Map(
+      rows.flatMap((row) => {
+        const label = ROLE_LABELS[row.positionKey];
+        return label ? [[row.positionKey, label] as const] : [];
+      })
+    );
   }
 
-  private async resolveWageLine(actorUserId: string, contract: AuthorityContract, people: Map<string, { id: string; name: string }>, roles: Set<string>, line: CreateAssignedWageAuthorityLineDto, tx: AuthorityTx) {
+  private async resolveWageLine(actorUserId: string, contract: AuthorityContract, people: Map<string, { id: string; name: string }>, roles: Map<string, string>, line: CreateAssignedWageAuthorityLineDto, tx: AuthorityTx) {
     const month = normalizeWageMonth(line.wageMonth);
     const amount = assertMoneyWithinPostgresBigInt(line.amountCents);
     if (!Number.isInteger(line.amountRuleVersion) || line.amountRuleVersion < 1) throw new BadRequestException("工资规则版本必须是正整数");
@@ -546,7 +576,7 @@ export class AffiliateClearingAuthorityService {
         };
       }
     }
-    for (const role of roles) {
+    for (const [role, roleName] of roles) {
       const binding = this.selectionBinding(actorUserId, contract.id, this.contractFingerprint(contract), "role", role, 0);
       if (this.selectionRefs.matches(line.selectionRef, binding)) {
         if (line.amountMode === "EXPLICIT_TYPED_PRORATION" && line.midMonthPolicy !== "EXPLICIT_TYPED_RULE") throw new BadRequestException("月中折算必须绑定明确类型化规则");
@@ -556,7 +586,7 @@ export class AffiliateClearingAuthorityService {
           personAuthorityKey: null,
           personNameSnapshot: null,
           roleCategoryKey: role,
-          roleNameSnapshot: role,
+          roleNameSnapshot: roleName,
           employerNameSnapshot: contract.companyEntityNameSnapshot,
           employerCreditCodeSnapshot: contract.companyEntityCreditCodeSnapshot,
           wageMonth: month,
