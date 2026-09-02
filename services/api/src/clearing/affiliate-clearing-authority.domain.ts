@@ -6,6 +6,88 @@ export const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n;
 
 export type AuthorityCoverageKind = "PERSON" | "ROLE_SUMMARY";
 
+export type AffiliateDeductionSourceRow = Readonly<{
+  id: string;
+  projectId: string;
+  factType: string;
+  entryKind: string;
+  adjustsFactId: string | null;
+  effectDirection: string;
+  occurredAt: Date;
+  amountCents: bigint;
+  counterpartyName: string;
+  basisType: string;
+  deductionCategory: string | null;
+  affiliateAssignmentId: string;
+  affiliateBusinessPartyVersionId: string;
+  affiliateNameSnapshot: string;
+  description: string | null;
+  evidenceFileId: string | null;
+  documentVersion: number;
+  fileContentSha256Snapshot: string | null;
+  confirmedByUserId: string | null;
+  confirmedAt: Date | null;
+}>;
+
+export type ResolvedAffiliateDeductionSource = Readonly<{
+  sourceType: "project_upstream_fund_fact";
+  sourceBusinessId: string;
+  sourceVersion: number;
+  sourceFingerprint: string;
+  normalizedRowHash: string;
+  sourceCoordinate: string;
+  sourceSnapshot: Record<string, string | null>;
+}>;
+
+export function resolveAffiliateDeductionSource(
+  row: AffiliateDeductionSourceRow
+): ResolvedAffiliateDeductionSource {
+  const sourceSnapshot = {
+    sourceType: "project_upstream_fund_fact",
+    sourceBusinessId: row.id,
+    sourceVersion: String(row.documentVersion),
+    projectId: row.projectId,
+    factType: row.factType,
+    entryKind: row.entryKind,
+    adjustsFactId: row.adjustsFactId,
+    effectDirection: row.effectDirection,
+    occurredAt: row.occurredAt.toISOString(),
+    amountCents: row.amountCents.toString(),
+    counterpartyName: row.counterpartyName,
+    basisType: row.basisType,
+    deductionCategory: row.deductionCategory,
+    affiliateAssignmentId: row.affiliateAssignmentId,
+    affiliateBusinessPartyVersionId: row.affiliateBusinessPartyVersionId,
+    affiliateNameSnapshot: row.affiliateNameSnapshot,
+    description: row.description,
+    evidenceFileId: row.evidenceFileId,
+    documentVersion: String(row.documentVersion),
+    fileContentSha256Snapshot: row.fileContentSha256Snapshot,
+    confirmedByUserId: row.confirmedByUserId,
+    confirmedAt: row.confirmedAt?.toISOString() ?? null
+  };
+  const sourceFingerprint = buildAuthorityFingerprint(sourceSnapshot);
+  return {
+    sourceType: "project_upstream_fund_fact",
+    sourceBusinessId: row.id,
+    sourceVersion: row.documentVersion,
+    sourceFingerprint,
+    normalizedRowHash: buildAuthorityFingerprint({
+      projectId: row.projectId,
+      sourceBusinessId: row.id,
+      sourceVersion: row.documentVersion,
+      occurredAt: row.occurredAt.toISOString(),
+      amountCents: row.amountCents.toString(),
+      deductionCategory: row.deductionCategory,
+      affiliateAssignmentId: row.affiliateAssignmentId,
+      evidenceFileId: row.evidenceFileId,
+      fileContentSha256Snapshot: row.fileContentSha256Snapshot
+    }),
+    sourceCoordinate: `ProjectUpstreamFundFact/${row.id}/v${row.documentVersion}`,
+    sourceSnapshot
+  };
+}
+
 export function normalizeWageMonth(value: string): Date {
   if (!/^\d{4}-\d{2}$/.test(value)) throw new Error("工资月份必须是 YYYY-MM");
   const month = Number(value.slice(5));

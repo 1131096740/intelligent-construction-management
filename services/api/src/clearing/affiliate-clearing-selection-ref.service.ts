@@ -13,7 +13,7 @@ export type AffiliateClearingSelectionBinding = Readonly<{
   actorUserId: string;
   authorityVersionId: string;
   authorityFingerprint: string;
-  purpose: "contract" | "person" | "role" | "wage" | "guarantee" | "allocation";
+  purpose: "contract" | "person" | "role" | "wage" | "guarantee" | "allocation" | "takeover";
   selectedKey: string;
   amountCents?: bigint;
   revision: number;

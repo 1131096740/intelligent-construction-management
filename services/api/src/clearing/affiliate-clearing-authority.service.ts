@@ -19,7 +19,10 @@ import {
   buildAuthorityFingerprint,
   buildGuaranteeGovernedSubjectKey,
   buildWageGovernedSubjectKey,
-  normalizeWageMonth
+  normalizeWageMonth,
+  resolveAffiliateDeductionSource,
+  type AffiliateDeductionSourceRow,
+  type ResolvedAffiliateDeductionSource
 } from "./affiliate-clearing-authority.domain";
 import {
   AffiliateClearingSelectionRefService,
@@ -53,6 +56,32 @@ type PublicAuthorityValue = {
   status: string;
   effectiveFrom: Date;
   effectiveTo: Date | null;
+};
+
+export type ResolvedAffiliateClearingAuthority = {
+  projectId: string;
+  constructionEnterpriseAssignmentId: string;
+  category: "assigned_management_salary" | "deposit";
+  governedSubjectKey: string;
+  authoritativeGrossCapCents: bigint;
+  currencyCode: string;
+  authorityVersionId: string;
+  authoritySnapshotRef: string;
+  sourceDiscriminator: "construction_enterprise_assigned_wage" | "construction_enterprise_guarantee";
+  coverageKind: "PERSON" | "ROLE_SUMMARY";
+  coverageKey: string;
+  periodStart: Date | null;
+  authorityFingerprint: string;
+  authorityLineId?: string;
+  authorityLineFingerprint?: string;
+  authorityLineEvidenceSha256?: string;
+  obligationId?: string;
+  obligationFingerprint?: string;
+  authorityEvidenceSha256?: string;
+  authorityEvidenceManifestSha256?: string;
+  personAuthorityKey?: string | null;
+  requestedTrancheAmountCents?: bigint;
+  legacySource?: ResolvedAffiliateDeductionSource;
 };
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -178,12 +207,44 @@ export class AffiliateClearingAuthorityService {
       }
     });
     const now = new Date();
+    const legacyDeductions = await this.prisma.projectUpstreamFundFact.findMany({
+      where: {
+        ...(projectId ? { projectId } : {}),
+        factType: "affiliate_deduction",
+        entryKind: "original",
+        status: "confirmed",
+        confirmedByUserId: { not: null },
+        confirmedAt: { not: null }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        factType: true,
+        entryKind: true,
+        adjustsFactId: true,
+        effectDirection: true,
+        occurredAt: true,
+        amountCents: true,
+        counterpartyName: true,
+        basisType: true,
+        deductionCategory: true,
+        affiliateAssignmentId: true,
+        affiliateBusinessPartyVersionId: true,
+        affiliateNameSnapshot: true,
+        description: true,
+        evidenceFileId: true,
+        documentVersion: true,
+        fileContentSha256Snapshot: true,
+        confirmedByUserId: true,
+        confirmedAt: true
+      }
+    }) as AffiliateDeductionSourceRow[];
     for (const authority of authorityVersions) {
       if (!isEffective(authority.effectiveFrom, authority.effectiveTo, now)) continue;
       const wageLines = await this.prisma.assignedWageAuthorityLine.findMany({
         where: { authorityVersionId: authority.id },
         orderBy: [{ wageMonth: "desc" }, { coverageKey: "asc" }],
-        select: { coverageKey: true, coverageKind: true, wageMonth: true, grossCapCents: true, evidenceLevel: true }
+        select: { coverageKey: true, coverageKind: true, wageMonth: true, grossCapCents: true, evidenceLevel: true, personNameSnapshot: true, roleNameSnapshot: true }
       });
       options.push(
         ...wageLines.map((line) => ({
@@ -191,14 +252,40 @@ export class AffiliateClearingAuthorityService {
             this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "wage", line.coverageKey, authority.versionNo ?? 1, line.grossCapCents)
           ),
           optionKind: "assigned_wage",
-          authoritySnapshotRef: authority.authoritySnapshotRef,
+          label: line.coverageKind === "PERSON"
+            ? line.personNameSnapshot ?? "派驻人员工资"
+            : line.roleNameSnapshot ?? "岗位汇总工资",
+          coverageKind: line.coverageKind,
+          period: line.wageMonth.toISOString().slice(0, 7),
+          grossCapCents: line.grossCapCents.toString(),
+          evidenceLevel: line.evidenceLevel
+        }))
+      );
+      for (const line of wageLines) {
+        if (line.coverageKind !== "ROLE_SUMMARY") continue;
+        const candidates = legacyDeductions.filter((fact) =>
+          fact.projectId === authority.projectId &&
+          fact.affiliateAssignmentId === authority.constructionEnterpriseAssignmentId &&
+          fact.deductionCategory === "management_fee" &&
+          fact.amountCents === line.grossCapCents &&
+          fact.occurredAt.getUTCFullYear() === line.wageMonth.getUTCFullYear() &&
+          fact.occurredAt.getUTCMonth() === line.wageMonth.getUTCMonth()
+        );
+        if (candidates.length !== 1) continue;
+        options.push({
+          selectionRef: this.selectionRefs.issue(
+            this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "takeover", `${line.coverageKey}:${candidates[0]!.id}`, authority.versionNo, candidates[0]!.amountCents)
+          ),
+          optionKind: "historical_takeover",
+          label: `历史岗位汇总扣款（${line.wageMonth.toISOString().slice(0, 7)}）`,
           coverageKind: line.coverageKind,
           period: line.wageMonth.toISOString().slice(0, 7),
           grossCapCents: line.grossCapCents.toString(),
           evidenceLevel: line.evidenceLevel,
-          authorityFingerprint: authority.authorityFingerprint
-        }))
-      );
+          sourceEvidenceLevel: "A",
+          source: "已确认历史扣款"
+        });
+      }
       const obligations = await this.prisma.guaranteeObligationVersion.findMany({
         where: { authorityVersionId: authority.id, enabled: true },
         orderBy: { obligationId: "asc" },
@@ -210,12 +297,32 @@ export class AffiliateClearingAuthorityService {
             this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "guarantee", obligation.obligationId, 1)
           ),
           optionKind: "guarantee",
-          authoritySnapshotRef: authority.authoritySnapshotRef,
+          label: "保证金义务",
           grossCapCents: obligation.capCents.toString(),
-          evidenceLevel: obligation.evidenceLevel,
-          authorityFingerprint: authority.authorityFingerprint
+          evidenceLevel: obligation.evidenceLevel
         }))
       );
+      for (const obligation of obligations.filter((item) => isEffective(item.effectiveFrom, item.effectiveTo, now))) {
+        const candidates = legacyDeductions.filter((fact) =>
+          fact.projectId === authority.projectId &&
+          fact.affiliateAssignmentId === authority.constructionEnterpriseAssignmentId &&
+          fact.deductionCategory === "deposit" &&
+          fact.amountCents === obligation.capCents
+        );
+        if (candidates.length !== 1) continue;
+        options.push({
+          selectionRef: this.selectionRefs.issue(
+            this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "takeover", `obligation:${obligation.obligationId}:${candidates[0]!.id}`, authority.versionNo, candidates[0]!.amountCents)
+          ),
+          optionKind: "historical_takeover",
+          label: "历史保证金扣款",
+          coverageKind: authority.coverageKind,
+          grossCapCents: obligation.capCents.toString(),
+          evidenceLevel: obligation.evidenceLevel,
+          sourceEvidenceLevel: "A",
+          source: "已确认历史扣款"
+        });
+      }
     }
     return { options };
   }
@@ -425,12 +532,50 @@ export class AffiliateClearingAuthorityService {
     input: AuthorityClearingCaseSelectionDto,
     category: "assigned_management_salary" | "deposit",
     tx?: AuthorityTx
-  ) {
+  ): Promise<ResolvedAffiliateClearingAuthority> {
     validateAuthorityCommand(input);
     if (input.expectedRevision !== 0) throw new ConflictException("新建权威清算事项的 expectedRevision 必须为 0");
     await this.assertDirectAction(actorUserId, "clearing.prepare");
     const database = tx ?? this.prisma;
     const authorities = await database.affiliateClearingAuthorityVersion.findMany({ where: { status: "confirmed" } });
+    const sourceClient = (database as unknown as {
+      projectUpstreamFundFact?: {
+        findMany: (args: unknown) => Promise<AffiliateDeductionSourceRow[]>;
+      };
+    }).projectUpstreamFundFact;
+    const legacyDeductions = sourceClient
+      ? await sourceClient.findMany({
+          where: {
+            factType: "affiliate_deduction",
+            entryKind: "original",
+            status: "confirmed",
+            confirmedByUserId: { not: null },
+            confirmedAt: { not: null }
+          },
+          select: {
+            id: true,
+            projectId: true,
+            factType: true,
+            entryKind: true,
+            adjustsFactId: true,
+            effectDirection: true,
+            occurredAt: true,
+            amountCents: true,
+            counterpartyName: true,
+            basisType: true,
+            deductionCategory: true,
+            affiliateAssignmentId: true,
+            affiliateBusinessPartyVersionId: true,
+            affiliateNameSnapshot: true,
+            description: true,
+            evidenceFileId: true,
+            documentVersion: true,
+            fileContentSha256Snapshot: true,
+            confirmedByUserId: true,
+            confirmedAt: true
+          }
+        })
+      : [];
     const now = new Date();
     for (const authority of authorities) {
       if (!isEffective(authority.effectiveFrom, authority.effectiveTo, now)) continue;
@@ -438,7 +583,50 @@ export class AffiliateClearingAuthorityService {
         const lines = await database.assignedWageAuthorityLine.findMany({ where: { authorityVersionId: authority.id } });
         for (const line of lines) {
           const binding = this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "wage", line.coverageKey, authority.versionNo, line.grossCapCents);
-          if (!this.selectionRefs.matches(input.selectionRef, binding, now)) continue;
+          const legacyCandidates = line.coverageKind === "ROLE_SUMMARY"
+            ? legacyDeductions.filter((fact) =>
+              fact.projectId === authority.projectId &&
+              fact.affiliateAssignmentId === authority.constructionEnterpriseAssignmentId &&
+              fact.deductionCategory === "management_fee" &&
+              fact.amountCents === line.grossCapCents &&
+              fact.occurredAt.getUTCFullYear() === line.wageMonth.getUTCFullYear() &&
+              fact.occurredAt.getUTCMonth() === line.wageMonth.getUTCMonth()
+            )
+            : [];
+          if (this.selectionRefs.matches(input.selectionRef, binding, now)) {
+            if (legacyCandidates.length) throw new ConflictException("已存在精确历史扣款来源，请使用服务端历史来源 selectionRef，禁止重复投影");
+          } else {
+            if (line.coverageKind !== "ROLE_SUMMARY") continue;
+            const candidates = legacyCandidates;
+            const legacy = candidates.length === 1 ? candidates[0] : undefined;
+            if (!legacy || !this.selectionRefs.matches(
+              input.selectionRef,
+              this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "takeover", `${line.coverageKey}:${legacy.id}`, authority.versionNo, legacy.amountCents),
+              now
+            )) continue;
+            return {
+              projectId: authority.projectId,
+              constructionEnterpriseAssignmentId: authority.constructionEnterpriseAssignmentId,
+              category,
+              governedSubjectKey: buildWageGovernedSubjectKey({ projectId: authority.projectId, assignmentId: authority.constructionEnterpriseAssignmentId, authorityVersionId: authority.id, month: line.wageMonth, coverageKey: line.coverageKey }),
+              authoritativeGrossCapCents: line.grossCapCents,
+              currencyCode: line.currencyCode,
+              authorityVersionId: authority.id,
+              authoritySnapshotRef: authority.authoritySnapshotRef,
+              sourceDiscriminator: "construction_enterprise_assigned_wage",
+              coverageKind: line.coverageKind as "PERSON" | "ROLE_SUMMARY",
+              coverageKey: line.coverageKey,
+              periodStart: line.wageMonth,
+              authorityFingerprint: authority.authorityFingerprint,
+              authorityLineId: line.id,
+              authorityLineFingerprint: line.lineFingerprint,
+              authorityLineEvidenceSha256: line.evidenceSha256,
+              authorityEvidenceSha256: authority.evidenceSha256,
+              authorityEvidenceManifestSha256: authority.evidenceManifestSha256,
+              personAuthorityKey: line.personAuthorityKey,
+              legacySource: resolveAffiliateDeductionSource(legacy)
+            };
+          }
           const governedSubjectKey = buildWageGovernedSubjectKey({
             projectId: authority.projectId,
             assignmentId: authority.constructionEnterpriseAssignmentId,
@@ -456,9 +644,16 @@ export class AffiliateClearingAuthorityService {
             authorityVersionId: authority.id,
             authoritySnapshotRef: authority.authoritySnapshotRef,
             sourceDiscriminator: "construction_enterprise_assigned_wage",
-            coverageKind: line.coverageKind,
+            coverageKind: line.coverageKind as "PERSON" | "ROLE_SUMMARY",
+            coverageKey: line.coverageKey,
             periodStart: line.wageMonth,
-            authorityFingerprint: authority.authorityFingerprint
+            authorityFingerprint: authority.authorityFingerprint,
+            authorityLineId: line.id,
+            authorityLineFingerprint: line.lineFingerprint,
+            authorityLineEvidenceSha256: line.evidenceSha256,
+            authorityEvidenceSha256: authority.evidenceSha256,
+            authorityEvidenceManifestSha256: authority.evidenceManifestSha256,
+            personAuthorityKey: line.personAuthorityKey
           };
         }
       } else {
@@ -466,7 +661,49 @@ export class AffiliateClearingAuthorityService {
         for (const obligation of obligations) {
           if (!isEffective(obligation.effectiveFrom, obligation.effectiveTo, now)) continue;
           const binding = this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "guarantee", obligation.obligationId, authority.versionNo);
-          if (!this.selectionRefs.matches(input.selectionRef, binding, now)) continue;
+          const legacyCandidates = legacyDeductions.filter((fact) =>
+              fact.projectId === authority.projectId &&
+              fact.affiliateAssignmentId === authority.constructionEnterpriseAssignmentId &&
+              fact.deductionCategory === "deposit" &&
+              fact.amountCents === obligation.capCents
+            );
+          if (this.selectionRefs.matches(input.selectionRef, binding, now)) {
+            if (legacyCandidates.length) throw new ConflictException("已存在精确历史保证金来源，请使用服务端历史来源 selectionRef，禁止重复投影");
+          } else {
+            const candidates = legacyCandidates;
+            const legacy = candidates.length === 1 ? candidates[0] : undefined;
+            if (!legacy || !this.selectionRefs.matches(
+              input.selectionRef,
+              this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "takeover", `obligation:${obligation.obligationId}:${legacy.id}`, authority.versionNo, legacy.amountCents),
+              now
+            )) continue;
+            const tranche = input.guaranteeTrancheAmountCents !== undefined
+              ? assertMoneyWithinPostgresBigInt(input.guaranteeTrancheAmountCents)
+              : obligation.capCents;
+            if (tranche > obligation.capCents) throw new ConflictException("保证金暂扣超过服务端权威上限");
+            if (tranche !== legacy.amountCents) throw new ConflictException("历史保证金来源只能按原始已确认金额整笔桥接，部分暂扣必须使用新的权威事实");
+            return {
+              projectId: authority.projectId,
+              constructionEnterpriseAssignmentId: authority.constructionEnterpriseAssignmentId,
+              category,
+              governedSubjectKey: buildGuaranteeGovernedSubjectKey(authority.projectId, authority.constructionEnterpriseAssignmentId, obligation.obligationId),
+              authoritativeGrossCapCents: obligation.capCents,
+              currencyCode: obligation.currencyCode,
+              authorityVersionId: authority.id,
+              authoritySnapshotRef: authority.authoritySnapshotRef,
+              sourceDiscriminator: "construction_enterprise_guarantee",
+              coverageKind: authority.coverageKind as "PERSON" | "ROLE_SUMMARY",
+              coverageKey: `obligation:${obligation.obligationId}`,
+              periodStart: null,
+              authorityFingerprint: authority.authorityFingerprint,
+              obligationId: obligation.obligationId,
+              obligationFingerprint: obligation.obligationFingerprint,
+              authorityEvidenceSha256: authority.evidenceSha256,
+              authorityEvidenceManifestSha256: authority.evidenceManifestSha256,
+              requestedTrancheAmountCents: tranche,
+              legacySource: resolveAffiliateDeductionSource(legacy)
+            };
+          }
           const tranche = input.guaranteeTrancheAmountCents !== undefined
             ? assertMoneyWithinPostgresBigInt(input.guaranteeTrancheAmountCents)
             : obligation.capCents;
@@ -481,15 +718,105 @@ export class AffiliateClearingAuthorityService {
             authorityVersionId: authority.id,
             authoritySnapshotRef: authority.authoritySnapshotRef,
             sourceDiscriminator: "construction_enterprise_guarantee",
-            coverageKind: authority.coverageKind,
+            coverageKind: authority.coverageKind as "PERSON" | "ROLE_SUMMARY",
+            coverageKey: `obligation:${obligation.obligationId}`,
             periodStart: null,
             authorityFingerprint: authority.authorityFingerprint,
+            obligationId: obligation.obligationId,
+            obligationFingerprint: obligation.obligationFingerprint,
+            authorityEvidenceSha256: authority.evidenceSha256,
+            authorityEvidenceManifestSha256: authority.evidenceManifestSha256,
             requestedTrancheAmountCents: tranche
           };
         }
       }
     }
     throw new ConflictException("authority selectionRef 已失效");
+  }
+
+  /**
+   * Re-read the immutable authority aggregate inside the caller's transaction.
+   * The frozen object is only a locator; it is never treated as an authority source.
+   */
+  async revalidateResolvedAuthority(
+    tx: AuthorityTx,
+    frozen: ResolvedAffiliateClearingAuthority
+  ): Promise<ResolvedAffiliateClearingAuthority> {
+    const authority = await tx.affiliateClearingAuthorityVersion.findUnique({
+      where: { authoritySnapshotRef: frozen.authoritySnapshotRef }
+    });
+    if (
+      !authority ||
+      authority.status !== "confirmed" ||
+      authority.authorityFingerprint !== frozen.authorityFingerprint ||
+      authority.projectId !== frozen.projectId ||
+      authority.constructionEnterpriseAssignmentId !== frozen.constructionEnterpriseAssignmentId ||
+      !isEffective(authority.effectiveFrom, authority.effectiveTo, new Date())
+    ) {
+      throw new ConflictException("权威快照已变化、失效或未确认，历史接管必须失败关闭");
+    }
+
+    if (frozen.sourceDiscriminator === "construction_enterprise_assigned_wage") {
+      const line = frozen.authorityLineId
+        ? await tx.assignedWageAuthorityLine.findFirst({
+            where: {
+              id: frozen.authorityLineId,
+              authorityVersionId: authority.id,
+              coverageKey: frozen.coverageKey,
+              ...(frozen.periodStart ? { wageMonth: frozen.periodStart } : {})
+            }
+          })
+        : null;
+      if (
+        !line ||
+        line.coverageKind !== frozen.coverageKind ||
+        line.grossCapCents !== frozen.authoritativeGrossCapCents ||
+        line.currencyCode !== frozen.currencyCode ||
+        (frozen.authorityLineFingerprint !== undefined && line.lineFingerprint !== frozen.authorityLineFingerprint) ||
+        (frozen.authorityLineEvidenceSha256 !== undefined && line.evidenceSha256 !== frozen.authorityLineEvidenceSha256) ||
+        (frozen.authorityEvidenceSha256 !== undefined && authority.evidenceSha256 !== frozen.authorityEvidenceSha256) ||
+        (frozen.authorityEvidenceManifestSha256 !== undefined && authority.evidenceManifestSha256 !== frozen.authorityEvidenceManifestSha256)
+      ) {
+        throw new ConflictException("工资权威行已变化，历史接管必须失败关闭");
+      }
+      const governedSubjectKey = buildWageGovernedSubjectKey({
+        projectId: authority.projectId,
+        assignmentId: authority.constructionEnterpriseAssignmentId,
+        authorityVersionId: authority.id,
+        month: line.wageMonth,
+        coverageKey: line.coverageKey
+      });
+      if (governedSubjectKey !== frozen.governedSubjectKey) {
+        throw new ConflictException("工资受控事项键已变化，历史接管必须失败关闭");
+      }
+      return { ...frozen, governedSubjectKey, authorityVersionId: authority.id };
+    }
+
+    const obligation = frozen.obligationId
+      ? await tx.guaranteeObligationVersion.findFirst({
+          where: { authorityVersionId: authority.id, obligationId: frozen.obligationId, enabled: true }
+        })
+      : null;
+    if (
+      !obligation ||
+      obligation.capCents !== frozen.authoritativeGrossCapCents ||
+      obligation.currencyCode !== frozen.currencyCode ||
+      (frozen.obligationFingerprint !== undefined && obligation.obligationFingerprint !== frozen.obligationFingerprint) ||
+      (frozen.authorityEvidenceSha256 !== undefined && authority.evidenceSha256 !== frozen.authorityEvidenceSha256) ||
+      (frozen.authorityEvidenceManifestSha256 !== undefined && authority.evidenceManifestSha256 !== frozen.authorityEvidenceManifestSha256) ||
+      !isEffective(obligation.effectiveFrom, obligation.effectiveTo, new Date())
+    ) {
+      throw new ConflictException("保证金权威义务已变化、失效或停用，历史接管必须失败关闭");
+    }
+    const governedSubjectKey = buildGuaranteeGovernedSubjectKey(
+      authority.projectId,
+      authority.constructionEnterpriseAssignmentId,
+      obligation.obligationId
+    );
+    if (governedSubjectKey !== frozen.governedSubjectKey) {
+      throw new ConflictException("保证金受控事项键已变化，历史接管必须失败关闭");
+    }
+    return { ...frozen, governedSubjectKey, authorityVersionId: authority.id };
   }
 
   private async transition(actorUserId: string, authorityId: string, input: AuthorityLifecycleDto, status: "submitted" | "returned", reason?: string) {

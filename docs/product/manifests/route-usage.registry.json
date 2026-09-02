@@ -3,16 +3,16 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 553,
-    "classificationOverrideCount": 194,
+    "routeCount": 559,
+    "classificationOverrideCount": 200,
     "derivedProductionPageCount": 359,
-    "classificationOverrideSha256": "78cf568bf4bb87c62802c6c7685c004a9c07841a3090a5caaf2c8ca47677e359",
-    "consumerSurfaceOverrideSha256": "2d5166379c14d9c2f4d34cb21c6b298b8c0fed80c5d2fa5e12221c546c7c5dee",
+    "classificationOverrideSha256": "0c5f7c9c14e747913eaf6ae0de87ca9ba910051898c91dccf5a6ee2280cfd09d",
+    "consumerSurfaceOverrideSha256": "367ec7f976d7b75e7b1dfe10f4dea3f91f3fe8f276dd95ca365ef1bb9a8b3066",
     "usageCounts": {
       "page": 361,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 14,
+      "internal_task": 20,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
@@ -20,7 +20,7 @@
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 12,
+      "operator_endpoint": 18,
       "none": 120
     }
   },
@@ -1188,6 +1188,42 @@
       "path": "/affiliate-clearing-authorities/:authorityId/submit",
       "usage": "internal_task",
       "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests",
+      "usage": "internal_task",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/abandon",
+      "usage": "internal_task",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/activate",
+      "usage": "internal_task",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/apply",
+      "usage": "internal_task",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/attest",
+      "usage": "internal_task",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/compensate",
+      "usage": "internal_task",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1288,6 +1324,42 @@
       "path": "/affiliate-clearing-authorities/:authorityId/submit",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_214_non_production_affiliate_clearing_authority_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/abandon",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/activate",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/apply",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/attest",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/compensate",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_215_non_production_authority_takeover_operator_workflow"
     }
   ]
 }

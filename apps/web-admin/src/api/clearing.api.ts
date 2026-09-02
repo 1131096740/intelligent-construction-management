@@ -70,16 +70,14 @@ export interface ClearingCaseReadModel {
 
 export interface AffiliateClearingAuthorityOption {
   selectionRef: string;
-  optionKind: "contract" | "person" | "role" | "assigned_wage" | "guarantee";
+  optionKind: "contract" | "person" | "role" | "assigned_wage" | "guarantee" | "historical_takeover";
   label?: string;
   affiliateName?: string;
   constructionEnterpriseName?: string;
-  authoritySnapshotRef?: string;
   coverageKind?: string;
   period?: string;
   grossCapCents?: string;
   evidenceLevel?: "A" | "B";
-  authorityFingerprint?: string;
 }
 
 export interface ClearingAllocationOption {

@@ -154,7 +154,8 @@ const GROUPS = [
       "src/database/pol05-operating-source-facts.spec.ts",
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
-      "src/database/project-affiliate-subject-db.spec.ts"
+      "src/database/project-affiliate-subject-db.spec.ts",
+      "src/database/operating-takeover-constraints.spec.ts"
     ],
     flags: {
       DATABASE_URL: "databaseUrl",
@@ -173,9 +174,10 @@ const GROUPS = [
       OPERATING_LEDGER_DATABASE_URL: "databaseUrl",
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
-      RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
+      RUN_PROJECT_AFFILIATE_DB_TESTS: "1",
+      RUN_POL215_DATABASE: "1"
     },
-    pendingTests: 42,
+    pendingTests: 45,
     requiresOperatingLedgerWriteSecret: true
   },
   {
