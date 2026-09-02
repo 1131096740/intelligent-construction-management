@@ -48,7 +48,8 @@ function harness() {
     },
     guaranteeObligationVersion: {
       create: jest.fn().mockImplementation(({ data }) => ({ ...data }))
-    }
+    },
+    approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const prisma = {
     $transaction: jest.fn(async (work: (client: unknown) => Promise<unknown>) => work(tx)),
@@ -397,6 +398,63 @@ describe("#214 AffiliateClearingAuthorityService", () => {
       sourceBusinessId: legacy.id,
       sourceFingerprint: source.sourceFingerprint,
       normalizedRowHash: source.normalizedRowHash
+    }));
+  });
+
+  it("allows a scoped one-hop delegate to resolve a delegate-bound selectionRef", async () => {
+    const { service, tx, roles, selection } = harness();
+    tx.affiliateClearingAuthorityVersion.findMany.mockResolvedValue([{
+      id: "authority-1",
+      projectId: "project-1",
+      constructionEnterpriseAssignmentId: "assignment-1",
+      authoritySnapshotRef: "acv-1",
+      authorityFingerprint: "a".repeat(64),
+      versionNo: 1,
+      coverageKind: "PERSON",
+      effectiveFrom: new Date("2026-08-01T00:00:00.000Z"),
+      effectiveTo: null,
+      status: "confirmed",
+      evidenceSha256: "b".repeat(64),
+      evidenceManifestSha256: "c".repeat(64)
+    }]);
+    tx.assignedWageAuthorityLine.findMany.mockResolvedValue([{
+      id: "line-1",
+      authorityVersionId: "authority-1",
+      coverageKey: "person:user-1",
+      coverageKind: "PERSON",
+      wageMonth: new Date("2026-08-01T00:00:00.000Z"),
+      grossCapCents: 12345n,
+      currencyCode: "CNY",
+      lineFingerprint: "d".repeat(64),
+      evidenceSha256: "b".repeat(64),
+      personAuthorityKey: "user-1"
+    }]);
+    tx.approvalDelegation.findMany.mockResolvedValue([{ fromUserId: "director-1" }]);
+    tx.user.findMany.mockResolvedValue([
+        { id: "delegate-1", isActive: true },
+        { id: "director-1", isActive: true }
+    ]);
+    roles.resolveActiveRoleScopes.mockImplementation(async (userId: string) => userId === "director-1" ? ["finance_director"] : []);
+    selection.matches.mockImplementation((_ref: string, binding: { actorUserId: string }) => binding.actorUserId === "director-1");
+
+    const result = await service.resolveCaseSelection("delegate-1", {
+      idempotencyKey: "77777777-7777-4777-8777-777777777777",
+      expectedRevision: 0,
+      delegatorUserId: "director-1",
+      selectionRef: "fac1.delegate-bound-selection-ref"
+    }, "assigned_management_salary", tx as never);
+
+    expect(result).toEqual(expect.objectContaining({
+      authorityVersionId: "authority-1",
+      personAuthorityKey: "user-1"
+    }));
+    expect(tx.approvalDelegation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        toUserId: "delegate-1",
+        actionKey: "clearing.prepare",
+        resourceType: "clearing_project",
+        resourceId: "project-1"
+      })
     }));
   });
 

@@ -535,7 +535,19 @@ export class AffiliateClearingAuthorityService {
   ): Promise<ResolvedAffiliateClearingAuthority> {
     validateAuthorityCommand(input);
     if (input.expectedRevision !== 0) throw new ConflictException("新建权威清算事项的 expectedRevision 必须为 0");
-    await this.assertDirectAction(actorUserId, "clearing.prepare");
+    if (!input.delegatorUserId) await this.assertDirectAction(actorUserId, "clearing.prepare");
+    const now = new Date();
+    const selectionActorIds = Array.from(new Set(
+      [actorUserId, input.delegatorUserId]
+        .map((id) => id?.trim())
+        .filter((id): id is string => Boolean(id))
+    ));
+    const matchesSelection = (authorityVersionId: string, authorityFingerprint: string, purpose: AffiliateClearingSelectionBinding["purpose"], selectedKey: string, revision: number, amountCents?: bigint) =>
+      selectionActorIds.some((selectionActorId) => this.selectionRefs.matches(
+        input.selectionRef,
+        this.selectionBinding(selectionActorId, authorityVersionId, authorityFingerprint, purpose, selectedKey, revision, amountCents),
+        now
+      ));
     const database = tx ?? this.prisma;
     const authorities = await database.affiliateClearingAuthorityVersion.findMany({ where: { status: "confirmed" } });
     const sourceClient = (database as unknown as {
@@ -576,13 +588,11 @@ export class AffiliateClearingAuthorityService {
           }
         })
       : [];
-    const now = new Date();
     for (const authority of authorities) {
       if (!isEffective(authority.effectiveFrom, authority.effectiveTo, now)) continue;
       if (category === "assigned_management_salary") {
         const lines = await database.assignedWageAuthorityLine.findMany({ where: { authorityVersionId: authority.id } });
         for (const line of lines) {
-          const binding = this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "wage", line.coverageKey, authority.versionNo, line.grossCapCents);
           const legacyCandidates = line.coverageKind === "ROLE_SUMMARY"
             ? legacyDeductions.filter((fact) =>
               fact.projectId === authority.projectId &&
@@ -593,17 +603,15 @@ export class AffiliateClearingAuthorityService {
               fact.occurredAt.getUTCMonth() === line.wageMonth.getUTCMonth()
             )
             : [];
-          if (this.selectionRefs.matches(input.selectionRef, binding, now)) {
+          if (matchesSelection(authority.id, authority.authorityFingerprint, "wage", line.coverageKey, authority.versionNo, line.grossCapCents)) {
+            await this.assertSelectionAction(actorUserId, input.delegatorUserId, authority.projectId, database);
             if (legacyCandidates.length) throw new ConflictException("已存在精确历史扣款来源，请使用服务端历史来源 selectionRef，禁止重复投影");
           } else {
             if (line.coverageKind !== "ROLE_SUMMARY") continue;
             const candidates = legacyCandidates;
             const legacy = candidates.length === 1 ? candidates[0] : undefined;
-            if (!legacy || !this.selectionRefs.matches(
-              input.selectionRef,
-              this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "takeover", `${line.coverageKey}:${legacy.id}`, authority.versionNo, legacy.amountCents),
-              now
-            )) continue;
+            if (!legacy || !matchesSelection(authority.id, authority.authorityFingerprint, "takeover", `${line.coverageKey}:${legacy.id}`, authority.versionNo, legacy.amountCents)) continue;
+            await this.assertSelectionAction(actorUserId, input.delegatorUserId, authority.projectId, database);
             return {
               projectId: authority.projectId,
               constructionEnterpriseAssignmentId: authority.constructionEnterpriseAssignmentId,
@@ -660,23 +668,20 @@ export class AffiliateClearingAuthorityService {
         const obligations = await database.guaranteeObligationVersion.findMany({ where: { authorityVersionId: authority.id, enabled: true } });
         for (const obligation of obligations) {
           if (!isEffective(obligation.effectiveFrom, obligation.effectiveTo, now)) continue;
-          const binding = this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "guarantee", obligation.obligationId, authority.versionNo);
           const legacyCandidates = legacyDeductions.filter((fact) =>
               fact.projectId === authority.projectId &&
               fact.affiliateAssignmentId === authority.constructionEnterpriseAssignmentId &&
               fact.deductionCategory === "deposit" &&
               fact.amountCents === obligation.capCents
             );
-          if (this.selectionRefs.matches(input.selectionRef, binding, now)) {
+          if (matchesSelection(authority.id, authority.authorityFingerprint, "guarantee", obligation.obligationId, authority.versionNo)) {
+            await this.assertSelectionAction(actorUserId, input.delegatorUserId, authority.projectId, database);
             if (legacyCandidates.length) throw new ConflictException("已存在精确历史保证金来源，请使用服务端历史来源 selectionRef，禁止重复投影");
           } else {
             const candidates = legacyCandidates;
             const legacy = candidates.length === 1 ? candidates[0] : undefined;
-            if (!legacy || !this.selectionRefs.matches(
-              input.selectionRef,
-              this.selectionBinding(actorUserId, authority.id, authority.authorityFingerprint, "takeover", `obligation:${obligation.obligationId}:${legacy.id}`, authority.versionNo, legacy.amountCents),
-              now
-            )) continue;
+            if (!legacy || !matchesSelection(authority.id, authority.authorityFingerprint, "takeover", `obligation:${obligation.obligationId}:${legacy.id}`, authority.versionNo, legacy.amountCents)) continue;
+            await this.assertSelectionAction(actorUserId, input.delegatorUserId, authority.projectId, database);
             const tranche = input.guaranteeTrancheAmountCents !== undefined
               ? assertMoneyWithinPostgresBigInt(input.guaranteeTrancheAmountCents)
               : obligation.capCents;
@@ -1003,6 +1008,26 @@ export class AffiliateClearingAuthorityService {
   private async assertDirectAction(actorUserId: string, action: BusinessAction) {
     const roles = await this.roles.resolveActiveRoleScopes(actorUserId);
     if (!canPerform(action, roles)) throw new ForbiddenException("当前账号没有该权威来源动作权限");
+  }
+
+  private async assertSelectionAction(
+    actorUserId: string,
+    delegatorUserId: string | undefined,
+    projectId: string,
+    database: AuthorityTx
+  ) {
+    if (!delegatorUserId) {
+      await this.assertDirectAction(actorUserId, "clearing.prepare");
+      return;
+    }
+    const delegators = await activeScopedApprovalDelegatorIds(database, actorUserId, {
+      actionKey: "clearing.prepare",
+      resourceType: "clearing_project",
+      resourceId: projectId
+    });
+    if (!delegators.includes(delegatorUserId)) throw new ForbiddenException("委托身份无效或已过期");
+    const roles = await this.roles.resolveActiveRoleScopes(delegatorUserId);
+    if (!canPerform("clearing.prepare", roles)) throw new ForbiddenException("委托人没有该权威来源动作权限");
   }
 
   private serializable<T>(work: (tx: AuthorityTx) => Promise<T>) {
