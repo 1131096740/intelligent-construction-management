@@ -74,8 +74,8 @@ describe("POL-11A clearing schema artifact", () => {
     expect(schema).toContain("model AssignedWageAuthorityLine {");
     expect(schema).toContain("model GuaranteeObligationVersion {");
     expect(schema).toContain("authoritySnapshotRef");
-    expect(schema).toContain("wageMonth                          DateTime @db.Date");
-    expect(schema).toContain("coverageKind                       String");
+    expect(schema).toMatch(/wageMonth\s+DateTime\s+@db\.Date/u);
+    expect(schema).toMatch(/coverageKind\s+String/u);
     expect(authorityMigration).toContain('CREATE TABLE "AffiliateClearingAuthorityVersion"');
     expect(authorityMigration).toContain('CREATE TABLE "AssignedWageAuthorityLine"');
     expect(authorityMigration).toContain('CREATE TABLE "GuaranteeObligationVersion"');
