@@ -102,7 +102,7 @@ describeDatabase("POL-215 PostgreSQL 16 constraints", () => {
         createdByUserId: "maker-1"
       }
     });
-    await createAuthority("authority-1");
+    await createAuthority("authority-1", undefined, "line-1");
     const row = await first.operatingTakeoverRowMapping.create({
       data: {
         projectId,
