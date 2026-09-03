@@ -42,7 +42,10 @@ import {
   type ClearingAllocationInput,
   type ClearingConfirmationPlan
 } from "./clearing-domain";
-import { AffiliateClearingAuthorityService } from "./affiliate-clearing-authority.service";
+import {
+  AffiliateClearingAuthorityService,
+  type ResolvedAffiliateClearingAuthority
+} from "./affiliate-clearing-authority.service";
 import { assertGuaranteeWithholdingWithinCap } from "./affiliate-clearing-authority.domain";
 import { AffiliateClearingSelectionRefService } from "./affiliate-clearing-selection-ref.service";
 import type {
@@ -73,6 +76,29 @@ type ResolvedCreateClearingCaseInput = CreateClearingCaseDto & {
   coverageKind?: string;
   periodStart?: Date | null;
 };
+
+export interface HistoricalClearingImportInput {
+  manifestId: string;
+  mappingId: string;
+  actorUserId: string;
+  delegatorUserId: string | null;
+  actorIds: readonly string[];
+  attesterActorIds?: readonly string[];
+  category: "assigned_management_salary" | "deposit";
+  authority: ResolvedAffiliateClearingAuthority;
+  amountCents: bigint;
+  evidenceLevel: EvidenceLevel;
+  sourceType: string;
+  sourceBusinessId: string;
+  sourceVersion: number;
+  sourceFingerprint: string;
+  sourceSnapshot: Prisma.InputJsonObject;
+  businessReason: string;
+  entryKind?: "original" | "correction" | "reversal";
+  adjustsEventVersionId?: string;
+  /** Existing confirmed legacy projection to link into the canonical event. */
+  existingOperatingFactId?: string;
+}
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CLEARING_SOURCE_TYPE = "clearing_event_version";
@@ -226,6 +252,193 @@ export class ClearingService {
       });
       return result;
     });
+  }
+
+  /**
+   * Canonical planner for POL-215. The takeover coordinator supplies only a
+   * server-derived authority and a normalized source row. This method owns
+   * case natural keys, quota, allocation/lineage, confirmed events and the
+   * OperatingLedger projection in the caller's single Serializable transaction.
+   */
+  async planHistoricalImport(tx: Tx, input: HistoricalClearingImportInput) {
+    if (!this.authorities) throw new ConflictException("#214 权威来源服务未注册，必须失败关闭");
+    if (input.authority.category !== input.category) throw new ConflictException("历史行与清分类别不一致");
+    if (!Number.isSafeInteger(input.sourceVersion) || input.sourceVersion < 1) throw new ConflictException("历史来源版本必须是正整数");
+    const authority = await this.authorities.revalidateResolvedAuthority(tx, input.authority);
+    const now = new Date();
+    const caseId = randomUUID();
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "ClearingCase" (
+        "id", "projectId", "constructionEnterpriseAssignmentId", "category",
+        "governedSubjectKey", "authoritativeGrossCapCents", "currencyCode",
+        "authorityVersionId", "authoritySnapshotRef", "sourceDiscriminator",
+        "coverageKind", "periodStart", "createdByUserId", "createdAt", "updatedAt"
+      ) VALUES (
+        ${caseId}, ${authority.projectId}, ${authority.constructionEnterpriseAssignmentId}, ${authority.category},
+        ${authority.governedSubjectKey}, ${authority.authoritativeGrossCapCents}, ${authority.currencyCode},
+        ${authority.authorityVersionId}, ${authority.authoritySnapshotRef}, ${authority.sourceDiscriminator},
+        ${authority.coverageKind}, ${authority.periodStart}, ${input.actorUserId}, ${now}, ${now}
+      ) ON CONFLICT ("projectId", "constructionEnterpriseAssignmentId", "category", "governedSubjectKey") DO NOTHING
+    `);
+    const clearingCase = await tx.clearingCase.findUnique({
+      where: {
+        projectId_constructionEnterpriseAssignmentId_category_governedSubjectKey: {
+          projectId: authority.projectId,
+          constructionEnterpriseAssignmentId: authority.constructionEnterpriseAssignmentId,
+          category: authority.category,
+          governedSubjectKey: authority.governedSubjectKey
+        }
+      }
+    });
+    if (!clearingCase) throw new ConflictException("清算事项无法建立，必须失败关闭");
+    const lockedCase = await this.lockCase(tx, clearingCase.id);
+    if (
+      lockedCase.authoritySnapshotRef !== authority.authoritySnapshotRef ||
+      lockedCase.authorityVersionId !== authority.authorityVersionId ||
+      lockedCase.sourceDiscriminator !== authority.sourceDiscriminator ||
+      lockedCase.authoritativeGrossCapCents !== authority.authoritativeGrossCapCents
+    ) {
+      throw new ConflictException("既有清算事项权威快照不一致，必须失败关闭");
+    }
+
+    const entryKind = input.entryKind ?? "original";
+    const isReversal = entryKind !== "original";
+    const eventKind: ClearingEventKind = isReversal
+      ? "returned"
+      : authority.sourceDiscriminator === "construction_enterprise_guarantee"
+        ? "withheld"
+        : "final_confirmed";
+    const amountCents = positiveCents(input.amountCents);
+    const evidenceLevel = authority.coverageKind === "ROLE_SUMMARY" ? "B" : "A";
+    if (input.evidenceLevel !== evidenceLevel) throw new ConflictException("正式清分证据等级必须由权威覆盖类型派生");
+    if (evidenceLevel === "B") {
+      if (!input.attesterActorIds?.length) throw new ConflictException("B级岗位汇总缺少独立实名 attest，必须失败关闭");
+      assertClearingActorsDisjoint(input.attesterActorIds, input.actorIds);
+    }
+
+    let allocations: ClearingAllocationInput[] = [];
+    let adjustment: { suffix: string; adjustsFactId: string; reversesImpactIds: Readonly<Record<string, string>>; entryKind: OperatingFactEntryKind } | undefined;
+    if (isReversal) {
+      const targetId = requiredText(input.adjustsEventVersionId, "补偿必须引用服务端已确认原清分版本");
+      const target = await tx.clearingEventVersion.findUnique({
+        where: { id: targetId },
+        include: { clearingEvent: true, confirmation: true, impactLinks: true }
+      });
+      if (!target || !target.confirmation || target.clearingCaseId !== lockedCase.id || !["withheld", "final_confirmed", "supplemental"].includes(target.clearingEvent.kind)) {
+        throw new ConflictException("补偿目标不存在、未确认或不属于当前清算事项");
+      }
+      const used = await tx.clearingAllocation.aggregate({ where: { sourceEventVersionId: target.id }, _sum: { amountCents: true } });
+      const sourceRemainingCents = target.amountCents - (used._sum.amountCents ?? 0n);
+      if (amountCents > sourceRemainingCents) throw new ConflictException("补偿金额超过原清分影响剩余容量");
+      const sourceKind = target.clearingEvent.kind as ClearingAllocationInput["sourceKind"];
+      allocations = [{ sourceEventVersionId: target.id, sourceKind, amountCents, sourceRemainingCents }];
+      const sourceLinks = target.impactLinks;
+      if (!sourceLinks.length) throw new ConflictException("补偿目标缺少正式经营账影响链");
+      adjustment = {
+        suffix: `takeover-${input.mappingId}`,
+        adjustsFactId: sourceLinks[0]!.operatingFactId,
+        reversesImpactIds: Object.fromEntries(sourceLinks.map((link) => [link.sourceImpactKey.replace(/^original:/, ""), link.id])),
+        entryKind
+      };
+    } else if (eventKind === "final_confirmed") {
+      const confirmedAgainstCapCents = await this.confirmedAgainstCap(tx, lockedCase.id);
+      allocations = [{
+        sourceEventVersionId: null,
+        sourceKind: "authority_cap",
+        amountCents,
+        sourceRemainingCents: authority.authoritativeGrossCapCents - confirmedAgainstCapCents
+      }];
+    } else {
+      // POL-215 historical tranches consume the obligation cap permanently;
+      // a returned tranche is an append-only compensation, not restored capacity.
+      const currentWithheld = await this.confirmedGuaranteeConsumedForTakeover(tx, lockedCase.id);
+      try {
+        assertGuaranteeWithholdingWithinCap(authority.authoritativeGrossCapCents, currentWithheld, amountCents);
+      } catch (error) {
+        throw new ConflictException(error instanceof Error ? error.message : "保证金暂扣累计金额超过权威上限");
+      }
+    }
+
+    const eventId = randomUUID();
+    const versionId = randomUUID();
+    const fingerprint = fingerprintClearingCommand({
+      action: "clearing.historical-import",
+      aggregateId: `${input.manifestId}:${input.mappingId}`,
+      expectedRevision: lockedCase.revision,
+      actorUserId: input.actorUserId,
+      delegatorUserId: input.delegatorUserId,
+      payload: { entryKind, eventKind, amountCents: amountCents.toString(), authorityFingerprint: authority.authorityFingerprint, sourceFingerprint: input.sourceFingerprint }
+    });
+    const payloadSnapshot = jsonObject({
+      authoritySnapshotRef: authority.authoritySnapshotRef,
+      authorityFingerprint: authority.authorityFingerprint,
+      governedSubjectKey: authority.governedSubjectKey,
+      sourceDiscriminator: authority.sourceDiscriminator,
+      sourceType: input.sourceType,
+      sourceBusinessId: input.sourceBusinessId,
+      sourceVersion: input.sourceVersion,
+      sourceFingerprint: input.sourceFingerprint,
+      businessReason: input.businessReason,
+      historicalTakeoverManifestId: input.manifestId,
+      historicalTakeoverMappingId: input.mappingId
+    });
+    const event = await tx.clearingEvent.create({
+      data: { id: eventId, clearingCaseId: lockedCase.id, kind: eventKind, workflowStatus: "confirmed", revision: 1, currentVersionNo: 1, createdByUserId: input.actorUserId }
+    });
+    const version = await tx.clearingEventVersion.create({
+      data: {
+        id: versionId,
+        clearingEventId: event.id,
+        clearingCaseId: lockedCase.id,
+        versionNo: 1,
+        workflowStatus: "confirmed",
+        amountCents,
+        evidenceLevel,
+        payloadSnapshot,
+        actorSetSnapshot: input.actorIds,
+        fingerprint,
+        createdByUserId: input.actorUserId
+      }
+    });
+    if (evidenceLevel === "B") {
+      await tx.clearingEvidenceAttestation.create({
+        data: {
+          eventVersionId: version.id,
+          attestedByUserId: input.attesterActorIds![0]!,
+          attesterActorSetSnapshot: input.attesterActorIds!
+        }
+      });
+    }
+    const plan = buildClearingConfirmationPlan({
+      kind: eventKind,
+      amountCents,
+      authoritativeGrossCapCents: authority.authoritativeGrossCapCents,
+      confirmedAgainstCapCents: eventKind === "final_confirmed" ? await this.confirmedAgainstCap(tx, lockedCase.id) : 0n,
+      category: authority.category,
+      allocations
+    });
+    await this.persistConfirmation(tx, lockedCase, event, version, plan, {
+      actualUserId: input.actorUserId,
+      delegatorUserId: input.delegatorUserId,
+      actorIds: [...input.actorIds]
+    }, adjustment, input.existingOperatingFactId);
+    await tx.clearingCase.update({ where: { id: lockedCase.id }, data: { revision: { increment: 1 } } });
+    await this.audit.record(tx, {
+      actorUserId: input.actorUserId,
+      action: "clearing.historical-import",
+      businessType: "clearing_event",
+      businessId: version.id,
+      metadata: jsonInput({
+        manifestId: input.manifestId,
+        mappingId: input.mappingId,
+        authoritySnapshotRef: authority.authoritySnapshotRef,
+        authorityFingerprint: authority.authorityFingerprint,
+        sourceFingerprint: input.sourceFingerprint,
+        eventKind,
+        entryKind
+      })
+    });
+    return { caseId: lockedCase.id, eventId: event.id, versionId: version.id, eventKind, amountCents, entryKind };
   }
 
   private async resolveAuthorityCaseInput(
@@ -694,7 +907,14 @@ export class ClearingService {
     event: ClearingEvent,
     version: ClearingEventVersion,
     plan: ClearingConfirmationPlan,
-    identity: ActorIdentity
+    identity: ActorIdentity,
+    adjustment?: {
+      suffix: string;
+      adjustsFactId: string;
+      entryKind: OperatingFactEntryKind;
+      reversesImpactIds: Readonly<Record<string, string>>;
+    },
+    linkedOperatingFactId?: string
   ) {
     await tx.clearingConfirmation.create({
       data: {
@@ -739,13 +959,13 @@ export class ClearingService {
         await this.appendLedger(tx, clearingCase, event, version, partialPlan, identity, {
           suffix: `return-${index + 1}`,
           adjustsFactId: sourceLinks[0]!.operatingFactId,
-          entryKind: "correction",
+          entryKind: adjustment?.entryKind ?? "correction",
           reversesImpactIds: reverseImpactIds(partialPlan, sourceLinks)
         });
       }
       return;
     }
-    await this.appendLedger(tx, clearingCase, event, version, plan, identity);
+    await this.appendLedger(tx, clearingCase, event, version, plan, identity, undefined, linkedOperatingFactId);
   }
 
   private async appendLedger(
@@ -760,7 +980,8 @@ export class ClearingService {
       adjustsFactId: string;
       entryKind: OperatingFactEntryKind;
       reversesImpactIds: Readonly<Record<string, string>>;
-    }
+    },
+    linkedOperatingFactId?: string
   ) {
     const occurredAt = new Date();
     const [project, assignment] = await Promise.all([
@@ -847,19 +1068,90 @@ export class ClearingService {
       impacts,
       ...(adjustment ? { adjustsFactId: adjustment.adjustsFactId } : {})
     };
-    const result = await this.ledger.appendConfirmedSourceInTransaction(
-      tx as OperatingLedgerTransaction,
-      input,
-      identity.actualUserId,
-      adjustment?.entryKind ?? "original"
-    );
-    for (const [index, impact] of impacts.entries()) {
-      const impactId = result.impactIds[index];
+    let linkedFact: {
+      id: string;
+      projectId: string;
+      sourceType: string;
+      sourceBusinessId: string;
+      sourceVersion: number;
+      factKind: string;
+      entryKind: string;
+      amountCents: bigint;
+      status: string;
+      affiliateAssignmentId: string;
+      affiliateBusinessPartyVersionId: string;
+      impacts: Array<{
+        id: string;
+        impactKind: string;
+        amountCents: bigint;
+        direction: string;
+      }>;
+    } | null = null;
+    const linkedImpactIds = new Map<string, string>();
+    if (linkedOperatingFactId) {
+      if (adjustment || suffix !== "original") throw new ConflictException("只有原始历史来源可以绑定既有经营事实");
+      linkedFact = await tx.operatingFact.findUnique({
+        where: { id: linkedOperatingFactId },
+        include: { impacts: true }
+      });
+      const payload = version.payloadSnapshot as Record<string, unknown>;
+      const sourceSnapshot = input.sourceSnapshot as Record<string, unknown>;
+      const expectedAffiliateBusinessPartyVersionId = typeof sourceSnapshot.affiliateBusinessPartyVersionId === "string"
+        ? sourceSnapshot.affiliateBusinessPartyVersionId
+        : null;
+      if (!expectedAffiliateBusinessPartyVersionId) {
+        throw new ConflictException("既有 legacy 经营事实缺少施工企业档案版本快照，必须失败关闭");
+      }
+      if (
+        !linkedFact ||
+        linkedFact.projectId !== clearingCase.projectId ||
+        linkedFact.sourceType !== payload.sourceType ||
+        linkedFact.sourceBusinessId !== payload.sourceBusinessId ||
+        linkedFact.sourceVersion !== payload.sourceVersion ||
+        linkedFact.factKind !== "construction_enterprise_deduction" ||
+        linkedFact.entryKind !== "original" ||
+        linkedFact.status !== "confirmed" ||
+        linkedFact.amountCents !== version.amountCents ||
+        linkedFact.affiliateAssignmentId !== clearingCase.constructionEnterpriseAssignmentId ||
+        linkedFact.affiliateBusinessPartyVersionId !== expectedAffiliateBusinessPartyVersionId
+      ) {
+        throw new ConflictException("既有 legacy 经营事实与权威清算来源不一致，必须失败关闭");
+      }
+      const consumedImpactIds = new Set<string>();
+      for (const impact of impacts) {
+        const candidates = linkedFact.impacts.filter((candidate) =>
+          !consumedImpactIds.has(candidate.id) &&
+          candidate.impactKind === impact.impactKind &&
+          candidate.amountCents === impact.amountCents &&
+          candidate.direction === impact.direction
+        );
+        if (candidates.length > 1) throw new ConflictException("既有 legacy 经营影响链不唯一，必须失败关闭");
+        const candidate = candidates[0];
+        if (candidate) {
+          consumedImpactIds.add(candidate.id);
+          linkedImpactIds.set(impact.sourceImpactKey, candidate.id);
+        }
+      }
+    }
+    const ledgerImpacts = impacts.filter((impact) => !linkedImpactIds.has(impact.sourceImpactKey));
+    const result = ledgerImpacts.length
+      ? await this.ledger.appendConfirmedSourceInTransaction(
+          tx as OperatingLedgerTransaction,
+          { ...input, amountCents: ledgerImpacts.reduce((maximum, impact) => impact.amountCents > maximum ? impact.amountCents : maximum, 0n), impacts: ledgerImpacts },
+          identity.actualUserId,
+          adjustment?.entryKind ?? "original"
+        )
+      : linkedFact
+        ? { id: linkedFact.id, projectId: linkedFact.projectId, sourceType: linkedFact.sourceType, sourceBusinessId: linkedFact.sourceBusinessId, created: false, impactIds: [] }
+        : (() => { throw new ConflictException("正式经营账投影缺少可写影响分录"); })();
+    for (const impact of impacts) {
+      const linkedImpactId = linkedImpactIds.get(impact.sourceImpactKey);
+      const impactId = linkedImpactId ?? result.impactIds[ledgerImpacts.findIndex((entry) => entry.sourceImpactKey === impact.sourceImpactKey)];
       if (!impactId) throw new Error("经营账投影未返回完整影响分录");
       await tx.clearingImpactLink.create({
         data: {
           eventVersionId: version.id,
-          operatingFactId: result.id,
+          operatingFactId: linkedImpactId && linkedFact ? linkedFact.id : result.id,
           operatingImpactId: impactId,
           sourceImpactKey: `${suffix}:${impact.sourceImpactKey}`,
           amountCents: impact.amountCents,
@@ -1056,6 +1348,17 @@ export class ClearingService {
           WHERE sourceEvent."clearingCaseId" = ${caseId} AND a."sourceKind" = 'withheld'
         ), 0)
       )::bigint AS total
+    `);
+    return rows[0]?.total ?? 0n;
+  }
+
+  private async confirmedGuaranteeConsumedForTakeover(tx: Tx, caseId: string): Promise<bigint> {
+    const rows = await tx.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+      SELECT COALESCE(SUM(v."amountCents"), 0)::bigint AS total
+      FROM "ClearingEvent" e
+      JOIN "ClearingEventVersion" v ON v."clearingEventId" = e.id
+      JOIN "ClearingConfirmation" c ON c."eventVersionId" = v.id
+      WHERE e."clearingCaseId" = ${caseId} AND e.kind = 'withheld'
     `);
     return rows[0]?.total ?? 0n;
   }

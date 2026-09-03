@@ -14,6 +14,6 @@ import { AffiliateClearingSelectionRefService } from "./affiliate-clearing-selec
   imports: [DatabaseModule, AuditModule, AuthModule, OperatingLedgerModule],
   controllers: [ClearingController, AffiliateClearingAuthorityController],
   providers: [ClearingService, AffiliateClearingAuthorityService, AffiliateClearingSelectionRefService],
-  exports: [ClearingService]
+  exports: [ClearingService, AffiliateClearingAuthorityService]
 })
 export class ClearingModule {}

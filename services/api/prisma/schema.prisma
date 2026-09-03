@@ -481,6 +481,155 @@ model ClearingCommandReceipt {
   @@index([aggregateId, action, createdAt])
 }
 
+// POL-215：历史接管只保存治理、来源、映射和命令因果；正式经济事实仍由 ClearingModule 追加。
+// 这些记录一经写入即不可更新或删除，供重验、审计和补偿链精确复核。
+model OperatingTakeoverManifestVersion {
+  id                            String   @id @default(uuid())
+  projectId                     String
+  manifestNo                    String
+  version                       Int      @default(1)
+  status                        String   @default("prepared")
+  sourceScopeFingerprint        String
+  mapperName                    String
+  mapperVersion                 Int
+  schemaVersion                 Int
+  candidateBaselineSha          String
+  permissionSnapshotFingerprint String
+  readSetFingerprint            String
+  manifestFingerprint           String
+  createdByUserId               String
+  createdAt                     DateTime @default(now())
+
+  rows     OperatingTakeoverRowMapping[]
+  receipts OperatingTakeoverCommandReceipt[]
+
+  @@unique([projectId, manifestNo], map: "OperatingTakeoverManifestVersion_project_manifest_key")
+  @@unique([projectId, manifestFingerprint], map: "OperatingTakeoverManifestVersion_project_fingerprint_key")
+  @@index([projectId, status, createdAt])
+}
+
+model OperatingTakeoverRowMapping {
+  id                         String                                @id @default(uuid())
+  manifestVersionId          String
+  projectId                  String
+  rowNo                      Int
+  sourceType                 String
+  sourceBusinessId           String
+  sourceVersion              Int
+  sourceFingerprint          String
+  sourceCoordinate           String
+  normalizedRowHash          String
+  amountCents                BigInt
+  evidenceLevel              String
+  coverageKind               String?
+  coverageKey                String?
+  periodStart                DateTime?                             @db.Date
+  entryKind                  String
+  mappingDecision            String
+  conflictGroupKey           String
+  adjustmentTargetRef        String?
+  sourceDiscriminator        String?
+  governedSubjectKey         String?
+  authorityCategory          String?
+  authoritySnapshotRef       String?
+  authorityFingerprint       String?
+  authorityVersionId         String?
+  authorityLineId            String?
+  authorityLineFingerprint   String?
+  obligationId               String?
+  authoritativeGrossCapCents BigInt?
+  currencyCode               String?
+  authoritySnapshot          Json
+  legacySourceSnapshot       Json
+  readSetSnapshot            Json
+  mappingFingerprint         String
+  createdAt                  DateTime                              @default(now())
+  manifest                   OperatingTakeoverManifestVersion      @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
+  authorityVersion           AffiliateClearingAuthorityVersion?    @relation("OperatingTakeoverRowMappingAuthorityVersion", fields: [authorityVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignedWageLine           AssignedWageAuthorityLine?            @relation("OperatingTakeoverRowMappingAssignedWageLine", fields: [authorityVersionId, authorityLineId], references: [authorityVersionId, id], onDelete: Restrict, onUpdate: Restrict)
+  guaranteeObligation        GuaranteeObligationVersion?           @relation("OperatingTakeoverRowMappingGuaranteeObligation", fields: [authorityVersionId, obligationId], references: [authorityVersionId, obligationId], onDelete: Restrict, onUpdate: Restrict)
+  bridges                    OperatingTakeoverLegacySourceBridge[]
+  receiptLines               OperatingTakeoverCommandReceiptLine[]
+
+  @@unique([manifestVersionId, rowNo], map: "OperatingTakeoverRowMapping_manifest_row_key")
+  @@unique([manifestVersionId, sourceType, sourceBusinessId, sourceVersion, sourceCoordinate], map: "OperatingTakeoverRowMapping_source_coordinate_key")
+  @@unique([projectId, sourceType, sourceBusinessId, sourceVersion, sourceFingerprint], map: "OperatingTakeoverRowMapping_source_fingerprint_key")
+  @@index([manifestVersionId, conflictGroupKey])
+  @@index([projectId, sourceType, sourceBusinessId])
+}
+
+model OperatingTakeoverLegacySourceBridge {
+  id                String                      @id @default(uuid())
+  projectId         String
+  rowMappingId      String
+  sourceType        String
+  sourceBusinessId  String
+  sourceVersion     Int
+  sourceFingerprint String
+  targetKind        String
+  targetRef         String
+  targetFingerprint String
+  mappingDecision   String
+  createdByUserId   String
+  createdAt         DateTime                    @default(now())
+  rowMapping        OperatingTakeoverRowMapping @relation(fields: [rowMappingId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, sourceType, sourceBusinessId, sourceVersion, sourceFingerprint], map: "OperatingTakeoverLegacySourceBridge_source_key")
+  @@unique([projectId, sourceType, sourceBusinessId, sourceVersion], map: "OperatingTakeoverLegacySourceBridge_source_coordinate_key")
+  @@unique([projectId, targetKind, targetRef], map: "OperatingTakeoverLegacySourceBridge_target_key")
+  @@index([projectId, mappingDecision, createdAt])
+}
+
+model OperatingTakeoverCommandReceipt {
+  id                            String                                @id @default(uuid())
+  manifestVersionId             String
+  idempotencyKey                String                                @unique
+  action                        String
+  expectedRevision              Int
+  actorUserId                   String
+  delegatorUserId               String?
+  actorSetSnapshot              Json
+  permissionSnapshotFingerprint String
+  fingerprint                   String
+  status                        String
+  resultSnapshot                Json
+  causalityFingerprint          String
+  causesReceiptId               String?
+  createdAt                     DateTime                              @default(now())
+  manifest                      OperatingTakeoverManifestVersion      @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
+  causesReceipt                 OperatingTakeoverCommandReceipt?      @relation("OperatingTakeoverReceiptCausality", fields: [causesReceiptId], references: [id], onDelete: Restrict)
+  causedReceipts                OperatingTakeoverCommandReceipt[]     @relation("OperatingTakeoverReceiptCausality")
+  lines                         OperatingTakeoverCommandReceiptLine[]
+
+  @@index([manifestVersionId, action, createdAt])
+  @@index([causesReceiptId])
+}
+
+model OperatingTakeoverCommandReceiptLine {
+  id                   String                                @id @default(uuid())
+  receiptId            String
+  rowMappingId         String
+  lineNo               Int
+  decision             String
+  entryKind            String
+  amountCents          BigInt
+  targetKind           String?
+  targetRef            String?
+  causalOrdinal        Int
+  reversesLineId       String?
+  causalityFingerprint String
+  lineSnapshot         Json
+  createdAt            DateTime                              @default(now())
+  receipt              OperatingTakeoverCommandReceipt       @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  rowMapping           OperatingTakeoverRowMapping           @relation(fields: [rowMappingId], references: [id], onDelete: Restrict)
+  reversesLine         OperatingTakeoverCommandReceiptLine?  @relation("OperatingTakeoverLineCausality", fields: [reversesLineId], references: [id], onDelete: Restrict)
+  reversedByLines      OperatingTakeoverCommandReceiptLine[] @relation("OperatingTakeoverLineCausality")
+
+  @@unique([receiptId, lineNo], map: "OperatingTakeoverCommandReceiptLine_receipt_line_key")
+  @@index([rowMappingId, createdAt])
+  @@index([reversesLineId])
+}
+
 // 通用历史经营接管与合同接管分离；批次只保存草稿、复核和激活坐标，正式事实仍写入 OperatingFact。
 model OperatingTakeoverBatch {
   id                String                             @id @default(uuid())
@@ -3584,7 +3733,7 @@ model ProjectAffiliateCompanyContract {
 // POL-214 最小财务权威来源层。协议、名册/岗位、工资规则与保证金义务只在服务端冻结，
 // 不承载 HR、工资核算、通用协议或付款事实。
 model AffiliateClearingAuthorityVersion {
-  id                                 String    @id @default(uuid())
+  id                                 String                        @id @default(uuid())
   projectId                          String
   constructionEnterpriseAssignmentId String
   affiliateCompanyContractId         String
@@ -3592,18 +3741,18 @@ model AffiliateClearingAuthorityVersion {
   protocolReferenceSnapshot          String
   assignmentNameSnapshot             String
   assignmentCreditCodeSnapshot       String?
-  versionNo                          Int       @default(1)
+  versionNo                          Int                           @default(1)
   supersedesVersionId                String?
-  effectiveFrom                      DateTime  @db.Date
-  effectiveTo                        DateTime? @db.Date
+  effectiveFrom                      DateTime                      @db.Date
+  effectiveTo                        DateTime?                     @db.Date
   coverageKind                       String
   evidenceFileId                     String
   evidenceSha256                     String
   evidenceManifestSha256             String
-  status                             String    @default("draft")
-  authoritySnapshotRef               String    @unique
-  authorityFingerprint               String    @unique
-  idempotencyKey                     String    @unique
+  status                             String                        @default("draft")
+  authoritySnapshotRef               String                        @unique
+  authorityFingerprint               String                        @unique
+  idempotencyKey                     String                        @unique
   requestFingerprint                 String
   createdByUserId                    String
   submittedByUserId                  String?
@@ -3613,8 +3762,9 @@ model AffiliateClearingAuthorityVersion {
   returnedByUserId                   String?
   returnedAt                         DateTime?
   returnReason                       String?
-  createdAt                          DateTime  @default(now())
-  updatedAt                          DateTime  @updatedAt
+  createdAt                          DateTime                      @default(now())
+  updatedAt                          DateTime                      @updatedAt
+  takeoverMappings                   OperatingTakeoverRowMapping[] @relation("OperatingTakeoverRowMappingAuthorityVersion")
 
   @@unique([affiliateCompanyContractId, versionNo])
   @@index([projectId, status, effectiveFrom])
@@ -3623,7 +3773,7 @@ model AffiliateClearingAuthorityVersion {
 }
 
 model AssignedWageAuthorityLine {
-  id                                 String   @id @default(uuid())
+  id                                 String                        @id @default(uuid())
   authorityVersionId                 String
   projectId                          String
   constructionEnterpriseAssignmentId String
@@ -3636,56 +3786,60 @@ model AssignedWageAuthorityLine {
   roleNameSnapshot                   String?
   employerNameSnapshot               String
   employerCreditCodeSnapshot         String?
-  wageMonth                          DateTime @db.Date
+  wageMonth                          DateTime                      @db.Date
   amountRuleVersion                  Int
   amountMode                         String
   approvedAmountCents                BigInt
   grossCapCents                      BigInt
-  currencyCode                       String   @default("CNY")
+  currencyCode                       String                        @default("CNY")
   midMonthPolicy                     String
   evidenceLevel                      String
   evidenceCoordinate                 String
   evidenceSha256                     String
   lineFingerprint                    String
-  createdAt                          DateTime @default(now())
+  createdAt                          DateTime                      @default(now())
+  takeoverMappings                   OperatingTakeoverRowMapping[] @relation("OperatingTakeoverRowMappingAssignedWageLine")
 
   @@unique([authorityVersionId, wageMonth, coverageKind, coverageKey])
+  @@unique([authorityVersionId, id], map: "AssignedWageAuthorityLine_authority_id_key")
   @@index([projectId, constructionEnterpriseAssignmentId, wageMonth])
   @@index([coverageKey, wageMonth])
   @@index([affiliateCompanyContractId, wageMonth])
 }
 
 model GuaranteeObligationVersion {
-  id                                 String    @id @default(uuid())
+  id                                 String                        @id @default(uuid())
   authorityVersionId                 String
   projectId                          String
   constructionEnterpriseAssignmentId String
   affiliateCompanyContractId         String
   obligationId                       String
-  versionNo                          Int       @default(1)
+  versionNo                          Int                           @default(1)
   supersedesVersionId                String?
   baseAmountCents                    BigInt
   calculationMode                    String
   rateBps                            Int?
   fixedAmountCents                   BigInt?
   capCents                           BigInt
-  currencyCode                       String    @default("CNY")
-  effectiveFrom                      DateTime  @db.Date
-  effectiveTo                        DateTime? @db.Date
+  currencyCode                       String                        @default("CNY")
+  effectiveFrom                      DateTime                      @db.Date
+  effectiveTo                        DateTime?                     @db.Date
   returnCondition                    String
-  enabled                            Boolean   @default(true)
+  enabled                            Boolean                       @default(true)
   disabledAt                         DateTime?
   disableReason                      String?
   evidenceLevel                      String
   evidenceCoordinate                 String
   evidenceSha256                     String
-  obligationFingerprint              String    @unique
+  obligationFingerprint              String                        @unique
   createdByUserId                    String
   confirmedByUserId                  String?
   confirmedAt                        DateTime?
-  createdAt                          DateTime  @default(now())
+  createdAt                          DateTime                      @default(now())
+  takeoverMappings                   OperatingTakeoverRowMapping[] @relation("OperatingTakeoverRowMappingGuaranteeObligation")
 
   @@unique([obligationId, versionNo])
+  @@unique([authorityVersionId, obligationId], map: "GuaranteeObligationVersion_authority_obligation_key")
   @@index([projectId, constructionEnterpriseAssignmentId, obligationId])
   @@index([authorityVersionId, enabled, effectiveFrom])
 }

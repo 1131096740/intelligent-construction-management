@@ -375,7 +375,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases/events/:param/attest",
           "normalizedPath": "/clearing-cases/events/:param/attest",
@@ -406,7 +406,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases/events/:param/confirm",
           "normalizedPath": "/clearing-cases/events/:param/confirm",
@@ -437,7 +437,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases",
           "normalizedPath": "/clearing-cases",
@@ -465,7 +465,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases/:param/events",
           "normalizedPath": "/clearing-cases/:param/events",
@@ -495,7 +495,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 117,
           "method": "GET",
           "path": "/affiliate-clearing-authorities/options",
           "normalizedPath": "/affiliate-clearing-authorities/options",
@@ -523,7 +523,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 117,
           "method": "GET",
           "path": "/affiliate-clearing-authorities/allocation-options/:param",
           "normalizedPath": "/affiliate-clearing-authorities/allocation-options/:param",
@@ -551,7 +551,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 117,
           "method": "GET",
           "path": "/clearing-cases/capabilities",
           "normalizedPath": "/clearing-cases/capabilities",
@@ -582,7 +582,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 117,
           "method": "GET",
           "path": "/clearing-cases/:param",
           "normalizedPath": "/clearing-cases/:param",
@@ -612,7 +612,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 117,
           "method": "GET",
           "path": "/clearing-cases",
           "normalizedPath": "/clearing-cases",
@@ -641,7 +641,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases/events/:param/reopen",
           "normalizedPath": "/clearing-cases/events/:param/reopen",
@@ -670,7 +670,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases/events/:param/return",
           "normalizedPath": "/clearing-cases/events/:param/return",
@@ -699,7 +699,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 131,
+          "sourceLine": 129,
           "method": "PATCH",
           "path": "/clearing-cases/events/:param/draft",
           "normalizedPath": "/clearing-cases/events/:param/draft",
@@ -729,7 +729,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 123,
+          "sourceLine": 121,
           "method": "POST",
           "path": "/clearing-cases/events/:param/submit",
           "normalizedPath": "/clearing-cases/events/:param/submit",

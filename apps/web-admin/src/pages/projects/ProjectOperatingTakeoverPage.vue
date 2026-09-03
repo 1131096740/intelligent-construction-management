@@ -4,7 +4,7 @@
       <div>
         <span class="page-eyebrow">项目经营</span>
         <h1>历史经营接管</h1>
-        <p>先预检、再整批生成草稿；A/B 资料进入经营账，C 级资料仅登记历史缺口。</p>
+        <p>当前仅查看既有接管记录；写入操作待后续具备权威来源与批次隔离后开放。</p>
       </div>
       <div class="actions">
         <t-button
@@ -14,6 +14,7 @@
           刷新
         </t-button>
         <t-button
+          v-if="POL_215_WRITE_UI_ENABLED"
           theme="primary"
           :disabled="!selectedProjectId"
           @click="downloadTemplate"
@@ -29,6 +30,13 @@
       :close="false"
     >
       {{ message }}
+    </t-alert>
+
+    <t-alert
+      theme="warning"
+      :close="false"
+    >
+      当前版本仅提供既有接管记录查看；本票的资料上传、Excel 预检、批次创建、附件关联与激活写入暂未开放。
     </t-alert>
 
     <t-card
@@ -63,7 +71,7 @@
     </t-card>
 
     <t-card
-      v-if="selectedProjectId"
+      v-if="selectedProjectId && POL_215_WRITE_UI_ENABLED"
       class="panel"
       title="页面录入 / 粘贴 / Excel 预检"
     >
@@ -177,7 +185,10 @@
     >
       <div class="detail-head">
         <span>{{ detail.batchNo }} · {{ batchStatusLabel(detail.status) }} · 修订 {{ detail.revision }}</span>
-        <div class="form-actions">
+        <div
+          v-if="POL_215_WRITE_UI_ENABLED"
+          class="form-actions"
+        >
           <t-button
             v-if="canConfirmProfession('finance')"
             @click="requestConfirm('finance')"
@@ -227,12 +238,21 @@
         </template>
         <template #actions="{ row }">
           <t-space>
-            <t-link :disabled="detail.status === 'activated'" @click="openRowEdit(row)">编辑</t-link>
-            <t-link :disabled="detail.status === 'activated'" @click="selectAttachmentTarget(row)">附件</t-link>
+            <t-link
+              v-if="POL_215_WRITE_UI_ENABLED"
+              :disabled="detail.status === 'activated'"
+              @click="openRowEdit(row)"
+            >编辑</t-link>
+            <t-link
+              v-if="POL_215_WRITE_UI_ENABLED"
+              :disabled="detail.status === 'activated'"
+              @click="selectAttachmentTarget(row)"
+            >附件</t-link>
           </t-space>
         </template>
       </t-table>
       <t-card
+        v-if="POL_215_WRITE_UI_ENABLED"
         class="attachment-panel"
         title="批次附件与证据来源"
         :bordered="false"
@@ -340,7 +360,7 @@
     @confirm="confirm"
   >
     <t-alert theme="warning" :close="false">
-      本次将以当前批次修订版本提交{{ professionLabel(confirmationProfession) }}确认；提交后如需修改行，必须重新复核。
+      本次将以当前批次版本提交{{ professionLabel(confirmationProfession) }}确认；提交后如需修改行，必须重新复核。
     </t-alert>
   </t-dialog>
 
@@ -360,6 +380,7 @@
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   activateOperatingTakeover,
   addOperatingTakeoverAttachmentGroup,
@@ -380,6 +401,8 @@ import {
   type OperatingTakeoverSceneReadModel,
   precheckOperatingTakeover
 } from "../../api/operating-takeover.api";
+
+const POL_215_WRITE_UI_ENABLED = false;
 
 const projectOptions = ref<Array<{ label: string; value: string }>>([]);
 const projects = ref<ProjectOptionReadModel[]>([]);
@@ -470,7 +493,7 @@ async function load() {
     if (!selectedProjectId.value && projectOptions.value[0]) selectedProjectId.value = projectOptions.value[0].value;
     if (selectedProjectId.value) await loadProject();
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载历史经营接管失败";
+    message.value = formatUnknownApiError(error, "加载历史经营接管失败");
   } finally {
     loadingProjects.value = false;
   }
@@ -488,7 +511,7 @@ async function loadProject() {
     batches.value = await fetchOperatingTakeoverBatches(selectedProjectId.value);
     detail.value = null;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载历史经营接管场景失败";
+    message.value = formatUnknownApiError(error, "加载历史经营接管场景失败");
   } finally {
     loading.value = false;
   }
@@ -515,7 +538,7 @@ async function precheck() {
     precheckResult.value = await precheckOperatingTakeoverWithCapability(selectedProjectId.value, { sceneKey: selectedSceneKey.value, rows: pendingRows.value });
     message.value = "";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "预检失败";
+    message.value = formatUnknownApiError(error, "预检失败");
   } finally {
     submitting.value = false;
   }
@@ -539,7 +562,7 @@ async function precheckExcel() {
     pendingSourceFile.value = raw;
     message.value = "";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "Excel 预检失败";
+    message.value = formatUnknownApiError(error, "Excel 预检失败");
   } finally {
     submitting.value = false;
   }
@@ -561,7 +584,7 @@ async function createBatch() {
     pendingSourceFile.value = null;
     batches.value = await fetchOperatingTakeoverBatches(selectedProjectId.value);
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "生成批次失败";
+    message.value = formatUnknownApiError(error, "生成批次失败");
   } finally {
     submitting.value = false;
   }
@@ -589,7 +612,7 @@ async function confirm() {
     confirmationDialogVisible.value = false;
     message.value = "专业确认已提交";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "专业确认失败";
+    message.value = formatUnknownApiError(error, "专业确认失败");
   } finally {
     actionSubmitting.value = false;
   }
@@ -609,7 +632,7 @@ async function activate() {
     activationDialogVisible.value = false;
     message.value = "历史经营接管批次已激活";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "激活历史经营接管失败";
+    message.value = formatUnknownApiError(error, "激活历史经营接管失败");
   } finally {
     actionSubmitting.value = false;
   }
@@ -691,7 +714,7 @@ async function saveRowEdit() {
     rowEditDialogVisible.value = false;
     message.value = "接管行已保存，专业确认需要重新提交";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "保存接管行失败";
+    message.value = formatUnknownApiError(error, "保存接管行失败");
   } finally {
     actionSubmitting.value = false;
   }
@@ -720,7 +743,7 @@ async function attachFiles() {
     attachmentTargetRowId.value = null;
     message.value = "附件已关联到接管批次";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "关联附件失败";
+    message.value = formatUnknownApiError(error, "关联附件失败");
   } finally {
     actionSubmitting.value = false;
   }

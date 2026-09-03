@@ -27,13 +27,85 @@ import {
 } from "./operating-takeover.dto";
 import { OperatingTakeoverExcelService, OPERATING_TAKEOVER_XLSX_MIME } from "./operating-takeover-excel.service";
 import { OperatingTakeoverService } from "./operating-takeover.service";
+import {
+  CompensateConstructionEnterpriseTakeoverDto,
+  ConstructionEnterpriseTakeoverCommandDto,
+  CreateConstructionEnterpriseTakeoverManifestDto
+} from "./construction-enterprise-clearing.dto";
+import { OperatingTakeoverCoordinatorService } from "./operating-takeover-coordinator.service";
 
 @Controller("projects/:projectId/operating-takeovers")
 export class OperatingTakeoverController {
   constructor(
     private readonly takeovers: OperatingTakeoverService,
-    private readonly excel: OperatingTakeoverExcelService
+    private readonly excel: OperatingTakeoverExcelService,
+    private readonly coordinator: OperatingTakeoverCoordinatorService
   ) {}
+
+  @Post("authority-manifests")
+  @RequireProjectRole("clearing.prepare")
+  createAuthorityManifest(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateConstructionEnterpriseTakeoverManifestDto
+  ) {
+    return this.coordinator.createManifest(projectId, user.id, body);
+  }
+
+  @Post("authority-manifests/:manifestId/apply")
+  @RequireProjectRole("clearing.prepare")
+  applyAuthorityManifest(
+    @Param("projectId") projectId: string,
+    @Param("manifestId") manifestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConstructionEnterpriseTakeoverCommandDto
+  ) {
+    return this.coordinator.apply(projectId, manifestId, user.id, body);
+  }
+
+  @Post("authority-manifests/:manifestId/abandon")
+  @RequireProjectRole("clearing.prepare")
+  abandonAuthorityManifest(
+    @Param("projectId") projectId: string,
+    @Param("manifestId") manifestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConstructionEnterpriseTakeoverCommandDto
+  ) {
+    return this.coordinator.abandonInactiveApply(projectId, manifestId, user.id, body);
+  }
+
+  @Post("authority-manifests/:manifestId/attest")
+  @RequireProjectRole("clearing.attest")
+  attestAuthorityManifest(
+    @Param("projectId") projectId: string,
+    @Param("manifestId") manifestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConstructionEnterpriseTakeoverCommandDto
+  ) {
+    return this.coordinator.attestManifest(projectId, manifestId, user.id, body);
+  }
+
+  @Post("authority-manifests/:manifestId/activate")
+  @RequireProjectRole("clearing.confirm")
+  activateAuthorityManifest(
+    @Param("projectId") projectId: string,
+    @Param("manifestId") manifestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConstructionEnterpriseTakeoverCommandDto
+  ) {
+    return this.coordinator.activate(projectId, manifestId, user.id, body);
+  }
+
+  @Post("authority-manifests/:manifestId/compensate")
+  @RequireProjectRole("clearing.confirm")
+  compensateAuthorityManifest(
+    @Param("projectId") projectId: string,
+    @Param("manifestId") manifestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CompensateConstructionEnterpriseTakeoverDto
+  ) {
+    return this.coordinator.compensateActivation(projectId, manifestId, user.id, body);
+  }
 
   @Get("capability")
   @RequireProjectRole("operating_takeover.manage")
