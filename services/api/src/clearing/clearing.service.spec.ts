@@ -328,7 +328,7 @@ describe("ClearingService", () => {
         resourceId: "project-1",
         enabled: true,
         startsAt: { lte: expect.any(Date) },
-        endsAt: { gte: expect.any(Date) }
+        endsAt: { gt: expect.any(Date) }
       },
       select: { fromUserId: true }
     });

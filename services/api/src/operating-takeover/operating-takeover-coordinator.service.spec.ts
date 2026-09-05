@@ -26,6 +26,7 @@ const authority = {
 
 function harness() {
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     operatingTakeoverCommandReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -224,6 +225,36 @@ describe("OperatingTakeoverCoordinatorService", () => {
     expect(tx.operatingTakeoverCommandReceiptLine.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ targetRef: "clearing-version-1", reversesLineId: null })
     });
+  });
+
+  it("locks the assigned-wage bucket before activation rechecks canonical wage conflicts", async () => {
+    const { service, tx, clearing } = harness();
+    const sequence: string[] = [];
+    const row = formalMapping();
+    tx.operatingTakeoverManifestVersion = {
+      findUnique: jest.fn().mockResolvedValue(manifestWith([row]))
+    } as never;
+    tx.$executeRaw.mockImplementation(async (query: { values: unknown[] }) => {
+      sequence.push(`lock:${String(query.values[0])}`);
+      return 0;
+    });
+    tx.wagePersonLine.findFirst.mockImplementation(async () => {
+      sequence.push("canonical-recheck");
+      return { id: "canonical-wage-line-1" };
+    });
+    clearing.planHistoricalImport.mockResolvedValue({ versionId: "clearing-version-1" });
+
+    await expect(service.activate("project-1", "manifest-1", "finance-1", {
+      idempotencyKey: "88888888-8888-4888-8888-888888888888",
+      expectedRevision: 1
+    })).rejects.toThrow("工资来源冲突");
+
+    expect(sequence).toEqual([
+      "lock:wage-conflict:v1:project-1:2026-08",
+      "canonical-recheck"
+    ]);
+    expect(clearing.planHistoricalImport).not.toHaveBeenCalled();
+    expect(tx.operatingTakeoverLegacySourceBridge.create).not.toHaveBeenCalled();
   });
 
   it("compensates activation in reverse causal order and links receipt lines", async () => {

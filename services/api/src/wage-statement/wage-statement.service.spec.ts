@@ -68,10 +68,19 @@ describe("WageStatementService", () => {
       wageServiceBasisBinding: { create: jest.fn().mockResolvedValue({ id: "basis-1" }), findMany: jest.fn().mockResolvedValue([{ id: "basis-1", projectId: "project-1", serviceSnapshotId: "service-1", serviceMonth: "2026-08", evidenceSha256: "a".repeat(64), authorityFingerprint: "aae917f236292fe8521991c798df734666581521306df6ce3f4bfd7e90217a30" }]) },
       wageApprovedSourceCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ idempotencyKey: "source-receipt-1" }) },
       $queryRaw: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(0),
       wageStatement: { create: jest.fn().mockResolvedValue({ id: "statement-1" }), findUnique: jest.fn(), update: jest.fn() },
       wageStatementVersion: { create: jest.fn().mockResolvedValue({ id: "version-1" }), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
       wageCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ idempotencyKey: "receipt-1" }) },
-      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-1" }) },
+      wagePersonLine: {
+        create: jest.fn().mockResolvedValue({ id: "person-1" }),
+        findMany: jest.fn().mockResolvedValue([{
+          employeeId: "employee-1",
+          projectAllocations: [{ projectId: "project-1" }]
+        }])
+      },
+      affiliateClearingAuthorityVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      assignedWageAuthorityLine: { findMany: jest.fn().mockResolvedValue([]) },
       wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }), createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wageCreditorBreakdown: { create: jest.fn().mockResolvedValue({ id: "creditor-1", creditorCategory: "employee_net_pay", creditorSubjectType: "employee_user", creditorUserId: "employee-1", creditorBusinessPartyVersionId: null }), createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" }), createMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -210,7 +219,7 @@ describe("WageStatementService", () => {
       periodStart: new Date("2026-08-01T00:00:00.000Z"), periodEnd: new Date("2026-08-31T00:00:00.000Z"),
       evidenceFileId: "file-1", evidenceSha256: "a".repeat(64), sourceSnapshot: { approvedPersonLines: approvedSource.approvedPersonLines }
     });
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", currentRevision: 1 });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique.mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "confirmed" });
 
     await expect(service.createRevision("actor-1", "statement-1", {
@@ -228,7 +237,7 @@ describe("WageStatementService", () => {
   it("refuses a later revision unless the predecessor is confirmed", async () => {
     const { service, tx } = setup();
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", currentRevision: 1 });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique.mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "submitted" });
     await expect(service.createRevision("actor-1", "statement-1", {
       ...draft, sourceVersionId: "source-2", expectedRevision: 1,
@@ -454,7 +463,7 @@ describe("WageStatementService", () => {
   it("submits exactly the current draft revision and records a replayable command receipt", async () => {
     const { service, tx, prisma } = setup();
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "draft" });
     tx.wageStatementVersion.update = jest.fn().mockResolvedValue({ id: "version-1", revision: 1, status: "submitted" });
 
@@ -470,7 +479,7 @@ describe("WageStatementService", () => {
     const { service, tx, roles } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     const submitted = {
       id: "version-1", statementId: "statement-1", revision: 1, kind: "base", status: "submitted", sourceVersionId: "source-1", sourceSnapshot: { source: true },
       personLines: [{ employeeId: "employee-1", employmentSnapshotId: "employment-1", employeeSnapshot: {}, employmentSnapshot: {}, periodSnapshot: {}, positionCategorySnapshot: {}, approvedAmountCents: 100000n,
@@ -495,13 +504,52 @@ describe("WageStatementService", () => {
     const { service, tx, roles } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "submitted", createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1" });
     tx.wageStatementVersion.update = jest.fn().mockResolvedValue({ id: "version-1" });
 
     await expect(service.confirm("submitter-1", "statement-1", { idempotencyKey: "44444444-4444-4444-8444-444444444444", expectedRevision: 1 })).rejects.toThrow("职责分离冲突");
     await expect(service.confirm("director-1", "statement-1", { idempotencyKey: "55555555-5555-4555-8555-555555555555", expectedRevision: 1 }))
       .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "confirmed" });
+  });
+
+  it("locks the ordinary #105 project-month scope before rejecting a matching #214 PERSON wage line", async () => {
+    const { service, tx, roles } = setup();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
+    tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
+    tx.wageStatement.findUnique.mockResolvedValue({
+      id: "statement-1",
+      employmentCompanyId: "company-1",
+      wageMonth: "2026-08",
+      currentRevision: 1
+    });
+    tx.wageStatementVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      statementId: "statement-1",
+      revision: 1,
+      kind: "base",
+      status: "submitted",
+      createdByUserId: "author-1",
+      lastEditedByUserId: "editor-1",
+      submittedByUserId: "submitter-1"
+    });
+    tx.affiliateClearingAuthorityVersion.findMany.mockResolvedValue([{ id: "authority-1" }]);
+    tx.assignedWageAuthorityLine.findMany.mockResolvedValue([{
+      projectId: "project-1",
+      coverageKind: "PERSON",
+      personAuthorityKey: "employee-1"
+    }]);
+
+    await expect(service.confirm("director-1", "statement-1", {
+      idempotencyKey: "56565656-5656-4656-8656-565656565656",
+      expectedRevision: 1
+    })).rejects.toThrow("同人同月跨 #104/#105 工资来源冲突");
+
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.affiliateClearingAuthorityVersion.findMany.mock.invocationCallOrder[0]!
+    );
+    expect(tx.wageStatementVersion.update).not.toHaveBeenCalled();
   });
 
   it("fails closed after recording an explicit export request when no immutable export artifact exists", async () => {
@@ -535,7 +583,7 @@ describe("WageStatementService", () => {
     const { service, tx, roles } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({
       id: "version-1", statementId: "statement-1", revision: 1, status: "submitted",
       createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
@@ -555,7 +603,7 @@ describe("WageStatementService", () => {
     const { service, tx, roles } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique.mockResolvedValue({
       id: "version-1", statementId: "statement-1", revision: 1, kind: "correction", status: "submitted",
       createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
@@ -572,7 +620,7 @@ describe("WageStatementService", () => {
     jest.restoreAllMocks();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 2, employmentCompanyId: "company-1" });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 2, employmentCompanyId: "company-1", wageMonth: "2026-08" });
     const creditor = {
       id: "creditor-2", creditorSubjectId: null, creditorSubjectType: "employee_user", creditorUserId: "employee-1",
       creditorBusinessPartyVersionId: null, creditorSubjectIdentityKey: "employee_user:employee-1",
@@ -620,12 +668,12 @@ describe("WageStatementService", () => {
     }));
   });
 
-  it("confirms a controlled correction with one direct-base decrease ref and matching negative operating impacts", async () => {
+  it("confirms a controlled correction against the exact service-snapshot root with matching negative operating impacts", async () => {
     const { service, tx, roles, operatingLedger } = setup();
     jest.restoreAllMocks();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 2, employmentCompanyId: "company-1" });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 2, employmentCompanyId: "company-1", wageMonth: "2026-08" });
     const creditor = {
       id: "creditor-2", creditorSubjectId: null, creditorSubjectType: "employee_user", creditorUserId: "employee-1",
       creditorBusinessPartyVersionId: null, creditorSubjectIdentityKey: "employee_user:employee-1",
@@ -662,15 +710,28 @@ describe("WageStatementService", () => {
       .mockResolvedValueOnce(correction);
     tx.wageStatementVersion.findFirst = jest.fn().mockResolvedValue(prior);
     tx.wagePayableRef = {
-      findMany: jest.fn().mockResolvedValue([{
-        id: "payable-base-1", amountCents: 2_000n, debtorCompanyId: "company-1", costBearingCompanyId: "company-1", projectId: "project-1",
-        personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" },
-        creditorBreakdown: {
-          creditorSubjectType: "employee_user", creditorSubjectIdentityKey: "employee_user:employee-1", creditorCategory: "employee_net_pay",
-          creditorNameSnapshot: "张三", creditorUnifiedIdentitySnapshot: null, creditorVersionFingerprint: "f".repeat(64)
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: "payable-base-1", amountCents: 2_000n, debtorCompanyId: "company-1", costBearingCompanyId: "company-1", projectId: "project-1",
+          projectAllocation: { serviceSnapshotId: "service-1" },
+          personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" },
+          creditorBreakdown: {
+            creditorSubjectType: "employee_user", creditorSubjectIdentityKey: "employee_user:employee-1", creditorCategory: "employee_net_pay",
+            creditorNameSnapshot: "张三", creditorUnifiedIdentitySnapshot: null, creditorVersionFingerprint: "f".repeat(64)
+          },
+          adjustments: []
         },
-        adjustments: []
-      }]),
+        {
+          id: "payable-base-other-service", amountCents: 2_000n, debtorCompanyId: "company-1", costBearingCompanyId: "company-1", projectId: "project-1",
+          projectAllocation: { serviceSnapshotId: "service-2" },
+          personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" },
+          creditorBreakdown: {
+            creditorSubjectType: "employee_user", creditorSubjectIdentityKey: "employee_user:employee-1", creditorCategory: "employee_net_pay",
+            creditorNameSnapshot: "张三", creditorUnifiedIdentitySnapshot: null, creditorVersionFingerprint: "f".repeat(64)
+          },
+          adjustments: []
+        }
+      ]),
       create: jest.fn().mockResolvedValue({ id: "payable-adjustment-1" })
     };
     tx.project.findUnique = jest.fn().mockResolvedValue({ operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z") });
@@ -682,6 +743,11 @@ describe("WageStatementService", () => {
 
     expect(tx.wagePayableRef.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ direction: "decrease", adjustsPayableRefId: "payable-base-1", settlementRecheckRequired: true })
+    }));
+    expect(tx.wagePayableRef.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        projectAllocation: { select: { serviceSnapshotId: true } }
+      })
     }));
     expect(operatingLedger.appendConfirmedSourceInTransaction).toHaveBeenCalledWith(tx, expect.objectContaining({
       impacts: expect.arrayContaining([
@@ -748,7 +814,7 @@ describe("WageStatementService", () => {
     await replayStatementReceipt(() => service.createDraft("actor-1", draft));
 
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique.mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "draft" });
     await replayStatementReceipt(() => service.submit("actor-1", "statement-1", { idempotencyKey: "22222222-2222-4222-8222-222222222222", expectedRevision: 1 }));
 
@@ -769,7 +835,7 @@ describe("WageStatementService", () => {
   it("retries only bounded serializable P2034 conflicts and preserves a real business failure", async () => {
     const { service, tx, prisma } = setup();
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
-    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 1 });
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
     tx.wageStatementVersion.findUnique.mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "draft" });
     prisma.$transaction.mockImplementationOnce(() => Promise.reject({ code: "P2034" }));
 

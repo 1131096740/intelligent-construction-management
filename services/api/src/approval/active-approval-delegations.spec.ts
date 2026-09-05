@@ -41,7 +41,7 @@ describe("activeApprovalDelegatorIds", () => {
         resourceId: null,
         enabled: true,
         startsAt: { lte: NOW },
-        endsAt: { gte: NOW }
+        endsAt: { gt: NOW }
       },
       select: { fromUserId: true }
     });
@@ -115,7 +115,7 @@ describe("activeScopedApprovalDelegatorIds", () => {
         resourceId: "event-1",
         enabled: true,
         startsAt: { lte: NOW },
-        endsAt: { gte: NOW }
+        endsAt: { gt: NOW }
       },
       select: { fromUserId: true }
     });

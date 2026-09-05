@@ -201,6 +201,18 @@ const GROUPS = [
     pendingTests: 4
   },
   {
+    id: "historical_wage_takeover",
+    database: "jiangkong_historical_wage_takeover_dynamic_test",
+    files: ["src/operating-takeover/historical-wage-takeover.pg.spec.ts"],
+    flags: {
+      RUN_HISTORICAL_WAGE_TAKEOVER_DATABASE: "1",
+      HISTORICAL_WAGE_TAKEOVER_DATABASE_URL: "databaseUrl",
+      DATABASE_URL: "databaseUrl"
+    },
+    pendingTests: 6,
+    requiresCandidateBaselineSha: true
+  },
+  {
     id: "fund_movement",
     database: "jiangkong_fund_movement_dynamic_test",
     files: ["src/database/fund-movement-concurrency.spec.ts"],
@@ -418,6 +430,13 @@ function createRuntimeEnvironment(
   }
   if (group.requiresOperatingLedgerWriteSecret) {
     environment.OPERATING_LEDGER_DB_WRITE_SECRET = operatingLedgerWriteSecret ?? randomUUID();
+  }
+  if (group.requiresCandidateBaselineSha) {
+    const candidateSha = String(base.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA ?? "");
+    if (!SHA_PATTERN.test(candidateSha)) {
+      fail("历史工资接管动态门缺少精确候选 SHA");
+    }
+    environment.GIT_COMMIT_SHA = candidateSha.toLowerCase();
   }
   return environment;
 }

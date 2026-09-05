@@ -304,13 +304,13 @@ model OperatingFact {
 }
 
 model OperatingImpactEntry {
-  id                        String               @id @default(uuid())
+  id                        String                           @id @default(uuid())
   factId                    String
   projectId                 String
   sourceType                String
   sourceBusinessId          String
   sourceImpactKey           String
-  idempotencyKey            String               @unique
+  idempotencyKey            String                           @unique
   impactKind                String
   amountCents               BigInt
   direction                 String
@@ -325,9 +325,10 @@ model OperatingImpactEntry {
   fundExecutionId           String?
   fundExecutionCaseId       String?
   executionAllocationLineId String?
-  createdAt                 DateTime             @default(now())
-  fact                      OperatingFact        @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
-  clearingImpactLinks       ClearingImpactLink[] @relation("ClearingImpactEntry")
+  createdAt                 DateTime                         @default(now())
+  fact                      OperatingFact                    @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+  clearingImpactLinks       ClearingImpactLink[]             @relation("ClearingImpactEntry")
+  wageTakeoverImpactBridges WageTakeoverLegacyImpactBridge[]
 
   @@unique([factId, sourceImpactKey])
   @@unique([sourceType, sourceBusinessId, sourceImpactKey], map: "OperatingImpactEntry_source_impact_key")
@@ -483,9 +484,84 @@ model ClearingCommandReceipt {
 
 // POL-215：历史接管只保存治理、来源、映射和命令因果；正式经济事实仍由 ClearingModule 追加。
 // 这些记录一经写入即不可更新或删除，供重验、审计和补偿链精确复核。
+// A wage-approved source can span several projects.  The atomic scope owns
+// that complete closure while the already-established manifest remains a
+// project child, so no arbitrary anchor project becomes the authority.
+model OperatingTakeoverAtomicScopeVersion {
+  id                             String   @id @default(uuid())
+  scopeKind                      String
+  authoritySourceRef             String
+  authoritySourceFingerprint     String
+  sourceClosureFingerprint       String
+  reservedWageStatementVersionId String?  @unique
+  candidateBaselineSha           String
+  permissionSnapshotFingerprint  String
+  readSetFingerprint             String
+  createdByUserId                String
+  createdTransactionId           BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                      DateTime @default(now())
+
+  projects                     OperatingTakeoverAtomicScopeProject[]
+  manifests                    OperatingTakeoverManifestVersion[]
+  receipts                     OperatingTakeoverCommandReceipt[]
+  historicalSummaryAuthorities HistoricalWageSummaryAuthorityVersion[]
+  wageStatementReservation     WageTakeoverWageStatementReservation?
+  wageProjectionEnvelopes      WageTakeoverProjectionEnvelope[]
+  unresolvedWageGaps           UnresolvedWagePayableGap[]
+  summaryAttestations          HistoricalWageSummaryAuthorityAttestation[]
+  summaryPayableRefs           HistoricalWageSummaryPayableRef[]
+  balanceReconciliations       HistoricalWageBalanceReconciliationVersion[]
+
+  @@unique([scopeKind, authoritySourceRef, authoritySourceFingerprint, sourceClosureFingerprint], map: "OperatingTakeoverAtomicScopeVersion_authority_closure_key")
+  @@index([scopeKind, createdAt])
+}
+
+// The UUID is reserved when the historical scope is prepared but there is no
+// WageStatementVersion row until activation. Keeping the reservation in its
+// own immutable table avoids fabricating a draft canonical aggregate merely
+// to satisfy a foreign key; the envelope later proves that the confirmed
+// version uses this exact UUID.
+model WageTakeoverWageStatementReservation {
+  id                              String   @id
+  atomicScopeVersionId            String   @unique
+  targetWageStatementId           String
+  expectedCurrentRevision         Int
+  reservedRevision                Int
+  versionKind                     String
+  priorConfirmedVersionId         String?
+  priorSourceVersionId            String?
+  sourceDeltaFingerprint          String
+  canonicalRootClosureFingerprint String
+  createdAt                       DateTime @default(now())
+
+  atomicScope OperatingTakeoverAtomicScopeVersion @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  mappings    OperatingTakeoverRowMapping[]
+  envelopes   WageTakeoverProjectionEnvelope[]    @relation("WageTakeoverProjectionEnvelopeReservation")
+
+  @@unique([id, atomicScopeVersionId], map: "WageTakeoverWageStatementReservation_id_scope_key")
+  @@unique([targetWageStatementId, reservedRevision], map: "WageTakeoverWageStatementReservation_target_revision_key")
+}
+
+model OperatingTakeoverAtomicScopeProject {
+  id                   String   @id @default(uuid())
+  atomicScopeVersionId String
+  projectId            String
+  manifestVersionId    String   @unique
+  createdTransactionId BigInt   @default(dbgenerated("txid_current()"))
+  createdAt            DateTime @default(now())
+
+  scope    OperatingTakeoverAtomicScopeVersion @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  manifest OperatingTakeoverManifestVersion    @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([atomicScopeVersionId, projectId], map: "OperatingTakeoverAtomicScopeProject_scope_project_key")
+  @@unique([atomicScopeVersionId, manifestVersionId], map: "OperatingTakeoverAtomicScopeProject_scope_manifest_key")
+}
+
 model OperatingTakeoverManifestVersion {
   id                            String   @id @default(uuid())
   projectId                     String
+  atomicScopeVersionId          String?
+  adapterKind                   String   @default("construction_enterprise_clearing")
   manifestNo                    String
   version                       Int      @default(1)
   status                        String   @default("prepared")
@@ -500,79 +576,103 @@ model OperatingTakeoverManifestVersion {
   createdByUserId               String
   createdAt                     DateTime @default(now())
 
-  rows     OperatingTakeoverRowMapping[]
-  receipts OperatingTakeoverCommandReceipt[]
+  rows               OperatingTakeoverRowMapping[]
+  receipts           OperatingTakeoverCommandReceipt[]
+  atomicScope        OperatingTakeoverAtomicScopeVersion? @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  atomicScopeProject OperatingTakeoverAtomicScopeProject?
+  wageEnvelopes      WageTakeoverProjectionEnvelope[]     @relation("WageTakeoverProjectionEnvelopeManifest")
+  wageEnvelopeScopes WageTakeoverProjectionEnvelope[]     @relation("WageTakeoverProjectionEnvelopeManifestScope")
+  unresolvedWageGaps UnresolvedWagePayableGap[]
 
   @@unique([projectId, manifestNo], map: "OperatingTakeoverManifestVersion_project_manifest_key")
   @@unique([projectId, manifestFingerprint], map: "OperatingTakeoverManifestVersion_project_fingerprint_key")
+  @@unique([atomicScopeVersionId, id], map: "OperatingTakeoverManifestVersion_scope_manifest_key")
   @@index([projectId, status, createdAt])
+  @@index([atomicScopeVersionId, projectId])
 }
 
 model OperatingTakeoverRowMapping {
-  id                         String                                @id @default(uuid())
-  manifestVersionId          String
-  projectId                  String
-  rowNo                      Int
-  sourceType                 String
-  sourceBusinessId           String
-  sourceVersion              Int
-  sourceFingerprint          String
-  sourceCoordinate           String
-  normalizedRowHash          String
-  amountCents                BigInt
-  evidenceLevel              String
-  coverageKind               String?
-  coverageKey                String?
-  periodStart                DateTime?                             @db.Date
-  entryKind                  String
-  mappingDecision            String
-  conflictGroupKey           String
-  adjustmentTargetRef        String?
-  sourceDiscriminator        String?
-  governedSubjectKey         String?
-  authorityCategory          String?
-  authoritySnapshotRef       String?
-  authorityFingerprint       String?
-  authorityVersionId         String?
-  authorityLineId            String?
-  authorityLineFingerprint   String?
-  obligationId               String?
-  authoritativeGrossCapCents BigInt?
-  currencyCode               String?
-  authoritySnapshot          Json
-  legacySourceSnapshot       Json
-  readSetSnapshot            Json
-  mappingFingerprint         String
-  createdAt                  DateTime                              @default(now())
-  manifest                   OperatingTakeoverManifestVersion      @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
-  authorityVersion           AffiliateClearingAuthorityVersion?    @relation("OperatingTakeoverRowMappingAuthorityVersion", fields: [authorityVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  assignedWageLine           AssignedWageAuthorityLine?            @relation("OperatingTakeoverRowMappingAssignedWageLine", fields: [authorityVersionId, authorityLineId], references: [authorityVersionId, id], onDelete: Restrict, onUpdate: Restrict)
-  guaranteeObligation        GuaranteeObligationVersion?           @relation("OperatingTakeoverRowMappingGuaranteeObligation", fields: [authorityVersionId, obligationId], references: [authorityVersionId, obligationId], onDelete: Restrict, onUpdate: Restrict)
-  bridges                    OperatingTakeoverLegacySourceBridge[]
-  receiptLines               OperatingTakeoverCommandReceiptLine[]
+  id                                      String                                 @id @default(uuid())
+  manifestVersionId                       String
+  projectId                               String
+  adapterKind                             String                                 @default("construction_enterprise_clearing")
+  rowNo                                   Int
+  sourceType                              String
+  sourceBusinessId                        String
+  sourceVersion                           Int
+  sourceFingerprint                       String
+  sourceCoordinate                        String
+  normalizedRowHash                       String
+  amountCents                             BigInt
+  evidenceLevel                           String
+  coverageKind                            String?
+  coverageKey                             String?
+  periodStart                             DateTime?                              @db.Date
+  entryKind                               String
+  mappingDecision                         String
+  conflictGroupKey                        String
+  adjustmentTargetRef                     String?
+  sourceDiscriminator                     String?
+  governedSubjectKey                      String?
+  authorityCategory                       String?
+  authoritySnapshotRef                    String?
+  authorityFingerprint                    String?
+  authorityVersionId                      String?
+  authorityLineId                         String?
+  authorityLineFingerprint                String?
+  obligationId                            String?
+  authoritativeGrossCapCents              BigInt?
+  currencyCode                            String?
+  wageApprovedSourceVersionId             String?
+  wageStatementReservationId              String?
+  historicalWageSummaryAuthorityVersionId String?
+  authoritySnapshot                       Json
+  legacySourceSnapshot                    Json
+  readSetSnapshot                         Json
+  mappingFingerprint                      String
+  createdAt                               DateTime                               @default(now())
+  manifest                                OperatingTakeoverManifestVersion       @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
+  authorityVersion                        AffiliateClearingAuthorityVersion?     @relation("OperatingTakeoverRowMappingAuthorityVersion", fields: [authorityVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignedWageLine                        AssignedWageAuthorityLine?             @relation("OperatingTakeoverRowMappingAssignedWageLine", fields: [authorityVersionId, authorityLineId], references: [authorityVersionId, id], onDelete: Restrict, onUpdate: Restrict)
+  guaranteeObligation                     GuaranteeObligationVersion?            @relation("OperatingTakeoverRowMappingGuaranteeObligation", fields: [authorityVersionId, obligationId], references: [authorityVersionId, obligationId], onDelete: Restrict, onUpdate: Restrict)
+  wageStatementReservation                WageTakeoverWageStatementReservation?  @relation(fields: [wageStatementReservationId], references: [id], onDelete: Restrict)
+  wageApprovedSourceVersion               WageApprovedSourceVersion?             @relation("OperatingTakeoverRowMappingWageSource", fields: [wageApprovedSourceVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  historicalWageSummaryAuthority          HistoricalWageSummaryAuthorityVersion? @relation("OperatingTakeoverRowMappingWageSummary", fields: [historicalWageSummaryAuthorityVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  wageProjectionEnvelope                  WageTakeoverProjectionEnvelope?        @relation("WageTakeoverProjectionEnvelopeMapping")
+  wageProjectionEnvelopeScopes            WageTakeoverProjectionEnvelope[]       @relation("WageTakeoverProjectionEnvelopeMappingScope")
+  historicalWageSummaryPayableRefs        HistoricalWageSummaryPayableRef[]
+  unresolvedWageGap                       UnresolvedWagePayableGap?
+  wageLegacyImpactBridges                 WageTakeoverLegacyImpactBridge[]
+  bridges                                 OperatingTakeoverLegacySourceBridge[]
+  receiptLines                            OperatingTakeoverCommandReceiptLine[]
 
   @@unique([manifestVersionId, rowNo], map: "OperatingTakeoverRowMapping_manifest_row_key")
   @@unique([manifestVersionId, sourceType, sourceBusinessId, sourceVersion, sourceCoordinate], map: "OperatingTakeoverRowMapping_source_coordinate_key")
   @@unique([projectId, sourceType, sourceBusinessId, sourceVersion, sourceFingerprint], map: "OperatingTakeoverRowMapping_source_fingerprint_key")
+  @@unique([id, manifestVersionId, projectId], map: "OperatingTakeoverRowMapping_envelope_scope_key")
   @@index([manifestVersionId, conflictGroupKey])
   @@index([projectId, sourceType, sourceBusinessId])
+  @@index([wageApprovedSourceVersionId])
+  @@index([wageStatementReservationId])
+  @@index([historicalWageSummaryAuthorityVersionId])
 }
 
 model OperatingTakeoverLegacySourceBridge {
-  id                String                      @id @default(uuid())
-  projectId         String
-  rowMappingId      String
-  sourceType        String
-  sourceBusinessId  String
-  sourceVersion     Int
-  sourceFingerprint String
-  targetKind        String
-  targetRef         String
-  targetFingerprint String
-  mappingDecision   String
-  createdByUserId   String
-  createdAt         DateTime                    @default(now())
-  rowMapping        OperatingTakeoverRowMapping @relation(fields: [rowMappingId], references: [id], onDelete: Restrict)
+  id                   String                      @id @default(uuid())
+  projectId            String
+  rowMappingId         String
+  sourceType           String
+  sourceBusinessId     String
+  sourceVersion        Int
+  sourceFingerprint    String
+  targetKind           String
+  targetRef            String
+  targetFingerprint    String
+  mappingDecision      String
+  createdByUserId      String
+  createdTransactionId BigInt?
+  createdAt            DateTime                    @default(now())
+  rowMapping           OperatingTakeoverRowMapping @relation(fields: [rowMappingId], references: [id], onDelete: Restrict)
 
   @@unique([projectId, sourceType, sourceBusinessId, sourceVersion, sourceFingerprint], map: "OperatingTakeoverLegacySourceBridge_source_key")
   @@unique([projectId, sourceType, sourceBusinessId, sourceVersion], map: "OperatingTakeoverLegacySourceBridge_source_coordinate_key")
@@ -581,9 +681,10 @@ model OperatingTakeoverLegacySourceBridge {
 }
 
 model OperatingTakeoverCommandReceipt {
-  id                            String                                @id @default(uuid())
-  manifestVersionId             String
-  idempotencyKey                String                                @unique
+  id                            String                                                 @id @default(uuid())
+  manifestVersionId             String?
+  atomicScopeVersionId          String?
+  idempotencyKey                String                                                 @unique
   action                        String
   expectedRevision              Int
   actorUserId                   String
@@ -592,16 +693,24 @@ model OperatingTakeoverCommandReceipt {
   permissionSnapshotFingerprint String
   fingerprint                   String
   status                        String
+  commandSnapshotSchemaVersion Int?
+  commandSnapshot               Json?
   resultSnapshot                Json
   causalityFingerprint          String
+  createdTransactionId          BigInt                                                 @default(dbgenerated("txid_current()"))
   causesReceiptId               String?
-  createdAt                     DateTime                              @default(now())
-  manifest                      OperatingTakeoverManifestVersion      @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
-  causesReceipt                 OperatingTakeoverCommandReceipt?      @relation("OperatingTakeoverReceiptCausality", fields: [causesReceiptId], references: [id], onDelete: Restrict)
-  causedReceipts                OperatingTakeoverCommandReceipt[]     @relation("OperatingTakeoverReceiptCausality")
+  createdAt                     DateTime                                               @default(now())
+  manifest                      OperatingTakeoverManifestVersion?                      @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
+  atomicScope                   OperatingTakeoverAtomicScopeVersion?                   @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  causesReceipt                 OperatingTakeoverCommandReceipt?                       @relation("OperatingTakeoverReceiptCausality", fields: [causesReceiptId], references: [id], onDelete: Restrict)
+  causedReceipts                OperatingTakeoverCommandReceipt[]                      @relation("OperatingTakeoverReceiptCausality")
   lines                         OperatingTakeoverCommandReceiptLine[]
+  summaryAttestations           HistoricalWageSummaryAuthorityAttestation[]
+  wageEnvelopeRevocations       WageTakeoverProjectionEnvelopeEligibilityRevocation[]  @relation("WageTakeoverEnvelopeCompensationReceipt")
+  wageSummaryRefRevocations     HistoricalWageSummaryPayableRefEligibilityRevocation[] @relation("HistoricalWageSummaryCompensationReceipt")
 
   @@index([manifestVersionId, action, createdAt])
+  @@index([atomicScopeVersionId, action, createdAt])
   @@index([causesReceiptId])
 }
 
@@ -615,8 +724,10 @@ model OperatingTakeoverCommandReceiptLine {
   amountCents          BigInt
   targetKind           String?
   targetRef            String?
+  projectId            String?
   causalOrdinal        Int
   reversesLineId       String?
+  causesLineId         String?
   causalityFingerprint String
   lineSnapshot         Json
   createdAt            DateTime                              @default(now())
@@ -624,10 +735,423 @@ model OperatingTakeoverCommandReceiptLine {
   rowMapping           OperatingTakeoverRowMapping           @relation(fields: [rowMappingId], references: [id], onDelete: Restrict)
   reversesLine         OperatingTakeoverCommandReceiptLine?  @relation("OperatingTakeoverLineCausality", fields: [reversesLineId], references: [id], onDelete: Restrict)
   reversedByLines      OperatingTakeoverCommandReceiptLine[] @relation("OperatingTakeoverLineCausality")
+  causesLine           OperatingTakeoverCommandReceiptLine?  @relation("OperatingTakeoverLineCause", fields: [causesLineId], references: [id], onDelete: Restrict)
+  causedByLines        OperatingTakeoverCommandReceiptLine[] @relation("OperatingTakeoverLineCause")
 
   @@unique([receiptId, lineNo], map: "OperatingTakeoverCommandReceiptLine_receipt_line_key")
   @@index([rowMappingId, createdAt])
   @@index([reversesLineId])
+  @@index([causesLineId])
+}
+
+// B-grade authority is deliberately an aggregate creditor-scope snapshot. It
+// has no employee or payee identity and can never enter a payment path.
+model HistoricalWageSummaryAuthorityVersion {
+  id                                  String   @id @default(uuid())
+  atomicScopeVersionId                String
+  summaryBucketKey                    String
+  employmentCompanyId                 String
+  projectId                           String
+  wageMonth                           String
+  catalogVersion                      String
+  positionCategoryCode                String
+  positionCategoryLabelSnapshot       String
+  evidenceCoordinate                  Json
+  sourceSchemaVersion                 Int
+  sourcePayload                       Json
+  sourceVersionFingerprint            String
+  authoritySchemaVersion              Int
+  authorityPayload                    Json
+  authorityFingerprint                String
+  assignedWageExclusionSchemaVersion  Int
+  assignedWageExclusionPayload        Json
+  assignedWageExclusionSetFingerprint String
+  scopeCreatorIdentitySnapshot        Json
+  permissionScopeFingerprint          String
+  revision                            Int
+  supersedesVersionId                 String?
+  lineageRootAuthorityVersionId       String?
+  sourceDeltaFingerprint              String
+  rootClosureFingerprint              String
+  declaredByUserId                    String
+  declaredDelegatorUserId             String?
+  createdTransactionId                BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                           DateTime @default(now())
+
+  atomicScope            OperatingTakeoverAtomicScopeVersion          @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  payableRefs            HistoricalWageSummaryPayableRef[]
+  balanceReconciliations HistoricalWageBalanceReconciliationVersion[]
+  attestations           HistoricalWageSummaryAuthorityAttestation[]
+  creditorLines          HistoricalWageSummaryAuthorityCreditorLine[]
+  legacyImpactBridges    WageTakeoverLegacyImpactBridge[]
+  takeoverMappings       OperatingTakeoverRowMapping[]                @relation("OperatingTakeoverRowMappingWageSummary")
+  supersedesVersion      HistoricalWageSummaryAuthorityVersion?       @relation("HistoricalWageSummaryAuthoritySupersession", fields: [supersedesVersionId], references: [id], onDelete: Restrict)
+  supersededByVersion    HistoricalWageSummaryAuthorityVersion?       @relation("HistoricalWageSummaryAuthoritySupersession")
+  lineageRootAuthority   HistoricalWageSummaryAuthorityVersion?       @relation("HistoricalWageSummaryAuthorityRoot", fields: [lineageRootAuthorityVersionId], references: [id], onDelete: Restrict)
+  lineageAdjustments     HistoricalWageSummaryAuthorityVersion[]      @relation("HistoricalWageSummaryAuthorityRoot")
+
+  @@unique([atomicScopeVersionId, summaryBucketKey], map: "HistoricalWageSummaryAuthorityVersion_scope_bucket_key")
+  @@unique([atomicScopeVersionId, authorityFingerprint], map: "HistoricalWageSummaryAuthorityVersion_scope_fingerprint_key")
+  @@unique([summaryBucketKey, revision], map: "HistoricalWageSummaryAuthorityVersion_bucket_revision_key")
+  @@unique([employmentCompanyId, projectId, wageMonth, positionCategoryCode, revision], map: "HWSAuthority_business_revision_key")
+  @@unique([supersedesVersionId], map: "HistoricalWageSummaryAuthorityVersion_direct_successor_key")
+  @@index([employmentCompanyId, projectId, wageMonth])
+  @@index([lineageRootAuthorityVersionId])
+}
+
+// One immutable creditor-scope line is the complete post-change snapshot for
+// one stable B bucket/category.  Signed deltas are derived from adjacent
+// versions; a zero snapshot remains as a tombstone and produces no payable ref.
+model HistoricalWageSummaryAuthorityCreditorLine {
+  id                                  String   @id @default(uuid())
+  atomicScopeVersionId                String
+  authorityVersionId                  String
+  revision                            Int
+  stableBucketKey                     String
+  stableBucketKeyFingerprint          String
+  employmentCompanyId                 String
+  projectId                           String
+  wageMonth                           String
+  positionCategoryCode                String
+  wageCreditorCategoryCode            String
+  wageCreditorCategoryLabelSnapshot   String
+  creditorIdentityKind                String
+  creditorPartyVersionId              String?
+  controlledScopeCode                 String?
+  controlledScopeDescription          String?
+  controlledScopeEvidenceCoordinate   Json?
+  currencyCode                        String   @default("CNY")
+  debtStatus                          String
+  grossDebtCents                      BigInt
+  historicallySettledCents            BigInt
+  outstandingBalanceCents             BigInt
+  isTombstone                         Boolean  @default(false)
+  targetKind                          String
+  targetSchemaVersion                 Int
+  targetBusinessKey                   String
+  targetPayload                       Json
+  targetFingerprint                   String
+  signedGrossDeltaCents               BigInt
+  signedHistoricallySettledDeltaCents BigInt
+  signedOutstandingBalanceDeltaCents  BigInt
+  deltaFingerprint                    String
+  rootCreditorLineId                  String?
+  rootPayableRefId                    String?
+  createdTransactionId                BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                           DateTime @default(now())
+
+  authorityVersion      HistoricalWageSummaryAuthorityVersion        @relation(fields: [authorityVersionId], references: [id], onDelete: Restrict)
+  rootCreditorLine      HistoricalWageSummaryAuthorityCreditorLine?  @relation("HistoricalWageSummaryCreditorLineRoot", fields: [rootCreditorLineId], references: [id], onDelete: Restrict)
+  adjustments           HistoricalWageSummaryAuthorityCreditorLine[] @relation("HistoricalWageSummaryCreditorLineRoot")
+  rootPayableRef        HistoricalWageSummaryPayableRef?             @relation("HistoricalWageSummaryCreditorLinePayableRoot", fields: [rootPayableRefId], references: [id], onDelete: Restrict)
+  payableRef            HistoricalWageSummaryPayableRef?
+  paymentExecutionLinks HistoricalWageSummaryPaymentExecutionLink[]
+  balanceReconciliation HistoricalWageBalanceReconciliationVersion?
+
+  @@unique([authorityVersionId, stableBucketKeyFingerprint], map: "HWSAuthorityCreditorLine_authority_stable_key")
+  @@unique([employmentCompanyId, projectId, wageMonth, positionCategoryCode, revision, stableBucketKeyFingerprint], map: "HWSCreditor_business_revision_stable_key")
+  @@index([atomicScopeVersionId, projectId, wageMonth])
+  @@index([rootCreditorLineId])
+}
+
+model HistoricalWageSummaryPayableRef {
+  id                                           String   @id @default(uuid())
+  atomicScopeVersionId                         String
+  authorityVersionId                           String
+  authorityCreditorLineId                      String   @unique
+  rowMappingId                                 String
+  stableBucketKey                              String
+  employmentCompanyId                          String
+  projectId                                    String
+  wageMonth                                    String
+  positionCategoryCode                         String
+  wageCreditorCategoryCode                     String
+  wageCreditorCategoryLabelSnapshot            String
+  creditorIdentityKind                         String
+  creditorPartyVersionId                       String?
+  controlledScopeCode                          String?
+  controlledScopeDescription                   String?
+  controlledScopeEvidenceCoordinate            Json?
+  currencyCode                                 String   @default("CNY")
+  debtStatus                                   String
+  grossDebtCents                               BigInt
+  historicallySettledCents                     BigInt
+  outstandingBalanceCents                      BigInt
+  targetKind                                   String
+  targetBusinessKey                            String
+  targetPayload                                Json
+  targetFingerprint                            String
+  historicalWageBalanceReconciliationVersionId String?
+  usageScope                                   String   @default("historical_reconciliation_only")
+  newPaymentAllowed                            Boolean  @default(false)
+  settlementAllocationAllowed                  Boolean  @default(false)
+  direction                                    String
+  deltaAmountCents                             BigInt
+  adjustsSummaryPayableRefId                   String?
+  deltaFingerprint                             String
+  createdTransactionId                         BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                                    DateTime @default(now())
+
+  atomicScope                                OperatingTakeoverAtomicScopeVersion                    @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  authorityVersion                           HistoricalWageSummaryAuthorityVersion                  @relation(fields: [authorityVersionId], references: [id], onDelete: Restrict)
+  authorityCreditorLine                      HistoricalWageSummaryAuthorityCreditorLine             @relation(fields: [authorityCreditorLineId], references: [id], onDelete: Restrict)
+  rowMapping                                 OperatingTakeoverRowMapping                            @relation(fields: [rowMappingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  historicalWageBalanceReconciliationVersion HistoricalWageBalanceReconciliationVersion?            @relation(fields: [historicalWageBalanceReconciliationVersionId], references: [id], onDelete: Restrict)
+  paymentExecutionLinks                      HistoricalWageSummaryPaymentExecutionLink[]
+  eligibilityRevocations                     HistoricalWageSummaryPayableRefEligibilityRevocation[]
+  adjustsSummaryPayableRef                   HistoricalWageSummaryPayableRef?                       @relation("HistoricalWageSummaryPayableRefAdjustments", fields: [adjustsSummaryPayableRefId], references: [id], onDelete: Restrict)
+  adjustments                                HistoricalWageSummaryPayableRef[]                      @relation("HistoricalWageSummaryPayableRefAdjustments")
+  rootedCreditorLines                        HistoricalWageSummaryAuthorityCreditorLine[]           @relation("HistoricalWageSummaryCreditorLinePayableRoot")
+
+  @@index([atomicScopeVersionId, projectId, wageMonth])
+  @@index([rowMappingId])
+  @@index([adjustsSummaryPayableRefId])
+  @@index([stableBucketKey])
+  @@index([historicalWageBalanceReconciliationVersionId])
+}
+
+// A B-grade balance target is a narrow, immutable evidence snapshot. It is
+// neither a payment, a settlement allocation, nor an opening-balance engine.
+// Its only consumer is a historical-reconciliation-only B payable reference.
+model HistoricalWageBalanceReconciliationVersion {
+  id                                  String   @id
+  atomicScopeVersionId                String
+  authorityVersionId                  String
+  authorityCreditorLineId             String   @unique
+  reconciliationAuthorityVersionId    String
+  reconciliationReference             String
+  schemaVersion                       Int
+  canonicalPayload                    Json
+  sourceVersionFingerprint            String
+  reconciliationFingerprint           String
+  asOfDate                            DateTime @db.Date
+  employmentCompanyId                 String
+  employmentCompanyNameSnapshot       String
+  employmentCompanyCreditCodeSnapshot String
+  projectId                           String
+  projectCodeSnapshot                 String
+  projectNameSnapshot                 String
+  wageMonth                           String
+  catalogVersion                      String
+  positionCategoryCode                String
+  positionCategoryLabelSnapshot       String
+  wageCreditorCategoryCode            String
+  wageCreditorCategoryLabelSnapshot   String
+  creditorIdentityKind                String
+  creditorPartyVersionId              String?
+  controlledScopeCode                 String?
+  controlledScopeDescription          String?
+  targetBusinessKey                   String
+  currencyCode                        String   @default("CNY")
+  debtStatus                          String
+  grossDebtCents                      BigInt
+  historicallySettledCents            BigInt
+  outstandingBalanceCents             BigInt
+  evidenceSnapshot                    Json
+  createdTransactionId                BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                           DateTime @default(now())
+
+  atomicScope           OperatingTakeoverAtomicScopeVersion        @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  authorityVersion      HistoricalWageSummaryAuthorityVersion      @relation(fields: [authorityVersionId], references: [id], onDelete: Restrict)
+  authorityCreditorLine HistoricalWageSummaryAuthorityCreditorLine @relation(fields: [authorityCreditorLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  payableRefs           HistoricalWageSummaryPayableRef[]
+
+  @@unique([atomicScopeVersionId, reconciliationAuthorityVersionId, reconciliationFingerprint], map: "HWSBalanceRecon_scope_reconciliation_key")
+  @@index([employmentCompanyId, projectId, wageMonth])
+}
+
+// A verified payment may prove one historical creditor bucket only. This
+// immutable join prevents a B ref from silently slicing or reusing a payment,
+// while #219 still remains outside every payment/allocation write path.
+model HistoricalWageSummaryPaymentExecutionLink {
+  id                             String   @id @default(uuid())
+  authorityCreditorLineId        String
+  summaryPayableRefId            String
+  paymentExecutionId             String
+  paymentExecutionFingerprint    String
+  paymentExecutionSetFingerprint String
+  targetFingerprint              String
+  paymentEvidenceSnapshot        Json
+  amountCents                    BigInt
+  ordinal                        Int
+  createdTransactionId           BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                      DateTime @default(now())
+
+  authorityCreditorLine HistoricalWageSummaryAuthorityCreditorLine @relation(fields: [authorityCreditorLineId], references: [id], onDelete: Restrict)
+  summaryPayableRef     HistoricalWageSummaryPayableRef            @relation(fields: [summaryPayableRefId], references: [id], onDelete: Restrict)
+  paymentExecution      PaymentExecution                           @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+
+  @@unique([authorityCreditorLineId, ordinal], map: "HWSummaryPaymentLink_line_ordinal_key")
+  @@unique([authorityCreditorLineId, paymentExecutionId], map: "HWSummaryPaymentLink_line_execution_key")
+  @@index([paymentExecutionId])
+  @@index([summaryPayableRefId])
+}
+
+// Compensation only revokes the take-over eligibility of a B aggregate ref;
+// it does not mutate the historical debt snapshot or construct a payment.
+model HistoricalWageSummaryPayableRefEligibilityRevocation {
+  id                    String   @id @default(uuid())
+  summaryPayableRefId   String
+  compensationReceiptId String
+  reason                String
+  createdTransactionId  BigInt   @default(dbgenerated("txid_current()"))
+  createdAt             DateTime @default(now())
+
+  summaryPayableRef   HistoricalWageSummaryPayableRef @relation(fields: [summaryPayableRefId], references: [id], onDelete: Restrict)
+  compensationReceipt OperatingTakeoverCommandReceipt @relation("HistoricalWageSummaryCompensationReceipt", fields: [compensationReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([summaryPayableRefId], map: "HistoricalWageSummaryRefRevocation_ref_key")
+  @@index([compensationReceiptId])
+}
+
+model UnresolvedWagePayableGap {
+  id                   String   @id @default(uuid())
+  atomicScopeVersionId String
+  manifestVersionId    String
+  rowMappingId         String
+  projectId            String
+  wageMonth            String?
+  reasonCode           String
+  sourceFingerprint    String
+  gapSnapshot          Json
+  createdTransactionId BigInt   @default(dbgenerated("txid_current()"))
+  createdAt            DateTime @default(now())
+
+  atomicScope OperatingTakeoverAtomicScopeVersion @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  manifest    OperatingTakeoverManifestVersion    @relation(fields: [manifestVersionId], references: [id], onDelete: Restrict)
+  rowMapping  OperatingTakeoverRowMapping         @relation(fields: [rowMappingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([rowMappingId], map: "UnresolvedWagePayableGap_mapping_key")
+  @@index([projectId, wageMonth])
+}
+
+model WageTakeoverProjectionEnvelope {
+  id                      String   @id @default(uuid())
+  atomicScopeVersionId    String
+  manifestVersionId       String
+  rowMappingId            String
+  wageStatementVersionId  String
+  projectId               String
+  legacySourceType        String
+  legacySourceBusinessId  String
+  legacySourceVersion     Int
+  legacySourceFingerprint String
+  legacyImpactSnapshot    Json
+  projectionOrigin        String
+  deltaDirection          String
+  canonicalFingerprint    String
+  createdTransactionId    BigInt   @default(dbgenerated("txid_current()"))
+  createdAt               DateTime @default(now())
+
+  atomicScope            OperatingTakeoverAtomicScopeVersion                   @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  manifest               OperatingTakeoverManifestVersion                      @relation("WageTakeoverProjectionEnvelopeManifest", fields: [manifestVersionId], references: [id], onDelete: Restrict)
+  manifestScope          OperatingTakeoverManifestVersion                      @relation("WageTakeoverProjectionEnvelopeManifestScope", fields: [atomicScopeVersionId, manifestVersionId], references: [atomicScopeVersionId, id], onDelete: Restrict)
+  rowMapping             OperatingTakeoverRowMapping                           @relation("WageTakeoverProjectionEnvelopeMapping", fields: [rowMappingId], references: [id], onDelete: Restrict)
+  rowMappingScope        OperatingTakeoverRowMapping                           @relation("WageTakeoverProjectionEnvelopeMappingScope", fields: [rowMappingId, manifestVersionId, projectId], references: [id, manifestVersionId, projectId], onDelete: Restrict)
+  reservation            WageTakeoverWageStatementReservation                  @relation("WageTakeoverProjectionEnvelopeReservation", fields: [wageStatementVersionId, atomicScopeVersionId], references: [id, atomicScopeVersionId], onDelete: Restrict)
+  wageStatementVersion   WageStatementVersion                                  @relation(fields: [wageStatementVersionId], references: [id], onDelete: Restrict)
+  payableRefs            WageTakeoverProjectionEnvelopePayableRef[]
+  costCells              WageTakeoverProjectionEnvelopeCostCell[]
+  legacyImpactBridges    WageTakeoverLegacyImpactBridge[]
+  eligibilityRevocations WageTakeoverProjectionEnvelopeEligibilityRevocation[]
+
+  @@unique([rowMappingId], map: "WageTakeoverProjectionEnvelope_mapping_key")
+  @@unique([projectId, legacySourceType, legacySourceBusinessId, legacySourceVersion], map: "WageTakeoverProjectionEnvelope_legacy_coordinate_key")
+  @@index([wageStatementVersionId, projectId])
+}
+
+model WageTakeoverProjectionEnvelopePayableRef {
+  id           String @id @default(uuid())
+  envelopeId   String
+  payableRefId String @unique
+  direction    String
+  amountCents  BigInt
+
+  envelope   WageTakeoverProjectionEnvelope @relation(fields: [envelopeId], references: [id], onDelete: Restrict)
+  payableRef WagePayableRef                 @relation(fields: [payableRefId], references: [id], onDelete: Restrict)
+
+  @@unique([envelopeId, payableRefId], map: "WageTakeoverProjectionEnvelopePayableRef_envelope_payable_key")
+}
+
+model WageTakeoverProjectionEnvelopeCostCell {
+  id          String @id @default(uuid())
+  envelopeId  String
+  costCellId  String @unique
+  direction   String
+  amountCents BigInt
+
+  envelope WageTakeoverProjectionEnvelope     @relation(fields: [envelopeId], references: [id], onDelete: Restrict)
+  costCell WageProjectCostComponentAllocation @relation(fields: [costCellId], references: [id], onDelete: Restrict)
+
+  @@unique([envelopeId, costCellId], map: "WageTakeoverProjectionEnvelopeCostCell_envelope_cell_key")
+}
+
+// Each legacy project_wage impact is independently and immutably bound to one
+// envelope dimension. Canonical cells remain a complete collection beneath
+// that envelope; this bridge prevents either the cost or payable impact from
+// being reused by another historical projection.
+model WageTakeoverLegacyImpactBridge {
+  id                        String   @id @default(uuid())
+  envelopeId                String?
+  summaryAuthorityVersionId String?
+  rowMappingId              String
+  projectId                 String
+  legacyImpactEntryId       String   @unique
+  impactKind                String
+  direction                 String
+  amountCents               BigInt
+  sourceFingerprint         String
+  createdTransactionId      BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                 DateTime @default(now())
+
+  envelope          WageTakeoverProjectionEnvelope?        @relation(fields: [envelopeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  summaryAuthority  HistoricalWageSummaryAuthorityVersion? @relation(fields: [summaryAuthorityVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  rowMapping        OperatingTakeoverRowMapping            @relation(fields: [rowMappingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  legacyImpactEntry OperatingImpactEntry                   @relation(fields: [legacyImpactEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([envelopeId, impactKind], map: "WageLegacyImpactBridge_envelope_kind_key")
+  @@unique([summaryAuthorityVersionId, impactKind], map: "WageLegacyImpactBridge_summary_kind_key")
+  @@index([rowMappingId])
+  @@index([projectId, createdAt])
+}
+
+// Takeover compensation revokes only the link eligibility. The original
+// project_wage source and canonical wage facts stay immutable.
+model WageTakeoverProjectionEnvelopeEligibilityRevocation {
+  id                    String   @id @default(uuid())
+  envelopeId            String
+  compensationReceiptId String
+  reason                String
+  createdTransactionId  BigInt   @default(dbgenerated("txid_current()"))
+  createdAt             DateTime @default(now())
+
+  envelope            WageTakeoverProjectionEnvelope  @relation(fields: [envelopeId], references: [id], onDelete: Restrict)
+  compensationReceipt OperatingTakeoverCommandReceipt @relation("WageTakeoverEnvelopeCompensationReceipt", fields: [compensationReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([envelopeId], map: "WageTakeoverEnvelopeRevocation_envelope_key")
+}
+
+model HistoricalWageSummaryAuthorityAttestation {
+  id                         String   @id @default(uuid())
+  atomicScopeVersionId       String
+  authorityVersionId         String
+  summaryBucketKey           String
+  receiptId                  String
+  actorUserId                String
+  delegatorUserId            String?
+  permissionScopeFingerprint String
+  attestationOrdinal         Int      @default(0)
+  createdTransactionId       BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                  DateTime @default(now())
+
+  atomicScope      OperatingTakeoverAtomicScopeVersion   @relation(fields: [atomicScopeVersionId], references: [id], onDelete: Restrict)
+  authorityVersion HistoricalWageSummaryAuthorityVersion @relation(fields: [authorityVersionId], references: [id], onDelete: Restrict)
+  receipt          OperatingTakeoverCommandReceipt       @relation(fields: [receiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([authorityVersionId, actorUserId], map: "HistoricalWageSummaryAuthorityAttestation_authority_actor_key")
+  @@unique([authorityVersionId, attestationOrdinal], map: "HWSummaryAuthorityAttestation_authority_ordinal_key")
+  @@unique([receiptId], map: "HistoricalWageSummaryAuthorityAttestation_receipt_key")
+  @@index([atomicScopeVersionId, summaryBucketKey])
 }
 
 // 通用历史经营接管与合同接管分离；批次只保存草稿、复核和激活坐标，正式事实仍写入 OperatingFact。
@@ -1858,8 +2382,9 @@ model PaymentExecution {
   wagePayableBindings            PaymentExecutionWagePayableBinding[]
   interEntityRelationshipEntries InterEntityRelationshipEntry[]
   payerAttestation               PaymentExecutionPayerAttestation?
-  fundMovements                  FundMovement[]                       @relation("FundMovementPaymentExecution")
-  fundMovementLegs               FundMovementLeg[]                    @relation("FundMovementLegPaymentExecution")
+  historicalWageSummaryLinks     HistoricalWageSummaryPaymentExecutionLink[]
+  fundMovements                  FundMovement[]                              @relation("FundMovementPaymentExecution")
+  fundMovementLegs               FundMovementLeg[]                           @relation("FundMovementLegPaymentExecution")
 }
 
 // POL-13D v7: a server-issued, immutable observation of one verified bank
@@ -4769,6 +5294,7 @@ model WageApprovedSourceVersion {
   statementVersions    WageStatementVersion[]
   commandReceipts      WageApprovedSourceCommandReceipt[]
   serviceBasisBindings WageServiceBasisBinding[]
+  takeoverMappings     OperatingTakeoverRowMapping[]      @relation("OperatingTakeoverRowMappingWageSource")
 
   @@unique([employmentCompanyId, externalReference, sourceVersion], map: "WageApprovedSourceVersion_external_identity_key")
   @@index([employmentCompanyId, wageMonth, periodStart, periodEnd])
@@ -4827,6 +5353,11 @@ model WageStatementVersion {
   revision                    Int
   kind                        String    @default("base")
   status                      String    @default("draft")
+  // Ordinary confirmation projects into the operating ledger. The historical
+  // takeover seam is intentionally distinct: it can materialize the canonical
+  // wage aggregate and payable refs, but only links pre-existing legacy
+  // impacts and must never append another operating fact.
+  projectionOrigin            String    @default("ordinary")
   sourceVersionId             String
   sourceSnapshot              Json
   // 仅保存工资经营 envelope 的非敏感冻结坐标；人员、金额、债权人和证据仍只留在
@@ -4846,13 +5377,15 @@ model WageStatementVersion {
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
-  statement     WageStatement             @relation(fields: [statementId], references: [id], onDelete: Restrict)
-  sourceVersion WageApprovedSourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
-  personLines   WagePersonLine[]
-  payableRefs   WagePayableRef[]
+  statement                   WageStatement                    @relation(fields: [statementId], references: [id], onDelete: Restrict)
+  sourceVersion               WageApprovedSourceVersion        @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict)
+  personLines                 WagePersonLine[]
+  payableRefs                 WagePayableRef[]
+  takeoverProjectionEnvelopes WageTakeoverProjectionEnvelope[]
 
   @@unique([statementId, revision], map: "WageStatementVersion_statement_revision_key")
   @@index([sourceVersionId])
+  @@index([projectionOrigin, status])
   @@index([status, updatedAt])
   @@index([reviewDisposition, reviewReturnedAt])
 }
@@ -4971,8 +5504,9 @@ model WageProjectCostComponentAllocation {
   amountCents         BigInt
   createdAt           DateTime @default(now())
 
-  projectAllocation WageProjectAllocation @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
-  costComponent     WageCostComponent     @relation(fields: [costComponentId], references: [id], onDelete: Restrict)
+  projectAllocation     WageProjectAllocation                    @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
+  costComponent         WageCostComponent                        @relation(fields: [costComponentId], references: [id], onDelete: Restrict)
+  takeoverEnvelopeLinks WageTakeoverProjectionEnvelopeCostCell[]
 
   @@unique([projectAllocationId, costComponentId], map: "WageProjectCostComponentAllocation_project_component_key")
   @@index([costComponentId])
@@ -5016,13 +5550,14 @@ model WagePayableRef {
   settlementRecheckRequired  Boolean  @default(false)
   createdAt                  DateTime @default(now())
 
-  confirmedVersion         WageStatementVersion                 @relation(fields: [confirmedVersionId], references: [id], onDelete: Restrict)
-  projectAllocation        WageProjectAllocation                @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
-  creditorBreakdown        WageCreditorBreakdown                @relation(fields: [creditorBreakdownId], references: [id], onDelete: Restrict)
-  personLine               WagePersonLine                       @relation(fields: [personLineId], references: [id], onDelete: Restrict)
-  adjustsPayableRef        WagePayableRef?                      @relation("WagePayableRefAdjustments", fields: [adjustsPayableRefId], references: [id], onDelete: Restrict)
-  adjustments              WagePayableRef[]                     @relation("WagePayableRefAdjustments")
+  confirmedVersion         WageStatementVersion                       @relation(fields: [confirmedVersionId], references: [id], onDelete: Restrict)
+  projectAllocation        WageProjectAllocation                      @relation(fields: [projectAllocationId], references: [id], onDelete: Restrict)
+  creditorBreakdown        WageCreditorBreakdown                      @relation(fields: [creditorBreakdownId], references: [id], onDelete: Restrict)
+  personLine               WagePersonLine                             @relation(fields: [personLineId], references: [id], onDelete: Restrict)
+  adjustsPayableRef        WagePayableRef?                            @relation("WagePayableRefAdjustments", fields: [adjustsPayableRefId], references: [id], onDelete: Restrict)
+  adjustments              WagePayableRef[]                           @relation("WagePayableRefAdjustments")
   paymentExecutionBindings PaymentExecutionWagePayableBinding[]
+  takeoverEnvelopeLinks    WageTakeoverProjectionEnvelopePayableRef[]
 
   @@index([confirmedVersionId])
   @@index([projectId, debtorCompanyId])

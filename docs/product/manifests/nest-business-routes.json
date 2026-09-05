@@ -1657,6 +1657,27 @@
     },
     {
       "method": "GET",
+      "path": "/operating-takeovers/historical-wage/options",
+      "normalizedKey": "GET /operating-takeovers/historical-wage/options",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "options",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": "clearing.prepare",
+      "authorizationCombination": "AND",
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/organization/directory",
       "normalizedKey": "GET /organization/directory",
       "controller": "OrganizationController",
@@ -6862,6 +6883,129 @@
       "requiredPositions": [],
       "requiredProjectAction": null,
       "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes",
+      "normalizedKey": "POST /operating-takeovers/historical-wage/scopes",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "createScope",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": "clearing.prepare",
+      "authorizationCombination": "AND",
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/activate",
+      "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/activate",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "activate",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": "clearing.confirm",
+      "authorizationCombination": "AND",
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/apply",
+      "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/apply",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "apply",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": "clearing.prepare",
+      "authorizationCombination": "AND",
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/attest",
+      "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/attest",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "attest",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": "clearing.attest",
+      "authorizationCombination": "AND",
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/compensate",
+      "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/compensate",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "compensate",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director"
+      ],
+      "requiredProjectAction": "clearing.confirm",
+      "authorizationCombination": "AND",
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
+      "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/selection-ref",
+      "controller": "HistoricalWageTakeoverController",
+      "handler": "issueScopedCommandSelection",
+      "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions_and_project_action",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": "clearing.prepare",
+      "authorizationCombination": "AND",
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false

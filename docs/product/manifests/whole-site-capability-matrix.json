@@ -14,10 +14,10 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "f28e2088bbd42cf921b750c82e5beb292063a7e5f5cb94a15af37e0d2b3cbaeb",
+      "sha256": "60b675791027a4661929270364d79a13312d47b59f6f7fd05f8354a0f2037bba",
       "status": "ready",
       "summary": {
-        "routeCount": 559
+        "routeCount": 566
       }
     },
     "webApiWrappers": {
@@ -64,28 +64,28 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "e3f54898e570c7e18d725929362f084916cf8cbc395368c44e19c50a7df3c7ea",
+      "sha256": "bc198a80dc53b55adfe937cc53727e1cbfe292b8b92da0c0a49a808307497952",
       "status": "ready",
       "summary": {
-        "routeCount": 559,
-        "exactRouteCount": 559,
-        "normalizedRouteCount": 559,
-        "classificationOverrideCount": 200,
-        "consumerSurfaceOverrideCount": 21,
-        "classificationOverrideSha256": "0c5f7c9c14e747913eaf6ae0de87ca9ba910051898c91dccf5a6ee2280cfd09d",
-        "consumerSurfaceOverrideSha256": "367ec7f976d7b75e7b1dfe10f4dea3f91f3fe8f276dd95ca365ef1bb9a8b3066",
+        "routeCount": 566,
+        "exactRouteCount": 566,
+        "normalizedRouteCount": 566,
+        "classificationOverrideCount": 207,
+        "consumerSurfaceOverrideCount": 28,
+        "classificationOverrideSha256": "848c2e98e033db996b82e1c4d5c14ae673325751d7ad6d62374dc3a6aae1db7f",
+        "consumerSurfaceOverrideSha256": "06fd3b1d9c1b617a7c1c07dd9c1e82e406a3d563d2b05ec056458159281b54e4",
         "derivedProductionPageCount": 359,
         "pageRouteCount": 361,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
-        "internalTaskCount": 20,
+        "internalTaskCount": 27,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
           "web_api_wrapper": 413,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 18,
+          "operator_endpoint": 25,
           "none": 120
         },
         "blockerCount": 0
@@ -93,11 +93,11 @@
     }
   },
   "summary": {
-    "routeCount": 559,
+    "routeCount": 566,
     "pageRouteCount": 361,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
-    "internalTaskRouteCount": 20,
+    "internalTaskRouteCount": 27,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 550,
     "webRequestWithoutNestCount": 0,
@@ -4116,6 +4116,36 @@
           ]
         }
       ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/operating-takeovers/historical-wage/options",
+        "normalizedKey": "GET /operating-takeovers/historical-wage/options",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "options",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": "clearing.prepare",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -19208,6 +19238,183 @@
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-takeovers/historical-wage/scopes/activate",
+        "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/activate",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "activate",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": "clearing.confirm",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-takeovers/historical-wage/scopes/apply",
+        "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/apply",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "apply",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": "clearing.prepare",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-takeovers/historical-wage/scopes/attest",
+        "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/attest",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "attest",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": "clearing.attest",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-takeovers/historical-wage/scopes/compensate",
+        "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/compensate",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "compensate",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": "clearing.confirm",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-takeovers/historical-wage/scopes",
+        "normalizedKey": "POST /operating-takeovers/historical-wage/scopes",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "createScope",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": "clearing.prepare",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
+        "normalizedKey": "POST /operating-takeovers/historical-wage/scopes/selection-ref",
+        "controller": "HistoricalWageTakeoverController",
+        "handler": "issueScopedCommandSelection",
+        "sourceFile": "services/api/src/operating-takeover/historical-wage-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions_and_project_action",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": "clearing.prepare",
+        "authorizationCombination": "AND",
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],

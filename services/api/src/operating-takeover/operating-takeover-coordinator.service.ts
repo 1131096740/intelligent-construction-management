@@ -12,6 +12,7 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { PrismaService } from "../database/prisma.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { resolveAffiliateDeductionSource } from "../clearing/affiliate-clearing-authority.domain";
+import { lockWageConflictBuckets } from "../clearing/wage-conflict-lock";
 import { ConstructionEnterpriseClearingAdapter, type ConstructionEnterpriseHistoricalRow, type ResolvedClearingAuthorityForTakeover } from "./construction-enterprise-clearing.adapter";
 import type {
   CompensateConstructionEnterpriseTakeoverDto,
@@ -174,6 +175,16 @@ export class OperatingTakeoverCoordinatorService {
       if (attest) assertClearingActorsDisjoint(jsonActorIds(attest.actorSetSnapshot), identity.actorIds);
       const preparers = await tx.operatingTakeoverCommandReceipt.findMany({ where: { manifestVersionId: manifest.id, action: { in: ["manifest.create", "manifest.inactive_applied"] } } });
       for (const preparer of preparers) assertClearingActorsDisjoint(jsonActorIds(preparer.actorSetSnapshot), identity.actorIds);
+      const assignedWageAuthorities = formalRows
+        .map((row) => authorityFromMapping(row))
+        .filter((authority) => authority.sourceDiscriminator === "construction_enterprise_assigned_wage" && authority.periodStart);
+      if (assignedWageAuthorities.length) {
+        await lockWageConflictBuckets(tx, assignedWageAuthorities.map((authority) => ({
+          projectId: authority.projectId,
+          wageMonth: authority.periodStart!
+        })));
+        for (const authority of assignedWageAuthorities) await this.assertNoWageConflict(tx, authority);
+      }
       const lines: StoredMapping[] = [];
       const results: Array<Record<string, unknown>> = [];
       const targetRefs = new Map<string, { targetKind: string; targetRef: string; decision: string }>();

@@ -8,6 +8,8 @@ import { PrismaService } from "../database/prisma.service";
 
 export const COMPANY_ROLE_RESOLUTION_ERROR = "当前账号不可用或岗位数据异常";
 
+type RoleScopeClient = Pick<PrismaService, "user" | "userPosition" | "position">;
+
 @Injectable()
 export class CompanyRoleResolverService {
   constructor(private readonly prisma: PrismaService) {}
@@ -16,9 +18,30 @@ export class CompanyRoleResolverService {
     userId: string,
     projectId?: string
   ): Promise<RoleKey[]> {
+    return this.resolveWithClient(this.prisma, userId, projectId);
+  }
+
+  /**
+   * Resolves exactly the same position snapshot through an already-open
+   * transaction. Sensitive adapters use this variant so authorization and the
+   * business read-set are observed at one Serializable point in time.
+   */
+  async resolveActiveRoleScopesInTransaction(
+    tx: RoleScopeClient,
+    userId: string,
+    projectId?: string
+  ): Promise<RoleKey[]> {
+    return this.resolveWithClient(tx, userId, projectId);
+  }
+
+  private async resolveWithClient(
+    client: RoleScopeClient,
+    userId: string,
+    projectId?: string
+  ): Promise<RoleKey[]> {
     let user: { isActive: boolean } | null;
     try {
-      user = await this.prisma.user.findUnique({
+      user = await client.user.findUnique({
         where: { id: userId },
         select: { isActive: true }
       });
@@ -31,7 +54,7 @@ export class CompanyRoleResolverService {
 
     let assignments: Array<{ positionId: string }>;
     try {
-      assignments = await this.prisma.userPosition.findMany({
+      assignments = await client.userPosition.findMany({
         where: { userId, projectId: projectId ?? null },
         select: { positionId: true }
       });
@@ -45,7 +68,7 @@ export class CompanyRoleResolverService {
 
     let positions: Array<{ id: string; key: string }>;
     try {
-      positions = await this.prisma.position.findMany({
+      positions = await client.position.findMany({
         where: { id: { in: positionIds } },
         select: { id: true, key: true }
       });

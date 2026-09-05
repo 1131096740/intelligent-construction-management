@@ -464,7 +464,7 @@ describe("ApprovalDelegationService", () => {
         resourceId: null,
         enabled: true,
         startsAt: { lte: now },
-        endsAt: { gte: now }
+        endsAt: { gt: now }
       },
       select: { fromUserId: true }
     });

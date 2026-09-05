@@ -17,6 +17,7 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { lockWageConflictBuckets } from "../clearing/wage-conflict-lock";
 import { PrismaService } from "../database/prisma.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import {
@@ -133,6 +134,7 @@ type WagePayableRefAdjustmentTarget = {
   debtorCompanyId: string;
   costBearingCompanyId: string;
   projectId: string;
+  projectAllocation: { serviceSnapshotId: string };
   personLine: { employeeId: string; employmentSnapshotId: string };
   creditorBreakdown: {
     creditorSubjectType: string | null;
@@ -145,6 +147,99 @@ type WagePayableRefAdjustmentTarget = {
 };
 
 type WageVersionKind = "base" | "supplemental" | "correction" | "reversal";
+type WageProjectionOrigin = "ordinary" | "historical_takeover_legacy_link";
+
+export type HistoricalWageTakeoverPlanInput = {
+  sourceVersionId: string;
+  sourceFingerprint: string;
+  /** Reuse the scope-frozen logical aggregate id while its base is unmaterialized. */
+  reservedTargetWageStatementId?: string;
+};
+
+export type HistoricalWageTakeoverPlan = {
+  targetWageStatementId: string;
+  expectedCurrentRevision: number;
+  reservedRevision: number;
+  versionKind: "base" | "correction" | "reversal";
+  priorConfirmedVersionId: string | null;
+  priorSourceVersionId: string | null;
+  sourceDeltaFingerprint: string;
+  canonicalRootClosureFingerprint: string;
+  canonicalRootPayableRefIds: string[];
+  projects: Array<{
+    projectId: string;
+    signedCostDeltaCents: string;
+    signedPayableDeltaCents: string;
+  }>;
+};
+
+type HistoricalWageSemanticCell = {
+  key: string;
+  projectId: string;
+  amountCents: bigint;
+};
+
+type HistoricalWageSemanticMatrix = {
+  projectIds: string[];
+  costs: Map<string, HistoricalWageSemanticCell>;
+  payables: Map<string, HistoricalWageSemanticCell>;
+};
+
+type HistoricalWageRootRead = {
+  id: string;
+  amountCents: bigint;
+  debtorCompanyId: string;
+  costBearingCompanyId: string;
+  projectId: string;
+  projectAllocation: { serviceSnapshotId: string };
+  personLine: { employeeId: string; employmentSnapshotId: string };
+  creditorBreakdown: {
+    creditorSubjectType: string | null;
+    creditorSubjectIdentityKey: string | null;
+    creditorCategory: string;
+  };
+  adjustments: Array<{ id: string; direction: string; amountCents: bigint }>;
+};
+
+/**
+ * Internal-only confirmation contract consumed by OperatingTakeoverModule.
+ * It deliberately accepts no client wage rows: the complete canonical matrix
+ * is re-read from the frozen WageApprovedSourceVersion inside the caller's
+ * already-open Serializable transaction.
+ */
+export type HistoricalWageTakeoverConfirmationInput = {
+  atomicScopeVersionId: string;
+  reservedVersionId: string;
+  sourceVersionId: string;
+  sourceFingerprint: string;
+  expectedProjectIds: string[];
+  sourceClosureFingerprint: string;
+  targetWageStatementId: string;
+  expectedCurrentRevision: number;
+  reservedRevision: number;
+  versionKind: "base" | "correction" | "reversal";
+  priorConfirmedVersionId: string | null;
+  priorSourceVersionId: string | null;
+  sourceDeltaFingerprint: string;
+  canonicalRootClosureFingerprint: string;
+  actorUserId: string;
+};
+
+type HistoricalWageProjectionContext = Pick<
+  HistoricalWageTakeoverConfirmationInput,
+  | "atomicScopeVersionId"
+  | "sourceVersionId"
+  | "expectedProjectIds"
+  | "sourceClosureFingerprint"
+  | "targetWageStatementId"
+  | "expectedCurrentRevision"
+  | "reservedRevision"
+  | "versionKind"
+  | "priorConfirmedVersionId"
+  | "priorSourceVersionId"
+  | "sourceDeltaFingerprint"
+  | "canonicalRootClosureFingerprint"
+>;
 
 type WageCostCellIdentity = {
   person: WageConfirmationPerson;
@@ -174,6 +269,550 @@ export class WageStatementService {
     private readonly operatingLedger?: OperatingLedgerService,
     private readonly projectVisibility?: ProjectVisibilityService
   ) {}
+
+  /**
+   * Read-only planning seam for #219 prepare. The caller runs this inside the
+   * same Serializable transaction that will freeze the returned reservation.
+   * No scope, receipt, wage version, matrix row, or payable reference is
+   * written here, so an invalid lineage can safely be classified as C.
+   */
+  async planHistoricalTakeoverInTransaction(
+    tx: Tx,
+    input: HistoricalWageTakeoverPlanInput
+  ): Promise<HistoricalWageTakeoverPlan> {
+    if (!input.sourceVersionId.trim() || !SHA256.test(input.sourceFingerprint)) {
+      throw new ConflictException("历史工资接管权威来源无效，不能规划 A 级闭合");
+    }
+    if (input.reservedTargetWageStatementId !== undefined && !input.reservedTargetWageStatementId.trim()) {
+      throw new ConflictException("历史工资接管已冻结的目标工资承担单 ID 无效");
+    }
+    const source = await tx.wageApprovedSourceVersion.findUnique({
+      where: { id: input.sourceVersionId }
+    });
+    if (!source || source.sourceFingerprint !== input.sourceFingerprint) {
+      throw new ConflictException("历史工资接管权威来源已变化或不存在，不能规划 A 级闭合");
+    }
+    const sourceLines = historicalApprovedSourceLines(source);
+    const evidence = await tx.fileObject.findUnique({
+      where: { id: source.evidenceFileId },
+      select: { id: true, storageStatus: true, contentSha256: true }
+    });
+    assertSourceEvidenceActive(source, evidence);
+    const current = authorityMatrixIdentities(sourceLines);
+    if (!current.projectIds.length) {
+      throw new ConflictException("历史工资接管权威来源缺少完整项目闭合，不能规划 A 级闭合");
+    }
+    const target = await tx.wageStatement.findUnique({
+      where: {
+        employmentCompanyId_wageMonth: {
+          employmentCompanyId: source.employmentCompanyId,
+          wageMonth: source.wageMonth
+        }
+      },
+      select: { id: true, currentRevision: true }
+    });
+    if (target && input.reservedTargetWageStatementId && target.id !== input.reservedTargetWageStatementId) {
+      throw new ConflictException("历史工资接管已冻结的目标工资承担单已漂移");
+    }
+    const statement = target
+      ? await this.lockStatement(tx, target.id)
+      : {
+          id: input.reservedTargetWageStatementId ?? randomUUID(),
+          employmentCompanyId: source.employmentCompanyId,
+          wageMonth: source.wageMonth,
+          currentRevision: 0
+        };
+    if (target && (
+      statement.employmentCompanyId !== source.employmentCompanyId ||
+      statement.wageMonth !== source.wageMonth ||
+      statement.currentRevision !== target.currentRevision
+    )) {
+      throw new ConflictException("历史工资接管目标工资承担单已漂移，不能规划 A 级闭合");
+    }
+
+    let prior: WageConfirmationVersion | null = null;
+    if (statement.currentRevision > 0) {
+      prior = await tx.wageStatementVersion.findUnique({
+        where: {
+          statementId_revision: {
+            statementId: statement.id,
+            revision: statement.currentRevision
+          }
+        },
+        include: WAGE_CONFIRMATION_INCLUDE
+      }) as WageConfirmationVersion | null;
+      if (
+        !prior ||
+        prior.status !== "confirmed" ||
+        prior.projectionOrigin !== "historical_takeover_legacy_link" ||
+        !prior.sourceVersionId
+      ) {
+        throw new ConflictException("历史工资接管前置工资版本缺失或未确认，不能规划 A 级闭合");
+      }
+      for (const person of prior.personLines) this.assertCompleteStoredMatrices(person);
+    }
+
+    const previous = prior ? semanticMatrixFromConfirmedVersion(prior) : emptyHistoricalWageSemanticMatrix();
+    if (prior) {
+      assertExactHistoricalWageIdentities(current.costs, previous.costs, "成本组成");
+      assertExactHistoricalWageIdentities(current.payables, previous.payables, "债权人");
+    }
+    const deltas = historicalWageSignedDeltas(current, previous);
+    if (!prior && deltas.payables.every((delta) => delta.amountCents === 0n)) {
+      throw new ConflictException("历史工资接管基础版本不能是全零权威快照");
+    }
+    const versionKind: HistoricalWageTakeoverPlan["versionKind"] = !prior
+      ? "base"
+      : [...current.costs.values(), ...current.payables.values()].every((cell) => cell.amountCents === 0n)
+        ? "reversal"
+        : "correction";
+
+    const roots = prior
+      ? await tx.wagePayableRef.findMany({
+          where: {
+            adjustsPayableRefId: null,
+            direction: "increase",
+            confirmedVersion: {
+              statementId: statement.id,
+              revision: { lte: statement.currentRevision },
+              status: "confirmed",
+              projectionOrigin: "historical_takeover_legacy_link"
+            }
+          },
+          select: {
+            id: true,
+            amountCents: true,
+            debtorCompanyId: true,
+            costBearingCompanyId: true,
+            projectId: true,
+            projectAllocation: { select: { serviceSnapshotId: true } },
+            personLine: { select: { employeeId: true, employmentSnapshotId: true } },
+            creditorBreakdown: {
+              select: {
+                creditorSubjectType: true,
+                creditorSubjectIdentityKey: true,
+                creditorCategory: true
+              }
+            },
+            adjustments: {
+              select: { id: true, direction: true, amountCents: true },
+              orderBy: { id: "asc" }
+            }
+          },
+          orderBy: { id: "asc" }
+        }) as HistoricalWageRootRead[]
+      : [];
+    const usedRoots = new Map<string, HistoricalWageRootRead & { effectiveAmountCents: bigint }>();
+    for (const delta of deltas.payables) {
+      if (delta.amountCents === 0n) continue;
+      const matching = roots.filter((root) =>
+        root.debtorCompanyId === source.employmentCompanyId &&
+        root.costBearingCompanyId === source.employmentCompanyId &&
+        wageRootIdentity(root) === delta.key
+      );
+      if (prior && matching.length !== 1) {
+        throw new ConflictException("历史工资更正或冲销必须唯一指向同一不可变原始应付引用");
+      }
+      const root = matching[0];
+      if (!root) continue;
+      const effectiveAmountCents = historicalWageRootEffectiveAmount(root);
+      if (effectiveAmountCents < 0n || effectiveAmountCents + delta.amountCents < 0n) {
+        throw new ConflictException("历史工资更正或冲销会使原始应付引用有效金额低于零");
+      }
+      usedRoots.set(root.id, { ...root, effectiveAmountCents });
+    }
+    const rootClosure = [...usedRoots.values()]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((root) => historicalWageRootReadSet(root));
+    const projects = current.projectIds.map((projectId) => {
+      const signedCostDeltaCents = historicalWageProjectDelta(deltas.costs, projectId);
+      const signedPayableDeltaCents = historicalWageProjectDelta(deltas.payables, projectId);
+      if (signedCostDeltaCents !== signedPayableDeltaCents) {
+        throw new ConflictException("历史工资相邻版本的项目成本与债权差额未逐分闭合，不能规划 A 级闭合");
+      }
+      if (
+        signedCostDeltaCents === 0n &&
+        (deltas.costs.some((delta) => delta.projectId === projectId) ||
+          deltas.payables.some((delta) => delta.projectId === projectId))
+      ) {
+        throw new ConflictException("历史工资相邻版本在同一项目存在净额为零的混合变动，无法一对一链接 legacy 影响");
+      }
+      return {
+        projectId,
+        signedCostDeltaCents: signedCostDeltaCents.toString(),
+        signedPayableDeltaCents: signedPayableDeltaCents.toString()
+      };
+    });
+    const priorConfirmedVersionId = prior?.id ?? null;
+    const priorSourceVersionId = prior?.sourceVersionId ?? null;
+    return {
+      targetWageStatementId: statement.id,
+      expectedCurrentRevision: statement.currentRevision,
+      reservedRevision: statement.currentRevision + 1,
+      versionKind,
+      priorConfirmedVersionId,
+      priorSourceVersionId,
+      sourceDeltaFingerprint: historicalWageSourceDeltaFingerprint({
+        targetWageStatementId: statement.id,
+        priorConfirmedVersionId,
+        priorSourceVersionId,
+        sourceVersionId: source.id,
+        projectIds: current.projectIds,
+        deltas,
+        current
+      }),
+      canonicalRootClosureFingerprint: fingerprint(rootClosure),
+      canonicalRootPayableRefIds: [...usedRoots.keys()].sort((left, right) => left.localeCompare(right)),
+      projects
+    };
+  }
+
+  /**
+   * This is not an application command and is intentionally not reachable
+   * from WageStatementController. It can only be called by a historical
+   * takeover atomic-scope activation that has already authenticated and
+   * locked its selection read-set in the same transaction.
+   */
+  async confirmHistoricalTakeoverInTransaction(
+    tx: Tx,
+    input: HistoricalWageTakeoverConfirmationInput
+  ): Promise<{
+    decision: "FORMAL";
+    statementId: string;
+    versionId: string;
+    projectionOrigin: "historical_takeover_legacy_link";
+  }> {
+    if (
+      !SHA256.test(input.sourceFingerprint) ||
+      !SHA256.test(input.sourceClosureFingerprint) ||
+      !SHA256.test(input.sourceDeltaFingerprint) ||
+      !SHA256.test(input.canonicalRootClosureFingerprint)
+    ) {
+      throw new ConflictException("历史工资接管来源指纹或闭合范围无效，不能确认");
+    }
+    if (
+      !Number.isSafeInteger(input.expectedCurrentRevision) ||
+      input.expectedCurrentRevision < 0 ||
+      input.reservedRevision !== input.expectedCurrentRevision + 1 ||
+      (input.expectedCurrentRevision === 0 && (
+        input.versionKind !== "base" ||
+        input.priorConfirmedVersionId !== null ||
+        input.priorSourceVersionId !== null
+      )) ||
+      (input.expectedCurrentRevision > 0 && (
+        !["correction", "reversal"].includes(input.versionKind) ||
+        !input.priorConfirmedVersionId ||
+        !input.priorSourceVersionId
+      ))
+    ) {
+      throw new ConflictException("历史工资接管预留版本的目标修订链无效，不能确认");
+    }
+    const expectedProjectIds = uniqueSorted(input.expectedProjectIds);
+    const reservation = await tx.wageTakeoverWageStatementReservation.findUnique({
+      where: { id: input.reservedVersionId },
+      include: {
+        atomicScope: {
+          include: {
+            projects: { select: { projectId: true } }
+          }
+        },
+        mappings: {
+          include: {
+            manifest: { select: { atomicScopeVersionId: true, projectId: true } }
+          }
+        }
+      }
+    });
+    if (
+      !reservation ||
+      reservation.atomicScopeVersionId !== input.atomicScopeVersionId ||
+      reservation.atomicScope.id !== input.atomicScopeVersionId ||
+      reservation.atomicScope.reservedWageStatementVersionId !== reservation.id
+    ) {
+      throw new ConflictException("历史工资接管预留版本不属于当前原子范围，不能确认");
+    }
+    if (
+      reservation.atomicScope.authoritySourceRef !== input.sourceVersionId ||
+      reservation.atomicScope.authoritySourceFingerprint !== input.sourceFingerprint ||
+      reservation.atomicScope.sourceClosureFingerprint !== input.sourceClosureFingerprint ||
+      reservation.targetWageStatementId !== input.targetWageStatementId ||
+      reservation.expectedCurrentRevision !== input.expectedCurrentRevision ||
+      reservation.reservedRevision !== input.reservedRevision ||
+      reservation.versionKind !== input.versionKind ||
+      reservation.priorConfirmedVersionId !== input.priorConfirmedVersionId ||
+      reservation.priorSourceVersionId !== input.priorSourceVersionId ||
+      reservation.sourceDeltaFingerprint !== input.sourceDeltaFingerprint ||
+      reservation.canonicalRootClosureFingerprint !== input.canonicalRootClosureFingerprint
+    ) {
+      throw new ConflictException("历史工资接管预留版本的权威来源或闭合指纹已漂移，不能确认");
+    }
+    const reservedProjectIds = uniqueSorted(reservation.atomicScope.projects.map((project) => project.projectId));
+    if (
+      !expectedProjectIds.length ||
+      reservedProjectIds.length !== expectedProjectIds.length ||
+      reservedProjectIds.some((projectId, index) => projectId !== expectedProjectIds[index]) ||
+      reservation.mappings.some((mapping) =>
+        !reservedProjectIds.includes(mapping.projectId) ||
+        mapping.adapterKind !== "historical_wage" ||
+        mapping.evidenceLevel !== "A" ||
+        mapping.mappingDecision !== "FORMAL" ||
+        mapping.wageApprovedSourceVersionId !== input.sourceVersionId ||
+        mapping.wageStatementReservationId !== reservation.id ||
+        mapping.manifest.atomicScopeVersionId !== input.atomicScopeVersionId ||
+        mapping.manifest.projectId !== mapping.projectId
+      )
+    ) {
+      throw new ConflictException("历史工资接管预留版本缺少完整且同源的 A 级项目映射，不能确认");
+    }
+    const reservedVersionCollision = await tx.wageStatementVersion.findUnique({
+      where: { id: input.reservedVersionId },
+      select: { id: true, statementId: true }
+    });
+    if (reservedVersionCollision) {
+      throw new ConflictException("历史工资预留版本在激活前已存在，禁止跨事务改绑、LINK 或重投影");
+    }
+    const source = await tx.wageApprovedSourceVersion.findUnique({
+      where: { id: input.sourceVersionId }
+    });
+    if (!source || source.sourceFingerprint !== input.sourceFingerprint) {
+      throw new ConflictException("历史工资接管权威来源已变化或不存在，不能确认");
+    }
+    const sourceLines = historicalApprovedSourceLines(source);
+    const sourceProjectIds = uniqueSorted(
+      sourceLines.flatMap((line) => line.projectAllocations.map((allocation) => allocation.projectId))
+    );
+    if (
+      !sourceProjectIds.length ||
+      sourceProjectIds.length !== expectedProjectIds.length ||
+      sourceProjectIds.some((projectId, index) => projectId !== expectedProjectIds[index])
+    ) {
+      throw new ConflictException("历史工资接管必须在同一原子范围覆盖权威工资版本的全部项目分摊");
+    }
+
+    const linked = await tx.wageStatementVersion.findFirst({
+      where: {
+        sourceVersionId: source.id,
+        status: "confirmed",
+        projectionOrigin: "historical_takeover_legacy_link"
+      },
+      select: { id: true, statementId: true }
+    });
+    if (linked) {
+      throw new ConflictException("历史工资预留版本在激活前已存在，禁止跨事务改绑、LINK 或重投影");
+    }
+
+    let statement: {
+      id: string;
+      employmentCompanyId: string;
+      wageMonth: string;
+      currentRevision: number;
+    };
+    let createBaseStatement = false;
+    if (input.expectedCurrentRevision === 0) {
+      const [idCollision, companyMonthCollision] = await Promise.all([
+        tx.wageStatement.findUnique({
+          where: { id: input.targetWageStatementId },
+          select: { id: true }
+        }),
+        tx.wageStatement.findUnique({
+          where: {
+            employmentCompanyId_wageMonth: {
+              employmentCompanyId: source.employmentCompanyId,
+              wageMonth: source.wageMonth
+            }
+          },
+          select: { id: true }
+        })
+      ]);
+      if (idCollision || companyMonthCollision) {
+        throw new ConflictException("历史工资接管基础版本的预留工资承担单已被占用，不能确认");
+      }
+      statement = {
+        id: input.targetWageStatementId,
+        employmentCompanyId: source.employmentCompanyId,
+        wageMonth: source.wageMonth,
+        currentRevision: 0
+      };
+      createBaseStatement = true;
+    } else {
+      statement = await this.lockStatement(tx, input.targetWageStatementId);
+    }
+    if (
+      statement.employmentCompanyId !== source.employmentCompanyId ||
+      statement.wageMonth !== source.wageMonth ||
+      statement.currentRevision !== input.expectedCurrentRevision
+    ) {
+      throw new ConflictException("历史工资接管目标工资承担单或当前版本已漂移，不能确认");
+    }
+    const prior = input.expectedCurrentRevision === 0
+      ? null
+      : await tx.wageStatementVersion.findUnique({
+          where: {
+            statementId_revision: {
+              statementId: statement.id,
+              revision: input.expectedCurrentRevision
+            }
+          },
+          select: { id: true, sourceVersionId: true, projectionOrigin: true, status: true }
+        });
+    if (
+      (input.expectedCurrentRevision === 0 && prior !== null) ||
+      (input.expectedCurrentRevision > 0 && (
+        !prior ||
+        prior.id !== input.priorConfirmedVersionId ||
+        prior.sourceVersionId !== input.priorSourceVersionId ||
+        prior.projectionOrigin !== "historical_takeover_legacy_link" ||
+        prior.status !== "confirmed"
+      ))
+    ) {
+      throw new ConflictException("历史工资接管前置工资版本已变化或不唯一，不能确认");
+    }
+
+    const [company, evidence, employees, projects, serviceBasisBindings, businessPartyVersions] = await Promise.all([
+      tx.companyEntity.findUnique({
+        where: { id: source.employmentCompanyId, isActive: true },
+        select: { id: true }
+      }),
+      tx.fileObject.findUnique({
+        where: { id: source.evidenceFileId },
+        select: { id: true, storageStatus: true, contentSha256: true }
+      }),
+      this.activeEmployees(tx, sourceLines),
+      this.activeProjects(tx, sourceLines),
+      tx.wageServiceBasisBinding.findMany({
+        where: { sourceVersionId: source.id },
+        select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true }
+      }),
+      tx.businessPartyVersion.findMany({
+        where: {
+          id: {
+            in: [...new Set(sourceLines.flatMap((line) => line.creditorBreakdowns
+              .map((creditor) => creditor.creditorBusinessPartyVersionId)
+              .filter((id): id is string => Boolean(id))))]
+          }
+        },
+        select: { id: true, businessPartyId: true, versionNo: true, snapshot: true }
+      })
+    ]);
+    if (!company) throw new ConflictException("历史工资接管劳动关系公司已失效，不能确认");
+    assertSourceEvidenceActive(source, evidence);
+    employeeMap(sourceLines, employees);
+    const projectById = projectMap(sourceLines, projects);
+    const serviceBindingByKey = serviceBasisBindingMap(source.id, sourceLines, serviceBasisBindings, source.evidenceSha256);
+    const businessPartyByVersionId = new Map(businessPartyVersions.map((version) => [version.id, version]));
+    preflightFrozenCreditorSnapshots(sourceLines, employees, businessPartyByVersionId);
+
+    if (createBaseStatement) {
+      try {
+        statement = await tx.wageStatement.create({
+          data: {
+            id: input.targetWageStatementId,
+            employmentCompanyId: source.employmentCompanyId,
+            wageMonth: source.wageMonth,
+            currentRevision: 0,
+            createdByUserId: input.actorUserId
+          },
+          select: { id: true, employmentCompanyId: true, wageMonth: true, currentRevision: true }
+        });
+      } catch (error) {
+        if (prismaCode(error) === "P2002") {
+          throw new ConflictException("历史工资接管基础版本的目标工资承担单在确认期间发生并发变化");
+        }
+        throw error;
+      }
+      if (
+        statement.employmentCompanyId !== source.employmentCompanyId ||
+        statement.wageMonth !== source.wageMonth ||
+        statement.currentRevision !== 0
+      ) {
+        throw new ConflictException("历史工资接管目标工资承担单或当前版本已漂移，不能确认");
+      }
+    }
+
+    const revision = input.reservedRevision;
+    const version = await tx.wageStatementVersion.create({
+      data: {
+        id: input.reservedVersionId,
+        statementId: statement.id,
+        revision,
+        kind: input.versionKind,
+        status: "submitted",
+        projectionOrigin: "historical_takeover_legacy_link",
+        sourceVersionId: source.id,
+        sourceSnapshot: jsonValue(source.sourceSnapshot),
+        createdByUserId: input.actorUserId,
+        lastEditedByUserId: input.actorUserId,
+        submittedByUserId: input.actorUserId,
+        submittedAt: new Date()
+      },
+      select: { id: true }
+    });
+    // `sourceLines` is both the source proof and the persisted matrix input.
+    // The adapter cannot replace or subset it with client-provided rows.
+    await this.writeVersionLines(
+      tx,
+      version.id,
+      sourceLines,
+      source.wageMonth,
+      sourceLines,
+      employees,
+      projectById,
+      serviceBindingByKey,
+      businessPartyByVersionId
+    );
+    await tx.wageStatement.update({
+      where: { id: statement.id },
+      data: { currentRevision: revision }
+    });
+    await this.projectConfirmedVersion(
+      tx,
+      version.id,
+      source.employmentCompanyId,
+      revision,
+      input.actorUserId,
+      "historical_takeover_legacy_link",
+      {
+        atomicScopeVersionId: input.atomicScopeVersionId,
+        sourceVersionId: input.sourceVersionId,
+        expectedProjectIds,
+        sourceClosureFingerprint: input.sourceClosureFingerprint,
+        targetWageStatementId: input.targetWageStatementId,
+        expectedCurrentRevision: input.expectedCurrentRevision,
+        reservedRevision: input.reservedRevision,
+        versionKind: input.versionKind,
+        priorConfirmedVersionId: input.priorConfirmedVersionId,
+        priorSourceVersionId: input.priorSourceVersionId,
+        sourceDeltaFingerprint: input.sourceDeltaFingerprint,
+        canonicalRootClosureFingerprint: input.canonicalRootClosureFingerprint
+      }
+    );
+    await tx.wageStatementVersion.update({
+      where: { id: version.id },
+      data: {
+        status: "confirmed",
+        confirmedByUserId: input.actorUserId,
+        confirmedAt: new Date()
+      }
+    });
+    await this.audit.record(tx, {
+      actorUserId: input.actorUserId,
+      action: "wage_statement.historical_takeover.confirm_internal",
+      businessType: "wage_statement_version",
+      businessId: version.id,
+      metadata: jsonValue({
+        atomicScopeVersionId: input.atomicScopeVersionId,
+        sourceVersionId: source.id,
+        sourceClosureFingerprint: input.sourceClosureFingerprint,
+        projectionOrigin: "historical_takeover_legacy_link"
+      })
+    });
+    return {
+      decision: "FORMAL",
+      statementId: statement.id,
+      versionId: version.id,
+      projectionOrigin: "historical_takeover_legacy_link"
+    };
+  }
 
   async listWorkbench(actorUserId: string) {
     await this.assertReadAuthority(actorUserId);
@@ -798,6 +1437,7 @@ export class WageStatementService {
       // effective through this existing segregated confirmation transaction.
       wageVersionKind(version.kind);
       await this.assertConfirmationSeparation(tx, actorUserId, version);
+      await this.assertNoAssignedWageConflictInTransaction(tx, version.id, statement.wageMonth);
       await this.projectConfirmedVersion(tx, version.id, statement.employmentCompanyId, statement.currentRevision, actorUserId);
       await tx.wageStatementVersion.update({ where: { id: version.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date() } });
       const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "confirmed" };
@@ -846,6 +1486,62 @@ export class WageStatementService {
     }
   }
 
+  private async assertNoAssignedWageConflictInTransaction(
+    tx: Tx,
+    statementVersionId: string,
+    wageMonth: string
+  ) {
+    const people = await tx.wagePersonLine.findMany({
+      where: { statementVersionId },
+      select: {
+        employeeId: true,
+        projectAllocations: { select: { projectId: true } }
+      },
+      orderBy: { id: "asc" }
+    });
+    const employeeIdsByProject = new Map<string, Set<string>>();
+    for (const person of people) {
+      for (const allocation of person.projectAllocations) {
+        const employeeIds = employeeIdsByProject.get(allocation.projectId) ?? new Set<string>();
+        employeeIds.add(person.employeeId);
+        employeeIdsByProject.set(allocation.projectId, employeeIds);
+      }
+    }
+    const projectIds = [...employeeIdsByProject.keys()].sort((left, right) => left.localeCompare(right));
+    if (!projectIds.length) {
+      throw new ConflictException("工资确认缺少完整项目人员范围，不能确认");
+    }
+    await lockWageConflictBuckets(
+      tx,
+      projectIds.map((projectId) => ({ projectId, wageMonth }))
+    );
+    const authorities = await tx.affiliateClearingAuthorityVersion.findMany({
+      where: { projectId: { in: projectIds }, status: "confirmed" },
+      select: { id: true }
+    });
+    const lines = authorities.length
+      ? await tx.assignedWageAuthorityLine.findMany({
+          where: {
+            authorityVersionId: { in: authorities.map((authority) => authority.id) },
+            projectId: { in: projectIds },
+            wageMonth: new Date(`${wageMonth}-01T00:00:00.000Z`)
+          },
+          select: { projectId: true, coverageKind: true, personAuthorityKey: true }
+        })
+      : [];
+    for (const line of lines) {
+      if (line.coverageKind === "ROLE_SUMMARY") {
+        throw new ConflictException("B级岗位汇总与同项目同月 #105 工资来源重叠，必须整组阻断");
+      }
+      if (line.coverageKind !== "PERSON" || !line.personAuthorityKey) {
+        throw new ConflictException("#214 工资权威覆盖类型或人员身份已漂移，必须失败关闭");
+      }
+      if (employeeIdsByProject.get(line.projectId)?.has(line.personAuthorityKey)) {
+        throw new ConflictException("同人同月跨 #104/#105 工资来源冲突，必须整组阻断");
+      }
+    }
+  }
+
   /**
    * The confirmation write is deliberately kept inside the caller's
    * Serializable transaction. It materializes immutable payables before the
@@ -857,9 +1553,17 @@ export class WageStatementService {
     versionId: string,
     employmentCompanyId: string,
     revision: number,
-    actorUserId: string
+    actorUserId: string,
+    projectionOrigin: WageProjectionOrigin = "ordinary",
+    historicalContext?: HistoricalWageProjectionContext
   ) {
-    if (!this.operatingLedger) throw new ConflictException("工资经营投影服务未配置，不能确认工资承担单");
+    const operatingLedger = this.operatingLedger;
+    if (projectionOrigin === "ordinary" && !operatingLedger) {
+      throw new ConflictException("工资经营投影服务未配置，不能确认工资承担单");
+    }
+    if (projectionOrigin === "historical_takeover_legacy_link" && !historicalContext) {
+      throw new ConflictException("历史工资接管投影缺少原子范围上下文，不能确认");
+    }
     const version = await tx.wageStatementVersion.findUnique({
       where: { id: versionId },
       include: WAGE_CONFIRMATION_INCLUDE
@@ -867,8 +1571,47 @@ export class WageStatementService {
     if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
     const kind = wageVersionKind(version.kind);
     if (kind !== "base") {
-      await this.projectSubsequentVersion(tx, version, employmentCompanyId, revision, actorUserId, kind);
+      await this.projectSubsequentVersion(
+        tx,
+        version,
+        employmentCompanyId,
+        revision,
+        actorUserId,
+        kind,
+        projectionOrigin,
+        historicalContext
+      );
       return;
+    }
+    if (projectionOrigin === "historical_takeover_legacy_link") {
+      const context = historicalContext!;
+      const current = semanticMatrixFromConfirmedVersion(version);
+      const deltas = historicalWageSignedDeltas(current, emptyHistoricalWageSemanticMatrix());
+      const projectIds = uniqueSorted(current.projectIds);
+      if (
+        kind !== "base" ||
+        context.versionKind !== "base" ||
+        context.targetWageStatementId !== version.statementId ||
+        context.expectedCurrentRevision !== 0 ||
+        context.reservedRevision !== 1 ||
+        revision !== 1 ||
+        context.priorConfirmedVersionId !== null ||
+        context.priorSourceVersionId !== null ||
+        context.sourceVersionId !== version.sourceVersionId ||
+        !sameStringSet(projectIds, context.expectedProjectIds) ||
+        context.sourceDeltaFingerprint !== historicalWageSourceDeltaFingerprint({
+          targetWageStatementId: version.statementId,
+          priorConfirmedVersionId: null,
+          priorSourceVersionId: null,
+          sourceVersionId: version.sourceVersionId,
+          projectIds,
+          deltas,
+          current
+        }) ||
+        context.canonicalRootClosureFingerprint !== fingerprint([])
+      ) {
+        throw new ConflictException("历史工资基础版本的预留差额或原根闭合已漂移，不能确认");
+      }
     }
     const direction = isWageDecreaseKind(kind) ? "decrease" : "increase";
     const adjustmentTargets: readonly WagePayableRefAdjustmentTarget[] = isWageDecreaseKind(kind)
@@ -887,6 +1630,7 @@ export class WageStatementService {
             debtorCompanyId: true,
             costBearingCompanyId: true,
             projectId: true,
+            projectAllocation: { select: { serviceSnapshotId: true } },
             personLine: { select: { employeeId: true, employmentSnapshotId: true } },
             creditorBreakdown: {
               select: {
@@ -941,6 +1685,7 @@ export class WageStatementService {
                 target.debtorCompanyId === employmentCompanyId &&
                 target.costBearingCompanyId === employmentCompanyId &&
                 target.projectId === allocation.projectId &&
+                target.projectAllocation.serviceSnapshotId === allocation.serviceSnapshotId &&
                 target.personLine.employeeId === person.employeeId &&
                 target.personLine.employmentSnapshotId === person.employmentSnapshotId &&
                 target.creditorBreakdown.creditorSubjectType === creditor.creditorSubjectType &&
@@ -976,6 +1721,38 @@ export class WageStatementService {
         byProject.set(allocation.projectId, project);
       }
     }
+    if (projectionOrigin === "historical_takeover_legacy_link") {
+      const projects = Object.fromEntries(
+        [...byProject.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([projectId, projection]) => [projectId, {
+            payableRefIds: projection.refs,
+            canonicalCostCellIds: projection.costs.map(({ cell }) => cell.id).sort(),
+            canonicalPayableCellIds: projection.payables.map(({ cell }) => cell.id).sort()
+          }])
+      );
+      await tx.wageStatementVersion.update({
+        where: { id: version.id },
+        data: {
+          operatingProjectionSnapshot: jsonValue({
+            formalStatus: "confirmed",
+            projectionOrigin,
+            wageStatementVersionId: version.id,
+            sourceVersion: String(revision),
+            wageVersionKind: kind,
+            historicalTakeover: historicalContext,
+            // These identifiers are canonical cells/ref targets for the
+            // take-over envelope. No OperatingFact or OperatingImpactEntry is
+            // produced from this path.
+            projects
+          })
+        }
+      });
+      return;
+    }
+    if (!operatingLedger) {
+      throw new ConflictException("工资经营投影服务未配置，不能确认工资承担单");
+    }
     const projectWrites: Array<{
       projectId: string;
       projection: WageProjection;
@@ -1005,7 +1782,7 @@ export class WageStatementService {
       });
       if (!affiliate) throw new ConflictException("工资项目缺少事实日有效施工企业上下文，不能确认");
       const snapshot = jsonValue({
-        formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind,
+      formalStatus: "confirmed", projectionOrigin, wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind,
         projectId, occurredAt: occurredAt.toISOString(), confirmedAt: confirmedAt.toISOString(),
         confirmedByUserId: actorUserId, employmentCompanyId,
         operatingLedgerEffectiveDate: projectRecord.operatingLedgerEffectiveDate.toISOString(),
@@ -1021,7 +1798,7 @@ export class WageStatementService {
       data: { operatingProjectionSnapshot: jsonValue({ formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind, projects }) }
     });
     for (const { projectId, projection, participant, snapshot } of projectWrites) {
-      await this.operatingLedger.appendConfirmedSourceInTransaction(tx, {
+      await operatingLedger.appendConfirmedSourceInTransaction(tx, {
         projectId, sourceType: "wage_statement_version", sourceBusinessId: `${version.id}:${projectId}`,
         sourceBusinessCode: `工资承担单-${revision}`, sourceVersion: revision,
         idempotencyKey: `wage:${version.id}:${projectId}`, occurredAt, confirmedAt, confirmedByUserId: actorUserId,
@@ -1045,9 +1822,9 @@ export class WageStatementService {
   /**
    * Later revisions are complete replacement snapshots, but their formal
    * effects are strictly the signed difference from the immediately preceding
-   * confirmed snapshot.  A negative movement is distributed across immutable
-   * original refs (never an earlier adjustment), so the database trigger can
-   * serialize and protect the effective non-negative balance.
+   * confirmed snapshot. Every correction/reversal cell must resolve to exactly
+   * one immutable original ref (never an earlier adjustment); ambiguity is an
+   * integrity failure rather than a reason to distribute the movement.
    */
   private async projectSubsequentVersion(
     tx: Tx,
@@ -1055,33 +1832,125 @@ export class WageStatementService {
     employmentCompanyId: string,
     revision: number,
     actorUserId: string,
-    kind: Exclude<WageVersionKind, "base">
+    kind: Exclude<WageVersionKind, "base">,
+    projectionOrigin: WageProjectionOrigin = "ordinary",
+    historicalContext?: HistoricalWageProjectionContext
   ) {
-    const prior = await tx.wageStatementVersion.findFirst({
-      where: { statementId: version.statementId, revision: { lt: version.revision }, status: "confirmed" },
-      orderBy: { revision: "desc" }, include: WAGE_CONFIRMATION_INCLUDE
-    }) as WageConfirmationVersion | null;
+    const prior = projectionOrigin === "historical_takeover_legacy_link"
+      ? await tx.wageStatementVersion.findUnique({
+          where: {
+            statementId_revision: {
+              statementId: version.statementId,
+              revision: version.revision - 1
+            }
+          },
+          include: WAGE_CONFIRMATION_INCLUDE
+        }) as WageConfirmationVersion | null
+      : await tx.wageStatementVersion.findFirst({
+          where: { statementId: version.statementId, revision: { lt: version.revision }, status: "confirmed" },
+          orderBy: { revision: "desc" }, include: WAGE_CONFIRMATION_INCLUDE
+        }) as WageConfirmationVersion | null;
     if (!prior) throw new ConflictException("后续工资修订缺少已确认的前置版本，不能确认");
     const current = wageMatrixIdentities(version);
     const previous = wageMatrixIdentities(prior);
-    assertRetainedWageIdentities(current.costs, previous.costs, "成本组成");
-    assertRetainedWageIdentities(current.payables, previous.payables, "债权人");
+    if (projectionOrigin === "historical_takeover_legacy_link") {
+      if (
+        version.projectionOrigin !== "historical_takeover_legacy_link" ||
+        prior.projectionOrigin !== "historical_takeover_legacy_link"
+      ) {
+        throw new ConflictException("历史工资后续版本与前置版本必须属于同一接管 lineage");
+      }
+      assertExactHistoricalWageIdentities(current.costs, previous.costs, "成本组成");
+      assertExactHistoricalWageIdentities(current.payables, previous.payables, "债权人");
+    } else {
+      assertRetainedWageIdentities(current.costs, previous.costs, "成本组成");
+      assertRetainedWageIdentities(current.payables, previous.payables, "债权人");
+    }
     const roots = await tx.wagePayableRef.findMany({
       where: {
         adjustsPayableRefId: null, direction: "increase",
-        confirmedVersion: { statementId: version.statementId, revision: { lt: version.revision }, status: "confirmed" }
+        confirmedVersion: {
+          statementId: version.statementId,
+          revision: { lt: version.revision },
+          status: "confirmed",
+          ...(projectionOrigin === "historical_takeover_legacy_link"
+            ? { projectionOrigin: "historical_takeover_legacy_link" }
+            : {})
+        }
       },
       select: {
         id: true, amountCents: true, debtorCompanyId: true, costBearingCompanyId: true, projectId: true,
+        projectAllocation: { select: { serviceSnapshotId: true } },
         personLine: { select: { employeeId: true, employmentSnapshotId: true } },
         creditorBreakdown: { select: { creditorSubjectType: true, creditorSubjectIdentityKey: true, creditorCategory: true } },
-        adjustments: { select: { direction: true, amountCents: true } }
-      }, orderBy: { createdAt: "asc" }
-    });
+        adjustments: { select: { id: true, direction: true, amountCents: true }, orderBy: { id: "asc" } }
+      }, orderBy: { id: "asc" }
+    }) as HistoricalWageRootRead[];
     const rootBalances = roots.map((root) => ({
       ...root,
       remaining: root.amountCents + root.adjustments.reduce((sum, adjustment) => sum + (adjustment.direction === "increase" ? adjustment.amountCents : -adjustment.amountCents), 0n)
     }));
+    const currentSemantic = semanticMatrixFromConfirmedVersion(version);
+    const previousSemantic = semanticMatrixFromConfirmedVersion(prior);
+    const signedDeltas = historicalWageSignedDeltas(currentSemantic, previousSemantic);
+    if (
+      kind === "reversal" &&
+      [...currentSemantic.costs.values(), ...currentSemantic.payables.values()].some((cell) => cell.amountCents !== 0n)
+    ) {
+      throw new ConflictException("工资全额冲销必须保留完整身份并提交显式零金额快照");
+    }
+    const usedRoots = new Map<string, HistoricalWageRootRead & { effectiveAmountCents: bigint }>();
+    if (kind !== "supplemental") {
+      for (const delta of signedDeltas.payables) {
+        const matching = roots.filter((root) =>
+          root.debtorCompanyId === employmentCompanyId &&
+          root.costBearingCompanyId === employmentCompanyId &&
+          wageRootIdentity(root) === delta.key
+        );
+        if (matching.length !== 1) {
+          throw new ConflictException("工资更正或冲销必须唯一指向同一不可变原始应付引用，不能确认");
+        }
+        const root = matching[0]!;
+        const effectiveAmountCents = historicalWageRootEffectiveAmount(root);
+        if (effectiveAmountCents < 0n || effectiveAmountCents + delta.amountCents < 0n) {
+          throw new ConflictException("工资更正或冲销会使既有应付引用有效金额低于零，不能确认");
+        }
+        usedRoots.set(root.id, { ...root, effectiveAmountCents });
+      }
+    }
+    if (projectionOrigin === "historical_takeover_legacy_link") {
+      const context = historicalContext!;
+      const projectIds = uniqueSorted(currentSemantic.projectIds);
+      const rootClosureFingerprint = fingerprint(
+        [...usedRoots.values()]
+          .sort((left, right) => left.id.localeCompare(right.id))
+          .map((root) => historicalWageRootReadSet(root))
+      );
+      if (
+        context.versionKind !== kind ||
+        context.targetWageStatementId !== version.statementId ||
+        context.expectedCurrentRevision !== version.revision - 1 ||
+        context.reservedRevision !== version.revision ||
+        revision !== version.revision ||
+        context.priorConfirmedVersionId !== prior.id ||
+        context.priorSourceVersionId !== prior.sourceVersionId ||
+        context.sourceVersionId !== version.sourceVersionId ||
+        prior.status !== "confirmed" ||
+        !sameStringSet(projectIds, context.expectedProjectIds) ||
+        context.sourceDeltaFingerprint !== historicalWageSourceDeltaFingerprint({
+          targetWageStatementId: version.statementId,
+          priorConfirmedVersionId: prior.id,
+          priorSourceVersionId: prior.sourceVersionId,
+          sourceVersionId: version.sourceVersionId,
+          projectIds,
+          deltas: signedDeltas,
+          current: currentSemantic
+        }) ||
+        context.canonicalRootClosureFingerprint !== rootClosureFingerprint
+      ) {
+        throw new ConflictException("历史工资后续版本的相邻差额、前置版本或原根闭合已漂移，不能确认");
+      }
+    }
     const byProject = new Map<string, WageDeltaProjection>();
     const projectFor = (projectId: string) => {
       const existing = byProject.get(projectId);
@@ -1090,6 +1959,7 @@ export class WageStatementService {
       byProject.set(projectId, next);
       return next;
     };
+    for (const projectId of currentSemantic.projectIds) projectFor(projectId);
     for (const [key, cell] of current.costs) {
       const previousAmount = previous.costs.get(key)?.amountCents ?? 0n;
       const delta = cell.amountCents - previousAmount;
@@ -1109,29 +1979,66 @@ export class WageStatementService {
         projection.payables.push({ ...cell, amountCents: delta, direction: "increase", ref });
         continue;
       }
-      const matchingRoots = rootBalances.filter((candidate) => wageRootIdentity(candidate) === key);
-      if (!matchingRoots.length) {
-        throw new ConflictException("工资更正或冲销缺少可调整的原始应付引用，不能确认");
+      const matchingRoots = rootBalances.filter((candidate) =>
+        candidate.debtorCompanyId === employmentCompanyId &&
+        candidate.costBearingCompanyId === employmentCompanyId &&
+        wageRootIdentity(candidate) === key
+      );
+      if (matchingRoots.length !== 1) {
+        throw new ConflictException("工资更正或冲销必须唯一指向同一不可变原始应付引用，不能确认");
       }
+      const root = matchingRoots[0]!;
       if (delta > 0n) {
-        // A correction/reversal must remain lineage-linked even when it adds
-        // back value: select the oldest immutable root deterministically.
-        const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, delta, "increase", matchingRoots[0].id);
+        const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, delta, "increase", root.id);
         projection.refs.push(ref.id);
         projection.payables.push({ ...cell, amountCents: delta, direction: "increase", ref });
         continue;
       }
-      let remaining = -delta;
-      for (const root of matchingRoots.filter((candidate) => candidate.remaining > 0n)) {
-        const amount = remaining < root.remaining ? remaining : root.remaining;
-        const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, amount, "decrease", root.id);
-        root.remaining -= amount;
-        remaining -= amount;
-        projection.refs.push(ref.id);
-        projection.payables.push({ ...cell, amountCents: amount, direction: "decrease", ref });
-        if (remaining === 0n) break;
+      const amount = -delta;
+      if (root.remaining < amount) {
+        throw new ConflictException("工资更正或冲销会使既有应付引用有效金额低于零，不能确认");
       }
-      if (remaining !== 0n) throw new ConflictException("工资更正或冲销会使既有应付引用有效金额低于零，不能确认");
+      const ref = await this.createWagePayableRef(tx, version.id, employmentCompanyId, cell, amount, "decrease", root.id);
+      root.remaining -= amount;
+      projection.refs.push(ref.id);
+      projection.payables.push({ ...cell, amountCents: amount, direction: "decrease", ref });
+    }
+    if (projectionOrigin === "historical_takeover_legacy_link") {
+      if (!historicalContext) {
+        throw new ConflictException("历史工资接管投影缺少原子范围上下文，不能确认");
+      }
+      const projects = Object.fromEntries(
+        [...byProject.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([projectId, projection]) => [projectId, {
+            canonicalCostDeltas: projection.costs.map((cost) => ({
+              costCellId: cost.cell.id,
+              amountCents: cost.amountCents.toString(),
+              direction: cost.direction
+            })),
+            canonicalPayableDeltas: projection.payables.map((payable) => ({
+              payableCellId: payable.cell.id,
+              payableRefId: payable.ref.id,
+              amountCents: payable.amountCents.toString(),
+              direction: payable.direction
+            }))
+          }])
+      );
+      await tx.wageStatementVersion.update({
+        where: { id: version.id },
+        data: {
+          operatingProjectionSnapshot: jsonValue({
+            formalStatus: "confirmed",
+            projectionOrigin,
+            wageStatementVersionId: version.id,
+            sourceVersion: String(revision),
+            wageVersionKind: kind,
+            historicalTakeover: historicalContext,
+            projects
+          })
+        }
+      });
+      return;
     }
     const occurredAt = version.sourceVersion.periodEnd as Date;
     const confirmedAt = new Date();
@@ -1433,7 +2340,10 @@ export class WageStatementService {
   private async lockStatement(tx: Tx, statementId: string) {
     const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT id FROM "WageStatement" WHERE id = ${statementId} FOR UPDATE`);
     if (!locked.length) throw new NotFoundException("工资承担单不存在，请刷新后重试");
-    const statement = await tx.wageStatement.findUnique({ where: { id: statementId }, select: { id: true, employmentCompanyId: true, currentRevision: true } });
+    const statement = await tx.wageStatement.findUnique({
+      where: { id: statementId },
+      select: { id: true, employmentCompanyId: true, wageMonth: true, currentRevision: true }
+    });
     if (!statement) throw new NotFoundException("工资承担单不存在，请刷新后重试");
     return statement;
   }
@@ -1786,6 +2696,59 @@ function assertRevision(actualRevision: number, expectedRevision: number) {
   if (actualRevision !== expectedRevision) throw new ConflictException("工资承担单版本已变化，请刷新后重试");
 }
 
+function historicalApprovedSourceLines(source: {
+  employmentCompanyId: string;
+  wageMonth: string;
+  periodStart: Date;
+  periodEnd: Date;
+  sourceType: string;
+  externalReference: string;
+  sourceVersion: string;
+  basisDate: Date;
+  evidenceFileId: string;
+  evidenceSha256: string;
+  sourceFingerprint: string;
+  sourceSnapshot: unknown;
+}): AuthorityLine[] {
+  if (
+    !source.sourceSnapshot ||
+    typeof source.sourceSnapshot !== "object" ||
+    Array.isArray(source.sourceSnapshot) ||
+    !SHA256.test(source.sourceFingerprint) ||
+    fingerprint(source.sourceSnapshot) !== source.sourceFingerprint
+  ) {
+    throw new ConflictException("历史工资接管权威来源快照指纹已漂移，不能继续");
+  }
+  const snapshot = source.sourceSnapshot as Record<string, unknown>;
+  const company = snapshot.employmentCompany;
+  const evidence = snapshot.evidence;
+  const companyId = company && typeof company === "object" && !Array.isArray(company)
+    ? requiredJsonText((company as Record<string, unknown>).id)
+    : "";
+  const evidenceFileId = evidence && typeof evidence === "object" && !Array.isArray(evidence)
+    ? requiredJsonText((evidence as Record<string, unknown>).fileId)
+    : "";
+  const evidenceSha256 = evidence && typeof evidence === "object" && !Array.isArray(evidence)
+    ? requiredJsonText((evidence as Record<string, unknown>).sha256)
+    : "";
+  if (
+    source.sourceType !== "external_approved_wage" ||
+    companyId !== source.employmentCompanyId ||
+    requiredJsonText(snapshot.wageMonth) !== source.wageMonth ||
+    requiredJsonText(snapshot.periodStart) !== source.periodStart.toISOString().slice(0, 10) ||
+    requiredJsonText(snapshot.periodEnd) !== source.periodEnd.toISOString().slice(0, 10) ||
+    requiredJsonText(snapshot.externalReference) !== source.externalReference ||
+    requiredJsonText(snapshot.sourceVersion) !== source.sourceVersion ||
+    requiredJsonText(snapshot.basisDate) !== source.basisDate.toISOString().slice(0, 10) ||
+    evidenceFileId !== source.evidenceFileId ||
+    evidenceSha256 !== source.evidenceSha256 ||
+    !SHA256.test(evidenceSha256)
+  ) {
+    throw new ConflictException("历史工资接管权威来源快照与公司、月份、期间或证据坐标不一致");
+  }
+  return sourcePersonLines(snapshot);
+}
+
 function sourcePersonLines(snapshot: unknown): AuthorityLine[] {
   if (!snapshot || typeof snapshot !== "object" || !Array.isArray((snapshot as { approvedPersonLines?: unknown }).approvedPersonLines)) {
     throw new ConflictException("外部批准工资来源快照不完整，不能创建工资承担单");
@@ -1980,20 +2943,199 @@ function wageMatrixIdentities(version: WageConfirmationVersion) {
     const creditors = new Map(person.creditorBreakdowns.map((creditor) => [creditor.id, creditor]));
     for (const allocation of person.projectAllocations) {
       for (const cell of allocation.componentAllocations) {
-        const key = `${allocation.projectId}:${person.employeeId}:${person.employmentSnapshotId}:${cell.costComponent.componentCode}`;
+        const key = `${allocation.projectId}:${allocation.serviceSnapshotId}:${person.employeeId}:${person.employmentSnapshotId}:${cell.costComponent.componentCode}`;
         if (costs.has(key)) throw new ConflictException("工资版本存在重复的项目成本组成身份，不能确认");
         costs.set(key, { person, allocation, cell, amountCents: cell.amountCents });
       }
       for (const cell of allocation.creditorAllocations) {
         const creditor = creditors.get(cell.creditorBreakdownId);
         if (!creditor) throw new ConflictException("工资债权人矩阵引用不属于该人员行");
-        const key = wagePayableIdentity(allocation.projectId, person.employeeId, person.employmentSnapshotId, creditor);
+        const key = wagePayableIdentity(
+          allocation.projectId,
+          allocation.serviceSnapshotId,
+          person.employeeId,
+          person.employmentSnapshotId,
+          creditor
+        );
         if (payables.has(key)) throw new ConflictException("工资版本存在重复的项目债权人身份，不能确认");
         payables.set(key, { person, allocation, cell, creditor, amountCents: cell.amountCents });
       }
     }
   }
   return { costs, payables };
+}
+
+function authorityMatrixIdentities(lines: AuthorityLine[]): HistoricalWageSemanticMatrix {
+  const projectIds = uniqueSorted(lines.flatMap((line) => line.projectAllocations.map((allocation) => allocation.projectId)));
+  const costs = new Map<string, HistoricalWageSemanticCell>();
+  const payables = new Map<string, HistoricalWageSemanticCell>();
+  for (const line of lines) {
+    for (const cell of line.projectCostComponentAllocations ?? []) {
+      const key = `${cell.projectId}:${cell.serviceSnapshotId}:${line.employeeId}:${line.employmentSnapshotId}:${cell.componentCode}`;
+      if (costs.has(key)) {
+        throw new ConflictException("外部批准工资来源存在重复的项目成本组成身份，不能规划 A 级闭合");
+      }
+      costs.set(key, { key, projectId: cell.projectId, amountCents: BigInt(cell.amountCents) });
+    }
+    for (const cell of line.projectCreditorAllocations ?? []) {
+      const creditorSubjectIdentityKey = cell.creditorSubjectType === "employee_user"
+        ? `employee_user:${required(cell.creditorUserId, "员工债权人不能为空")}`
+        : `business_party:${required(cell.creditorBusinessPartyVersionId, "机构债权人版本不能为空")}`;
+      const key = `${cell.projectId}:${cell.serviceSnapshotId}:${line.employeeId}:${line.employmentSnapshotId}:${cell.creditorSubjectType}:${creditorSubjectIdentityKey}:${cell.creditorCategory}`;
+      if (payables.has(key)) {
+        throw new ConflictException("外部批准工资来源存在重复的项目债权人身份，不能规划 A 级闭合");
+      }
+      payables.set(key, { key, projectId: cell.projectId, amountCents: BigInt(cell.amountCents) });
+    }
+  }
+  return { projectIds, costs, payables };
+}
+
+function emptyHistoricalWageSemanticMatrix(): HistoricalWageSemanticMatrix {
+  return { projectIds: [], costs: new Map(), payables: new Map() };
+}
+
+function semanticMatrixFromConfirmedVersion(version: WageConfirmationVersion): HistoricalWageSemanticMatrix {
+  const matrix = wageMatrixIdentities(version);
+  return {
+    projectIds: uniqueSorted(version.personLines.flatMap((person) =>
+      person.projectAllocations.map((allocation) => allocation.projectId)
+    )),
+    costs: new Map([...matrix.costs].map(([key, cell]) => [key, {
+      key,
+      projectId: cell.allocation.projectId,
+      amountCents: cell.amountCents
+    }])),
+    payables: new Map([...matrix.payables].map(([key, cell]) => [key, {
+      key,
+      projectId: cell.allocation.projectId,
+      amountCents: cell.amountCents
+    }]))
+  };
+}
+
+type HistoricalWageSignedDelta = HistoricalWageSemanticCell;
+
+function historicalWageSignedDeltas(
+  current: HistoricalWageSemanticMatrix,
+  previous: HistoricalWageSemanticMatrix
+) {
+  const derive = (
+    currentCells: ReadonlyMap<string, HistoricalWageSemanticCell>,
+    previousCells: ReadonlyMap<string, HistoricalWageSemanticCell>
+  ) => uniqueSorted([...currentCells.keys(), ...previousCells.keys()]).flatMap((key) => {
+    const currentCell = currentCells.get(key);
+    const priorCell = previousCells.get(key);
+    const amountCents = (currentCell?.amountCents ?? 0n) - (priorCell?.amountCents ?? 0n);
+    if (amountCents === 0n) return [];
+    return [{
+      key,
+      projectId: currentCell?.projectId ?? required(priorCell?.projectId, "工资相邻版本差额缺少项目身份"),
+      amountCents
+    }];
+  });
+  return {
+    costs: derive(current.costs, previous.costs),
+    payables: derive(current.payables, previous.payables)
+  };
+}
+
+function historicalWageProjectDelta(deltas: readonly HistoricalWageSignedDelta[], projectId: string) {
+  return deltas
+    .filter((delta) => delta.projectId === projectId)
+    .reduce((total, delta) => total + delta.amountCents, 0n);
+}
+
+function historicalWageDeltaReadSet(
+  deltas: { costs: HistoricalWageSignedDelta[]; payables: HistoricalWageSignedDelta[] },
+  projectIds: readonly string[],
+  current: HistoricalWageSemanticMatrix
+) {
+  const costDeltas = new Map(deltas.costs.map((delta) => [delta.key, delta]));
+  const payableDeltas = new Map(deltas.payables.map((delta) => [delta.key, delta]));
+  const rows = [
+    ...[...current.costs.values()].map((cell) => ({
+      dimension: "cost",
+      key: cell.key,
+      projectId: cell.projectId,
+      signedAmountCents: (costDeltas.get(cell.key)?.amountCents ?? 0n).toString()
+    })),
+    ...[...current.payables.values()].map((cell) => ({
+      dimension: "payable",
+      key: cell.key,
+      projectId: cell.projectId,
+      signedAmountCents: (payableDeltas.get(cell.key)?.amountCents ?? 0n).toString()
+    }))
+  ];
+  return [
+    ...rows,
+    ...projectIds
+      .filter((projectId) =>
+        !rows.some((row) => row.projectId === projectId)
+      )
+      .map((projectId) => ({
+        dimension: "project_tombstone",
+        key: projectId,
+        projectId,
+        signedAmountCents: "0"
+      }))
+  ].sort((left, right) =>
+    `${left.projectId}:${left.dimension}:${left.key}`.localeCompare(`${right.projectId}:${right.dimension}:${right.key}`)
+  );
+}
+
+function historicalWageSourceDeltaFingerprint(input: {
+  targetWageStatementId: string;
+  priorConfirmedVersionId: string | null;
+  priorSourceVersionId: string | null;
+  sourceVersionId: string;
+  projectIds: readonly string[];
+  deltas: { costs: HistoricalWageSignedDelta[]; payables: HistoricalWageSignedDelta[] };
+  current: HistoricalWageSemanticMatrix;
+}) {
+  const projectIds = uniqueSorted(input.projectIds);
+  return fingerprint({
+    targetWageStatementId: input.targetWageStatementId,
+    priorConfirmedVersionId: input.priorConfirmedVersionId,
+    priorSourceVersionId: input.priorSourceVersionId,
+    sourceVersionId: input.sourceVersionId,
+    projects: projectIds,
+    deltas: historicalWageDeltaReadSet(input.deltas, projectIds, input.current)
+  });
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]) {
+  const normalizedLeft = uniqueSorted(left);
+  const normalizedRight = uniqueSorted(right);
+  return normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+function historicalWageRootEffectiveAmount(root: HistoricalWageRootRead) {
+  return root.adjustments.reduce((total, adjustment) => {
+    if (adjustment.direction === "increase") return total + adjustment.amountCents;
+    if (adjustment.direction === "decrease") return total - adjustment.amountCents;
+    throw new ConflictException("工资应付引用存在无效调整方向，不能规划 A 级闭合");
+  }, root.amountCents);
+}
+
+function historicalWageRootReadSet(root: HistoricalWageRootRead & { effectiveAmountCents: bigint }) {
+  return {
+    id: root.id,
+    identity: wageRootIdentity(root),
+    debtorCompanyId: root.debtorCompanyId,
+    costBearingCompanyId: root.costBearingCompanyId,
+    serviceSnapshotId: root.projectAllocation.serviceSnapshotId,
+    amountCents: root.amountCents.toString(),
+    effectiveAmountCents: root.effectiveAmountCents.toString(),
+    adjustments: [...root.adjustments]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((adjustment) => ({
+        id: adjustment.id,
+        direction: adjustment.direction,
+        amountCents: adjustment.amountCents.toString()
+      }))
+  };
 }
 
 function assertRetainedWageIdentities<T extends { amountCents: bigint }>(
@@ -2006,23 +3148,37 @@ function assertRetainedWageIdentities<T extends { amountCents: bigint }>(
   }
 }
 
+function assertExactHistoricalWageIdentities<T>(
+  current: ReadonlyMap<string, T>, previous: ReadonlyMap<string, T>, label: string
+) {
+  const currentKeys = uniqueSorted([...current.keys()]);
+  const previousKeys = uniqueSorted([...previous.keys()]);
+  if (
+    currentKeys.length !== previousKeys.length ||
+    currentKeys.some((key, index) => key !== previousKeys[index])
+  ) {
+    throw new ConflictException(`历史工资后续版本的${label}身份集合发生变化，必须保留原完整稳定身份且不得新增身份`);
+  }
+}
+
 function wagePayableIdentity(
-  projectId: string, employeeId: string, employmentSnapshotId: string,
+  projectId: string, serviceSnapshotId: string, employeeId: string, employmentSnapshotId: string,
   creditor: Pick<WageConfirmationCreditor, "creditorSubjectType" | "creditorSubjectIdentityKey" | "creditorCategory">
 ) {
   if (!creditor.creditorSubjectType || !creditor.creditorSubjectIdentityKey) {
     throw new ConflictException("工资债权人缺少冻结身份，不能确认");
   }
-  return `${projectId}:${employeeId}:${employmentSnapshotId}:${creditor.creditorSubjectType}:${creditor.creditorSubjectIdentityKey}:${creditor.creditorCategory}`;
+  return `${projectId}:${serviceSnapshotId}:${employeeId}:${employmentSnapshotId}:${creditor.creditorSubjectType}:${creditor.creditorSubjectIdentityKey}:${creditor.creditorCategory}`;
 }
 
 function wageRootIdentity(root: {
   projectId: string;
+  projectAllocation: { serviceSnapshotId: string };
   personLine: { employeeId: string; employmentSnapshotId: string };
   creditorBreakdown: { creditorSubjectType: string | null; creditorSubjectIdentityKey: string | null; creditorCategory: string };
 }) {
   if (!root.creditorBreakdown.creditorSubjectType || !root.creditorBreakdown.creditorSubjectIdentityKey) return "";
-  return `${root.projectId}:${root.personLine.employeeId}:${root.personLine.employmentSnapshotId}:${root.creditorBreakdown.creditorSubjectType}:${root.creditorBreakdown.creditorSubjectIdentityKey}:${root.creditorBreakdown.creditorCategory}`;
+  return `${root.projectId}:${root.projectAllocation.serviceSnapshotId}:${root.personLine.employeeId}:${root.personLine.employmentSnapshotId}:${root.creditorBreakdown.creditorSubjectType}:${root.creditorBreakdown.creditorSubjectIdentityKey}:${root.creditorBreakdown.creditorCategory}`;
 }
 
 function abs(value: bigint) {
@@ -2114,6 +3270,26 @@ function frozenCreditorFingerprint(
   return null;
 }
 
+function preflightFrozenCreditorSnapshots(
+  lines: AuthorityLine[],
+  employees: Array<{ id: string; name: string }>,
+  businessPartyByVersionId: ReadonlyMap<string, {
+    id: string;
+    businessPartyId: string;
+    versionNo: number;
+    snapshot: Prisma.JsonValue;
+  }>
+) {
+  for (const line of lines) {
+    for (const creditor of line.creditorBreakdowns) {
+      creditorIdentityKey(creditor);
+      frozenCreditorName(creditor, employees, businessPartyByVersionId);
+      frozenCreditorUnifiedIdentity(creditor, businessPartyByVersionId);
+      frozenCreditorFingerprint(creditor, employees, businessPartyByVersionId);
+    }
+  }
+}
+
 function required(value: string | undefined | null, message: string) {
   if (!value?.trim()) throw new BadRequestException(message);
   return value.trim();
@@ -2164,6 +3340,10 @@ function jsonValue(value: unknown): Prisma.InputJsonValue {
 
 function fingerprint(value: unknown) {
   return createHash("sha256").update(stableJson(value)).digest("hex");
+}
+
+function uniqueSorted(values: readonly string[]) {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 function commandFingerprint(action: string, aggregateId: string, input: unknown, actorUserId: string) {
