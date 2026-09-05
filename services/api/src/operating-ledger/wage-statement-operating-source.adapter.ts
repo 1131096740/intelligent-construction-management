@@ -61,6 +61,7 @@ export class WageStatementOperatingSourceAdapter implements OperatingSourceAdapt
     const rows = await tx.wageStatementVersion.findMany({
       where: {
         status: "confirmed",
+        projectionOrigin: "ordinary",
         payableRefs: { some: { projectId } }
       },
       select: { id: true, revision: true, kind: true, operatingProjectionSnapshot: true },
@@ -76,7 +77,7 @@ export class WageStatementOperatingSourceAdapter implements OperatingSourceAdapt
     if (locator.sourceType !== this.sourceType) return null;
     const versionId = versionIdFromLocator(locator);
     const row = await tx.wageStatementVersion.findFirst({
-      where: { id: versionId, status: "confirmed" },
+      where: { id: versionId, status: "confirmed", projectionOrigin: "ordinary" },
       select: { id: true, revision: true, kind: true, operatingProjectionSnapshot: true }
     });
     if (!row) return null;
@@ -248,7 +249,7 @@ export class WageStatementOperatingSourceAdapter implements OperatingSourceAdapt
           projectAllocationId: true,
           amountCents: true,
           costComponent: { select: { componentCode: true } },
-          projectAllocation: { select: { projectId: true, personLine: { select: { employeeId: true, employmentSnapshotId: true } } } }
+          projectAllocation: { select: { projectId: true, serviceSnapshotId: true, personLine: { select: { employeeId: true, employmentSnapshotId: true } } } }
         },
         orderBy: { id: "asc" }
       }),
@@ -279,7 +280,7 @@ export class WageStatementOperatingSourceAdapter implements OperatingSourceAdapt
     }));
     const priorCostByIdentity = kind === "base" ? new Map<string, bigint>() : await this.priorCostByIdentity(tx, versionId, projectId);
     const costCells = costRows.filter((row) => costDirections.has(row.id)).map((row) => {
-      const key = costIdentity(row.projectAllocation.projectId, row.projectAllocation.personLine.employeeId, row.projectAllocation.personLine.employmentSnapshotId, row.costComponent.componentCode);
+      const key = costIdentity(row.projectAllocation.projectId, row.projectAllocation.serviceSnapshotId, row.projectAllocation.personLine.employeeId, row.projectAllocation.personLine.employmentSnapshotId, row.costComponent.componentCode);
       const delta = kind === "base" ? row.amountCents : row.amountCents - (priorCostByIdentity.get(key) ?? 0n);
       const direction = costDirections.get(row.id)!;
       if (delta === 0n || (delta > 0n ? "increase" : "decrease") !== direction) {
@@ -326,12 +327,12 @@ export class WageStatementOperatingSourceAdapter implements OperatingSourceAdapt
       where: { projectAllocation: { projectId, personLine: { statementVersionId: prior.id } } },
       select: {
         amountCents: true, costComponent: { select: { componentCode: true } },
-        projectAllocation: { select: { projectId: true, personLine: { select: { employeeId: true, employmentSnapshotId: true } } } }
+        projectAllocation: { select: { projectId: true, serviceSnapshotId: true, personLine: { select: { employeeId: true, employmentSnapshotId: true } } } }
       }
     });
     const result = new Map<string, bigint>();
     for (const row of rows) {
-      const key = costIdentity(row.projectAllocation.projectId, row.projectAllocation.personLine.employeeId, row.projectAllocation.personLine.employmentSnapshotId, row.costComponent.componentCode);
+      const key = costIdentity(row.projectAllocation.projectId, row.projectAllocation.serviceSnapshotId, row.projectAllocation.personLine.employeeId, row.projectAllocation.personLine.employmentSnapshotId, row.costComponent.componentCode);
       if (result.has(key)) throw new BadRequestException("工资经营前置版本存在重复成本身份");
       result.set(key, row.amountCents);
     }
@@ -360,6 +361,6 @@ function sum(values: readonly bigint[]): bigint {
   return values.reduce((total, value) => total + value, 0n);
 }
 
-function costIdentity(projectId: string, employeeId: string, employmentSnapshotId: string, componentCode: string) {
-  return `${projectId}:${employeeId}:${employmentSnapshotId}:${componentCode}`;
+function costIdentity(projectId: string, serviceSnapshotId: string, employeeId: string, employmentSnapshotId: string, componentCode: string) {
+  return `${projectId}:${serviceSnapshotId}:${employeeId}:${employmentSnapshotId}:${componentCode}`;
 }

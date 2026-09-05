@@ -14,6 +14,10 @@ import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
 import {
+  computePol219AssignedWageExclusionSet,
+  strictJcs
+} from "../operating-takeover/historical-wage-takeover-fingerprint";
+import {
   assertDateRange,
   assertMoneyWithinPostgresBigInt,
   buildAuthorityFingerprint,
@@ -28,6 +32,7 @@ import {
   AffiliateClearingSelectionRefService,
   type AffiliateClearingSelectionBinding
 } from "./affiliate-clearing-selection-ref.service";
+import { lockWageConflictBuckets } from "./wage-conflict-lock";
 import type {
   AffiliateClearingAuthorityCommandDto,
   AuthorityClearingCaseSelectionDto,
@@ -502,11 +507,36 @@ export class AffiliateClearingAuthorityService {
       if (new Set([authority.createdByUserId, authority.submittedByUserId]).has(identity.actualUserId) || identity.actorIds.some((id) => [authority.createdByUserId, authority.submittedByUserId].includes(id))) {
         throw new ConflictException("权威版本确认人与经办/提交人重叠，SoD 冲突");
       }
-      const [lines, obligations] = await Promise.all([
+      const [lines, obligations, contract] = await Promise.all([
         tx.assignedWageAuthorityLine.findMany({ where: { authorityVersionId: authority.id } }),
-        tx.guaranteeObligationVersion.findMany({ where: { authorityVersionId: authority.id } })
+        tx.guaranteeObligationVersion.findMany({ where: { authorityVersionId: authority.id } }),
+        tx.projectAffiliateCompanyContract.findUnique({ where: { id: authority.affiliateCompanyContractId } })
       ]);
       if (!lines.length && !obligations.length) throw new ConflictException("权威版本缺少冻结工资或保证金事实，禁止确认");
+      if (lines.length) {
+        if (
+          !contract ||
+          contract.status !== "confirmed" ||
+          contract.projectId !== authority.projectId ||
+          lines.some((line) =>
+            line.authorityVersionId !== authority.id ||
+            line.projectId !== authority.projectId ||
+            line.affiliateCompanyContractId !== contract.id
+          )
+        ) {
+          throw new ConflictException("工资权威行与已确认公司合同范围不一致，必须失败关闭");
+        }
+        await lockWageConflictBuckets(tx, lines.map((line) => ({
+          projectId: line.projectId,
+          wageMonth: line.wageMonth
+        })));
+        await this.assertNoActivatedHistoricalWageSummaryConflict(
+          tx,
+          contract.companyEntityId,
+          lines
+        );
+        for (const line of lines) await this.assertNoCanonicalWageConflict(tx, line);
+      }
       const updated = await tx.affiliateClearingAuthorityVersion.update({
         where: { id: authority.id },
         data: { status: "confirmed", confirmedByUserId: identity.actualUserId, confirmedAt: new Date() }
@@ -934,6 +964,186 @@ export class AffiliateClearingAuthorityService {
       }
     }
     throw new ConflictException("authority selectionRef 已失效");
+  }
+
+  private async assertNoCanonicalWageConflict(
+    tx: AuthorityTx,
+    line: { projectId: string; wageMonth: Date; coverageKind: string; personAuthorityKey: string | null }
+  ) {
+    const month = line.wageMonth.toISOString().slice(0, 7);
+    if (line.coverageKind === "PERSON") {
+      if (!line.personAuthorityKey) throw new ConflictException("PERSON 工资权威行缺少服务端稳定人员身份");
+      const existing = await tx.wagePersonLine.findFirst({
+        where: {
+          employeeId: line.personAuthorityKey,
+          projectAllocations: { some: { projectId: line.projectId } },
+          statementVersion: {
+            status: "confirmed",
+            sourceVersion: { wageMonth: month },
+            OR: [{
+              projectionOrigin: "ordinary"
+            }, {
+              projectionOrigin: "historical_takeover_legacy_link",
+              takeoverProjectionEnvelopes: {
+                some: {
+                  projectId: line.projectId,
+                  eligibilityRevocations: { none: {} }
+                }
+              }
+            }]
+          }
+        },
+        select: { id: true }
+      });
+      if (existing) throw new ConflictException("同人同月跨 #104/#105 工资来源冲突，必须整组阻断");
+      return;
+    }
+    if (line.coverageKind !== "ROLE_SUMMARY") throw new ConflictException("工资权威覆盖类型已漂移，必须失败关闭");
+    const existing = await tx.wagePersonLine.findFirst({
+      where: {
+        projectAllocations: { some: { projectId: line.projectId } },
+        statementVersion: {
+          status: "confirmed",
+          sourceVersion: { wageMonth: month },
+          OR: [{
+            projectionOrigin: "ordinary"
+          }, {
+            projectionOrigin: "historical_takeover_legacy_link",
+            takeoverProjectionEnvelopes: {
+              some: {
+                projectId: line.projectId,
+                eligibilityRevocations: { none: {} }
+              }
+            }
+          }]
+        }
+      },
+      select: { id: true }
+    });
+    if (existing) throw new ConflictException("B级岗位汇总与同项目同月 #105 工资来源重叠，必须整组阻断");
+  }
+
+  private async assertNoActivatedHistoricalWageSummaryConflict(
+    tx: AuthorityTx,
+    employmentCompanyId: string,
+    lines: Array<{
+      id: string;
+      authorityVersionId: string;
+      projectId: string;
+      wageMonth: Date;
+      coverageKind: string;
+      personAuthorityKey: string | null;
+      lineFingerprint: string;
+    }>
+  ) {
+    const buckets = [...new Map(lines.map((line) => {
+      const wageMonth = line.wageMonth.toISOString().slice(0, 7);
+      return [`${line.projectId}:${wageMonth}`, { projectId: line.projectId, wageMonth }];
+    })).values()].sort((left, right) =>
+      `${left.projectId}:${left.wageMonth}`.localeCompare(`${right.projectId}:${right.wageMonth}`)
+    );
+    const summaries = await tx.historicalWageSummaryAuthorityVersion.findMany({
+      where: {
+        employmentCompanyId,
+        OR: buckets,
+        atomicScope: {
+          is: {
+            scopeKind: "historical_wage",
+            receipts: {
+              some: {
+                action: "historical_wage_takeover.scope.activate",
+                status: "activated"
+              },
+              none: {
+                action: "historical_wage_takeover.scope.compensate",
+                status: "compensated"
+              }
+            }
+          }
+        }
+      },
+      select: {
+        id: true,
+        employmentCompanyId: true,
+        projectId: true,
+        wageMonth: true,
+        assignedWageExclusionSchemaVersion: true,
+        assignedWageExclusionPayload: true,
+        assignedWageExclusionSetFingerprint: true
+      },
+      orderBy: { id: "asc" }
+    });
+    if (!summaries.length) return;
+    const evidence = new Map<string, { fileObjectId: string; contentSha256: string }>();
+    for (const summary of summaries) {
+      const matchingLines = lines.filter((line) =>
+        line.projectId === summary.projectId &&
+        line.wageMonth.toISOString().slice(0, 7) === summary.wageMonth
+      );
+      if (!matchingLines.length) {
+        throw new ConflictException("B级历史工资汇总冲突范围已漂移，必须失败关闭");
+      }
+      if (matchingLines.some((line) => line.coverageKind === "ROLE_SUMMARY")) {
+        throw new ConflictException("B级历史工资汇总与同公司、同项目、同月 ROLE_SUMMARY 工资权威冲突");
+      }
+      if (matchingLines.some((line) => line.coverageKind !== "PERSON" || !line.personAuthorityKey)) {
+        throw new ConflictException("B级历史工资汇总冲突行类型或人员身份已漂移，必须失败关闭");
+      }
+      let computed: ReturnType<typeof computePol219AssignedWageExclusionSet>;
+      try {
+        const payload = summary.assignedWageExclusionPayload as {
+          schemaVersion?: unknown;
+          assignedWageExclusions?: unknown;
+        };
+        if (
+          summary.assignedWageExclusionSchemaVersion !== 1 ||
+          payload?.schemaVersion !== 1 ||
+          !Array.isArray(payload?.assignedWageExclusions)
+        ) {
+          throw new TypeError("invalid exclusion payload");
+        }
+        computed = computePol219AssignedWageExclusionSet(payload.assignedWageExclusions);
+        if (
+          strictJcs(computed.payload) !== strictJcs(summary.assignedWageExclusionPayload) ||
+          computed.fingerprint !== summary.assignedWageExclusionSetFingerprint
+        ) {
+          throw new TypeError("exclusion fingerprint drift");
+        }
+      } catch {
+        throw new ConflictException("B级历史工资汇总人员排除证明载荷或指纹已漂移，必须失败关闭");
+      }
+      const proofs = computed.payload.assignedWageExclusions;
+      const exact =
+        proofs.length === matchingLines.length &&
+        matchingLines.every((line) => proofs.some((proof) =>
+          proof.authorityVersionId === line.authorityVersionId &&
+          proof.lineId === line.id &&
+          proof.lineFingerprint === line.lineFingerprint
+        ));
+      if (!exact) {
+        throw new ConflictException("B级历史工资汇总缺少当前 #214 工资行的完整人员排除证明");
+      }
+      for (const proof of proofs) {
+        evidence.set(`${proof.fileObjectId}:${proof.contentSha256}`, {
+          fileObjectId: proof.fileObjectId,
+          contentSha256: proof.contentSha256
+        });
+      }
+    }
+    const expectedEvidence = [...evidence.values()].sort((left, right) =>
+      `${left.fileObjectId}:${left.contentSha256}`.localeCompare(`${right.fileObjectId}:${right.contentSha256}`)
+    );
+    const files = expectedEvidence.length ? await tx.fileObject.findMany({
+      where: { id: { in: expectedEvidence.map((item) => item.fileObjectId) } },
+      select: { id: true, storageStatus: true, contentSha256: true }
+    }) : [];
+    if (expectedEvidence.some((item) => !files.some((file) =>
+      file.id === item.fileObjectId &&
+      file.storageStatus === "active" &&
+      file.contentSha256 === item.contentSha256
+    ))) {
+      throw new ConflictException("B级历史工资汇总人员排除证明文件缺失、失效或内容漂移");
+    }
   }
 
   private resolveGuarantee(actorUserId: string, contract: AuthorityContract, input: CreateGuaranteeObligationVersionDto, effectiveFrom: Date, effectiveTo: Date | null) {

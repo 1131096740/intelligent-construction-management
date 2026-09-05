@@ -3,6 +3,25 @@ import { BadRequestException } from "@nestjs/common";
 import { WageStatementOperatingSourceAdapter } from "./wage-statement-operating-source.adapter";
 
 describe("WageStatementOperatingSourceAdapter", () => {
+  it("excludes historical takeover versions from the ordinary operating source", async () => {
+    const adapter = new WageStatementOperatingSourceAdapter();
+    const database = tx();
+
+    await adapter.readProjectSnapshots(database as never, "project-1");
+    await adapter.readSourceSnapshot(database as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "version-1:project-1"
+    });
+
+    expect(database.wageStatementVersion.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ projectionOrigin: "ordinary" })
+    }));
+    expect(database.wageStatementVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ projectionOrigin: "ordinary" })
+    }));
+  });
+
   it("rebuilds the confirmed per-project wage envelope without a payee or sensitive snapshot data", async () => {
     const adapter = new WageStatementOperatingSourceAdapter();
     const snapshot = await adapter.readSourceSnapshot(tx() as never, {
@@ -80,11 +99,11 @@ describe("WageStatementOperatingSourceAdapter", () => {
       .mockResolvedValueOnce([{
         id: "cost-cell-1", projectAllocationId: "allocation-1", amountCents: 1_000n,
         costComponent: { componentCode: "basic_wage" },
-        projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } }
+        projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } }
       }])
       .mockResolvedValueOnce([{
         amountCents: 2_000n, costComponent: { componentCode: "basic_wage" },
-        projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } }
+        projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } }
       }]);
     broken.wagePayableRef.findMany.mockResolvedValue([{
       id: "payable-adjustment-1",
@@ -117,8 +136,8 @@ describe("WageStatementOperatingSourceAdapter", () => {
       .mockResolvedValueOnce({ id: "version-0" });
     broken.wageStatementVersion.findUnique.mockResolvedValue({ statementId: "statement-1", revision: 2 });
     broken.wageProjectCostComponentAllocation.findMany
-      .mockResolvedValueOnce([{ id: "cost-cell-1", projectAllocationId: "allocation-1", amountCents: 2_000n, costComponent: { componentCode: "basic_wage" }, projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } }])
-      .mockResolvedValueOnce([{ amountCents: 1_000n, costComponent: { componentCode: "basic_wage" }, projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } }]);
+      .mockResolvedValueOnce([{ id: "cost-cell-1", projectAllocationId: "allocation-1", amountCents: 2_000n, costComponent: { componentCode: "basic_wage" }, projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } }])
+      .mockResolvedValueOnce([{ amountCents: 1_000n, costComponent: { componentCode: "basic_wage" }, projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } }]);
     broken.wagePayableRef.findMany.mockResolvedValue([{
       id: "payable-adjustment-1", projectAllocationId: "allocation-1", creditorBreakdownId: "creditor-1", amountCents: 1_000n,
       direction: "increase", adjustsPayableRefId: "payable-base-1", settlementRecheckRequired: false
@@ -162,8 +181,8 @@ describe("WageStatementOperatingSourceAdapter", () => {
       id: "version-1", statementId: "statement-1", revision: 1, kind: "base", operatingProjectionSnapshot: zeroProjection
     });
     zeroCells.wageProjectCostComponentAllocation.findMany.mockResolvedValue([
-      { id: "cost-cell-positive", projectAllocationId: "allocation-1", amountCents: 1_000n, costComponent: { componentCode: "basic_wage" }, projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } },
-      { id: "cost-cell-zero", projectAllocationId: "allocation-1", amountCents: 0n, costComponent: { componentCode: "employer_social_insurance" }, projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } }
+      { id: "cost-cell-positive", projectAllocationId: "allocation-1", amountCents: 1_000n, costComponent: { componentCode: "basic_wage" }, projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } },
+      { id: "cost-cell-zero", projectAllocationId: "allocation-1", amountCents: 0n, costComponent: { componentCode: "employer_social_insurance" }, projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } } }
     ]);
     zeroCells.wageProjectCreditorAllocation.findMany.mockResolvedValue([
       { id: "creditor-cell-positive", projectAllocationId: "allocation-1", creditorBreakdownId: "creditor-1", amountCents: 1_000n },
@@ -201,7 +220,7 @@ function tx() {
           projectAllocationId: "allocation-1",
           amountCents: 1_000n,
           costComponent: { componentCode: "basic_wage" },
-          projectAllocation: { projectId: "project-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } }
+          projectAllocation: { projectId: "project-1", serviceSnapshotId: "service-1", personLine: { employeeId: "employee-1", employmentSnapshotId: "employment-1" } }
         }
       ])
     },

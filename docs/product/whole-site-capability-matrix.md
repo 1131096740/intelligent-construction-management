@@ -6,20 +6,20 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f28e2088bbd42cf921b750c82e5beb292063a7e5f5cb94a15af37e0d2b3cbaeb` |
+| nestRoutes | ready | `60b675791027a4661929270364d79a13312d47b59f6f7fd05f8354a0f2037bba` |
 | webApiWrappers | ready | `2905d7042358f3f1810099f821d972fc96eed36121444dbfe1b80dc082128a28` |
 | webPageActions | ready | `3a0abb5afe5e35fe9a322815b78a6ccd46e9370be6384bf2cca584e129ade32d` |
-| routeUsage | ready | `e3f54898e570c7e18d725929362f084916cf8cbc395368c44e19c50a7df3c7ea` |
+| routeUsage | ready | `bc198a80dc53b55adfe937cc53727e1cbfe292b8b92da0c0a49a808307497952` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 559 |
+| routeCount | 566 |
 | pageRouteCount | 361 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 20 |
+| internalTaskRouteCount | 27 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 550 |
 | webRequestWithoutNestCount | 0 |
@@ -124,6 +124,7 @@
 | GET | /me/signature/ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getSignatureTicket | — | not_applicable | — |
 | GET | /me/work-items | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItems | — | not_applicable | — |
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | — |
+| GET | /operating-takeovers/historical-wage/options | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
 | GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
@@ -390,6 +391,12 @@
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | signature.upload-canvas | covered | — |
 | POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
+| POST | /operating-takeovers/historical-wage/scopes/activate | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /operating-takeovers/historical-wage/scopes/apply | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /operating-takeovers/historical-wage/scopes/attest | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /operating-takeovers/historical-wage/scopes/compensate | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /operating-takeovers/historical-wage/scopes | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /operating-takeovers/historical-wage/scopes/selection-ref | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /organization/departments | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | — | not_applicable | — |
 | POST | /organization/role-additions/apply | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | — | not_applicable | — |
 | POST | /organization/role-additions/preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition | — | not_applicable | — |

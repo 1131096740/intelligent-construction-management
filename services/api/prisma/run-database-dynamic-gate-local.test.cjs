@@ -18,6 +18,7 @@ const {
 const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
 const {
   GROUPS: remainingGroups,
+  createRuntimeEnvironment: createRemainingRuntimeEnvironment,
   selectGroups: selectRemainingGroups
 } = require("./run-database-dynamic-remaining-local.cjs");
 const {
@@ -54,18 +55,18 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 153 pending tests as executable local coverage", () => {
+test("manifest derives all 159 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 45,
-    fullyPendingSuites: 34,
+    pendingFiles: 46,
+    fullyPendingSuites: 35,
     partiallyPendingSuites: 11,
-    pendingTests: 153,
-    coveredFiles: 45,
-    coveredTests: 153,
+    pendingTests: 159,
+    coveredFiles: 46,
+    coveredTests: 159,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -104,7 +105,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=153/u
+    /inventory\.coveredTests=26，派生值=159/u
   );
 });
 
@@ -216,6 +217,26 @@ test("remaining runner can isolate one exact database subgroup", () => {
     ["generic_database_constraints"]
   );
   assert.equal(selectRemainingGroups([]).length, remainingGroups.length);
+});
+
+test("historical wage subgroup derives the service baseline SHA without inheriting caller commit metadata", () => {
+  const group = remainingGroups.find(({ id }) => id === "historical_wage_takeover");
+  assert.ok(group);
+
+  const environment = createRemainingRuntimeEnvironment(
+    {
+      PATH: "/usr/bin",
+      DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: "a".repeat(40),
+      BUILD_COMMIT_SHA: "b".repeat(40),
+      GIT_COMMIT_SHA: "c".repeat(40)
+    },
+    "/tmp/dynamic-gate",
+    "postgresql://jiangkong:jiangkong@127.0.0.1:5432/jiangkong_historical_wage_takeover_dynamic_test",
+    group
+  );
+
+  assert.equal(environment.GIT_COMMIT_SHA, "a".repeat(40));
+  assert.equal(environment.BUILD_COMMIT_SHA, undefined);
 });
 
 test("remaining runner rejects unknown, duplicate or malformed subgroup arguments", () => {

@@ -3,16 +3,16 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 559,
-    "classificationOverrideCount": 200,
+    "routeCount": 566,
+    "classificationOverrideCount": 207,
     "derivedProductionPageCount": 359,
-    "classificationOverrideSha256": "0c5f7c9c14e747913eaf6ae0de87ca9ba910051898c91dccf5a6ee2280cfd09d",
-    "consumerSurfaceOverrideSha256": "367ec7f976d7b75e7b1dfe10f4dea3f91f3fe8f276dd95ca365ef1bb9a8b3066",
+    "classificationOverrideSha256": "848c2e98e033db996b82e1c4d5c14ae673325751d7ad6d62374dc3a6aae1db7f",
+    "consumerSurfaceOverrideSha256": "06fd3b1d9c1b617a7c1c07dd9c1e82e406a3d563d2b05ec056458159281b54e4",
     "usageCounts": {
       "page": 361,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 20,
+      "internal_task": 27,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
@@ -20,7 +20,7 @@
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 18,
+      "operator_endpoint": 25,
       "none": 120
     }
   },
@@ -1224,6 +1224,48 @@
       "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/compensate",
       "usage": "internal_task",
       "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-takeovers/historical-wage/options",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/activate",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/apply",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/attest",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/compensate",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
+      "usage": "internal_task",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1360,6 +1402,48 @@
       "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/compensate",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-takeovers/historical-wage/options",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/activate",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/apply",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/attest",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/compensate",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
     }
   ]
 }

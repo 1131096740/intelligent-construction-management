@@ -26,7 +26,9 @@ export async function activeApprovalDelegatorIds(
       resourceId: null,
       enabled: true,
       startsAt: { lte: now },
-      endsAt: { gte: now }
+      // Delegation is a half-open interval: a mandate expiring at `now` is
+      // already unavailable to an atomic confirmation transaction.
+      endsAt: { gt: now }
     },
     select: { fromUserId: true }
   });
@@ -60,7 +62,7 @@ export async function activeScopedApprovalDelegatorIds(
       resourceId: scope.resourceId,
       enabled: true,
       startsAt: { lte: now },
-      endsAt: { gte: now }
+      endsAt: { gt: now }
     },
     select: { fromUserId: true }
   });

@@ -2,6 +2,27 @@ import { CompanyRoleResolverService, COMPANY_ROLE_RESOLUTION_ERROR } from "./com
 import type { PrismaService } from "../database/prisma.service";
 
 describe("CompanyRoleResolverService", () => {
+  it("can resolve roles entirely through the caller transaction client", async () => {
+    const rootPrisma = {
+      user: { findUnique: jest.fn(() => { throw new Error("root client must not be used"); }) }
+    } as unknown as PrismaService;
+    const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-finance" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-finance", key: "finance_director" }]) }
+    } as unknown as PrismaService;
+    const resolver = new CompanyRoleResolverService(rootPrisma);
+
+    await expect(resolver.resolveActiveRoleScopesInTransaction(tx, "finance-user")).resolves.toEqual([
+      "finance_director"
+    ]);
+    expect(rootPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(tx.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "finance-user" },
+      select: { isActive: true }
+    });
+  });
+
   it("rejects a missing user instead of returning active company roles", async () => {
     const prisma = {
       user: { findUnique: jest.fn().mockResolvedValue(null) },
