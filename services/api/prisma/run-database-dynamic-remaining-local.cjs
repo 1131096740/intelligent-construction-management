@@ -46,7 +46,7 @@ const GROUPS = [
       CONTRACT_DRAFT_AGGREGATE_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 16
+    pendingTests: 17
   },
   {
     id: "project_funding_availability",
@@ -177,7 +177,7 @@ const GROUPS = [
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1",
       RUN_POL215_DATABASE: "1"
     },
-    pendingTests: 45,
+    pendingTests: 44,
     requiresOperatingLedgerWriteSecret: true
   },
   {
@@ -241,6 +241,23 @@ function assertManifestMatchesGroups() {
     JSON.stringify(manifestFiles) !== JSON.stringify(runnerFiles)
   ) {
     fail("remaining runner 的 GROUPS 与 canonical manifest 不一致");
+  }
+  const manifestByPath = new Map(
+    manifestGroup.testFiles.map((file) => [
+      file.path.replace(/^services\/api\//u, ""),
+      file.pendingTests
+    ])
+  );
+  for (const group of GROUPS) {
+    const manifestPendingTests = group.files.reduce(
+      (sum, file) => sum + (manifestByPath.get(file) ?? 0),
+      0
+    );
+    if (manifestPendingTests !== group.pendingTests) {
+      fail(
+        `remaining runner 子组 ${group.id} 的 pendingTests 与 canonical manifest 不一致`
+      );
+    }
   }
 }
 
@@ -722,6 +739,7 @@ if (require.main === module) {
 module.exports = {
   ALLOWED_DATABASE_NAMES,
   GROUPS,
+  assertManifestMatchesGroups,
   assertLocalDatabaseUrl,
   assertLocalDockerEndpoint,
   assertSafeEnvironment,

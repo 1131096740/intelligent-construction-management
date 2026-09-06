@@ -5,6 +5,288 @@ BEGIN;
 
 SELECT pg_advisory_xact_lock(190731, 31);
 
+CREATE OR REPLACE FUNCTION jg_canonical_wage_delta_projection(
+  version_id TEXT,
+  project_id TEXT
+)
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+AS $$
+WITH current_version AS (
+  SELECT version."id", version."statementId", version."revision"
+  FROM "WageStatementVersion" version
+  WHERE version."id" = version_id
+),
+prior_version AS (
+  SELECT prior."id"
+  FROM "WageStatementVersion" prior
+  JOIN current_version current
+    ON current."statementId" = prior."statementId"
+  WHERE prior."status" = 'confirmed'
+    AND prior."revision" < current."revision"
+  ORDER BY prior."revision" DESC
+  LIMIT 1
+),
+current_costs AS (
+  SELECT cell."id" AS cell_id,
+    allocation."projectId" AS cell_project_id,
+    allocation."serviceSnapshotId" AS service_snapshot_id,
+    person."employeeId" AS employee_id,
+    person."employmentSnapshotId" AS employment_snapshot_id,
+    component."componentCode" AS component_code,
+    cell."amountCents" AS amount_cents
+  FROM "WageProjectCostComponentAllocation" cell
+  JOIN "WageProjectAllocation" allocation
+    ON allocation."id" = cell."projectAllocationId"
+  JOIN "WagePersonLine" person
+    ON person."id" = allocation."personLineId"
+  JOIN "WageCostComponent" component
+    ON component."id" = cell."costComponentId"
+  WHERE person."statementVersionId" = version_id
+),
+prior_costs AS (
+  SELECT allocation."projectId" AS cell_project_id,
+    allocation."serviceSnapshotId" AS service_snapshot_id,
+    person."employeeId" AS employee_id,
+    person."employmentSnapshotId" AS employment_snapshot_id,
+    component."componentCode" AS component_code,
+    cell."amountCents" AS amount_cents
+  FROM "WageProjectCostComponentAllocation" cell
+  JOIN "WageProjectAllocation" allocation
+    ON allocation."id" = cell."projectAllocationId"
+  JOIN "WagePersonLine" person
+    ON person."id" = allocation."personLineId"
+  JOIN "WageCostComponent" component
+    ON component."id" = cell."costComponentId"
+  WHERE person."statementVersionId" = (SELECT "id" FROM prior_version)
+),
+cost_deltas AS (
+  SELECT current.cell_id,
+    current.amount_cents - COALESCE(prior.amount_cents, 0) AS delta_cents
+  FROM current_costs current
+  LEFT JOIN prior_costs prior
+    ON prior.cell_project_id = current.cell_project_id
+   AND prior.service_snapshot_id = current.service_snapshot_id
+   AND prior.employee_id = current.employee_id
+   AND prior.employment_snapshot_id = current.employment_snapshot_id
+   AND prior.component_code = current.component_code
+  WHERE current.cell_project_id = project_id
+),
+current_payables AS (
+  SELECT allocation."id" AS project_allocation_id,
+    creditor."id" AS creditor_breakdown_id,
+    allocation."projectId" AS cell_project_id,
+    allocation."serviceSnapshotId" AS service_snapshot_id,
+    person."employeeId" AS employee_id,
+    person."employmentSnapshotId" AS employment_snapshot_id,
+    creditor."creditorSubjectType" AS creditor_subject_type,
+    creditor."creditorSubjectIdentityKey" AS creditor_identity_key,
+    creditor."creditorCategory" AS creditor_category,
+    cell."amountCents" AS amount_cents
+  FROM "WageProjectCreditorAllocation" cell
+  JOIN "WageProjectAllocation" allocation
+    ON allocation."id" = cell."projectAllocationId"
+  JOIN "WagePersonLine" person
+    ON person."id" = allocation."personLineId"
+  JOIN "WageCreditorBreakdown" creditor
+    ON creditor."id" = cell."creditorBreakdownId"
+  WHERE person."statementVersionId" = version_id
+),
+prior_payables AS (
+  SELECT allocation."projectId" AS cell_project_id,
+    allocation."serviceSnapshotId" AS service_snapshot_id,
+    person."employeeId" AS employee_id,
+    person."employmentSnapshotId" AS employment_snapshot_id,
+    creditor."creditorSubjectType" AS creditor_subject_type,
+    creditor."creditorSubjectIdentityKey" AS creditor_identity_key,
+    creditor."creditorCategory" AS creditor_category,
+    cell."amountCents" AS amount_cents
+  FROM "WageProjectCreditorAllocation" cell
+  JOIN "WageProjectAllocation" allocation
+    ON allocation."id" = cell."projectAllocationId"
+  JOIN "WagePersonLine" person
+    ON person."id" = allocation."personLineId"
+  JOIN "WageCreditorBreakdown" creditor
+    ON creditor."id" = cell."creditorBreakdownId"
+  WHERE person."statementVersionId" = (SELECT "id" FROM prior_version)
+),
+payable_deltas AS (
+  SELECT current.project_allocation_id,
+    current.creditor_breakdown_id,
+    current.amount_cents - COALESCE(prior.amount_cents, 0) AS delta_cents
+  FROM current_payables current
+  LEFT JOIN prior_payables prior
+    ON prior.cell_project_id = current.cell_project_id
+   AND prior.service_snapshot_id = current.service_snapshot_id
+   AND prior.employee_id = current.employee_id
+   AND prior.employment_snapshot_id = current.employment_snapshot_id
+   AND prior.creditor_subject_type IS NOT DISTINCT FROM current.creditor_subject_type
+   AND prior.creditor_identity_key IS NOT DISTINCT FROM current.creditor_identity_key
+   AND prior.creditor_category = current.creditor_category
+  WHERE current.cell_project_id = project_id
+)
+SELECT jsonb_build_object(
+  'priorVersionId', (SELECT "id" FROM prior_version),
+  'missingPriorCostIdentities', EXISTS (
+    SELECT 1
+    FROM prior_costs prior
+    WHERE prior.amount_cents > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM current_costs current
+        WHERE current.cell_project_id = prior.cell_project_id
+          AND current.service_snapshot_id = prior.service_snapshot_id
+          AND current.employee_id = prior.employee_id
+          AND current.employment_snapshot_id = prior.employment_snapshot_id
+          AND current.component_code = prior.component_code
+      )
+  ),
+  'missingPriorPayableIdentities', EXISTS (
+    SELECT 1
+    FROM prior_payables prior
+    WHERE prior.amount_cents > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM current_payables current
+        WHERE current.cell_project_id = prior.cell_project_id
+          AND current.service_snapshot_id = prior.service_snapshot_id
+          AND current.employee_id = prior.employee_id
+          AND current.employment_snapshot_id = prior.employment_snapshot_id
+          AND current.creditor_subject_type IS NOT DISTINCT FROM prior.creditor_subject_type
+          AND current.creditor_identity_key IS NOT DISTINCT FROM prior.creditor_identity_key
+          AND current.creditor_category = prior.creditor_category
+      )
+  ),
+  'reversalHasNonZero', EXISTS (
+    SELECT 1 FROM current_costs WHERE amount_cents <> 0
+    UNION ALL
+    SELECT 1 FROM current_payables WHERE amount_cents <> 0
+  ),
+  'costTotalCents', COALESCE((SELECT sum(abs(delta_cents)) FROM cost_deltas), 0),
+  'payableTotalCents', COALESCE((SELECT sum(abs(delta_cents)) FROM payable_deltas), 0),
+  'costCells', COALESCE((
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'id', cell_id,
+        'direction', CASE WHEN delta_cents > 0 THEN 'increase' ELSE 'decrease' END
+      ) ORDER BY cell_id
+    )
+    FROM cost_deltas
+    WHERE delta_cents <> 0
+  ), '[]'::JSONB),
+  'payableCells', COALESCE((
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'projectAllocationId', project_allocation_id,
+        'creditorBreakdownId', creditor_breakdown_id,
+        'amountCents', abs(delta_cents),
+        'direction', CASE WHEN delta_cents > 0 THEN 'increase' ELSE 'decrease' END
+      ) ORDER BY project_allocation_id, creditor_breakdown_id
+    )
+    FROM payable_deltas
+    WHERE delta_cents <> 0
+  ), '[]'::JSONB)
+);
+$$;
+
+CREATE OR REPLACE FUNCTION jg_validate_canonical_wage_operating_deltas(
+  candidate "OperatingFact",
+  version_kind TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  projection JSONB;
+  expected_amount NUMERIC;
+BEGIN
+  projection := jg_canonical_wage_delta_projection(
+    split_part(candidate."sourceBusinessId", ':', 1),
+    candidate."projectId"
+  );
+
+  IF (version_kind = 'base' AND projection->>'priorVersionId' IS NOT NULL)
+     OR (version_kind <> 'base' AND projection->>'priorVersionId' IS NULL)
+     OR COALESCE((projection->>'missingPriorCostIdentities')::BOOLEAN, FALSE)
+     OR COALESCE((projection->>'missingPriorPayableIdentities')::BOOLEAN, FALSE)
+     OR (version_kind = 'reversal' AND COALESCE((projection->>'reversalHasNonZero')::BOOLEAN, FALSE)) THEN
+    RAISE EXCEPTION '普通工资后续版本必须保留相邻已确认版本的完整身份，冲销版本必须为显式零金额矩阵'
+      USING ERRCODE = '23514';
+  END IF;
+
+  expected_amount := GREATEST(
+    (projection->>'costTotalCents')::NUMERIC,
+    (projection->>'payableTotalCents')::NUMERIC
+  );
+  IF candidate."amountCents" IS DISTINCT FROM expected_amount THEN
+    RAISE EXCEPTION '普通工资经营事实金额与相邻版本差额不一致'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF jsonb_typeof(candidate."sourceSnapshot"->'costDeltaCells') IS DISTINCT FROM 'array'
+     OR jsonb_array_length(candidate."sourceSnapshot"->'costDeltaCells')
+        IS DISTINCT FROM jsonb_array_length(projection->'costCells')
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(candidate."sourceSnapshot"->'costDeltaCells') cell
+       WHERE jsonb_typeof(cell) <> 'object'
+         OR jsonb_typeof(cell->'id') <> 'string'
+         OR jsonb_typeof(cell->'direction') <> 'string'
+         OR NOT (projection->'costCells' @> jsonb_build_array(
+           jsonb_build_object('id', cell->>'id', 'direction', cell->>'direction')
+         ))
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(candidate."sourceSnapshot"->'costDeltaCells') cell
+       GROUP BY cell->>'id'
+       HAVING count(*) <> 1
+     ) THEN
+    RAISE EXCEPTION '普通工资经营事实的成本差额单元不一致'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF jsonb_typeof(candidate."sourceSnapshot"->'payableRefIds') IS DISTINCT FROM 'array'
+     OR jsonb_array_length(candidate."sourceSnapshot"->'payableRefIds')
+        IS DISTINCT FROM jsonb_array_length(projection->'payableCells')
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(projection->'payableCells') expected
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM "WagePayableRef" payable
+         WHERE payable."confirmedVersionId" = split_part(candidate."sourceBusinessId", ':', 1)
+           AND payable."projectId" = candidate."projectId"
+           AND payable."projectAllocationId" = expected->>'projectAllocationId'
+           AND payable."creditorBreakdownId" = expected->>'creditorBreakdownId'
+           AND payable."amountCents" = (expected->>'amountCents')::BIGINT
+           AND payable."direction" = expected->>'direction'
+           AND (
+             (version_kind IN ('base', 'supplemental') AND payable."adjustsPayableRefId" IS NULL)
+             OR (version_kind IN ('correction', 'reversal') AND payable."adjustsPayableRefId" IS NOT NULL)
+           )
+           AND candidate."sourceSnapshot"->'payableRefIds' ? payable."id"
+       )
+     )
+     OR EXISTS (
+       SELECT 1
+       FROM "WagePayableRef" payable
+       WHERE payable."confirmedVersionId" = split_part(candidate."sourceBusinessId", ':', 1)
+         AND payable."projectId" = candidate."projectId"
+         AND NOT EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements(projection->'payableCells') expected
+           WHERE payable."projectAllocationId" = expected->>'projectAllocationId'
+             AND payable."creditorBreakdownId" = expected->>'creditorBreakdownId'
+             AND payable."amountCents" = (expected->>'amountCents')::BIGINT
+             AND payable."direction" = expected->>'direction'
+         )
+     ) THEN
+    RAISE EXCEPTION '普通工资经营事实的逐笔应付引用与相邻版本差额不一致'
+      USING ERRCODE = '23514';
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION jg_validate_canonical_wage_operating_fact(
   candidate "OperatingFact"
 )
@@ -244,37 +526,7 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
-  IF version_kind = 'base' AND (
-    candidate."amountCents" IS DISTINCT FROM (
-      SELECT COALESCE(sum(allocation."amountCents"), 0)
-      FROM "WageProjectAllocation" allocation
-      JOIN "WagePersonLine" person ON person."id" = allocation."personLineId"
-      WHERE person."statementVersionId" = split_part(candidate."sourceBusinessId", ':', 1)
-        AND allocation."projectId" = candidate."projectId"
-    )
-    OR EXISTS (
-      SELECT 1
-      FROM "WageProjectCreditorAllocation" cell
-      JOIN "WageProjectAllocation" allocation ON allocation."id" = cell."projectAllocationId"
-      JOIN "WagePersonLine" person ON person."id" = allocation."personLineId"
-      WHERE person."statementVersionId" = split_part(candidate."sourceBusinessId", ':', 1)
-        AND allocation."projectId" = candidate."projectId"
-        AND cell."amountCents" > 0
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "WagePayableRef" payable
-          WHERE payable."confirmedVersionId" = person."statementVersionId"
-            AND payable."projectAllocationId" = allocation."id"
-            AND payable."creditorBreakdownId" = cell."creditorBreakdownId"
-            AND payable."amountCents" = cell."amountCents"
-            AND payable."direction" = 'increase'
-            AND payable."adjustsPayableRefId" IS NULL
-        )
-    )
-  ) THEN
-    RAISE EXCEPTION '普通基础工资经营事实的金额或逐笔应付引用与冻结矩阵不一致'
-      USING ERRCODE = '23514';
-  END IF;
+  PERFORM jg_validate_canonical_wage_operating_deltas(candidate, version_kind);
 END;
 $$;
 

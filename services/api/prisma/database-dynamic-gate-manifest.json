@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 160,
     "terminalMigration": "20260906090000_pol224_s1_wage_canonical_operating_guard",
-    "terminalMigrationChecksum": "8740cd2d5dcce19e489addd2148ce0fc5c508bc8fd6a58777a8b41a0419b1820",
+    "terminalMigrationChecksum": "bdf0f904cfaaa4b45571b198debb3998a6688e5b9dd109c0ecd3b2b3b836504f",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -245,7 +245,7 @@
         },
         {
           "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
-          "pendingTests": 10,
+          "pendingTests": 4,
           "suiteStatus": "partial_pending"
         },
         {
@@ -360,7 +360,7 @@
         },
         {
           "path": "services/api/src/database/wage-statement-constraints.spec.ts",
-          "pendingTests": 4,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         },
         {

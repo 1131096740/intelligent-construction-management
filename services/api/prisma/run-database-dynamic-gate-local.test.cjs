@@ -18,6 +18,7 @@ const {
 const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
 const {
   GROUPS: remainingGroups,
+  assertManifestMatchesGroups,
   createRuntimeEnvironment: createRemainingRuntimeEnvironment,
   selectGroups: selectRemainingGroups
 } = require("./run-database-dynamic-remaining-local.cjs");
@@ -210,6 +211,7 @@ test("group selection rejects unknown and duplicate database groups", () => {
 });
 
 test("remaining runner can isolate one exact database subgroup", () => {
+  assert.doesNotThrow(() => assertManifestMatchesGroups());
   assert.deepEqual(
     selectRemainingGroups(["--group", "generic_database_constraints"]).map(
       (group) => group.id
