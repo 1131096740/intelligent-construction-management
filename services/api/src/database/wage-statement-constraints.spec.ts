@@ -686,7 +686,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     )).toBe(true);
   });
 
-  it("binds correction and reversal facts to adjacent matrix deltas while preserving zero-delta behavior", async () => {
+  it("binds correction deltas, preserves zero deltas and rejects nonzero reversal snapshots", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const baseInput = canonicalWageSourceInput(fixture);
     const { service, draftResult: baseDraft } = await createSubmittedCanonicalWage(
@@ -756,14 +756,20 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       WHERE fact."id" = ${correctionFact.id}
     `)).rejects.toThrow("成本差额单元不一致");
 
-    const reversal = await createSubmittedRevision(
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'reversal')::TEXT
+      FROM "OperatingFact" fact
+      WHERE fact."id" = ${correctionFact.id}
+    `)).rejects.toThrow("冲销版本必须为显式零金额矩阵");
+
+    const zeroDelta = await createSubmittedRevision(
       first,
       service,
       fixture,
       baseDraft.statementId,
       2,
-      "reversal",
-      "0",
+      "correction",
+      "60000",
       "v3"
     );
     await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
@@ -771,50 +777,35 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       expectedRevision: 3
     });
 
-    const reversalFact = await observer.operatingFact.findFirstOrThrow({
-      where: {
-        sourceType: "wage_statement_version",
-        sourceBusinessId: `${reversal.versionId}:${fixture.projectId}`
-      }
-    });
-    expect(reversalFact.amountCents).toBe(60000n);
-    await expect(first.$queryRaw(Prisma.sql`
-      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'reversal')::TEXT
-      FROM "OperatingFact" fact
-      WHERE fact."id" = ${reversalFact.id}
-    `)).resolves.toBeDefined();
-
-    const zeroDelta = await createSubmittedRevision(
+    const invalidReversal = await createSubmittedRevision(
       first,
       service,
       fixture,
       baseDraft.statementId,
       3,
-      "correction",
-      "0",
+      "reversal",
+      "1",
       "v4"
     );
-    await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+    await expect(service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
       idempotencyKey: randomUUID(),
       expectedRevision: 4
-    });
+    })).rejects.toThrow("工资全额冲销必须保留完整身份并提交显式零金额快照");
 
     const refs = await observer.wagePayableRef.findMany({
       where: {
         confirmedVersionId: {
-          in: [baseDraft.versionId, correction.versionId, reversal.versionId, zeroDelta.versionId]
+          in: [baseDraft.versionId, correction.versionId, zeroDelta.versionId, invalidReversal.versionId]
         }
       },
       orderBy: { createdAt: "asc" }
     });
-    expect(refs).toHaveLength(3);
+    expect(refs).toHaveLength(2);
     expect(refs.map((ref) => [ref.direction, ref.amountCents])).toEqual([
       ["increase", 100000n],
-      ["decrease", 40000n],
-      ["decrease", 60000n]
+      ["decrease", 40000n]
     ]);
     expect(refs[1]?.adjustsPayableRefId).toBe(refs[0]?.id);
-    expect(refs[2]?.adjustsPayableRefId).toBe(refs[0]?.id);
     await expect(observer.operatingFact.count({
       where: {
         sourceType: "wage_statement_version",
@@ -822,12 +813,12 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
           in: [
             `${baseDraft.versionId}:${fixture.projectId}`,
             `${correction.versionId}:${fixture.projectId}`,
-            `${reversal.versionId}:${fixture.projectId}`,
-            `${zeroDelta.versionId}:${fixture.projectId}`
+            `${zeroDelta.versionId}:${fixture.projectId}`,
+            `${invalidReversal.versionId}:${fixture.projectId}`
           ]
         }
       }
-    })).resolves.toBe(3);
+    })).resolves.toBe(2);
     await expect(observer.wageStatementVersion.findUniqueOrThrow({
       where: { id: zeroDelta.versionId },
       select: { status: true, operatingProjectionSnapshot: true }
@@ -839,6 +830,10 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
         projects: {}
       })
     }));
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: invalidReversal.versionId },
+      select: { status: true, confirmedAt: true, confirmedByUserId: true }
+    })).resolves.toEqual({ status: "submitted", confirmedAt: null, confirmedByUserId: null });
   });
 });
 
