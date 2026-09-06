@@ -806,6 +806,25 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       ["decrease", 40000n]
     ]);
     expect(refs[1]?.adjustsPayableRefId).toBe(refs[0]?.id);
+    const rootProjection = await first.$queryRaw<Array<{ projection: Prisma.JsonValue }>>(Prisma.sql`
+      SELECT jg_canonical_wage_delta_projection(
+        ${correction.versionId},
+        ${fixture.projectId}
+      ) AS projection
+    `);
+    expect(rootProjection[0]?.projection).toEqual(expect.objectContaining({
+      payableCells: [expect.objectContaining({
+        expectedRootId: refs[0]?.id,
+        expectedRootCount: 1
+      })]
+    }));
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_assert_canonical_wage_payable_root(
+        ${refs[1]?.id},
+        ${refs[0]?.id},
+        1
+      )::TEXT
+    `)).rejects.toThrow("唯一原始应付引用");
     await expect(observer.operatingFact.count({
       where: {
         sourceType: "wage_statement_version",
