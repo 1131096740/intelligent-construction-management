@@ -133,7 +133,7 @@ const GROUPS = [
       RUN_PROJECT_OPERATING_PROFILE_UPGRADE: "1"
     },
     pendingTests: 2,
-    preTerminalMigrationFixture: true
+    preTerminalMigrationFixture: "project_operating_profile"
   },
   {
     id: "generic_database_constraints",
@@ -198,7 +198,9 @@ const GROUPS = [
       RUN_WAGE_STATEMENT_DATABASE: "1",
       WAGE_STATEMENT_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 4
+    pendingTests: 10,
+    requiresOperatingLedgerWriteSecret: true,
+    preTerminalMigrationFixture: "terminal_migration"
   },
   {
     id: "historical_wage_takeover",
@@ -530,6 +532,30 @@ async function prepareProjectOperatingProfileUpgrade(
   );
 }
 
+async function prepareTerminalMigrationUpgrade(
+  databaseUrl,
+  environment,
+  temporaryRoot
+) {
+  const fixturePrismaRoot = path.join(temporaryRoot, "terminal-migration-upgrade-prisma");
+  await mkdir(fixturePrismaRoot, { recursive: true });
+  await cp(path.join(prismaRoot, "schema.prisma"), path.join(fixturePrismaRoot, "schema.prisma"));
+  await cp(path.join(prismaRoot, "migrations"), path.join(fixturePrismaRoot, "migrations"), {
+    recursive: true,
+    filter: (source) => {
+      const relativePath = path.relative(path.join(prismaRoot, "migrations"), source);
+      if (!relativePath || relativePath === "migration_lock.toml") return true;
+      const [migrationName] = relativePath.split(path.sep);
+      return migrationName < TERMINAL_MIGRATION;
+    }
+  });
+  await run(
+    pnpm,
+    ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy", "--schema", path.join(fixturePrismaRoot, "schema.prisma")],
+    { env: { ...environment, DATABASE_URL: databaseUrl }, forwardOutput: true }
+  );
+}
+
 async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
   assertSafeEnvironment(sourceEnv);
   const selectedGroups = selectGroups(args);
@@ -623,7 +649,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
       process.stdout.write(
         `[database-dynamic-remaining] start ${group.id} (${group.pendingTests} pending tests)\n`
       );
-      if (group.preTerminalMigrationFixture) {
+      if (group.preTerminalMigrationFixture === "project_operating_profile") {
         await prepareProjectOperatingProfileUpgrade(
           databaseUrl,
           environment,
@@ -631,6 +657,12 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
           containerName,
           dockerEnv,
           group.database
+        );
+      } else if (group.preTerminalMigrationFixture === "terminal_migration") {
+        await prepareTerminalMigrationUpgrade(
+          databaseUrl,
+          environment,
+          temporaryRoot
         );
       }
       await migrate(databaseUrl, environment);

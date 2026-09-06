@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-09-02）
+## 当前结论（更新至 2026-09-06）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -21,6 +21,8 @@
 - [x] 完整发布收据：[`docs/progress/2026-08-05-go-live-conditional-go.md`](docs/progress/2026-08-05-go-live-conditional-go.md)。
 
 ## 当前正在推进
+
+- [~] POL224-S1（Issue #257，2026-09-06）：基于 live `origin/main@1d43439c214c8a661439d0ed9c2d4bcefd7875a3` 的唯一 clean 隔离候选，修复普通 `wage_statement_version + project_wage` canonical 聚合投影与数据库通用 `project_wage` payee guard 的冲突。新增前向 migration 以真实工资版本、来源、项目、劳动关系公司、有效确认身份、冻结矩阵与逐笔 `WagePayableRef` 图谱校验该唯一例外：债务/成本主体必须为同一劳动关系公司，聚合事实不得设置 envelope payee/creditor；其他工资来源继续要求既有收款主体，历史工资 summary ref 的 `historical_reconciliation_only` 与禁止新付款/结算分配语义未改。基础版及更正事实快照统一冻结 `projectionOrigin=ordinary`；真实 Nest/Prisma + disposable PostgreSQL 16 原生 `createApprovedSource → createDraft → submit → confirm` 动态回归 11/11 通过，覆盖多人员/债权人/项目、伪造坐标与矩阵/ref 漂移拒绝、事务回滚、SoD/有效身份/同键并发幂等、更正与零差额；空库 160 migrations、修复前 159 迁移基线升级路径及 exact-SHA 完整发布门由官方 runner/Issue 回执绑定最终候选。未实现或继续 #224，未部署、未运行生产迁移，未访问或写入生产数据库、COS、权限、真实工资、付款、往来或期初余额。
 
 - [~] POL-12D（Issue #219，2026-09-05）：在唯一隔离非生产候选（基于 live main `f8419706a81d14e6670aef833c5e1cba4a677eab`）实现共享 `OperatingTakeoverModule` 的历史工资 adapter。A 级只消费完整跨项目闭合的 `WageApprovedSourceVersion`，经工资模块内部 historical-confirmation interface 在激活事务内生成 `projectionOrigin=historical_takeover_legacy_link` 的 canonical 工资版本/矩阵/`WagePayableRef` 与 legacy-link envelope，不新增 `OperatingFact`/`OperatingImpactEntry`；B 级使用双人确认、七类受控债权范围和两类历史对账 target 的不可变汇总权威，生成永久禁止新付款与结算分配的 summary payable ref；C 级只追加 unresolved gap。selectionRef、完整 read-set、跨源 #214 冲突组、legacy 一对一 bridge、correction/reversal lineage、inactive apply、Serializable 原子范围、同载荷回放/异载荷冲突、职责分离、委托身份、补偿式资格回退和 append-only receipt 均由服务端与数据库 fail-closed；R1 canonical command snapshot 对新 #219 receipt 强制不可变并兼容旧 receipt，R5 四张 B 表已改用稳定身份唯一键、root-payable 外键与关联校验函数。当前窄门：#214/#219 API 706/706、相关回归 90/90；disposable PostgreSQL 16 从空库完成 159 migrations 并通过 12/12 真实事务场景；API/Web typecheck、lint、build、`check:ui`、业务语言/错误门、CI 编排 76/76、官方 manifests（566 routes、528 wrappers/550 bindings、286 actions、route usage 0 unclassified、capability matrix 0 blockers）均通过；独立 Spec 复审在补齐 #214 ROLE_SUMMARY 对 `confirmed` 且未补偿 A envelope 的反向过滤后 PASS，Standards 硬标准 PASS。候选发现路径的全量/N+1 查询与 9,924 行服务拆分为两个非阻断 P2 残余，启用前需按实际数据量优化，不在本票扩大重构。exact-SHA 完整 `release:local`、push/PR/fixed-head CI/合并与 Issue 收口仍待完成；未部署、未运行生产迁移，未连接或写入生产数据库、COS、权限或业务数据，未实现 #224 或 #105 工资承担本体。
 
