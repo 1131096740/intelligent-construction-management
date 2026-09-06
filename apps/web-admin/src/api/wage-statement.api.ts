@@ -42,6 +42,10 @@ export interface WageStatementWorkbenchItem {
 export interface WageStatementWorkbenchReadModel {
   items: WageStatementWorkbenchItem[];
   capabilities: WageStatementCapabilities;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 export interface WageStatementSummaryReadModel {
@@ -91,8 +95,8 @@ export interface ApprovedWageSourceResult {
   id: string;
 }
 
-export async function fetchWageStatementWorkbench() {
-  return read<WageStatementWorkbenchReadModel>("/wage-statements/workbench", "读取月度工资承担工作台失败");
+export async function fetchWageStatementWorkbench(page = 1, pageSize = 20) {
+  return read<WageStatementWorkbenchReadModel>(`/wage-statements/workbench?page=${page}&pageSize=${pageSize}`, "读取月度工资承担工作台失败");
 }
 
 /** Fresh capability reads gate writes; aggregate reads are display hints only. */
@@ -125,6 +129,10 @@ export function createApprovedWageSource(body: Record<string, unknown>) {
 
 export function createWageStatementDraft(body: Record<string, unknown>) {
   return post<WageStatementCommandResult>("/wage-statements/drafts", body, "创建工资承担草稿失败");
+}
+
+export function updateWageStatementDraft(statementId: string, body: Record<string, unknown>) {
+  return post<WageStatementCommandResult>(`/wage-statements/${encodeURIComponent(statementId)}/draft`, body, "更新工资承担草稿失败");
 }
 
 export function submitWageStatement(statementId: string, body: WageStatementCommandInput) {

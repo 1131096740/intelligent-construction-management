@@ -10,6 +10,7 @@ import {
   confirmWageStatement,
   returnWageStatement,
   submitWageStatement,
+  updateWageStatementDraft,
   WageStatementApiError
 } from "./wage-statement.api";
 
@@ -37,7 +38,7 @@ describe("wage statement workbench API", () => {
     await fetchWageStatementImportPreview("statement / 1");
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/wage-statements/capabilities");
-    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/wage-statements/workbench");
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/wage-statements/workbench?page=1&pageSize=20");
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       3,
       "/wage-statements/statement%20%2F%201/summary"
@@ -54,10 +55,12 @@ describe("wage statement workbench API", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ statementId: "statement-1", revision: 1 }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ statementId: "statement-1", revision: 1 }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ statementId: "statement-1", revision: 2 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ statementId: "statement-1", revision: 2 }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ statementId: "statement-1", revision: 2 }), { status: 201 }));
 
     await createApprovedWageSource({ externalReference: "approved-batch" });
     await createWageStatementDraft({ sourceVersionId: "source / 1" });
+    await updateWageStatementDraft("statement / 1", { expectedRevision: 1 });
     await submitWageStatement("statement / 1", { idempotencyKey: "submit-key", expectedRevision: 1 });
     await returnWageStatement("statement / 1", { idempotencyKey: "return-key", expectedRevision: 1, reason: "请补充来源说明" });
     await confirmWageStatement("statement / 1", { idempotencyKey: "confirm-key", expectedRevision: 2 });
@@ -71,9 +74,10 @@ describe("wage statement workbench API", () => {
       method: "POST",
       body: JSON.stringify({ sourceVersionId: "source / 1" })
     }));
-    expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/wage-statements/statement%20%2F%201/submit", expect.objectContaining({ method: "POST" }));
-    expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/wage-statements/statement%20%2F%201/return", expect.objectContaining({ method: "POST" }));
-    expect(mockApiFetch).toHaveBeenNthCalledWith(5, "/wage-statements/statement%20%2F%201/confirm", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/wage-statements/statement%20%2F%201/draft", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/wage-statements/statement%20%2F%201/submit", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(5, "/wage-statements/statement%20%2F%201/return", expect.objectContaining({ method: "POST" }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(6, "/wage-statements/statement%20%2F%201/confirm", expect.objectContaining({ method: "POST" }));
   });
 
   it("keeps an explicit lifecycle business-rejection HTTP status for the page retry policy", async () => {

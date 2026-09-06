@@ -5414,8 +5414,8 @@ model BusinessEntrySubmissionSnapshot {
   @@index([projectId, sceneKey, frozenAt])
 }
 
-// POL-12A：外部已批准工资资料与月度承担单聚合。该聚合只冻结来源和分摊，
-// 不在本票生成 OperatingFact、工资应付或付款事实。
+// POL-12A：外部已批准工资资料只冻结人员、组成与债权权威事实；项目分摊及
+// 交叉矩阵由财务写入工资草稿。该来源版本创建后不可更新或删除。
 model WageApprovedSourceVersion {
   id                  String   @id @default(uuid())
   employmentCompanyId String

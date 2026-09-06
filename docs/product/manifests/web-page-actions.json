@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 286,
+    "registeredActionCount": 287,
     "pageActionCount": 53,
-    "backgroundActionCount": 233,
+    "backgroundActionCount": 234,
     "reachableVueFileCount": 136,
     "routeRootCount": 57,
     "totalVueFileCount": 160,
     "parsedVueFileCount": 160,
     "reachableProductionModuleCount": 248,
-    "templateEventDirectiveCount": 927,
+    "templateEventDirectiveCount": 928,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 280,
-    "candidateProductionMutationConsumerCount": 280,
-    "acceptedProductionMutationConsumerCount": 280,
-    "productionMutationConsumerPairCount": 280,
+    "coveredProductionMutationConsumerCount": 281,
+    "candidateProductionMutationConsumerCount": 281,
+    "acceptedProductionMutationConsumerCount": 281,
+    "productionMutationConsumerPairCount": 281,
     "blockerCount": 0
   },
   "evidence": {
@@ -19832,7 +19832,7 @@
         "event": "call",
         "handler": "createImportedDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 233,
+        "sourceLine": 269,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19938,7 +19938,7 @@
         "event": "call",
         "handler": "confirmWageStatementWithCapability",
         "kind": "background_call",
-        "sourceLine": 358,
+        "sourceLine": 415,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19990,6 +19990,73 @@
       ]
     },
     {
+      "id": "wage-statement.draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/工资承担工作台"
+      ],
+      "ownerRoutePaths": [
+        "/工资承担工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateImportedDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 280,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "updateWageStatementDraft",
+          "method": "POST",
+          "path": "/wage-statements/:param/draft",
+          "normalizedKey": "POST /wage-statements/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/wage-statements/:statementId/draft",
+            "normalizedKey": "POST /wage-statements/:param/draft",
+            "controller": "WageStatementController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateImportedDraftWithCapability",
+              "updateWageStatementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "wage-statement.return",
       "usage": "background",
       "routePaths": [
@@ -20004,7 +20071,7 @@
         "event": "call",
         "handler": "returnWageStatementWithCapability",
         "kind": "background_call",
-        "sourceLine": 348,
+        "sourceLine": 405,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20070,7 +20137,7 @@
         "event": "call",
         "handler": "submitWageStatementWithCapability",
         "kind": "background_call",
-        "sourceLine": 338,
+        "sourceLine": 395,
         "sourceColumn": 0
       },
       "semantic": "business_write",

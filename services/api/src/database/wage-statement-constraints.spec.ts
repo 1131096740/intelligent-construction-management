@@ -135,8 +135,9 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
 
     await observer.wageStatementVersion.deleteMany({ where: { statementId: statement.id } });
     await observer.wageStatement.delete({ where: { id: statement.id } });
-    await observer.wageApprovedSourceVersion.delete({ where: { id: source.id } });
-    await observer.fileObject.delete({ where: { id: evidence.id } });
+    // Approved sources are intentionally append-only.  This disposable
+    // database is dropped by the dynamic runner, so immutable fixture rows are
+    // left in place instead of weakening the production trigger for cleanup.
 
     await expectCheckViolation(
       first.wageStatement.create({
@@ -234,8 +235,172 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     await observer.wagePersonLine.deleteMany({ where: { statementVersionId: constraintVersion.id } });
     await observer.wageStatementVersion.deleteMany({ where: { statementId: constraintStatement.id } });
     await observer.wageStatement.delete({ where: { id: constraintStatement.id } });
-    await observer.wageApprovedSourceVersion.delete({ where: { id: constraintSource.id } });
-    await observer.fileObject.delete({ where: { id: constraintEvidence.id } });
+    // Keep immutable source/evidence fixtures until the disposable database is
+    // dropped by the runner.
+  });
+
+  it("serializes same-key source and draft creation before natural uniqueness can preempt replay", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const sourceInput = canonicalWageSourceInput(fixture);
+    const sourceAttempts = await Promise.all([
+      wageService(first).createApprovedSource(fixture.preparerUserId, sourceInput),
+      wageService(second).createApprovedSource(fixture.preparerUserId, sourceInput)
+    ]);
+    expect(sourceAttempts[0]).toEqual(sourceAttempts[1]);
+    expect(isSourceCreationResult(sourceAttempts[0])).toBe(true);
+    await expect(observer.wageApprovedSourceCommandReceipt.count({
+      where: { idempotencyKey: sourceInput.idempotencyKey }
+    })).resolves.toBe(1);
+    await expect(
+      wageService(second).createApprovedSource(fixture.preparerUserId, {
+        ...sourceInput,
+        externalReference: `${sourceInput.externalReference}-changed`
+      })
+    ).rejects.toThrow("同一幂等键不能用于不同外部工资来源命令");
+
+    const sourceResult = sourceAttempts[0];
+    if (!isSourceCreationResult(sourceResult)) throw new Error("并发来源创建未返回正式来源标识");
+    const draftInput = {
+      sourceVersionId: sourceResult.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [canonicalWagePersonLine(fixture, "100000")]
+    };
+    const draftAttempts = await Promise.all([
+      wageService(first).createDraft(fixture.preparerUserId, draftInput),
+      wageService(second).createDraft(fixture.preparerUserId, draftInput)
+    ]);
+    expect(draftAttempts[0]).toEqual(draftAttempts[1]);
+    expect(isDraftCreationResult(draftAttempts[0])).toBe(true);
+    await expect(observer.wageCommandReceipt.count({
+      where: { idempotencyKey: draftInput.idempotencyKey }
+    })).resolves.toBe(1);
+    await expect(
+      wageService(second).createDraft(fixture.preparerUserId, {
+        ...draftInput,
+        sourceVersionId: `${sourceResult.id}-changed`
+      })
+    ).rejects.toThrow("同一幂等键不能用于不同工资承担单命令");
+  });
+
+  it("keeps approved sources and submitted wage facts immutable in PostgreSQL", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const { sourceResult, draftResult } = await createSubmittedCanonicalWage(
+      first,
+      fixture,
+      canonicalWageSourceInput(fixture),
+      "100000"
+    );
+    const graph = await first.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      include: {
+        personLines: {
+          include: {
+            costComponents: true,
+            creditorBreakdowns: true,
+            projectAllocations: {
+              include: { componentAllocations: true, creditorAllocations: true }
+            }
+          }
+        }
+      }
+    });
+    const person = graph.personLines[0]!;
+    const allocation = person.projectAllocations[0]!;
+    const blocked: Array<() => Promise<unknown>> = [
+      () => first.wageApprovedSourceVersion.update({ where: { id: sourceResult.id }, data: { externalReference: "forged" } }),
+      () => first.wageApprovedSourceVersion.delete({ where: { id: sourceResult.id } }),
+      () => first.wagePersonLine.update({ where: { id: person.id }, data: { approvedAmountCents: 99999n } }),
+      () => first.wageCostComponent.update({ where: { id: person.costComponents[0]!.id }, data: { amountCents: 99999n } }),
+      () => first.wageCreditorBreakdown.update({ where: { id: person.creditorBreakdowns[0]!.id }, data: { amountCents: 99999n } }),
+      () => first.wageProjectAllocation.update({ where: { id: allocation.id }, data: { amountCents: 99999n } }),
+      () => first.wageProjectCostComponentAllocation.update({ where: { id: allocation.componentAllocations[0]!.id }, data: { amountCents: 99999n } }),
+      () => first.wageProjectCreditorAllocation.update({ where: { id: allocation.creditorAllocations[0]!.id }, data: { amountCents: 99999n } })
+    ];
+    for (const operation of blocked) {
+      await expect(operation()).rejects.toThrow(/immutable/i);
+    }
+    await expect(first.wagePersonLine.delete({ where: { id: person.id } })).rejects.toThrow(/immutable/i);
+  });
+
+  it("edits only the new draft after review return and preserves the returned version history", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const { service, draftResult } = await createSubmittedCanonicalWage(
+      first,
+      fixture,
+      canonicalWageSourceInput(fixture),
+      "100000"
+    );
+    const returned = await service.returnForReview(fixture.confirmerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1,
+      reason: "调整服务依据"
+    });
+    if (!isDraftCreationResult(returned)) throw new Error("退回重开未返回正式草稿标识");
+    const editedLine = canonicalWagePersonLine(fixture, "100000");
+    editedLine.projectAllocations[0]!.serviceSnapshotId = `${fixture.prefix}-service-edited`;
+    editedLine.projectCostComponentAllocations[0]!.serviceSnapshotId = `${fixture.prefix}-service-edited`;
+    editedLine.projectCreditorAllocations[0]!.serviceSnapshotId = `${fixture.prefix}-service-edited`;
+    await service.updateDraft(fixture.preparerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 2,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [editedLine]
+    });
+
+    const versions = await observer.wageStatementVersion.findMany({
+      where: { statementId: draftResult.statementId },
+      orderBy: { revision: "asc" },
+      include: { personLines: { include: { projectAllocations: true } } }
+    });
+    expect(returned).toEqual(expect.objectContaining({ revision: 2, status: "draft" }));
+    expect(versions[0]).toEqual(expect.objectContaining({ id: draftResult.versionId, status: "superseded" }));
+    expect(versions[0]!.personLines[0]!.projectAllocations[0]!.serviceSnapshotId).toBe(`${fixture.prefix}-service`);
+    expect(versions[1]).toEqual(expect.objectContaining({ id: returned.versionId, status: "draft" }));
+    expect(versions[1]!.personLines[0]!.projectAllocations[0]!.serviceSnapshotId).toBe(`${fixture.prefix}-service-edited`);
+  });
+
+  it("rolls back every draft row when a controlled batch insert fails", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const service = wageService(first);
+    const sourceResult = await service.createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(sourceResult)) throw new Error("工资来源创建未返回正式来源标识");
+    await first.$executeRawUnsafe(`
+      CREATE FUNCTION jg_test_fail_wage_creditor_matrix() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'controlled batch failure'; END $$;
+    `);
+    await first.$executeRawUnsafe(`
+      CREATE TRIGGER jg_test_fail_wage_creditor_matrix
+      BEFORE INSERT ON "WageProjectCreditorAllocation"
+      FOR EACH ROW EXECUTE FUNCTION jg_test_fail_wage_creditor_matrix();
+    `);
+    try {
+      await expect(service.createDraft(fixture.preparerUserId, {
+        sourceVersionId: sourceResult.id,
+        idempotencyKey: randomUUID(),
+        expectedRevision: 0,
+        wageMonth: fixture.wageMonth,
+        sourceTotalCents: "100000",
+        personLines: [canonicalWagePersonLine(fixture, "100000")]
+      })).rejects.toThrow("工资项目债权人矩阵批量写入失败");
+    } finally {
+      await first.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS jg_test_fail_wage_creditor_matrix ON "WageProjectCreditorAllocation";`
+      );
+      await first.$executeRawUnsafe(`DROP FUNCTION IF EXISTS jg_test_fail_wage_creditor_matrix();`);
+    }
+    await expect(observer.wageStatement.count({
+      where: { employmentCompanyId: fixture.companyId, wageMonth: fixture.wageMonth }
+    })).resolves.toBe(0);
+    await expect(observer.wageStatementVersion.count({
+      where: { sourceVersionId: sourceResult.id }
+    })).resolves.toBe(0);
   });
 
   it("confirms an ordinary canonical wage source without an envelope payee", async () => {
@@ -298,7 +463,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     }]);
   });
 
-  it("rejects forged canonical coordinates, envelope payees, matrix drift and payable-ref drift", async () => {
+  it("rejects forged canonical coordinates, envelope payees and payable-ref drift", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const sourceInput = canonicalWageSourceInput(fixture);
     const { draftResult } = await createSubmittedCanonicalWage(
@@ -378,18 +543,6 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       "不可变工资应付引用集合不一致"
     );
 
-    const allocation = await first.wageProjectAllocation.findFirstOrThrow({
-      where: { personLine: { statementVersionId: draftResult.versionId } }
-    });
-    await first.wageProjectCreditorAllocation.updateMany({
-      where: { projectAllocationId: allocation.id },
-      data: { amountCents: 99999n }
-    });
-    await expectCanonicalGuardRejection(
-      first,
-      canonicalCandidate,
-      "矩阵不完整或未逐分平衡"
-    );
     await expect(observer.operatingFact.count({
       where: {
         sourceType: "wage_statement_version",
@@ -427,6 +580,37 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       where: { id: draftResult.versionId },
       select: { status: true, confirmedAt: true, confirmedByUserId: true }
     })).resolves.toEqual({ status: "submitted", confirmedAt: null, confirmedByUserId: null });
+  });
+
+  it("rejects evidence drift committed while confirmation waits in the stable lock sequence", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const { draftResult } = await createSubmittedCanonicalWage(
+      first,
+      fixture,
+      canonicalWageSourceInput(fixture),
+      "100000"
+    );
+    let confirmation: Promise<unknown> | undefined;
+    await first.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "FileObject" WHERE "id" = ${fixture.evidenceFileId} FOR UPDATE
+      `);
+      confirmation = wageService(second).confirm(fixture.confirmerUserId, draftResult.statementId, {
+        idempotencyKey: randomUUID(),
+        expectedRevision: 1
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await tx.fileObject.update({
+        where: { id: fixture.evidenceFileId },
+        data: { contentSha256: "b".repeat(64) }
+      });
+    });
+    if (!confirmation) throw new Error("工资确认并发测试未启动");
+    await expect(confirmation).rejects.toThrow("外部批准工资资料证据已失效或校验值漂移");
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      select: { status: true, confirmedAt: true }
+    })).resolves.toEqual({ status: "submitted", confirmedAt: null });
   });
 
   it("keeps SoD, active identity, idempotency and concurrent confirmation intact", async () => {
@@ -650,14 +834,24 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       sourceVersion: "v1",
       basisDate: "2026-08-31",
       evidenceFileId: fixture.evidenceFileId,
-      approvedPersonLines: [employeeLine, secondEmployeeLine]
+      approvedPersonLines: [approvedAuthorityLine(employeeLine), approvedAuthorityLine(secondEmployeeLine)]
     };
-    const { service, draftResult } = await createSubmittedCanonicalWage(
-      first,
-      fixture,
-      sourceInput,
-      "150000"
-    );
+    const service = wageService(first);
+    const sourceResult = await service.createApprovedSource(fixture.preparerUserId, sourceInput);
+    if (!isSourceCreationResult(sourceResult)) throw new Error("多人工资来源创建未返回正式来源标识");
+    const draftResult = await service.createDraft(fixture.preparerUserId, {
+      sourceVersionId: sourceResult.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "150000",
+      personLines: [employeeLine, secondEmployeeLine]
+    });
+    if (!isDraftCreationResult(draftResult)) throw new Error("多人工资草稿创建未返回正式单据标识");
+    await service.submit(fixture.preparerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    });
     await service.confirm(fixture.confirmerUserId, draftResult.statementId, {
       idempotencyKey: randomUUID(),
       expectedRevision: 1
@@ -891,7 +1085,7 @@ async function createSubmittedCanonicalWage(
     expectedRevision: 0,
     wageMonth: fixture.wageMonth,
     sourceTotalCents,
-    personLines: sourceInput.approvedPersonLines
+    personLines: [canonicalWagePersonLine(fixture, sourceTotalCents)]
   });
   if (!isDraftCreationResult(draftResult)) throw new Error("工资草稿创建未返回正式单据标识");
   await service.submit(fixture.preparerUserId, draftResult.statementId, {
@@ -938,7 +1132,7 @@ async function createSubmittedRevision(
     disposition,
     wageMonth: fixture.wageMonth,
     sourceTotalCents: amountCents,
-    personLines: sourceInput.approvedPersonLines
+    personLines: [canonicalWagePersonLine(fixture, amountCents)]
   });
   if (!isDraftCreationResult(revisionResult)) throw new Error("工资修订未返回正式版本标识");
   await service.submit(fixture.preparerUserId, statementId, {
@@ -1132,20 +1326,10 @@ async function seedAdditionalProjectContext(
 }
 
 function canonicalWageSourceInput(fixture: Awaited<ReturnType<typeof seedCanonicalWageFixture>>) {
-  const line = {
-    employeeId: fixture.employeeUserId,
-    employmentSnapshotId: `${fixture.prefix}-employment`,
-    employmentCompanyId: fixture.companyId,
-    employmentPeriodStart: "2026-08-01",
-    employmentPeriodEnd: "2026-08-31",
-    positionCategory: "project_manager",
-    approvedAmountCents: "100000",
-    costComponents: [{ componentCode: "gross_wage", amountCents: "100000" }],
-    creditorBreakdowns: [{ creditorSubjectType: "employee_user" as const, creditorUserId: fixture.employeeUserId, creditorCategory: "employee_net_pay", amountCents: "100000" }],
-    projectAllocations: [{ projectId: fixture.projectId, serviceSnapshotId: `${fixture.prefix}-service`, serviceMonth: fixture.wageMonth, serviceEvidenceSha256: "a".repeat(64), amountCents: "100000" }],
-    projectCostComponentAllocations: [{ projectId: fixture.projectId, serviceSnapshotId: `${fixture.prefix}-service`, componentCode: "gross_wage", amountCents: "100000" }],
-    projectCreditorAllocations: [{ projectId: fixture.projectId, serviceSnapshotId: `${fixture.prefix}-service`, creditorSubjectType: "employee_user" as const, creditorUserId: fixture.employeeUserId, creditorCategory: "employee_net_pay", amountCents: "100000" }]
-  };
+  const { projectAllocations: _allocations, projectCostComponentAllocations: _costMatrix, projectCreditorAllocations: _creditorMatrix, ...line } = canonicalWagePersonLine(fixture, "100000");
+  void _allocations;
+  void _costMatrix;
+  void _creditorMatrix;
   return {
     idempotencyKey: randomUUID(),
     expectedRevision: 0,
@@ -1159,6 +1343,43 @@ function canonicalWageSourceInput(fixture: Awaited<ReturnType<typeof seedCanonic
     evidenceFileId: fixture.evidenceFileId,
     approvedPersonLines: [line]
   };
+}
+
+function canonicalWagePersonLine(
+  fixture: Awaited<ReturnType<typeof seedCanonicalWageFixture>>,
+  amountCents: string
+) {
+  return {
+    employeeId: fixture.employeeUserId,
+    employmentSnapshotId: `${fixture.prefix}-employment`,
+    employmentCompanyId: fixture.companyId,
+    employmentPeriodStart: "2026-08-01",
+    employmentPeriodEnd: "2026-08-31",
+    positionCategory: "project_manager",
+    approvedAmountCents: amountCents,
+    costComponents: [{ componentCode: "gross_wage", amountCents }],
+    creditorBreakdowns: [{ creditorSubjectType: "employee_user" as const, creditorUserId: fixture.employeeUserId, creditorCategory: "employee_net_pay", amountCents }],
+    projectAllocations: [{ projectId: fixture.projectId, serviceSnapshotId: `${fixture.prefix}-service`, serviceMonth: fixture.wageMonth, serviceEvidenceSha256: "a".repeat(64), amountCents }],
+    projectCostComponentAllocations: [{ projectId: fixture.projectId, serviceSnapshotId: `${fixture.prefix}-service`, componentCode: "gross_wage", amountCents }],
+    projectCreditorAllocations: [{ projectId: fixture.projectId, serviceSnapshotId: `${fixture.prefix}-service`, creditorSubjectType: "employee_user" as const, creditorUserId: fixture.employeeUserId, creditorCategory: "employee_net_pay", amountCents }]
+  };
+}
+
+function approvedAuthorityLine<T extends {
+  projectAllocations: unknown;
+  projectCostComponentAllocations: unknown;
+  projectCreditorAllocations: unknown;
+}>(line: T) {
+  const {
+    projectAllocations: _projectAllocations,
+    projectCostComponentAllocations: _projectCostComponentAllocations,
+    projectCreditorAllocations: _projectCreditorAllocations,
+    ...authority
+  } = line;
+  void _projectAllocations;
+  void _projectCostComponentAllocations;
+  void _projectCreditorAllocations;
+  return authority;
 }
 
 function canonicalWageSourceForAmount(
@@ -1177,10 +1398,7 @@ function canonicalWageSourceForAmount(
       ...line,
       approvedAmountCents: amountCents,
       costComponents: line.costComponents.map((component) => ({ ...component, amountCents })),
-      creditorBreakdowns: line.creditorBreakdowns.map((creditor) => ({ ...creditor, amountCents })),
-      projectAllocations: line.projectAllocations.map((allocation) => ({ ...allocation, amountCents })),
-      projectCostComponentAllocations: line.projectCostComponentAllocations.map((cell) => ({ ...cell, amountCents })),
-      projectCreditorAllocations: line.projectCreditorAllocations.map((cell) => ({ ...cell, amountCents }))
+      creditorBreakdowns: line.creditorBreakdowns.map((creditor) => ({ ...creditor, amountCents }))
     }]
   };
 }
