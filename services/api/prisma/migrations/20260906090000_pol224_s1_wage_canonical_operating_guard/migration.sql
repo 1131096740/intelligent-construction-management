@@ -14,8 +14,10 @@ LANGUAGE sql
 STABLE
 AS $$
 WITH current_version AS (
-  SELECT version."id", version."statementId", version."revision"
+  SELECT version."id", version."statementId", version."revision",
+    statement."employmentCompanyId" AS employment_company_id
   FROM "WageStatementVersion" version
+  JOIN "WageStatement" statement ON statement."id" = version."statementId"
   WHERE version."id" = version_id
 ),
 prior_version AS (
@@ -114,7 +116,9 @@ prior_payables AS (
 payable_deltas AS (
   SELECT current.project_allocation_id,
     current.creditor_breakdown_id,
-    current.amount_cents - COALESCE(prior.amount_cents, 0) AS delta_cents
+    current.amount_cents - COALESCE(prior.amount_cents, 0) AS delta_cents,
+    roots.expected_root_id,
+    roots.expected_root_count
   FROM current_payables current
   LEFT JOIN prior_payables prior
     ON prior.cell_project_id = current.cell_project_id
@@ -124,6 +128,33 @@ payable_deltas AS (
    AND prior.creditor_subject_type IS NOT DISTINCT FROM current.creditor_subject_type
    AND prior.creditor_identity_key IS NOT DISTINCT FROM current.creditor_identity_key
    AND prior.creditor_category = current.creditor_category
+  CROSS JOIN LATERAL (
+    SELECT min(root."id") AS expected_root_id,
+      count(*)::BIGINT AS expected_root_count
+    FROM "WagePayableRef" root
+    JOIN "WageStatementVersion" root_version
+      ON root_version."id" = root."confirmedVersionId"
+    JOIN "WageProjectAllocation" root_allocation
+      ON root_allocation."id" = root."projectAllocationId"
+    JOIN "WagePersonLine" root_person
+      ON root_person."id" = root."personLineId"
+    JOIN "WageCreditorBreakdown" root_creditor
+      ON root_creditor."id" = root."creditorBreakdownId"
+    WHERE root."adjustsPayableRefId" IS NULL
+      AND root."direction" = 'increase'
+      AND root_version."statementId" = (SELECT "statementId" FROM current_version)
+      AND root_version."revision" < (SELECT "revision" FROM current_version)
+      AND root_version."status" = 'confirmed'
+      AND root."debtorCompanyId" = (SELECT employment_company_id FROM current_version)
+      AND root."costBearingCompanyId" = (SELECT employment_company_id FROM current_version)
+      AND root."projectId" = current.cell_project_id
+      AND root_allocation."serviceSnapshotId" = current.service_snapshot_id
+      AND root_person."employeeId" = current.employee_id
+      AND root_person."employmentSnapshotId" = current.employment_snapshot_id
+      AND root_creditor."creditorSubjectType" IS NOT DISTINCT FROM current.creditor_subject_type
+      AND root_creditor."creditorSubjectIdentityKey" IS NOT DISTINCT FROM current.creditor_identity_key
+      AND root_creditor."creditorCategory" = current.creditor_category
+  ) roots
   WHERE current.cell_project_id = project_id
 )
 SELECT jsonb_build_object(
@@ -179,13 +210,34 @@ SELECT jsonb_build_object(
         'projectAllocationId', project_allocation_id,
         'creditorBreakdownId', creditor_breakdown_id,
         'amountCents', abs(delta_cents),
-        'direction', CASE WHEN delta_cents > 0 THEN 'increase' ELSE 'decrease' END
+        'direction', CASE WHEN delta_cents > 0 THEN 'increase' ELSE 'decrease' END,
+        'expectedRootId', expected_root_id,
+        'expectedRootCount', expected_root_count
       ) ORDER BY project_allocation_id, creditor_breakdown_id
     )
     FROM payable_deltas
     WHERE delta_cents <> 0
   ), '[]'::JSONB)
 );
+$$;
+
+CREATE OR REPLACE FUNCTION jg_assert_canonical_wage_payable_root(
+  actual_root_id TEXT,
+  expected_root_id TEXT,
+  expected_root_count BIGINT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+  IF expected_root_count IS DISTINCT FROM 1
+     OR actual_root_id IS DISTINCT FROM expected_root_id THEN
+    RAISE EXCEPTION '普通工资更正或冲销必须逐笔绑定唯一原始应付引用'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN TRUE;
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION jg_validate_canonical_wage_operating_deltas(
@@ -262,7 +314,14 @@ BEGIN
            AND payable."direction" = expected->>'direction'
            AND (
              (version_kind IN ('base', 'supplemental') AND payable."adjustsPayableRefId" IS NULL)
-             OR (version_kind IN ('correction', 'reversal') AND payable."adjustsPayableRefId" IS NOT NULL)
+             OR (
+               version_kind IN ('correction', 'reversal')
+               AND jg_assert_canonical_wage_payable_root(
+                 payable."adjustsPayableRefId",
+                 expected->>'expectedRootId',
+                 (expected->>'expectedRootCount')::BIGINT
+               )
+             )
            )
            AND candidate."sourceSnapshot"->'payableRefIds' ? payable."id"
        )

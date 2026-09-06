@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 160,
     "terminalMigration": "20260906090000_pol224_s1_wage_canonical_operating_guard",
-    "terminalMigrationChecksum": "bdf0f904cfaaa4b45571b198debb3998a6688e5b9dd109c0ecd3b2b3b836504f",
+    "terminalMigrationChecksum": "d86efc4d37a72ca9693c6af758b37f0f6d842c8646fe739b12613fb58e66ddb8",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
