@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `60b675791027a4661929270364d79a13312d47b59f6f7fd05f8354a0f2037bba` |
-| webApiWrappers | ready | `2905d7042358f3f1810099f821d972fc96eed36121444dbfe1b80dc082128a28` |
-| webPageActions | ready | `3a0abb5afe5e35fe9a322815b78a6ccd46e9370be6384bf2cca584e129ade32d` |
-| routeUsage | ready | `bc198a80dc53b55adfe937cc53727e1cbfe292b8b92da0c0a49a808307497952` |
+| nestRoutes | ready | `74b9be38b0a4a8c2445ab9e9c0618d1e568fa07739c8159af54d7fca710de30d` |
+| webApiWrappers | ready | `20c6405aefad1a3ea3ac4c5e7d784bbd4104e9a85d9b9cc161fb4099fe480121` |
+| webPageActions | ready | `7f9176724ed695f792f3c78b38b938a88a192b71dce0e0c525280244ee8e153f` |
+| routeUsage | ready | `809d8c2e564cfeda9f5f3877329cf1f3be5aa288fe98c14f89c443d4cbeff27b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 566 |
-| pageRouteCount | 361 |
+| routeCount | 574 |
+| pageRouteCount | 362 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 27 |
+| internalTaskRouteCount | 34 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 550 |
+| mainRequestBindingCount | 551 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -162,6 +162,9 @@
 | GET | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectOperatingProfile | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/capability | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverCapability | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/historical-financial/active-projection | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/historical-financial/manifests | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchHistoricalFinancialTakeoverBatches | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverBatches | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/scenes | external_takeover | none | — | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/workbook-template | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#downloadOperatingTakeoverTemplate | — | not_applicable | — |
@@ -493,6 +496,11 @@
 | POST | /projects/:projectId/operating-takeovers/authority-manifests/:manifestId/compensate | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /projects/:projectId/operating-takeovers/authority-manifests | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /projects/:projectId/operating-takeovers/files | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#uploadOperatingTakeoverSourceFile | operating-takeover.upload-source-file | covered | — |
+| POST | /projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/activate | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/apply-inactive | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/attest | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/compensate | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /projects/:projectId/operating-takeovers/historical-financial/manifests | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /projects/:projectId/operating-takeovers/precheck-xlsx | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#precheckOperatingTakeoverXlsx | operating-takeover.precheck-excel | covered | — |
 | POST | /projects/:projectId/operating-takeovers/precheck | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#precheckOperatingTakeover | operating-takeover.precheck | covered | — |
 | POST | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#createOperatingTakeoverBatch | operating-takeover.create-batch | covered | — |

@@ -36,7 +36,7 @@
       theme="warning"
       :close="false"
     >
-      当前版本仅提供既有接管记录查看；本票的资料上传、Excel 预检、批次创建、附件关联与激活写入暂未开放。
+      当前页面仅提供接管记录查看；历史应付与资金 manifest 的导入、inactive apply、复核、激活与补偿操作未在页面开放。
     </t-alert>
 
     <t-card
@@ -68,6 +68,28 @@
       >
         {{ selectedScene.description }}
       </p>
+    </t-card>
+
+    <t-card
+      v-if="selectedProjectId"
+      class="panel"
+      title="历史应付与资金 manifest"
+    >
+      <p class="helper-text">
+        仅展示已入库批次和 A/B/C 分级结果；未激活批次不进入正式投影，C 级永远只保留为缺口。
+      </p>
+      <t-table
+        row-key="id"
+        :columns="financialBatchColumns"
+        :data="financialBatches"
+        :loading="loading"
+        size="small"
+        empty="暂无历史应付与资金 manifest"
+      >
+        <template #status="{ row }">
+          {{ financialBatchStatusLabel(row.status) }}
+        </template>
+      </t-table>
     </t-card>
 
     <t-card
@@ -390,6 +412,7 @@ import {
   fetchOperatingTakeoverBatches,
   fetchOperatingTakeoverCapability,
   fetchOperatingTakeoverDetail,
+  fetchHistoricalFinancialTakeoverBatches,
   precheckOperatingTakeoverXlsx,
   updateOperatingTakeoverRow,
   uploadOperatingTakeoverSourceFile,
@@ -399,6 +422,7 @@ import {
   type OperatingTakeoverProfession,
   type OperatingTakeoverRowReadModel,
   type OperatingTakeoverSceneReadModel,
+  type HistoricalFinancialTakeoverBatchReadModel,
   precheckOperatingTakeover
 } from "../../api/operating-takeover.api";
 
@@ -408,6 +432,7 @@ const projectOptions = ref<Array<{ label: string; value: string }>>([]);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const scenes = ref<OperatingTakeoverSceneReadModel[]>([]);
 const batches = ref<OperatingTakeoverBatchReadModel[]>([]);
+const financialBatches = ref<HistoricalFinancialTakeoverBatchReadModel[]>([]);
 const detail = ref<OperatingTakeoverDetailReadModel | null>(null);
 const selectedProjectId = ref("");
 const selectedSceneKey = ref("");
@@ -453,6 +478,16 @@ const batchColumns = [
   { colKey: "totalRows", title: "总行数", width: 90 },
   { colKey: "blockedRows", title: "阻断", width: 90 },
   { colKey: "warningRows", title: "警告", width: 90 }
+];
+const financialBatchColumns = [
+  { colKey: "asOfDate", title: "截止日", width: 120 },
+  { colKey: "status", title: "状态", width: 120 },
+  { colKey: "totalRows", title: "总行数", width: 90 },
+  { colKey: "levelARows", title: "A 级", width: 80 },
+  { colKey: "levelBRows", title: "B 级", width: 80 },
+  { colKey: "gapRows", title: "C 级缺口", width: 100 },
+  { colKey: "blockedRows", title: "冲突阻断", width: 100 },
+  { colKey: "revision", title: "修订", width: 80 }
 ];
 const rowColumns = [
   { colKey: "rowNo", title: "行", width: 60 },
@@ -508,7 +543,10 @@ async function loadProject() {
     actions.value = capability.actions;
     confirmationProfessions.value = capability.confirmationProfessions;
     if (!scenes.value.some((scene) => scene.key === selectedSceneKey.value)) selectedSceneKey.value = scenes.value[0]?.key ?? "";
-    batches.value = await fetchOperatingTakeoverBatches(selectedProjectId.value);
+    [batches.value, financialBatches.value] = await Promise.all([
+      fetchOperatingTakeoverBatches(selectedProjectId.value),
+      fetchHistoricalFinancialTakeoverBatches(selectedProjectId.value)
+    ]);
     detail.value = null;
   } catch (error) {
     message.value = formatUnknownApiError(error, "加载历史经营接管场景失败");
@@ -876,6 +914,16 @@ function issueMessages(row: OperatingTakeoverRowReadModel) {
 
 function batchStatusLabel(status: string) {
   return { draft: "草稿", under_review: "待复核", activated: "已激活" }[status as "draft" | "under_review" | "activated"] ?? "待识别状态";
+}
+
+function financialBatchStatusLabel(status: HistoricalFinancialTakeoverBatchReadModel["status"]) {
+  return {
+    prepared: "已准备",
+    applied_inactive: "已 inactive apply",
+    attested: "已复核",
+    activated: "已激活",
+    compensated: "已补偿撤销"
+  }[status];
 }
 
 function reviewStatusLabel(status: string) {

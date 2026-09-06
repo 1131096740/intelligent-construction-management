@@ -215,6 +215,18 @@ const GROUPS = [
     requiresCandidateBaselineSha: true
   },
   {
+    id: "historical_financial_takeover",
+    database: "jiangkong_historical_financial_takeover_dynamic_test",
+    files: ["src/operating-takeover/historical-financial-takeover.pg.spec.ts"],
+    flags: {
+      RUN_POL224_HISTORICAL_FINANCIAL_PG: "1",
+      POL224_HISTORICAL_FINANCIAL_DATABASE_URL: "databaseUrl",
+      DATABASE_URL: "databaseUrl"
+    },
+    pendingTests: 4,
+    requiresCandidateBaselineSha: true
+  },
+  {
     id: "fund_movement",
     database: "jiangkong_fund_movement_dynamic_test",
     files: ["src/database/fund-movement-concurrency.spec.ts"],

@@ -14,18 +14,23 @@ import { HistoricalWageTakeoverController } from "./historical-wage-takeover.con
 import { HistoricalWageTakeoverSelectionRefService } from "./historical-wage-takeover-selection-ref.service";
 import { HistoricalWageTakeoverService } from "./historical-wage-takeover.service";
 import { WageStatementModule } from "../wage-statement/wage-statement.module";
+import { HistoricalFinancialTakeoverAdapter } from "./historical-financial-takeover.adapter";
+import { HistoricalFinancialTakeoverController } from "./historical-financial-takeover.controller";
+import { HistoricalFinancialTakeoverService } from "./historical-financial-takeover.service";
 
 @Module({
   imports: [AuthModule, AuditModule, BusinessEntryDefinitionModule, ClearingModule, FileModule, OperatingLedgerModule, WageStatementModule],
-  controllers: [OperatingTakeoverController, HistoricalWageTakeoverController],
+  controllers: [OperatingTakeoverController, HistoricalWageTakeoverController, HistoricalFinancialTakeoverController],
   providers: [
     OperatingTakeoverService,
     OperatingTakeoverExcelService,
     ConstructionEnterpriseClearingAdapter,
     OperatingTakeoverCoordinatorService,
     HistoricalWageTakeoverSelectionRefService,
-    HistoricalWageTakeoverService
+    HistoricalWageTakeoverService,
+    HistoricalFinancialTakeoverAdapter,
+    HistoricalFinancialTakeoverService
   ],
-  exports: [OperatingTakeoverService, OperatingTakeoverCoordinatorService, HistoricalWageTakeoverService]
+  exports: [OperatingTakeoverService, OperatingTakeoverCoordinatorService, HistoricalWageTakeoverService, HistoricalFinancialTakeoverService]
 })
 export class OperatingTakeoverModule {}

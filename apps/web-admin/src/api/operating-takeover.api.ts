@@ -75,6 +75,21 @@ export interface OperatingTakeoverSourceFileReadModel {
   createdAt: string;
 }
 
+export interface HistoricalFinancialTakeoverBatchReadModel {
+  id: string;
+  projectId: string;
+  asOfDate: string;
+  status: "prepared" | "applied_inactive" | "attested" | "activated" | "compensated";
+  revision: number;
+  manifestFingerprint: string;
+  totalRows: number;
+  levelARows: number;
+  levelBRows: number;
+  gapRows: number;
+  blockedRows: number;
+  createdAt: string;
+}
+
 async function ensureOk(response: Response, fallback: string): Promise<void> {
   if (!response.ok) {
     let detail = "";
@@ -130,6 +145,13 @@ export function fetchOperatingTakeoverCapability(projectId: string) {
 
 export function fetchOperatingTakeoverBatches(projectId: string) {
   return readJson<OperatingTakeoverBatchReadModel[]>(path(projectId), "加载历史经营接管批次失败");
+}
+
+export function fetchHistoricalFinancialTakeoverBatches(projectId: string) {
+  return readJson<HistoricalFinancialTakeoverBatchReadModel[]>(
+    path(projectId, "/historical-financial/manifests"),
+    "加载历史应付与资金接管批次失败"
+  );
 }
 
 export function fetchOperatingTakeoverDetail(projectId: string, batchId: string) {

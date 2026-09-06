@@ -56,18 +56,18 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 165 pending tests as executable local coverage", () => {
+test("manifest derives all 169 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 46,
-    fullyPendingSuites: 35,
+    pendingFiles: 47,
+    fullyPendingSuites: 36,
     partiallyPendingSuites: 11,
-    pendingTests: 165,
-    coveredFiles: 46,
-    coveredTests: 165,
+    pendingTests: 169,
+    coveredFiles: 47,
+    coveredTests: 169,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -106,7 +106,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=165/u
+    /inventory\.coveredTests=26，派生值=169/u
   );
 });
 
@@ -242,6 +242,26 @@ test("historical wage subgroup derives the service baseline SHA without inheriti
     },
     "/tmp/dynamic-gate",
     "postgresql://jiangkong:jiangkong@127.0.0.1:5432/jiangkong_historical_wage_takeover_dynamic_test",
+    group
+  );
+
+  assert.equal(environment.GIT_COMMIT_SHA, "a".repeat(40));
+  assert.equal(environment.BUILD_COMMIT_SHA, undefined);
+});
+
+test("historical financial subgroup derives the service baseline SHA without inheriting caller commit metadata", () => {
+  const group = remainingGroups.find(({ id }) => id === "historical_financial_takeover");
+  assert.ok(group);
+
+  const environment = createRemainingRuntimeEnvironment(
+    {
+      PATH: "/usr/bin",
+      DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: "a".repeat(40),
+      BUILD_COMMIT_SHA: "b".repeat(40),
+      GIT_COMMIT_SHA: "c".repeat(40)
+    },
+    "/tmp/dynamic-gate",
+    "postgresql://jiangkong:jiangkong@127.0.0.1:5432/jiangkong_historical_financial_takeover_dynamic_test",
     group
   );
 

@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 566,
-    "classificationOverrideCount": 207,
-    "derivedProductionPageCount": 359,
-    "classificationOverrideSha256": "848c2e98e033db996b82e1c4d5c14ae673325751d7ad6d62374dc3a6aae1db7f",
-    "consumerSurfaceOverrideSha256": "06fd3b1d9c1b617a7c1c07dd9c1e82e406a3d563d2b05ec056458159281b54e4",
+    "routeCount": 574,
+    "classificationOverrideCount": 214,
+    "derivedProductionPageCount": 360,
+    "classificationOverrideSha256": "75ee8362891133afef02176ddb2daba9c533323a381658a92419947a1231af5d",
+    "consumerSurfaceOverrideSha256": "81b9932f4010dd05c732f6d32a76bf0863a6c9951b9191aae6dc5dcbef1b4d70",
     "usageCounts": {
-      "page": 361,
+      "page": 362,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 27,
+      "internal_task": 34,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 413,
+      "web_api_wrapper": 414,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 25,
+      "operator_endpoint": 32,
       "none": 120
     }
   },
@@ -1227,6 +1227,48 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/active-projection",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/activate",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/apply-inactive",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/attest",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/compensate",
+      "usage": "internal_task",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "GET",
       "path": "/operating-takeovers/historical-wage/options",
       "usage": "internal_task",
       "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
@@ -1402,6 +1444,48 @@
       "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/compensate",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_215_non_production_authority_takeover_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/active-projection",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/activate",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/apply-inactive",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/attest",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId/compensate",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_224_non_production_historical_financial_operator_workflow"
     },
     {
       "method": "GET",
