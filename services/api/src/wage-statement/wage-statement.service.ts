@@ -32,6 +32,8 @@ import type {
   CreateWageStatementDraftDto,
   CreateWageStatementRevisionDto,
   ReturnWageStatementDto,
+  UpdateWageStatementDraftDto,
+  WageStatementWorkbenchQueryDto,
   WageStatementCommandDto
 } from "./wage-statement.dto";
 
@@ -39,6 +41,9 @@ type Tx = Prisma.TransactionClient;
 
 const SHA256 = /^[0-9a-f]{64}$/iu;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const MAX_WAGE_PERSON_LINES = 500;
+const MAX_WAGE_DETAIL_ROWS_PER_PERSON = 100;
+const MAX_WAGE_MATRIX_CELLS_PER_PERSON = 10_000;
 
 type ActiveApprovalDelegationEdge = { fromUserId: string; toUserId: string };
 
@@ -91,6 +96,37 @@ const WAGE_AGGREGATE_SELECT = {
 } satisfies Prisma.WageStatementSelect;
 
 type WageAggregateStatement = Prisma.WageStatementGetPayload<{ select: typeof WAGE_AGGREGATE_SELECT }>;
+
+// The paged workbench never hydrates person/allocation rows.  It needs only
+// the current header and, at most, its immediately preceding returned header;
+// counts are computed by one grouped PostgreSQL query below.
+const WAGE_WORKBENCH_SELECT = {
+  id: true,
+  employmentCompanyId: true,
+  wageMonth: true,
+  currentRevision: true,
+  updatedAt: true,
+  versions: {
+    orderBy: { revision: "desc" as const },
+    take: 2,
+    select: {
+      id: true,
+      revision: true,
+      status: true,
+      reviewDisposition: true,
+      reviewReturnedAt: true,
+      sourceVersion: { select: { externalReference: true, sourceVersion: true } }
+    }
+  }
+} satisfies Prisma.WageStatementSelect;
+
+type WageWorkbenchStatement = Prisma.WageStatementGetPayload<{ select: typeof WAGE_WORKBENCH_SELECT }>;
+type WageWorkbenchCountRow = {
+  statementVersionId: string;
+  personLineCount: bigint;
+  positionCategoryCount: bigint;
+  projectAllocationCount: bigint;
+};
 
 const WAGE_CONFIRMATION_INCLUDE = {
   sourceVersion: true,
@@ -814,17 +850,46 @@ export class WageStatementService {
     };
   }
 
-  async listWorkbench(actorUserId: string) {
+  async listWorkbench(actorUserId: string, query: WageStatementWorkbenchQueryDto = {}) {
     await this.assertReadAuthority(actorUserId);
-    const statements = await this.prisma.wageStatement.findMany({
-      select: WAGE_AGGREGATE_SELECT,
-      orderBy: [{ wageMonth: "desc" }, { updatedAt: "desc" }, { id: "asc" }]
+    const { page, pageSize } = workbenchPage(query);
+    const [statements, total] = await Promise.all([
+      this.prisma.wageStatement.findMany({
+        select: WAGE_WORKBENCH_SELECT,
+        orderBy: [{ wageMonth: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize
+      }),
+      this.prisma.wageStatement.count()
+    ]);
+    const currentVersionIds = statements.map((statement) => {
+      const version = statement.versions.find((candidate) => candidate.revision === statement.currentRevision);
+      if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
+      return version.id;
     });
+    const countRows = currentVersionIds.length
+      ? await this.prisma.$queryRaw<WageWorkbenchCountRow[]>(Prisma.sql`
+          SELECT
+            p."statementVersionId" AS "statementVersionId",
+            COUNT(DISTINCT p.id)::BIGINT AS "personLineCount",
+            COUNT(DISTINCT p."positionCategorySnapshot"->>'category')::BIGINT AS "positionCategoryCount",
+            COUNT(a.id)::BIGINT AS "projectAllocationCount"
+          FROM "WagePersonLine" p
+          LEFT JOIN "WageProjectAllocation" a ON a."personLineId" = p.id
+          WHERE p."statementVersionId" IN (${Prisma.join(currentVersionIds)})
+          GROUP BY p."statementVersionId"
+        `)
+      : [];
+    const countsByVersionId = new Map(countRows.map((row) => [row.statementVersionId, row]));
     const companyNames = await this.companyNames(statements.map((statement) => statement.employmentCompanyId));
     return {
       capabilities: await this.capabilities(actorUserId),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
       items: statements.map((statement) => {
-        const aggregate = this.aggregate(statement, companyNames);
+        const aggregate = this.workbenchAggregate(statement, companyNames, countsByVersionId);
         return {
           statementId: statement.id,
           employmentCompanyName: aggregate.employmentCompanyName,
@@ -840,6 +905,31 @@ export class WageStatementService {
           updatedAt: statement.updatedAt.toISOString()
         };
       })
+    };
+  }
+
+  private workbenchAggregate(
+    statement: WageWorkbenchStatement,
+    companyNames: Map<string, string>,
+    countsByVersionId: ReadonlyMap<string, WageWorkbenchCountRow>
+  ) {
+    const version = statement.versions.find((candidate) => candidate.revision === statement.currentRevision);
+    if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
+    const counts = countsByVersionId.get(version.id);
+    const returned = statement.versions.find((candidate) =>
+      candidate.reviewDisposition === "review_returned" && candidate.reviewReturnedAt
+    );
+    return {
+      employmentCompanyName: companyNames.get(statement.employmentCompanyId)!,
+      status: workbenchStatus(version.status),
+      statusLabel: workbenchStatusLabel(version.status),
+      sourceLabel: `外部批准工资资料 ${version.sourceVersion.externalReference}（${version.sourceVersion.sourceVersion}）`,
+      personLineCount: Number(counts?.personLineCount ?? 0n),
+      positionCategoryCount: Number(counts?.positionCategoryCount ?? 0n),
+      projectAllocationCount: Number(counts?.projectAllocationCount ?? 0n),
+      latestReviewReturn: returned?.reviewReturnedAt
+        ? { revision: returned.revision, returnedAt: returned.reviewReturnedAt.toISOString() }
+        : null
     };
   }
 
@@ -952,9 +1042,10 @@ export class WageStatementService {
     const normalized = normalizeApprovedSource(input);
     const fingerprintValue = sourceCommandFingerprint(normalized, actorUserId);
     return this.executeWithReceiptReplay(normalized.idempotencyKey, fingerprintValue, "approved_source", async () => this.serializable(async (tx) => {
+      await this.lockIdempotencyKey(tx, "approved_source", normalized.idempotencyKey);
       const replay = await this.replayApprovedSource(tx, normalized.idempotencyKey, fingerprintValue);
       if (replay) return replay;
-      const [company, evidence, employees, projects] = await Promise.all([
+      const [company, evidence, employees] = await Promise.all([
         tx.companyEntity.findUnique({
           where: { id: normalized.employmentCompanyId, isActive: true },
           select: { id: true, name: true }
@@ -963,8 +1054,7 @@ export class WageStatementService {
           where: { id: normalized.evidenceFileId },
           select: { id: true, storageStatus: true, contentSha256: true }
         }),
-        this.activeEmployees(tx, normalized.approvedPersonLines),
-        this.activeProjects(tx, normalized.approvedPersonLines)
+        this.activeEmployees(tx, normalized.approvedPersonLines)
       ]);
       if (!company) throw new NotFoundException("承担工资的我方公司不存在或已停用");
       if (
@@ -976,9 +1066,7 @@ export class WageStatementService {
         throw new BadRequestException("外部批准工资资料不存在、不可用或缺少内容校验值");
       }
       employeeMap(normalized.approvedPersonLines, employees);
-      projectMap(normalized.approvedPersonLines, projects);
-      assertServiceEvidenceBound(normalized.approvedPersonLines, evidence.contentSha256);
-      const sourceSnapshot = {
+      const sourceSnapshot = jsonValue({
         employmentCompany: { id: company.id, name: company.name },
         wageMonth: normalized.wageMonth,
         periodStart: normalized.periodStart,
@@ -987,10 +1075,10 @@ export class WageStatementService {
         sourceVersion: normalized.sourceVersion,
         basisDate: normalized.basisDate,
         evidence: { fileId: evidence.id, sha256: evidence.contentSha256 },
-        // 外部批准资料本身是劳动关系、岗位、成本、债权和服务分摊的唯一权威载荷；
-        // 系统只冻结其私有附件哈希和规范化的事实，不伪造独立 HR 主数据。
+        // 外部批准资料只冻结劳动关系、岗位、人员金额、成本组成和债权事实。
+        // 项目分摊及两张交叉矩阵属于财务草稿决定，不能进入来源快照。
         approvedPersonLines: normalized.approvedPersonLines
-      };
+      });
       const sourceFingerprint = fingerprint(sourceSnapshot);
       try {
         const created = await tx.wageApprovedSourceVersion.create({
@@ -1010,24 +1098,6 @@ export class WageStatementService {
             createdByUserId: actorUserId
           }
         });
-        for (const binding of serviceBasisDefinitions(normalized.approvedPersonLines, evidence.contentSha256)) {
-          await tx.wageServiceBasisBinding.create({
-            data: {
-              sourceVersionId: created.id,
-              projectId: binding.projectId,
-              serviceSnapshotId: binding.serviceSnapshotId,
-              serviceMonth: binding.serviceMonth,
-              evidenceSha256: binding.evidenceSha256,
-              authorityFingerprint: fingerprint({
-                sourceVersionId: created.id,
-                projectId: binding.projectId,
-                serviceSnapshotId: binding.serviceSnapshotId,
-                serviceMonth: binding.serviceMonth,
-                evidenceSha256: binding.evidenceSha256
-              })
-            }
-          });
-        }
         const result = { id: created.id };
         await this.approvedSourceReceipt(tx, normalized, "wage_statement.approved_source.create", created.id, fingerprintValue, actorUserId, result);
         await this.audit.record(tx, {
@@ -1039,7 +1109,9 @@ export class WageStatementService {
         });
         return result;
       } catch (error) {
-        if (prismaCode(error) === "P2002") throw new ConflictException("该我方公司的外部工资来源版本已存在");
+        if (prismaCode(error) === "P2002") {
+          throw new WageNaturalKeyRaceError("approved_source", "该我方公司的外部工资来源版本已存在");
+        }
         throw error;
       }
     }));
@@ -1051,6 +1123,7 @@ export class WageStatementService {
     assertBalancedWageStatementDraft(input);
     const fingerprintValue = commandFingerprint("wage_statement.draft.create", "new", input, actorUserId);
     return this.executeWithReceiptReplay(input.idempotencyKey, fingerprintValue, "statement", async () => this.serializable(async (tx) => {
+      await this.lockIdempotencyKey(tx, "statement", input.idempotencyKey);
       const replay = await this.replay(tx, input.idempotencyKey, fingerprintValue);
       if (replay) return replay;
       const source = await tx.wageApprovedSourceVersion.findUnique({
@@ -1060,7 +1133,7 @@ export class WageStatementService {
       if (source.wageMonth !== input.wageMonth) throw new BadRequestException("工资承担单月份必须与外部批准来源一致");
       const sourceLines = sourcePersonLines(source.sourceSnapshot);
       assertSourceFacts(input.personLines, sourceLines, source.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
-      const [company, evidence, employees, projects, serviceBasisBindings, businessPartyVersions] = await Promise.all([
+      const [company, evidence, employees, projects, businessPartyVersions] = await Promise.all([
         tx.companyEntity.findUnique({
           where: { id: source.employmentCompanyId, isActive: true },
           select: { id: true }
@@ -1070,11 +1143,7 @@ export class WageStatementService {
           select: { id: true, storageStatus: true, contentSha256: true }
         }),
         this.activeEmployees(tx, sourceLines),
-        this.activeProjects(tx, sourceLines),
-        tx.wageServiceBasisBinding.findMany({
-          where: { sourceVersionId: source.id },
-          select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true }
-        }),
+        this.activeProjects(tx, input.personLines),
         tx.businessPartyVersion.findMany({
           where: { id: { in: [...new Set(sourceLines.flatMap((line) => line.creditorBreakdowns.map((creditor) => creditor.creditorBusinessPartyVersionId).filter((id): id is string => Boolean(id))))] } },
           // A BusinessPartyVersion is the authority for an institution. Its
@@ -1086,9 +1155,10 @@ export class WageStatementService {
       if (!company) throw new BadRequestException("承担工资的我方公司不存在或已停用");
       assertSourceEvidenceActive(source, evidence);
       employeeMap(sourceLines, employees);
-      const projectById = projectMap(sourceLines, projects);
-      const serviceBindingByKey = serviceBasisBindingMap(source.id, sourceLines, serviceBasisBindings, source.evidenceSha256);
+      const projectById = projectMap(input.personLines, projects);
+      const serviceBindingByKey = await this.ensureServiceBasisBindings(tx, source.id, input.personLines, source.evidenceSha256);
       const businessPartyByVersionId = new Map(businessPartyVersions.map((version) => [version.id, version]));
+      preflightFrozenCreditorSnapshots(sourceLines, employees, businessPartyByVersionId);
       let statement: { id: string };
       try {
         statement = await tx.wageStatement.create({
@@ -1102,7 +1172,7 @@ export class WageStatementService {
         });
       } catch (error) {
         if (prismaCode(error) === "P2002") {
-          throw new ConflictException("该我方公司本月工资承担单已存在，请通过后续修订流程处理");
+          throw new WageNaturalKeyRaceError("statement", "该我方公司本月工资承担单已存在，请通过后续修订流程处理");
         }
         throw error;
       }
@@ -1120,47 +1190,17 @@ export class WageStatementService {
         },
         select: { id: true }
       });
-      for (const line of sourceLines) {
-        const person = await tx.wagePersonLine.create({
-          data: {
-            statementVersionId: version.id,
-            employeeId: line.employeeId,
-            employmentSnapshotId: line.employmentSnapshotId,
-            employeeSnapshot: jsonValue({ employeeId: line.employeeId }),
-            employmentSnapshot: jsonValue({ id: line.employmentSnapshotId, companyId: line.employmentCompanyId }),
-            periodSnapshot: jsonValue({ wageMonth: source.wageMonth, periodStart: line.employmentPeriodStart, periodEnd: line.employmentPeriodEnd }),
-            positionCategorySnapshot: jsonValue({ category: line.positionCategory }),
-            approvedAmountCents: BigInt(line.approvedAmountCents)
-          },
-          select: { id: true }
-        });
-        const components = await Promise.all(line.costComponents.map((component) => tx.wageCostComponent.create({ data: {
-          personLineId: person.id, componentCode: component.componentCode, amountCents: BigInt(component.amountCents), sourceSnapshot: jsonValue(component)
-        }, select: { id: true, componentCode: true } })));
-        const creditors = await Promise.all(line.creditorBreakdowns.map((creditor) => tx.wageCreditorBreakdown.create({ data: {
-          personLineId: person.id, creditorSubjectId: creditor.creditorSubjectId,
-          creditorSubjectType: creditor.creditorSubjectType, creditorUserId: creditor.creditorUserId,
-          creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId,
-          creditorSubjectIdentityKey: creditorIdentityKey(creditor),
-          creditorNameSnapshot: frozenCreditorName(creditor, employees, businessPartyByVersionId),
-          creditorUnifiedIdentitySnapshot: frozenCreditorUnifiedIdentity(creditor, businessPartyByVersionId),
-          creditorVersionFingerprint: frozenCreditorFingerprint(creditor, employees, businessPartyByVersionId),
-          creditorCategory: creditor.creditorCategory, amountCents: BigInt(creditor.amountCents), sourceSnapshot: jsonValue(creditor)
-        }, select: { id: true, creditorCategory: true, creditorSubjectType: true, creditorUserId: true, creditorBusinessPartyVersionId: true } })));
-        const allocations = await Promise.all(line.projectAllocations.map((allocation) => tx.wageProjectAllocation.create({ data: {
-          personLineId: person.id, projectId: allocation.projectId, serviceSnapshotId: allocation.serviceSnapshotId,
-          serviceBasisBindingId: serviceBindingByKey.get(serviceBasisKey(allocation))!.id,
-          serviceSnapshot: jsonValue({ ...allocation, project: projectById.get(allocation.projectId) }), amountCents: BigInt(allocation.amountCents)
-        }, select: { id: true, projectId: true, serviceSnapshotId: true } })));
-        if (line.projectCostComponentAllocations || line.projectCreditorAllocations) {
-          if (!line.projectCostComponentAllocations || !line.projectCreditorAllocations) throw new BadRequestException("项目成本组成矩阵和项目债权人矩阵必须同时明确填写");
-          const allocationByKey = new Map(allocations.map((allocation) => [`${allocation.projectId}:${allocation.serviceSnapshotId}`, allocation.id]));
-          const componentByCode = new Map(components.map((component) => [component.componentCode, component.id]));
-          const creditorByKey = new Map(creditors.map((creditor) => [`${creditor.creditorSubjectType}:${creditor.creditorSubjectType === "employee_user" ? creditor.creditorUserId : creditor.creditorBusinessPartyVersionId}:${creditor.creditorCategory}`, creditor.id]));
-          await tx.wageProjectCostComponentAllocation.createMany({ data: line.projectCostComponentAllocations.map((cell) => ({ projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资成本矩阵缺少项目分摊行"), costComponentId: required(componentByCode.get(cell.componentCode), "工资成本矩阵缺少成本组成行"), amountCents: BigInt(cell.amountCents) })) });
-          await tx.wageProjectCreditorAllocation.createMany({ data: line.projectCreditorAllocations.map((cell) => ({ projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资债权人矩阵缺少项目分摊行"), creditorBreakdownId: required(creditorByKey.get(`${cell.creditorSubjectType}:${cell.creditorSubjectType === "employee_user" ? cell.creditorUserId : cell.creditorBusinessPartyVersionId}:${cell.creditorCategory}`), "工资债权人矩阵缺少债权人行"), amountCents: BigInt(cell.amountCents) })) });
-        }
-      }
+      await this.writeVersionLines(
+        tx,
+        version.id,
+        sourceLines,
+        source.wageMonth,
+        input.personLines,
+        employees,
+        projectById,
+        serviceBindingByKey,
+        businessPartyByVersionId
+      );
       await this.audit.record(tx, {
         actorUserId,
         action: "wage_statement.draft.create",
@@ -1201,12 +1241,11 @@ export class WageStatementService {
       }
       const sourceLines = sourcePersonLines(source.sourceSnapshot);
       assertSourceFacts(input.personLines, sourceLines, statement.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
-      const [company, evidence, employees, projects, serviceBasisBindings, businessPartyVersions] = await Promise.all([
+      const [company, evidence, employees, projects, businessPartyVersions] = await Promise.all([
         tx.companyEntity.findUnique({ where: { id: statement.employmentCompanyId, isActive: true }, select: { id: true } }),
         tx.fileObject.findUnique({ where: { id: source.evidenceFileId }, select: { id: true, storageStatus: true, contentSha256: true } }),
         this.activeEmployees(tx, sourceLines),
-        this.activeProjects(tx, sourceLines),
-        tx.wageServiceBasisBinding.findMany({ where: { sourceVersionId: source.id }, select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true } }),
+        this.activeProjects(tx, input.personLines),
         tx.businessPartyVersion.findMany({
           where: { id: { in: [...new Set(sourceLines.flatMap((line) => line.creditorBreakdowns.map((creditor) => creditor.creditorBusinessPartyVersionId).filter((value): value is string => Boolean(value))))] } },
           select: { id: true, businessPartyId: true, versionNo: true, snapshot: true }
@@ -1215,9 +1254,10 @@ export class WageStatementService {
       if (!company) throw new BadRequestException("承担工资的我方公司不存在或已停用");
       assertSourceEvidenceActive(source, evidence);
       employeeMap(sourceLines, employees);
-      const projectById = projectMap(sourceLines, projects);
-      const serviceBindingByKey = serviceBasisBindingMap(source.id, sourceLines, serviceBasisBindings, source.evidenceSha256);
+      const projectById = projectMap(input.personLines, projects);
+      const serviceBindingByKey = await this.ensureServiceBasisBindings(tx, source.id, input.personLines, source.evidenceSha256);
       const businessPartyByVersionId = new Map(businessPartyVersions.map((version) => [version.id, version]));
+      preflightFrozenCreditorSnapshots(sourceLines, employees, businessPartyByVersionId);
       const revision = statement.currentRevision + 1;
       const version = await tx.wageStatementVersion.create({
         data: {
@@ -1238,6 +1278,65 @@ export class WageStatementService {
     }));
   }
 
+  async updateDraft(actorUserId: string, statementId: string, input: UpdateWageStatementDraftDto) {
+    await this.assertPrepareAuthority(actorUserId);
+    validateEditableDraftInput(input);
+    assertBalancedWageStatementDraft(input);
+    const id = required(statementId, "工资承担单不能为空");
+    const fingerprintValue = commandFingerprint("wage_statement.draft.update", id, input, actorUserId);
+    return this.executeWithReceiptReplay(input.idempotencyKey, fingerprintValue, "statement", async () => this.serializable(async (tx) => {
+      const replay = await this.replay(tx, input.idempotencyKey, fingerprintValue);
+      if (replay) return replay;
+      const statement = await this.lockStatement(tx, id);
+      assertRevision(statement.currentRevision, input.expectedRevision);
+      const version = await this.currentVersion(tx, id, statement.currentRevision);
+      if (version.status !== "draft") throw new ConflictException("只有当前草稿工资承担单可以编辑");
+      const source = await tx.wageApprovedSourceVersion.findUnique({ where: { id: version.sourceVersionId } });
+      if (!source) throw new ConflictException("工资草稿绑定的外部批准来源不存在");
+      if (source.wageMonth !== input.wageMonth || statement.wageMonth !== input.wageMonth) {
+        throw new BadRequestException("工资草稿月份必须与外部批准来源一致");
+      }
+      const sourceLines = sourcePersonLines(source.sourceSnapshot);
+      assertSourceFacts(input.personLines, sourceLines, statement.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
+      const [company, evidence, employees, projects, businessPartyVersions] = await Promise.all([
+        tx.companyEntity.findUnique({ where: { id: statement.employmentCompanyId, isActive: true }, select: { id: true } }),
+        tx.fileObject.findUnique({ where: { id: source.evidenceFileId }, select: { id: true, storageStatus: true, contentSha256: true } }),
+        this.activeEmployees(tx, sourceLines),
+        this.activeProjects(tx, input.personLines),
+        tx.businessPartyVersion.findMany({
+          where: { id: { in: [...new Set(sourceLines.flatMap((line) => line.creditorBreakdowns.map((creditor) => creditor.creditorBusinessPartyVersionId).filter((value): value is string => Boolean(value))))] } },
+          select: { id: true, businessPartyId: true, versionNo: true, snapshot: true }
+        })
+      ]);
+      if (!company) throw new BadRequestException("承担工资的我方公司不存在或已停用");
+      assertSourceEvidenceActive(source, evidence);
+      employeeMap(sourceLines, employees);
+      const projectById = projectMap(input.personLines, projects);
+      const serviceBindingByKey = await this.ensureServiceBasisBindings(tx, source.id, input.personLines, source.evidenceSha256);
+      const businessPartyByVersionId = new Map(businessPartyVersions.map((candidate) => [candidate.id, candidate]));
+      preflightFrozenCreditorSnapshots(sourceLines, employees, businessPartyByVersionId);
+
+      await tx.wageProjectCostComponentAllocation.deleteMany({ where: { projectAllocation: { personLine: { statementVersionId: version.id } } } });
+      await tx.wageProjectCreditorAllocation.deleteMany({ where: { projectAllocation: { personLine: { statementVersionId: version.id } } } });
+      await tx.wageProjectAllocation.deleteMany({ where: { personLine: { statementVersionId: version.id } } });
+      await tx.wageCostComponent.deleteMany({ where: { personLine: { statementVersionId: version.id } } });
+      await tx.wageCreditorBreakdown.deleteMany({ where: { personLine: { statementVersionId: version.id } } });
+      await tx.wagePersonLine.deleteMany({ where: { statementVersionId: version.id } });
+      await this.writeVersionLines(tx, version.id, sourceLines, source.wageMonth, input.personLines, employees, projectById, serviceBindingByKey, businessPartyByVersionId);
+      await tx.wageStatementVersion.update({ where: { id: version.id }, data: { lastEditedByUserId: actorUserId } });
+      const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "draft" };
+      await this.receipt(tx, input, "wage_statement.draft.update", id, fingerprintValue, actorUserId, result);
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "wage_statement.draft.update",
+        businessType: "wage_statement_version",
+        businessId: version.id,
+        metadata: jsonValue({ statementId: id, expectedRevision: input.expectedRevision })
+      });
+      return result;
+    }));
+  }
+
   private async writeVersionLines(
     tx: Tx,
     versionId: string,
@@ -1249,53 +1348,96 @@ export class WageStatementService {
     serviceBindingByKey: ReadonlyMap<string, ServiceBasisBinding>,
     businessPartyByVersionId: ReadonlyMap<string, { id: string; businessPartyId: string; versionNo: number; snapshot: Prisma.JsonValue }>
   ) {
-    // `sourceLines` is intentionally accepted so callers must prove the exact
-    // source before writing. The persisted rows use that authoritative frozen
-    // form, not a current roster or a ratio calculation.
     if (sourceLines.length !== lines.length) throw new ConflictException("外部批准工资来源人员事实不完整，不能创建后续修订");
+    const personRows: Prisma.WagePersonLineCreateManyInput[] = [];
+    const componentRows: Prisma.WageCostComponentCreateManyInput[] = [];
+    const creditorRows: Prisma.WageCreditorBreakdownCreateManyInput[] = [];
+    const allocationRows: Prisma.WageProjectAllocationCreateManyInput[] = [];
+    const componentMatrixRows: Prisma.WageProjectCostComponentAllocationCreateManyInput[] = [];
+    const creditorMatrixRows: Prisma.WageProjectCreditorAllocationCreateManyInput[] = [];
+
     for (const line of lines) {
-      const person = await tx.wagePersonLine.create({
-        data: {
-          statementVersionId: versionId, employeeId: line.employeeId, employmentSnapshotId: line.employmentSnapshotId,
-          employeeSnapshot: jsonValue({ employeeId: line.employeeId }),
-          employmentSnapshot: jsonValue({ id: line.employmentSnapshotId, companyId: line.employmentCompanyId }),
-          periodSnapshot: jsonValue({ wageMonth, periodStart: line.employmentPeriodStart, periodEnd: line.employmentPeriodEnd }),
-          positionCategorySnapshot: jsonValue({ category: line.positionCategory }), approvedAmountCents: BigInt(line.approvedAmountCents)
-        }, select: { id: true }
+      const personLineId = randomUUID();
+      personRows.push({
+        id: personLineId,
+        statementVersionId: versionId,
+        employeeId: line.employeeId,
+        employmentSnapshotId: line.employmentSnapshotId,
+        employeeSnapshot: jsonValue({ employeeId: line.employeeId }),
+        employmentSnapshot: jsonValue({ id: line.employmentSnapshotId, companyId: line.employmentCompanyId }),
+        periodSnapshot: jsonValue({ wageMonth, periodStart: line.employmentPeriodStart, periodEnd: line.employmentPeriodEnd }),
+        positionCategorySnapshot: jsonValue({ category: line.positionCategory }),
+        approvedAmountCents: BigInt(line.approvedAmountCents)
       });
-      const components = await Promise.all(line.costComponents.map((component) => tx.wageCostComponent.create({ data: {
-        personLineId: person.id, componentCode: component.componentCode, amountCents: BigInt(component.amountCents), sourceSnapshot: jsonValue(component)
-      }, select: { id: true, componentCode: true } })));
-      const creditors = await Promise.all(line.creditorBreakdowns.map((creditor) => tx.wageCreditorBreakdown.create({ data: {
-        personLineId: person.id, creditorSubjectId: creditor.creditorSubjectId,
-        creditorSubjectType: creditor.creditorSubjectType, creditorUserId: creditor.creditorUserId,
-        creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId,
-        creditorSubjectIdentityKey: creditorIdentityKey(creditor),
-        creditorNameSnapshot: frozenCreditorName(creditor, employees, businessPartyByVersionId),
-        creditorUnifiedIdentitySnapshot: frozenCreditorUnifiedIdentity(creditor, businessPartyByVersionId),
-        creditorVersionFingerprint: frozenCreditorFingerprint(creditor, employees, businessPartyByVersionId),
-        creditorCategory: creditor.creditorCategory, amountCents: BigInt(creditor.amountCents), sourceSnapshot: jsonValue(creditor)
-      }, select: { id: true, creditorCategory: true, creditorSubjectType: true, creditorUserId: true, creditorBusinessPartyVersionId: true } })));
-      const allocations = await Promise.all(line.projectAllocations.map((allocation) => tx.wageProjectAllocation.create({ data: {
-        personLineId: person.id, projectId: allocation.projectId, serviceSnapshotId: allocation.serviceSnapshotId,
-        serviceBasisBindingId: required(serviceBindingByKey.get(serviceBasisKey(allocation))?.id, "外部批准工资来源的服务依据绑定不完整，不能创建后续修订"),
-        serviceSnapshot: jsonValue({ ...allocation, project: projectById.get(allocation.projectId) }), amountCents: BigInt(allocation.amountCents)
-      }, select: { id: true, projectId: true, serviceSnapshotId: true } })));
+      const componentByCode = new Map(line.costComponents.map((component) => {
+        const id = randomUUID();
+        componentRows.push({ id, personLineId, componentCode: component.componentCode, amountCents: BigInt(component.amountCents), sourceSnapshot: jsonValue(component) });
+        return [component.componentCode, id] as const;
+      }));
+      const creditorByKey = new Map(line.creditorBreakdowns.map((creditor) => {
+        const id = randomUUID();
+        creditorRows.push({
+          id,
+          personLineId,
+          creditorSubjectId: creditor.creditorSubjectId,
+          creditorSubjectType: creditor.creditorSubjectType,
+          creditorUserId: creditor.creditorUserId,
+          creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId,
+          creditorSubjectIdentityKey: creditorIdentityKey(creditor),
+          creditorNameSnapshot: frozenCreditorName(creditor, employees, businessPartyByVersionId),
+          creditorUnifiedIdentitySnapshot: frozenCreditorUnifiedIdentity(creditor, businessPartyByVersionId),
+          creditorVersionFingerprint: frozenCreditorFingerprint(creditor, employees, businessPartyByVersionId),
+          creditorCategory: creditor.creditorCategory,
+          amountCents: BigInt(creditor.amountCents),
+          sourceSnapshot: jsonValue(creditor)
+        });
+        return [creditorIdentityKeyWithCategory(creditor), id] as const;
+      }));
+      const allocationByKey = new Map(line.projectAllocations.map((allocation) => {
+        const id = randomUUID();
+        allocationRows.push({
+          id,
+          personLineId,
+          projectId: allocation.projectId,
+          serviceSnapshotId: allocation.serviceSnapshotId,
+          serviceBasisBindingId: required(serviceBindingByKey.get(serviceBasisKey(allocation))?.id, "工资草稿的服务依据绑定不完整，不能写入"),
+          serviceSnapshot: jsonValue({ ...allocation, project: projectById.get(allocation.projectId) }),
+          amountCents: BigInt(allocation.amountCents)
+        });
+        return [serviceBasisKey(allocation), id] as const;
+      }));
       if (!line.projectCostComponentAllocations || !line.projectCreditorAllocations) {
         throw new BadRequestException("项目成本组成矩阵和项目债权人矩阵必须同时明确填写");
       }
-      const allocationByKey = new Map(allocations.map((allocation) => [`${allocation.projectId}:${allocation.serviceSnapshotId}`, allocation.id]));
-      const componentByCode = new Map(components.map((component) => [component.componentCode, component.id]));
-      const creditorByKey = new Map(creditors.map((creditor) => [`${creditor.creditorSubjectType}:${creditor.creditorSubjectType === "employee_user" ? creditor.creditorUserId : creditor.creditorBusinessPartyVersionId}:${creditor.creditorCategory}`, creditor.id]));
-      await tx.wageProjectCostComponentAllocation.createMany({ data: line.projectCostComponentAllocations.map((cell) => ({
+      componentMatrixRows.push(...line.projectCostComponentAllocations.map((cell) => ({
+        id: randomUUID(),
         projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资成本矩阵缺少项目分摊行"),
-        costComponentId: required(componentByCode.get(cell.componentCode), "工资成本矩阵缺少成本组成行"), amountCents: BigInt(cell.amountCents)
-      })) });
-      await tx.wageProjectCreditorAllocation.createMany({ data: line.projectCreditorAllocations.map((cell) => ({
-        projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资债权人矩阵缺少项目分摊行"),
-        creditorBreakdownId: required(creditorByKey.get(`${cell.creditorSubjectType}:${cell.creditorSubjectType === "employee_user" ? cell.creditorUserId : cell.creditorBusinessPartyVersionId}:${cell.creditorCategory}`), "工资债权人矩阵缺少债权人行"),
+        costComponentId: required(componentByCode.get(cell.componentCode), "工资成本矩阵缺少成本组成行"),
         amountCents: BigInt(cell.amountCents)
-      })) });
+      })));
+      creditorMatrixRows.push(...line.projectCreditorAllocations.map((cell) => ({
+        id: randomUUID(),
+        projectAllocationId: required(allocationByKey.get(`${cell.projectId}:${cell.serviceSnapshotId}`), "工资债权人矩阵缺少项目分摊行"),
+        creditorBreakdownId: required(creditorByKey.get(creditorIdentityKeyWithCategory(cell)), "工资债权人矩阵缺少债权人行"),
+        amountCents: BigInt(cell.amountCents)
+      })));
+    }
+
+    await this.writeBatch("人员事实", personRows.length, () => tx.wagePersonLine.createMany({ data: personRows }));
+    await this.writeBatch("成本组成", componentRows.length, () => tx.wageCostComponent.createMany({ data: componentRows }));
+    await this.writeBatch("债权人拆分", creditorRows.length, () => tx.wageCreditorBreakdown.createMany({ data: creditorRows }));
+    await this.writeBatch("项目分摊", allocationRows.length, () => tx.wageProjectAllocation.createMany({ data: allocationRows }));
+    await this.writeBatch("项目成本组成矩阵", componentMatrixRows.length, () => tx.wageProjectCostComponentAllocation.createMany({ data: componentMatrixRows }));
+    await this.writeBatch("工资项目债权人矩阵", creditorMatrixRows.length, () => tx.wageProjectCreditorAllocation.createMany({ data: creditorMatrixRows }));
+  }
+
+  private async writeBatch(label: string, expected: number, write: () => Promise<{ count: number }>) {
+    try {
+      const result = await write();
+      if (result.count !== expected) throw new ConflictException(`${label}批量写入数量不一致，事务已回滚`);
+    } catch (error) {
+      if (error instanceof ConflictException) throw error;
+      throw new ConflictException(`${label}批量写入失败，事务已回滚`);
     }
   }
 
@@ -1436,15 +1578,68 @@ export class WageStatementService {
       // owner may prepare one of these dispositions, but it can only become
       // effective through this existing segregated confirmation transaction.
       wageVersionKind(version.kind);
+      const lockedVersion = await this.lockAndRevalidateConfirmationFacts(tx, statement, version.id);
       await this.assertConfirmationSeparation(tx, actorUserId, version);
-      await this.assertNoAssignedWageConflictInTransaction(tx, version.id, statement.wageMonth);
-      await this.projectConfirmedVersion(tx, version.id, statement.employmentCompanyId, statement.currentRevision, actorUserId);
-      await tx.wageStatementVersion.update({ where: { id: version.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date() } });
-      const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "confirmed" };
+      await this.assertNoAssignedWageConflictInTransaction(tx, lockedVersion.id, statement.wageMonth);
+      await this.projectConfirmedVersion(tx, lockedVersion.id, statement.employmentCompanyId, statement.currentRevision, actorUserId);
+      await tx.wageStatementVersion.update({ where: { id: lockedVersion.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date() } });
+      const result = { statementId: id, versionId: lockedVersion.id, revision: statement.currentRevision, status: "confirmed" };
       await this.receipt(tx, input, "wage_statement.confirm", id, fingerprintValue, actorUserId, result);
-      await this.audit.record(tx, { actorUserId, action: "wage_statement.confirm", businessType: "wage_statement_version", businessId: version.id, metadata: jsonValue({ statementId: id, expectedRevision: input.expectedRevision }) });
+      await this.audit.record(tx, { actorUserId, action: "wage_statement.confirm", businessType: "wage_statement_version", businessId: lockedVersion.id, metadata: jsonValue({ statementId: id, expectedRevision: input.expectedRevision }) });
       return result;
     }));
+  }
+
+  private async lockAndRevalidateConfirmationFacts(
+    tx: Tx,
+    statement: { id: string; employmentCompanyId: string; wageMonth: string; currentRevision: number },
+    versionId: string
+  ) {
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WageStatementVersion" WHERE id = ${versionId} FOR UPDATE`);
+    const header = await tx.wageStatementVersion.findUnique({ where: { id: versionId }, select: { id: true, sourceVersionId: true, status: true } });
+    if (!header || header.status !== "submitted") throw new ConflictException("工资承担单确认前版本状态已漂移");
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WageApprovedSourceVersion" WHERE id = ${header.sourceVersionId} FOR UPDATE`);
+    const source = await tx.wageApprovedSourceVersion.findUnique({ where: { id: header.sourceVersionId } });
+    if (!source) throw new ConflictException("工资承担单批准来源已缺失，不能确认");
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "FileObject" WHERE id = ${source.evidenceFileId} FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WageServiceBasisBinding" WHERE "sourceVersionId" = ${source.id} ORDER BY id FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WagePersonLine" WHERE "statementVersionId" = ${versionId} ORDER BY id FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT c.id FROM "WageCostComponent" c JOIN "WagePersonLine" p ON p.id = c."personLineId" WHERE p."statementVersionId" = ${versionId} ORDER BY c.id FOR UPDATE OF c`);
+    await tx.$queryRaw(Prisma.sql`SELECT c.id FROM "WageCreditorBreakdown" c JOIN "WagePersonLine" p ON p.id = c."personLineId" WHERE p."statementVersionId" = ${versionId} ORDER BY c.id FOR UPDATE OF c`);
+    await tx.$queryRaw(Prisma.sql`SELECT a.id FROM "WageProjectAllocation" a JOIN "WagePersonLine" p ON p.id = a."personLineId" WHERE p."statementVersionId" = ${versionId} ORDER BY a.id FOR UPDATE OF a`);
+    await tx.$queryRaw(Prisma.sql`SELECT m.id FROM "WageProjectCostComponentAllocation" m JOIN "WageProjectAllocation" a ON a.id = m."projectAllocationId" JOIN "WagePersonLine" p ON p.id = a."personLineId" WHERE p."statementVersionId" = ${versionId} ORDER BY m.id FOR UPDATE OF m`);
+    await tx.$queryRaw(Prisma.sql`SELECT m.id FROM "WageProjectCreditorAllocation" m JOIN "WageProjectAllocation" a ON a.id = m."projectAllocationId" JOIN "WagePersonLine" p ON p.id = a."personLineId" WHERE p."statementVersionId" = ${versionId} ORDER BY m.id FOR UPDATE OF m`);
+
+    const locked = await tx.wageStatementVersion.findUnique({ where: { id: versionId }, include: WAGE_CONFIRMATION_INCLUDE });
+    if (!locked || locked.status !== "submitted" || locked.statementId !== statement.id || locked.revision !== statement.currentRevision) {
+      throw new ConflictException("工资承担单确认锁后版本已漂移");
+    }
+    const sourceLines = approvedSourceFacts(source);
+    if (stableJson(locked.sourceSnapshot) !== stableJson(source.sourceSnapshot)) {
+      throw new ConflictException("工资承担单冻结的批准来源快照已漂移，不能确认");
+    }
+    const [evidence, employees, bindings] = await Promise.all([
+      tx.fileObject.findUnique({ where: { id: source.evidenceFileId }, select: { id: true, storageStatus: true, contentSha256: true } }),
+      this.activeEmployees(tx, sourceLines),
+      tx.wageServiceBasisBinding.findMany({ where: { sourceVersionId: source.id }, select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true } })
+    ]);
+    assertSourceEvidenceActive(source, evidence);
+    employeeMap(sourceLines, employees);
+    const lines = storedDraftLines(locked, sourceLines, bindings);
+    assertSourceFacts(lines, sourceLines, statement.employmentCompanyId, statement.wageMonth, source.periodStart, source.periodEnd);
+    assertBalancedWageStatementDraft({
+      wageMonth: statement.wageMonth,
+      sourceTotalCents: sourceLines.reduce((sum, line) => sum + BigInt(line.approvedAmountCents), 0n).toString(),
+      personLines: lines
+    });
+    const projects = await this.activeProjects(tx, lines);
+    projectMap(lines, projects);
+    serviceBasisBindingMap(source.id, lines, bindings, source.evidenceSha256, false);
+    for (const person of locked.personLines) {
+      this.assertCompleteStoredMatrices(person);
+      for (const creditor of person.creditorBreakdowns) this.assertFrozenCreditor(creditor, person.employeeId);
+    }
+    return locked;
   }
 
   /**
@@ -2406,6 +2601,48 @@ export class WageStatementService {
     });
   }
 
+  private async ensureServiceBasisBindings(
+    tx: Tx,
+    sourceVersionId: string,
+    lines: WagePersonLineInput[],
+    evidenceSha256: string
+  ) {
+    const definitions = serviceBasisDefinitions(lines, evidenceSha256);
+    const existing = await tx.wageServiceBasisBinding.findMany({
+      where: { sourceVersionId },
+      select: { id: true, projectId: true, serviceSnapshotId: true, serviceMonth: true, evidenceSha256: true, authorityFingerprint: true }
+    });
+    const existingByKey = new Map(existing.map((binding) => [serviceBasisKey(binding), binding]));
+    const missing = definitions.filter((definition) => !existingByKey.has(serviceBasisKey(definition))).map((definition) => {
+      const id = randomUUID();
+      return {
+        id,
+        sourceVersionId,
+        ...definition,
+        authorityFingerprint: serviceBasisFingerprint(sourceVersionId, definition)
+      };
+    });
+    if (missing.length) {
+      try {
+        const result = await tx.wageServiceBasisBinding.createMany({ data: missing });
+        if (result.count !== missing.length) throw new ConflictException("服务依据批量写入数量不一致，事务已回滚");
+      } catch (error) {
+        if (prismaCode(error) === "P2002") throw new WageRetryableRaceError();
+        if (isSerializableConflict(error)) throw error;
+        if (error instanceof ConflictException) throw error;
+        throw new ConflictException("服务依据批量写入失败，事务已回滚");
+      }
+    }
+    const all = [...existing, ...missing];
+    return serviceBasisBindingMap(sourceVersionId, lines, all, evidenceSha256, false);
+  }
+
+  private async lockIdempotencyKey(tx: Tx, kind: WageReceiptKind, idempotencyKey: string) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`${kind}:${idempotencyKey}`}, 0))::TEXT AS "lockAcquired"
+    `);
+  }
+
   private serializable<T>(work: (tx: Tx) => Promise<T>) {
     return this.prisma.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
@@ -2427,18 +2664,30 @@ export class WageStatementService {
           if (error.kind !== kind) throw error;
           return this.readWinningReceipt<T>(idempotencyKey, fingerprintValue, kind);
         }
-        if (prismaCode(error) === "P2034" && attempt < 2) continue;
+        if (error instanceof WageNaturalKeyRaceError) {
+          if (error.kind !== kind) throw error;
+          return this.readWinningReceipt<T>(idempotencyKey, fingerprintValue, kind, error.message);
+        }
+        if (error instanceof WageRetryableRaceError || isSerializableConflict(error)) {
+          if (attempt < 2) continue;
+          throw new ConflictException("工资承担单并发写入未能完成，请刷新后重试");
+        }
         throw error;
       }
     }
     throw new ConflictException("工资承担单并发写入未能完成，请刷新后重试");
   }
 
-  private async readWinningReceipt<T>(idempotencyKey: string, fingerprintValue: string, kind: WageReceiptKind): Promise<T> {
+  private async readWinningReceipt<T>(
+    idempotencyKey: string,
+    fingerprintValue: string,
+    kind: WageReceiptKind,
+    missingMessage = "工资承担单幂等命令仍在并发处理中，请使用同一幂等键重试"
+  ): Promise<T> {
     const receipt = kind === "statement"
       ? await this.prisma.wageCommandReceipt.findUnique({ where: { idempotencyKey } })
       : await this.prisma.wageApprovedSourceCommandReceipt.findUnique({ where: { idempotencyKey } });
-    if (!receipt) throw new ConflictException("工资承担单幂等命令仍在并发处理中，请使用同一幂等键重试");
+    if (!receipt) throw new ConflictException(missingMessage);
     if (receipt.fingerprint !== fingerprintValue) {
       throw new ConflictException(kind === "statement" ? "同一幂等键不能用于不同工资承担单命令" : "同一幂等键不能用于不同外部工资来源命令");
     }
@@ -2451,6 +2700,18 @@ type WageReceiptKind = "statement" | "approved_source";
 class WageReceiptRaceError extends Error {
   constructor(readonly kind: WageReceiptKind) {
     super("wage receipt unique-key race");
+  }
+}
+
+class WageNaturalKeyRaceError extends Error {
+  constructor(readonly kind: WageReceiptKind, message: string) {
+    super(message);
+  }
+}
+
+class WageRetryableRaceError extends Error {
+  constructor() {
+    super("retryable wage natural-key race");
   }
 }
 
@@ -2468,6 +2729,7 @@ function normalizeApprovedSource(input: CreateApprovedWageSourceDto) {
   }
   const lines = input.approvedPersonLines;
   if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("外部批准工资来源至少需要一条人员事实");
+  if (lines.length > MAX_WAGE_PERSON_LINES) throw new BadRequestException(`外部批准工资来源人员不能超过 ${MAX_WAGE_PERSON_LINES} 条`);
   const keys = new Set<string>();
   let total = 0n;
   const employmentCompanyId = required(input.employmentCompanyId, "我方公司不能为空");
@@ -2509,6 +2771,14 @@ function normalizeAuthorityPersonLine(
   line: ApprovedWagePersonDto,
   context: { employmentCompanyId: string; periodStart: string; periodEnd: string; wageMonth: string }
 ): AuthorityLine {
+  const record = line as ApprovedWagePersonDto & Record<string, unknown>;
+  if (
+    Object.hasOwn(record, "projectAllocations") ||
+    Object.hasOwn(record, "projectCostComponentAllocations") ||
+    Object.hasOwn(record, "projectCreditorAllocations")
+  ) {
+    throw new BadRequestException("外部批准工资来源不得包含项目分摊或财务矩阵");
+  }
   const employeeId = required(line.employeeId, "人员不能为空");
   const employmentSnapshotId = required(line.employmentSnapshotId, "劳动关系快照不能为空");
   const employmentCompanyId = required(line.employmentCompanyId, "劳动关系公司不能为空");
@@ -2524,15 +2794,11 @@ function normalizeAuthorityPersonLine(
   const approvedAmountCents = cents(line.approvedAmountCents, "外部批准人员金额必须是非负整数分");
   const costComponents = normalizeCostComponents(line.costComponents);
   const creditorBreakdowns = normalizeCreditorBreakdowns(line.creditorBreakdowns, employeeId);
-  const projectAllocations = normalizeProjectAllocations(line.projectAllocations, context.wageMonth);
   if (sumAmounts(costComponents, "成本组成") !== approvedAmountCents) {
     throw new BadRequestException("成本组成合计必须与外部批准人员金额逐分一致");
   }
   if (sumAmounts(creditorBreakdowns, "债权人拆分") !== approvedAmountCents) {
     throw new BadRequestException("债权人拆分合计必须与外部批准人员金额逐分一致");
-  }
-  if (sumAmounts(projectAllocations, "项目分摊") !== approvedAmountCents) {
-    throw new BadRequestException("项目分摊合计必须与外部批准人员金额逐分一致");
   }
   const normalized: AuthorityLine = {
     employeeId,
@@ -2543,19 +2809,8 @@ function normalizeAuthorityPersonLine(
     positionCategory,
     approvedAmountCents: approvedAmountCents.toString(),
     costComponents,
-    creditorBreakdowns,
-    projectAllocations,
-    projectCostComponentAllocations: normalizeProjectCostComponentAllocations(line.projectCostComponentAllocations),
-    projectCreditorAllocations: normalizeProjectCreditorAllocations(line.projectCreditorAllocations)
+    creditorBreakdowns
   };
-  // The source is the first frozen form of finance's explicit decision.  Run
-  // the same public balance boundary here so it cannot silently downgrade a
-  // union creditor or omit a zero-valued Cartesian cell before draft creation.
-  assertBalancedWageStatementDraft({
-    wageMonth: context.wageMonth,
-    sourceTotalCents: approvedAmountCents.toString(),
-    personLines: [normalized]
-  });
   return normalized;
 }
 
@@ -2602,7 +2857,7 @@ function normalizeCreditorBreakdowns(lines: ApprovedWagePersonDto["creditorBreak
   return normalized;
 }
 
-function normalizeProjectCostComponentAllocations(lines: ApprovedWagePersonDto["projectCostComponentAllocations"]): WageProjectCostComponentAllocationInput[] {
+function normalizeProjectCostComponentAllocations(lines: WagePersonLineInput["projectCostComponentAllocations"]): WageProjectCostComponentAllocationInput[] {
   if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("项目成本组成矩阵必须明确填写");
   return lines.map((line) => ({
     projectId: required(line.projectId, "项目不能为空"),
@@ -2612,7 +2867,7 @@ function normalizeProjectCostComponentAllocations(lines: ApprovedWagePersonDto["
   })).sort((left, right) => `${left.projectId}:${left.serviceSnapshotId}:${left.componentCode}`.localeCompare(`${right.projectId}:${right.serviceSnapshotId}:${right.componentCode}`));
 }
 
-function normalizeProjectCreditorAllocations(lines: ApprovedWagePersonDto["projectCreditorAllocations"]): WageProjectCreditorAllocationInput[] {
+function normalizeProjectCreditorAllocations(lines: WagePersonLineInput["projectCreditorAllocations"]): WageProjectCreditorAllocationInput[] {
   if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("项目债权人矩阵必须明确填写");
   return lines.map((line) => {
     const creditorSubjectType = line.creditorSubjectType;
@@ -2632,7 +2887,7 @@ function normalizeProjectCreditorAllocations(lines: ApprovedWagePersonDto["proje
   }).sort((left, right) => `${left.projectId}:${left.serviceSnapshotId}:${left.creditorSubjectType}:${left.creditorUserId ?? left.creditorBusinessPartyVersionId}:${left.creditorCategory}`.localeCompare(`${right.projectId}:${right.serviceSnapshotId}:${right.creditorSubjectType}:${right.creditorUserId ?? right.creditorBusinessPartyVersionId}:${right.creditorCategory}`));
 }
 
-function normalizeProjectAllocations(lines: ApprovedWagePersonDto["projectAllocations"], wageMonth: string) {
+function normalizeProjectAllocations(lines: WagePersonLineInput["projectAllocations"], wageMonth: string) {
   if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("项目分摊不能为空");
   const keys = new Set<string>();
   return lines.map((line) => {
@@ -2657,6 +2912,7 @@ function validateDraftInput(input: CreateWageStatementDraftDto) {
   validateCommand(input);
   if (input.expectedRevision !== 0) throw new ConflictException("新建工资承担单的 expectedRevision 必须为 0");
   required(input.sourceVersionId, "外部批准工资来源不能为空");
+  validateDraftSize(input.personLines);
   for (const line of input.personLines ?? []) {
     normalizeCostComponents(line.costComponents);
     normalizeCreditorBreakdowns(line.creditorBreakdowns, required(line.employeeId, "人员不能为空"));
@@ -2672,6 +2928,7 @@ function validateRevisionInput(input: CreateWageStatementRevisionDto) {
     throw new BadRequestException("后续工资修订必须明确为补发、更正或冲销");
   }
   required(input.sourceVersionId, "外部批准工资来源不能为空");
+  validateDraftSize(input.personLines);
   for (const line of input.personLines ?? []) {
     normalizeCostComponents(line.costComponents);
     normalizeCreditorBreakdowns(line.creditorBreakdowns, required(line.employeeId, "人员不能为空"));
@@ -2681,11 +2938,44 @@ function validateRevisionInput(input: CreateWageStatementRevisionDto) {
   }
 }
 
+function validateEditableDraftInput(input: UpdateWageStatementDraftDto) {
+  validateCommand(input);
+  validateDraftSize(input.personLines);
+  for (const line of input.personLines ?? []) {
+    normalizeCostComponents(line.costComponents);
+    normalizeCreditorBreakdowns(line.creditorBreakdowns, required(line.employeeId, "人员不能为空"));
+    normalizeProjectAllocations(line.projectAllocations, required(input.wageMonth, "工资月份不能为空"));
+    normalizeProjectCostComponentAllocations(line.projectCostComponentAllocations);
+    normalizeProjectCreditorAllocations(line.projectCreditorAllocations);
+  }
+}
+
+function validateDraftSize(lines: WagePersonLineInput[] | undefined) {
+  if (!Array.isArray(lines)) return;
+  if (lines.length > MAX_WAGE_PERSON_LINES) throw new BadRequestException(`工资承担单人员不能超过 ${MAX_WAGE_PERSON_LINES} 条`);
+  for (const line of lines) {
+    if (line.costComponents?.length > MAX_WAGE_DETAIL_ROWS_PER_PERSON) throw new BadRequestException("单人工资成本组成不能超过 100 条");
+    if (line.creditorBreakdowns?.length > MAX_WAGE_DETAIL_ROWS_PER_PERSON) throw new BadRequestException("单人工资债权人不能超过 100 条");
+    if (line.projectAllocations?.length > MAX_WAGE_DETAIL_ROWS_PER_PERSON) throw new BadRequestException("单人工资项目分摊不能超过 100 条");
+    if ((line.projectCostComponentAllocations?.length ?? 0) > MAX_WAGE_MATRIX_CELLS_PER_PERSON) throw new BadRequestException("单人工资成本矩阵不能超过 10000 个单元");
+    if ((line.projectCreditorAllocations?.length ?? 0) > MAX_WAGE_MATRIX_CELLS_PER_PERSON) throw new BadRequestException("单人工资债权人矩阵不能超过 10000 个单元");
+  }
+}
+
 function validateCommand(input: WageStatementCommandDto) {
   validateIdempotencyKey(input.idempotencyKey);
   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
     throw new BadRequestException("expectedRevision 必须是非负整数");
   }
+}
+
+function workbenchPage(query: WageStatementWorkbenchQueryDto) {
+  const page = Number(query.page ?? 1);
+  const pageSize = Number(query.pageSize ?? 20);
+  if (!Number.isSafeInteger(page) || page < 1) throw new BadRequestException("工资工作台页码必须是正整数");
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1) throw new BadRequestException("工资工作台每页条数必须是正整数");
+  if (pageSize > 50) throw new BadRequestException("工资工作台每页最多读取 50 条");
+  return { page, pageSize };
 }
 
 function validateIdempotencyKey(value: string) {
@@ -2709,7 +2999,7 @@ function historicalApprovedSourceLines(source: {
   evidenceSha256: string;
   sourceFingerprint: string;
   sourceSnapshot: unknown;
-}): AuthorityLine[] {
+}): WagePersonLineInput[] {
   if (
     !source.sourceSnapshot ||
     typeof source.sourceSnapshot !== "object" ||
@@ -2746,7 +3036,117 @@ function historicalApprovedSourceLines(source: {
   ) {
     throw new ConflictException("历史工资接管权威来源快照与公司、月份、期间或证据坐标不一致");
   }
+  return historicalSourcePersonLines(snapshot);
+}
+
+function approvedSourceFacts(source: {
+  employmentCompanyId: string;
+  wageMonth: string;
+  periodStart: Date;
+  periodEnd: Date;
+  sourceType: string;
+  externalReference: string;
+  sourceVersion: string;
+  basisDate: Date;
+  evidenceFileId: string;
+  evidenceSha256: string;
+  sourceFingerprint: string;
+  sourceSnapshot: unknown;
+}) {
+  if (!source.sourceSnapshot || typeof source.sourceSnapshot !== "object" || Array.isArray(source.sourceSnapshot)) {
+    throw new ConflictException("外部批准工资来源快照不完整，不能确认");
+  }
+  if (!SHA256.test(source.sourceFingerprint) || fingerprint(source.sourceSnapshot) !== source.sourceFingerprint) {
+    throw new ConflictException("外部批准工资来源快照指纹已漂移，不能确认");
+  }
+  const snapshot = source.sourceSnapshot as Record<string, unknown>;
+  const company = snapshot.employmentCompany as Record<string, unknown> | undefined;
+  const evidence = snapshot.evidence as Record<string, unknown> | undefined;
+  if (
+    source.sourceType !== "external_approved_wage" ||
+    requiredJsonText(company?.id) !== source.employmentCompanyId ||
+    requiredJsonText(snapshot.wageMonth) !== source.wageMonth ||
+    requiredJsonText(snapshot.periodStart) !== source.periodStart.toISOString().slice(0, 10) ||
+    requiredJsonText(snapshot.periodEnd) !== source.periodEnd.toISOString().slice(0, 10) ||
+    requiredJsonText(snapshot.externalReference) !== source.externalReference ||
+    requiredJsonText(snapshot.sourceVersion) !== source.sourceVersion ||
+    requiredJsonText(snapshot.basisDate) !== source.basisDate.toISOString().slice(0, 10) ||
+    requiredJsonText(evidence?.fileId) !== source.evidenceFileId ||
+    requiredJsonText(evidence?.sha256) !== source.evidenceSha256
+  ) {
+    throw new ConflictException("外部批准工资来源列值与冻结快照不一致，不能确认");
+  }
   return sourcePersonLines(snapshot);
+}
+
+function storedDraftLines(
+  version: WageConfirmationVersion,
+  sourceLines: AuthorityLine[],
+  bindings: ServiceBasisBinding[]
+): WagePersonLineInput[] {
+  const sourceByPerson = new Map(sourceLines.map((line) => [`${line.employeeId}:${line.employmentSnapshotId}`, line]));
+  const bindingById = new Map(bindings.map((binding) => [binding.id, binding]));
+  return version.personLines.map((person) => {
+    const authority = sourceByPerson.get(`${person.employeeId}:${person.employmentSnapshotId}`);
+    if (!authority) throw new ConflictException("工资版本人员事实不属于当前批准来源");
+    const componentById = new Map(person.costComponents.map((component) => [component.id, component]));
+    const creditorById = new Map(person.creditorBreakdowns.map((creditor) => [creditor.id, creditor]));
+    const projectAllocations = person.projectAllocations.map((allocation) => {
+      const binding = bindingById.get(allocation.serviceBasisBindingId);
+      if (!binding || binding.projectId !== allocation.projectId || binding.serviceSnapshotId !== allocation.serviceSnapshotId) {
+        throw new ConflictException("工资项目分摊的服务依据绑定已漂移");
+      }
+      return {
+        projectId: allocation.projectId,
+        serviceSnapshotId: allocation.serviceSnapshotId,
+        serviceMonth: binding.serviceMonth,
+        serviceEvidenceSha256: binding.evidenceSha256,
+        amountCents: allocation.amountCents.toString()
+      };
+    });
+    const costComponents = person.costComponents.map((component) => ({ componentCode: component.componentCode, amountCents: component.amountCents.toString() }));
+    const creditorBreakdowns = person.creditorBreakdowns.map((creditor) => ({
+      creditorSubjectId: creditor.creditorSubjectId ?? undefined,
+      creditorSubjectType: creditor.creditorSubjectType as "employee_user" | "business_party" | undefined,
+      creditorUserId: creditor.creditorUserId ?? undefined,
+      creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId ?? undefined,
+      creditorCategory: creditor.creditorCategory,
+      amountCents: creditor.amountCents.toString()
+    }));
+    const projectCostComponentAllocations = person.projectAllocations.flatMap((allocation) => allocation.componentAllocations.map((cell) => {
+      const component = componentById.get(cell.costComponentId);
+      if (!component) throw new ConflictException("工资成本矩阵引用不属于当前人员");
+      return {
+        projectId: allocation.projectId,
+        serviceSnapshotId: allocation.serviceSnapshotId,
+        componentCode: component.componentCode,
+        amountCents: cell.amountCents.toString()
+      };
+    }));
+    const projectCreditorAllocations: WageProjectCreditorAllocationInput[] = person.projectAllocations.flatMap((allocation) => allocation.creditorAllocations.map((cell) => {
+      const creditor = creditorById.get(cell.creditorBreakdownId);
+      if (!creditor || (creditor.creditorSubjectType !== "employee_user" && creditor.creditorSubjectType !== "business_party")) {
+        throw new ConflictException("工资债权人矩阵引用不属于当前人员或缺少权威身份");
+      }
+      return {
+        projectId: allocation.projectId,
+        serviceSnapshotId: allocation.serviceSnapshotId,
+        creditorSubjectType: creditor.creditorSubjectType as "employee_user" | "business_party",
+        creditorUserId: creditor.creditorUserId ?? undefined,
+        creditorBusinessPartyVersionId: creditor.creditorBusinessPartyVersionId ?? undefined,
+        creditorCategory: creditor.creditorCategory,
+        amountCents: cell.amountCents.toString()
+      };
+    }));
+    return {
+      ...authority,
+      costComponents,
+      creditorBreakdowns,
+      projectAllocations,
+      projectCostComponentAllocations,
+      projectCreditorAllocations
+    };
+  });
 }
 
 function sourcePersonLines(snapshot: unknown): AuthorityLine[] {
@@ -2766,18 +3166,56 @@ function sourcePersonLines(snapshot: unknown): AuthorityLine[] {
         positionCategory: requiredJsonText(value.positionCategory),
         approvedAmountCents: requiredJsonText(value.approvedAmountCents),
         costComponents: jsonArray(value.costComponents),
-        creditorBreakdowns: jsonArray(value.creditorBreakdowns),
-        projectAllocations: jsonArray(value.projectAllocations),
-        projectCostComponentAllocations: jsonArray(value.projectCostComponentAllocations),
-        projectCreditorAllocations: jsonArray(value.projectCreditorAllocations)
+        creditorBreakdowns: jsonArray(value.creditorBreakdowns)
       }, {
         employmentCompanyId: requiredJsonText(value.employmentCompanyId),
         periodStart: requiredJsonText(value.employmentPeriodStart),
         periodEnd: requiredJsonText(value.employmentPeriodEnd),
-        wageMonth: requiredJsonText((value.projectAllocations as Array<Record<string, unknown>>)[0]?.serviceMonth)
+        wageMonth: requiredJsonText(value.employmentPeriodStart).slice(0, 7)
       });
     } catch {
       throw new ConflictException("外部批准工资来源快照不完整，不能创建工资承担单");
+    }
+  });
+}
+
+function historicalSourcePersonLines(snapshot: Record<string, unknown>): WagePersonLineInput[] {
+  if (!Array.isArray(snapshot.approvedPersonLines)) {
+    throw new ConflictException("历史工资接管权威来源缺少完整项目闭合，不能继续");
+  }
+  return snapshot.approvedPersonLines.map((line) => {
+    if (!line || typeof line !== "object" || Array.isArray(line)) {
+      throw new ConflictException("历史工资接管权威来源缺少完整项目闭合，不能继续");
+    }
+    const value = line as Record<string, unknown>;
+    try {
+      const context = {
+        employmentCompanyId: requiredJsonText(value.employmentCompanyId),
+        periodStart: requiredJsonText(value.employmentPeriodStart),
+        periodEnd: requiredJsonText(value.employmentPeriodEnd),
+        wageMonth: requiredJsonText(snapshot.wageMonth)
+      };
+      const authority = normalizeAuthorityPersonLine({
+        employeeId: requiredJsonText(value.employeeId),
+        employmentSnapshotId: requiredJsonText(value.employmentSnapshotId),
+        employmentCompanyId: context.employmentCompanyId,
+        employmentPeriodStart: context.periodStart,
+        employmentPeriodEnd: context.periodEnd,
+        positionCategory: requiredJsonText(value.positionCategory),
+        approvedAmountCents: requiredJsonText(value.approvedAmountCents),
+        costComponents: jsonArray(value.costComponents),
+        creditorBreakdowns: jsonArray(value.creditorBreakdowns)
+      }, context);
+      const complete: WagePersonLineInput = {
+        ...authority,
+        projectAllocations: normalizeProjectAllocations(jsonArray(value.projectAllocations), context.wageMonth),
+        projectCostComponentAllocations: normalizeProjectCostComponentAllocations(jsonArray(value.projectCostComponentAllocations)),
+        projectCreditorAllocations: normalizeProjectCreditorAllocations(jsonArray(value.projectCreditorAllocations))
+      };
+      assertBalancedWageStatementDraft({ wageMonth: context.wageMonth, sourceTotalCents: complete.approvedAmountCents, personLines: [complete] });
+      return complete;
+    } catch {
+      throw new ConflictException("历史工资接管权威来源缺少完整项目闭合，不能继续");
     }
   });
 }
@@ -2806,7 +3244,17 @@ function assertSourceFacts(
   if (expected.size !== lines.length) throw new BadRequestException("工资承担单人员事实必须与外部批准来源一致");
   for (const line of lines) {
     const key = `${line.employeeId}:${line.employmentSnapshotId}`;
-    const actual = normalizeAuthorityPersonLine(line, { employmentCompanyId, periodStart: expectedStart, periodEnd: expectedEnd, wageMonth });
+    const actual = normalizeAuthorityPersonLine({
+      employeeId: line.employeeId,
+      employmentSnapshotId: line.employmentSnapshotId,
+      employmentCompanyId: line.employmentCompanyId,
+      employmentPeriodStart: line.employmentPeriodStart,
+      employmentPeriodEnd: line.employmentPeriodEnd,
+      positionCategory: line.positionCategory,
+      approvedAmountCents: line.approvedAmountCents,
+      costComponents: line.costComponents,
+      creditorBreakdowns: line.creditorBreakdowns
+    }, { employmentCompanyId, periodStart: expectedStart, periodEnd: expectedEnd, wageMonth });
     if (expected.get(key) !== stableJson(actual)) {
       throw new BadRequestException("工资承担单人员事实必须与外部批准来源一致");
     }
@@ -2831,7 +3279,7 @@ function employeeMap(
 }
 
 function projectMap(
-  lines: Array<Pick<ApprovedWagePersonDto, "projectAllocations">>,
+  lines: Array<Pick<WagePersonLineInput, "projectAllocations">>,
   projects: Array<{ id: string; code: string; name: string }>
 ) {
   const ids = new Set(lines.flatMap((line) => line.projectAllocations.map((allocation) => allocation.projectId)));
@@ -2840,16 +3288,6 @@ function projectMap(
     throw new BadRequestException("分摊项目不存在或已停用");
   }
   return byId;
-}
-
-function assertServiceEvidenceBound(lines: AuthorityLine[], approvedSourceSha256: string) {
-  for (const line of lines) {
-    for (const allocation of line.projectAllocations) {
-      if (allocation.serviceEvidenceSha256 !== approvedSourceSha256.toLowerCase()) {
-        throw new BadRequestException("服务依据必须由同一外部批准工资资料校验值证明");
-      }
-    }
-  }
 }
 
 type ServiceBasisBinding = {
@@ -2861,11 +3299,11 @@ type ServiceBasisBinding = {
   authorityFingerprint: string;
 };
 
-function serviceBasisKey(allocation: Pick<AuthorityLine["projectAllocations"][number], "projectId" | "serviceSnapshotId">) {
+function serviceBasisKey(allocation: Pick<WagePersonLineInput["projectAllocations"][number], "projectId" | "serviceSnapshotId">) {
   return `${allocation.projectId}:${allocation.serviceSnapshotId}`;
 }
 
-function serviceBasisDefinitions(lines: AuthorityLine[], evidenceSha256: string) {
+function serviceBasisDefinitions(lines: WagePersonLineInput[], evidenceSha256: string) {
   const definitions = new Map<string, { projectId: string; serviceSnapshotId: string; serviceMonth: string; evidenceSha256: string }>();
   for (const line of lines) {
     for (const allocation of line.projectAllocations) {
@@ -2906,13 +3344,14 @@ function assertSourceEvidenceActive(
 
 function serviceBasisBindingMap(
   sourceVersionId: string,
-  lines: AuthorityLine[],
+  lines: WagePersonLineInput[],
   bindings: ServiceBasisBinding[],
-  evidenceSha256: string
+  evidenceSha256: string,
+  requireExactSet = true
 ) {
   const expected = serviceBasisDefinitions(lines, evidenceSha256);
   const byKey = new Map(bindings.map((binding) => [serviceBasisKey(binding), binding]));
-  if (byKey.size !== expected.length) {
+  if (requireExactSet && byKey.size !== expected.length) {
     throw new ConflictException("外部批准工资来源的服务依据绑定不完整，不能创建工资承担单");
   }
   for (const definition of expected) {
@@ -2922,18 +3361,34 @@ function serviceBasisBindingMap(
       binding.serviceMonth !== definition.serviceMonth ||
       binding.evidenceSha256.toLowerCase() !== definition.evidenceSha256 ||
       !SHA256.test(binding.authorityFingerprint) ||
-      binding.authorityFingerprint !== fingerprint({
-        sourceVersionId,
-        projectId: binding.projectId,
-        serviceSnapshotId: binding.serviceSnapshotId,
-        serviceMonth: binding.serviceMonth,
-        evidenceSha256: binding.evidenceSha256
-      })
+      binding.authorityFingerprint !== serviceBasisFingerprint(sourceVersionId, binding)
     ) {
       throw new ConflictException("外部批准工资来源的服务依据绑定已失效或漂移，不能创建工资承担单");
     }
   }
   return byKey;
+}
+
+function serviceBasisFingerprint(
+  sourceVersionId: string,
+  binding: Pick<ServiceBasisBinding, "projectId" | "serviceSnapshotId" | "serviceMonth" | "evidenceSha256">
+) {
+  return fingerprint({
+    sourceVersionId,
+    projectId: binding.projectId,
+    serviceSnapshotId: binding.serviceSnapshotId,
+    serviceMonth: binding.serviceMonth,
+    evidenceSha256: binding.evidenceSha256
+  });
+}
+
+function creditorIdentityKeyWithCategory(
+  creditor: Pick<WageProjectCreditorAllocationInput | WagePersonLineInput["creditorBreakdowns"][number], "creditorSubjectType" | "creditorUserId" | "creditorBusinessPartyVersionId" | "creditorCategory">
+) {
+  const subjectId = creditor.creditorSubjectType === "employee_user"
+    ? creditor.creditorUserId
+    : creditor.creditorBusinessPartyVersionId;
+  return `${creditor.creditorSubjectType}:${subjectId}:${creditor.creditorCategory}`;
 }
 
 function wageMatrixIdentities(version: WageConfirmationVersion) {
@@ -2965,7 +3420,7 @@ function wageMatrixIdentities(version: WageConfirmationVersion) {
   return { costs, payables };
 }
 
-function authorityMatrixIdentities(lines: AuthorityLine[]): HistoricalWageSemanticMatrix {
+function authorityMatrixIdentities(lines: WagePersonLineInput[]): HistoricalWageSemanticMatrix {
   const projectIds = uniqueSorted(lines.flatMap((line) => line.projectAllocations.map((allocation) => allocation.projectId)));
   const costs = new Map<string, HistoricalWageSemanticCell>();
   const payables = new Map<string, HistoricalWageSemanticCell>();
@@ -3380,4 +3835,11 @@ function stableJson(value: unknown): string {
 
 function prismaCode(error: unknown) {
   return error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : undefined;
+}
+
+function isSerializableConflict(error: unknown) {
+  if (prismaCode(error) === "P2034") return true;
+  if (!error || typeof error !== "object" || !("meta" in error)) return false;
+  const meta = error.meta;
+  return Boolean(meta && typeof meta === "object" && "code" in meta && meta.code === "40001");
 }

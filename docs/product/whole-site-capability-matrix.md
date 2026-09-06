@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `74b9be38b0a4a8c2445ab9e9c0618d1e568fa07739c8159af54d7fca710de30d` |
-| webApiWrappers | ready | `0616116a9b8446c93f6172b33d714b55a1e44eef5b21a6432669066848de6224` |
-| webPageActions | ready | `7f9176724ed695f792f3c78b38b938a88a192b71dce0e0c525280244ee8e153f` |
-| routeUsage | ready | `809d8c2e564cfeda9f5f3877329cf1f3be5aa288fe98c14f89c443d4cbeff27b` |
+| nestRoutes | ready | `fd0c12b89b74c3cb430ba6512998da79339a8efe2a4c43e277b78797cb11a1f3` |
+| webApiWrappers | ready | `6ec33cbee03c139a125fb23e5abd2c47b610b3e433cfd77153404216780a03f9` |
+| webPageActions | ready | `6d50fb160758040748dc7369af60430c5c272673fbd94d1ecef321e20c061f5e` |
+| routeUsage | ready | `3d4913824589c2f8fd4783d25ee1d0a0526b98cec9f3beaf60672e889b71f2dd` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 574 |
-| pageRouteCount | 362 |
+| routeCount | 575 |
+| pageRouteCount | 363 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 34 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 551 |
+| mainRequestBindingCount | 552 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 286 |
-| actionBindingCount | 321 |
-| acceptedActionBindingCount | 301 |
+| registeredActionCount | 287 |
+| actionBindingCount | 322 |
+| acceptedActionBindingCount | 302 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 280 |
-| coveredProductionMutationConsumerPairCount | 280 |
+| productionMutationConsumerPairCount | 281 |
+| coveredProductionMutationConsumerPairCount | 281 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -602,6 +602,7 @@
 | POST | /standard-clauses | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause | — | not_applicable | — |
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |
+| POST | /wage-statements/:statementId/draft | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#updateWageStatementDraft | wage-statement.draft.update | covered | — |
 | POST | /wage-statements/:statementId/return | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#returnWageStatement | wage-statement.return | covered | — |
 | POST | /wage-statements/:statementId/revisions | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/sensitive-export-ticket | internal_task | operator_endpoint | — | — | not_applicable | — |

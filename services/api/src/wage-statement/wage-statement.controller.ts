@@ -1,11 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions, UseAnyProjectPositionScope } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { AuthService } from "../auth/auth.service";
 import { CreateDownloadTicketDto } from "../file/dto/create-download-ticket.dto";
-import type { CreateApprovedWageSourceDto, CreateWageStatementDraftDto, CreateWageStatementRevisionDto, ReturnWageStatementDto, WageStatementCommandDto } from "./wage-statement.dto";
+import type { CreateApprovedWageSourceDto, CreateWageStatementDraftDto, CreateWageStatementRevisionDto, ReturnWageStatementDto, UpdateWageStatementDraftDto, WageStatementCommandDto, WageStatementWorkbenchQueryDto } from "./wage-statement.dto";
 import { WageStatementService } from "./wage-statement.service";
 
 @Controller("wage-statements")
@@ -23,8 +23,8 @@ export class WageStatementController {
 
   @Get("workbench")
   @RequirePositions("finance_staff", "finance_director")
-  workbench(@CurrentUser() user: AuthenticatedUser) {
-    return this.wages.listWorkbench(user.id);
+  workbench(@CurrentUser() user: AuthenticatedUser, @Query() query: WageStatementWorkbenchQueryDto = {}) {
+    return this.wages.listWorkbench(user.id, query);
   }
 
   @Get(":statementId/non-sensitive-summary")
@@ -89,6 +89,16 @@ export class WageStatementController {
     @Body() input: CreateWageStatementRevisionDto
   ) {
     return this.wages.createRevision(user.id, statementId, input);
+  }
+
+  @Post(":statementId/draft")
+  @RequirePositions("finance_staff", "finance_director")
+  updateDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("statementId") statementId: string,
+    @Body() input: UpdateWageStatementDraftDto
+  ) {
+    return this.wages.updateDraft(user.id, statementId, input);
   }
 
   @Post(":statementId/submit")

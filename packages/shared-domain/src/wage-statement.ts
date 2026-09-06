@@ -1,5 +1,3 @@
-import type { RoleKey } from "./roles";
-
 export const WAGE_STATEMENT_VERSION_STATUSES = Object.freeze([
   "draft",
   "submitted",
@@ -58,26 +56,6 @@ export const WAGE_PAYABLE_REF_DIRECTIONS = Object.freeze([
 ] as const);
 
 export type WagePayableRefDirection = (typeof WAGE_PAYABLE_REF_DIRECTIONS)[number];
-
-export const WAGE_STATEMENT_ACTIONS = Object.freeze([
-  "prepare",
-  "submit",
-  "confirm",
-  "return"
-] as const);
-
-export type WageStatementAction = (typeof WAGE_STATEMENT_ACTIONS)[number];
-
-const WAGE_STATEMENT_ACTION_ROLES = Object.freeze({
-  prepare: ["finance_staff", "finance_director"],
-  submit: ["finance_staff", "finance_director"],
-  confirm: ["finance_director"],
-  return: ["finance_director"]
-} as const satisfies Readonly<Record<WageStatementAction, readonly RoleKey[]>>);
-
-export function wageStatementActionRoles(action: WageStatementAction): readonly RoleKey[] {
-  return WAGE_STATEMENT_ACTION_ROLES[action];
-}
 
 export function isWageStatementVersionStatus(value: unknown): value is WageStatementVersionStatus {
   return WAGE_STATEMENT_VERSION_STATUSES.includes(value as WageStatementVersionStatus);

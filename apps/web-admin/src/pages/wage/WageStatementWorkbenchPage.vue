@@ -11,6 +11,7 @@ import {
   fetchWageStatementWorkbench,
   returnWageStatement,
   submitWageStatement,
+  updateWageStatementDraft,
   WageStatementApiError,
   type WageStatementCapabilities,
   type WageStatementImportPreviewReadModel,
@@ -39,13 +40,14 @@ const loadError = ref("");
 const detailError = ref("");
 const importError = ref("");
 const rows = ref<WageStatementWorkbenchItem[]>([]);
+const listMeta = ref({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
 const capabilities = ref<WageStatementCapabilities>({ ...noCapabilities });
 const selected = ref<WageStatementWorkbenchItem | null>(null);
 const summary = ref<WageStatementSummaryReadModel | null>(null);
 const importPreview = ref<WageStatementImportPreviewReadModel | null>(null);
 const localImportPreview = ref<LocalApprovedSourcePreview | null>(null);
 const localApprovedSource = ref<Record<string, unknown> | null>(null);
-const localImportCommand = ref<{ sourceKey: string; draftKey: string } | null>(null);
+const localImportCommand = ref<{ sourceKey: string; draftKey: string; updateKey: string } | null>(null);
 const returnDialogVisible = ref(false);
 const returnReason = ref("");
 const pendingCommandKeys = new Map<string, string>();
@@ -172,6 +174,26 @@ function sourceTotalCents(lines: unknown[]) {
   return total.toString();
 }
 
+function approvedAuthorityLines(lines: unknown[]) {
+  return lines.map((line) => {
+    if (!line || typeof line !== "object" || Array.isArray(line)) {
+      throw new Error("外部批准工资来源人员事实格式不正确");
+    }
+    const value = line as Record<string, unknown>;
+    return {
+      employeeId: value.employeeId,
+      employmentSnapshotId: value.employmentSnapshotId,
+      employmentCompanyId: value.employmentCompanyId,
+      employmentPeriodStart: value.employmentPeriodStart,
+      employmentPeriodEnd: value.employmentPeriodEnd,
+      positionCategory: value.positionCategory,
+      approvedAmountCents: value.approvedAmountCents,
+      costComponents: value.costComponents,
+      creditorBreakdowns: value.creditorBreakdowns
+    };
+  });
+}
+
 async function readApprovedSourceFile(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -191,7 +213,11 @@ async function readApprovedSourceFile(event: Event) {
     const parsed = parseLocalApprovedSource(text);
     localApprovedSource.value = parsed.payload;
     localImportPreview.value = parsed.preview;
-    localImportCommand.value = { sourceKey: crypto.randomUUID(), draftKey: crypto.randomUUID() };
+    localImportCommand.value = {
+      sourceKey: crypto.randomUUID(),
+      draftKey: crypto.randomUUID(),
+      updateKey: crypto.randomUUID()
+    };
   } catch (error) {
     importError.value = formatUnknownApiError(error, "外部批准工资资料解析失败。");
   }
@@ -208,21 +234,31 @@ async function createImportedDraft() {
   importLoading.value = true;
   importError.value = "";
   try {
-    await createImportedDraftWithCapability({
-      ...sourcePayload,
-      idempotencyKey: localImportCommand.value.sourceKey,
-      expectedRevision: 0
-    }, {
-      idempotencyKey: localImportCommand.value.draftKey,
-      expectedRevision: 0,
+    const editableTarget = selected.value?.status === "draft" && summary.value?.revision === selected.value.revision
+      ? { statementId: selected.value.statementId, revision: summary.value.revision }
+      : null;
+    const draftBody = {
+      idempotencyKey: editableTarget ? localImportCommand.value.updateKey : localImportCommand.value.draftKey,
+      expectedRevision: editableTarget?.revision ?? 0,
       wageMonth: localImportPreview.value.wageMonth,
       sourceTotalCents: sourceTotalCents(lines),
       personLines: lines
-    });
+    };
+    if (editableTarget) {
+      await updateImportedDraftWithCapability(editableTarget.statementId, draftBody);
+    } else {
+      await createImportedDraftWithCapability({
+        ...sourcePayload,
+        approvedPersonLines: approvedAuthorityLines(lines),
+        idempotencyKey: localImportCommand.value.sourceKey,
+        expectedRevision: 0
+      }, draftBody);
+    }
     localApprovedSource.value = null;
     localImportPreview.value = null;
     localImportCommand.value = null;
-    await loadWorkbench();
+    await loadWorkbench(editableTarget ? listMeta.value.page : 1);
+    if (editableTarget) await refreshSelectedDetail();
   } catch (error) {
     importError.value = formatUnknownApiError(error, "创建工资承担草稿失败");
   } finally {
@@ -241,20 +277,41 @@ async function createImportedDraftWithCapability(
   return createWageStatementDraft({ ...draftBody, sourceVersionId: source.id });
 }
 
-async function loadWorkbench() {
+async function updateImportedDraftWithCapability(
+  statementId: string,
+  draftBody: Parameters<typeof updateWageStatementDraft>[1]
+) {
+  const capability = await fetchWageStatementCapabilities();
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号无权更新工资承担草稿");
+  return updateWageStatementDraft(statementId, draftBody);
+}
+
+async function loadWorkbench(page = listMeta.value.page) {
   loading.value = true;
   loadError.value = "";
   try {
-    const workbench = await fetchWageStatementWorkbench();
+    const workbench = await fetchWageStatementWorkbench(page, listMeta.value.pageSize);
     rows.value = workbench.items;
     capabilities.value = workbench.capabilities;
+    listMeta.value = {
+      page: workbench.page,
+      pageSize: workbench.pageSize,
+      total: workbench.total,
+      totalPages: workbench.totalPages
+    };
   } catch (error) {
     rows.value = [];
+    listMeta.value = { ...listMeta.value, total: 0, totalPages: 0 };
     capabilities.value = { ...noCapabilities };
     loadError.value = formatUnknownApiError(error, "加载月度工资承担工作台失败");
   } finally {
     loading.value = false;
   }
+}
+
+function changePage(page: number) {
+  void loadWorkbench(page);
 }
 
 async function openDetail(row: WageStatementWorkbenchItem) {
@@ -375,7 +432,7 @@ onMounted(() => void loadWorkbench());
     description="统一查看我方项目管理人员工资承担的月度进度、岗位汇总和来源导入状态。本页仅显示非敏感汇总信息。"
   >
     <template #actions>
-      <t-button variant="outline" :loading="loading" @click="loadWorkbench">刷新数据</t-button>
+      <t-button variant="outline" :loading="loading" @click="loadWorkbench()">刷新数据</t-button>
     </template>
 
     <t-card v-if="canImportApprovedSource" class="wage-statement-workbench__import" title="导入外部批准工资资料" :bordered="true">
@@ -398,7 +455,7 @@ onMounted(() => void loadWorkbench());
           <t-descriptions-item label="项目分配记录数">{{ localImportPreview.projectAllocationCount }}</t-descriptions-item>
         </t-descriptions>
         <t-button class="wage-statement-workbench__create-draft" theme="primary" :loading="importLoading" @click="createImportedDraft">
-          创建工资承担草稿
+          {{ selected?.status === "draft" ? "更新当前工资草稿" : "创建工资承担草稿" }}
         </t-button>
       </template>
       <t-alert v-if="importError" class="wage-statement-workbench__notice" theme="error" :message="importError" />
@@ -410,7 +467,7 @@ onMounted(() => void loadWorkbench());
       :error="loadError"
       empty-title="当前暂无月度工资承担记录"
       empty-description="工资承担单创建、提交和确认仍在受控业务流程中办理。"
-      @retry="loadWorkbench"
+      @retry="loadWorkbench()"
     >
       <t-card class="jg-table-region jg-table-region--wide" :bordered="true">
         <t-table
@@ -431,6 +488,13 @@ onMounted(() => void loadWorkbench());
             <t-link theme="primary" @click="openDetail(row)">查看汇总</t-link>
           </template>
         </t-table>
+        <t-pagination
+          v-if="listMeta.total > listMeta.pageSize"
+          :current="listMeta.page"
+          :page-size="listMeta.pageSize"
+          :total="listMeta.total"
+          @current-change="changePage"
+        />
       </t-card>
     </JgResultState>
 

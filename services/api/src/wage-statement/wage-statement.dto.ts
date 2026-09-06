@@ -1,9 +1,6 @@
 import type {
   WageCostComponentInput,
   WageCreditorBreakdownInput,
-  WageProjectCostComponentAllocationInput,
-  WageProjectCreditorAllocationInput,
-  WageProjectAllocationInput,
   WageStatementDraftInput
 } from "./wage-statement.domain";
 
@@ -17,9 +14,6 @@ export interface ApprovedWagePersonDto {
   approvedAmountCents: string;
   costComponents: WageCostComponentInput[];
   creditorBreakdowns: WageCreditorBreakdownInput[];
-  projectAllocations: WageProjectAllocationInput[];
-  projectCostComponentAllocations?: WageProjectCostComponentAllocationInput[];
-  projectCreditorAllocations?: WageProjectCreditorAllocationInput[];
 }
 
 export interface CreateApprovedWageSourceDto {
@@ -40,6 +34,16 @@ export interface CreateWageStatementDraftDto extends WageStatementDraftInput {
   sourceVersionId: string;
   idempotencyKey: string;
   expectedRevision: number;
+}
+
+export interface UpdateWageStatementDraftDto extends WageStatementDraftInput {
+  idempotencyKey: string;
+  expectedRevision: number;
+}
+
+export interface WageStatementWorkbenchQueryDto {
+  page?: number | string;
+  pageSize?: number | string;
 }
 
 /**

@@ -14,7 +14,9 @@ describe("工资承担工作台非敏感入口", () => {
     expect(page).toContain("月度工资承担工作台");
     expect(page).toContain("来源导入预览");
     expect(page).toContain("月度汇总详情");
-    expect(api).toContain('"/wage-statements/workbench"');
+    expect(api).toContain("/wage-statements/workbench?page=");
+    expect(page).toContain("<t-pagination");
+    expect(page).toContain('@current-change="changePage"');
     expect(api).toContain("/summary");
     expect(api).toContain("/import-preview");
     expect(api).toContain('"/wage-statements/approved-sources"');
@@ -38,6 +40,7 @@ describe("工资承担工作台非敏感入口", () => {
     expect(page).toContain("fetchWageStatementCapabilities");
     for (const handler of [
       "createImportedDraftWithCapability",
+      "updateImportedDraftWithCapability",
       "submitWageStatementWithCapability",
       "returnWageStatementWithCapability",
       "confirmWageStatementWithCapability"
@@ -85,8 +88,11 @@ describe("工资承担工作台非敏感入口", () => {
     expect(page).toContain("创建工资承担草稿");
     expect(page).toContain("createApprovedWageSource");
     expect(page).toContain("createWageStatementDraft");
+    expect(page).toContain("updateWageStatementDraft");
+    expect(page).toContain("approvedAuthorityLines(lines)");
     expect(page).toContain("localImportCommand.value.sourceKey");
     expect(page).toContain("localImportCommand.value.draftKey");
+    expect(page).toContain("localImportCommand.value.updateKey");
     expect(page).toContain("canPrepare");
     expect(page).not.toContain("localStorage");
     expect(page).not.toContain("sessionStorage");

@@ -17,7 +17,7 @@ describe("WageStatementController aggregate reads", () => {
     await controller.summary(user as never, "statement-1");
     await controller.importPreview(user as never, "statement-1");
 
-    expect(wages.listWorkbench).toHaveBeenCalledWith("finance-user");
+    expect(wages.listWorkbench).toHaveBeenCalledWith("finance-user", {});
     expect(wages.readSummary).toHaveBeenCalledWith("finance-user", "statement-1");
     expect(wages.readImportPreview).toHaveBeenCalledWith("finance-user", "statement-1");
   });
@@ -36,7 +36,7 @@ describe("WageStatementController wage workbench governance", () => {
     });
     expect(wages.capabilities).toHaveBeenCalledWith("finance-user");
 
-    for (const method of ["capabilities", "workbench", "summary", "importPreview", "createSensitiveExportTicket", "createApprovedSource", "createDraft", "createRevision", "submit"] as const) {
+    for (const method of ["capabilities", "workbench", "summary", "importPreview", "createSensitiveExportTicket", "createApprovedSource", "createDraft", "createRevision", "updateDraft", "submit"] as const) {
       expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, WageStatementController.prototype[method])).toEqual([
         "finance_staff",
         "finance_director"

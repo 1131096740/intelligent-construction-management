@@ -336,8 +336,8 @@ describe("WageStatementService historical takeover confirmation", () => {
             }]
           : []))
       },
-      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-1" }) },
-      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }) },
+      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-1" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
+      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
       wageCreditorBreakdown: {
         create: jest.fn().mockResolvedValue({
           id: "creditor-1",
@@ -345,10 +345,12 @@ describe("WageStatementService historical takeover confirmation", () => {
           creditorSubjectType: "employee_user",
           creditorUserId: "employee-1",
           creditorBusinessPartyVersionId: null
-        })
+        }),
+        createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length }))
       },
       wageProjectAllocation: {
-        create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" })
+        create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" }),
+        createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length }))
       },
       wageProjectCostComponentAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wageProjectCreditorAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -508,9 +510,10 @@ describe("WageStatementService historical takeover confirmation", () => {
       },
       select: { id: true, employmentCompanyId: true, wageMonth: true, currentRevision: true }
     }].map((call) => [call]));
-    expect(tx.wageCreditorBreakdown.create.mock.calls).toEqual([[{
-      data: {
-        personLineId: "person-1",
+    expect(tx.wageCreditorBreakdown.createMany.mock.calls).toEqual([[{
+      data: [{
+        id: expect.any(String),
+        personLineId: expect.any(String),
         creditorSubjectId: undefined,
         creditorSubjectType: "employee_user",
         creditorUserId: "employee-1",
@@ -531,14 +534,7 @@ describe("WageStatementService historical takeover confirmation", () => {
           creditorCategory: "employee_net_pay",
           amountCents: "100000"
         }
-      },
-      select: {
-        id: true,
-        creditorCategory: true,
-        creditorSubjectType: true,
-        creditorUserId: true,
-        creditorBusinessPartyVersionId: true
-      }
+      }]
     }]]);
     expect(tx.wageStatementVersion.update.mock.calls.at(-1)![0]).toEqual({
       where: { id: "reserved-version-1" },
@@ -629,15 +625,16 @@ describe("WageStatementService historical takeover confirmation", () => {
         }])
       },
       businessPartyVersion: { findMany: jest.fn().mockResolvedValue([]) },
-      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-1" }) },
-      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }) },
+      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-1" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
+      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
       wageCreditorBreakdown: {
         create: jest.fn().mockResolvedValue({
           id: "creditor-1", creditorCategory: "employee_net_pay", creditorSubjectType: "employee_user",
           creditorUserId: "employee-1", creditorBusinessPartyVersionId: null
-        })
+        }),
+        createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length }))
       },
-      wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" }) },
+      wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
       wageProjectCostComponentAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wageProjectCreditorAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
@@ -1156,15 +1153,16 @@ describe("WageStatementService historical takeover confirmation", () => {
         }])
       },
       businessPartyVersion: { findMany: jest.fn().mockResolvedValue([]) },
-      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-2" }) },
-      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-2", componentCode: "gross_wage" }) },
+      wagePersonLine: { create: jest.fn().mockResolvedValue({ id: "person-2" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
+      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-2", componentCode: "gross_wage" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
       wageCreditorBreakdown: {
         create: jest.fn().mockResolvedValue({
           id: "creditor-2", creditorCategory: "employee_net_pay", creditorSubjectType: "employee_user",
           creditorUserId: "employee-1", creditorBusinessPartyVersionId: null
-        })
+        }),
+        createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length }))
       },
-      wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-2", projectId: "project-1", serviceSnapshotId: "service-1" }) },
+      wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-2", projectId: "project-1", serviceSnapshotId: "service-1" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })) },
       wageProjectCostComponentAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wageProjectCreditorAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wagePayableRef: {

@@ -5,6 +5,24 @@ import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { WageStatementService } from "./wage-statement.service";
 
 describe("WageStatementService", () => {
+  const financePersonLine = {
+    employeeId: "employee-1",
+    employmentSnapshotId: "employment-1",
+    employmentCompanyId: "company-1",
+    employmentPeriodStart: "2026-08-01",
+    employmentPeriodEnd: "2026-08-31",
+    positionCategory: "project_manager",
+    approvedAmountCents: "100000",
+    costComponents: [{ componentCode: "gross_wage", amountCents: "100000" }],
+    creditorBreakdowns: [{ creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "100000" }],
+    projectAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", serviceMonth: "2026-08", serviceEvidenceSha256: "a".repeat(64), amountCents: "100000" }],
+    projectCostComponentAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", componentCode: "gross_wage", amountCents: "100000" }],
+    projectCreditorAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "100000" }]
+  };
+  const { projectAllocations: _sourceAllocations, projectCostComponentAllocations: _sourceCostMatrix, projectCreditorAllocations: _sourceCreditorMatrix, ...approvedPersonLine } = financePersonLine;
+  void _sourceAllocations;
+  void _sourceCostMatrix;
+  void _sourceCreditorMatrix;
   const approvedSource = {
     idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     expectedRevision: 0,
@@ -16,22 +34,7 @@ describe("WageStatementService", () => {
     sourceVersion: "v1",
     basisDate: "2026-08-31",
     evidenceFileId: "file-1",
-    approvedPersonLines: [
-      {
-        employeeId: "employee-1",
-        employmentSnapshotId: "employment-1",
-        employmentCompanyId: "company-1",
-        employmentPeriodStart: "2026-08-01",
-        employmentPeriodEnd: "2026-08-31",
-        positionCategory: "project_manager",
-        approvedAmountCents: "100000",
-        costComponents: [{ componentCode: "gross_wage", amountCents: "100000" }],
-        creditorBreakdowns: [{ creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "100000" }],
-        projectAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", serviceMonth: "2026-08", serviceEvidenceSha256: "a".repeat(64), amountCents: "100000" }],
-        projectCostComponentAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", componentCode: "gross_wage", amountCents: "100000" }],
-        projectCreditorAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "100000" }]
-      }
-    ]
+    approvedPersonLines: [approvedPersonLine]
   };
 
   const draft = {
@@ -40,22 +43,7 @@ describe("WageStatementService", () => {
     expectedRevision: 0,
     wageMonth: "2026-08",
     sourceTotalCents: "100000",
-    personLines: [
-      {
-        employeeId: "employee-1",
-        employmentSnapshotId: "employment-1",
-        employmentCompanyId: "company-1",
-        employmentPeriodStart: "2026-08-01",
-        employmentPeriodEnd: "2026-08-31",
-        positionCategory: "project_manager",
-        approvedAmountCents: "100000",
-        costComponents: [{ componentCode: "gross_wage", amountCents: "100000" }],
-        creditorBreakdowns: [{ creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "100000" }],
-        projectAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", serviceMonth: "2026-08", serviceEvidenceSha256: "a".repeat(64), amountCents: "100000" }],
-        projectCostComponentAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", componentCode: "gross_wage", amountCents: "100000" }],
-        projectCreditorAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "100000" }]
-      }
-    ]
+    personLines: [financePersonLine]
   };
 
   function setup() {
@@ -65,7 +53,7 @@ describe("WageStatementService", () => {
       user: { findMany: jest.fn().mockResolvedValue([{ id: "employee-1", name: "张三", departmentId: "dept-1" }]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", code: "P1", name: "一号项目" }]), findUnique: jest.fn() },
       wageApprovedSourceVersion: { create: jest.fn().mockResolvedValue({ id: "source-1" }), findUnique: jest.fn() },
-      wageServiceBasisBinding: { create: jest.fn().mockResolvedValue({ id: "basis-1" }), findMany: jest.fn().mockResolvedValue([{ id: "basis-1", projectId: "project-1", serviceSnapshotId: "service-1", serviceMonth: "2026-08", evidenceSha256: "a".repeat(64), authorityFingerprint: "aae917f236292fe8521991c798df734666581521306df6ce3f4bfd7e90217a30" }]) },
+      wageServiceBasisBinding: { create: jest.fn().mockResolvedValue({ id: "basis-1" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })), findMany: jest.fn().mockResolvedValue([{ id: "basis-1", projectId: "project-1", serviceSnapshotId: "service-1", serviceMonth: "2026-08", evidenceSha256: "a".repeat(64), authorityFingerprint: "aae917f236292fe8521991c798df734666581521306df6ce3f4bfd7e90217a30" }]) },
       wageApprovedSourceCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ idempotencyKey: "source-receipt-1" }) },
       $queryRaw: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -74,6 +62,8 @@ describe("WageStatementService", () => {
       wageCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ idempotencyKey: "receipt-1" }) },
       wagePersonLine: {
         create: jest.fn().mockResolvedValue({ id: "person-1" }),
+        createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([{
           employeeId: "employee-1",
           projectAllocations: [{ projectId: "project-1" }]
@@ -81,11 +71,11 @@ describe("WageStatementService", () => {
       },
       affiliateClearingAuthorityVersion: { findMany: jest.fn().mockResolvedValue([]) },
       assignedWageAuthorityLine: { findMany: jest.fn().mockResolvedValue([]) },
-      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }), createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      wageCreditorBreakdown: { create: jest.fn().mockResolvedValue({ id: "creditor-1", creditorCategory: "employee_net_pay", creditorSubjectType: "employee_user", creditorUserId: "employee-1", creditorBusinessPartyVersionId: null }), createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" }), createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      wageProjectCostComponentAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      wageProjectCreditorAllocation: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      wageCostComponent: { create: jest.fn().mockResolvedValue({ id: "cost-1", componentCode: "gross_wage" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      wageCreditorBreakdown: { create: jest.fn().mockResolvedValue({ id: "creditor-1", creditorCategory: "employee_net_pay", creditorSubjectType: "employee_user", creditorUserId: "employee-1", creditorBusinessPartyVersionId: null }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      wageProjectAllocation: { create: jest.fn().mockResolvedValue({ id: "allocation-1", projectId: "project-1", serviceSnapshotId: "service-1" }), createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      wageProjectCostComponentAllocation: { createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      wageProjectCreditorAllocation: { createMany: jest.fn(({ data }: { data: unknown[] }) => Promise.resolve({ count: data.length })), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       wagePayableRef: { findMany: jest.fn(), create: jest.fn() },
       approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
       projectParticipatingCompany: { findFirst: jest.fn() },
@@ -105,9 +95,41 @@ describe("WageStatementService", () => {
     // own matrix and append-only tests construct the complete confirmed graph.
     const servicePrototype = Object.getPrototypeOf(service) as {
       projectConfirmedVersion: () => Promise<void>;
+      lockAndRevalidateConfirmationFacts: (_tx: unknown, _statement: unknown, versionId: string) => Promise<{ id: string }>;
     };
     jest.spyOn(servicePrototype, "projectConfirmedVersion").mockResolvedValue(undefined);
-    return { service, tx, roles, prisma, operatingLedger };
+    const revalidationSpy = jest.spyOn(servicePrototype, "lockAndRevalidateConfirmationFacts").mockImplementation(async (_tx, _statement, versionId) => ({ id: versionId }));
+    return { service, tx, roles, prisma, operatingLedger, revalidationSpy };
+  }
+
+  function sourceRecord(overrides: Record<string, unknown> = {}) {
+    const sourceSnapshot = {
+      employmentCompany: { id: "company-1", name: "甲公司" },
+      wageMonth: "2026-08",
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      externalReference: "PAYROLL-2026-08",
+      sourceVersion: "v1",
+      basisDate: "2026-08-31",
+      evidence: { fileId: "file-1", sha256: "a".repeat(64) },
+      approvedPersonLines: approvedSource.approvedPersonLines
+    };
+    return {
+      id: "source-1",
+      employmentCompanyId: "company-1",
+      wageMonth: "2026-08",
+      periodStart: new Date("2026-08-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-08-31T00:00:00.000Z"),
+      sourceType: "external_approved_wage",
+      externalReference: "PAYROLL-2026-08",
+      sourceVersion: "v1",
+      basisDate: new Date("2026-08-31T00:00:00.000Z"),
+      evidenceFileId: "file-1",
+      evidenceSha256: "a".repeat(64),
+      sourceFingerprint: fingerprint(sourceSnapshot),
+      sourceSnapshot,
+      ...overrides
+    };
   }
 
   it("creates a server-fingerprinted approved source only from an active company, active people, and active evidence", async () => {
@@ -126,6 +148,26 @@ describe("WageStatementService", () => {
     }));
   });
 
+  it("freezes only approved wage authority facts and rejects project allocations in the approved-source command", async () => {
+    const { service, tx } = setup();
+    const { projectAllocations, projectCostComponentAllocations, projectCreditorAllocations, ...authorityLine } = financePersonLine;
+    const authorityOnly = {
+      ...approvedSource,
+      approvedPersonLines: [authorityLine]
+    };
+
+    await expect(service.createApprovedSource("actor-1", authorityOnly as never)).resolves.toEqual({ id: "source-1" });
+    expect(tx.wageApprovedSourceVersion.create.mock.calls[0][0].data.sourceSnapshot.approvedPersonLines[0]).toEqual(authorityLine);
+
+    await expect(service.createApprovedSource("actor-1", {
+      ...authorityOnly,
+      idempotencyKey: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      approvedPersonLines: [{ ...authorityLine, projectAllocations }]
+    } as never)).rejects.toThrow("外部批准工资来源不得包含项目分摊或财务矩阵");
+    expect(projectCostComponentAllocations).toBeDefined();
+    expect(projectCreditorAllocations).toBeDefined();
+  });
+
   it("fails closed when the named company, person, or evidence cannot be verified as active", async () => {
     const { service, tx } = setup();
     tx.fileObject.findUnique.mockResolvedValue({ id: "file-1", storageStatus: "deleted", contentSha256: "a".repeat(64) });
@@ -134,52 +176,46 @@ describe("WageStatementService", () => {
     expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
   });
 
-  it("fails closed before freezing a source when any allocated project is inactive or absent", async () => {
+  it("fails closed before writing a draft when any finance-allocated project is inactive or absent", async () => {
     const { service, tx } = setup();
     tx.project.findMany.mockResolvedValue([]);
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
 
-    await expect(service.createApprovedSource("actor-1", approvedSource)).rejects.toThrow("分摊项目不存在或已停用");
-    expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
+    await expect(service.createDraft("actor-1", draft)).rejects.toThrow("分摊项目不存在或已停用");
+    expect(tx.wageStatement.create).not.toHaveBeenCalled();
   });
 
-  it("requires every external service basis to prove the same natural wage month", async () => {
+  it("requires every finance-entered service basis to prove the same natural wage month", async () => {
     const { service, tx } = setup();
-    await expect(service.createApprovedSource("actor-1", {
-      ...approvedSource,
-      approvedPersonLines: [{
-        ...approvedSource.approvedPersonLines[0],
-        projectAllocations: [{ ...approvedSource.approvedPersonLines[0].projectAllocations[0], serviceMonth: "2026-07" }]
-      }]
+    await expect(service.createDraft("actor-1", {
+      ...draft,
+      personLines: [{ ...financePersonLine, projectAllocations: [{ ...financePersonLine.projectAllocations[0], serviceMonth: "2026-07" }] }]
     })).rejects.toThrow("服务依据月份必须与工资月份一致");
-    await expect(service.createApprovedSource("actor-1", {
-      ...approvedSource,
-      approvedPersonLines: [{
-        ...approvedSource.approvedPersonLines[0],
-        projectAllocations: [{ ...approvedSource.approvedPersonLines[0].projectAllocations[0], serviceEvidenceSha256: "not-a-hash" }]
-      }]
+    await expect(service.createDraft("actor-1", {
+      ...draft,
+      personLines: [{ ...financePersonLine, projectAllocations: [{ ...financePersonLine.projectAllocations[0], serviceEvidenceSha256: "not-a-hash" }] }]
     })).rejects.toThrow("服务依据校验值必须为 SHA-256");
-    expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
+    expect(tx.wageStatement.create).not.toHaveBeenCalled();
   });
 
-  it("binds every frozen service basis to the approved-source evidence hash", async () => {
+  it("binds every finance-entered service basis to the approved-source evidence hash", async () => {
     const { service, tx } = setup();
-    await expect(service.createApprovedSource("actor-1", {
-      ...approvedSource,
-      approvedPersonLines: [{
-        ...approvedSource.approvedPersonLines[0],
-        projectAllocations: [{ ...approvedSource.approvedPersonLines[0].projectAllocations[0], serviceEvidenceSha256: "c".repeat(64) }]
-      }]
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
+    await expect(service.createDraft("actor-1", {
+      ...draft,
+      personLines: [{ ...financePersonLine, projectAllocations: [{ ...financePersonLine.projectAllocations[0], serviceEvidenceSha256: "c".repeat(64) }] }]
     })).rejects.toThrow("服务依据必须由同一外部批准工资资料校验值证明");
-    expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
+    expect(tx.wageStatement.create).not.toHaveBeenCalled();
   });
 
   it("persists a server-controlled service-basis binding rather than carrying a naked caller service ID into a wage allocation", async () => {
     const { service, tx } = setup();
-    await service.createApprovedSource("actor-1", approvedSource);
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
+    tx.wageServiceBasisBinding.findMany.mockResolvedValue([]);
+    tx.wageServiceBasisBinding.createMany.mockResolvedValue({ count: 1 });
+    await service.createDraft("actor-1", draft);
 
-    expect(tx.wageServiceBasisBinding.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ sourceVersionId: "source-1", projectId: "project-1", serviceSnapshotId: "service-1", evidenceSha256: "a".repeat(64), authorityFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/) })
-    }));
+    expect(tx.wageServiceBasisBinding.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ sourceVersionId: "source-1", projectId: "project-1", serviceSnapshotId: "service-1", evidenceSha256: "a".repeat(64), authorityFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/) })] });
   });
 
   it("creates one same-company monthly draft atomically with immutable source-backed facts", async () => {
@@ -206,9 +242,43 @@ describe("WageStatementService", () => {
     expect(tx.wageStatementVersion.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ statementId: "statement-1", revision: 1, sourceVersionId: "source-1", status: "draft" })
     }));
-    expect(tx.wageCostComponent.create).toHaveBeenCalled();
-    expect(tx.wageCreditorBreakdown.create).toHaveBeenCalled();
-    expect(tx.wageProjectAllocation.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ serviceBasisBindingId: "basis-1" }) }));
+    expect(tx.wagePersonLine.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.wageCostComponent.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.wageCreditorBreakdown.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.wageProjectAllocation.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ serviceBasisBindingId: "basis-1" })] }));
+  });
+
+  it("uses finance-entered project allocations when the approved source contains authority facts only", async () => {
+    const { service, tx } = setup();
+    const { projectAllocations: _allocations, projectCostComponentAllocations: _costMatrix, projectCreditorAllocations: _creditorMatrix, ...authorityLine } = financePersonLine;
+    void _allocations;
+    void _costMatrix;
+    void _creditorMatrix;
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue({
+      id: "source-1",
+      employmentCompanyId: "company-1",
+      wageMonth: "2026-08",
+      periodStart: new Date("2026-08-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-08-31T00:00:00.000Z"),
+      evidenceFileId: "file-1",
+      evidenceSha256: "a".repeat(64),
+      sourceSnapshot: {
+        employmentCompany: { id: "company-1", name: "甲公司" },
+        wageMonth: "2026-08",
+        periodStart: "2026-08-01",
+        periodEnd: "2026-08-31",
+        approvedPersonLines: [authorityLine]
+      }
+    });
+
+    await expect(service.createDraft("actor-1", draft)).resolves.toEqual({
+      statementId: "statement-1",
+      versionId: "version-1",
+      revision: 1
+    });
+    expect(tx.wageProjectAllocation.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ projectId: "project-1", amountCents: 100000n })]
+    }));
   });
 
   it("creates an auditable later supplemental revision only from a confirmed predecessor and a complete new source/matrix payload", async () => {
@@ -249,7 +319,7 @@ describe("WageStatementService", () => {
   it("carries frozen User and BusinessPartyVersion creditors plus both explicit matrices from source into the draft", async () => {
     const { service, tx } = setup();
     const line = {
-      ...approvedSource.approvedPersonLines[0],
+      ...financePersonLine,
       costComponents: [{ componentCode: "gross_wage", amountCents: "70000" }, { componentCode: "employer_social_insurance", amountCents: "30000" }],
       creditorBreakdowns: [
         { creditorSubjectType: "employee_user" as const, creditorUserId: "employee-1", creditorCategory: "employee_net_pay", amountCents: "70000" },
@@ -264,7 +334,11 @@ describe("WageStatementService", () => {
         { projectId: "project-1", serviceSnapshotId: "service-1", creditorSubjectType: "business_party" as const, creditorBusinessPartyVersionId: "party-v1", creditorCategory: "employer_social_insurance", amountCents: "30000" }
       ]
     };
-    const sourceInput = { ...approvedSource, idempotencyKey: "77777777-7777-4777-8777-777777777777", approvedPersonLines: [line] };
+    const { projectAllocations: _allocations, projectCostComponentAllocations: _costMatrix, projectCreditorAllocations: _creditorMatrix, ...authorityLine } = line;
+    void _allocations;
+    void _costMatrix;
+    void _creditorMatrix;
+    const sourceInput = { ...approvedSource, idempotencyKey: "77777777-7777-4777-8777-777777777777", approvedPersonLines: [authorityLine] };
     const draftInput = { ...draft, idempotencyKey: "88888888-8888-4888-8888-888888888888", personLines: [line] };
     const frozenPartyVersion = {
       id: "party-v1",
@@ -273,17 +347,11 @@ describe("WageStatementService", () => {
       snapshot: { name: "社保机构", unifiedSocialCreditCode: "91310000SOCIAL0001" }
     };
     tx.businessPartyVersion.findMany.mockResolvedValue([frozenPartyVersion]);
-    tx.wageCostComponent.create
-      .mockResolvedValueOnce({ id: "cost-gross", componentCode: "gross_wage" })
-      .mockResolvedValueOnce({ id: "cost-social", componentCode: "employer_social_insurance" });
-    tx.wageCreditorBreakdown.create
-      .mockResolvedValueOnce({ id: "creditor-employee", creditorCategory: "employee_net_pay", creditorSubjectType: "employee_user", creditorUserId: "employee-1", creditorBusinessPartyVersionId: null })
-      .mockResolvedValueOnce({ id: "creditor-party", creditorCategory: "employer_social_insurance", creditorSubjectType: "business_party", creditorUserId: null, creditorBusinessPartyVersionId: "party-v1" });
     await service.createApprovedSource("actor-1", sourceInput);
-    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue({ id: "source-1", employmentCompanyId: "company-1", wageMonth: "2026-08", periodStart: new Date("2026-08-01T00:00:00.000Z"), periodEnd: new Date("2026-08-31T00:00:00.000Z"), evidenceFileId: "file-1", evidenceSha256: "a".repeat(64), sourceSnapshot: { approvedPersonLines: [line] } });
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue({ id: "source-1", employmentCompanyId: "company-1", wageMonth: "2026-08", periodStart: new Date("2026-08-01T00:00:00.000Z"), periodEnd: new Date("2026-08-31T00:00:00.000Z"), evidenceFileId: "file-1", evidenceSha256: "a".repeat(64), sourceSnapshot: { approvedPersonLines: [authorityLine] } });
     await service.createDraft("actor-1", draftInput);
 
-    const persistedCreditors = tx.wageCreditorBreakdown.create.mock.calls.map(([call]) => call.data);
+    const persistedCreditors = tx.wageCreditorBreakdown.createMany.mock.calls[0][0].data as Array<Record<string, unknown>>;
     const persistedParty = persistedCreditors.find((creditor) => creditor.creditorSubjectType === "business_party");
     const persistedEmployee = persistedCreditors.find((creditor) => creditor.creditorSubjectType === "employee_user");
     expect(persistedParty).toEqual(expect.objectContaining({
@@ -300,7 +368,7 @@ describe("WageStatementService", () => {
       creditorVersionFingerprint: fingerprint({ subjectType: "employee_user", userId: "employee-1", nameSnapshot: "张三" })
     }));
     frozenPartyVersion.snapshot.name = "已变更的当前主数据名称";
-    expect(persistedParty.creditorVersionFingerprint).toBe(fingerprint({
+    expect(persistedParty?.creditorVersionFingerprint).toBe(fingerprint({
       subjectType: "business_party", businessPartyVersionId: "party-v1", businessPartyId: "party-1", versionNo: 3,
       snapshot: { name: "社保机构", unifiedSocialCreditCode: "91310000SOCIAL0001" }
     }));
@@ -392,16 +460,9 @@ describe("WageStatementService", () => {
     expect(tx.wageStatement.create).not.toHaveBeenCalled();
   });
 
-  it("freezes the complete external authority payload and refuses a draft that changes any approved component, creditor, allocation, or employment fact", async () => {
+  it("freezes approved authority facts while permitting a balanced finance allocation independent of the source", async () => {
     const { service, tx } = setup();
-    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue({
-      id: "source-1",
-      employmentCompanyId: "company-1",
-      wageMonth: "2026-08",
-      periodStart: new Date("2026-08-01T00:00:00.000Z"),
-      periodEnd: new Date("2026-08-31T00:00:00.000Z"),
-      sourceSnapshot: { approvedPersonLines: approvedSource.approvedPersonLines }
-    });
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
 
     await expect(service.createApprovedSource("actor-1", approvedSource)).resolves.toEqual({ id: "source-1" });
     const persisted = tx.wageApprovedSourceVersion.create.mock.calls[0][0].data.sourceSnapshot;
@@ -411,20 +472,21 @@ describe("WageStatementService", () => {
       employmentPeriodEnd: "2026-08-31",
       positionCategory: "project_manager",
       costComponents: approvedSource.approvedPersonLines[0].costComponents,
-      creditorBreakdowns: approvedSource.approvedPersonLines[0].creditorBreakdowns,
-      projectAllocations: approvedSource.approvedPersonLines[0].projectAllocations,
-      projectCostComponentAllocations: approvedSource.approvedPersonLines[0].projectCostComponentAllocations,
-      projectCreditorAllocations: approvedSource.approvedPersonLines[0].projectCreditorAllocations
+      creditorBreakdowns: approvedSource.approvedPersonLines[0].creditorBreakdowns
     }));
+    expect(persisted.approvedPersonLines[0]).not.toHaveProperty("projectAllocations");
+    expect(persisted.approvedPersonLines[0]).not.toHaveProperty("projectCostComponentAllocations");
+    expect(persisted.approvedPersonLines[0]).not.toHaveProperty("projectCreditorAllocations");
+    tx.project.findMany.mockResolvedValue([{ id: "project-2", code: "P2", name: "二号项目" }]);
     await expect(service.createDraft("actor-1", {
       ...draft,
       personLines: [{
         ...draft.personLines[0],
-        costComponents: [{ componentCode: "project_bonus", amountCents: "100000" }],
-        projectCostComponentAllocations: [{ projectId: "project-1", serviceSnapshotId: "service-1", componentCode: "project_bonus", amountCents: "100000" }]
+        projectAllocations: [{ ...draft.personLines[0].projectAllocations[0], projectId: "project-2" }],
+        projectCostComponentAllocations: [{ ...draft.personLines[0].projectCostComponentAllocations[0], projectId: "project-2" }],
+        projectCreditorAllocations: [{ ...draft.personLines[0].projectCreditorAllocations[0], projectId: "project-2" }]
       }]
-    })).rejects.toThrow("工资承担单人员事实必须与外部批准来源一致");
-    expect(tx.wageStatement.create).not.toHaveBeenCalled();
+    })).resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1 });
   });
 
   it("rejects a source whose employee net-pay creditor is not the same employee or whose employment facts contradict its company or month", async () => {
@@ -498,6 +560,72 @@ describe("WageStatementService", () => {
 
     expect(tx.wageStatementVersion.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "superseded", reviewDisposition: "review_returned", reviewReturnReason: "请补充说明" }) }));
     expect(tx.wageStatementVersion.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ statementId: "statement-1", revision: 2, kind: "base", status: "draft" }) }));
+  });
+
+  it("replaces only the current draft facts through the controlled edit command", async () => {
+    const { service, tx } = setup();
+    tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
+    tx.wageStatement.findUnique.mockResolvedValue({
+      id: "statement-1",
+      employmentCompanyId: "company-1",
+      wageMonth: "2026-08",
+      currentRevision: 2
+    });
+    tx.wageStatementVersion.findUnique.mockResolvedValue({
+      id: "version-2",
+      statementId: "statement-1",
+      revision: 2,
+      status: "draft",
+      sourceVersionId: "source-1"
+    });
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
+
+    await expect(service.updateDraft("actor-1", "statement-1", {
+      idempotencyKey: "34343434-3434-4434-8434-343434343434",
+      expectedRevision: 2,
+      wageMonth: "2026-08",
+      sourceTotalCents: "100000",
+      personLines: [financePersonLine]
+    })).resolves.toEqual({
+      statementId: "statement-1",
+      versionId: "version-2",
+      revision: 2,
+      status: "draft"
+    });
+
+    expect(tx.wageProjectCostComponentAllocation.deleteMany).toHaveBeenCalled();
+    expect(tx.wageProjectCreditorAllocation.deleteMany).toHaveBeenCalled();
+    expect(tx.wageProjectAllocation.deleteMany).toHaveBeenCalled();
+    expect(tx.wageCostComponent.deleteMany).toHaveBeenCalled();
+    expect(tx.wageCreditorBreakdown.deleteMany).toHaveBeenCalled();
+    expect(tx.wagePersonLine.deleteMany).toHaveBeenCalledWith({
+      where: { statementVersionId: "version-2" }
+    });
+    expect(tx.wagePersonLine.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.wageStatementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-2" },
+      data: { lastEditedByUserId: "actor-1" }
+    });
+    expect(tx.wageCommandReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "wage_statement.draft.update", expectedRevision: 2 })
+    });
+  });
+
+  it("locks and rejects an approved-source fingerprint drift before confirmation", async () => {
+    const { service, tx, revalidationSpy } = setup();
+    revalidationSpy.mockRestore();
+    const source = sourceRecord({ sourceFingerprint: "b".repeat(64) });
+    tx.wageStatementVersion.findUnique
+      .mockResolvedValueOnce({ id: "version-1", sourceVersionId: "source-1", status: "submitted" })
+      .mockResolvedValueOnce({ id: "version-1", statementId: "statement-1", revision: 1, status: "submitted", sourceSnapshot: source.sourceSnapshot, personLines: [] });
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(source);
+
+    await expect((service as unknown as {
+      lockAndRevalidateConfirmationFacts: (...args: unknown[]) => Promise<unknown>;
+    }).lockAndRevalidateConfirmationFacts(tx, {
+      id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1
+    }, "version-1")).rejects.toThrow("外部批准工资来源快照指纹已漂移");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(10);
   });
 
   it("refuses confirmation by a creator, editor, or submitter and permits only an independent finance director", async () => {
@@ -618,6 +746,7 @@ describe("WageStatementService", () => {
   it("confirms a later revision with an identical frozen matrix but publishes no zero-delta payable ref or operating impact", async () => {
     const { service, tx, roles, operatingLedger } = setup();
     jest.restoreAllMocks();
+    jest.spyOn(service as never, "lockAndRevalidateConfirmationFacts" as never).mockResolvedValue({ id: "version-2" } as never);
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 2, employmentCompanyId: "company-1", wageMonth: "2026-08" });
@@ -671,6 +800,7 @@ describe("WageStatementService", () => {
   it("confirms a controlled correction against the exact service-snapshot root with matching negative operating impacts", async () => {
     const { service, tx, roles, operatingLedger } = setup();
     jest.restoreAllMocks();
+    jest.spyOn(service as never, "lockAndRevalidateConfirmationFacts" as never).mockResolvedValue({ id: "version-2" } as never);
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", currentRevision: 2, employmentCompanyId: "company-1", wageMonth: "2026-08" });
@@ -796,6 +926,60 @@ describe("WageStatementService", () => {
     await expect(service.createApprovedSource("actor-1", approvedSource)).rejects.toThrow("同一幂等键不能用于不同外部工资来源命令");
   });
 
+  it("rechecks the durable receipt after source and draft natural-key races", async () => {
+    const { service, tx, prisma } = setup();
+    await service.createApprovedSource("actor-1", approvedSource);
+    const sourceReceipt = tx.wageApprovedSourceCommandReceipt.create.mock.calls[0][0].data;
+    tx.wageApprovedSourceVersion.create.mockRejectedValueOnce({ code: "P2002" });
+    prisma.wageApprovedSourceCommandReceipt.findUnique.mockResolvedValueOnce({
+      fingerprint: sourceReceipt.fingerprint,
+      resultSnapshot: sourceReceipt.resultSnapshot
+    });
+    await expect(service.createApprovedSource("actor-1", approvedSource)).resolves.toEqual({ id: "source-1" });
+
+    tx.wageApprovedSourceVersion.create.mockRejectedValueOnce({ code: "P2002" });
+    prisma.wageApprovedSourceCommandReceipt.findUnique.mockResolvedValueOnce(null);
+    await expect(service.createApprovedSource("actor-1", {
+      ...approvedSource,
+      idempotencyKey: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    })).rejects.toThrow("该我方公司的外部工资来源版本已存在");
+
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
+    await service.createDraft("actor-1", draft);
+    const draftReceipt = tx.wageCommandReceipt.create.mock.calls.at(-1)[0].data;
+    tx.wageStatement.create.mockRejectedValueOnce({ code: "P2002" });
+    prisma.wageCommandReceipt.findUnique.mockResolvedValueOnce({
+      fingerprint: draftReceipt.fingerprint,
+      resultSnapshot: draftReceipt.resultSnapshot
+    });
+    await expect(service.createDraft("actor-1", draft)).resolves.toEqual({
+      statementId: "statement-1",
+      versionId: "version-1",
+      revision: 1
+    });
+
+    tx.wageStatement.create.mockRejectedValueOnce({ code: "P2002" });
+    prisma.wageCommandReceipt.findUnique.mockResolvedValueOnce(null);
+    await expect(service.createDraft("actor-1", {
+      ...draft,
+      idempotencyKey: "77777777-7777-4777-8777-777777777777"
+    })).rejects.toThrow("该我方公司本月工资承担单已存在，请通过后续修订流程处理");
+  });
+
+  it("retries a service-basis batch after PostgreSQL reports a serialization race", async () => {
+    const { service, tx, prisma } = setup();
+    tx.wageApprovedSourceVersion.findUnique.mockResolvedValue(sourceRecord());
+    tx.wageServiceBasisBinding.findMany.mockResolvedValue([]);
+    tx.wageServiceBasisBinding.createMany.mockRejectedValueOnce({ code: "P2010", meta: { code: "40001" } });
+
+    await expect(service.createDraft("actor-1", draft)).resolves.toEqual({
+      statementId: "statement-1",
+      versionId: "version-1",
+      revision: 1
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
   it("replays draft, submit, return, and confirm receipt races without treating their P2002 as business conflicts", async () => {
     const { service, tx, prisma, roles } = setup();
     const replayStatementReceipt = async (invoke: () => Promise<unknown>) => {
@@ -832,7 +1016,7 @@ describe("WageStatementService", () => {
     await replayStatementReceipt(() => service.confirm("director-1", "statement-1", { idempotencyKey: "55555555-5555-4555-8555-555555555555", expectedRevision: 1 }));
   });
 
-  it("retries only bounded serializable P2034 conflicts and preserves a real business failure", async () => {
+  it("retries bounded Prisma and raw-query serialization conflicts and preserves a real business failure", async () => {
     const { service, tx, prisma } = setup();
     tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
@@ -842,6 +1026,11 @@ describe("WageStatementService", () => {
     await expect(service.submit("actor-1", "statement-1", { idempotencyKey: "22222222-2222-4222-8222-222222222222", expectedRevision: 1 }))
       .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "submitted" });
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+
+    prisma.$transaction.mockImplementationOnce(() => Promise.reject({ code: "P2010", meta: { code: "40001" } }));
+    await expect(service.submit("actor-1", "statement-1", { idempotencyKey: "77777777-7777-4777-8777-777777777777", expectedRevision: 1 }))
+      .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "submitted" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(4);
 
     tx.wageStatementVersion.findUnique.mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "submitted" });
     await expect(service.submit("actor-1", "statement-1", { idempotencyKey: "66666666-6666-4666-8666-666666666666", expectedRevision: 1 }))

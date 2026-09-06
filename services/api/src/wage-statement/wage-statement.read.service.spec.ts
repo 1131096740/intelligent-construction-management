@@ -39,8 +39,15 @@ describe("WageStatementService aggregate reads", () => {
       versions: [currentVersion]
     };
     const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{
+        statementVersionId: "version-1",
+        personLineCount: 2n,
+        positionCategoryCount: 1n,
+        projectAllocationCount: 2n
+      }]),
       wageStatement: {
         findMany: jest.fn().mockResolvedValue([statement]),
+        count: jest.fn().mockResolvedValue(1),
         findUnique: jest.fn().mockResolvedValue(statement)
       },
       companyEntity: {
@@ -66,6 +73,10 @@ describe("WageStatementService aggregate reads", () => {
         canDownloadSensitive: true,
         canExportSensitive: true
       },
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
       items: [{
         statementId: "statement-1",
         employmentCompanyName: "甲公司",
@@ -84,6 +95,22 @@ describe("WageStatementService aggregate reads", () => {
     expect(JSON.stringify(result)).not.toContain("employee-secret");
     expect(JSON.stringify(result)).not.toContain("100000");
     expect(JSON.stringify(result)).not.toContain("allocation-1");
+  });
+
+  it("bounds the workbench query with validated pagination and returns page metadata", async () => {
+    const { service, prisma } = setup();
+    prisma.wageStatement.count.mockResolvedValue(31);
+
+    const result = await service.listWorkbench("finance-user", { page: 2, pageSize: 20 } as never);
+
+    expect(prisma.wageStatement.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 20 }));
+    expect(prisma.wageStatement.findMany.mock.calls[0]![0].select.versions).toEqual(expect.objectContaining({
+      orderBy: { revision: "desc" },
+      take: 2
+    }));
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({ page: 2, pageSize: 20, total: 31, totalPages: 2 }));
+    await expect(service.listWorkbench("finance-user", { page: 1, pageSize: 51 } as never)).rejects.toThrow("工资工作台每页最多读取 50 条");
   });
 
   it("returns a summary and source import preview without personal facts, monetary values, attachment references, or source snapshots", async () => {
