@@ -18,6 +18,7 @@ const {
 const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
 const {
   GROUPS: remainingGroups,
+  assertManifestMatchesGroups,
   createRuntimeEnvironment: createRemainingRuntimeEnvironment,
   selectGroups: selectRemainingGroups
 } = require("./run-database-dynamic-remaining-local.cjs");
@@ -55,7 +56,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 159 pending tests as executable local coverage", () => {
+test("manifest derives all 165 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -64,9 +65,9 @@ test("manifest derives all 159 pending tests as executable local coverage", () =
     pendingFiles: 46,
     fullyPendingSuites: 35,
     partiallyPendingSuites: 11,
-    pendingTests: 159,
+    pendingTests: 165,
     coveredFiles: 46,
-    coveredTests: 159,
+    coveredTests: 165,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -105,7 +106,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=159/u
+    /inventory\.coveredTests=26，派生值=165/u
   );
 });
 
@@ -210,6 +211,7 @@ test("group selection rejects unknown and duplicate database groups", () => {
 });
 
 test("remaining runner can isolate one exact database subgroup", () => {
+  assert.doesNotThrow(() => assertManifestMatchesGroups());
   assert.deepEqual(
     selectRemainingGroups(["--group", "generic_database_constraints"]).map(
       (group) => group.id
@@ -217,6 +219,14 @@ test("remaining runner can isolate one exact database subgroup", () => {
     ["generic_database_constraints"]
   );
   assert.equal(selectRemainingGroups([]).length, remainingGroups.length);
+});
+
+test("wage subgroup upgrades from the immediately preceding migration baseline", () => {
+  const group = remainingGroups.find(({ id }) => id === "wage_statement");
+  assert.ok(group);
+  assert.equal(group.pendingTests, 10);
+  assert.equal(group.preTerminalMigrationFixture, "terminal_migration");
+  assert.equal(group.requiresOperatingLedgerWriteSecret, true);
 });
 
 test("historical wage subgroup derives the service baseline SHA without inheriting caller commit metadata", () => {

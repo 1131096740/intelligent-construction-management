@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 159,
-    "terminalMigration": "20260904090000_pol219_historical_wage_takeover",
-    "terminalMigrationChecksum": "9fcdf9455336bd9c14e3ddbb71645b57cbe08ef7cfb749ee784e0a8897415f86",
+    "expectedDirectoryCount": 160,
+    "terminalMigration": "20260906090000_pol224_s1_wage_canonical_operating_guard",
+    "terminalMigrationChecksum": "d86efc4d37a72ca9693c6af758b37f0f6d842c8646fe739b12613fb58e66ddb8",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 46,
     "fullyPendingSuites": 35,
     "partiallyPendingSuites": 11,
-    "pendingTests": 159,
+    "pendingTests": 165,
     "coveredFiles": 46,
-    "coveredTests": 159,
+    "coveredTests": 165,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -191,7 +191,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 109,
+      "pendingTests": 115,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -360,7 +360,7 @@
         },
         {
           "path": "services/api/src/database/wage-statement-constraints.spec.ts",
-          "pendingTests": 4,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         },
         {

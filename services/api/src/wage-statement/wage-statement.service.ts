@@ -2059,7 +2059,7 @@ export class WageStatementService {
       });
       if (!affiliate) throw new ConflictException("工资项目缺少事实日有效施工企业上下文，不能确认");
       const snapshot = jsonValue({
-        formalStatus: "confirmed", wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind,
+        formalStatus: "confirmed", projectionOrigin, wageStatementVersionId: version.id, sourceVersion: String(revision), wageVersionKind: kind,
         projectId, occurredAt: occurredAt.toISOString(), confirmedAt: confirmedAt.toISOString(), confirmedByUserId: actorUserId,
         employmentCompanyId, operatingLedgerEffectiveDate: projectRecord.operatingLedgerEffectiveDate.toISOString(),
         affiliate: { assignmentId: affiliate.id, businessPartyVersionId: affiliate.businessPartyVersionId, name: affiliate.affiliateNameSnapshot, creditCode: affiliate.affiliateCreditCodeSnapshot ?? undefined },
