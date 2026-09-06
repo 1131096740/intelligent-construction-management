@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 25,
-    "exportedFunctionCount": 548,
-    "transportWrapperCount": 528,
+    "exportedFunctionCount": 549,
+    "transportWrapperCount": 529,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 550,
+    "mainRequestBindingCount": 551,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 550,
-    "productionConsumerCount": 422,
+    "requestEdgeCount": 551,
+    "productionConsumerCount": 423,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -11720,7 +11720,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 98,
+          "sourceLine": 113,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/:param/activation",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/activation",
@@ -11750,7 +11750,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 98,
+          "sourceLine": 113,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/:param/attachments",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/attachments",
@@ -11780,7 +11780,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 98,
+          "sourceLine": 113,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/:param/confirmations",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/confirmations",
@@ -11810,7 +11810,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 98,
+          "sourceLine": 113,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers",
           "normalizedPath": "/projects/:param/operating-takeovers",
@@ -11838,7 +11838,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 178,
+          "sourceLine": 200,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/workbook-template",
           "normalizedPath": "/projects/:param/operating-takeovers/workbook-template",
@@ -11858,6 +11858,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchHistoricalFinancialTakeoverBatches",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 107,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/historical-financial/manifests",
+          "normalizedPath": "/projects/:param/operating-takeovers/historical-financial/manifests",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/historical-financial/manifests",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchHistoricalFinancialTakeoverBatches",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchOperatingTakeoverBatches",
       "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
       "kind": "transport",
@@ -11865,7 +11893,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 92,
+          "sourceLine": 107,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers",
           "normalizedPath": "/projects/:param/operating-takeovers",
@@ -11895,7 +11923,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 92,
+          "sourceLine": 107,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/capability",
           "normalizedPath": "/projects/:param/operating-takeovers/capability",
@@ -11923,7 +11951,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 92,
+          "sourceLine": 107,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/:param",
           "normalizedPath": "/projects/:param/operating-takeovers/:param",
@@ -11951,7 +11979,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 98,
+          "sourceLine": 113,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/precheck",
           "normalizedPath": "/projects/:param/operating-takeovers/precheck",
@@ -11981,7 +12009,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 118,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/precheck-xlsx",
           "normalizedPath": "/projects/:param/operating-takeovers/precheck-xlsx",
@@ -12011,7 +12039,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 108,
+          "sourceLine": 123,
           "method": "PATCH",
           "path": "/projects/:param/operating-takeovers/:param/rows/:param",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/rows/:param",
@@ -12041,7 +12069,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 118,
+          "sourceLine": 133,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/files",
           "normalizedPath": "/projects/:param/operating-takeovers/files",

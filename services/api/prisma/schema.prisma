@@ -693,7 +693,7 @@ model OperatingTakeoverCommandReceipt {
   permissionSnapshotFingerprint String
   fingerprint                   String
   status                        String
-  commandSnapshotSchemaVersion Int?
+  commandSnapshotSchemaVersion  Int?
   commandSnapshot               Json?
   resultSnapshot                Json
   causalityFingerprint          String
@@ -742,6 +742,149 @@ model OperatingTakeoverCommandReceiptLine {
   @@index([rowMappingId, createdAt])
   @@index([reversesLineId])
   @@index([causesLineId])
+}
+
+// POL-224: payable/payment/relationship/fund-movement takeover is staged in
+// an isolated inactive projection. A/B rows become eligible only through the
+// batch activation record; C rows remain gaps. Existing canonical facts are
+// linked by immutable fingerprints and are never copied as bank transactions.
+model HistoricalFinancialTakeoverBatch {
+  id                            String    @id @default(uuid())
+  projectId                     String
+  asOfDate                      DateTime  @db.Date
+  status                        String    @default("prepared")
+  revision                      Int       @default(1)
+  candidateBaselineSha          String
+  sourceSetFingerprint          String
+  readSetFingerprint            String
+  manifestFingerprint           String
+  permissionSnapshotFingerprint String
+  createdByUserId               String
+  appliedByUserId               String?
+  attestedByUserId              String?
+  createdAt                     DateTime  @default(now())
+  appliedAt                     DateTime?
+  attestedAt                    DateTime?
+
+  rows         HistoricalFinancialTakeoverRowMapping[]
+  receipts     HistoricalFinancialTakeoverCommandReceipt[]
+  activation   HistoricalFinancialTakeoverActivation?
+  compensation HistoricalFinancialTakeoverCompensation?
+
+  @@unique([projectId, manifestFingerprint], map: "HFTakeoverBatch_project_manifest_key")
+  @@index([projectId, status, createdAt])
+}
+
+model HistoricalFinancialTakeoverRowMapping {
+  id                                  String   @id @default(uuid())
+  batchId                             String
+  projectId                           String
+  rowNo                               Int
+  sourceType                          String
+  sourceBusinessId                    String
+  sourceVersion                       Int
+  sourceCoordinate                    String
+  normalizedRowHash                   String
+  kind                                String
+  evidenceLevel                       String
+  amountCents                         BigInt
+  currencyCode                        String   @default("CNY")
+  asOfDate                            DateTime @db.Date
+  mappingDecision                     String
+  targetKind                          String?
+  targetRef                           String?
+  targetFingerprint                   String?
+  targetSnapshot                      Json
+  sourceDuplicateGroupKey             String
+  bankDuplicateGroupKey               String?
+  payableDuplicateGroupKey            String?
+  movementDuplicateGroupKey           String?
+  openingBalanceDuplicateGroupKey     String?
+  conflictGroupKeys                   Json
+  legacyProjectProxyPaymentId         String?
+  legacyProjectAffiliatePaymentFactId String?
+  readSetFingerprint                  String
+  mappingFingerprint                  String
+  projectionStatus                    String   @default("applied_inactive")
+  newPaymentAllowed                   Boolean  @default(false)
+  settlementAllocationAllowed         Boolean  @default(false)
+  createdTransactionId                BigInt   @default(dbgenerated("txid_current()"))
+  createdAt                           DateTime @default(now())
+
+  batch HistoricalFinancialTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([batchId, rowNo], map: "HFTakeoverRow_batch_row_key")
+  @@unique([batchId, sourceType, sourceBusinessId, sourceVersion, sourceCoordinate], map: "HFTakeoverRow_batch_source_key")
+  @@index([projectId, sourceDuplicateGroupKey])
+  @@index([projectId, bankDuplicateGroupKey])
+  @@index([projectId, payableDuplicateGroupKey])
+  @@index([projectId, movementDuplicateGroupKey])
+  @@index([projectId, openingBalanceDuplicateGroupKey])
+  @@index([targetKind, targetRef])
+}
+
+model HistoricalFinancialTakeoverCommandReceipt {
+  id                   String   @id @default(uuid())
+  batchId              String
+  idempotencyKey       String   @unique
+  action               String
+  expectedRevision     Int
+  actorUserId          String
+  fingerprint          String
+  status               String
+  resultSnapshot       Json
+  causalityFingerprint String
+  causesReceiptId      String?
+  createdTransactionId BigInt   @default(dbgenerated("txid_current()"))
+  createdAt            DateTime @default(now())
+
+  batch                 HistoricalFinancialTakeoverBatch            @relation(fields: [batchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  causesReceipt         HistoricalFinancialTakeoverCommandReceipt?  @relation("HistoricalFinancialReceiptCausality", fields: [causesReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  causedReceipts        HistoricalFinancialTakeoverCommandReceipt[] @relation("HistoricalFinancialReceiptCausality")
+  applyActivation       HistoricalFinancialTakeoverActivation?      @relation("HFTakeoverActivationApplyReceipt")
+  attestationActivation HistoricalFinancialTakeoverActivation?      @relation("HFTakeoverActivationAttestReceipt")
+  activation            HistoricalFinancialTakeoverActivation?      @relation("HFTakeoverActivationReceipt")
+  compensation          HistoricalFinancialTakeoverCompensation?    @relation("HFTakeoverCompensationReceipt")
+
+  @@index([batchId, action, createdAt])
+  @@index([causesReceiptId])
+}
+
+model HistoricalFinancialTakeoverActivation {
+  id                              String   @id @default(uuid())
+  batchId                         String   @unique
+  applyReceiptId                  String   @unique
+  attestationReceiptId            String   @unique
+  activationReceiptId             String   @unique
+  manifestFingerprint             String
+  preActivationReadSetFingerprint String
+  activationFingerprint           String
+  activatedByUserId               String
+  createdTransactionId            BigInt   @default(dbgenerated("txid_current()"))
+  activatedAt                     DateTime @default(now())
+
+  batch              HistoricalFinancialTakeoverBatch          @relation(fields: [batchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  applyReceipt       HistoricalFinancialTakeoverCommandReceipt @relation("HFTakeoverActivationApplyReceipt", fields: [applyReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attestationReceipt HistoricalFinancialTakeoverCommandReceipt @relation("HFTakeoverActivationAttestReceipt", fields: [attestationReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  activationReceipt  HistoricalFinancialTakeoverCommandReceipt @relation("HFTakeoverActivationReceipt", fields: [activationReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  compensation       HistoricalFinancialTakeoverCompensation?
+}
+
+model HistoricalFinancialTakeoverCompensation {
+  id                       String   @id @default(uuid())
+  batchId                  String   @unique
+  activationId             String   @unique
+  compensationReceiptId    String   @unique
+  reason                   String
+  reverseCausalitySnapshot Json
+  compensationFingerprint  String
+  compensatedByUserId      String
+  createdTransactionId     BigInt   @default(dbgenerated("txid_current()"))
+  compensatedAt            DateTime @default(now())
+
+  batch               HistoricalFinancialTakeoverBatch          @relation(fields: [batchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  activation          HistoricalFinancialTakeoverActivation     @relation(fields: [activationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  compensationReceipt HistoricalFinancialTakeoverCommandReceipt @relation("HFTakeoverCompensationReceipt", fields: [compensationReceiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 }
 
 // B-grade authority is deliberately an aggregate creditor-scope snapshot. It
