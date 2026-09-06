@@ -46,6 +46,9 @@ import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-a
     BusinessEntryDefinitionService,
     BusinessEntryExcelService
   ],
-  exports: [BusinessEntryDefinitionService, BusinessEntryExcelService]
+  exports: [
+    BusinessEntryDefinitionService,
+    BusinessEntryExcelService
+  ]
 })
 export class BusinessEntryDefinitionModule {}

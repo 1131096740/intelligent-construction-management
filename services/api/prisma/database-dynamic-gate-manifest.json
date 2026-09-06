@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 161,
-    "terminalMigration": "20260906120000_pol224_historical_financial_takeover",
-    "terminalMigrationChecksum": "76a7daf6df406c2aad8a50101b073f316fb3af6459792764de03419402fdb043",
+    "expectedDirectoryCount": 162,
+    "terminalMigration": "20260906173000_pol255_formal_business_entry_target",
+    "terminalMigrationChecksum": "a55126958481e58c66bcbc8aaa74e9910a4e9bcf4b636e5dc3aab27c9edd60b2",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 47,
     "fullyPendingSuites": 36,
     "partiallyPendingSuites": 11,
-    "pendingTests": 169,
+    "pendingTests": 172,
     "coveredFiles": 47,
-    "coveredTests": 169,
+    "coveredTests": 172,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -191,7 +191,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 119,
+      "pendingTests": 122,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -315,7 +315,7 @@
         },
         {
           "path": "services/api/src/database/business-entry-definition-postgres.spec.ts",
-          "pendingTests": 5,
+          "pendingTests": 8,
           "suiteStatus": "fully_pending"
         },
         {

@@ -1,4 +1,7 @@
-import { isBusinessEntryCreateTarget } from "@jiangkong/shared-domain";
+import {
+  isBusinessEntryCreateTarget,
+  isBusinessEntryProjectOwnedTarget
+} from "@jiangkong/shared-domain";
 import type {
   BusinessEntryDraftPayload,
   BusinessEntryFrozenSnapshot,
@@ -79,16 +82,23 @@ function projectIdForScope(scope: BusinessEntryRequestScope) {
   return undefined;
 }
 
+function assertLegacyBusinessEntryTarget(target: BusinessEntrySubmissionTarget) {
+  if (isBusinessEntryProjectOwnedTarget(target)) {
+    throw new Error("项目归属正式对象必须由领域事务入口提交");
+  }
+}
+
 function appendTarget(query: URLSearchParams, target: BusinessEntrySubmissionTarget) {
+  assertLegacyBusinessEntryTarget(target);
   if (!target.entityType.trim()) throw new Error("业务目标类型不能为空");
   query.set("targetEntityType", target.entityType);
-  if ("entityId" in target) {
-    if (!target.entityId.trim()) throw new Error("业务目标 ID 不能为空");
-    query.set("targetEntityId", target.entityId);
-  } else {
+  if (isBusinessEntryCreateTarget(target)) {
     if (!target.createTarget.trim()) throw new Error("新建目标令牌不能为空");
     query.set("targetCreateTarget", target.createTarget);
+    return;
   }
+  if (!target.entityId.trim()) throw new Error("业务目标 ID 不能为空");
+  query.set("targetEntityId", target.entityId);
 }
 
 function path(
@@ -127,6 +137,7 @@ async function ensureOk(response: Response, fallback: string) {
 
 function requestBody(payload: BusinessEntryDraftPayload, operation?: BusinessEntryOperation) {
   if (!payload.target) throw new Error("业务请求必须绑定正式业务对象");
+  assertLegacyBusinessEntryTarget(payload.target);
   return {
     ...(payload.definitionVersion === undefined
       ? {}
@@ -326,6 +337,7 @@ export async function previewBusinessEntryExcel(
   if (payload.definitionVersion === undefined || !payload.target) {
     throw new Error("Excel 预检需要当前字段版本和正式业务对象");
   }
+  assertLegacyBusinessEntryTarget(payload.target);
   const formData = new FormData();
   formData.append("file", file);
   formData.append("definitionVersion", String(payload.definitionVersion));

@@ -82,6 +82,14 @@ export interface BusinessEntryRoleResolver {
     globalRoleKeys: RoleKey[];
     projectRoleKeys: RoleKey[];
   }>;
+  effectiveRoleScopesInTransaction?(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    projectId: string
+  ): Promise<{
+    globalRoleKeys: RoleKey[];
+    projectRoleKeys: RoleKey[];
+  }>;
 }
 
 @Injectable()
@@ -423,7 +431,17 @@ export class BusinessEntryDefinitionService {
     input: BusinessEntryDraftRequest,
     frozenAt?: string
   ): Promise<BusinessEntryFrozenSnapshot> {
-    const { access, roleKeys } = await this.authorizeScene(sceneKey, projectId, actorUserId);
+    if (tx && this.registeredAccess(sceneKey).target.scope === "global") {
+      throw new BadRequestException(
+        "全局业务场景须由所属领域在同一事务中持久化正式快照"
+      );
+    }
+    const { access, roleKeys } = await this.authorizeScene(
+      sceneKey,
+      projectId,
+      actorUserId,
+      tx
+    );
     const payload = this.payload(sceneKey, input);
     await this.assertTargetScope(
       sceneKey,
@@ -432,7 +450,8 @@ export class BusinessEntryDefinitionService {
       access,
       payload.target,
       input.operation ?? "edit",
-      sceneKey === "business_party" ? "submission" : undefined
+      sceneKey === "business_party" ? "submission" : undefined,
+      tx
     );
     const operation = input.operation ?? "edit";
     if (operation !== "edit" && operation !== "import") {
@@ -445,7 +464,8 @@ export class BusinessEntryDefinitionService {
       operation,
       scope: access.target.scope,
       target: payload.target!,
-      values: input.values
+      values: input.values,
+      tx
     });
     try {
       const snapshot = this.registry.freezeSubmissionSnapshot(
@@ -537,7 +557,8 @@ export class BusinessEntryDefinitionService {
   private async authorizeScene(
     sceneKey: string,
     projectId: string | undefined,
-    actorUserId: string
+    actorUserId: string,
+    tx?: Prisma.TransactionClient
   ) {
     this.requireAuthorization();
     const access = this.registeredAccess(sceneKey);
@@ -551,8 +572,10 @@ export class BusinessEntryDefinitionService {
         : await this.loadGlobalRoleKeys(actorUserId, sceneKey);
     } else {
       if (!projectId?.trim()) throw new BadRequestException("请选择项目");
-      await this.assertActiveProject(projectId);
-      const scopes = await this.visibility.effectiveRoleScopes(actorUserId, projectId);
+      await this.assertActiveProject(projectId, tx ?? this.prisma);
+      const scopes = tx
+        ? await this.requireTransactionRoleResolver()(tx, actorUserId, projectId)
+        : await this.visibility.effectiveRoleScopes(actorUserId, projectId);
       roleKeys = access.permission.roleScope === "project"
         ? scopes.projectRoleKeys
         : resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
@@ -562,6 +585,14 @@ export class BusinessEntryDefinitionService {
     return { access, roleKeys };
   }
 
+  private requireTransactionRoleResolver() {
+    const resolver = this.visibility.effectiveRoleScopesInTransaction;
+    if (!resolver) {
+      throw new BadRequestException("项目岗位解析器不支持调用方事务");
+    }
+    return resolver.bind(this.visibility);
+  }
+
   private requireAuthorization() {
     if (!this.authorization) {
       throw new BadRequestException("业务场景缺少领域授权服务");
@@ -569,8 +600,11 @@ export class BusinessEntryDefinitionService {
     return this.authorization;
   }
 
-  private async assertActiveProject(projectId: string) {
-    const project = await this.prisma.project.findUnique({
+  private async assertActiveProject(
+    projectId: string,
+    client: PrismaService | Prisma.TransactionClient = this.prisma
+  ) {
+    const project = await client.project.findUnique({
       where: { id: projectId, isActive: true },
       select: { id: true }
     });
@@ -628,7 +662,8 @@ export class BusinessEntryDefinitionService {
     access: BusinessEntrySceneAccessPolicy,
     target: BusinessEntrySubmissionTarget | undefined,
     operation: BusinessEntryOperation,
-    purpose?: BusinessEntryCreateTargetPurpose
+    purpose?: BusinessEntryCreateTargetPurpose,
+    tx?: Prisma.TransactionClient
   ) {
     if (access.target.scope === "global" && projectId !== undefined) {
       throw new BadRequestException("全局业务场景不得携带项目上下文");
@@ -684,7 +719,7 @@ export class BusinessEntryDefinitionService {
       operation,
       scene: sceneKey,
       scope: access.target.scope,
-      prisma: this.prisma
+      prisma: tx ?? this.prisma
     })) {
       throw new BadRequestException("提交对象不存在或不属于当前业务范围");
     }

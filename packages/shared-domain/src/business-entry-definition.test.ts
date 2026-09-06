@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createBusinessEntryDefinitionRegistry,
+  isBusinessEntryCreateTarget,
+  isBusinessEntryExistingTarget,
+  isBusinessEntryProjectOwnedTarget,
   type BusinessEntrySceneDefinition
 } from "./business-entry-definition";
 
@@ -60,6 +63,26 @@ const profileDefinition: BusinessEntrySceneDefinition = {
 };
 
 describe("business entry definition registry", () => {
+  it("distinguishes a project-owned formal target from legacy project/global targets", () => {
+    const formalTarget = {
+      projectId: "project-1",
+      entityType: "contract_version",
+      entityId: "contract-version-1"
+    } as const;
+
+    expect(isBusinessEntryProjectOwnedTarget(formalTarget)).toBe(true);
+    expect(isBusinessEntryExistingTarget(formalTarget)).toBe(false);
+    expect(isBusinessEntryProjectOwnedTarget({
+      entityType: "contract_version",
+      entityId: "contract-version-1"
+    })).toBe(false);
+    expect(isBusinessEntryCreateTarget({
+      entityType: "contract_version",
+      createTarget: "create-token",
+      projectId: "project-1"
+    } as never)).toBe(false);
+  });
+
   it("validates a registered draft and freezes its definition version", () => {
     const registry = createBusinessEntryDefinitionRegistry([profileDefinition]);
 

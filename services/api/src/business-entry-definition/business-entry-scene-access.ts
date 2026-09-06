@@ -7,6 +7,7 @@ import {
   type BusinessEntrySubmissionTarget,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import type { Prisma } from "@prisma/client";
 import type { PrismaService } from "../database/prisma.service";
 
 export const BUSINESS_ENTRY_SCENE_ACCESS_REGISTRY = Symbol(
@@ -22,7 +23,7 @@ export interface BusinessEntryGlobalTargetResolverContext {
   readonly operation: BusinessEntryOperation;
   readonly scene: string;
   readonly scope: BusinessEntryTargetScope;
-  readonly prisma: PrismaService;
+  readonly prisma: PrismaService | Prisma.TransactionClient;
 }
 
 export type BusinessEntryGlobalTargetResolver = (

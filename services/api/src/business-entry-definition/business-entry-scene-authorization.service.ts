@@ -1,7 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import {
   isBusinessEntryExistingTarget,
+  OPERATING_TAKEOVER_SCENE_DEFINITIONS,
   type BusinessEntryOperation,
+  type BusinessEntrySceneDefinition,
   type BusinessEntrySubmissionTarget
 } from "@jiangkong/shared-domain";
 import { BusinessPartyService } from "../business-party/business-party.service";
@@ -12,6 +15,7 @@ import { OrganizationRoleService } from "../organization/organization-role.servi
 import { OrganizationService } from "../organization/organization.service";
 import { SettlementTemplateService } from "../settlement/settlement-template.service";
 import type { BusinessEntryTargetScope } from "./business-entry-scene-access";
+import { BUSINESS_ENTRY_SCENE_DEFINITIONS } from "./business-entry-definition.scene-registry";
 
 export interface BusinessEntrySceneAuthorizationContext {
   sceneKey: string;
@@ -21,67 +25,172 @@ export interface BusinessEntrySceneAuthorizationContext {
   scope: BusinessEntryTargetScope;
   target: BusinessEntrySubmissionTarget;
   values: Record<string, unknown>;
+  tx?: Prisma.TransactionClient;
+}
+
+export interface BusinessEntryDomainAuthorizationRegistration {
+  readonly sceneKey: string;
+  readonly resolve: (context: BusinessEntrySceneAuthorizationContext) => Promise<unknown>;
+}
+
+export class BusinessEntryDomainAuthorizationRegistry {
+  private readonly resolvers: ReadonlyMap<
+    string,
+    BusinessEntryDomainAuthorizationRegistration["resolve"]
+  >;
+
+  constructor(
+    definitions: readonly BusinessEntrySceneDefinition[],
+    registrations: readonly BusinessEntryDomainAuthorizationRegistration[]
+  ) {
+    const definitionKeys = new Set(definitions.map((definition) => definition.key));
+    const resolverByScene = new Map<
+      string,
+      BusinessEntryDomainAuthorizationRegistration["resolve"]
+    >();
+    for (const registration of registrations) {
+      if (!definitionKeys.has(registration.sceneKey)) {
+        throw new Error(`领域授权解析器引用未注册场景：${registration.sceneKey}`);
+      }
+      if (resolverByScene.has(registration.sceneKey)) {
+        throw new Error(`领域授权解析器重复注册：${registration.sceneKey}`);
+      }
+      if (typeof registration.resolve !== "function") {
+        throw new Error(`业务场景缺少领域授权解析器：${registration.sceneKey}`);
+      }
+      resolverByScene.set(registration.sceneKey, registration.resolve);
+    }
+    for (const definition of definitions) {
+      if (!resolverByScene.has(definition.key)) {
+        throw new Error(`业务场景缺少领域授权解析器：${definition.key}`);
+      }
+    }
+    this.resolvers = resolverByScene;
+  }
+
+  get(sceneKey: string) {
+    const resolver = this.resolvers.get(sceneKey);
+    if (!resolver) throw new BadRequestException("业务场景未登记领域授权器");
+    return resolver;
+  }
 }
 
 @Injectable()
 export class BusinessEntrySceneAuthorizationService {
+  private readonly registry: BusinessEntryDomainAuthorizationRegistry;
+
   constructor(
-    private readonly organization: OrganizationService,
-    private readonly organizationRoles: OrganizationRoleService,
-    private readonly companyEntities: CompanyEntityAccess,
-    private readonly businessParties: BusinessPartyService,
-    private readonly contractTemplates: ContractTemplateService,
-    private readonly layouts: LayoutTemplateService,
-    private readonly settlementTemplates: SettlementTemplateService
-  ) {}
+    organization: OrganizationService,
+    organizationRoles: OrganizationRoleService,
+    companyEntities: CompanyEntityAccess,
+    businessParties: BusinessPartyService,
+    contractTemplates: ContractTemplateService,
+    layouts: LayoutTemplateService,
+    settlementTemplates: SettlementTemplateService
+  ) {
+    // These project-scoped legacy scenes previously reached the switch default.
+    // Keep that fail-closed behavior explicit until their owning domains register
+    // a real resolver; generic BusinessAction permission is not a substitute.
+    const legacyUnresolved = async () => {
+      throw new BadRequestException("业务场景未登记领域授权器");
+    };
+    this.registry = new BusinessEntryDomainAuthorizationRegistry(
+      BUSINESS_ENTRY_SCENE_DEFINITIONS,
+      [
+        { sceneKey: "project_operating_profile", resolve: legacyUnresolved },
+        ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({
+          sceneKey: definition.key,
+          resolve: legacyUnresolved
+        })),
+        {
+          sceneKey: "department",
+          resolve: (context) => organization.assertCanMaintainBusinessEntryOrganization(
+            context.actorUserId,
+            "department",
+            this.targetId(context),
+            context.values
+          )
+        },
+        {
+          sceneKey: "organization_user",
+          resolve: (context) => organization.assertCanMaintainBusinessEntryOrganization(
+            context.actorUserId,
+            "organization_user",
+            this.targetId(context),
+            context.values
+          )
+        },
+        {
+          sceneKey: "user_role_assignment_command",
+          resolve: async (context) => {
+            const targetId = this.targetId(context);
+            if (!targetId) {
+              throw new BadRequestException("岗位命令必须绑定已存在的目标用户");
+            }
+            await organizationRoles.assertCanMaintainBusinessEntryRole(
+              context.actorUserId,
+              targetId,
+              context.values
+            );
+          }
+        },
+        {
+          sceneKey: "company_entity",
+          resolve: (context) => companyEntities.assertCanMaintain(
+            context.actorUserId,
+            context.tx
+          )
+        },
+        {
+          sceneKey: "business_party",
+          resolve: (context) => businessParties.assertCanMaintainBusinessEntry(
+            context.actorUserId
+          )
+        },
+        {
+          sceneKey: "contract_business_template",
+          resolve: (context) => contractTemplates.assertCanMaintainBusinessEntry(
+            context.actorUserId
+          )
+        },
+        {
+          sceneKey: "standard_clause_version",
+          resolve: (context) => contractTemplates.assertCanMaintainBusinessEntry(
+            context.actorUserId
+          )
+        },
+        {
+          sceneKey: "contract_layout_template_version",
+          resolve: (context) => layouts.assertCanMaintainBusinessEntry(
+            context.actorUserId
+          )
+        },
+        {
+          sceneKey: "settlement_template_version",
+          resolve: (context) => settlementTemplates.assertCanMaintainBusinessEntry(
+            context.actorUserId
+          )
+        },
+        {
+          sceneKey: "user_self_profile",
+          resolve: async (context) => {
+            const targetId = this.targetId(context);
+            if (!targetId || targetId !== context.actorUserId) {
+              throw new ForbiddenException("本人资料只能由已认证本人提交");
+            }
+          }
+        }
+      ]
+    );
+  }
 
   async assertAuthorized(context: BusinessEntrySceneAuthorizationContext) {
-    const targetId = isBusinessEntryExistingTarget(context.target)
+    await this.registry.get(context.sceneKey)(context);
+  }
+
+  private targetId(context: BusinessEntrySceneAuthorizationContext) {
+    return isBusinessEntryExistingTarget(context.target)
       ? context.target.entityId
       : undefined;
-    switch (context.sceneKey) {
-      case "department":
-      case "organization_user":
-        await this.organization.assertCanMaintainBusinessEntryOrganization(
-          context.actorUserId,
-          context.sceneKey,
-          targetId,
-          context.values
-        );
-        return;
-      case "user_role_assignment_command":
-        if (!targetId) {
-          throw new BadRequestException("岗位命令必须绑定已存在的目标用户");
-        }
-        await this.organizationRoles.assertCanMaintainBusinessEntryRole(
-          context.actorUserId,
-          targetId,
-          context.values
-        );
-        return;
-      case "company_entity":
-        await this.companyEntities.assertCanMaintain(context.actorUserId);
-        return;
-      case "business_party":
-        await this.businessParties.assertCanMaintainBusinessEntry(context.actorUserId);
-        return;
-      case "contract_business_template":
-      case "standard_clause_version":
-        await this.contractTemplates.assertCanMaintainBusinessEntry(context.actorUserId);
-        return;
-      case "contract_layout_template_version":
-        await this.layouts.assertCanMaintainBusinessEntry(context.actorUserId);
-        return;
-      case "settlement_template_version":
-        await this.settlementTemplates.assertCanMaintainBusinessEntry(context.actorUserId);
-        return;
-      case "user_self_profile":
-        if (!targetId || targetId !== context.actorUserId) {
-          throw new ForbiddenException("本人资料只能由已认证本人提交");
-        }
-        return;
-      default:
-        throw new BadRequestException("业务场景未登记领域授权器");
-    }
   }
 }
