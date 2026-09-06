@@ -726,7 +726,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       costDeltaCells: [expect.objectContaining({ direction: "decrease" })]
     }));
     await expect(first.$queryRaw(Prisma.sql`
-      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'correction')
+      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'correction')::TEXT
       FROM "OperatingFact" fact
       WHERE fact."id" = ${correctionFact.id}
     `)).resolves.toBeDefined();
@@ -737,7 +737,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
           to_jsonb(fact) || jsonb_build_object('amountCents', (fact."amountCents" + 1)::TEXT)
         ),
         'correction'
-      )
+      )::TEXT
       FROM "OperatingFact" fact
       WHERE fact."id" = ${correctionFact.id}
     `)).rejects.toThrow("相邻版本差额不一致");
@@ -751,7 +751,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
           )
         ),
         'correction'
-      )
+      )::TEXT
       FROM "OperatingFact" fact
       WHERE fact."id" = ${correctionFact.id}
     `)).rejects.toThrow("成本差额单元不一致");
@@ -779,7 +779,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     });
     expect(reversalFact.amountCents).toBe(60000n);
     await expect(first.$queryRaw(Prisma.sql`
-      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'reversal')
+      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'reversal')::TEXT
       FROM "OperatingFact" fact
       WHERE fact."id" = ${reversalFact.id}
     `)).resolves.toBeDefined();
