@@ -177,7 +177,7 @@ const GROUPS = [
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1",
       RUN_POL215_DATABASE: "1"
     },
-    pendingTests: 44,
+    pendingTests: 47,
     requiresOperatingLedgerWriteSecret: true
   },
   {

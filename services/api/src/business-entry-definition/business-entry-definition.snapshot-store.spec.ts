@@ -189,6 +189,60 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
     expect(saved).toEqual(snapshot);
   });
 
+  it("preserves and enforces the explicit project-owned target contract", async () => {
+    const formalSnapshot: BusinessEntryFrozenSnapshot = {
+      ...snapshot,
+      sceneKey: "contract_formal_entry",
+      target: {
+        projectId: "project-1",
+        entityType: "contract",
+        entityId: "contract-1"
+      },
+      definition: {
+        ...snapshot.definition,
+        key: "contract_formal_entry",
+        entityType: "contract"
+      }
+    };
+    const formalRecord = {
+      ...record,
+      sceneKey: formalSnapshot.sceneKey,
+      entityType: formalSnapshot.target.entityType,
+      entityId: formalSnapshot.target.entityId,
+      definitionSnapshot: formalSnapshot.definition
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(prisma)),
+      businessEntrySubmissionSnapshot: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue(formalRecord)
+      }
+    } as unknown as PrismaService;
+    const store = new PrismaBusinessEntrySnapshotStore(
+      prisma,
+      { record: jest.fn() } as never,
+      { updateProfileInTransaction: jest.fn() } as never
+    );
+
+    await expect(store.saveInTransaction(
+      prisma as unknown as Prisma.TransactionClient,
+      "project-1",
+      "user-1",
+      formalSnapshot
+    )).resolves.toEqual(formalSnapshot);
+    await expect(store.saveInTransaction(
+      prisma as unknown as Prisma.TransactionClient,
+      "project-2",
+      "user-1",
+      formalSnapshot
+    )).rejects.toThrow("正式业务对象目标项目与快照项目不一致");
+    await expect(store.saveStandalone(
+      "project-1",
+      "user-1",
+      formalSnapshot
+    )).rejects.toThrow("项目归属正式对象必须由领域调用方事务冻结");
+  });
+
   it("returns the stored snapshot on retry and creates a new revision for a different payload", async () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(prisma)),

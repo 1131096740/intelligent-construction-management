@@ -1,4 +1,9 @@
-import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
+import type { Prisma } from "@prisma/client";
+import { BUSINESS_ENTRY_SCENE_DEFINITIONS } from "./business-entry-definition.scene-registry";
+import {
+  BusinessEntryDomainAuthorizationRegistry,
+  BusinessEntrySceneAuthorizationService
+} from "./business-entry-scene-authorization.service";
 
 describe("BusinessEntrySceneAuthorizationService", () => {
   function createService() {
@@ -72,5 +77,43 @@ describe("BusinessEntrySceneAuthorizationService", () => {
       target: { entityType: "user_self_profile", entityId: "actor-2" },
       values: { name: "越权" }
     })).rejects.toThrow("本人资料只能由已认证本人提交");
+  });
+
+  it("passes an existing caller transaction to a transaction-aware domain resolver", async () => {
+    const { service, companyEntities } = createService();
+    const tx = { marker: "caller-tx" } as unknown as Prisma.TransactionClient;
+
+    await service.assertAuthorized({
+      sceneKey: "company_entity",
+      actorUserId: "actor-1",
+      operation: "edit",
+      scope: "global",
+      target: { entityType: "company_entity", entityId: "company-1" },
+      values: { name: "我方公司" },
+      tx
+    });
+
+    expect(companyEntities.assertCanMaintain).toHaveBeenCalledWith("actor-1", tx);
+  });
+
+  it("validates the production authorization registry as a closed one-to-one set", () => {
+    const definition = BUSINESS_ENTRY_SCENE_DEFINITIONS[0]!;
+    const resolver = jest.fn();
+
+    expect(() => new BusinessEntryDomainAuthorizationRegistry(
+      [definition],
+      []
+    )).toThrow(`业务场景缺少领域授权解析器：${definition.key}`);
+    expect(() => new BusinessEntryDomainAuthorizationRegistry(
+      [definition],
+      [
+        { sceneKey: definition.key, resolve: resolver },
+        { sceneKey: definition.key, resolve: resolver }
+      ]
+    )).toThrow(`领域授权解析器重复注册：${definition.key}`);
+    expect(() => new BusinessEntryDomainAuthorizationRegistry(
+      [],
+      [{ sceneKey: definition.key, resolve: resolver }]
+    )).toThrow(`领域授权解析器引用未注册场景：${definition.key}`);
   });
 });

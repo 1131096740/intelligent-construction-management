@@ -121,7 +121,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | project-upstream-fund-fact-db.spec.ts | 2 | `RUN_PROJECT_UPSTREAM_FUND_DB_TESTS` |
 | project-operating-profile-upgrade.spec.ts | 2 | `RUN_PROJECT_OPERATING_PROFILE_UPGRADE` |
 | project-operating-profile-db.spec.ts | 17 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
-| business-entry-definition-postgres.spec.ts | 5 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
+| business-entry-definition-postgres.spec.ts | 8 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
 | operating-ledger-concurrency.spec.ts | 1 | `RUN_OPERATING_LEDGER_DATABASE` |
 | clearing-concurrency.spec.ts | 1 | `RUN_CLEARING_DATABASE` |
 | operating-source-replay-consistency.spec.ts | 1 | `RUN_OPERATING_SOURCE_REPLAY_DATABASE` |

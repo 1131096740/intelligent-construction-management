@@ -172,6 +172,30 @@ describe("business entry API", () => {
     )).rejects.toThrow("全局业务场景不得携带项目上下文");
   });
 
+  it("rejects formal project-owned targets at the legacy definition HTTP boundary", async () => {
+    const formalPayload: BusinessEntryDraftPayload = {
+      sceneKey: "contract_formal_entry",
+      definitionVersion: 1,
+      target: { projectId: "project-1", entityType: "contract", entityId: "contract-1" },
+      values: { name: "正式合同" }
+    };
+    const scope = { scope: "project", projectId: "project-1" } as const;
+    const file = new File(["xlsx"], "正式合同.xlsx", { type: "application/octet-stream" });
+
+    await expect(fetchBusinessEntryDefinition(
+      formalPayload.sceneKey,
+      scope,
+      formalPayload.target!
+    )).rejects.toThrow("项目归属正式对象必须由领域事务入口提交");
+    expect(() => validateBusinessEntryDraft(scope, formalPayload))
+      .toThrow("项目归属正式对象必须由领域事务入口提交");
+    expect(() => freezeBusinessEntrySnapshot(scope, formalPayload))
+      .toThrow("项目归属正式对象必须由领域事务入口提交");
+    await expect(previewBusinessEntryExcel(scope, formalPayload, file))
+      .rejects.toThrow("项目归属正式对象必须由领域事务入口提交");
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
   it("uses server-fixed business-party probe, submission, and validation paths", async () => {
     mockApiFetch
       .mockResolvedValueOnce(new Response(JSON.stringify({

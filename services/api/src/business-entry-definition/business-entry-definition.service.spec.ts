@@ -119,12 +119,22 @@ function projectPrisma() {
   };
 }
 
-function projectVisibility(roleKeys: readonly string[]) {
+function projectTransactionClient() {
   return {
-    effectiveRoleScopes: jest.fn().mockResolvedValue({
-      globalRoleKeys: [],
-      projectRoleKeys: roleKeys
-    })
+    project: {
+      findUnique: jest.fn().mockResolvedValue({ id: "project-1" })
+    }
+  } as unknown as Prisma.TransactionClient;
+}
+
+function projectVisibility(roleKeys: readonly string[]) {
+  const scopes = {
+    globalRoleKeys: [],
+    projectRoleKeys: roleKeys
+  };
+  return {
+    effectiveRoleScopes: jest.fn().mockResolvedValue(scopes),
+    effectiveRoleScopesInTransaction: jest.fn().mockResolvedValue(scopes)
   };
 }
 
@@ -578,7 +588,7 @@ describe("BusinessEntryDefinitionService", () => {
     );
 
     await expect(service.freezeSubmissionSnapshotInTransaction(
-      {} as Prisma.TransactionClient,
+      projectTransactionClient(),
       "project_operating_profile",
       "project-1",
       "user-1",
@@ -593,7 +603,15 @@ describe("BusinessEntryDefinitionService", () => {
 
   it("freezes and persists through the caller's existing Prisma transaction client", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
-    const tx = {} as Prisma.TransactionClient;
+    const tx = projectTransactionClient();
+    const visibility = projectVisibility(["finance_staff"]);
+    const rootPrisma = projectPrisma();
+    rootPrisma.project.findUnique.mockRejectedValue(
+      new Error("root prisma must not be used by joined transaction freeze")
+    );
+    const authorization = authorizationMock() as unknown as {
+      assertAuthorized: jest.Mock;
+    };
     const snapshots = {
       saveStandalone: jest.fn(),
       saveInTransaction: jest.fn().mockImplementation(
@@ -603,10 +621,10 @@ describe("BusinessEntryDefinitionService", () => {
     const service = new BusinessEntryDefinitionService(
       registry,
       accessRegistry([definition]),
-      projectVisibility(["finance_staff"]),
+      visibility,
       snapshots,
-      projectPrisma() as never,
-      authorizationMock()
+      rootPrisma as never,
+      authorization as never
     );
 
     await expect(service.freezeSubmissionSnapshotInTransaction(
@@ -635,6 +653,16 @@ describe("BusinessEntryDefinitionService", () => {
       undefined
     );
     expect(snapshots.saveStandalone).not.toHaveBeenCalled();
+    expect(visibility.effectiveRoleScopesInTransaction).toHaveBeenCalledWith(
+      tx,
+      "user-1",
+      "project-1"
+    );
+    expect(visibility.effectiveRoleScopes).not.toHaveBeenCalled();
+    expect(rootPrisma.project.findUnique).not.toHaveBeenCalled();
+    expect(authorization.assertAuthorized).toHaveBeenCalledWith(
+      expect.objectContaining({ tx })
+    );
   });
 
   it("fails closed when the joined-transaction API is used for a global scene", async () => {
@@ -774,6 +802,15 @@ describe("BusinessEntryDefinitionService", () => {
       target: { entityType: "project", entityId: "project-2" },
       values: { takeoverStatus: "operating_with_takeover" }
     };
+    const formalShapeInput = {
+      definitionVersion: 3,
+      target: {
+        projectId: "project-1",
+        entityType: "project",
+        entityId: "project-1"
+      },
+      values: { takeoverStatus: "operating_with_takeover" }
+    };
 
     await expect(
       service.validateDraft("project_operating_profile", "project-1", "user-1", wrongDomainInput)
@@ -797,6 +834,9 @@ describe("BusinessEntryDefinitionService", () => {
         crossProjectInput
       )
     ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.validateDraft("project_operating_profile", "project-1", "user-1", formalShapeInput)
+    ).rejects.toThrow("提交必须绑定正式业务对象");
     expect(snapshots.saveStandalone).not.toHaveBeenCalled();
   });
 

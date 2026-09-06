@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import {
   GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
   resolveEffectiveRoleKeys,
@@ -57,16 +58,32 @@ export class ProjectVisibilityService {
   }
 
   async effectiveRoleScopes(userId: string, projectId: string): Promise<EffectiveProjectRoleScopes> {
+    return this.effectiveRoleScopesWithClient(this.prisma, userId, projectId);
+  }
+
+  async effectiveRoleScopesInTransaction(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    projectId: string
+  ): Promise<EffectiveProjectRoleScopes> {
+    return this.effectiveRoleScopesWithClient(tx, userId, projectId);
+  }
+
+  private async effectiveRoleScopesWithClient(
+    client: PrismaService | Prisma.TransactionClient,
+    userId: string,
+    projectId: string
+  ): Promise<EffectiveProjectRoleScopes> {
     const [globalPositions, projectPositions, projectMembers] = await Promise.all([
-      this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
-      this.prisma.userPosition.findMany({ where: { userId, projectId } }),
-      this.prisma.projectMember.findMany({ where: { userId, projectId } })
+      client.userPosition.findMany({ where: { userId, projectId: null } }),
+      client.userPosition.findMany({ where: { userId, projectId } }),
+      client.projectMember.findMany({ where: { userId, projectId } })
     ]);
     const positionIds = Array.from(
       new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
     );
     const positions = positionIds.length
-      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      ? await client.position.findMany({ where: { id: { in: positionIds } } })
       : [];
     const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
     return {

@@ -134,20 +134,43 @@ export type BusinessEntrySubmissionTarget =
   | {
       entityType: string;
       entityId: string;
+      projectId?: never;
     }
   | {
       entityType: string;
       createTarget: string;
+      projectId?: never;
+      entityId?: never;
+    }
+  | {
+      projectId: string;
+      entityType: string;
+      entityId: string;
+      createTarget?: never;
     };
+
+export function isBusinessEntryProjectOwnedTarget(
+  target: BusinessEntrySubmissionTarget | undefined
+): target is Extract<BusinessEntrySubmissionTarget, { projectId: string }> {
+  return Boolean(
+    target &&
+    "projectId" in target &&
+    typeof target.projectId === "string" &&
+    "entityId" in target &&
+    typeof target.entityId === "string" &&
+    !Object.prototype.hasOwnProperty.call(target, "createTarget")
+  );
+}
 
 export function isBusinessEntryExistingTarget(
   target: BusinessEntrySubmissionTarget | undefined
-): target is Extract<BusinessEntrySubmissionTarget, { entityId: string }> {
+): target is Extract<BusinessEntrySubmissionTarget, { projectId?: never; entityId: string }> {
   return Boolean(
     target &&
     "entityId" in target &&
     typeof target.entityId === "string" &&
-    !Object.prototype.hasOwnProperty.call(target, "createTarget")
+    !Object.prototype.hasOwnProperty.call(target, "createTarget") &&
+    !Object.prototype.hasOwnProperty.call(target, "projectId")
   );
 }
 
@@ -158,7 +181,8 @@ export function isBusinessEntryCreateTarget(
     target &&
     "createTarget" in target &&
     typeof target.createTarget === "string" &&
-    !Object.prototype.hasOwnProperty.call(target, "entityId")
+    !Object.prototype.hasOwnProperty.call(target, "entityId") &&
+    !Object.prototype.hasOwnProperty.call(target, "projectId")
   );
 }
 
@@ -578,6 +602,7 @@ export class BusinessEntryDefinitionRegistry {
       if (
         !payload.target?.entityType.trim() ||
         (!isBusinessEntryExistingTarget(payload.target) &&
+          !isBusinessEntryProjectOwnedTarget(payload.target) &&
           !isBusinessEntryCreateTarget(payload.target))
       ) {
         errors.push({ code: "invalid_target", message: "录入和导入必须绑定正式业务对象" });
@@ -710,6 +735,7 @@ export class BusinessEntryDefinitionRegistry {
       !payload.target ||
       !payload.target.entityType.trim() ||
       (!isBusinessEntryExistingTarget(payload.target) &&
+        !isBusinessEntryProjectOwnedTarget(payload.target) &&
         !isBusinessEntryCreateTarget(payload.target))
     ) {
       result.errors.push({ code: "invalid_target", message: "提交必须绑定正式业务对象" });

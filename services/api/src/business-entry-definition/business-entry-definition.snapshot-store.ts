@@ -1,11 +1,13 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { ConflictException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
-  isBusinessEntryExistingTarget
+  isBusinessEntryExistingTarget,
+  isBusinessEntryProjectOwnedTarget
 } from "@jiangkong/shared-domain";
 import type {
   BusinessEntryFrozenSnapshot,
-  BusinessEntrySceneDefinition
+  BusinessEntrySceneDefinition,
+  BusinessEntrySubmissionTarget
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -70,10 +72,10 @@ function snapshotFromRecord(record: {
   definitionSnapshot: Prisma.JsonValue;
   valuesSnapshot: Prisma.JsonValue;
   frozenAt: Date;
-}): BusinessEntryFrozenSnapshot {
+}, target?: BusinessEntryFrozenSnapshot["target"]): BusinessEntryFrozenSnapshot {
   return {
     sceneKey: record.sceneKey,
-    target: { entityType: record.entityType, entityId: record.entityId },
+    target: target ?? { entityType: record.entityType, entityId: record.entityId },
     revision: record.revision,
     definitionVersion: record.definitionVersion,
     definition: record.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
@@ -86,7 +88,7 @@ function sameImmutableContent(
   left: BusinessEntryFrozenSnapshot,
   right: BusinessEntryFrozenSnapshot
 ) {
-  if (!isBusinessEntryExistingTarget(left.target) || !isBusinessEntryExistingTarget(right.target)) {
+  if (!isPersistableExistingTarget(left.target) || !isPersistableExistingTarget(right.target)) {
     return false;
   }
   return (
@@ -97,6 +99,12 @@ function sameImmutableContent(
     stableSerialize(left.definition) === stableSerialize(right.definition) &&
     stableSerialize(left.values) === stableSerialize(right.values)
   );
+}
+
+function isPersistableExistingTarget(
+  target: BusinessEntrySubmissionTarget | undefined
+): target is Extract<BusinessEntrySubmissionTarget, { entityId: string }> {
+  return isBusinessEntryExistingTarget(target) || isBusinessEntryProjectOwnedTarget(target);
 }
 
 function isUniqueConstraintError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
@@ -117,7 +125,7 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly operatingProfiles: ProjectOperatingProfileService
+    @Optional() private readonly operatingProfiles?: ProjectOperatingProfileService
   ) {}
 
   async saveStandalone(
@@ -165,9 +173,13 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
     expectedRevision: number | undefined,
     attempt: number
   ): Promise<BusinessEntryFrozenSnapshot> {
-    if (!isBusinessEntryExistingTarget(snapshot.target)) {
+    if (isBusinessEntryProjectOwnedTarget(snapshot.target)) {
+      throw new ConflictException("项目归属正式对象必须由领域调用方事务冻结");
+    }
+    if (!isPersistableExistingTarget(snapshot.target)) {
       throw new ConflictException("项目业务快照必须绑定已存在的正式业务对象");
     }
+    this.assertProjectOwnedTargetProject(projectId, snapshot);
     const where = {
       projectId,
       sceneKey: snapshot.sceneKey,
@@ -188,7 +200,7 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
         where,
         orderBy: { revision: "desc" }
       });
-      const current = retry[0] ? snapshotFromRecord(retry[0]) : undefined;
+      const current = retry[0] ? snapshotFromRecord(retry[0], snapshot.target) : undefined;
       const same = current && sameImmutableContent(current, snapshot) ? current : undefined;
       if (same) return same;
       if (attempt >= 3) throw new BusinessEntrySnapshotConflictError();
@@ -209,9 +221,10 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
     snapshot: BusinessEntryFrozenSnapshot,
     expectedRevision: number | undefined
   ): Promise<BusinessEntryFrozenSnapshot> {
-    if (!isBusinessEntryExistingTarget(snapshot.target)) {
+    if (!isPersistableExistingTarget(snapshot.target)) {
       throw new ConflictException("项目业务快照必须绑定已存在的正式业务对象");
     }
+    this.assertProjectOwnedTargetProject(projectId, snapshot);
     const where = {
       projectId,
       sceneKey: snapshot.sceneKey,
@@ -222,7 +235,7 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
       where,
       orderBy: { revision: "desc" }
     });
-    const current = existing[0] ? snapshotFromRecord(existing[0]) : undefined;
+    const current = existing[0] ? snapshotFromRecord(existing[0], snapshot.target) : undefined;
     const same = current && sameImmutableContent(current, snapshot) ? current : undefined;
     if (same) return same;
 
@@ -236,6 +249,9 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
     const revision = currentRevision + 1;
 
     if (snapshot.sceneKey === "project_operating_profile" && snapshot.target.entityType === "project") {
+      if (!this.operatingProfiles) {
+        throw new ConflictException("项目经营档案事务适配器未启用");
+      }
       const input: UpdateProjectOperatingProfileInput = {};
       if (Object.prototype.hasOwnProperty.call(snapshot.values, "operatingLedgerEffectiveDate")) {
         input.operatingLedgerEffectiveDate = snapshot.values.operatingLedgerEffectiveDate as string | null;
@@ -276,6 +292,18 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
         snapshotId: created.id
       }
     });
-    return snapshotFromRecord(created);
+    return snapshotFromRecord(created, snapshot.target);
+  }
+
+  private assertProjectOwnedTargetProject(
+    projectId: string,
+    snapshot: BusinessEntryFrozenSnapshot
+  ) {
+    if (
+      isBusinessEntryProjectOwnedTarget(snapshot.target) &&
+      snapshot.target.projectId !== projectId
+    ) {
+      throw new ConflictException("正式业务对象目标项目与快照项目不一致");
+    }
   }
 }

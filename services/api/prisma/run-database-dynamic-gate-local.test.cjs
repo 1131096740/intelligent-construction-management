@@ -56,7 +56,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 169 pending tests as executable local coverage", () => {
+test("manifest derives all 172 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -65,9 +65,9 @@ test("manifest derives all 169 pending tests as executable local coverage", () =
     pendingFiles: 47,
     fullyPendingSuites: 36,
     partiallyPendingSuites: 11,
-    pendingTests: 169,
+    pendingTests: 172,
     coveredFiles: 47,
-    coveredTests: 169,
+    coveredTests: 172,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -106,7 +106,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=169/u
+    /inventory\.coveredTests=26，派生值=172/u
   );
 });
 
