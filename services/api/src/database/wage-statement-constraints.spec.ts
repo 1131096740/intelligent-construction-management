@@ -686,7 +686,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     )).toBe(true);
   });
 
-  it("preserves correction and zero-delta canonical behavior", async () => {
+  it("binds correction and reversal facts to adjacent matrix deltas while preserving zero-delta behavior", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const baseInput = canonicalWageSourceInput(fixture);
     const { service, draftResult: baseDraft } = await createSubmittedCanonicalWage(
@@ -715,14 +715,55 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       expectedRevision: 2
     });
 
-    const zeroDelta = await createSubmittedRevision(
+    const correctionFact = await observer.operatingFact.findFirstOrThrow({
+      where: {
+        sourceType: "wage_statement_version",
+        sourceBusinessId: `${correction.versionId}:${fixture.projectId}`
+      }
+    });
+    expect(correctionFact.amountCents).toBe(40000n);
+    expect(correctionFact.sourceSnapshot).toEqual(expect.objectContaining({
+      costDeltaCells: [expect.objectContaining({ direction: "decrease" })]
+    }));
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'correction')
+      FROM "OperatingFact" fact
+      WHERE fact."id" = ${correctionFact.id}
+    `)).resolves.toBeDefined();
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_validate_canonical_wage_operating_deltas(
+        jsonb_populate_record(
+          NULL::"OperatingFact",
+          to_jsonb(fact) || jsonb_build_object('amountCents', (fact."amountCents" + 1)::TEXT)
+        ),
+        'correction'
+      )
+      FROM "OperatingFact" fact
+      WHERE fact."id" = ${correctionFact.id}
+    `)).rejects.toThrow("相邻版本差额不一致");
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_validate_canonical_wage_operating_deltas(
+        jsonb_populate_record(
+          NULL::"OperatingFact",
+          to_jsonb(fact) || jsonb_build_object(
+            'sourceSnapshot',
+            jsonb_set(fact."sourceSnapshot", '{costDeltaCells,0,direction}', '"increase"'::jsonb)
+          )
+        ),
+        'correction'
+      )
+      FROM "OperatingFact" fact
+      WHERE fact."id" = ${correctionFact.id}
+    `)).rejects.toThrow("成本差额单元不一致");
+
+    const reversal = await createSubmittedRevision(
       first,
       service,
       fixture,
       baseDraft.statementId,
       2,
-      "correction",
-      "60000",
+      "reversal",
+      "0",
       "v3"
     );
     await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
@@ -730,20 +771,50 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       expectedRevision: 3
     });
 
+    const reversalFact = await observer.operatingFact.findFirstOrThrow({
+      where: {
+        sourceType: "wage_statement_version",
+        sourceBusinessId: `${reversal.versionId}:${fixture.projectId}`
+      }
+    });
+    expect(reversalFact.amountCents).toBe(60000n);
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_validate_canonical_wage_operating_deltas(fact, 'reversal')
+      FROM "OperatingFact" fact
+      WHERE fact."id" = ${reversalFact.id}
+    `)).resolves.toBeDefined();
+
+    const zeroDelta = await createSubmittedRevision(
+      first,
+      service,
+      fixture,
+      baseDraft.statementId,
+      3,
+      "correction",
+      "0",
+      "v4"
+    );
+    await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 4
+    });
+
     const refs = await observer.wagePayableRef.findMany({
       where: {
         confirmedVersionId: {
-          in: [baseDraft.versionId, correction.versionId, zeroDelta.versionId]
+          in: [baseDraft.versionId, correction.versionId, reversal.versionId, zeroDelta.versionId]
         }
       },
       orderBy: { createdAt: "asc" }
     });
-    expect(refs).toHaveLength(2);
+    expect(refs).toHaveLength(3);
     expect(refs.map((ref) => [ref.direction, ref.amountCents])).toEqual([
       ["increase", 100000n],
-      ["decrease", 40000n]
+      ["decrease", 40000n],
+      ["decrease", 60000n]
     ]);
     expect(refs[1]?.adjustsPayableRefId).toBe(refs[0]?.id);
+    expect(refs[2]?.adjustsPayableRefId).toBe(refs[0]?.id);
     await expect(observer.operatingFact.count({
       where: {
         sourceType: "wage_statement_version",
@@ -751,11 +822,12 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
           in: [
             `${baseDraft.versionId}:${fixture.projectId}`,
             `${correction.versionId}:${fixture.projectId}`,
+            `${reversal.versionId}:${fixture.projectId}`,
             `${zeroDelta.versionId}:${fixture.projectId}`
           ]
         }
       }
-    })).resolves.toBe(2);
+    })).resolves.toBe(3);
     await expect(observer.wageStatementVersion.findUniqueOrThrow({
       where: { id: zeroDelta.versionId },
       select: { status: true, operatingProjectionSnapshot: true }
