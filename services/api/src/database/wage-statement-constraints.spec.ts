@@ -1042,6 +1042,363 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     await expect(first.wagePersonLine.delete({ where: { id: reversalPerson.id } })).rejects.toThrow(/immutable/i);
   });
 
+  it("isolates two service snapshots for one employee, project and month through correction and full reversal", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const service = wageService(first);
+    const serviceSnapshotIds = {
+      first: `${fixture.prefix}-service-combination-a`,
+      second: `${fixture.prefix}-service-combination-b`
+    };
+    const personLine = (firstAmountCents: string, secondAmountCents: string) => {
+      const approvedAmountCents = (
+        BigInt(firstAmountCents) + BigInt(secondAmountCents)
+      ).toString();
+      return {
+        employeeId: fixture.employeeUserId,
+        employmentSnapshotId: `${fixture.prefix}-employment-combination`,
+        employmentCompanyId: fixture.companyId,
+        employmentPeriodStart: "2026-08-01",
+        employmentPeriodEnd: "2026-08-31",
+        positionCategory: "project_manager",
+        approvedAmountCents,
+        costComponents: [{ componentCode: "gross_wage", amountCents: approvedAmountCents }],
+        creditorBreakdowns: [{
+          creditorSubjectType: "employee_user" as const,
+          creditorUserId: fixture.employeeUserId,
+          creditorCategory: "employee_net_pay",
+          amountCents: approvedAmountCents
+        }],
+        projectAllocations: [
+          {
+            projectId: fixture.projectId,
+            serviceSnapshotId: serviceSnapshotIds.first,
+            serviceMonth: fixture.wageMonth,
+            serviceEvidenceSha256: "a".repeat(64),
+            amountCents: firstAmountCents
+          },
+          {
+            projectId: fixture.projectId,
+            serviceSnapshotId: serviceSnapshotIds.second,
+            serviceMonth: fixture.wageMonth,
+            serviceEvidenceSha256: "b".repeat(64),
+            amountCents: secondAmountCents
+          }
+        ],
+        projectCostComponentAllocations: [
+          {
+            projectId: fixture.projectId,
+            serviceSnapshotId: serviceSnapshotIds.first,
+            componentCode: "gross_wage",
+            amountCents: firstAmountCents
+          },
+          {
+            projectId: fixture.projectId,
+            serviceSnapshotId: serviceSnapshotIds.second,
+            componentCode: "gross_wage",
+            amountCents: secondAmountCents
+          }
+        ],
+        projectCreditorAllocations: [
+          {
+            projectId: fixture.projectId,
+            serviceSnapshotId: serviceSnapshotIds.first,
+            creditorSubjectType: "employee_user" as const,
+            creditorUserId: fixture.employeeUserId,
+            creditorCategory: "employee_net_pay",
+            amountCents: firstAmountCents
+          },
+          {
+            projectId: fixture.projectId,
+            serviceSnapshotId: serviceSnapshotIds.second,
+            creditorSubjectType: "employee_user" as const,
+            creditorUserId: fixture.employeeUserId,
+            creditorCategory: "employee_net_pay",
+            amountCents: secondAmountCents
+          }
+        ]
+      };
+    };
+    const createEvidence = async (label: string) => {
+      const id = `${fixture.prefix}-combination-evidence-${label}`;
+      await first.fileObject.create({
+        data: {
+          id,
+          bucket: "local-test",
+          objectKey: `${fixture.prefix}/combination-${label}.json`,
+          originalName: `双服务工资批准资料-${label}.json`,
+          mimeType: "application/json",
+          sizeBytes: 1,
+          uploadedByUserId: fixture.preparerUserId,
+          contentSha256: "a".repeat(64),
+          storageStatus: "active"
+        }
+      });
+      return id;
+    };
+    const ordinarySourceInput = (
+      line: ReturnType<typeof personLine>,
+      label: string,
+      evidenceFileId: string
+    ): WageSourceInput => ({
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      sourcePurpose: "ordinary",
+      employmentCompanyId: fixture.companyId,
+      wageMonth: fixture.wageMonth,
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      externalReference: `${fixture.prefix}-COMBINATION-${label}`,
+      sourceVersion: label,
+      basisDate: "2026-08-31",
+      evidenceFileId,
+      approvedPersonLines: [approvedAuthorityLine(line)]
+    });
+    const refsForVersion = (versionId: string) => observer.wagePayableRef.findMany({
+      where: { confirmedVersionId: versionId },
+      select: {
+        id: true,
+        amountCents: true,
+        direction: true,
+        adjustsPayableRefId: true,
+        projectAllocation: { select: { id: true, serviceSnapshotId: true } }
+      },
+      orderBy: { amountCents: "desc" }
+    });
+
+    const baseLine = personLine("60000", "40000");
+    const baseSource = await service.createApprovedSource(
+      fixture.preparerUserId,
+      ordinarySourceInput(baseLine, "v1-base", fixture.evidenceFileId)
+    );
+    if (!isSourceCreationResult(baseSource)) throw new Error("双服务基础来源未返回正式来源标识");
+    const baseDraft = await service.createDraft(fixture.preparerUserId, {
+      sourceVersionId: baseSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [baseLine]
+    });
+    if (!isDraftCreationResult(baseDraft)) throw new Error("双服务基础工资未返回正式单据标识");
+    await service.submit(fixture.preparerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    });
+    const confirmIdempotencyKey = randomUUID();
+    const baseConfirmationAttempts = await Promise.allSettled([
+      service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+        idempotencyKey: confirmIdempotencyKey,
+        expectedRevision: 1
+      }),
+      wageService(second).confirm(fixture.confirmerUserId, baseDraft.statementId, {
+        idempotencyKey: confirmIdempotencyKey,
+        expectedRevision: 1
+      })
+    ]);
+    expect(baseConfirmationAttempts.every((attempt) => attempt.status === "fulfilled")).toBe(true);
+    expect(baseConfirmationAttempts[0]).toEqual(baseConfirmationAttempts[1]);
+    await expect(observer.wageCommandReceipt.count({
+      where: { idempotencyKey: confirmIdempotencyKey }
+    })).resolves.toBe(1);
+
+    const baseRefs = await refsForVersion(baseDraft.versionId);
+    expect(baseRefs).toHaveLength(2);
+    expect(baseRefs.map((ref) => [
+      ref.projectAllocation.serviceSnapshotId,
+      ref.direction,
+      ref.amountCents,
+      ref.adjustsPayableRefId
+    ])).toEqual([
+      [serviceSnapshotIds.first, "increase", 60000n, null],
+      [serviceSnapshotIds.second, "increase", 40000n, null]
+    ]);
+    const baseRootByService = new Map(
+      baseRefs.map((ref) => [ref.projectAllocation.serviceSnapshotId, ref.id])
+    );
+    expect(new Set(baseRootByService.values()).size).toBe(2);
+
+    const correctionLine = personLine("50000", "30000");
+    const correctionEvidenceFileId = await createEvidence("v2-correction");
+    const correctionSource = await service.createApprovedSource(
+      fixture.preparerUserId,
+      ordinarySourceInput(correctionLine, "v2-correction", correctionEvidenceFileId)
+    );
+    if (!isSourceCreationResult(correctionSource)) throw new Error("双服务更正来源未返回正式来源标识");
+    const correction = await service.createRevision(fixture.preparerUserId, baseDraft.statementId, {
+      sourceVersionId: correctionSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1,
+      disposition: "correction",
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "80000",
+      personLines: [correctionLine]
+    });
+    if (!isDraftCreationResult(correction)) throw new Error("双服务更正未返回正式版本标识");
+    await service.submit(fixture.preparerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 2
+    });
+    await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 2
+    });
+
+    const correctionRefs = await refsForVersion(correction.versionId);
+    expect(correctionRefs).toHaveLength(2);
+    expect(correctionRefs.map((ref) => [
+      ref.projectAllocation.serviceSnapshotId,
+      ref.direction,
+      ref.amountCents,
+      ref.adjustsPayableRefId
+    ])).toEqual([
+      [serviceSnapshotIds.first, "decrease", 10000n, baseRootByService.get(serviceSnapshotIds.first)],
+      [serviceSnapshotIds.second, "decrease", 10000n, baseRootByService.get(serviceSnapshotIds.second)]
+    ]);
+    const correctionProjection = await first.$queryRaw<Array<{ projection: Prisma.JsonValue }>>(Prisma.sql`
+      SELECT jg_canonical_wage_delta_projection(
+        ${correction.versionId},
+        ${fixture.projectId}
+      ) AS projection
+    `);
+    const correctionProjectionValue = correctionProjection[0]?.projection as {
+      payableCells?: Array<{
+        projectAllocationId?: string;
+        expectedRootId?: string;
+        expectedRootCount?: number;
+      }>;
+    };
+    expect(correctionProjectionValue.payableCells).toHaveLength(2);
+    for (const ref of correctionRefs) {
+      expect(correctionProjectionValue.payableCells).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          projectAllocationId: ref.projectAllocation.id,
+          expectedRootId: baseRootByService.get(ref.projectAllocation.serviceSnapshotId),
+          expectedRootCount: 1
+        })
+      ]));
+    }
+    const firstCorrectionRef = correctionRefs.find(
+      (ref) => ref.projectAllocation.serviceSnapshotId === serviceSnapshotIds.first
+    );
+    const secondBaseRootId = baseRootByService.get(serviceSnapshotIds.second);
+    if (!firstCorrectionRef || !secondBaseRootId) throw new Error("双服务更正缺少交叉拒绝断言坐标");
+    await expect(first.$queryRaw(Prisma.sql`
+      SELECT jg_assert_canonical_wage_payable_root(
+        ${secondBaseRootId},
+        cell->>'expectedRootId',
+        (cell->>'expectedRootCount')::BIGINT
+      )::TEXT
+      FROM jsonb_array_elements(
+        jg_canonical_wage_delta_projection(
+          ${correction.versionId},
+          ${fixture.projectId}
+        )->'payableCells'
+      ) cell
+      WHERE cell->>'projectAllocationId' = ${firstCorrectionRef.projectAllocation.id}
+    `)).rejects.toThrow("唯一原始应付引用");
+
+    const reversalLine = personLine("0", "0");
+    const reversalEvidenceFileId = await createEvidence("v3-full-reversal");
+    const reversalSource = await service.createApprovedSource(fixture.preparerUserId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      sourcePurpose: "full_reversal",
+      employmentCompanyId: fixture.companyId,
+      wageMonth: fixture.wageMonth,
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      externalReference: `${fixture.prefix}-COMBINATION-v3-full-reversal`,
+      sourceVersion: "v3-full-reversal",
+      basisDate: "2026-08-31",
+      evidenceFileId: reversalEvidenceFileId,
+      fullReversalTarget: {
+        statementId: baseDraft.statementId,
+        priorConfirmedVersionId: correction.versionId,
+        priorConfirmedRevision: 2,
+        priorSourceVersionId: correctionSource.id
+      },
+      approvedPersonLines: [reversalLine]
+    });
+    if (!isSourceCreationResult(reversalSource)) throw new Error("双服务全额冲销来源未返回正式来源标识");
+    const reversal = await service.createRevision(fixture.preparerUserId, baseDraft.statementId, {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 2,
+      disposition: "reversal",
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: [reversalLine]
+    });
+    if (!isDraftCreationResult(reversal)) throw new Error("双服务全额冲销未返回正式版本标识");
+    await service.submit(fixture.preparerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 3
+    });
+    await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 3
+    });
+
+    const reversalRefs = await refsForVersion(reversal.versionId);
+    expect(reversalRefs).toHaveLength(2);
+    expect(reversalRefs.map((ref) => [
+      ref.projectAllocation.serviceSnapshotId,
+      ref.direction,
+      ref.amountCents,
+      ref.adjustsPayableRefId
+    ])).toEqual([
+      [serviceSnapshotIds.first, "decrease", 50000n, baseRootByService.get(serviceSnapshotIds.first)],
+      [serviceSnapshotIds.second, "decrease", 30000n, baseRootByService.get(serviceSnapshotIds.second)]
+    ]);
+    const rootBalances = await observer.wagePayableRef.findMany({
+      where: { id: { in: [...baseRootByService.values()] } },
+      select: {
+        id: true,
+        amountCents: true,
+        projectAllocation: { select: { serviceSnapshotId: true } },
+        adjustments: { select: { direction: true, amountCents: true } }
+      }
+    });
+    expect(rootBalances).toHaveLength(2);
+    expect(rootBalances.every((root) => root.amountCents === root.adjustments.reduce(
+      (sum, adjustment) => sum + (
+        adjustment.direction === "decrease" ? adjustment.amountCents : -adjustment.amountCents
+      ),
+      0n
+    ))).toBe(true);
+    expect(new Set(rootBalances.map((root) => root.projectAllocation.serviceSnapshotId))).toEqual(
+      new Set(Object.values(serviceSnapshotIds))
+    );
+    await expect(observer.wageStatementVersion.findMany({
+      where: { statementId: baseDraft.statementId },
+      orderBy: { revision: "asc" },
+      select: { revision: true, kind: true, status: true, sourceVersionId: true }
+    })).resolves.toEqual([
+      { revision: 1, kind: "base", status: "confirmed", sourceVersionId: baseSource.id },
+      { revision: 2, kind: "correction", status: "confirmed", sourceVersionId: correctionSource.id },
+      { revision: 3, kind: "reversal", status: "confirmed", sourceVersionId: reversalSource.id }
+    ]);
+    const effectiveImpacts = await observer.operatingImpactEntry.findMany({
+      where: {
+        sourceType: "wage_statement_version",
+        sourceBusinessId: {
+          in: [baseDraft.versionId, correction.versionId, reversal.versionId].map(
+            (versionId) => `${versionId}:${fixture.projectId}`
+          )
+        },
+        impactKind: { in: ["confirmed_cost", "payable_increase", "payable_decrease"] }
+      },
+      select: { amountCents: true, direction: true }
+    });
+    expect(effectiveImpacts.length).toBeGreaterThan(0);
+    expect(effectiveImpacts.reduce(
+      (sum, impact) => sum + (
+        impact.direction === "decrease" ? -impact.amountCents : impact.amountCents
+      ),
+      0n
+    )).toBe(0n);
+  });
+
   it("binds correction deltas and permits only a target-bound explicit-zero full reversal", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const baseInput = canonicalWageSourceInput(fixture);
