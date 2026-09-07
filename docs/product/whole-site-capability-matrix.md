@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `fd0c12b89b74c3cb430ba6512998da79339a8efe2a4c43e277b78797cb11a1f3` |
-| webApiWrappers | ready | `6ec33cbee03c139a125fb23e5abd2c47b610b3e433cfd77153404216780a03f9` |
-| webPageActions | ready | `6d50fb160758040748dc7369af60430c5c272673fbd94d1ecef321e20c061f5e` |
-| routeUsage | ready | `3d4913824589c2f8fd4783d25ee1d0a0526b98cec9f3beaf60672e889b71f2dd` |
+| webApiWrappers | ready | `7fb6b2ddb75bc7523ccf95573c968e44b619ea52e0dbcc83722f5d04fe3f14dd` |
+| webPageActions | ready | `4bd995c5b899ea64ea6564476ae14b0da255cadd6febe5212de5382fcec7b9aa` |
+| routeUsage | ready | `2b432a1ac02b9c7100d8c2e9a48ae6886da4a77e1ff1f0bb69d7ac9b3c108006` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 575 |
-| pageRouteCount | 363 |
+| pageRouteCount | 364 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 34 |
+| internalTaskRouteCount | 33 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 552 |
+| mainRequestBindingCount | 553 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 287 |
-| actionBindingCount | 322 |
-| acceptedActionBindingCount | 302 |
+| registeredActionCount | 288 |
+| actionBindingCount | 323 |
+| acceptedActionBindingCount | 303 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 281 |
-| coveredProductionMutationConsumerPairCount | 281 |
+| productionMutationConsumerPairCount | 282 |
+| coveredProductionMutationConsumerPairCount | 282 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -604,7 +604,7 @@
 | POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |
 | POST | /wage-statements/:statementId/draft | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#updateWageStatementDraft | wage-statement.draft.update | covered | — |
 | POST | /wage-statements/:statementId/return | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#returnWageStatement | wage-statement.return | covered | — |
-| POST | /wage-statements/:statementId/revisions | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /wage-statements/:statementId/revisions | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createWageStatementRevision | wage-statement.approved-source.import-and-reversal | covered | — |
 | POST | /wage-statements/:statementId/sensitive-export-ticket | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/submit | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#submitWageStatement | wage-statement.submit | covered | — |
 | POST | /wage-statements/approved-sources | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createApprovedWageSource | wage-statement.approved-source.import-and-draft | covered | — |

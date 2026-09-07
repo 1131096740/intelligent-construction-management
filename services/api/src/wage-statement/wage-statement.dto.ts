@@ -1,8 +1,20 @@
 import type {
   WageCostComponentInput,
   WageCreditorBreakdownInput,
+  WageProjectAllocationInput,
+  WageProjectCostComponentAllocationInput,
+  WageProjectCreditorAllocationInput,
   WageStatementDraftInput
 } from "./wage-statement.domain";
+
+export type WageApprovedSourcePurpose = "ordinary" | "full_reversal";
+
+export interface FullReversalTargetDto {
+  statementId: string;
+  priorConfirmedVersionId: string;
+  priorConfirmedRevision: number;
+  priorSourceVersionId: string;
+}
 
 export interface ApprovedWagePersonDto {
   employeeId: string;
@@ -14,11 +26,16 @@ export interface ApprovedWagePersonDto {
   approvedAmountCents: string;
   costComponents: WageCostComponentInput[];
   creditorBreakdowns: WageCreditorBreakdownInput[];
+  projectAllocations?: WageProjectAllocationInput[];
+  projectCostComponentAllocations?: WageProjectCostComponentAllocationInput[];
+  projectCreditorAllocations?: WageProjectCreditorAllocationInput[];
 }
 
 export interface CreateApprovedWageSourceDto {
   idempotencyKey: string;
   expectedRevision: number;
+  sourcePurpose: WageApprovedSourcePurpose;
+  fullReversalTarget?: FullReversalTargetDto;
   employmentCompanyId: string;
   wageMonth: string;
   periodStart: string;

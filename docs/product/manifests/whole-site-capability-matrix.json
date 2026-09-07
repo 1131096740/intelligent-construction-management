@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "6ec33cbee03c139a125fb23e5abd2c47b610b3e433cfd77153404216780a03f9",
+      "sha256": "7fb6b2ddb75bc7523ccf95573c968e44b619ea52e0dbcc83722f5d04fe3f14dd",
       "status": "ready",
       "summary": {
         "apiModuleCount": 25,
-        "exportedFunctionCount": 550,
-        "transportWrapperCount": 530,
+        "exportedFunctionCount": 551,
+        "transportWrapperCount": 531,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 552,
+        "mainRequestBindingCount": 553,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 552,
-        "productionConsumerCount": 424,
+        "requestEdgeCount": 553,
+        "productionConsumerCount": 425,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,12 +42,12 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "6d50fb160758040748dc7369af60430c5c272673fbd94d1ecef321e20c061f5e",
+      "sha256": "4bd995c5b899ea64ea6564476ae14b0da255cadd6febe5212de5382fcec7b9aa",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 287,
+        "registeredActionCount": 288,
         "pageActionCount": 53,
-        "backgroundActionCount": 234,
+        "backgroundActionCount": 235,
         "reachableVueFileCount": 136,
         "routeRootCount": 57,
         "totalVueFileCount": 160,
@@ -55,37 +55,37 @@
         "reachableProductionModuleCount": 248,
         "templateEventDirectiveCount": 928,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 281,
-        "candidateProductionMutationConsumerCount": 281,
-        "acceptedProductionMutationConsumerCount": 281,
-        "productionMutationConsumerPairCount": 281,
+        "coveredProductionMutationConsumerCount": 282,
+        "candidateProductionMutationConsumerCount": 282,
+        "acceptedProductionMutationConsumerCount": 282,
+        "productionMutationConsumerPairCount": 282,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "3d4913824589c2f8fd4783d25ee1d0a0526b98cec9f3beaf60672e889b71f2dd",
+      "sha256": "2b432a1ac02b9c7100d8c2e9a48ae6886da4a77e1ff1f0bb69d7ac9b3c108006",
       "status": "ready",
       "summary": {
         "routeCount": 575,
         "exactRouteCount": 575,
         "normalizedRouteCount": 575,
-        "classificationOverrideCount": 214,
-        "consumerSurfaceOverrideCount": 35,
-        "classificationOverrideSha256": "75ee8362891133afef02176ddb2daba9c533323a381658a92419947a1231af5d",
-        "consumerSurfaceOverrideSha256": "81b9932f4010dd05c732f6d32a76bf0863a6c9951b9191aae6dc5dcbef1b4d70",
-        "derivedProductionPageCount": 361,
-        "pageRouteCount": 363,
+        "classificationOverrideCount": 213,
+        "consumerSurfaceOverrideCount": 34,
+        "classificationOverrideSha256": "20815a8207e265a7c62404626c0edb0ecca51ea79d0f88bac40b767b8e46fdc8",
+        "consumerSurfaceOverrideSha256": "28aeb56e023e9d26024527bbe35d0feb4273cc2555c65e941cadc30da9b25237",
+        "derivedProductionPageCount": 362,
+        "pageRouteCount": 364,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
-        "internalTaskCount": 34,
+        "internalTaskCount": 33,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 415,
+          "web_api_wrapper": 416,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 32,
+          "operator_endpoint": 31,
           "none": 120
         },
         "blockerCount": 0
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 575,
-    "pageRouteCount": 363,
+    "pageRouteCount": 364,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
-    "internalTaskRouteCount": 34,
+    "internalTaskRouteCount": 33,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 552,
+    "mainRequestBindingCount": 553,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 287,
-    "actionBindingCount": 322,
-    "acceptedActionBindingCount": 302,
+    "registeredActionCount": 288,
+    "actionBindingCount": 323,
+    "acceptedActionBindingCount": 303,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 281,
-    "coveredProductionMutationConsumerPairCount": 281,
+    "productionMutationConsumerPairCount": 282,
+    "coveredProductionMutationConsumerPairCount": 282,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -32421,12 +32421,53 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "internal_task",
-      "consumerSurface": "operator_endpoint",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "createWageStatementRevision",
+          "method": "POST",
+          "path": "/wage-statements/:param/revisions",
+          "normalizedKey": "POST /wage-statements/:param/revisions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/wage-statement.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "wage-statement.approved-source.import-and-reversal",
+          "bindingIndex": 0,
+          "identity": "wage-statement.approved-source.import-and-reversal\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000createWageStatementRevision\u0000POST\u0000POST /wage-statements/:param/revisions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canPrepare",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+          "wrapper": "createWageStatementRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

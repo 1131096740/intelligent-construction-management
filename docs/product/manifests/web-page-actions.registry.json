@@ -4583,6 +4583,18 @@
       ]
     },
     {
+      "id": "wage-statement.approved-source.import-and-reversal",
+      "usage": "background",
+      "routePaths": ["/工资承担工作台"],
+      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createImportedReversalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.canPrepare" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/wage-statement.api.ts", "name": "createWageStatementRevision" }
+      ]
+    },
+    {
       "id": "wage-statement.draft.update",
       "usage": "background",
       "routePaths": ["/工资承担工作台"],

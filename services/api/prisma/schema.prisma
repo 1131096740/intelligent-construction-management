@@ -5418,6 +5418,7 @@ model BusinessEntrySubmissionSnapshot {
 // 交叉矩阵由财务写入工资草稿。该来源版本创建后不可更新或删除。
 model WageApprovedSourceVersion {
   id                  String   @id @default(uuid())
+  sourcePurpose       String
   employmentCompanyId String
   wageMonth           String
   periodStart         DateTime @db.Date
@@ -5432,8 +5433,17 @@ model WageApprovedSourceVersion {
   sourceSnapshot      Json
   createdByUserId     String
   createdAt           DateTime @default(now())
+  fullReversalTargetStatementId    String?
+  fullReversalPriorVersionId       String?
+  fullReversalPriorRevision        Int?
+  fullReversalPriorSourceVersionId String?
+  fullReversalRootClosureFingerprint String?
 
   evidenceFile         FileObject                         @relation("WageApprovedSourceEvidence", fields: [evidenceFileId], references: [id], onDelete: Restrict)
+  fullReversalTargetStatement WageStatement?              @relation("WageApprovedSourceFullReversalTarget", fields: [fullReversalTargetStatementId], references: [id], onDelete: Restrict)
+  fullReversalPriorVersion WageStatementVersion?          @relation("WageApprovedSourceFullReversalPriorVersion", fields: [fullReversalPriorVersionId], references: [id], onDelete: Restrict)
+  fullReversalPriorSourceVersion WageApprovedSourceVersion? @relation("WageApprovedSourceFullReversalPriorSource", fields: [fullReversalPriorSourceVersionId], references: [id], onDelete: Restrict)
+  fullReversalDependentSources WageApprovedSourceVersion[] @relation("WageApprovedSourceFullReversalPriorSource")
   statementVersions    WageStatementVersion[]
   commandReceipts      WageApprovedSourceCommandReceipt[]
   serviceBasisBindings WageServiceBasisBinding[]
@@ -5471,6 +5481,7 @@ model WageStatement {
 
   versions        WageStatementVersion[]
   commandReceipts WageCommandReceipt[]
+  fullReversalSources WageApprovedSourceVersion[] @relation("WageApprovedSourceFullReversalTarget")
 
   @@unique([employmentCompanyId, wageMonth], map: "WageStatement_company_month_key")
 }
@@ -5525,6 +5536,7 @@ model WageStatementVersion {
   personLines                 WagePersonLine[]
   payableRefs                 WagePayableRef[]
   takeoverProjectionEnvelopes WageTakeoverProjectionEnvelope[]
+  fullReversalSources          WageApprovedSourceVersion[]      @relation("WageApprovedSourceFullReversalPriorVersion")
 
   @@unique([statementId, revision], map: "WageStatementVersion_statement_revision_key")
   @@index([sourceVersionId])

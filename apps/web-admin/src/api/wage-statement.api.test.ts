@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createApprovedWageSource,
   createWageStatementDraft,
+  createWageStatementRevision,
   fetchWageStatementCapabilities,
   fetchWageStatementImportPreview,
   fetchWageStatementSummary,
@@ -78,6 +79,24 @@ describe("wage statement workbench API", () => {
     expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/wage-statements/statement%20%2F%201/submit", expect.objectContaining({ method: "POST" }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(5, "/wage-statements/statement%20%2F%201/return", expect.objectContaining({ method: "POST" }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(6, "/wage-statements/statement%20%2F%201/confirm", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("posts a target-bound full-reversal revision through the existing revision route", async () => {
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ statementId: "statement-1", revision: 4 }), { status: 201 }));
+
+    await createWageStatementRevision("statement / 1", {
+      sourceVersionId: "source-4",
+      expectedRevision: 3,
+      disposition: "reversal"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/wage-statements/statement%20%2F%201/revisions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sourceVersionId: "source-4", expectedRevision: 3, disposition: "reversal" })
+      })
+    );
   });
 
   it("keeps an explicit lifecycle business-rejection HTTP status for the page retry policy", async () => {

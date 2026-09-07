@@ -1830,6 +1830,7 @@ async function seedWagePayableFixture(prisma: PrismaClient) {
       wageMonth: "2026-08",
       periodStart: new Date("2026-08-01T00:00:00.000Z"),
       periodEnd: new Date("2026-08-31T00:00:00.000Z"),
+      sourcePurpose: "ordinary",
       sourceType: "external_approved_wage",
       externalReference: "pg-fund-v7-wage-source",
       sourceVersion: "v1",

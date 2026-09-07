@@ -26,6 +26,7 @@ describe("WageStatementService", () => {
   const approvedSource = {
     idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     expectedRevision: 0,
+    sourcePurpose: "ordinary" as const,
     employmentCompanyId: "company-1",
     wageMonth: "2026-08",
     periodStart: "2026-08-01",
@@ -104,6 +105,7 @@ describe("WageStatementService", () => {
 
   function sourceRecord(overrides: Record<string, unknown> = {}) {
     const sourceSnapshot = {
+      sourcePurpose: "ordinary",
       employmentCompany: { id: "company-1", name: "甲公司" },
       wageMonth: "2026-08",
       periodStart: "2026-08-01",
@@ -116,6 +118,7 @@ describe("WageStatementService", () => {
     };
     return {
       id: "source-1",
+      sourcePurpose: "ordinary",
       employmentCompanyId: "company-1",
       wageMonth: "2026-08",
       periodStart: new Date("2026-08-01T00:00:00.000Z"),
@@ -146,6 +149,44 @@ describe("WageStatementService", () => {
         createdByUserId: "actor-1"
       })
     }));
+  });
+
+  it("requires a controlled approved-source purpose and keeps ordinary sources strictly positive", async () => {
+    const { service, tx } = setup();
+    const { sourcePurpose: _sourcePurpose, ...missingPurpose } = approvedSource;
+    void _sourcePurpose;
+
+    await expect(service.createApprovedSource("actor-1", missingPurpose as never))
+      .rejects.toThrow("外部批准工资来源用途必须明确为普通工资或全额冲销");
+    await expect(service.createApprovedSource("actor-1", {
+      ...approvedSource,
+      idempotencyKey: "abababab-abab-4bab-8bab-abababababab",
+      approvedPersonLines: [{
+        ...approvedPersonLine,
+        approvedAmountCents: "0",
+        costComponents: approvedPersonLine.costComponents.map((line) => ({ ...line, amountCents: "0" })),
+        creditorBreakdowns: approvedPersonLine.creditorBreakdowns.map((line) => ({ ...line, amountCents: "0" }))
+      }]
+    })).rejects.toThrow("普通外部批准工资来源总额必须大于零");
+    expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a nonzero full-reversal authority snapshot before any persistence", async () => {
+    const { service, tx } = setup();
+
+    await expect(service.createApprovedSource("actor-1", {
+      ...approvedSource,
+      idempotencyKey: "acacacac-acac-4cac-8cac-acacacacacac",
+      sourcePurpose: "full_reversal",
+      fullReversalTarget: {
+        statementId: "statement-1",
+        priorConfirmedVersionId: "version-1",
+        priorConfirmedRevision: 1,
+        priorSourceVersionId: "source-1"
+      },
+      approvedPersonLines: [financePersonLine]
+    } as never)).rejects.toThrow("全额冲销批准来源总额必须恰为零");
+    expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
   });
 
   it("freezes only approved wage authority facts and rejects project allocations in the approved-source command", async () => {

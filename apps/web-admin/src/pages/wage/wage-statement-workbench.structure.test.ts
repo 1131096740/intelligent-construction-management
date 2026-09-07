@@ -20,6 +20,7 @@ describe("工资承担工作台非敏感入口", () => {
     expect(api).toContain("/summary");
     expect(api).toContain("/import-preview");
     expect(api).toContain('"/wage-statements/approved-sources"');
+    expect(api).toContain('/revisions`');
     expect(api).toContain('"/wage-statements/drafts"');
     expect(api).toContain('"submit"');
     expect(api).toContain('"return"');
@@ -88,6 +89,9 @@ describe("工资承担工作台非敏感入口", () => {
     expect(page).toContain("创建工资承担草稿");
     expect(page).toContain("createApprovedWageSource");
     expect(page).toContain("createWageStatementDraft");
+    expect(page).toContain("createWageStatementRevision");
+    expect(page).toContain('sourcePurpose === "full_reversal"');
+    expect(page).toContain("创建全额冲销修订");
     expect(page).toContain("updateWageStatementDraft");
     expect(page).toContain("approvedAuthorityLines(lines)");
     expect(page).toContain("localImportCommand.value.sourceKey");

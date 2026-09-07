@@ -13,29 +13,29 @@
     "routeCount": 575,
     "exactRouteCount": 575,
     "normalizedRouteCount": 575,
-    "classificationOverrideCount": 214,
-    "consumerSurfaceOverrideCount": 35,
-    "classificationOverrideSha256": "75ee8362891133afef02176ddb2daba9c533323a381658a92419947a1231af5d",
-    "consumerSurfaceOverrideSha256": "81b9932f4010dd05c732f6d32a76bf0863a6c9951b9191aae6dc5dcbef1b4d70",
-    "derivedProductionPageCount": 361,
-    "pageRouteCount": 363,
+    "classificationOverrideCount": 213,
+    "consumerSurfaceOverrideCount": 34,
+    "classificationOverrideSha256": "20815a8207e265a7c62404626c0edb0ecca51ea79d0f88bac40b767b8e46fdc8",
+    "consumerSurfaceOverrideSha256": "28aeb56e023e9d26024527bbe35d0feb4273cc2555c65e941cadc30da9b25237",
+    "derivedProductionPageCount": 362,
+    "pageRouteCount": 364,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
-    "internalTaskCount": 34,
+    "internalTaskCount": 33,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 415,
+      "web_api_wrapper": 416,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 32,
+      "operator_endpoint": 31,
       "none": 120
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 415,
+    "productionWrapperRouteCount": 416,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -22625,15 +22625,26 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "internal_task",
-      "classificationSource": "registry_override",
-      "classificationReason": "wage_revision_controlled_operator_workflow_no_page_consumer",
-      "consumerSurface": "operator_endpoint",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+            "wrapper": "createWageStatementRevision",
+            "method": "POST",
+            "normalizedPath": "/wage-statements/:param/revisions",
+            "normalizedKey": "POST /wage-statements/:param/revisions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": "finance_controlled_confirmed_wage_revision_operator_workflow"
+        "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
