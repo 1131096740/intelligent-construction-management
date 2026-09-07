@@ -13,6 +13,47 @@ ALTER TABLE "InvoiceRecord"
       OR ("taxRateSnapshot" >= 0 AND "taxRateSnapshot" <= 100)
     );
 
+-- Extend the existing immutable legal-fact guard after the new snapshot column
+-- exists. Keep every comparison from the original guard and add only the
+-- creation-time tax snapshot; aggregate revision remains intentionally mutable.
+CREATE OR REPLACE FUNCTION "prevent_global_invoice_legal_fact_mutation"()
+RETURNS trigger AS $$
+BEGIN
+  IF OLD."sourceBusinessType" IN ('global_clearing_invoice', 'global_clearing_invoice_red', 'global_clearing_invoice_reissue')
+     AND (
+       NEW."projectId" IS DISTINCT FROM OLD."projectId"
+       OR NEW."identityKey" IS DISTINCT FROM OLD."identityKey"
+       OR NEW."identityKind" IS DISTINCT FROM OLD."identityKind"
+       OR NEW."owningCompanyEntityId" IS DISTINCT FROM OLD."owningCompanyEntityId"
+       OR NEW."direction" IS DISTINCT FROM OLD."direction"
+       OR NEW."invoiceType" IS DISTINCT FROM OLD."invoiceType"
+       OR NEW."invoiceCode" IS DISTINCT FROM OLD."invoiceCode"
+       OR NEW."invoiceNumber" IS DISTINCT FROM OLD."invoiceNumber"
+       OR NEW."externalIdentifier" IS DISTINCT FROM OLD."externalIdentifier"
+       OR NEW."issueDate" IS DISTINCT FROM OLD."issueDate"
+       OR NEW."sellerName" IS DISTINCT FROM OLD."sellerName"
+       OR NEW."sellerTaxId" IS DISTINCT FROM OLD."sellerTaxId"
+       OR NEW."buyerName" IS DISTINCT FROM OLD."buyerName"
+       OR NEW."buyerTaxId" IS DISTINCT FROM OLD."buyerTaxId"
+       OR NEW."taxExclusiveAmountCents" IS DISTINCT FROM OLD."taxExclusiveAmountCents"
+       OR NEW."taxAmountCents" IS DISTINCT FROM OLD."taxAmountCents"
+       OR NEW."totalAmountCents" IS DISTINCT FROM OLD."totalAmountCents"
+       OR NEW."allocatableAmountCents" IS DISTINCT FROM OLD."allocatableAmountCents"
+       OR NEW."fileId" IS DISTINCT FROM OLD."fileId"
+       OR NEW."uploadedByUserId" IS DISTINCT FROM OLD."uploadedByUserId"
+       OR NEW."sourceBusinessType" IS DISTINCT FROM OLD."sourceBusinessType"
+       OR NEW."sourceBusinessId" IS DISTINCT FROM OLD."sourceBusinessId"
+       OR NEW."sourceProcurementId" IS DISTINCT FROM OLD."sourceProcurementId"
+       OR NEW."commandIdempotencyKey" IS DISTINCT FROM OLD."commandIdempotencyKey"
+       OR NEW."commandFingerprint" IS DISTINCT FROM OLD."commandFingerprint"
+       OR NEW."taxRateSnapshot" IS DISTINCT FROM OLD."taxRateSnapshot"
+     ) THEN
+    RAISE EXCEPTION 'global invoice legal facts are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 ALTER TABLE "InvoiceLifecycleEvent"
   ADD COLUMN "delegatorUserId" TEXT;
 
@@ -277,6 +318,53 @@ CREATE TRIGGER "InvoiceEvidenceRepairResolution_shared_cap"
 BEFORE INSERT ON "InvoiceEvidenceRepairResolution"
 FOR EACH ROW EXECUTE FUNCTION "enforce_invoice_evidence_repair_resolution"();
 
+-- Lifecycle invalidation commands share the source InvoiceRecord as their
+-- stable serialization point. A prior void is terminal for later void/red
+-- facts; red-before-void remains valid so a later void may invalidate only the
+-- still-effective allocation remainder.
+CREATE OR REPLACE FUNCTION "enforce_invoice_lifecycle_compatibility"()
+RETURNS trigger AS $$
+DECLARE
+  locked_invoice_id TEXT;
+BEGIN
+  IF NEW."kind" NOT IN ('void', 'red') THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT "id"
+    INTO locked_invoice_id
+    FROM "InvoiceRecord"
+   WHERE "id" = NEW."invoiceRecordId"
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'invoice lifecycle requires an existing invoice';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM "InvoiceLifecycleEvent"
+     WHERE "invoiceRecordId" = NEW."invoiceRecordId"
+       AND "kind" = 'void'
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = CASE
+        WHEN NEW."kind" = 'void' THEN 'invoice already has a void lifecycle fact'
+        ELSE 'a voided invoice cannot receive a red lifecycle fact'
+      END;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "InvoiceLifecycleEvent_compatible_invalidation"
+BEFORE INSERT ON "InvoiceLifecycleEvent"
+FOR EACH ROW EXECUTE FUNCTION "enforce_invoice_lifecycle_compatibility"();
+
 -- Serialize every red reference against its blue allocation
 -- and enforce the shared red/reference reversal cap at the database boundary.
 CREATE OR REPLACE FUNCTION "enforce_invoice_red_allocation_cap"()
@@ -288,6 +376,34 @@ DECLARE
   red_cents BIGINT;
   reversed_cents BIGINT;
 BEGIN
+  SELECT "invoiceRecordId", "relatedInvoiceRecordId"
+    INTO referenced_invoice_id, related_red_invoice_id
+    FROM "InvoiceLifecycleEvent"
+   WHERE "id" = NEW."lifecycleEventId"
+     AND "kind" = 'red';
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'red reference requires a red lifecycle fact';
+  END IF;
+
+  PERFORM 1
+    FROM "InvoiceRecord"
+   WHERE "id" = referenced_invoice_id
+   FOR UPDATE;
+
+  IF NOT FOUND OR EXISTS (
+    SELECT 1
+      FROM "InvoiceLifecycleEvent"
+     WHERE "invoiceRecordId" = referenced_invoice_id
+       AND "kind" = 'void'
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'a voided invoice cannot receive a red allocation reference';
+  END IF;
+
   SELECT *
     INTO blue_allocation
     FROM "InvoiceClearingAllocation"
@@ -300,14 +416,7 @@ BEGIN
       MESSAGE = 'red reference requires an original blue allocation';
   END IF;
 
-  SELECT "invoiceRecordId", "relatedInvoiceRecordId"
-    INTO referenced_invoice_id, related_red_invoice_id
-    FROM "InvoiceLifecycleEvent"
-   WHERE "id" = NEW."lifecycleEventId"
-     AND "kind" = 'red';
-
-  IF NOT FOUND
-     OR referenced_invoice_id IS DISTINCT FROM blue_allocation."invoiceRecordId"
+  IF referenced_invoice_id IS DISTINCT FROM blue_allocation."invoiceRecordId"
      OR related_red_invoice_id IS DISTINCT FROM NEW."redInvoiceRecordId" THEN
     RAISE EXCEPTION USING
       ERRCODE = '23514',
@@ -342,11 +451,39 @@ CREATE OR REPLACE FUNCTION "enforce_invoice_clearing_reversal_cap"()
 RETURNS trigger AS $$
 DECLARE
   original_allocation "InvoiceClearingAllocation"%ROWTYPE;
+  original_invoice_id TEXT;
   red_cents BIGINT;
   reversed_cents BIGINT;
 BEGIN
   IF NEW."reversesAllocationId" IS NULL THEN
     RETURN NEW;
+  END IF;
+
+  SELECT "invoiceRecordId"
+    INTO original_invoice_id
+    FROM "InvoiceClearingAllocation"
+   WHERE "id" = NEW."reversesAllocationId";
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'allocation reversal requires an original allocation';
+  END IF;
+
+  PERFORM 1
+    FROM "InvoiceRecord"
+   WHERE "id" = original_invoice_id
+   FOR UPDATE;
+
+  IF NOT FOUND OR EXISTS (
+    SELECT 1
+      FROM "InvoiceLifecycleEvent"
+     WHERE "invoiceRecordId" = original_invoice_id
+       AND "kind" = 'void'
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'a voided invoice allocation cannot be reversed';
   END IF;
 
   SELECT *

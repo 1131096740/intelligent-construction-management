@@ -186,23 +186,11 @@ describe("POL-11B invoice ledger PostgreSQL authority", () => {
         await client.$connect();
         await assertFullyMigrated(client);
         const fixture = await seedEvidenceRepairCompetition(client);
-        const lifecycleEventId = `pol260-mismatched-impact-${randomUUID()}`;
-        await client.invoiceLifecycleEvent.create({
-          data: {
-            id: lifecycleEventId,
-            invoiceRecordId: fixture.invalidatedInvoiceRecordId,
-            kind: "void",
-            reasonCode: "invoice_voided",
-            createdByUserId: fixture.actorUserId,
-            idempotencyKey: randomUUID(),
-            requestFingerprint: "9".repeat(64)
-          }
-        });
 
         await expect(
           client.invoiceEvidenceRepairImpact.create({
             data: {
-              lifecycleEventId,
+              lifecycleEventId: fixture.lifecycleEventId,
               invoiceRecordId: fixture.invalidatedInvoiceRecordId,
               allocationId: fixture.allocationIds[0]!,
               projectId: "wrong-project",
@@ -297,6 +285,404 @@ describe("POL-11B invoice ledger PostgreSQL authority", () => {
     },
     60_000
   );
+
+  integrationTest(
+    "keeps the creation-time tax snapshot immutable while allowing revision-only updates",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const client = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      try {
+        await client.$connect();
+        await assertFullyMigrated(client);
+        const fixture = await seedRedCompetition(client);
+
+        await expect(
+          client.invoiceRecord.update({
+            where: { id: fixture.blueInvoiceRecordId },
+            data: { revision: { increment: 1 } }
+          })
+        ).resolves.toMatchObject({ revision: 1 });
+        await expect(
+          client.invoiceRecord.update({
+            where: { id: fixture.blueInvoiceRecordId },
+            data: { taxRateSnapshot: "9.000000" }
+          })
+        ).rejects.toThrow();
+        await expect(
+          client.invoiceRecord.update({
+            where: { id: fixture.firstRedInvoiceRecordId },
+            data: { taxRateSnapshot: "13.000000" }
+          })
+        ).rejects.toThrow();
+
+        await expect(
+          client.invoiceRecord.findUniqueOrThrow({
+            where: { id: fixture.blueInvoiceRecordId },
+            select: { revision: true, taxRateSnapshot: true }
+          })
+        ).resolves.toMatchObject({ revision: 1 });
+        const source = await client.invoiceRecord.findUniqueOrThrow({
+          where: { id: fixture.blueInvoiceRecordId },
+          select: { taxRateSnapshot: true }
+        });
+        const historical = await client.invoiceRecord.findUniqueOrThrow({
+          where: { id: fixture.firstRedInvoiceRecordId },
+          select: { taxRateSnapshot: true }
+        });
+        expect(source.taxRateSnapshot?.toFixed(6)).toBe("13.000000");
+        expect(historical.taxRateSnapshot).toBeNull();
+      } finally {
+        await client.$disconnect();
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "rejects a second void lifecycle fact for one invoice",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const client = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      try {
+        await client.$connect();
+        await assertFullyMigrated(client);
+        const fixture = await seedEvidenceRepairCompetition(client);
+
+        await expect(
+          client.invoiceLifecycleEvent.create({
+            data: {
+              invoiceRecordId: fixture.invalidatedInvoiceRecordId,
+              kind: "void",
+              reasonCode: "duplicate_void",
+              createdByUserId: fixture.actorUserId,
+              idempotencyKey: randomUUID(),
+              requestFingerprint: "5".repeat(64)
+            }
+          })
+        ).rejects.toThrow();
+        await expect(
+          client.invoiceLifecycleEvent.count({
+            where: {
+              invoiceRecordId: fixture.invalidatedInvoiceRecordId,
+              kind: "void"
+            }
+          })
+        ).resolves.toBe(1);
+      } finally {
+        await client.$disconnect();
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "rejects red lifecycle facts and late references after void",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+      try {
+        await client.$connect();
+        await assertFullyMigrated(client);
+        const voided = await seedEvidenceRepairCompetition(client);
+        await expect(
+          client.invoiceLifecycleEvent.create({
+            data: {
+              invoiceRecordId: voided.invalidatedInvoiceRecordId,
+              relatedInvoiceRecordId: voided.replacementInvoiceRecordId,
+              kind: "red",
+              reasonCode: "red_after_void",
+              createdByUserId: voided.actorUserId,
+              idempotencyKey: randomUUID(),
+              requestFingerprint: "2".repeat(64)
+            }
+          })
+        ).rejects.toThrow();
+        await expect(
+          client.invoiceLifecycleEvent.count({
+            where: {
+              invoiceRecordId: voided.invalidatedInvoiceRecordId,
+              kind: "red"
+            }
+          })
+        ).resolves.toBe(0);
+
+        const lateReference = await seedRedCompetition(client);
+        await client.invoiceLifecycleEvent.create({
+          data: {
+            invoiceRecordId: lateReference.blueInvoiceRecordId,
+            kind: "void",
+            reasonCode: "invoice_voided",
+            createdByUserId: lateReference.actorUserId,
+            idempotencyKey: randomUUID(),
+            requestFingerprint: "1".repeat(64)
+          }
+        });
+        await expect(
+          client.invoiceRedAllocationReference.create({
+            data: {
+              lifecycleEventId: lateReference.firstLifecycleEventId,
+              redInvoiceRecordId: lateReference.firstRedInvoiceRecordId,
+              blueInvoiceAllocationId: lateReference.blueInvoiceAllocationId,
+              amountCents: 6000n
+            }
+          })
+        ).rejects.toThrow();
+        await expect(
+          client.invoiceRedAllocationReference.count({
+            where: {
+              blueInvoiceAllocationId: lateReference.blueInvoiceAllocationId
+            }
+          })
+        ).resolves.toBe(0);
+      } finally {
+        await client.$disconnect();
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "serializes void and red commands against the same invoice revision",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const clients = [0, 1, 2].map(
+        () => new PrismaClient({ datasources: { db: { url: databaseUrl } } })
+      );
+      try {
+        await Promise.all(clients.map((client) => client.$connect()));
+        await assertFullyMigrated(clients[2]!);
+        const fixture = await seedRedCompetition(clients[2]!, false);
+        const voidLifecycleEventId = `pol260-race-void-${randomUUID()}`;
+        const redImpactId = `pol260-race-red-impact-${randomUUID()}`;
+        const voidImpactId = `pol260-race-void-impact-${randomUUID()}`;
+
+        const outcomes = await Promise.allSettled([
+          clients[0]!.$transaction(async (tx) => {
+            const claimed = await tx.invoiceRecord.updateMany({
+              where: { id: fixture.blueInvoiceRecordId, revision: 0 },
+              data: { revision: { increment: 1 } }
+            });
+            if (claimed.count !== 1) throw new Error("stale invoice revision");
+            await tx.invoiceLifecycleEvent.create({
+              data: {
+                id: voidLifecycleEventId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                kind: "void",
+                reasonCode: "invoice_voided",
+                createdByUserId: fixture.actorUserId,
+                idempotencyKey: randomUUID(),
+                requestFingerprint: "4".repeat(64)
+              }
+            });
+            await tx.invoiceEvidenceRepairImpact.create({
+              data: {
+                id: voidImpactId,
+                lifecycleEventId: voidLifecycleEventId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                allocationId: fixture.blueInvoiceAllocationId,
+                projectId: fixture.projectId,
+                clearingCaseId: fixture.clearingCaseId,
+                clearingEventVersionId: fixture.clearingEventVersionId,
+                invalidatedAmountCents: 6000n,
+                reasonCode: "invoice_voided",
+                actualActorUserId: fixture.actorUserId
+              }
+            });
+          }),
+          clients[1]!.$transaction(async (tx) => {
+            const claimed = await tx.invoiceRecord.updateMany({
+              where: { id: fixture.blueInvoiceRecordId, revision: 0 },
+              data: { revision: { increment: 1 } }
+            });
+            if (claimed.count !== 1) throw new Error("stale invoice revision");
+            await tx.invoiceLifecycleEvent.create({
+              data: {
+                id: fixture.firstLifecycleEventId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                relatedInvoiceRecordId: fixture.firstRedInvoiceRecordId,
+                kind: "red",
+                reasonCode: "sales_return",
+                createdByUserId: fixture.actorUserId,
+                idempotencyKey: randomUUID(),
+                requestFingerprint: "3".repeat(64)
+              }
+            });
+            await tx.invoiceRedAllocationReference.create({
+              data: {
+                lifecycleEventId: fixture.firstLifecycleEventId,
+                redInvoiceRecordId: fixture.firstRedInvoiceRecordId,
+                blueInvoiceAllocationId: fixture.blueInvoiceAllocationId,
+                amountCents: 6000n
+              }
+            });
+            await tx.invoiceEvidenceRepairImpact.create({
+              data: {
+                id: redImpactId,
+                lifecycleEventId: fixture.firstLifecycleEventId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                allocationId: fixture.blueInvoiceAllocationId,
+                projectId: fixture.projectId,
+                clearingCaseId: fixture.clearingCaseId,
+                clearingEventVersionId: fixture.clearingEventVersionId,
+                invalidatedAmountCents: 6000n,
+                reasonCode: "sales_return",
+                actualActorUserId: fixture.actorUserId
+              }
+            });
+          })
+        ]);
+
+        expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+        expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+        await expect(
+          clients[2]!.invoiceRecord.findUniqueOrThrow({
+            where: { id: fixture.blueInvoiceRecordId },
+            select: { revision: true }
+          })
+        ).resolves.toEqual({ revision: 1 });
+        await expect(
+          clients[2]!.invoiceLifecycleEvent.count({
+            where: { invoiceRecordId: fixture.blueInvoiceRecordId }
+          })
+        ).resolves.toBe(1);
+        await expect(
+          clients[2]!.invoiceEvidenceRepairImpact.count({
+            where: { invoiceRecordId: fixture.blueInvoiceRecordId }
+          })
+        ).resolves.toBe(1);
+      } finally {
+        await Promise.allSettled(clients.map((client) => client.$disconnect()));
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "rejects reversals after void and serializes competing void and reversal commands",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const clients = [0, 1, 2].map(
+        () => new PrismaClient({ datasources: { db: { url: databaseUrl } } })
+      );
+      try {
+        await Promise.all(clients.map((client) => client.$connect()));
+        await assertFullyMigrated(clients[2]!);
+        const voided = await seedEvidenceRepairCompetition(clients[2]!);
+        await expect(
+          clients[2]!.invoiceClearingAllocation.create({
+            data: {
+              invoiceRecordId: voided.invalidatedInvoiceRecordId,
+              projectId: voided.projectId,
+              clearingCaseId: voided.clearingCaseId,
+              clearingEventVersionId: voided.clearingEventVersionId,
+              amountCents: 1000n,
+              structuredReasonCode: "allocation_correction",
+              reversesAllocationId: voided.allocationIds[0]!,
+              createdByUserId: voided.actorUserId,
+              idempotencyKey: randomUUID(),
+              requestFingerprint: "0".repeat(64)
+            }
+          })
+        ).rejects.toThrow();
+        await expect(
+          clients[2]!.invoiceClearingAllocation.count({
+            where: { reversesAllocationId: voided.allocationIds[0]! }
+          })
+        ).resolves.toBe(0);
+
+        const fixture = await seedRedCompetition(clients[2]!, false);
+        const voidLifecycleEventId = `pol260-race-reversal-void-${randomUUID()}`;
+        const voidImpactId = `pol260-race-reversal-impact-${randomUUID()}`;
+        const reversalId = `pol260-race-reversal-${randomUUID()}`;
+        const outcomes = await Promise.allSettled([
+          clients[0]!.$transaction(async (tx) => {
+            const claimed = await tx.invoiceRecord.updateMany({
+              where: { id: fixture.blueInvoiceRecordId, revision: 0 },
+              data: { revision: { increment: 1 } }
+            });
+            if (claimed.count !== 1) throw new Error("stale invoice revision");
+            await tx.invoiceLifecycleEvent.create({
+              data: {
+                id: voidLifecycleEventId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                kind: "void",
+                reasonCode: "invoice_voided",
+                createdByUserId: fixture.actorUserId,
+                idempotencyKey: randomUUID(),
+                requestFingerprint: "e".repeat(64)
+              }
+            });
+            await tx.invoiceEvidenceRepairImpact.create({
+              data: {
+                id: voidImpactId,
+                lifecycleEventId: voidLifecycleEventId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                allocationId: fixture.blueInvoiceAllocationId,
+                projectId: fixture.projectId,
+                clearingCaseId: fixture.clearingCaseId,
+                clearingEventVersionId: fixture.clearingEventVersionId,
+                invalidatedAmountCents: 6000n,
+                reasonCode: "invoice_voided",
+                actualActorUserId: fixture.actorUserId
+              }
+            });
+          }),
+          clients[1]!.$transaction(async (tx) => {
+            const claimed = await tx.invoiceRecord.updateMany({
+              where: { id: fixture.blueInvoiceRecordId, revision: 0 },
+              data: { revision: { increment: 1 } }
+            });
+            if (claimed.count !== 1) throw new Error("stale invoice revision");
+            await tx.invoiceClearingAllocation.create({
+              data: {
+                id: reversalId,
+                invoiceRecordId: fixture.blueInvoiceRecordId,
+                projectId: fixture.projectId,
+                clearingCaseId: fixture.clearingCaseId,
+                clearingEventVersionId: fixture.clearingEventVersionId,
+                amountCents: 6000n,
+                structuredReasonCode: "allocation_correction",
+                reversesAllocationId: fixture.blueInvoiceAllocationId,
+                createdByUserId: fixture.actorUserId,
+                idempotencyKey: randomUUID(),
+                requestFingerprint: "d".repeat(64)
+              }
+            });
+          })
+        ]);
+
+        expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+        expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+        await expect(
+          clients[2]!.invoiceRecord.findUniqueOrThrow({
+            where: { id: fixture.blueInvoiceRecordId },
+            select: { revision: true }
+          })
+        ).resolves.toEqual({ revision: 1 });
+        const [voidCount, impactCount, reversalCount] = await Promise.all([
+          clients[2]!.invoiceLifecycleEvent.count({
+            where: { id: voidLifecycleEventId }
+          }),
+          clients[2]!.invoiceEvidenceRepairImpact.count({
+            where: { id: voidImpactId }
+          }),
+          clients[2]!.invoiceClearingAllocation.count({
+            where: { id: reversalId }
+          })
+        ]);
+        expect([voidCount, impactCount, reversalCount]).toEqual(
+          voidCount === 1 ? [1, 1, 0] : [0, 0, 1]
+        );
+      } finally {
+        await Promise.allSettled(clients.map((client) => client.$disconnect()));
+      }
+    },
+    60_000
+  );
 });
 
 function assertDedicatedDatabase() {
@@ -325,7 +711,10 @@ async function assertFullyMigrated(client: PrismaClientType) {
   expect(row?.count).toBe(BigInt(EXPECTED_MIGRATION_COUNT));
 }
 
-async function seedRedCompetition(client: PrismaClientType) {
+async function seedRedCompetition(
+  client: PrismaClientType,
+  seedLifecycleEvents = true
+) {
   const suffix = randomUUID();
   const actorUserId = `pol260-actor-${suffix}`;
   const blueInvoiceRecordId = `pol260-blue-${suffix}`;
@@ -360,7 +749,8 @@ async function seedRedCompetition(client: PrismaClientType) {
   const invoiceData = (
     id: string,
     sourceBusinessType: string,
-    totalAmountCents: bigint
+    totalAmountCents: bigint,
+    taxRateSnapshot: string | null = null
   ) => ({
     id,
     projectId: null,
@@ -383,11 +773,17 @@ async function seedRedCompetition(client: PrismaClientType) {
     fileId: `file-${id}`,
     uploadedByUserId: actorUserId,
     sourceBusinessType,
-    sourceBusinessId: `source-${id}`
+    sourceBusinessId: `source-${id}`,
+    taxRateSnapshot
   });
   await client.invoiceRecord.createMany({
     data: [
-      invoiceData(blueInvoiceRecordId, "global_clearing_invoice", 6000n),
+      invoiceData(
+        blueInvoiceRecordId,
+        "global_clearing_invoice",
+        6000n,
+        "13.000000"
+      ),
       invoiceData(firstRedInvoiceRecordId, "global_clearing_invoice_red", 4000n),
       invoiceData(secondRedInvoiceRecordId, "global_clearing_invoice_red", 4000n)
     ]
@@ -440,8 +836,9 @@ async function seedRedCompetition(client: PrismaClientType) {
       requestFingerprint: "a".repeat(64)
     }
   });
-  await client.invoiceLifecycleEvent.createMany({
-    data: [
+  if (seedLifecycleEvents) {
+    await client.invoiceLifecycleEvent.createMany({
+      data: [
       {
         id: firstLifecycleEventId,
         invoiceRecordId: blueInvoiceRecordId,
@@ -462,8 +859,9 @@ async function seedRedCompetition(client: PrismaClientType) {
         idempotencyKey: randomUUID(),
         requestFingerprint: "c".repeat(64)
       }
-    ]
-  });
+      ]
+    });
+  }
   return {
     actorUserId,
     blueInvoiceRecordId,
@@ -623,6 +1021,8 @@ async function seedEvidenceRepairCompetition(client: PrismaClientType) {
     invalidatedInvoiceRecordId,
     replacementInvoiceRecordId,
     replacementFileId,
+    lifecycleEventId,
+    projectId,
     clearingCaseId,
     clearingEventVersionId,
     allocationIds,

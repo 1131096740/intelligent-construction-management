@@ -1598,6 +1598,139 @@ describe("FileService", () => {
     }
   );
 
+  it("allows a global invoice file when its repair resolution is the exact same invoice-and-file pair", async () => {
+    const file = {
+      id: "global-invoice-repair-file-1",
+      bucket: "private-local",
+      objectKey: "uploads/global-invoice-repair-file-1.pdf",
+      originalName: "全局发票修复附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "uploader-1",
+      storageStatus: "active",
+      contentSha256: null
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      invoiceRecord: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "global-invoice-replacement-1",
+          projectId: null,
+          sourceBusinessType: "global_clearing_invoice_reissue"
+        }])
+      },
+      invoiceEvidenceRepairResolution: {
+        findMany: jest.fn().mockResolvedValue([{
+          replacementInvoiceRecordId: "global-invoice-replacement-1",
+          replacementFileId: file.id
+        }])
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: "uploader-1", isActive: true })
+      },
+      $queryRaw: jest.fn().mockImplementation(async (query: unknown) => {
+        const sql = (query as { strings?: readonly string[] }).strings?.join("") ?? "";
+        return sql.includes('"InvoiceEvidenceRepairResolution"')
+          ? [{ fileId: file.id }]
+          : [];
+      })
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as never, storage as never);
+
+    await expect(service.createDownloadTicket(file.id, {
+      actorUserId: "uploader-1",
+      downloadReason: "全局发票证据修复复核"
+    })).resolves.toEqual(expect.objectContaining({ fileId: file.id }));
+    expect(tx.invoiceEvidenceRepairResolution.findMany).toHaveBeenCalledWith({
+      where: { replacementFileId: file.id },
+      select: {
+        replacementInvoiceRecordId: true,
+        replacementFileId: true
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "file.download.ticket",
+      metadata: expect.objectContaining({
+        actualActorUserId: "uploader-1",
+        delegatorUserId: null,
+        invoiceRecordId: "global-invoice-replacement-1"
+      })
+    }));
+  });
+
+  it.each([
+    "resolution_for_another_invoice",
+    "another_business_binding",
+    "resolution_client_unavailable"
+  ])(
+    "fails closed for a global-invoice repair file with %s",
+    async (conflict) => {
+      const file = {
+        id: `global-invoice-repair-conflict-${conflict}`,
+        bucket: "private-local",
+        objectKey: `uploads/global-invoice-repair-conflict-${conflict}.pdf`,
+        originalName: "全局发票修复附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "uploader-1",
+        storageStatus: "active",
+        contentSha256: null
+      };
+      const resolutionClient = conflict === "resolution_client_unavailable"
+        ? undefined
+        : {
+            findMany: jest.fn().mockResolvedValue([{
+              replacementInvoiceRecordId:
+                conflict === "resolution_for_another_invoice"
+                  ? "global-invoice-other"
+                  : "global-invoice-replacement-1",
+              replacementFileId: file.id
+            }])
+          };
+      const tx = {
+        fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+        invoiceRecord: {
+          findMany: jest.fn().mockResolvedValue([{
+            id: "global-invoice-replacement-1",
+            projectId: null,
+            sourceBusinessType: "global_clearing_invoice_reissue"
+          }])
+        },
+        invoiceEvidenceRepairResolution: resolutionClient,
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: "uploader-1", isActive: true })
+        },
+        $queryRaw: jest.fn().mockImplementation(async (query: unknown) => {
+          const sql = (query as { strings?: readonly string[] }).strings?.join("") ?? "";
+          if (conflict === "another_business_binding") {
+            return [{ fileId: file.id }];
+          }
+          if (
+            conflict === "resolution_client_unavailable" &&
+            sql.includes('"InvoiceEvidenceRepairResolution"')
+          ) {
+            return [{ fileId: file.id }];
+          }
+          return [];
+        })
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as unknown as PrismaService;
+      const service = new FileService(prisma, audit as never, storage as never);
+
+      await expect(service.createDownloadTicket(file.id, {
+        actorUserId: "uploader-1",
+        downloadReason: "全局发票证据修复复核"
+      })).rejects.toThrow("资料文件存在跨业务绑定冲突，暂不能下载");
+      expect(storage.read).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("issues a short-lived ticket to the current active uploader of an exactly bound global invoice file", async () => {
     const file = {
       id: "global-invoice-file-1",

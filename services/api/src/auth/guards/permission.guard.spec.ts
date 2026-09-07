@@ -876,7 +876,96 @@ describe("PermissionGuard", () => {
       }),
       select: { fromUserId: true }
     });
+    expect(companyRoles.resolveActiveRoleScopes).toHaveBeenCalledWith(
+      "finance-director-1",
+      "project-1"
+    );
   });
+
+  it.each([
+    "wrong_project",
+    "global_only",
+    "nonfinance",
+    "inactive_delegator",
+    "expired",
+    "actual_actor_mismatch"
+  ])(
+    "rejects evidence-repair delegation with %s authority",
+    async (failure) => {
+      const requestActorUserId = failure === "actual_actor_mismatch"
+        ? "unexpected-delegatee"
+        : "delegatee-1";
+      const prisma = {
+        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+        projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+        position: { findMany: jest.fn().mockResolvedValue([]) },
+        invoiceEvidenceRepairImpact: {
+          findUnique: jest.fn().mockResolvedValue({
+            projectId: "project-1",
+            clearingCaseId: "case-1"
+          })
+        },
+        approvalDelegation: {
+          findMany: jest.fn().mockImplementation(
+            async ({ where }: { where: { toUserId: string } }) =>
+              failure !== "expired" && where.toUserId === "delegatee-1"
+                ? [{ fromUserId: "finance-director-1" }]
+                : []
+          )
+        },
+        user: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: requestActorUserId, isActive: true },
+            {
+              id: "finance-director-1",
+              isActive: failure !== "inactive_delegator"
+            }
+          ])
+        }
+      };
+      const companyRoles = {
+        resolveActiveRoleScopes: jest.fn().mockImplementation(
+          async (_userId: string, projectId?: string) => {
+            if (failure === "global_only") {
+              return projectId === undefined ? ["finance_director"] : [];
+            }
+            if (failure === "wrong_project") return [];
+            if (failure === "nonfinance") return ["finance_staff"];
+            return ["finance_director"];
+          }
+        )
+      };
+      const guard = new PermissionGuard(
+        {
+          getAllAndOverride: jest
+            .fn()
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce("clearing.confirm")
+        } as never,
+        prisma as never,
+        undefined,
+        companyRoles as never
+      );
+
+      await expect(
+        guard.canActivate(
+          contextWithRequest({
+            user: { id: requestActorUserId },
+            params: { impactId: "impact-1" },
+            body: { delegatorUserId: "finance-director-1" }
+          })
+        )
+      ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+      if (["wrong_project", "global_only", "nonfinance"].includes(failure)) {
+        expect(companyRoles.resolveActiveRoleScopes).toHaveBeenCalledWith(
+          "finance-director-1",
+          "project-1"
+        );
+      } else {
+        expect(companyRoles.resolveActiveRoleScopes).not.toHaveBeenCalled();
+      }
+    }
+  );
 
   it("rejects delegated approval when the delegator is inactive despite residual project roles", async () => {
     const prisma = {

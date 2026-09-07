@@ -1512,6 +1512,72 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     ).toBe("13.000000");
   });
 
+  it.each([
+    "100.000001",
+    "100.999999",
+    "101.000000",
+    "13.00000",
+    "13.0000000"
+  ])(
+    "rejects out-of-range or noncanonical global tax snapshot %s before every write path",
+    async (taxRateSnapshot) => {
+      const operations = [
+        (service: InvoiceLedgerService) => service.createGlobalInvoice(
+          ACTORS.globalFinanceStaff,
+          createGlobalInvoiceInput({ taxRateSnapshot })
+        ),
+        (service: InvoiceLedgerService) => service.createRedGlobalInvoice(
+          ACTORS.financeDirector,
+          {
+            ...createGlobalInvoiceInput({ taxRateSnapshot }),
+            blueInvoiceRecordId: "blue-invoice-1",
+            reasonCode: "sales_return",
+            confirmRed: true,
+            blueAllocationReferences: []
+          }
+        ),
+        (service: InvoiceLedgerService) => service.createReissueGlobalInvoice(
+          ACTORS.financeDirector,
+          {
+            ...createGlobalInvoiceInput({ taxRateSnapshot }),
+            originalInvoiceRecordId: "original-invoice-1",
+            reasonCode: "issued_with_wrong_name",
+            confirmReissue: true
+          }
+        )
+      ];
+
+      for (const operation of operations) {
+        const harness = createHarness();
+        await expect(operation(harness.service)).rejects.toThrow(
+          "请填写票面税率快照，格式为 0.000000 至 100.000000 的固定六位小数"
+        );
+        expect(harness.invoiceRecords).toHaveLength(0);
+        expect(harness.lifecycleEvents).toHaveLength(0);
+        expect(harness.files.assertCanDownloadFileById).not.toHaveBeenCalled();
+        expect(harness.audit.record).not.toHaveBeenCalled();
+      }
+    }
+  );
+
+  it.each(["0.000000", "99.999999", "100.000000"])(
+    "accepts the canonical global tax snapshot boundary %s",
+    async (taxRateSnapshot) => {
+      const harness = createHarness({
+        fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+        globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+      });
+      const created = await harness.service.createGlobalInvoice(
+        ACTORS.globalFinanceStaff,
+        createGlobalInvoiceInput({ taxRateSnapshot })
+      );
+      expect(
+        harness.invoiceRecords.find((record) => record.id === created.id)
+          ?.taxRateSnapshot?.toFixed(6)
+      ).toBe(taxRateSnapshot);
+    }
+  );
+
   it("uses voucher type, issuer tax id, and leading-zero external identifier as an other controlled voucher identity", async () => {
     const harness = createHarness({
       fileOwners: {
@@ -1576,6 +1642,17 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     expect(harness.lifecycleEvents).toHaveLength(1);
     expect(harness.lifecycleEvents[0]).toMatchObject({ invoiceRecordId: created.id, kind: "void" });
     await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, { ...command, reasonCode: "another_reason" })).rejects.toThrow("幂等键已用于不同的发票作废请求");
+    const auditCount = harness.audit.record.mock.calls.length;
+    await expect(
+      harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, {
+        ...command,
+        idempotencyKey: uuidKey(90),
+        expectedRevision: 1
+      })
+    ).rejects.toThrow("发票已经作废");
+    expect(harness.lifecycleEvents).toHaveLength(1);
+    expect(harness.invoiceRecords[0]?.revision).toBe(1);
+    expect(harness.audit.record).toHaveBeenCalledTimes(auditCount);
   });
 
   it("rejects a stale global invoice revision before appending a lifecycle fact", async () => {
@@ -2004,6 +2081,163 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     ).rejects.toThrow("发票版本已变化，请刷新后重试");
     expect(harness.lifecycleEvents).toHaveLength(0);
     expect(harness.redAllocationReferences).toHaveLength(0);
+  });
+
+  it("rejects a new red command after the source invoice was voided without side effects", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-after-void": ACTORS.financeDirector
+      },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      }
+    });
+    const blue = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const rows = [{
+      id: "blue-clearing-allocation-voided",
+      invoiceRecordId: blue.id,
+      projectId: "project-1",
+      clearingCaseId: "case-1",
+      clearingEventVersionId: "version-1",
+      reversesAllocationId: null,
+      amountCents: 6000n
+    }];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockImplementation(
+          ({ where }: { where: { id: string } }) =>
+            Promise.resolve(rows.find((row) => row.id === where.id) ?? null)
+        ),
+        findMany: jest.fn().mockImplementation(
+          ({ where }: { where: { invoiceRecordId?: string } }) =>
+            Promise.resolve(where.invoiceRecordId ? rows : [])
+        )
+      }
+    });
+    await harness.service.voidGlobalInvoice(blue.id, ACTORS.financeDirector, {
+      reasonCode: "invoice_voided",
+      idempotencyKey: uuidKey(91),
+      expectedRevision: 0,
+      confirmVoid: true
+    });
+    const auditCount = harness.audit.record.mock.calls.length;
+
+    await expect(
+      harness.service.createRedGlobalInvoice(ACTORS.financeDirector, {
+        ...createGlobalInvoiceInput({
+          invoiceCode: "GLOBAL-RED-CODE-AFTER-VOID",
+          invoiceNumber: "GLOBAL-RED-NO-AFTER-VOID",
+          fileId: "global-invoice-file-after-void",
+          idempotencyKey: uuidKey(92),
+          expectedRevision: 1
+        }),
+        blueInvoiceRecordId: blue.id,
+        reasonCode: "sales_return",
+        confirmRed: true,
+        blueAllocationReferences: [{
+          blueInvoiceAllocationId: rows[0]!.id,
+          amountCents: "6000"
+        }]
+      })
+    ).rejects.toThrow("已作废发票不能开具红字发票");
+    expect(harness.invoiceRecords).toHaveLength(1);
+    expect(harness.lifecycleEvents).toHaveLength(1);
+    expect(harness.redAllocationReferences).toHaveLength(0);
+    expect(harness.evidenceRepairImpacts).toHaveLength(1);
+    expect(harness.invoiceRecords[0]?.revision).toBe(1);
+    expect(harness.audit.record).toHaveBeenCalledTimes(auditCount);
+  });
+
+  it("rejects a new allocation reversal after its invoice was voided without side effects", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      }
+    });
+    const invoice = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const rows: Array<Record<string, unknown>> = [{
+      id: "clearing-allocation-before-void",
+      invoiceRecordId: invoice.id,
+      projectId: "project-1",
+      clearingCaseId: "case-1",
+      clearingEventVersionId: "version-1",
+      reversesAllocationId: null,
+      amountCents: 6000n,
+      idempotencyKey: uuidKey(93),
+      requestFingerprint: "a".repeat(64)
+    }];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockImplementation(
+          ({ where }: { where: { id?: string; idempotencyKey?: string } }) =>
+            Promise.resolve(rows.find((row) =>
+              row.id === where.id || row.idempotencyKey === where.idempotencyKey
+            ) ?? null)
+        ),
+        findMany: jest.fn().mockImplementation(
+          ({ where }: { where: { invoiceRecordId?: string; reversesAllocationId?: { in: string[] } } }) =>
+            Promise.resolve(rows.filter((row) =>
+              where.invoiceRecordId
+                ? row.invoiceRecordId === where.invoiceRecordId
+                : Boolean(
+                    row.reversesAllocationId &&
+                    where.reversesAllocationId?.in.includes(row.reversesAllocationId as string)
+                  )
+            ))
+        ),
+        aggregate: jest.fn().mockImplementation(
+          ({ where }: { where: { reversesAllocationId: string } }) =>
+            Promise.resolve({
+              _sum: {
+                amountCents: rows
+                  .filter((row) => row.reversesAllocationId === where.reversesAllocationId)
+                  .reduce((sum, row) => sum + (row.amountCents as bigint), 0n)
+              }
+            })
+        ),
+        create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+          const row = { id: `clearing-allocation-${rows.length + 1}`, ...data };
+          rows.push(row);
+          return Promise.resolve(row);
+        })
+      }
+    });
+    await harness.service.voidGlobalInvoice(invoice.id, ACTORS.financeDirector, {
+      reasonCode: "invoice_voided",
+      idempotencyKey: uuidKey(94),
+      expectedRevision: 0,
+      confirmVoid: true
+    });
+    const auditCount = harness.audit.record.mock.calls.length;
+
+    await expect(
+      harness.service.reverseClearingAllocation(
+        rows[0]!.id as string,
+        ACTORS.financeDirector,
+        {
+          amountCents: "1000",
+          structuredReasonCode: "allocation_correction",
+          idempotencyKey: uuidKey(95),
+          expectedRevision: 1,
+          confirmReversal: true
+        }
+      )
+    ).rejects.toThrow("已作废发票的清算分配不能反向");
+    expect(rows).toHaveLength(1);
+    expect(harness.lifecycleEvents).toHaveLength(1);
+    expect(harness.evidenceRepairImpacts).toHaveLength(1);
+    expect(harness.invoiceRecords[0]?.revision).toBe(1);
+    expect(harness.audit.record).toHaveBeenCalledTimes(auditCount);
   });
 
   it("rejects a second red lifecycle from consuming the same blue allocation", async () => {

@@ -127,7 +127,12 @@ export class PermissionGuard implements CanActivate {
       }
       if (!canPerform(requiredAction, actionRoleKeys)) {
         const scopedClearingAllowed = requiredAction.startsWith("clearing.")
-          ? await this.hasScopedClearingAction(request, request.user.id, requiredAction)
+          ? await this.hasScopedClearingAction(
+              request,
+              request.user.id,
+              requiredAction,
+              projectId
+            )
           : false;
         const delegatedApprovalAllowed =
           scopedClearingAllowed ||
@@ -400,7 +405,8 @@ export class PermissionGuard implements CanActivate {
   private async hasScopedClearingAction(
     request: AuthenticatedRequest,
     userId: string,
-    action: BusinessAction
+    action: BusinessAction,
+    projectId?: string
   ) {
     const delegatorUserId = typeof request.body?.delegatorUserId === "string"
       ? request.body.delegatorUserId.trim()
@@ -422,7 +428,10 @@ export class PermissionGuard implements CanActivate {
       }
     }
     if (!exactDelegation) return false;
-    const roleKeys = await this.companyRoles.resolveActiveRoleScopes(delegatorUserId);
+    const roleKeys = await this.companyRoles.resolveActiveRoleScopes(
+      delegatorUserId,
+      projectId
+    );
     return canPerform(action, roleKeys);
   }
 

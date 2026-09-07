@@ -418,6 +418,40 @@ describe("InvoiceLedgerController", () => {
     ).resolves.toMatchObject(validEvidenceRepair);
   });
 
+  it("accepts only a six-decimal tax-rate snapshot from zero through exactly one hundred on every global invoice route", async () => {
+    const routes: Array<[
+      "createGlobalInvoice" | "createRedGlobalInvoice" | "createReissueGlobalInvoice",
+      CreateGlobalInvoiceDto | CreateRedGlobalInvoiceDto | CreateReissueGlobalInvoiceDto
+    ]> = [
+      ["createGlobalInvoice", validGlobalInvoice],
+      ["createRedGlobalInvoice", validRedGlobalInvoice],
+      ["createReissueGlobalInvoice", validReissueGlobalInvoice]
+    ];
+
+    for (const [method, body] of routes) {
+      for (const validTaxRate of ["0.000000", "99.999999", "100.000000"]) {
+        await expect(
+          validateBody(method, 1, { ...body, taxRateSnapshot: validTaxRate })
+        ).resolves.toMatchObject({ taxRateSnapshot: validTaxRate });
+      }
+      for (const invalidTaxRate of [
+        "100.000001",
+        "100.999999",
+        "101.000000",
+        "13.00000",
+        "13.0000000"
+      ]) {
+        const response = await getValidationResponse(method, 1, {
+          ...body,
+          taxRateSnapshot: invalidTaxRate
+        });
+        expect(response.errors).toContain(
+          "票面税率快照必须为 0.000000 至 100.000000 的固定六位小数"
+        );
+      }
+    }
+  });
+
   it("rejects unsupported invoice types, missing identities and nested unknown fields", async () => {
     const response = await getValidationResponse(
       "createProcurementInvoice",

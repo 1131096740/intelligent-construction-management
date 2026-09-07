@@ -126,6 +126,13 @@ const REFUND_VOUCHER_BINDING = [
 const INVOICE_RECORD_FILE_BINDING = [
   { table: "InvoiceRecord", column: "fileId" }
 ] as const;
+const GLOBAL_INVOICE_REPAIR_FILE_BINDINGS = [
+  ...INVOICE_RECORD_FILE_BINDING,
+  {
+    table: "InvoiceEvidenceRepairResolution",
+    column: "replacementFileId"
+  }
+] as const;
 const SPOT_PAYMENT_INVOICE_FILE_BINDING = [
   { table: "SpotProcurementPaymentInvoice", column: "fileId" }
 ] as const;
@@ -3098,15 +3105,51 @@ export class FileService {
         ].includes(invoice.sourceBusinessType)
     );
     if (!globalInvoiceRecords.length) return null;
+    const invoiceRecord = globalInvoiceRecords[0];
+    const resolutionClient = (tx as unknown as {
+      invoiceEvidenceRepairResolution?: {
+        findMany(args: {
+          where: { replacementFileId: string };
+          select: {
+            replacementInvoiceRecordId: true;
+            replacementFileId: true;
+          };
+        }): Promise<Array<{
+          replacementInvoiceRecordId: string;
+          replacementFileId: string;
+        }>>;
+      };
+    }).invoiceEvidenceRepairResolution;
+    const repairResolutionBindings = resolutionClient
+      ? await resolutionClient.findMany({
+          where: { replacementFileId: file.id },
+          select: {
+            replacementInvoiceRecordId: true,
+            replacementFileId: true
+          }
+        })
+      : [];
+    const hasMismatchedRepairResolution = repairResolutionBindings.some(
+      (resolution) =>
+        resolution.replacementInvoiceRecordId !== invoiceRecord.id ||
+        resolution.replacementFileId !== file.id
+    );
+    const exactBusinessBindingExclusions = repairResolutionBindings.length
+      ? GLOBAL_INVOICE_REPAIR_FILE_BINDINGS
+      : INVOICE_RECORD_FILE_BINDING;
     if (
       invoiceRecords.length !== 1 ||
       globalInvoiceRecords.length !== 1 ||
-      await hasNonReceiptBusinessFileBinding(tx, [file.id], INVOICE_RECORD_FILE_BINDING)
+      hasMismatchedRepairResolution ||
+      await hasNonReceiptBusinessFileBinding(
+        tx,
+        [file.id],
+        exactBusinessBindingExclusions
+      )
     ) {
       throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
     }
 
-    const invoiceRecord = globalInvoiceRecords[0];
     const actor = await tx.user.findUnique({
       where: { id: actorUserId },
       select: { id: true, isActive: true }

@@ -73,7 +73,7 @@ export class CreateGlobalInvoiceDto {
   taxAmountCents!: string;
 
   @IsRequiredText({ requiredMessage: "请填写票面税率快照", typeMessage: "票面税率快照必须是文字", blankMessage: "请填写票面税率快照" })
-  @Matches(/^(?:\d{1,2}|100)\.\d{6}$/u, { message: "票面税率快照必须为 0.000000 至 100.000000 的固定六位小数" })
+  @Matches(/^(?:\d{1,2}\.\d{6}|100\.000000)$/u, { message: "票面税率快照必须为 0.000000 至 100.000000 的固定六位小数" })
   taxRateSnapshot!: string;
 
   @IsRequiredText({ requiredMessage: "请上传发票文件", typeMessage: "发票文件编号必须是文字", blankMessage: "请上传发票文件" })

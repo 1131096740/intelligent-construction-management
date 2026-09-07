@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 165,
     "terminalMigration": "20260907130000_pol260_invoice_ledger_repair",
-    "terminalMigrationChecksum": "5ce5001fa0e8696447a0da2f11a6079036c3b1894cfe083e9eb0f76560fce203",
+    "terminalMigrationChecksum": "0686e4bb16744be49242db59a9ab36cd3edd72fb333f77447660f6a7a1853b75",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 48,
     "fullyPendingSuites": 37,
     "partiallyPendingSuites": 11,
-    "pendingTests": 183,
+    "pendingTests": 188,
     "coveredFiles": 48,
-    "coveredTests": 183,
+    "coveredTests": 188,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -191,11 +191,11 @@
     },
     {
       "id": "invoice_ledger_pol260",
-      "pendingTests": 5,
+      "pendingTests": 10,
       "testFiles": [
         {
           "path": "services/api/src/invoice-ledger/invoice-ledger.postgres.spec.ts",
-          "pendingTests": 5,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         }
       ],

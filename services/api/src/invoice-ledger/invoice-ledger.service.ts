@@ -737,6 +737,11 @@ export class InvoiceLedgerService {
       if (!invoice || invoice.projectId !== null || !["global_clearing_invoice", "global_clearing_invoice_red", "global_clearing_invoice_reissue"].includes(invoice.sourceBusinessType)) {
         throw new NotFoundException("可作废的全局发票不存在");
       }
+      const priorVoid = await tx.invoiceLifecycleEvent.findFirst({
+        where: { invoiceRecordId: invoice.id, kind: { in: ["void"] } },
+        select: { id: true }
+      });
+      if (priorVoid) throw new ConflictException("发票已经作废");
       if (invoice.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
       const allocationRows = await tx.invoiceClearingAllocation.findMany({
         where: { invoiceRecordId: invoice.id },
@@ -1050,6 +1055,11 @@ export class InvoiceLedgerService {
       }
       const blue = await tx.invoiceRecord.findUnique({ where: { id: blueInvoiceRecordId } });
       if (!blue || blue.projectId !== null || blue.sourceBusinessType !== "global_clearing_invoice") throw new NotFoundException("对应蓝字全局发票不存在");
+      const priorVoid = await tx.invoiceLifecycleEvent.findFirst({
+        where: { invoiceRecordId: blue.id, kind: { in: ["void"] } },
+        select: { id: true }
+      });
+      if (priorVoid) throw new ConflictException("已作废发票不能开具红字发票");
       if (blue.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
       if (blue.owningCompanyEntityId !== header.owningCompanyEntityId || blue.direction !== header.direction) {
         throw new ConflictException("红字发票必须保持蓝字发票归属公司和进销项方向");
@@ -1262,7 +1272,13 @@ export class InvoiceLedgerService {
       const allocation = await tx.invoiceClearingAllocation.findUnique({ where: { id: normalizedAllocationId } });
       if (!allocation || allocation.reversesAllocationId) throw new NotFoundException("可反向的清算发票分配不存在");
       const invoice = await tx.invoiceRecord.findUnique({ where: { id: allocation.invoiceRecordId } });
-      if (!invoice || invoice.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
+      if (!invoice) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const priorVoid = await tx.invoiceLifecycleEvent.findFirst({
+        where: { invoiceRecordId: invoice.id, kind: { in: ["void"] } },
+        select: { id: true }
+      });
+      if (priorVoid) throw new ConflictException("已作废发票的清算分配不能反向");
+      if (invoice.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
       const delegatorUserId = await this.requireClearingFinanceDirector(
         tx,
         actorUserId,
@@ -4247,7 +4263,7 @@ function requiredExpectedRevision(value: unknown) {
 }
 
 function fixedTaxRateSnapshot(value: unknown) {
-  if (typeof value !== "string" || !/^(?:\d{1,2}|100)\.\d{6}$/u.test(value)) {
+  if (typeof value !== "string" || !/^(?:\d{1,2}\.\d{6}|100\.000000)$/u.test(value)) {
     throw new BadRequestException("请填写票面税率快照，格式为 0.000000 至 100.000000 的固定六位小数");
   }
   return new Prisma.Decimal(value);
