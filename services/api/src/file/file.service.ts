@@ -19,6 +19,7 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
@@ -718,7 +719,9 @@ export class FileService {
     private readonly audit: AuditService = new AuditService(),
     private readonly storage: PrivateFileStorage = new PrivateFileStorage(),
     private readonly spotAccess: SpotProcurementAccessService =
-      new SpotProcurementAccessService(prisma)
+      new SpotProcurementAccessService(prisma),
+    private readonly companyRoles: CompanyRoleResolverService =
+      new CompanyRoleResolverService(prisma)
   ) {
     this.assertDownloadSecret();
   }
@@ -1168,7 +1171,7 @@ export class FileService {
             : ""
         }&token=${encodeURIComponent(token)}`
       };
-    }));
+    }), downloadReason);
   }
 
   async getDownloadTicketCapability(
@@ -1246,7 +1249,7 @@ export class FileService {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
       return { file: found, access };
-    }));
+    }), downloadReason);
     const { file, access } = authorized;
 
     const buffer = await this.readVerifiedFileBuffer(file);
@@ -1259,6 +1262,7 @@ export class FileService {
         businessId: file.id,
         metadata: {
           reasonCode: "wage_sensitive_download_authorized",
+          downloadReason,
           ...(accessMode === "preview" ? { accessMode } : {})
         }
       } : {
@@ -2996,17 +3000,25 @@ export class FileService {
     if (sources.length !== 1) {
       throw new ForbiddenException("工资敏感依据存在异常绑定，暂不能下载");
     }
-    return this.hasGlobalRole(
-      tx,
-      actorUserId,
-      ACTION_REQUIRED_ROLES["wage_sensitive_download"]
+    let roleKeys: RoleKey[];
+    try {
+      roleKeys = await this.companyRoles.resolveActiveRoleScopesInTransaction(
+        tx,
+        actorUserId
+      );
+    } catch {
+      return false;
+    }
+    return roleKeys.some((roleKey) =>
+      ACTION_REQUIRED_ROLES["wage_sensitive_download"].includes(roleKey)
     );
   }
 
   private async withWageDeniedAccessAudit<T>(
     fileId: string,
     actorUserId: string,
-    operation: () => Promise<T>
+    operation: () => Promise<T>,
+    downloadReason?: string
   ): Promise<T> {
     try {
       return await operation();
@@ -3036,7 +3048,10 @@ export class FileService {
         action: "wage_sensitive_download.denied",
         businessType: "wage_evidence_file",
         businessId: fileId,
-        metadata: { reasonCode: "wage_sensitive_download_not_authorized" }
+        metadata: {
+          reasonCode: "wage_sensitive_download_not_authorized",
+          ...(downloadReason ? { downloadReason } : {})
+        }
       }));
       throw error;
     }

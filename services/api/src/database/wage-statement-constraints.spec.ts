@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { AuditService } from "../audit/audit.service";
+import { FileService, PrivateFileStorage } from "../file/file.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { WageStatementService } from "../wage-statement/wage-statement.service";
 
@@ -613,6 +614,105 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     })).resolves.toEqual({ status: "submitted", confirmedAt: null });
   });
 
+  it("rechecks a wage-evidence ticket after role revocation or account disable and persists reason-only deny audits", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const source = await wageService(first).createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(source)) throw new Error("工资来源创建未返回正式来源标识");
+    const storage = {
+      read: jest.fn().mockRejectedValue(new Error("denied reads must not reach storage"))
+    } as unknown as PrivateFileStorage;
+    const files = new FileService(
+      first as never,
+      new AuditService(),
+      storage,
+      undefined,
+      new CompanyRoleResolverService(first as never)
+    );
+    const ticketInput = (downloadUrl: string) => {
+      const url = new URL(`http://local${downloadUrl}`);
+      return {
+        actorUserId: url.searchParams.get("actorUserId") ?? "",
+        expiresAt: url.searchParams.get("expiresAt") ?? "",
+        downloadReason: url.searchParams.get("downloadReason") ?? "",
+        accessMode: (url.searchParams.get("accessMode") ?? "download") as "download",
+        token: url.searchParams.get("token") ?? ""
+      };
+    };
+
+    const revokedReason = "岗位撤销后的工资依据复核";
+    const revokedTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
+      actorUserId: fixture.preparerUserId,
+      downloadReason: revokedReason
+    });
+    await second.userPosition.delete({
+      where: { id: `${fixture.prefix}-preparer-position` }
+    });
+    await expect(files.readPrivateFile(
+      fixture.evidenceFileId,
+      ticketInput(revokedTicket.downloadUrl)
+    )).rejects.toThrow("当前账号无权下载工资敏感依据");
+
+    const financeStaff = await second.position.findUniqueOrThrow({
+      where: { key: "finance_staff" },
+      select: { id: true }
+    });
+    await second.userPosition.create({
+      data: {
+        id: `${fixture.prefix}-preparer-position-restored`,
+        userId: fixture.preparerUserId,
+        positionId: financeStaff.id
+      }
+    });
+    const disabledReason = "账号停用后的工资依据复核";
+    const disabledTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
+      actorUserId: fixture.preparerUserId,
+      downloadReason: disabledReason
+    });
+    await second.user.update({
+      where: { id: fixture.preparerUserId },
+      data: { isActive: false }
+    });
+    await expect(files.readPrivateFile(
+      fixture.evidenceFileId,
+      ticketInput(disabledTicket.downloadUrl)
+    )).rejects.toThrow("当前账号无权下载工资敏感依据");
+
+    const attempts = await observer.auditLog.findMany({
+      where: {
+        actorUserId: fixture.preparerUserId,
+        businessId: fixture.evidenceFileId,
+        action: { in: ["file.download.ticket", "wage_sensitive_download.denied"] }
+      },
+      orderBy: { createdAt: "asc" },
+      select: { action: true, metadata: true }
+    });
+    expect(attempts.filter((attempt) => attempt.action === "file.download.ticket")).toHaveLength(2);
+    expect(attempts.filter((attempt) => attempt.action === "wage_sensitive_download.denied")).toEqual([
+      {
+        action: "wage_sensitive_download.denied",
+        metadata: {
+          reasonCode: "wage_sensitive_download_not_authorized",
+          downloadReason: revokedReason
+        }
+      },
+      {
+        action: "wage_sensitive_download.denied",
+        metadata: {
+          reasonCode: "wage_sensitive_download_not_authorized",
+          downloadReason: disabledReason
+        }
+      }
+    ]);
+    const auditPayload = JSON.stringify(attempts);
+    expect(auditPayload).not.toContain("token");
+    expect(auditPayload).not.toContain("100000");
+    expect(auditPayload).not.toContain("sourceSnapshot");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
   it("keeps SoD, active identity, idempotency and concurrent confirmation intact", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const { service, draftResult } = await createSubmittedCanonicalWage(
@@ -673,6 +773,174 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
         sourceBusinessId: `${draftResult.versionId}:${fixture.projectId}`
       }
     })).resolves.toBe(1);
+  });
+
+  it("applies SoD only to active standing or exact current-version delegation closures", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const editorUserId = `${fixture.prefix}-editor`;
+    const submitterUserId = `${fixture.prefix}-submitter`;
+    await first.user.createMany({
+      data: [
+        { id: editorUserId, name: "工资编辑人", mustChangePassword: false, isActive: true },
+        { id: submitterUserId, name: "工资提交人", mustChangePassword: false, isActive: true }
+      ]
+    });
+    const [financeStaff, financeDirector] = await Promise.all([
+      first.position.findUniqueOrThrow({ where: { key: "finance_staff" }, select: { id: true } }),
+      first.position.findUniqueOrThrow({ where: { key: "finance_director" }, select: { id: true } })
+    ]);
+    await first.userPosition.createMany({
+      data: [
+        { id: `${fixture.prefix}-preparer-director`, userId: fixture.preparerUserId, positionId: financeDirector.id },
+        { id: `${fixture.prefix}-editor-staff`, userId: editorUserId, positionId: financeStaff.id },
+        { id: `${fixture.prefix}-editor-director`, userId: editorUserId, positionId: financeDirector.id },
+        { id: `${fixture.prefix}-submitter-staff`, userId: submitterUserId, positionId: financeStaff.id },
+        { id: `${fixture.prefix}-submitter-director`, userId: submitterUserId, positionId: financeDirector.id }
+      ]
+    });
+    const service = wageService(first);
+    const sourceResult = await service.createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(sourceResult)) throw new Error("工资来源创建未返回正式来源标识");
+    const draftResult = await service.createDraft(fixture.preparerUserId, {
+      sourceVersionId: sourceResult.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [canonicalWagePersonLine(fixture, "100000")]
+    });
+    if (!isDraftCreationResult(draftResult)) throw new Error("工资草稿创建未返回正式单据标识");
+    await service.updateDraft(editorUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [canonicalWagePersonLine(fixture, "100000")]
+    });
+    await service.submit(submitterUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    });
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      select: { createdByUserId: true, lastEditedByUserId: true, submittedByUserId: true }
+    })).resolves.toEqual({
+      createdByUserId: fixture.preparerUserId,
+      lastEditedByUserId: editorUserId,
+      submittedByUserId: submitterUserId
+    });
+
+    const participants = [fixture.preparerUserId, editorUserId, submitterUserId];
+    for (const participantUserId of participants) {
+      await expect(service.confirm(participantUserId, draftResult.statementId, {
+        idempotencyKey: randomUUID(),
+        expectedRevision: 1
+      })).rejects.toThrow("职责分离冲突");
+    }
+    const activeFrom = new Date("2026-01-01T00:00:00.000Z");
+    const activeUntil = new Date("2030-01-01T00:00:00.000Z");
+    for (const participantUserId of participants) {
+      for (const scope of [
+        {},
+        {
+          actionKey: "wage_statement.confirm",
+          resourceType: "wage_statement_version",
+          resourceId: draftResult.versionId
+        }
+      ]) {
+        const delegation = await first.approvalDelegation.create({
+          data: {
+            fromUserId: participantUserId,
+            toUserId: fixture.confirmerUserId,
+            startsAt: activeFrom,
+            endsAt: activeUntil,
+            ...scope
+          }
+        });
+        await expect(service.confirm(fixture.confirmerUserId, draftResult.statementId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: 1
+        })).rejects.toThrow("职责分离冲突");
+        await first.approvalDelegation.delete({ where: { id: delegation.id } });
+      }
+    }
+
+    await first.approvalDelegation.createMany({
+      data: [
+        {
+          fromUserId: fixture.preparerUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: "payment.confirm",
+          resourceType: "wage_statement_version",
+          resourceId: draftResult.versionId
+        },
+        {
+          fromUserId: editorUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: "wage_statement.confirm",
+          resourceType: "wage_statement",
+          resourceId: draftResult.versionId
+        },
+        {
+          fromUserId: submitterUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: "wage_statement.confirm",
+          resourceType: "wage_statement_version",
+          resourceId: "wrong-version"
+        },
+        {
+          fromUserId: fixture.preparerUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: null,
+          resourceType: "wage_statement_version",
+          resourceId: draftResult.versionId
+        },
+        {
+          fromUserId: editorUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: new Date("2025-01-01T00:00:00.000Z"),
+          endsAt: new Date("2026-01-01T00:00:00.000Z")
+        },
+        {
+          fromUserId: fixture.preparerUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          enabled: false
+        },
+        {
+          fromUserId: submitterUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil
+        }
+      ]
+    });
+    await first.user.update({ where: { id: submitterUserId }, data: { isActive: false } });
+    await expect(service.confirm(fixture.confirmerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    })).resolves.toEqual({
+      statementId: draftResult.statementId,
+      versionId: draftResult.versionId,
+      revision: 1,
+      status: "confirmed"
+    });
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      select: { status: true, confirmedByUserId: true }
+    })).resolves.toEqual({ status: "confirmed", confirmedByUserId: fixture.confirmerUserId });
   });
 
   it("keeps the existing payee requirement for every other project wage source", async () => {

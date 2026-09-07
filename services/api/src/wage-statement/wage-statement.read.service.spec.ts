@@ -39,6 +39,9 @@ describe("WageStatementService aggregate reads", () => {
       versions: [currentVersion]
     };
     const prisma = {
+      $transaction: jest.fn((work: (client: { auditLog: { create: jest.Mock } }) => unknown) =>
+        work({ auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) } })
+      ),
       $queryRaw: jest.fn().mockResolvedValue([{
         statementVersionId: "version-1",
         personLineCount: 2n,
@@ -55,7 +58,13 @@ describe("WageStatementService aggregate reads", () => {
       }
     };
     const roles = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]) };
-    return { service: new WageStatementService(prisma as never, roles as never), prisma, roles };
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    return {
+      service: new WageStatementService(prisma as never, roles as never, audit as never),
+      prisma,
+      roles,
+      audit
+    };
   }
 
   it("returns only non-sensitive company-month aggregates to an authorized global finance user", async () => {
@@ -160,6 +169,48 @@ describe("WageStatementService aggregate reads", () => {
       expect(JSON.stringify(payload)).not.toContain("100000");
       expect(JSON.stringify(payload)).not.toContain("allocation-1");
     }
+  });
+
+  it("audits every allowed or denied sensitive aggregate read without wage facts", async () => {
+    const { service, roles, audit } = setup();
+
+    await service.listWorkbench("finance-user");
+    await service.readSummary("finance-user", "statement-1");
+    await service.readImportPreview("finance-user", "statement-1");
+
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "finance-user",
+      action: "wage_sensitive_read",
+      businessType: "wage_statement_workbench",
+      businessId: null,
+      metadata: { reasonCode: "wage_sensitive_read_authorized", accessSurface: "workbench" }
+    }));
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "wage_sensitive_read",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: { reasonCode: "wage_sensitive_read_authorized", accessSurface: "summary" }
+    }));
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "wage_sensitive_read",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: { reasonCode: "wage_sensitive_read_authorized", accessSurface: "import_preview" }
+    }));
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("employee-secret");
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("100000");
+
+    audit.record.mockClear();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["project_manager"]);
+    await expect(service.readSummary("project-user", "statement-1"))
+      .rejects.toThrow("当前公司岗位无权查看工资汇总");
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), {
+      actorUserId: "project-user",
+      action: "wage_sensitive_read.denied",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: { reasonCode: "wage_sensitive_read_not_authorized", accessSurface: "summary" }
+    });
   });
 
   it("projects a prior review_returned audit state while keeping the current replacement draft usable", async () => {
