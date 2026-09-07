@@ -25,7 +25,10 @@ describe("non-receipt file binding registry", () => {
       ({ table, columns }) =>
         columns.map((column) => `${table}.${column}`)
     );
-    expect(registered).toHaveLength(89);
+    expect(registered).toHaveLength(90);
+    expect(registered).toContain(
+      "InvoiceEvidenceRepairResolution.replacementFileId"
+    );
     expect([...registered].sort()).toEqual(
       schemaBindings.sort()
     );

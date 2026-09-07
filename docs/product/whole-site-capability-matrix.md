@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `fd0c12b89b74c3cb430ba6512998da79339a8efe2a4c43e277b78797cb11a1f3` |
-| webApiWrappers | ready | `7fb6b2ddb75bc7523ccf95573c968e44b619ea52e0dbcc83722f5d04fe3f14dd` |
-| webPageActions | ready | `4bd995c5b899ea64ea6564476ae14b0da255cadd6febe5212de5382fcec7b9aa` |
-| routeUsage | ready | `2b432a1ac02b9c7100d8c2e9a48ae6886da4a77e1ff1f0bb69d7ac9b3c108006` |
+| nestRoutes | ready | `b90c9a6fd7701ef47908bdd57fa7ce533421f77681bfe6b867f05f225aae9d66` |
+| webApiWrappers | ready | `8e0206aa97d944c18930a6947f2f9d128c047f814cd6019d3336c59ac5b30f96` |
+| webPageActions | ready | `2f6decd99aa923af3323e9d8a1782eb50646477b9c675e9abb26848ad17d7cac` |
+| routeUsage | ready | `9491889bd63025c5af39a5185ef250de6f7d389080fbcbc9ba66746da37a64dd` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 575 |
-| pageRouteCount | 364 |
+| routeCount | 577 |
+| pageRouteCount | 366 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 33 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 553 |
+| mainRequestBindingCount | 555 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 288 |
-| actionBindingCount | 323 |
-| acceptedActionBindingCount | 303 |
+| registeredActionCount | 289 |
+| actionBindingCount | 324 |
+| acceptedActionBindingCount | 304 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 282 |
-| coveredProductionMutationConsumerPairCount | 282 |
+| productionMutationConsumerPairCount | 283 |
+| coveredProductionMutationConsumerPairCount | 283 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -119,6 +119,7 @@
 | GET | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoices | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /health/readiness | internal_task | machine_probe | — | — | not_applicable | — |
+| GET | /invoice-evidence-repair-impacts | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceEvidenceRepairImpacts | — | not_applicable | — |
 | GET | /me/signature/canvas-capabilities | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureCapabilities | — | not_applicable | — |
 | GET | /me/signature/canvas-handoffs/:token | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureHandoff | — | not_applicable | — |
 | GET | /me/signature/ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getSignatureTicket | — | not_applicable | — |
@@ -390,6 +391,7 @@
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
 | POST | /invoice-clearing-allocations/:clearingAllocationId/reversal | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#reverseGlobalInvoiceAllocation | global-invoice.reverse-clearing-allocation | covered | — |
 | POST | /invoice-clearing-allocations | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#allocateGlobalInvoice | global-invoice.allocate-clearing | covered | — |
+| POST | /invoice-evidence-repair-impacts/:impactId/resolution | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#resolveGlobalInvoiceEvidenceRepairImpact | global-invoice.evidence-repair.resolve | covered | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | signature.upload-canvas | covered | — |

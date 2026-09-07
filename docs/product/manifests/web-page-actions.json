@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 288,
+    "registeredActionCount": 289,
     "pageActionCount": 53,
-    "backgroundActionCount": 235,
+    "backgroundActionCount": 236,
     "reachableVueFileCount": 136,
     "routeRootCount": 57,
     "totalVueFileCount": 160,
     "parsedVueFileCount": 160,
     "reachableProductionModuleCount": 248,
-    "templateEventDirectiveCount": 928,
+    "templateEventDirectiveCount": 932,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 282,
-    "candidateProductionMutationConsumerCount": 282,
-    "acceptedProductionMutationConsumerCount": 282,
-    "productionMutationConsumerPairCount": 282,
+    "coveredProductionMutationConsumerCount": 283,
+    "candidateProductionMutationConsumerCount": 283,
+    "acceptedProductionMutationConsumerCount": 283,
+    "productionMutationConsumerPairCount": 283,
     "blockerCount": 0
   },
   "evidence": {
@@ -9004,7 +9004,7 @@
         "event": "call",
         "handler": "allocateGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 125,
+        "sourceLine": 194,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9069,7 +9069,7 @@
         "event": "call",
         "handler": "createGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 101,
+        "sourceLine": 170,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9122,6 +9122,71 @@
       ]
     },
     {
+      "id": "global-invoice.evidence-repair.resolve",
+      "usage": "background",
+      "routePaths": [
+        "/全局发票与清分分配"
+      ],
+      "ownerRoutePaths": [
+        "/全局发票与清分分配"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resolveGlobalInvoiceEvidenceRepairImpactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 206,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "clearing.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "resolveGlobalInvoiceEvidenceRepairImpact",
+          "method": "POST",
+          "path": "/invoice-evidence-repair-impacts/:param/resolution",
+          "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/invoice-evidence-repair-impacts/:impactId/resolution",
+            "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
+            "controller": "InvoiceLedgerController",
+            "handler": "resolveEvidenceRepairImpact",
+            "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "clearing.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "resolveGlobalInvoiceEvidenceRepairImpactWithCapability",
+              "resolveGlobalInvoiceEvidenceRepairImpact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "global-invoice.red",
       "usage": "background",
       "routePaths": [
@@ -9136,7 +9201,7 @@
         "event": "call",
         "handler": "createRedGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 113,
+        "sourceLine": 182,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9202,7 +9267,7 @@
         "event": "call",
         "handler": "createReissueGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 119,
+        "sourceLine": 188,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9268,7 +9333,7 @@
         "event": "call",
         "handler": "reverseGlobalInvoiceAllocationWithCapability",
         "kind": "background_call",
-        "sourceLine": 131,
+        "sourceLine": 200,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9333,7 +9398,7 @@
         "event": "call",
         "handler": "uploadInvoiceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 58,
+        "sourceLine": 81,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9402,7 +9467,7 @@
         "event": "call",
         "handler": "voidGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 107,
+        "sourceLine": 176,
         "sourceColumn": 0
       },
       "semantic": "business_write",

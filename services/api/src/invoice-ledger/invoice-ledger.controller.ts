@@ -15,6 +15,7 @@ import { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocation.dt
 import { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-clearing-allocation.dto";
 import { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
+import { ResolveInvoiceEvidenceRepairDto } from "./dto/resolve-invoice-evidence-repair.dto";
 import { InvoiceLedgerService } from "./invoice-ledger.service";
 
 @Controller()
@@ -30,6 +31,12 @@ export class InvoiceLedgerController {
   @RequirePositions("finance_staff", "finance_director")
   listGlobalInvoices(@CurrentUser() user: AuthenticatedUser) {
     return this.invoices.listGlobalInvoices(user.id);
+  }
+
+  @Get("invoice-evidence-repair-impacts")
+  @RequirePositions("finance_staff", "finance_director")
+  listGlobalInvoiceEvidenceRepairImpacts(@CurrentUser() user: AuthenticatedUser) {
+    return this.invoices.listGlobalInvoiceEvidenceRepairImpacts(user.id);
   }
 
   @Post("spot-procurements/:procurementId/invoices")
@@ -100,6 +107,16 @@ export class InvoiceLedgerController {
     @Body() body: ReverseInvoiceClearingAllocationDto
   ) {
     return this.invoices.reverseClearingAllocation(clearingAllocationId, user.id, body);
+  }
+
+  @Post("invoice-evidence-repair-impacts/:impactId/resolution")
+  @RequireProjectRole("clearing.confirm")
+  resolveEvidenceRepairImpact(
+    @Param("impactId") impactId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ResolveInvoiceEvidenceRepairDto
+  ) {
+    return this.invoices.resolveEvidenceRepairImpact(impactId, user.id, body);
   }
 
   @Post("invoice-allocations/:allocationId/reversal")

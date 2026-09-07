@@ -276,6 +276,8 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "totalAmountCents BigInt",
       "allocatableAmountCents BigInt",
       "allocatedAmountCents BigInt @default(0)",
+      "revision Int @default(0)",
+      "taxRateSnapshot Decimal? @db.Decimal(9, 6)",
       'status String @default("active")',
       "fileId String @unique",
       "uploadedByUserId String",
@@ -443,6 +445,13 @@ describe("spot procurement receipt and invoice schema", () => {
   const globalInvoiceCoordinatesMigration = existsSync(globalInvoiceCoordinatesMigrationPath)
     ? readFileSync(globalInvoiceCoordinatesMigrationPath, "utf8")
     : "";
+  const invoiceLedgerRepairMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260907130000_pol260_invoice_ledger_repair/migration.sql"
+  );
+  const invoiceLedgerRepairMigration = existsSync(invoiceLedgerRepairMigrationPath)
+    ? readFileSync(invoiceLedgerRepairMigrationPath, "utf8")
+    : "";
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -590,6 +599,8 @@ describe("spot procurement receipt and invoice schema", () => {
       "InvoiceRecord.buyerTaxId",
       "InvoiceRecord.taxExclusiveAmountCents",
       "InvoiceRecord.taxAmountCents",
+      "InvoiceRecord.revision",
+      "InvoiceRecord.taxRateSnapshot",
       "InvoiceRecord.commandIdempotencyKey",
       "InvoiceRecord.commandFingerprint"
     ]);
@@ -627,6 +638,13 @@ describe("spot procurement receipt and invoice schema", () => {
   it("moves only new global invoice headers off legacy project coordinates", () => {
     expect(normalizeSql(globalInvoiceCoordinatesMigration)).toContain(
       'ALTERTABLE"InvoiceRecord"ALTERCOLUMN"projectId"DROPNOTNULL'
+    );
+  });
+
+  it("adds invoice aggregate revision and tax snapshot through the POL-11B repair migration", () => {
+    const sql = normalizeSql(invoiceLedgerRepairMigration);
+    expect(sql).toContain(
+      'ALTERTABLE"InvoiceRecord"ADDCOLUMN"revision"INTEGERNOTNULLDEFAULT0,ADDCOLUMN"taxRateSnapshot"DECIMAL(9,6)'
     );
   });
 

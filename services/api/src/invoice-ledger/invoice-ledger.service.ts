@@ -16,6 +16,8 @@ import {
 } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
 import {
   missingOperatingSourceReplayService,
@@ -40,12 +42,14 @@ import type {
 } from "./dto/create-procurement-invoice.dto";
 import type { ReverseInvoiceAllocationDto } from "./dto/reverse-invoice-allocation.dto";
 import type { ReverseInvoiceClearingAllocationDto } from "./dto/reverse-invoice-clearing-allocation.dto";
+import type { CreateInvoiceClearingAllocationDto } from "./dto/create-invoice-clearing-allocation.dto";
 import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import type { VoidGlobalInvoiceDto } from "./dto/void-global-invoice.dto";
 import type { CreateRedGlobalInvoiceDto } from "./dto/create-red-global-invoice.dto";
 import type { CreateReissueGlobalInvoiceDto } from "./dto/create-reissue-global-invoice.dto";
 import type { ReviewInvoiceExceptionConfirmationDto } from "./dto/review-invoice-exception-confirmation.dto";
 import type { ReviewNoInvoiceConfirmationDto } from "./dto/review-no-invoice-confirmation.dto";
+import type { ResolveInvoiceEvidenceRepairDto } from "./dto/resolve-invoice-evidence-repair.dto";
 
 const HANDLER_INVOICE_ROLES = new Set<RoleKey>([
   "material_staff",
@@ -200,6 +204,7 @@ type InvoiceHeaderFacts = {
   buyerTaxId: string;
   taxExclusiveAmountCents: bigint;
   taxAmountCents: bigint;
+  taxRateSnapshot: Prisma.Decimal | null;
   totalAmountCents: bigint;
   fileId: string;
 };
@@ -264,6 +269,7 @@ export class InvoiceLedgerService {
     private readonly files: FileService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly closure: SpotProcurementClosureService,
+    private readonly companyRoles: CompanyRoleResolverService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService()
@@ -303,7 +309,8 @@ export class InvoiceLedgerService {
         id: true, invoiceType: true, identityKind: true, invoiceCode: true,
         invoiceNumber: true, externalIdentifier: true, issueDate: true,
         sellerName: true, totalAmountCents: true, direction: true,
-        sourceBusinessType: true
+        sourceBusinessType: true, fileId: true, revision: true,
+        taxRateSnapshot: true, status: true, owningCompanyEntityId: true
       },
       orderBy: [{ issueDate: "desc" }, { createdAt: "desc" }]
     });
@@ -315,11 +322,69 @@ export class InvoiceLedgerService {
     return invoices.map((invoice) => ({
       ...invoice,
       totalAmountCents: invoice.totalAmountCents.toString(),
+      taxRateSnapshot: invoice.taxRateSnapshot?.toFixed(6) ?? null,
       allocations: allocations.filter((allocation) => allocation.invoiceRecordId === invoice.id).map((allocation) => ({
         ...allocation,
         amountCents: allocation.amountCents.toString()
       }))
     }));
+  }
+
+  async listGlobalInvoiceEvidenceRepairImpacts(actorUserId: string) {
+    const capabilities = await this.globalInvoiceCapabilities(actorUserId);
+    if (!capabilities.create) {
+      throw new ForbiddenException("当前账号无权查看全局发票证据修复状态");
+    }
+    const impacts = await this.prisma.invoiceEvidenceRepairImpact.findMany({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    const resolutions = impacts.length
+      ? await this.prisma.invoiceEvidenceRepairResolution.findMany({
+          where: { impactId: { in: impacts.map((impact) => impact.id) } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        })
+      : [];
+    const invoiceIds = Array.from(new Set([
+      ...impacts.map((impact) => impact.invoiceRecordId),
+      ...resolutions.map((resolution) => resolution.replacementInvoiceRecordId)
+    ]));
+    const invoices = invoiceIds.length
+      ? await this.prisma.invoiceRecord.findMany({
+          where: { id: { in: invoiceIds } },
+          select: {
+            id: true,
+            revision: true,
+            invoiceCode: true,
+            invoiceNumber: true,
+            externalIdentifier: true,
+            sellerName: true,
+            totalAmountCents: true,
+            fileId: true
+          }
+        })
+      : [];
+    return impacts.map((impact) => {
+      const resolution = resolutions.find((row) => row.impactId === impact.id) ?? null;
+      const invalidatedInvoice = invoices.find((invoice) => invoice.id === impact.invoiceRecordId);
+      const replacementInvoice = resolution
+        ? invoices.find((invoice) => invoice.id === resolution.replacementInvoiceRecordId)
+        : undefined;
+      return {
+        ...impact,
+        invalidatedAmountCents: impact.invalidatedAmountCents.toString(),
+        invalidatedInvoice: invalidatedInvoice ? {
+          ...invalidatedInvoice,
+          totalAmountCents: invalidatedInvoice.totalAmountCents.toString()
+        } : null,
+        resolution: resolution ? {
+          ...resolution,
+          replacementInvoice: replacementInvoice ? {
+            ...replacementInvoice,
+            totalAmountCents: replacementInvoice.totalAmountCents.toString()
+          } : null
+        } : null
+      };
+    });
   }
 
   async createProcurementInvoice(
@@ -606,14 +671,18 @@ export class InvoiceLedgerService {
 
   async createGlobalInvoice(actorUserId: string, input: CreateGlobalInvoiceDto) {
     const header = this.prepareInvoiceHeader(input, true);
-    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    if (expectedRevision !== 0) throw new ConflictException("新建发票的预期版本必须为 0");
     const fingerprint = createHash("sha256").update(JSON.stringify([
-      "global-invoice", 1, actorUserId, header.identityKey, header.identityKind,
+      "global-invoice", 2, actorUserId, null, expectedRevision,
+      header.identityKey, header.identityKind,
       header.owningCompanyEntityId, header.direction, header.invoiceType, header.voucherType,
       header.invoiceCode, header.invoiceNumber, header.externalIdentifier,
       header.issueDate.toISOString(), header.sellerName, header.sellerTaxId,
       header.buyerName, header.buyerTaxId,
       header.taxExclusiveAmountCents.toString(), header.taxAmountCents.toString(),
+      header.totalAmountCents.toString(), header.taxRateSnapshot?.toFixed(6),
       header.totalAmountCents.toString(), header.fileId
     ]), "utf8").digest("hex");
     await this.files.assertCanDownloadFileById(header.fileId, actorUserId);
@@ -636,13 +705,15 @@ export class InvoiceLedgerService {
         sellerName: header.sellerName, sellerTaxId: header.sellerTaxId,
         buyerName: header.buyerName, buyerTaxId: header.buyerTaxId,
         taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents,
+        taxRateSnapshot: header.taxRateSnapshot,
         totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents,
         fileId: header.fileId, uploadedByUserId: actorUserId,
         sourceBusinessType: "global_clearing_invoice", sourceBusinessId: header.identityKey,
         sourceProcurementId: null,
-        commandIdempotencyKey: idempotencyKey, commandFingerprint: fingerprint
+        commandIdempotencyKey: idempotencyKey, commandFingerprint: fingerprint,
+        revision: expectedRevision
       } });
-      await this.audit.record(tx, { actorUserId, action: "invoice.global.create", businessType: "invoice_record", businessId: invoice.id, metadata: { owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, totalAmountCents: header.totalAmountCents.toString() } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.create", businessType: "invoice_record", businessId: invoice.id, metadata: { owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, totalAmountCents: header.totalAmountCents.toString(), expectedRevision } });
       return { id: invoice.id, replayed: false };
     }));
   }
@@ -650,9 +721,12 @@ export class InvoiceLedgerService {
   async voidGlobalInvoice(invoiceRecordId: string, actorUserId: string, input: VoidGlobalInvoiceDto) {
     const normalizedInvoiceRecordId = requiredId(invoiceRecordId, "请选择需要作废的全局发票");
     const reasonCode = requiredText(input.reasonCode, "作废原因", 100);
-    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    if (input.confirmVoid !== true) throw new BadRequestException("请明确确认作废发票");
     const requestFingerprint = createHash("sha256").update(JSON.stringify([
-      "global-invoice-void", 1, actorUserId, normalizedInvoiceRecordId, reasonCode
+      "global-invoice-void", 2, actorUserId, normalizedInvoiceRecordId, reasonCode,
+      expectedRevision, true
     ]), "utf8").digest("hex");
     return this.runWrite(() => this.runSerializable(async (tx) => {
       await this.requireGlobalFinanceDirector(tx, actorUserId);
@@ -665,34 +739,313 @@ export class InvoiceLedgerService {
       if (!invoice || invoice.projectId !== null || !["global_clearing_invoice", "global_clearing_invoice_red", "global_clearing_invoice_reissue"].includes(invoice.sourceBusinessType)) {
         throw new NotFoundException("可作废的全局发票不存在");
       }
+      const priorVoid = await tx.invoiceLifecycleEvent.findFirst({
+        where: { invoiceRecordId: invoice.id, kind: { in: ["void"] } },
+        select: { id: true }
+      });
+      if (priorVoid) throw new ConflictException("发票已经作废");
+      if (invoice.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const allocationRows = await tx.invoiceClearingAllocation.findMany({
+        where: { invoiceRecordId: invoice.id },
+        orderBy: { id: "asc" }
+      });
+      const originalAllocations = allocationRows.filter((allocation) => !allocation.reversesAllocationId);
+      const originalAllocationIds = originalAllocations.map((allocation) => allocation.id);
+      const redReferences = originalAllocationIds.length
+        ? await tx.invoiceRedAllocationReference.findMany({
+            where: { blueInvoiceAllocationId: { in: originalAllocationIds } },
+            select: { blueInvoiceAllocationId: true, amountCents: true }
+          })
+        : [];
+      const impactPlans = originalAllocations.flatMap((allocation) => {
+        const reversedAmountCents = allocationRows
+          .filter((row) => row.reversesAllocationId === allocation.id)
+          .reduce((sum, row) => sum + row.amountCents, 0n);
+        const redAmountCents = redReferences
+          .filter((reference) => reference.blueInvoiceAllocationId === allocation.id)
+          .reduce((sum, reference) => sum + reference.amountCents, 0n);
+        const invalidatedAmountCents = allocation.amountCents - reversedAmountCents - redAmountCents;
+        return invalidatedAmountCents > 0n
+          ? [{ allocation, invalidatedAmountCents }]
+          : [];
+      });
+      const claimedRevision = await tx.invoiceRecord.updateMany({
+        where: { id: invoice.id, revision: expectedRevision },
+        data: { revision: { increment: 1 } }
+      });
+      if (claimedRevision.count !== 1) throw new ConflictException("发票版本已变化，请刷新后重试");
       const event = await tx.invoiceLifecycleEvent.create({ data: {
         invoiceRecordId: invoice.id, kind: "void", reasonCode, createdByUserId: actorUserId,
         idempotencyKey, requestFingerprint
       } });
-      await this.audit.record(tx, { actorUserId, action: "invoice.global.void", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { invoiceRecordId: invoice.id, reasonCode } });
+      for (const plan of impactPlans) {
+        await tx.invoiceEvidenceRepairImpact.create({
+          data: {
+            lifecycleEventId: event.id,
+            invoiceRecordId: invoice.id,
+            allocationId: plan.allocation.id,
+            projectId: plan.allocation.projectId,
+            clearingCaseId: plan.allocation.clearingCaseId,
+            clearingEventVersionId: plan.allocation.clearingEventVersionId,
+            invalidatedAmountCents: plan.invalidatedAmountCents,
+            reasonCode,
+            actualActorUserId: actorUserId,
+            delegatorUserId: null
+          }
+        });
+      }
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.void", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { invoiceRecordId: invoice.id, reasonCode, expectedRevision } });
       return { id: event.id, replayed: false };
     }));
+  }
+
+  async resolveEvidenceRepairImpact(
+    impactId: string,
+    actorUserId: string,
+    input: ResolveInvoiceEvidenceRepairDto
+  ) {
+    const normalizedImpactId = requiredId(
+      impactId,
+      "请选择需要修复的发票证据影响"
+    );
+    const replacementInvoiceRecordId = requiredId(
+      input.replacementInvoiceRecordId,
+      "请选择替代发票"
+    );
+    const replacementFileId = requiredId(
+      input.replacementFileId,
+      "请选择替代发票文件"
+    );
+    const reasonCode = requiredText(input.reasonCode, "证据修复原因", 100);
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    const requestedDelegatorUserId = optionalText(input.delegatorUserId, 128);
+    if (input.confirmRepair !== true) {
+      throw new BadRequestException("请明确确认修复发票证据");
+    }
+    const requestFingerprint = createHash("sha256")
+      .update(
+        JSON.stringify([
+          "invoice-evidence-repair-resolve",
+          1,
+          actorUserId,
+          requestedDelegatorUserId,
+          expectedRevision,
+          normalizedImpactId,
+          replacementInvoiceRecordId,
+          replacementFileId,
+          reasonCode,
+          true
+        ]),
+        "utf8"
+      )
+      .digest("hex");
+
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const impact = await tx.invoiceEvidenceRepairImpact.findUnique({
+          where: { id: normalizedImpactId }
+        });
+        if (!impact) {
+          throw new NotFoundException("待修复发票证据不存在");
+        }
+        const delegatorUserId = await this.requireClearingFinanceDirector(
+          tx,
+          actorUserId,
+          impact.projectId,
+          impact.clearingCaseId,
+          requestedDelegatorUserId
+        );
+
+        const replay = await tx.invoiceEvidenceRepairResolution.findUnique({
+          where: { idempotencyKey }
+        });
+        if (replay) {
+          if (replay.requestFingerprint !== requestFingerprint) {
+            throw new ConflictException("幂等键已用于不同的发票证据修复请求");
+          }
+          return { id: replay.id, replayed: true };
+        }
+        const existingResolution =
+          await tx.invoiceEvidenceRepairResolution.findUnique({
+            where: { impactId: impact.id }
+          });
+        if (existingResolution) {
+          throw new ConflictException("该发票证据修复已完成");
+        }
+
+        const invalidatedInvoice = await tx.invoiceRecord.findUnique({
+          where: { id: impact.invoiceRecordId }
+        });
+        if (
+          !invalidatedInvoice ||
+          invalidatedInvoice.projectId !== null ||
+          ![
+            "global_clearing_invoice",
+            "global_clearing_invoice_red",
+            "global_clearing_invoice_reissue"
+          ].includes(invalidatedInvoice.sourceBusinessType)
+        ) {
+          throw new ConflictException("失效原发票事实不存在或已变化");
+        }
+        if (invalidatedInvoice.revision !== expectedRevision) {
+          throw new ConflictException("发票版本已变化，请刷新后重试");
+        }
+
+        const replacementRows = await tx.$queryRaw<
+          Array<{
+            id: string;
+            projectId: string | null;
+            owningCompanyEntityId: string | null;
+            direction: string | null;
+            totalAmountCents: bigint;
+            fileId: string;
+            sourceBusinessType: string;
+          }>
+        >(Prisma.sql`
+          SELECT
+            "id",
+            "projectId",
+            "owningCompanyEntityId",
+            "direction",
+            "totalAmountCents",
+            "fileId",
+            "sourceBusinessType"
+          FROM "InvoiceRecord"
+          WHERE "id" = ${replacementInvoiceRecordId}
+          FOR UPDATE
+        `);
+        const replacement = replacementRows[0];
+        if (
+          !replacement ||
+          replacement.id === invalidatedInvoice.id ||
+          replacement.projectId !== null ||
+          ![
+            "global_clearing_invoice",
+            "global_clearing_invoice_reissue"
+          ].includes(replacement.sourceBusinessType)
+        ) {
+          throw new ConflictException("替代证据必须是有效的全局蓝字或重开发票");
+        }
+        if (
+          replacement.owningCompanyEntityId !==
+            invalidatedInvoice.owningCompanyEntityId ||
+          replacement.direction !== invalidatedInvoice.direction
+        ) {
+          throw new ConflictException("替代发票必须保持归属公司和进销项方向");
+        }
+        if (replacement.fileId !== replacementFileId) {
+          throw new ConflictException("替代文件必须是替代发票已绑定的文件快照");
+        }
+        const invalidatingReplacementEvent =
+          await tx.invoiceLifecycleEvent.findFirst({
+            where: {
+              invoiceRecordId: replacement.id,
+              kind: { in: ["void", "red"] }
+            },
+            select: { id: true }
+          });
+        if (invalidatingReplacementEvent) {
+          throw new ConflictException("替代发票已失效，不能用于证据修复");
+        }
+
+        const siblingResolutions =
+          await tx.invoiceEvidenceRepairResolution.findMany({
+            where: { replacementInvoiceRecordId: replacement.id },
+            select: { impactId: true }
+          });
+        const siblingImpacts = siblingResolutions.length
+          ? await tx.invoiceEvidenceRepairImpact.findMany({
+              where: {
+                id: {
+                  in: siblingResolutions.map((resolution) => resolution.impactId)
+                }
+              },
+              select: { invalidatedAmountCents: true }
+            })
+          : [];
+        const resolvedAmountCents = siblingImpacts.reduce(
+          (total, siblingImpact) =>
+            total + siblingImpact.invalidatedAmountCents,
+          0n
+        );
+        if (
+          resolvedAmountCents + impact.invalidatedAmountCents >
+          replacement.totalAmountCents
+        ) {
+          throw new ConflictException("替代发票累计修复金额超过票面含税额");
+        }
+
+        const claimedRevision = await tx.invoiceRecord.updateMany({
+          where: { id: invalidatedInvoice.id, revision: expectedRevision },
+          data: { revision: { increment: 1 } }
+        });
+        if (claimedRevision.count !== 1) {
+          throw new ConflictException("发票版本已变化，请刷新后重试");
+        }
+        const resolution = await tx.invoiceEvidenceRepairResolution.create({
+          data: {
+            impactId: impact.id,
+            invalidatedInvoiceRecordId: invalidatedInvoice.id,
+            replacementInvoiceRecordId: replacement.id,
+            replacementFileId,
+            reasonCode,
+            actualActorUserId: actorUserId,
+            delegatorUserId,
+            expectedRevision,
+            idempotencyKey,
+            requestFingerprint
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "invoice.evidence.repair.resolve",
+          businessType: "invoice_evidence_repair_resolution",
+          businessId: resolution.id,
+          metadata: {
+            impactId: impact.id,
+            invalidatedInvoiceRecordId: invalidatedInvoice.id,
+            replacementInvoiceRecordId: replacement.id,
+            replacementFileId,
+            projectId: impact.projectId,
+            clearingCaseId: impact.clearingCaseId,
+            clearingEventVersionId: impact.clearingEventVersionId,
+            invalidatedAmountCents: impact.invalidatedAmountCents.toString(),
+            reasonCode,
+            expectedRevision,
+            actualActorUserId: actorUserId,
+            delegatorUserId,
+            explicitConfirmation: true
+          }
+        });
+        return { id: resolution.id, replayed: false };
+      })
+    );
   }
 
   async createRedGlobalInvoice(actorUserId: string, input: CreateRedGlobalInvoiceDto) {
     const header = this.prepareInvoiceHeader(input, true);
     const blueInvoiceRecordId = requiredId(input.blueInvoiceRecordId, "请选择对应蓝字发票");
     const reasonCode = requiredText(input.reasonCode, "红字原因", 100);
-    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    if (input.confirmRed !== true) throw new BadRequestException("请明确确认开具红字发票");
     const references = input.blueAllocationReferences.map((reference) => ({
       blueInvoiceAllocationId: requiredId(reference.blueInvoiceAllocationId, "请选择蓝字清算发票分配"),
       amountCents: positiveMoney(reference.amountCents, "红字引用金额")
-    }));
+    })).sort((left, right) => left.blueInvoiceAllocationId.localeCompare(right.blueInvoiceAllocationId));
     if (new Set(references.map((reference) => reference.blueInvoiceAllocationId)).size !== references.length) throw new BadRequestException("红字不能重复引用同一蓝字清算发票分配");
     if (sumBigInt(references.map((reference) => reference.amountCents)) !== header.totalAmountCents) throw new BadRequestException("红字逐笔引用金额之和必须等于红字价税合计金额");
     const requestFingerprint = createHash("sha256").update(JSON.stringify([
-      "global-invoice-red", 1, actorUserId, blueInvoiceRecordId,
+      "global-invoice-red", 2, actorUserId, null, expectedRevision, blueInvoiceRecordId,
       header.identityKey, header.identityKind, header.owningCompanyEntityId,
       header.direction, header.invoiceType, header.voucherType, header.invoiceCode, header.invoiceNumber,
       header.externalIdentifier, header.issueDate, header.sellerName, header.sellerTaxId,
       header.buyerName, header.buyerTaxId, header.taxExclusiveAmountCents.toString(),
-      header.taxAmountCents.toString(), header.totalAmountCents.toString(), header.fileId,
-      reasonCode, references.map((reference) => [reference.blueInvoiceAllocationId, reference.amountCents.toString()])
+      header.taxAmountCents.toString(), header.taxRateSnapshot?.toFixed(6),
+      header.totalAmountCents.toString(), header.fileId,
+      reasonCode, true,
+      references.map((reference) => [reference.blueInvoiceAllocationId, reference.amountCents.toString()])
     ]), "utf8").digest("hex");
     await this.files.assertCanDownloadFileById(header.fileId, actorUserId);
     return this.runWrite(() => this.runSerializable(async (tx) => {
@@ -704,21 +1057,69 @@ export class InvoiceLedgerService {
       }
       const blue = await tx.invoiceRecord.findUnique({ where: { id: blueInvoiceRecordId } });
       if (!blue || blue.projectId !== null || blue.sourceBusinessType !== "global_clearing_invoice") throw new NotFoundException("对应蓝字全局发票不存在");
+      const priorVoid = await tx.invoiceLifecycleEvent.findFirst({
+        where: { invoiceRecordId: blue.id, kind: { in: ["void"] } },
+        select: { id: true }
+      });
+      if (priorVoid) throw new ConflictException("已作废发票不能开具红字发票");
+      if (blue.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
       if (blue.owningCompanyEntityId !== header.owningCompanyEntityId || blue.direction !== header.direction) {
         throw new ConflictException("红字发票必须保持蓝字发票归属公司和进销项方向");
       }
       const existing = await this.lockInvoiceByIdentity(tx, header.identityKey);
       if (existing) throw new ConflictException("该发票身份已用于不同的发票事实");
       const allocations = await Promise.all(references.map((reference) => tx.invoiceClearingAllocation.findUnique({ where: { id: reference.blueInvoiceAllocationId } })));
-      if (allocations.some((allocation, index) => !allocation || allocation.invoiceRecordId !== blue.id || allocation.reversesAllocationId || allocation.amountCents !== references[index].amountCents)) throw new ConflictException("红字必须逐笔精确引用仍有效的蓝字清算发票分配");
+      if (allocations.some((allocation, index) => !allocation || allocation.invoiceRecordId !== blue.id || allocation.reversesAllocationId || allocation.amountCents < references[index].amountCents)) throw new ConflictException("红字必须逐笔精确引用仍有效的蓝字清算发票分配");
+      const existingRedReferences = await tx.invoiceRedAllocationReference.findMany({
+        where: {
+          blueInvoiceAllocationId: {
+            in: references.map((reference) => reference.blueInvoiceAllocationId)
+          }
+        },
+        select: { blueInvoiceAllocationId: true, amountCents: true }
+      });
       const reversals = await tx.invoiceClearingAllocation.findMany({ where: { reversesAllocationId: { in: references.map((reference) => reference.blueInvoiceAllocationId) } }, select: { reversesAllocationId: true, amountCents: true } });
-      if (reversals.length) throw new ConflictException("红字必须逐笔精确引用仍有效的蓝字清算发票分配");
+      const overAllocatedReference = references.find((reference, index) => {
+        const redAmount = existingRedReferences
+          .filter((row) => row.blueInvoiceAllocationId === reference.blueInvoiceAllocationId)
+          .reduce((sum, row) => sum + row.amountCents, 0n);
+        const reversedAmount = reversals
+          .filter((row) => row.reversesAllocationId === reference.blueInvoiceAllocationId)
+          .reduce((sum, row) => sum + row.amountCents, 0n);
+        return redAmount + reversedAmount + reference.amountCents > allocations[index]!.amountCents;
+      });
+      if (overAllocatedReference) {
+        if (existingRedReferences.some((row) => row.blueInvoiceAllocationId === overAllocatedReference.blueInvoiceAllocationId)) {
+          throw new ConflictException("蓝字清算发票分配已被其他红字生命周期引用");
+        }
+        throw new ConflictException("红字引用与普通逆向累计超过原清算发票分配金额");
+      }
       const file = await this.files.assertFileHasNoBusinessBinding(tx, header.fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("只能登记本人上传且尚未绑定的发票文件");
-      const red = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, voucherType: header.voucherType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_red", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
-      const event = await tx.invoiceLifecycleEvent.create({ data: { invoiceRecordId: blue.id, relatedInvoiceRecordId: red.id, kind: "red", reasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
-      for (const reference of references) await tx.invoiceRedAllocationReference.create({ data: { lifecycleEventId: event.id, redInvoiceRecordId: red.id, blueInvoiceAllocationId: reference.blueInvoiceAllocationId, amountCents: reference.amountCents } });
-      await this.audit.record(tx, { actorUserId, action: "invoice.global.red.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { blueInvoiceRecordId: blue.id, redInvoiceRecordId: red.id, reasonCode } });
+      const claimedRevision = await tx.invoiceRecord.updateMany({
+        where: { id: blue.id, revision: expectedRevision },
+        data: { revision: { increment: 1 } }
+      });
+      if (claimedRevision.count !== 1) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const red = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, voucherType: header.voucherType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, taxRateSnapshot: header.taxRateSnapshot, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_red", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
+      const event = await tx.invoiceLifecycleEvent.create({ data: { invoiceRecordId: blue.id, relatedInvoiceRecordId: red.id, kind: "red", reasonCode, createdByUserId: actorUserId, delegatorUserId: null, idempotencyKey, requestFingerprint } });
+      for (const [index, reference] of references.entries()) {
+        await tx.invoiceRedAllocationReference.create({ data: { lifecycleEventId: event.id, redInvoiceRecordId: red.id, blueInvoiceAllocationId: reference.blueInvoiceAllocationId, amountCents: reference.amountCents } });
+        const allocation = allocations[index]!;
+        await tx.invoiceEvidenceRepairImpact.create({ data: {
+          lifecycleEventId: event.id,
+          invoiceRecordId: blue.id,
+          allocationId: allocation.id,
+          projectId: allocation.projectId,
+          clearingCaseId: allocation.clearingCaseId,
+          clearingEventVersionId: allocation.clearingEventVersionId,
+          invalidatedAmountCents: reference.amountCents,
+          reasonCode,
+          actualActorUserId: actorUserId,
+          delegatorUserId: null
+        } });
+      }
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.red.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { blueInvoiceRecordId: blue.id, redInvoiceRecordId: red.id, reasonCode, expectedRevision, explicitConfirmation: true } });
       return { id: red.id, lifecycleEventId: event.id, replayed: false };
     }));
   }
@@ -727,15 +1128,17 @@ export class InvoiceLedgerService {
     const header = this.prepareInvoiceHeader(input, true);
     const originalInvoiceRecordId = requiredId(input.originalInvoiceRecordId, "请选择需要重开的原发票");
     const reasonCode = requiredText(input.reasonCode, "重开原因", 100);
-    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    if (input.confirmReissue !== true) throw new BadRequestException("请明确确认重开发票");
     const requestFingerprint = createHash("sha256").update(JSON.stringify([
-      "global-invoice-reissue", 1, actorUserId, originalInvoiceRecordId,
+      "global-invoice-reissue", 2, actorUserId, null, expectedRevision, originalInvoiceRecordId,
       header.identityKey, header.identityKind, header.owningCompanyEntityId,
       header.direction, header.invoiceType, header.voucherType, header.invoiceCode, header.invoiceNumber,
       header.externalIdentifier, header.issueDate.toISOString(), header.sellerName,
       header.sellerTaxId, header.buyerName, header.buyerTaxId,
       header.taxExclusiveAmountCents.toString(), header.taxAmountCents.toString(),
-      header.totalAmountCents.toString(), header.fileId, reasonCode
+      header.taxRateSnapshot?.toFixed(6), header.totalAmountCents.toString(), header.fileId, reasonCode, true
     ]), "utf8").digest("hex");
     await this.files.assertCanDownloadFileById(header.fileId, actorUserId);
     return this.runWrite(() => this.runSerializable(async (tx) => {
@@ -747,37 +1150,39 @@ export class InvoiceLedgerService {
       }
       const original = await tx.invoiceRecord.findUnique({ where: { id: originalInvoiceRecordId } });
       if (!original || original.projectId !== null || !["global_clearing_invoice", "global_clearing_invoice_red", "global_clearing_invoice_reissue"].includes(original.sourceBusinessType)) throw new NotFoundException("需要重开的全局发票不存在");
+      if (original.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
       if (original.owningCompanyEntityId !== header.owningCompanyEntityId || original.direction !== header.direction) throw new ConflictException("重开发票必须保持原发票归属公司和进销项方向");
       const existing = await this.lockInvoiceByIdentity(tx, header.identityKey);
       if (existing) throw new ConflictException("该发票身份已用于不同的发票事实");
       const file = await this.files.assertFileHasNoBusinessBinding(tx, header.fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("只能登记本人上传且尚未绑定的发票文件");
-      const reissued = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, voucherType: header.voucherType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_reissue", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
+      const claimedRevision = await tx.invoiceRecord.updateMany({
+        where: { id: original.id, revision: expectedRevision },
+        data: { revision: { increment: 1 } }
+      });
+      if (claimedRevision.count !== 1) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const reissued = await tx.invoiceRecord.create({ data: { projectId: null, identityKey: header.identityKey, identityKind: header.identityKind, owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction, invoiceType: header.invoiceType, voucherType: header.voucherType, invoiceCode: header.invoiceCode, invoiceNumber: header.invoiceNumber, externalIdentifier: header.externalIdentifier, issueDate: header.issueDate, sellerName: header.sellerName, sellerTaxId: header.sellerTaxId, buyerName: header.buyerName, buyerTaxId: header.buyerTaxId, taxExclusiveAmountCents: header.taxExclusiveAmountCents, taxAmountCents: header.taxAmountCents, taxRateSnapshot: header.taxRateSnapshot, totalAmountCents: header.totalAmountCents, allocatableAmountCents: header.totalAmountCents, fileId: header.fileId, uploadedByUserId: actorUserId, sourceBusinessType: "global_clearing_invoice_reissue", sourceBusinessId: header.identityKey, sourceProcurementId: null, commandIdempotencyKey: idempotencyKey, commandFingerprint: requestFingerprint } });
       const event = await tx.invoiceLifecycleEvent.create({ data: { invoiceRecordId: original.id, relatedInvoiceRecordId: reissued.id, kind: "reissue", reasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
-      await this.audit.record(tx, { actorUserId, action: "invoice.global.reissue.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { originalInvoiceRecordId: original.id, reissuedInvoiceRecordId: reissued.id, reasonCode } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.global.reissue.create", businessType: "invoice_lifecycle_event", businessId: event.id, metadata: { originalInvoiceRecordId: original.id, reissuedInvoiceRecordId: reissued.id, reasonCode, expectedRevision, explicitConfirmation: true } });
       return { id: reissued.id, lifecycleEventId: event.id, replayed: false };
     }));
   }
 
   async createClearingAllocation(
     actorUserId: string,
-    input: {
-      invoiceRecordId: string;
-      clearingCaseId: string;
-      clearingEventVersionId: string;
-      amountCents: string;
-      structuredReasonCode?: string;
-      idempotencyKey: string;
-    }
+    input: CreateInvoiceClearingAllocationDto
   ) {
     const invoiceRecordId = requiredId(input.invoiceRecordId, "请选择全局发票");
     const clearingCaseId = requiredId(input.clearingCaseId, "请选择清算案件");
     const clearingEventVersionId = requiredId(input.clearingEventVersionId, "请选择已确认清算版本");
     const amountCents = positiveMoney(input.amountCents, "发票清算分配金额");
-    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    const requestedDelegatorUserId = optionalText(input.delegatorUserId, 128);
     const structuredReasonCode = optionalText(input.structuredReasonCode, 100);
     const requestFingerprint = createHash("sha256").update(JSON.stringify([
-      "invoice-clearing-allocation", 1, actorUserId, invoiceRecordId, clearingCaseId,
+      "invoice-clearing-allocation", 2, actorUserId, requestedDelegatorUserId, expectedRevision,
+      invoiceRecordId, clearingCaseId,
       clearingEventVersionId, amountCents.toString(), structuredReasonCode
     ]), "utf8").digest("hex");
     return this.runWrite(() => this.runSerializable(async (tx) => {
@@ -795,6 +1200,7 @@ export class InvoiceLedgerService {
       if (invoice.projectId !== null || !["global_clearing_invoice", "global_clearing_invoice_reissue"].includes(invoice.sourceBusinessType)) {
         throw new ConflictException("清分分配只能使用全局蓝字或重开发票");
       }
+      if (invoice.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
       const invalidatingEvent = await tx.invoiceLifecycleEvent.findFirst({
         where: { invoiceRecordId, kind: { in: ["void", "red"] } },
         select: { id: true }
@@ -816,7 +1222,13 @@ export class InvoiceLedgerService {
         select: { id: true }
       });
       if (!projectCompany) throw new ConflictException("发票归属我方主体未在清算项目有效参与公司范围内");
-      await this.requireFinanceDirector(tx, actorUserId, clearingCase.projectId);
+      const delegatorUserId = await this.requireClearingFinanceDirector(
+        tx,
+        actorUserId,
+        clearingCase.projectId,
+        clearingCase.id,
+        requestedDelegatorUserId
+      );
       const existingAllocations = await tx.invoiceClearingAllocation.findMany({
         where: { invoiceRecordId },
         select: { amountCents: true, reversesAllocationId: true }
@@ -826,8 +1238,13 @@ export class InvoiceLedgerService {
         0n
       );
       if (used + amountCents > invoice.totalAmountCents) throw new ConflictException("有效发票清算分配累计超过票面含税额");
-      const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode, createdByUserId: actorUserId, idempotencyKey, requestFingerprint } });
-      await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocate", businessType: "invoice_clearing_allocation", businessId: allocation.id, metadata: { invoiceRecordId, clearingCaseId, clearingEventVersionId, amountCents: amountCents.toString() } });
+      const claimedRevision = await tx.invoiceRecord.updateMany({
+        where: { id: invoice.id, revision: expectedRevision },
+        data: { revision: { increment: 1 } }
+      });
+      if (claimedRevision.count !== 1) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const allocation = await tx.invoiceClearingAllocation.create({ data: { invoiceRecordId, projectId: clearingCase.projectId, clearingCaseId, clearingEventVersionId, amountCents, structuredReasonCode, createdByUserId: actorUserId, delegatorUserId, idempotencyKey, requestFingerprint } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocate", businessType: "invoice_clearing_allocation", businessId: allocation.id, metadata: { invoiceRecordId, clearingCaseId, clearingEventVersionId, amountCents: amountCents.toString(), expectedRevision, actualActorUserId: actorUserId, delegatorUserId } });
       return { id: allocation.id, replayed: false };
     }));
   }
@@ -840,10 +1257,13 @@ export class InvoiceLedgerService {
     const normalizedAllocationId = requiredId(allocationId, "请选择需要反向的清算发票分配");
     const amountCents = positiveMoney(input.amountCents, "反向分配金额");
     const structuredReasonCode = requiredText(input.structuredReasonCode, "结构化更正原因", 100);
-    const idempotencyKey = requiredId(input.idempotencyKey, "请填写幂等键");
+    const idempotencyKey = requiredUuidV4(input.idempotencyKey);
+    const expectedRevision = requiredExpectedRevision(input.expectedRevision);
+    const requestedDelegatorUserId = optionalText(input.delegatorUserId, 128);
+    if (input.confirmReversal !== true) throw new BadRequestException("请明确确认反向清算发票分配");
     const requestFingerprint = createHash("sha256").update(JSON.stringify([
-      "invoice-clearing-allocation-reversal", 1, actorUserId, normalizedAllocationId,
-      amountCents.toString(), structuredReasonCode
+      "invoice-clearing-allocation-reversal", 2, actorUserId, requestedDelegatorUserId, expectedRevision,
+      normalizedAllocationId, amountCents.toString(), structuredReasonCode, true
     ]), "utf8").digest("hex");
     return this.runWrite(() => this.runSerializable(async (tx) => {
       const replay = await tx.invoiceClearingAllocation.findUnique({ where: { idempotencyKey } });
@@ -853,18 +1273,48 @@ export class InvoiceLedgerService {
       }
       const allocation = await tx.invoiceClearingAllocation.findUnique({ where: { id: normalizedAllocationId } });
       if (!allocation || allocation.reversesAllocationId) throw new NotFoundException("可反向的清算发票分配不存在");
-      await this.requireFinanceDirector(tx, actorUserId, allocation.projectId);
-      const reversed = await tx.invoiceClearingAllocation.aggregate({ where: { reversesAllocationId: allocation.id }, _sum: { amountCents: true } });
-      if ((reversed._sum.amountCents ?? 0n) + amountCents > allocation.amountCents) {
-        throw new ConflictException("反向分配金额超过原清算发票分配的剩余有效金额");
+      const invoice = await tx.invoiceRecord.findUnique({ where: { id: allocation.invoiceRecordId } });
+      if (!invoice) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const priorVoid = await tx.invoiceLifecycleEvent.findFirst({
+        where: { invoiceRecordId: invoice.id, kind: { in: ["void"] } },
+        select: { id: true }
+      });
+      if (priorVoid) throw new ConflictException("已作废发票的清算分配不能反向");
+      if (invoice.revision !== expectedRevision) throw new ConflictException("发票版本已变化，请刷新后重试");
+      const delegatorUserId = await this.requireClearingFinanceDirector(
+        tx,
+        actorUserId,
+        allocation.projectId,
+        allocation.clearingCaseId,
+        requestedDelegatorUserId
+      );
+      const [reversed, redReferences] = await Promise.all([
+        tx.invoiceClearingAllocation.aggregate({ where: { reversesAllocationId: allocation.id }, _sum: { amountCents: true } }),
+        tx.invoiceRedAllocationReference.findMany({
+          where: { blueInvoiceAllocationId: { in: [allocation.id] } },
+          select: { amountCents: true }
+        })
+      ]);
+      const redAmountCents = redReferences.reduce((sum, row) => sum + row.amountCents, 0n);
+      if ((reversed._sum.amountCents ?? 0n) + redAmountCents + amountCents > allocation.amountCents) {
+        throw new ConflictException(
+          redAmountCents > 0n
+            ? "反向分配与红字引用累计超过原清算发票分配金额"
+            : "反向分配金额超过原清算发票分配的剩余有效金额"
+        );
       }
+      const claimedRevision = await tx.invoiceRecord.updateMany({
+        where: { id: invoice.id, revision: expectedRevision },
+        data: { revision: { increment: 1 } }
+      });
+      if (claimedRevision.count !== 1) throw new ConflictException("发票版本已变化，请刷新后重试");
       const reversal = await tx.invoiceClearingAllocation.create({ data: {
         invoiceRecordId: allocation.invoiceRecordId, projectId: allocation.projectId,
         clearingCaseId: allocation.clearingCaseId, clearingEventVersionId: allocation.clearingEventVersionId,
         amountCents, structuredReasonCode, reversesAllocationId: allocation.id,
-        createdByUserId: actorUserId, idempotencyKey, requestFingerprint
+        createdByUserId: actorUserId, delegatorUserId, idempotencyKey, requestFingerprint
       } });
-      await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocation.reverse", businessType: "invoice_clearing_allocation", businessId: reversal.id, metadata: { reversesAllocationId: allocation.id, amountCents: amountCents.toString(), structuredReasonCode } });
+      await this.audit.record(tx, { actorUserId, action: "invoice.clearing.allocation.reverse", businessType: "invoice_clearing_allocation", businessId: reversal.id, metadata: { reversesAllocationId: allocation.id, amountCents: amountCents.toString(), structuredReasonCode, expectedRevision, actualActorUserId: actorUserId, delegatorUserId, explicitConfirmation: true } });
       return { id: reversal.id, replayed: false };
     }));
   }
@@ -2668,6 +3118,9 @@ export class InvoiceLedgerService {
     if (taxExclusiveAmountCents + taxAmountCents !== totalAmountCents) {
       throw new BadRequestException("发票不含税金额与税额之和必须等于价税合计金额");
     }
+    const taxRateSnapshot = requireControlledVoucher
+      ? fixedTaxRateSnapshot((input as CreateGlobalInvoiceDto).taxRateSnapshot)
+      : null;
     return {
       identityKey: createHash("sha256")
         .update(identityPreimage, "utf8")
@@ -2695,6 +3148,7 @@ export class InvoiceLedgerService {
       buyerTaxId,
       taxExclusiveAmountCents,
       taxAmountCents,
+      taxRateSnapshot,
       totalAmountCents,
       fileId: requiredId(input.fileId, "请选择发票文件")
     };
@@ -3523,6 +3977,63 @@ export class InvoiceLedgerService {
     }
   }
 
+  private async requireClearingFinanceDirector(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string,
+    clearingCaseId: string,
+    requestedDelegatorUserId: string | null
+  ) {
+    if (!requestedDelegatorUserId) {
+      await this.requireFinanceDirector(tx, actorUserId, projectId);
+      return null;
+    }
+    if (requestedDelegatorUserId === actorUserId) {
+      throw new ForbiddenException("清算确认委托人不能是当前操作人");
+    }
+    const caseDelegators = await activeScopedApprovalDelegatorIds(
+      tx,
+      actorUserId,
+      {
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_case",
+        resourceId: clearingCaseId
+      }
+    );
+    const projectDelegators = caseDelegators.includes(requestedDelegatorUserId)
+      ? []
+      : await activeScopedApprovalDelegatorIds(tx, actorUserId, {
+          actionKey: "clearing.confirm",
+          resourceType: "clearing_project",
+          resourceId: projectId
+        });
+    if (
+      !caseDelegators.includes(requestedDelegatorUserId) &&
+      !projectDelegators.includes(requestedDelegatorUserId)
+    ) {
+      throw new ForbiddenException("清算确认委托不存在、已失效或与当前资源不匹配");
+    }
+    let delegatedProjectRoles: RoleKey[];
+    try {
+      delegatedProjectRoles =
+        await this.companyRoles.resolveActiveRoleScopesInTransaction(
+          tx,
+          requestedDelegatorUserId,
+          projectId
+        );
+    } catch {
+      throw new ForbiddenException(
+        "只有财务主管可以复核或冲销票据事实"
+      );
+    }
+    if (!delegatedProjectRoles.includes("finance_director")) {
+      throw new ForbiddenException(
+        "只有财务主管可以复核或冲销票据事实"
+      );
+    }
+    return requestedDelegatorUserId;
+  }
+
   private async requireGlobalInvoiceManager(tx: Prisma.TransactionClient, actorUserId: string) {
     await this.requireActiveUser(tx, actorUserId);
     const positions = await tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null }, select: { positionId: true } });
@@ -3749,6 +4260,28 @@ function requiredId(value: unknown, message: string) {
     throw new BadRequestException(message);
   }
   return collapseUnicodeWhitespace(value);
+}
+
+function requiredUuidV4(value: unknown) {
+  const normalized = requiredId(value, "请填写幂等键");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(normalized)) {
+    throw new BadRequestException("幂等键必须为 UUIDv4");
+  }
+  return normalized.toLowerCase();
+}
+
+function requiredExpectedRevision(value: unknown) {
+  if (!Number.isInteger(value) || (value as number) < 0) {
+    throw new BadRequestException("预期版本必须为 0 或更大的整数");
+  }
+  return value as number;
+}
+
+function fixedTaxRateSnapshot(value: unknown) {
+  if (typeof value !== "string" || !/^(?:\d{1,2}\.\d{6}|100\.000000)$/u.test(value)) {
+    throw new BadRequestException("请填写票面税率快照，格式为 0.000000 至 100.000000 的固定六位小数");
+  }
+  return new Prisma.Decimal(value);
 }
 
 function optionalId(value: unknown) {

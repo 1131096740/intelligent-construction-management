@@ -92,6 +92,10 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   { table: "SpotProcurementPaymentArchiveFile", columns: ["fileId"] },
   { table: "SpotProcurementRefund", columns: ["voucherFileId"] },
   { table: "InvoiceRecord", columns: ["fileId"] },
+  {
+    table: "InvoiceEvidenceRepairResolution",
+    columns: ["replacementFileId"]
+  },
   { table: "NoInvoiceConfirmation", columns: ["proofFileId"] },
   {
     table: "InvoiceExceptionConfirmation",

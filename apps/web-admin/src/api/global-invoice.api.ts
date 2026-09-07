@@ -36,9 +36,38 @@ export type GlobalInvoiceOption = {
   issueDate: string;
   sellerName: string;
   totalAmountCents: string;
+  taxRateSnapshot: string | null;
   direction: string | null;
+  owningCompanyEntityId: string | null;
   sourceBusinessType: string;
-  allocations: Array<{ id: string; amountCents: string; reversesAllocationId: string | null; createdAt: string }>;
+  status: string;
+  fileId: string;
+  revision: number;
+  allocations: Array<{ id: string; invoiceRecordId: string; amountCents: string; reversesAllocationId: string | null; createdAt: string }>;
+};
+
+export type GlobalInvoiceEvidenceRepairImpact = {
+  id: string;
+  lifecycleEventId: string;
+  invoiceRecordId: string;
+  allocationId: string;
+  projectId: string;
+  clearingCaseId: string;
+  clearingEventVersionId: string;
+  invalidatedAmountCents: string;
+  reasonCode: string;
+  createdAt: string;
+  invalidatedInvoice: Pick<
+    GlobalInvoiceOption,
+    "id" | "revision" | "invoiceCode" | "invoiceNumber" | "externalIdentifier" | "sellerName" | "totalAmountCents" | "fileId"
+  > | null;
+  resolution: {
+    id: string;
+    replacementInvoiceRecordId: string;
+    replacementFileId: string;
+    reasonCode: string;
+    createdAt: string;
+  } | null;
 };
 
 export async function fetchGlobalInvoices() {
@@ -51,6 +80,14 @@ export async function fetchGlobalInvoiceCapabilities() {
   const response = await apiFetch("/global-invoices/capabilities");
   if (!response.ok) throw new Error(formatApiErrorMessage("", response.status, "加载全局发票权限失败"));
   return response.json() as Promise<GlobalInvoiceCapabilities>;
+}
+
+export async function fetchGlobalInvoiceEvidenceRepairImpacts() {
+  const response = await apiFetch("/invoice-evidence-repair-impacts");
+  if (!response.ok) {
+    throw new Error(formatApiErrorMessage("", response.status, "加载发票证据修复状态失败"));
+  }
+  return response.json() as Promise<GlobalInvoiceEvidenceRepairImpact[]>;
 }
 
 export function createGlobalInvoice(body: Record<string, unknown>) {
@@ -75,4 +112,15 @@ export function createRedGlobalInvoice(body: Record<string, unknown>) {
 
 export function createReissueGlobalInvoice(body: Record<string, unknown>) {
   return post<GlobalInvoiceCommandResult>("/global-invoices/reissue", body, "重开全局发票失败");
+}
+
+export function resolveGlobalInvoiceEvidenceRepairImpact(
+  impactId: string,
+  body: Record<string, unknown>
+) {
+  return post<GlobalInvoiceCommandResult>(
+    `/invoice-evidence-repair-impacts/${encodeURIComponent(impactId)}/resolution`,
+    body,
+    "解决发票证据待修复事项失败"
+  );
 }

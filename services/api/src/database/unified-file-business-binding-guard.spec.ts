@@ -141,6 +141,13 @@ const affiliateClearingAuthorityBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const invoiceLedgerRepairBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260907130000_pol260_invoice_ledger_repair/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -165,7 +172,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -184,7 +191,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(91);
+    expect(registered).toHaveLength(92);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -210,6 +217,18 @@ describe("unified file business binding migration", () => {
     );
     expect(fundExecutionBindingMigration).toContain(
       "('VerifiedBankTransactionObservation', 'transactionEvidenceFileId', FALSE)"
+    );
+    expect(invoiceLedgerRepairBindingMigration).toContain(
+      "('InvoiceEvidenceRepairResolution', 'replacementFileId', FALSE)"
+    );
+    expect(invoiceLedgerRepairBindingMigration).toContain(
+      `"tableName" = 'InvoiceEvidenceRepairResolution'`
+    );
+    expect(invoiceLedgerRepairBindingMigration).toContain(
+      `"columnName" = 'replacementFileId'`
+    );
+    expect(invoiceLedgerRepairBindingMigration).not.toContain(
+      "jg_efb_invoice_evidence_repair_resolution"
     );
   });
 

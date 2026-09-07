@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "fd0c12b89b74c3cb430ba6512998da79339a8efe2a4c43e277b78797cb11a1f3",
+      "sha256": "b90c9a6fd7701ef47908bdd57fa7ce533421f77681bfe6b867f05f225aae9d66",
       "status": "ready",
       "summary": {
-        "routeCount": 575
+        "routeCount": 577
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "7fb6b2ddb75bc7523ccf95573c968e44b619ea52e0dbcc83722f5d04fe3f14dd",
+      "sha256": "8e0206aa97d944c18930a6947f2f9d128c047f814cd6019d3336c59ac5b30f96",
       "status": "ready",
       "summary": {
         "apiModuleCount": 25,
-        "exportedFunctionCount": 551,
-        "transportWrapperCount": 531,
+        "exportedFunctionCount": 553,
+        "transportWrapperCount": 533,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 553,
+        "mainRequestBindingCount": 555,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 553,
-        "productionConsumerCount": 425,
+        "requestEdgeCount": 555,
+        "productionConsumerCount": 427,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "4bd995c5b899ea64ea6564476ae14b0da255cadd6febe5212de5382fcec7b9aa",
+      "sha256": "2f6decd99aa923af3323e9d8a1782eb50646477b9c675e9abb26848ad17d7cac",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 288,
+        "registeredActionCount": 289,
         "pageActionCount": 53,
-        "backgroundActionCount": 235,
+        "backgroundActionCount": 236,
         "reachableVueFileCount": 136,
         "routeRootCount": 57,
         "totalVueFileCount": 160,
         "parsedVueFileCount": 160,
         "reachableProductionModuleCount": 248,
-        "templateEventDirectiveCount": 928,
+        "templateEventDirectiveCount": 932,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 282,
-        "candidateProductionMutationConsumerCount": 282,
-        "acceptedProductionMutationConsumerCount": 282,
-        "productionMutationConsumerPairCount": 282,
+        "coveredProductionMutationConsumerCount": 283,
+        "candidateProductionMutationConsumerCount": 283,
+        "acceptedProductionMutationConsumerCount": 283,
+        "productionMutationConsumerPairCount": 283,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "2b432a1ac02b9c7100d8c2e9a48ae6886da4a77e1ff1f0bb69d7ac9b3c108006",
+      "sha256": "9491889bd63025c5af39a5185ef250de6f7d389080fbcbc9ba66746da37a64dd",
       "status": "ready",
       "summary": {
-        "routeCount": 575,
-        "exactRouteCount": 575,
-        "normalizedRouteCount": 575,
+        "routeCount": 577,
+        "exactRouteCount": 577,
+        "normalizedRouteCount": 577,
         "classificationOverrideCount": 213,
         "consumerSurfaceOverrideCount": 34,
         "classificationOverrideSha256": "20815a8207e265a7c62404626c0edb0ecca51ea79d0f88bac40b767b8e46fdc8",
         "consumerSurfaceOverrideSha256": "28aeb56e023e9d26024527bbe35d0feb4273cc2555c65e941cadc30da9b25237",
-        "derivedProductionPageCount": 362,
-        "pageRouteCount": 364,
+        "derivedProductionPageCount": 364,
+        "pageRouteCount": 366,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 33,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 416,
+          "web_api_wrapper": 418,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 575,
-    "pageRouteCount": 364,
+    "routeCount": 577,
+    "pageRouteCount": 366,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 33,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 553,
+    "mainRequestBindingCount": 555,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 288,
-    "actionBindingCount": 323,
-    "acceptedActionBindingCount": 303,
+    "registeredActionCount": 289,
+    "actionBindingCount": 324,
+    "acceptedActionBindingCount": 304,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 282,
-    "coveredProductionMutationConsumerPairCount": 282,
+    "productionMutationConsumerPairCount": 283,
+    "coveredProductionMutationConsumerPairCount": 283,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -3906,6 +3906,51 @@
       "usage": "internal_task",
       "consumerSurface": "machine_probe",
       "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/invoice-evidence-repair-impacts",
+        "normalizedKey": "GET /invoice-evidence-repair-impacts",
+        "controller": "InvoiceLedgerController",
+        "handler": "listGlobalInvoiceEvidenceRepairImpacts",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "fetchGlobalInvoiceEvidenceRepairImpacts",
+          "method": "GET",
+          "path": "/invoice-evidence-repair-impacts",
+          "normalizedKey": "GET /invoice-evidence-repair-impacts",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -19090,6 +19135,75 @@
           },
           "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
           "wrapper": "allocateGlobalInvoice",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/invoice-evidence-repair-impacts/:impactId/resolution",
+        "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
+        "controller": "InvoiceLedgerController",
+        "handler": "resolveEvidenceRepairImpact",
+        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "clearing.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "resolveGlobalInvoiceEvidenceRepairImpact",
+          "method": "POST",
+          "path": "/invoice-evidence-repair-impacts/:param/resolution",
+          "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/global-invoice.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "global-invoice.evidence-repair.resolve",
+          "bindingIndex": 0,
+          "identity": "global-invoice.evidence-repair.resolve\u0000apps/web-admin/src/api/global-invoice.api.ts\u0000resolveGlobalInvoiceEvidenceRepairImpact\u0000POST\u0000POST /invoice-evidence-repair-impacts/:param/resolution\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "clearing.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+          "wrapper": "resolveGlobalInvoiceEvidenceRepairImpact",
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
           ],

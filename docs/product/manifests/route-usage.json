@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 575,
-    "exactRouteCount": 575,
-    "normalizedRouteCount": 575,
+    "routeCount": 577,
+    "exactRouteCount": 577,
+    "normalizedRouteCount": 577,
     "classificationOverrideCount": 213,
     "consumerSurfaceOverrideCount": 34,
     "classificationOverrideSha256": "20815a8207e265a7c62404626c0edb0ecca51ea79d0f88bac40b767b8e46fdc8",
     "consumerSurfaceOverrideSha256": "28aeb56e023e9d26024527bbe35d0feb4273cc2555c65e941cadc30da9b25237",
-    "derivedProductionPageCount": 362,
-    "pageRouteCount": 364,
+    "derivedProductionPageCount": 364,
+    "pageRouteCount": 366,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 33,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 416,
+      "web_api_wrapper": 418,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 416,
+    "productionWrapperRouteCount": 418,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -3391,6 +3391,50 @@
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": "deployment_and_runtime_database_readiness_monitoring"
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/invoice-evidence-repair-impacts",
+      "normalizedKey": "GET /invoice-evidence-repair-impacts",
+      "controller": "InvoiceLedgerController",
+      "handler": "listGlobalInvoiceEvidenceRepairImpacts",
+      "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+            "wrapper": "fetchGlobalInvoiceEvidenceRepairImpacts",
+            "method": "GET",
+            "normalizedPath": "/invoice-evidence-repair-impacts",
+            "normalizedKey": "GET /invoice-evidence-repair-impacts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -14294,6 +14338,47 @@
             "method": "POST",
             "normalizedPath": "/invoice-clearing-allocations/:param/reversal",
             "normalizedKey": "POST /invoice-clearing-allocations/:param/reversal",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/invoice-evidence-repair-impacts/:impactId/resolution",
+      "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
+      "controller": "InvoiceLedgerController",
+      "handler": "resolveEvidenceRepairImpact",
+      "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "clearing.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+            "wrapper": "resolveGlobalInvoiceEvidenceRepairImpact",
+            "method": "POST",
+            "normalizedPath": "/invoice-evidence-repair-impacts/:param/resolution",
+            "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
             "productionConsumers": [
               "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
             ]

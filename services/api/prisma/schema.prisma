@@ -3671,6 +3671,8 @@ model InvoiceRecord {
   totalAmountCents        BigInt
   allocatableAmountCents  BigInt
   allocatedAmountCents    BigInt    @default(0)
+  revision                Int       @default(0)
+  taxRateSnapshot         Decimal?  @db.Decimal(9, 6)
   status                  String    @default("active")
   fileId                  String    @unique
   uploadedByUserId        String
@@ -3747,6 +3749,7 @@ model InvoiceClearingAllocation {
   structuredReasonCode   String?
   reversesAllocationId   String?
   createdByUserId        String
+  delegatorUserId        String?
   idempotencyKey         String   @unique
   requestFingerprint     String
   createdAt              DateTime @default(now())
@@ -3765,6 +3768,7 @@ model InvoiceLifecycleEvent {
   kind                   String
   reasonCode             String
   createdByUserId        String
+  delegatorUserId        String?
   idempotencyKey         String   @unique
   requestFingerprint     String
   createdAt              DateTime @default(now())
@@ -3772,6 +3776,45 @@ model InvoiceLifecycleEvent {
   @@index([invoiceRecordId, createdAt])
   @@index([relatedInvoiceRecordId])
   @@index([kind, createdAt])
+}
+
+model InvoiceEvidenceRepairImpact {
+  id                     String   @id @default(uuid())
+  lifecycleEventId       String
+  invoiceRecordId        String
+  allocationId           String
+  projectId              String
+  clearingCaseId         String
+  clearingEventVersionId String
+  invalidatedAmountCents BigInt
+  reasonCode             String
+  actualActorUserId      String
+  delegatorUserId        String?
+  createdAt              DateTime @default(now())
+
+  @@unique([lifecycleEventId, allocationId])
+  @@index([invoiceRecordId, createdAt])
+  @@index([allocationId])
+  @@index([projectId, clearingCaseId])
+}
+
+model InvoiceEvidenceRepairResolution {
+  id                         String   @id @default(uuid())
+  impactId                   String   @unique
+  invalidatedInvoiceRecordId String
+  replacementInvoiceRecordId String
+  replacementFileId          String
+  reasonCode                 String
+  actualActorUserId          String
+  delegatorUserId            String?
+  expectedRevision           Int
+  idempotencyKey             String   @unique
+  requestFingerprint         String
+  createdAt                  DateTime @default(now())
+
+  @@index([invalidatedInvoiceRecordId, createdAt])
+  @@index([replacementInvoiceRecordId, createdAt])
+  @@index([requestFingerprint])
 }
 
 model InvoiceRedAllocationReference {

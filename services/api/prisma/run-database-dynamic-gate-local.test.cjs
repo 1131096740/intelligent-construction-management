@@ -56,18 +56,18 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 178 pending tests as executable local coverage", () => {
+test("manifest derives all 188 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 47,
-    fullyPendingSuites: 36,
+    pendingFiles: 48,
+    fullyPendingSuites: 37,
     partiallyPendingSuites: 11,
-    pendingTests: 178,
-    coveredFiles: 47,
-    coveredTests: 178,
+    pendingTests: 188,
+    coveredFiles: 48,
+    coveredTests: 188,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -100,13 +100,37 @@ test("canonical manifest executes all 26 fund execution v7 PG tests", () => {
   });
 });
 
+test("canonical manifest executes all 10 POL-11B invoice ledger PG tests", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "invoice_ledger_pol260"
+  );
+
+  assert.deepEqual(group, {
+    id: "invoice_ledger_pol260",
+    pendingTests: 10,
+    testFiles: [
+      {
+        path: "services/api/src/invoice-ledger/invoice-ledger.postgres.spec.ts",
+        pendingTests: 10,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "node",
+      path: "services/api/src/invoice-ledger/run-invoice-ledger-postgresql16-local.cjs"
+    },
+    state: "executable_local_runner"
+  });
+});
+
 test("manifest validation fails closed when inventory totals drift", () => {
   const manifest = structuredClone(loadManifest());
   manifest.inventory.coveredTests = 26;
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=178/u
+    /inventory\.coveredTests=26，派生值=188/u
   );
 });
 
