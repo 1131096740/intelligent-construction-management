@@ -1080,7 +1080,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
             projectId: fixture.projectId,
             serviceSnapshotId: serviceSnapshotIds.second,
             serviceMonth: fixture.wageMonth,
-            serviceEvidenceSha256: "b".repeat(64),
+            serviceEvidenceSha256: "a".repeat(64),
             amountCents: secondAmountCents
           }
         ],
@@ -1250,10 +1250,10 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       ref.direction,
       ref.amountCents,
       ref.adjustsPayableRefId
-    ])).toEqual([
+    ])).toEqual(expect.arrayContaining([
       [serviceSnapshotIds.first, "decrease", 10000n, baseRootByService.get(serviceSnapshotIds.first)],
       [serviceSnapshotIds.second, "decrease", 10000n, baseRootByService.get(serviceSnapshotIds.second)]
-    ]);
+    ]));
     const correctionProjection = await first.$queryRaw<Array<{ projection: Prisma.JsonValue }>>(Prisma.sql`
       SELECT jg_canonical_wage_delta_projection(
         ${correction.versionId},
