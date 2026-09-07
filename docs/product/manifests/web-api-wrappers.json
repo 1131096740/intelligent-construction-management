@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 25,
-    "exportedFunctionCount": 550,
-    "transportWrapperCount": 530,
+    "exportedFunctionCount": 551,
+    "transportWrapperCount": 531,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 552,
+    "mainRequestBindingCount": 553,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 552,
-    "productionConsumerCount": 424,
+    "requestEdgeCount": 553,
+    "productionConsumerCount": 425,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -16211,7 +16211,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 182,
+          "sourceLine": 190,
           "method": "POST",
           "path": "/wage-statements/:param/confirm",
           "normalizedPath": "/wage-statements/:param/confirm",
@@ -16242,7 +16242,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 182,
+          "sourceLine": 190,
           "method": "POST",
           "path": "/wage-statements/approved-sources",
           "normalizedPath": "/wage-statements/approved-sources",
@@ -16272,7 +16272,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 182,
+          "sourceLine": 190,
           "method": "POST",
           "path": "/wage-statements/drafts",
           "normalizedPath": "/wage-statements/drafts",
@@ -16295,6 +16295,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "createWageStatementRevision",
+      "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 190,
+          "method": "POST",
+          "path": "/wage-statements/:param/revisions",
+          "normalizedPath": "/wage-statements/:param/revisions",
+          "normalizedKey": "POST /wage-statements/:param/revisions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createWageStatementRevision",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/wage-statement.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchWageStatementCapabilities",
       "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
       "kind": "transport",
@@ -16302,7 +16332,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 151,
+          "sourceLine": 159,
           "method": "GET",
           "path": "/wage-statements/capabilities",
           "normalizedPath": "/wage-statements/capabilities",
@@ -16332,7 +16362,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 151,
+          "sourceLine": 159,
           "method": "GET",
           "path": "/wage-statements/:param/import-preview",
           "normalizedPath": "/wage-statements/:param/import-preview",
@@ -16362,7 +16392,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 151,
+          "sourceLine": 159,
           "method": "GET",
           "path": "/wage-statements/:param/summary",
           "normalizedPath": "/wage-statements/:param/summary",
@@ -16392,7 +16422,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 151,
+          "sourceLine": 159,
           "method": "GET",
           "path": "/wage-statements/workbench?page=1&pageSize=20",
           "normalizedPath": "/wage-statements/workbench",
@@ -16422,7 +16452,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 182,
+          "sourceLine": 190,
           "method": "POST",
           "path": "/wage-statements/:param/return",
           "normalizedPath": "/wage-statements/:param/return",
@@ -16453,7 +16483,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 182,
+          "sourceLine": 190,
           "method": "POST",
           "path": "/wage-statements/:param/submit",
           "normalizedPath": "/wage-statements/:param/submit",
@@ -16484,7 +16514,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 182,
+          "sourceLine": 190,
           "method": "POST",
           "path": "/wage-statements/:param/draft",
           "normalizedPath": "/wage-statements/:param/draft",

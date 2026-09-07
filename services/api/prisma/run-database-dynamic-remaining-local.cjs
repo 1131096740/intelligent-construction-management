@@ -198,7 +198,7 @@ const GROUPS = [
       RUN_WAGE_STATEMENT_DATABASE: "1",
       WAGE_STATEMENT_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 15,
+    pendingTests: 16,
     requiresOperatingLedgerWriteSecret: true,
     preTerminalMigrationFixture: "terminal_migration"
   },

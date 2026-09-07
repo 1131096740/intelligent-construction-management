@@ -296,6 +296,15 @@ type WageDeltaProjection = {
   payables: Array<WagePayableCellIdentity & { direction: "increase" | "decrease"; ref: { id: string } }>;
 };
 
+type FullReversalBinding = {
+  statementId: string;
+  priorConfirmedVersionId: string;
+  priorConfirmedRevision: number;
+  priorSourceVersionId: string;
+  rootClosureFingerprint: string;
+  rootPayableRefIds: string[];
+};
+
 @Injectable()
 export class WageStatementService {
   constructor(
@@ -1037,6 +1046,196 @@ export class WageStatementService {
     throw new ConflictException("工资敏感导出工件尚未生成，暂不能导出");
   }
 
+  private async lockAndValidateFullReversalBinding(
+    tx: Tx,
+    target: {
+      statementId: string;
+      priorConfirmedVersionId: string;
+      priorConfirmedRevision: number;
+      priorSourceVersionId: string;
+    },
+    zeroLines: WagePersonLineInput[],
+    employmentCompanyId: string,
+    wageMonth: string,
+    evidenceFileId: string,
+    expectedCurrentRevision: number,
+    preparedRevision = false
+  ): Promise<FullReversalBinding> {
+    const statement = await this.lockStatement(tx, target.statementId);
+    if (
+      statement.employmentCompanyId !== employmentCompanyId ||
+      statement.wageMonth !== wageMonth ||
+      statement.currentRevision !== expectedCurrentRevision ||
+      expectedCurrentRevision !== target.priorConfirmedRevision + (preparedRevision ? 1 : 0)
+    ) {
+      throw new ConflictException("全额冲销目标工资单的公司、月份或当前修订已漂移");
+    }
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "CompanyEntity" WHERE id = ${employmentCompanyId} FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WageStatementVersion" WHERE id = ${target.priorConfirmedVersionId} FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WageApprovedSourceVersion" WHERE id = ${target.priorSourceVersionId} FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "FileObject" WHERE id = ${evidenceFileId} FOR UPDATE`);
+    const employeeIds = [...new Set(zeroLines.map((line) => line.employeeId))].sort((left, right) => left.localeCompare(right));
+    if (employeeIds.length > 0) {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "User" WHERE id IN (${Prisma.join(employeeIds)}) ORDER BY id FOR UPDATE`);
+    }
+    const projectIds = [...new Set(zeroLines.flatMap((line) => line.projectAllocations.map((allocation) => allocation.projectId)))]
+      .sort((left, right) => left.localeCompare(right));
+    if (projectIds.length > 0) {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Project" WHERE id IN (${Prisma.join(projectIds)}) ORDER BY id FOR UPDATE`);
+    }
+    const creditorVersionIds = [...new Set(zeroLines.flatMap((line) => [
+      ...line.creditorBreakdowns,
+      ...(line.projectCreditorAllocations ?? [])
+    ]).flatMap((creditor) => creditor.creditorSubjectType === "business_party" && creditor.creditorBusinessPartyVersionId
+      ? [creditor.creditorBusinessPartyVersionId]
+      : []))].sort((left, right) => left.localeCompare(right));
+    if (creditorVersionIds.length > 0) {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "BusinessPartyVersion" WHERE id IN (${Prisma.join(creditorVersionIds)}) ORDER BY id FOR UPDATE`);
+    }
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM "WagePersonLine" WHERE "statementVersionId" = ${target.priorConfirmedVersionId} ORDER BY id FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT c.id FROM "WageCostComponent" c JOIN "WagePersonLine" p ON p.id = c."personLineId" WHERE p."statementVersionId" = ${target.priorConfirmedVersionId} ORDER BY c.id FOR UPDATE OF c`);
+    await tx.$queryRaw(Prisma.sql`SELECT c.id FROM "WageCreditorBreakdown" c JOIN "WagePersonLine" p ON p.id = c."personLineId" WHERE p."statementVersionId" = ${target.priorConfirmedVersionId} ORDER BY c.id FOR UPDATE OF c`);
+    await tx.$queryRaw(Prisma.sql`SELECT a.id FROM "WageProjectAllocation" a JOIN "WagePersonLine" p ON p.id = a."personLineId" WHERE p."statementVersionId" = ${target.priorConfirmedVersionId} ORDER BY a.id FOR UPDATE OF a`);
+    await tx.$queryRaw(Prisma.sql`SELECT m.id FROM "WageProjectCostComponentAllocation" m JOIN "WageProjectAllocation" a ON a.id = m."projectAllocationId" JOIN "WagePersonLine" p ON p.id = a."personLineId" WHERE p."statementVersionId" = ${target.priorConfirmedVersionId} ORDER BY m.id FOR UPDATE OF m`);
+    await tx.$queryRaw(Prisma.sql`SELECT m.id FROM "WageProjectCreditorAllocation" m JOIN "WageProjectAllocation" a ON a.id = m."projectAllocationId" JOIN "WagePersonLine" p ON p.id = a."personLineId" WHERE p."statementVersionId" = ${target.priorConfirmedVersionId} ORDER BY m.id FOR UPDATE OF m`);
+    await tx.$queryRaw(Prisma.sql`SELECT r.id FROM "WagePayableRef" r JOIN "WageStatementVersion" v ON v.id = r."confirmedVersionId" WHERE v."statementId" = ${target.statementId} AND r."adjustsPayableRefId" IS NULL ORDER BY r.id FOR UPDATE OF r`);
+    await tx.$queryRaw(Prisma.sql`SELECT a.id FROM "WagePayableRef" a JOIN "WagePayableRef" r ON r.id = a."adjustsPayableRefId" JOIN "WageStatementVersion" v ON v.id = r."confirmedVersionId" WHERE v."statementId" = ${target.statementId} ORDER BY a.id FOR UPDATE OF a`);
+
+    const prior = await tx.wageStatementVersion.findUnique({
+      where: { id: target.priorConfirmedVersionId },
+      include: WAGE_CONFIRMATION_INCLUDE
+    }) as WageConfirmationVersion | null;
+    if (
+      !prior ||
+      prior.statementId !== target.statementId ||
+      prior.revision !== target.priorConfirmedRevision ||
+      prior.status !== "confirmed" ||
+      prior.projectionOrigin !== "ordinary" ||
+      prior.sourceVersionId !== target.priorSourceVersionId ||
+      prior.sourceVersion.sourcePurpose !== "ordinary"
+    ) {
+      throw new ConflictException("全额冲销必须绑定当前紧邻的普通已确认工资版本");
+    }
+    for (const person of prior.personLines) this.assertCompleteStoredMatrices(person);
+    const current = authorityMatrixIdentities(zeroLines);
+    const previous = semanticMatrixFromConfirmedVersion(prior);
+    assertExactHistoricalWageIdentities(current.costs, previous.costs, "成本组成");
+    assertExactHistoricalWageIdentities(current.payables, previous.payables, "债权人");
+    if (!sameStringSet(current.projectIds, previous.projectIds)) {
+      throw new ConflictException("全额冲销的项目与服务快照闭包必须与前置版本完全一致");
+    }
+    if ([...current.costs.values(), ...current.payables.values()].some((cell) => cell.amountCents !== 0n)) {
+      throw new ConflictException("全额冲销必须保留完整身份并显式填写全零金额");
+    }
+    if (![...previous.costs.values(), ...previous.payables.values()].some((cell) => cell.amountCents > 0n)) {
+      throw new ConflictException("全额冲销必须产生至少一项真实负向差额");
+    }
+
+    const roots = await tx.wagePayableRef.findMany({
+      where: {
+        adjustsPayableRefId: null,
+        direction: "increase",
+        confirmedVersion: { statementId: target.statementId, revision: { lte: target.priorConfirmedRevision }, status: "confirmed", projectionOrigin: "ordinary" }
+      },
+      select: {
+        id: true, amountCents: true, debtorCompanyId: true, costBearingCompanyId: true, projectId: true,
+        projectAllocation: { select: { serviceSnapshotId: true } },
+        personLine: { select: { employeeId: true, employmentSnapshotId: true } },
+        creditorBreakdown: { select: { creditorSubjectType: true, creditorSubjectIdentityKey: true, creditorCategory: true } },
+        adjustments: { select: { id: true, direction: true, amountCents: true }, orderBy: { id: "asc" } }
+      },
+      orderBy: { id: "asc" }
+    }) as HistoricalWageRootRead[];
+    const usedRoots = new Map<string, HistoricalWageRootRead & { effectiveAmountCents: bigint }>();
+    for (const cell of previous.payables.values()) {
+      if (cell.amountCents === 0n) continue;
+      const matching = roots.filter((root) =>
+        root.debtorCompanyId === employmentCompanyId &&
+        root.costBearingCompanyId === employmentCompanyId &&
+        wageRootIdentity(root) === cell.key
+      );
+      if (matching.length !== 1) {
+        throw new ConflictException("全额冲销必须唯一指向同一不可变原始应付引用");
+      }
+      const root = matching[0]!;
+      const effectiveAmountCents = historicalWageRootEffectiveAmount(root);
+      if (effectiveAmountCents !== cell.amountCents || effectiveAmountCents <= 0n) {
+        throw new ConflictException("全额冲销原根有效金额与前置版本已漂移");
+      }
+      usedRoots.set(root.id, { ...root, effectiveAmountCents });
+    }
+    if (!usedRoots.size) {
+      throw new ConflictException("全额冲销缺少可唯一闭合的原始应付引用");
+    }
+    const rootClosure = [...usedRoots.values()]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((root) => historicalWageRootReadSet(root));
+    return {
+      statementId: target.statementId,
+      priorConfirmedVersionId: target.priorConfirmedVersionId,
+      priorConfirmedRevision: target.priorConfirmedRevision,
+      priorSourceVersionId: target.priorSourceVersionId,
+      rootClosureFingerprint: fingerprint(rootClosure),
+      rootPayableRefIds: [...usedRoots.keys()].sort((left, right) => left.localeCompare(right))
+    };
+  }
+
+  private async lockAndRevalidateFullReversalSource(
+    tx: Tx,
+    source: {
+      id: string;
+      employmentCompanyId: string;
+      wageMonth: string;
+      evidenceFileId: string;
+      fullReversalTargetStatementId: string | null;
+      fullReversalPriorVersionId: string | null;
+      fullReversalPriorRevision: number | null;
+      fullReversalPriorSourceVersionId: string | null;
+      fullReversalRootClosureFingerprint: string | null;
+      sourceSnapshot: unknown;
+    },
+    lines: WagePersonLineInput[],
+    expectedCurrentRevision: number,
+    preparedRevision = false
+  ) {
+    const target = {
+      statementId: required(source.fullReversalTargetStatementId, "全额冲销目标工资单缺失"),
+      priorConfirmedVersionId: required(source.fullReversalPriorVersionId, "全额冲销前置版本缺失"),
+      priorConfirmedRevision: source.fullReversalPriorRevision ?? 0,
+      priorSourceVersionId: required(source.fullReversalPriorSourceVersionId, "全额冲销前置来源缺失")
+    };
+    const rebound = await this.lockAndValidateFullReversalBinding(
+      tx,
+      target,
+      lines,
+      source.employmentCompanyId,
+      source.wageMonth,
+      source.evidenceFileId,
+      expectedCurrentRevision,
+      preparedRevision
+    );
+    if (preparedRevision) {
+      const current = await this.currentVersion(tx, target.statementId, expectedCurrentRevision);
+      if (current.kind !== "reversal" || current.sourceVersionId !== source.id) {
+        throw new ConflictException("全额冲销来源与当前已准备冲销修订不一致");
+      }
+    }
+    const snapshot = source.sourceSnapshot as Record<string, unknown>;
+    const frozen = snapshot.fullReversalBinding as Record<string, unknown> | undefined;
+    if (
+      source.fullReversalRootClosureFingerprint !== rebound.rootClosureFingerprint ||
+      requiredJsonText(frozen?.statementId) !== rebound.statementId ||
+      requiredJsonText(frozen?.priorConfirmedVersionId) !== rebound.priorConfirmedVersionId ||
+      frozen?.priorConfirmedRevision !== rebound.priorConfirmedRevision ||
+      requiredJsonText(frozen?.priorSourceVersionId) !== rebound.priorSourceVersionId ||
+      requiredJsonText(frozen?.rootClosureFingerprint) !== rebound.rootClosureFingerprint ||
+      stableJson(frozen?.rootPayableRefIds) !== stableJson(rebound.rootPayableRefIds)
+    ) {
+      throw new ConflictException("全额冲销的标准原根闭包已漂移");
+    }
+    return rebound;
+  }
+
   async createApprovedSource(actorUserId: string, input: CreateApprovedWageSourceDto) {
     await this.assertPrepareAuthority(actorUserId);
     const normalized = normalizeApprovedSource(input);
@@ -1045,6 +1244,18 @@ export class WageStatementService {
       await this.lockIdempotencyKey(tx, "approved_source", normalized.idempotencyKey);
       const replay = await this.replayApprovedSource(tx, normalized.idempotencyKey, fingerprintValue);
       if (replay) return replay;
+      const authorityLines = normalized.approvedPersonLines.map(authorityFactsOnly);
+      const fullReversalBinding = normalized.sourcePurpose === "full_reversal"
+        ? await this.lockAndValidateFullReversalBinding(
+            tx,
+            normalized.fullReversalTarget!,
+            normalized.approvedPersonLines as WagePersonLineInput[],
+            normalized.employmentCompanyId,
+            normalized.wageMonth,
+            normalized.evidenceFileId,
+            normalized.fullReversalTarget!.priorConfirmedRevision
+          )
+        : null;
       const [company, evidence, employees] = await Promise.all([
         tx.companyEntity.findUnique({
           where: { id: normalized.employmentCompanyId, isActive: true },
@@ -1054,7 +1265,7 @@ export class WageStatementService {
           where: { id: normalized.evidenceFileId },
           select: { id: true, storageStatus: true, contentSha256: true }
         }),
-        this.activeEmployees(tx, normalized.approvedPersonLines)
+        this.activeEmployees(tx, authorityLines)
       ]);
       if (!company) throw new NotFoundException("承担工资的我方公司不存在或已停用");
       if (
@@ -1065,8 +1276,9 @@ export class WageStatementService {
       ) {
         throw new BadRequestException("外部批准工资资料不存在、不可用或缺少内容校验值");
       }
-      employeeMap(normalized.approvedPersonLines, employees);
+      employeeMap(authorityLines, employees);
       const sourceSnapshot = jsonValue({
+        sourcePurpose: normalized.sourcePurpose,
         employmentCompany: { id: company.id, name: company.name },
         wageMonth: normalized.wageMonth,
         periodStart: normalized.periodStart,
@@ -1075,14 +1287,15 @@ export class WageStatementService {
         sourceVersion: normalized.sourceVersion,
         basisDate: normalized.basisDate,
         evidence: { fileId: evidence.id, sha256: evidence.contentSha256 },
-        // 外部批准资料只冻结劳动关系、岗位、人员金额、成本组成和债权事实。
-        // 项目分摊及两张交叉矩阵属于财务草稿决定，不能进入来源快照。
+        ...(fullReversalBinding ? { fullReversalBinding } : {}),
+        // 普通来源不冻结财务分摊；全额冲销来源则必须冻结完整显式零矩阵。
         approvedPersonLines: normalized.approvedPersonLines
       });
       const sourceFingerprint = fingerprint(sourceSnapshot);
       try {
         const created = await tx.wageApprovedSourceVersion.create({
           data: {
+            sourcePurpose: normalized.sourcePurpose,
             employmentCompanyId: normalized.employmentCompanyId,
             wageMonth: normalized.wageMonth,
             periodStart: dateOnly(normalized.periodStart),
@@ -1095,6 +1308,11 @@ export class WageStatementService {
             evidenceSha256: evidence.contentSha256,
             sourceFingerprint,
             sourceSnapshot: jsonValue(sourceSnapshot),
+            fullReversalTargetStatementId: fullReversalBinding?.statementId,
+            fullReversalPriorVersionId: fullReversalBinding?.priorConfirmedVersionId,
+            fullReversalPriorRevision: fullReversalBinding?.priorConfirmedRevision,
+            fullReversalPriorSourceVersionId: fullReversalBinding?.priorSourceVersionId,
+            fullReversalRootClosureFingerprint: fullReversalBinding?.rootClosureFingerprint,
             createdByUserId: actorUserId
           }
         });
@@ -1130,6 +1348,9 @@ export class WageStatementService {
         where: { id: required(input.sourceVersionId, "外部批准工资来源不能为空") }
       });
       if (!source) throw new NotFoundException("外部批准工资来源不存在，请刷新后重试");
+      if (approvedSourcePurpose(source) !== "ordinary") {
+        throw new BadRequestException("全额冲销批准来源只能创建冲销修订");
+      }
       if (source.wageMonth !== input.wageMonth) throw new BadRequestException("工资承担单月份必须与外部批准来源一致");
       const sourceLines = sourcePersonLines(source.sourceSnapshot);
       assertSourceFacts(input.personLines, sourceLines, source.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
@@ -1239,8 +1460,19 @@ export class WageStatementService {
       if (source.employmentCompanyId !== statement.employmentCompanyId || source.wageMonth !== input.wageMonth) {
         throw new BadRequestException("后续工资修订的公司和月份必须与原工资承担单一致");
       }
-      const sourceLines = sourcePersonLines(source.sourceSnapshot);
+      if (input.disposition === "reversal" && approvedSourcePurpose(source) !== "full_reversal") {
+        throw new BadRequestException("冲销修订必须使用全额冲销批准来源");
+      }
+      if (input.disposition !== "reversal" && approvedSourcePurpose(source) !== "ordinary") {
+        throw new BadRequestException("全额冲销批准来源只能用于冲销修订");
+      }
+      const sourceLines = approvedSourcePurpose(source) === "full_reversal"
+        ? fullReversalSourcePersonLines(source.sourceSnapshot)
+        : sourcePersonLines(source.sourceSnapshot);
       assertSourceFacts(input.personLines, sourceLines, statement.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
+      if (approvedSourcePurpose(source) === "full_reversal") {
+        await this.lockAndRevalidateFullReversalSource(tx, source, input.personLines, statement.currentRevision);
+      }
       const [company, evidence, employees, projects, businessPartyVersions] = await Promise.all([
         tx.companyEntity.findUnique({ where: { id: statement.employmentCompanyId, isActive: true }, select: { id: true } }),
         tx.fileObject.findUnique({ where: { id: source.evidenceFileId }, select: { id: true, storageStatus: true, contentSha256: true } }),
@@ -1296,8 +1528,14 @@ export class WageStatementService {
       if (source.wageMonth !== input.wageMonth || statement.wageMonth !== input.wageMonth) {
         throw new BadRequestException("工资草稿月份必须与外部批准来源一致");
       }
-      const sourceLines = sourcePersonLines(source.sourceSnapshot);
+      const sourceLines = approvedSourcePurpose(source) === "full_reversal"
+        ? fullReversalSourcePersonLines(source.sourceSnapshot)
+        : sourcePersonLines(source.sourceSnapshot);
       assertSourceFacts(input.personLines, sourceLines, statement.employmentCompanyId, source.wageMonth, source.periodStart, source.periodEnd);
+      if (approvedSourcePurpose(source) === "full_reversal") {
+        if (version.kind !== "reversal") throw new ConflictException("全额冲销来源已被非冲销版本引用");
+        await this.lockAndRevalidateFullReversalSource(tx, source, input.personLines, statement.currentRevision, true);
+      }
       const [company, evidence, employees, projects, businessPartyVersions] = await Promise.all([
         tx.companyEntity.findUnique({ where: { id: statement.employmentCompanyId, isActive: true }, select: { id: true } }),
         tx.fileObject.findUnique({ where: { id: source.evidenceFileId }, select: { id: true, storageStatus: true, contentSha256: true } }),
@@ -1635,6 +1873,12 @@ export class WageStatementService {
     const projects = await this.activeProjects(tx, lines);
     projectMap(lines, projects);
     serviceBasisBindingMap(source.id, lines, bindings, source.evidenceSha256, false);
+    if (approvedSourcePurpose(source) === "full_reversal") {
+      if (locked.kind !== "reversal") throw new ConflictException("全额冲销批准来源只能确认冲销版本");
+      await this.lockAndRevalidateFullReversalSource(tx, source, lines, statement.currentRevision, true);
+    } else if (locked.kind === "reversal") {
+      throw new ConflictException("普通批准来源不得确认为冲销版本");
+    }
     for (const person of locked.personLines) {
       this.assertCompleteStoredMatrices(person);
       for (const creditor of person.creditorBreakdowns) this.assertFrozenCreditor(creditor, person.employeeId);
@@ -2093,6 +2337,13 @@ export class WageStatementService {
       [...currentSemantic.costs.values(), ...currentSemantic.payables.values()].some((cell) => cell.amountCents !== 0n)
     ) {
       throw new ConflictException("工资全额冲销必须保留完整身份并提交显式零金额快照");
+    }
+    if (kind === "reversal" && (
+      !signedDeltas.costs.some((delta) => delta.amountCents < 0n) ||
+      !signedDeltas.payables.some((delta) => delta.amountCents < 0n) ||
+      [...signedDeltas.costs, ...signedDeltas.payables].some((delta) => delta.amountCents > 0n)
+    )) {
+      throw new ConflictException("工资全额冲销必须产生真实负向差额，禁止无效或混合方向冲销");
     }
     const usedRoots = new Map<string, HistoricalWageRootRead & { effectiveAmountCents: bigint }>();
     if (kind !== "supplemental") {
@@ -2718,6 +2969,10 @@ class WageRetryableRaceError extends Error {
 function normalizeApprovedSource(input: CreateApprovedWageSourceDto) {
   validateIdempotencyKey(input.idempotencyKey);
   if (input.expectedRevision !== 0) throw new ConflictException("新建外部工资来源的 expectedRevision 必须为 0");
+  const sourcePurpose = input.sourcePurpose;
+  if (sourcePurpose !== "ordinary" && sourcePurpose !== "full_reversal") {
+    throw new BadRequestException("外部批准工资来源用途必须明确为普通工资或全额冲销");
+  }
   const wageMonth = required(input.wageMonth, "工资月份不能为空");
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/u.test(wageMonth)) throw new BadRequestException("工资月份必须使用 YYYY-MM 格式");
   const periodStart = validDateOnly(input.periodStart, "工资期间开始日不正确");
@@ -2733,13 +2988,16 @@ function normalizeApprovedSource(input: CreateApprovedWageSourceDto) {
   const keys = new Set<string>();
   let total = 0n;
   const employmentCompanyId = required(input.employmentCompanyId, "我方公司不能为空");
+  const context = {
+    employmentCompanyId,
+    periodStart,
+    periodEnd,
+    wageMonth
+  };
   const approvedPersonLines = lines.map((line) => {
-    const normalized = normalizeAuthorityPersonLine(line, {
-      employmentCompanyId,
-      periodStart,
-      periodEnd,
-      wageMonth
-    });
+    const normalized = sourcePurpose === "full_reversal"
+      ? normalizeFullReversalPersonLine(line, context)
+      : normalizeAuthorityPersonLine(line, context);
     const employeeId = normalized.employeeId;
     const employmentSnapshotId = normalized.employmentSnapshotId;
     const key = `${employeeId}:${employmentSnapshotId}`;
@@ -2749,10 +3007,26 @@ function normalizeApprovedSource(input: CreateApprovedWageSourceDto) {
     total += approvedAmountCents;
     return normalized;
   });
-  if (total === 0n) throw new BadRequestException("外部批准工资来源总额必须大于零");
+  if (sourcePurpose === "ordinary" && total === 0n) {
+    throw new BadRequestException("普通外部批准工资来源总额必须大于零");
+  }
+  if (sourcePurpose === "full_reversal" && total !== 0n) {
+    throw new BadRequestException("全额冲销批准来源总额必须恰为零");
+  }
+  const fullReversalTarget = sourcePurpose === "full_reversal"
+    ? normalizeFullReversalTarget(input.fullReversalTarget)
+    : undefined;
+  if (sourcePurpose === "ordinary" && input.fullReversalTarget !== undefined) {
+    throw new BadRequestException("普通工资来源不得绑定全额冲销目标");
+  }
+  if (sourcePurpose === "full_reversal") {
+    assertBalancedWageStatementDraft({ wageMonth, sourceTotalCents: "0", personLines: approvedPersonLines as WagePersonLineInput[] });
+  }
   return {
     idempotencyKey: input.idempotencyKey,
     expectedRevision: input.expectedRevision,
+    sourcePurpose,
+    fullReversalTarget,
     employmentCompanyId,
     wageMonth,
     periodStart,
@@ -2767,16 +3041,31 @@ function normalizeApprovedSource(input: CreateApprovedWageSourceDto) {
 
 type AuthorityLine = ApprovedWagePersonDto;
 
+function authorityFactsOnly(line: ApprovedWagePersonDto | WagePersonLineInput): AuthorityLine {
+  return {
+    employeeId: line.employeeId,
+    employmentSnapshotId: line.employmentSnapshotId,
+    employmentCompanyId: line.employmentCompanyId,
+    employmentPeriodStart: line.employmentPeriodStart,
+    employmentPeriodEnd: line.employmentPeriodEnd,
+    positionCategory: line.positionCategory,
+    approvedAmountCents: line.approvedAmountCents,
+    costComponents: line.costComponents,
+    creditorBreakdowns: line.creditorBreakdowns
+  };
+}
+
 function normalizeAuthorityPersonLine(
   line: ApprovedWagePersonDto,
-  context: { employmentCompanyId: string; periodStart: string; periodEnd: string; wageMonth: string }
+  context: { employmentCompanyId: string; periodStart: string; periodEnd: string; wageMonth: string },
+  allowProjectFacts = false
 ): AuthorityLine {
   const record = line as ApprovedWagePersonDto & Record<string, unknown>;
-  if (
+  if (!allowProjectFacts && (
     Object.hasOwn(record, "projectAllocations") ||
     Object.hasOwn(record, "projectCostComponentAllocations") ||
     Object.hasOwn(record, "projectCreditorAllocations")
-  ) {
+  )) {
     throw new BadRequestException("外部批准工资来源不得包含项目分摊或财务矩阵");
   }
   const employeeId = required(line.employeeId, "人员不能为空");
@@ -2812,6 +3101,34 @@ function normalizeAuthorityPersonLine(
     creditorBreakdowns
   };
   return normalized;
+}
+
+function normalizeFullReversalPersonLine(
+  line: ApprovedWagePersonDto,
+  context: { employmentCompanyId: string; periodStart: string; periodEnd: string; wageMonth: string }
+): WagePersonLineInput {
+  const authority = normalizeAuthorityPersonLine(line, context, true);
+  return {
+    ...authority,
+    projectAllocations: normalizeProjectAllocations(line.projectAllocations ?? [], context.wageMonth),
+    projectCostComponentAllocations: normalizeProjectCostComponentAllocations(line.projectCostComponentAllocations ?? []),
+    projectCreditorAllocations: normalizeProjectCreditorAllocations(line.projectCreditorAllocations ?? [])
+  };
+}
+
+function normalizeFullReversalTarget(value: CreateApprovedWageSourceDto["fullReversalTarget"]) {
+  if (!value || typeof value !== "object") {
+    throw new BadRequestException("全额冲销批准来源必须绑定目标工资单和紧邻已确认版本");
+  }
+  if (!Number.isSafeInteger(value.priorConfirmedRevision) || value.priorConfirmedRevision < 1) {
+    throw new BadRequestException("全额冲销目标修订号必须是正整数");
+  }
+  return {
+    statementId: required(value.statementId, "全额冲销目标工资单不能为空"),
+    priorConfirmedVersionId: required(value.priorConfirmedVersionId, "全额冲销前置已确认版本不能为空"),
+    priorConfirmedRevision: value.priorConfirmedRevision,
+    priorSourceVersionId: required(value.priorSourceVersionId, "全额冲销前置来源版本不能为空")
+  };
 }
 
 function normalizeCostComponents(lines: ApprovedWagePersonDto["costComponents"]) {
@@ -2986,7 +3303,16 @@ function assertRevision(actualRevision: number, expectedRevision: number) {
   if (actualRevision !== expectedRevision) throw new ConflictException("工资承担单版本已变化，请刷新后重试");
 }
 
+function approvedSourcePurpose(source: { sourcePurpose?: unknown }): "ordinary" | "full_reversal" {
+  // Rows created before the forward migration are backfilled as ordinary. The
+  // fallback also keeps isolated legacy fixtures representative of that state.
+  if (source.sourcePurpose === undefined) return "ordinary";
+  if (source.sourcePurpose === "ordinary" || source.sourcePurpose === "full_reversal") return source.sourcePurpose;
+  throw new ConflictException("外部批准工资来源用途无效");
+}
+
 function historicalApprovedSourceLines(source: {
+  sourcePurpose?: string;
   employmentCompanyId: string;
   wageMonth: string;
   periodStart: Date;
@@ -3001,6 +3327,7 @@ function historicalApprovedSourceLines(source: {
   sourceSnapshot: unknown;
 }): WagePersonLineInput[] {
   if (
+    approvedSourcePurpose(source) !== "ordinary" ||
     !source.sourceSnapshot ||
     typeof source.sourceSnapshot !== "object" ||
     Array.isArray(source.sourceSnapshot) ||
@@ -3023,6 +3350,7 @@ function historicalApprovedSourceLines(source: {
     : "";
   if (
     source.sourceType !== "external_approved_wage" ||
+    (snapshot.sourcePurpose !== undefined && requiredJsonText(snapshot.sourcePurpose) !== "ordinary") ||
     companyId !== source.employmentCompanyId ||
     requiredJsonText(snapshot.wageMonth) !== source.wageMonth ||
     requiredJsonText(snapshot.periodStart) !== source.periodStart.toISOString().slice(0, 10) ||
@@ -3040,6 +3368,7 @@ function historicalApprovedSourceLines(source: {
 }
 
 function approvedSourceFacts(source: {
+  sourcePurpose?: string;
   employmentCompanyId: string;
   wageMonth: string;
   periodStart: Date;
@@ -3062,7 +3391,11 @@ function approvedSourceFacts(source: {
   const snapshot = source.sourceSnapshot as Record<string, unknown>;
   const company = snapshot.employmentCompany as Record<string, unknown> | undefined;
   const evidence = snapshot.evidence as Record<string, unknown> | undefined;
+  const purpose = approvedSourcePurpose(source);
   if (
+    (snapshot.sourcePurpose !== undefined
+      ? requiredJsonText(snapshot.sourcePurpose) !== purpose
+      : purpose !== "ordinary") ||
     source.sourceType !== "external_approved_wage" ||
     requiredJsonText(company?.id) !== source.employmentCompanyId ||
     requiredJsonText(snapshot.wageMonth) !== source.wageMonth ||
@@ -3076,7 +3409,9 @@ function approvedSourceFacts(source: {
   ) {
     throw new ConflictException("外部批准工资来源列值与冻结快照不一致，不能确认");
   }
-  return sourcePersonLines(snapshot);
+  return purpose === "full_reversal"
+    ? fullReversalSourcePersonLines(snapshot)
+    : sourcePersonLines(snapshot);
 }
 
 function storedDraftLines(
@@ -3179,6 +3514,45 @@ function sourcePersonLines(snapshot: unknown): AuthorityLine[] {
   });
 }
 
+function fullReversalSourcePersonLines(snapshot: unknown): WagePersonLineInput[] {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new ConflictException("全额冲销批准来源快照不完整");
+  }
+  const record = snapshot as Record<string, unknown>;
+  if (record.sourcePurpose !== "full_reversal" || !Array.isArray(record.approvedPersonLines)) {
+    throw new ConflictException("全额冲销批准来源用途或人员矩阵不完整");
+  }
+  return record.approvedPersonLines.map((line) => {
+    if (!line || typeof line !== "object" || Array.isArray(line)) {
+      throw new ConflictException("全额冲销批准来源人员矩阵不完整");
+    }
+    const value = line as Record<string, unknown>;
+    try {
+      return normalizeFullReversalPersonLine({
+        employeeId: requiredJsonText(value.employeeId),
+        employmentSnapshotId: requiredJsonText(value.employmentSnapshotId),
+        employmentCompanyId: requiredJsonText(value.employmentCompanyId),
+        employmentPeriodStart: requiredJsonText(value.employmentPeriodStart),
+        employmentPeriodEnd: requiredJsonText(value.employmentPeriodEnd),
+        positionCategory: requiredJsonText(value.positionCategory),
+        approvedAmountCents: requiredJsonText(value.approvedAmountCents),
+        costComponents: jsonArray(value.costComponents),
+        creditorBreakdowns: jsonArray(value.creditorBreakdowns),
+        projectAllocations: jsonArray(value.projectAllocations),
+        projectCostComponentAllocations: jsonArray(value.projectCostComponentAllocations),
+        projectCreditorAllocations: jsonArray(value.projectCreditorAllocations)
+      }, {
+        employmentCompanyId: requiredJsonText(value.employmentCompanyId),
+        periodStart: requiredJsonText(value.employmentPeriodStart),
+        periodEnd: requiredJsonText(value.employmentPeriodEnd),
+        wageMonth: requiredJsonText(record.wageMonth)
+      });
+    } catch {
+      throw new ConflictException("全额冲销批准来源人员矩阵不完整");
+    }
+  });
+}
+
 function historicalSourcePersonLines(snapshot: Record<string, unknown>): WagePersonLineInput[] {
   if (!Array.isArray(snapshot.approvedPersonLines)) {
     throw new ConflictException("历史工资接管权威来源缺少完整项目闭合，不能继续");
@@ -3239,7 +3613,7 @@ function assertSourceFacts(
     if (line.employmentCompanyId !== employmentCompanyId || line.employmentPeriodStart !== expectedStart || line.employmentPeriodEnd !== expectedEnd) {
       throw new ConflictException("外部批准工资来源公司、月份或期间不一致，不能创建工资承担单");
     }
-    return [`${line.employeeId}:${line.employmentSnapshotId}`, stableJson(line)];
+    return [`${line.employeeId}:${line.employmentSnapshotId}`, stableJson(authorityFactsOnly(line))];
   }));
   if (expected.size !== lines.length) throw new BadRequestException("工资承担单人员事实必须与外部批准来源一致");
   for (const line of lines) {

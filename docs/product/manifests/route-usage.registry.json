@@ -4,23 +4,23 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 575,
-    "classificationOverrideCount": 214,
-    "derivedProductionPageCount": 361,
-    "classificationOverrideSha256": "75ee8362891133afef02176ddb2daba9c533323a381658a92419947a1231af5d",
-    "consumerSurfaceOverrideSha256": "81b9932f4010dd05c732f6d32a76bf0863a6c9951b9191aae6dc5dcbef1b4d70",
+    "classificationOverrideCount": 213,
+    "derivedProductionPageCount": 362,
+    "classificationOverrideSha256": "20815a8207e265a7c62404626c0edb0ecca51ea79d0f88bac40b767b8e46fdc8",
+    "consumerSurfaceOverrideSha256": "28aeb56e023e9d26024527bbe35d0feb4273cc2555c65e941cadc30da9b25237",
     "usageCounts": {
-      "page": 363,
+      "page": 364,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 34,
+      "internal_task": 33,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 415,
+      "web_api_wrapper": 416,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 32,
+      "operator_endpoint": 31,
       "none": 120
     }
   },
@@ -564,12 +564,6 @@
       "path": "/draft-retention/controlled-entry",
       "usage": "internal_task",
       "reason": "super_admin_operator_preview_only"
-    },
-    {
-      "method": "POST",
-      "path": "/wage-statements/:statementId/revisions",
-      "usage": "internal_task",
-      "reason": "wage_revision_controlled_operator_workflow_no_page_consumer"
     },
     {
       "method": "GET",
@@ -1342,12 +1336,6 @@
       "path": "/draft-retention/controlled-entry",
       "consumerSurface": "operator_endpoint",
       "reason": "super_admin_controlled_preview_entry_execute_forbidden"
-    },
-    {
-      "method": "POST",
-      "path": "/wage-statements/:statementId/revisions",
-      "consumerSurface": "operator_endpoint",
-      "reason": "finance_controlled_confirmed_wage_revision_operator_workflow"
     },
     {
       "method": "GET",

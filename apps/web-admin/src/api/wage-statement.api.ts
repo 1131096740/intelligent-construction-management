@@ -131,6 +131,14 @@ export function createWageStatementDraft(body: Record<string, unknown>) {
   return post<WageStatementCommandResult>("/wage-statements/drafts", body, "创建工资承担草稿失败");
 }
 
+export function createWageStatementRevision(statementId: string, body: Record<string, unknown>) {
+  return post<WageStatementCommandResult>(
+    `/wage-statements/${encodeURIComponent(statementId)}/revisions`,
+    body,
+    "创建工资冲销修订失败"
+  );
+}
+
 export function updateWageStatementDraft(statementId: string, body: Record<string, unknown>) {
   return post<WageStatementCommandResult>(`/wage-statements/${encodeURIComponent(statementId)}/draft`, body, "更新工资承担草稿失败");
 }

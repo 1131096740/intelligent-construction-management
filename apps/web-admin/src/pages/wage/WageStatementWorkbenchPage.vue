@@ -5,6 +5,7 @@ import {
   confirmWageStatement,
   createApprovedWageSource,
   createWageStatementDraft,
+  createWageStatementRevision,
   fetchWageStatementCapabilities,
   fetchWageStatementImportPreview,
   fetchWageStatementSummary,
@@ -62,6 +63,8 @@ const canConfirmSelected = computed(() => selected.value?.status === "submitted"
 const canImportApprovedSource = computed(() => capabilities.value.canPrepare);
 
 interface LocalApprovedSourcePreview {
+  sourcePurpose: "ordinary" | "full_reversal";
+  sourcePurposeLabel: string;
   employmentCompanyLabel: string;
   wageMonth: string;
   sourceLabel: string;
@@ -131,10 +134,28 @@ function parseLocalApprovedSource(text: string): { payload: Record<string, unkno
   const record = payload as Record<string, unknown>;
   const wageMonth = stringField(record, "wageMonth");
   const sourceVersion = stringField(record, "sourceVersion");
+  const sourcePurpose = stringField(record, "sourcePurpose");
   const companyLabel = stringField(record, "employmentCompanyName") ?? "已选择承担公司（服务端校验）";
   const lines = record.approvedPersonLines;
-  if (!wageMonth || !sourceVersion || !Array.isArray(lines) || lines.length === 0) {
-    throw new Error("外部批准工资资料缺少月份、来源版本或人员记录。");
+  if ((sourcePurpose !== "ordinary" && sourcePurpose !== "full_reversal") || !wageMonth || !sourceVersion || !Array.isArray(lines) || lines.length === 0) {
+    throw new Error("外部批准工资资料缺少受控用途、月份、来源版本或人员记录。");
+  }
+  if (sourcePurpose === "full_reversal") {
+    const target = record.fullReversalTarget;
+    if (!target || typeof target !== "object" || Array.isArray(target)) {
+      throw new Error("全额冲销资料缺少目标工资单和紧邻已确认版本。");
+    }
+    const targetRecord = target as Record<string, unknown>;
+    if (
+      !stringField(targetRecord, "statementId") ||
+      !stringField(targetRecord, "priorConfirmedVersionId") ||
+      !stringField(targetRecord, "priorSourceVersionId") ||
+      typeof targetRecord.priorConfirmedRevision !== "number" ||
+      !Number.isSafeInteger(targetRecord.priorConfirmedRevision) ||
+      Number(targetRecord.priorConfirmedRevision) < 1
+    ) {
+      throw new Error("全额冲销资料的目标版本坐标不完整。");
+    }
   }
   const categories = new Set<string>();
   let projectAllocationCount = 0;
@@ -150,6 +171,8 @@ function parseLocalApprovedSource(text: string): { payload: Record<string, unkno
   return {
     payload: record,
     preview: {
+      sourcePurpose,
+      sourcePurposeLabel: sourcePurpose === "full_reversal" ? "全额冲销" : "普通工资",
       employmentCompanyLabel: companyLabel,
       wageMonth,
       sourceLabel: sourceVersion,
@@ -234,6 +257,8 @@ async function createImportedDraft() {
   importLoading.value = true;
   importError.value = "";
   try {
+    const sourcePurpose = localImportPreview.value.sourcePurpose;
+    const fullReversalTarget = sourcePayload.fullReversalTarget as Record<string, unknown> | undefined;
     const editableTarget = selected.value?.status === "draft" && summary.value?.revision === selected.value.revision
       ? { statementId: selected.value.statementId, revision: summary.value.revision }
       : null;
@@ -244,7 +269,26 @@ async function createImportedDraft() {
       sourceTotalCents: sourceTotalCents(lines),
       personLines: lines
     };
-    if (editableTarget) {
+    if (sourcePurpose === "full_reversal") {
+      const statementId = stringField(fullReversalTarget ?? {}, "statementId");
+      const priorConfirmedRevision = fullReversalTarget?.priorConfirmedRevision;
+      if (!statementId || typeof priorConfirmedRevision !== "number" || !Number.isSafeInteger(priorConfirmedRevision)) {
+        throw new Error("全额冲销资料的目标版本坐标不完整。");
+      }
+      await createImportedReversalWithCapability({
+        ...sourcePayload,
+        approvedPersonLines: lines,
+        idempotencyKey: localImportCommand.value.sourceKey,
+        expectedRevision: 0
+      }, {
+        statementId,
+        body: {
+          ...draftBody,
+          expectedRevision: priorConfirmedRevision,
+          disposition: "reversal"
+        }
+      });
+    } else if (editableTarget) {
       await updateImportedDraftWithCapability(editableTarget.statementId, draftBody);
     } else {
       await createImportedDraftWithCapability({
@@ -275,6 +319,17 @@ async function createImportedDraftWithCapability(
   if (!operationAllowed) throw new Error("当前账号无权导入外部批准工资资料并创建草稿");
   const source = await createApprovedWageSource(sourceBody);
   return createWageStatementDraft({ ...draftBody, sourceVersionId: source.id });
+}
+
+async function createImportedReversalWithCapability(
+  sourceBody: Parameters<typeof createApprovedWageSource>[0],
+  revisionCommand: { statementId: string; body: Record<string, unknown> }
+) {
+  const capability = await fetchWageStatementCapabilities();
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号无权导入全额冲销来源并创建冲销修订");
+  const source = await createApprovedWageSource(sourceBody);
+  return createWageStatementRevision(revisionCommand.statementId, { ...revisionCommand.body, sourceVersionId: source.id });
 }
 
 async function updateImportedDraftWithCapability(
@@ -448,6 +503,7 @@ onMounted(() => void loadWorkbench());
         <h3 class="wage-statement-workbench__section-title">本次导入预览</h3>
         <t-descriptions bordered :column="1">
           <t-descriptions-item label="承担公司">{{ localImportPreview.employmentCompanyLabel }}</t-descriptions-item>
+          <t-descriptions-item label="来源用途">{{ localImportPreview.sourcePurposeLabel }}</t-descriptions-item>
           <t-descriptions-item label="工资月份">{{ localImportPreview.wageMonth }}</t-descriptions-item>
           <t-descriptions-item label="来源版本">{{ localImportPreview.sourceLabel }}</t-descriptions-item>
           <t-descriptions-item label="人员记录数">{{ localImportPreview.personLineCount }}</t-descriptions-item>
@@ -455,7 +511,7 @@ onMounted(() => void loadWorkbench());
           <t-descriptions-item label="项目分配记录数">{{ localImportPreview.projectAllocationCount }}</t-descriptions-item>
         </t-descriptions>
         <t-button class="wage-statement-workbench__create-draft" theme="primary" :loading="importLoading" @click="createImportedDraft">
-          {{ selected?.status === "draft" ? "更新当前工资草稿" : "创建工资承担草稿" }}
+          {{ localImportPreview.sourcePurpose === "full_reversal" ? "创建全额冲销修订" : selected?.status === "draft" ? "更新当前工资草稿" : "创建工资承担草稿" }}
         </t-button>
       </template>
       <t-alert v-if="importError" class="wage-statement-workbench__notice" theme="error" :message="importError" />

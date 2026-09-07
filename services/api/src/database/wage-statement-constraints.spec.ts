@@ -826,6 +826,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     const sourceInput: WageSourceInput = {
       idempotencyKey: randomUUID(),
       expectedRevision: 0,
+      sourcePurpose: "ordinary",
       employmentCompanyId: fixture.companyId,
       wageMonth: fixture.wageMonth,
       periodStart: "2026-08-01",
@@ -878,9 +879,170 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       ref.debtorCompanyId === fixture.companyId &&
       ref.costBearingCompanyId === fixture.companyId
     )).toBe(true);
+
+    const reversalEvidenceFileId = `${fixture.prefix}-evidence-full-reversal`;
+    await first.fileObject.create({
+      data: {
+        id: reversalEvidenceFileId,
+        bucket: "local-test",
+        objectKey: `${fixture.prefix}/approved-wage-full-reversal.json`,
+        originalName: "全额冲销批准资料.json",
+        mimeType: "application/json",
+        sizeBytes: 1,
+        uploadedByUserId: fixture.preparerUserId,
+        contentSha256: "a".repeat(64),
+        storageStatus: "active"
+      }
+    });
+    const zeroLine = <T extends typeof employeeLine | typeof secondEmployeeLine>(line: T) => ({
+      ...line,
+      approvedAmountCents: "0",
+      costComponents: line.costComponents.map((cell) => ({ ...cell, amountCents: "0" })),
+      creditorBreakdowns: line.creditorBreakdowns.map((cell) => ({ ...cell, amountCents: "0" })),
+      projectAllocations: line.projectAllocations.map((cell) => ({ ...cell, amountCents: "0" })),
+      projectCostComponentAllocations: line.projectCostComponentAllocations.map((cell) => ({ ...cell, amountCents: "0" })),
+      projectCreditorAllocations: line.projectCreditorAllocations.map((cell) => ({ ...cell, amountCents: "0" }))
+    });
+    const zeroLines = [zeroLine(employeeLine), zeroLine(secondEmployeeLine)];
+    const reversalSourceInput: WageSourceInput = {
+      ...sourceInput,
+      idempotencyKey: randomUUID(),
+      sourcePurpose: "full_reversal",
+      externalReference: `${fixture.prefix}-MULTI-PAYROLL-REVERSAL`,
+      sourceVersion: "v2-full-reversal",
+      evidenceFileId: reversalEvidenceFileId,
+      fullReversalTarget: {
+        statementId: draftResult.statementId,
+        priorConfirmedVersionId: draftResult.versionId,
+        priorConfirmedRevision: 1,
+        priorSourceVersionId: sourceResult.id
+      },
+      approvedPersonLines: zeroLines
+    };
+    const sourceAttempts = await Promise.all([
+      service.createApprovedSource(fixture.preparerUserId, reversalSourceInput),
+      wageService(second).createApprovedSource(fixture.preparerUserId, reversalSourceInput)
+    ]);
+    expect(sourceAttempts[0]).toEqual(sourceAttempts[1]);
+    const reversalSource = sourceAttempts[0];
+    if (!isSourceCreationResult(reversalSource)) throw new Error("并发全额冲销来源创建未返回正式来源标识");
+    await expect(observer.wageApprovedSourceCommandReceipt.count({
+      where: { idempotencyKey: reversalSourceInput.idempotencyKey }
+    })).resolves.toBe(1);
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...reversalSourceInput,
+      sourceVersion: "v2-full-reversal-conflict"
+    })).rejects.toThrow("同一幂等键不能用于不同外部工资来源命令");
+
+    const revisionInput = {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1,
+      disposition: "reversal" as const,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: zeroLines
+    };
+    const revisionAttempts = await Promise.all([
+      service.createRevision(fixture.preparerUserId, draftResult.statementId, revisionInput),
+      wageService(second).createRevision(fixture.preparerUserId, draftResult.statementId, revisionInput)
+    ]);
+    expect(revisionAttempts[0]).toEqual(revisionAttempts[1]);
+    const reversal = revisionAttempts[0];
+    if (!isDraftCreationResult(reversal)) throw new Error("并发全额冲销修订未返回正式版本标识");
+    await expect(observer.wageCommandReceipt.count({
+      where: { idempotencyKey: revisionInput.idempotencyKey }
+    })).resolves.toBe(1);
+    await service.submit(fixture.preparerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 2
+    });
+    await service.confirm(fixture.confirmerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 2
+    });
+    const sourceCountAfterReversal = await observer.wageApprovedSourceVersion.count();
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...reversalSourceInput,
+      idempotencyKey: randomUUID(),
+      externalReference: `${fixture.prefix}-MULTI-PAYROLL-SECOND-REVERSAL`,
+      sourceVersion: "v3-no-effect-reversal",
+      fullReversalTarget: {
+        statementId: draftResult.statementId,
+        priorConfirmedVersionId: reversal.versionId,
+        priorConfirmedRevision: 2,
+        priorSourceVersionId: reversalSource.id
+      }
+    })).rejects.toThrow("全额冲销必须绑定当前紧邻的普通已确认工资版本");
+    await expect(observer.wageApprovedSourceVersion.count()).resolves.toBe(sourceCountAfterReversal);
+
+    const reversalRefs = await observer.wagePayableRef.findMany({
+      where: { confirmedVersionId: reversal.versionId },
+      select: {
+        id: true,
+        direction: true,
+        amountCents: true,
+        adjustsPayableRefId: true,
+        projectAllocation: { select: { serviceSnapshotId: true } }
+      }
+    });
+    expect(reversalRefs).toHaveLength(5);
+    expect(reversalRefs.every((ref) => ref.direction === "decrease" && ref.amountCents > 0n && refs.some((root) => root.id === ref.adjustsPayableRefId))).toBe(true);
+    expect(new Set(reversalRefs.map((ref) => ref.projectAllocation.serviceSnapshotId))).toEqual(new Set([
+      `${fixture.prefix}-service-a1`,
+      `${fixture.prefix}-service-a2`,
+      `${fixture.prefix}-service-b2`
+    ]));
+    const closedRoots = await observer.wagePayableRef.findMany({
+      where: { id: { in: refs.map((ref) => ref.id) } },
+      select: { amountCents: true, adjustments: { select: { direction: true, amountCents: true } } }
+    });
+    expect(closedRoots.every((root) => root.amountCents === root.adjustments.reduce(
+      (sum, adjustment) => sum + (adjustment.direction === "decrease" ? adjustment.amountCents : -adjustment.amountCents),
+      0n
+    ))).toBe(true);
+    const versionBusinessIds = [
+      ...new Set([
+        ...facts.map((fact) => fact.sourceBusinessId),
+        `${reversal.versionId}:${fixture.projectId}`,
+        `${reversal.versionId}:${secondProject.projectId}`
+      ])
+    ];
+    const effectiveImpacts = await observer.operatingImpactEntry.findMany({
+      where: {
+        sourceType: "wage_statement_version",
+        sourceBusinessId: { in: versionBusinessIds },
+        impactKind: { in: ["confirmed_cost", "payable_increase", "payable_decrease"] }
+      },
+      select: { amountCents: true, direction: true }
+    });
+    expect(effectiveImpacts.length).toBeGreaterThan(0);
+    expect(effectiveImpacts.reduce(
+      (sum, impact) => sum + (impact.direction === "decrease" ? -impact.amountCents : impact.amountCents),
+      0n
+    )).toBe(0n);
+    await expect(first.wageApprovedSourceVersion.update({
+      where: { id: reversalSource.id },
+      data: { sourceVersion: "mutated" }
+    })).rejects.toThrow(/immutable/i);
+    await expect(first.wageApprovedSourceVersion.delete({ where: { id: reversalSource.id } })).rejects.toThrow(/immutable/i);
+    await expect(first.wageStatementVersion.update({
+      where: { id: reversal.versionId },
+      data: { revision: 3 }
+    })).rejects.toThrow(/immutable/i);
+    await expect(first.wageStatementVersion.delete({ where: { id: reversal.versionId } })).rejects.toThrow(/immutable/i);
+    const reversalPerson = await observer.wagePersonLine.findFirstOrThrow({
+      where: { statementVersionId: reversal.versionId },
+      select: { id: true }
+    });
+    await expect(first.wagePersonLine.update({
+      where: { id: reversalPerson.id },
+      data: { approvedAmountCents: 1n }
+    })).rejects.toThrow(/immutable/i);
+    await expect(first.wagePersonLine.delete({ where: { id: reversalPerson.id } })).rejects.toThrow(/immutable/i);
   });
 
-  it("binds correction deltas, preserves zero deltas and rejects nonzero reversal snapshots", async () => {
+  it("binds correction deltas and permits only a target-bound explicit-zero full reversal", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const baseInput = canonicalWageSourceInput(fixture);
     const { service, draftResult: baseDraft } = await createSubmittedCanonicalWage(
@@ -971,7 +1133,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       expectedRevision: 3
     });
 
-    const invalidReversal = await createSubmittedRevision(
+    await expect(createSubmittedRevision(
       first,
       service,
       fixture,
@@ -979,27 +1141,145 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       3,
       "reversal",
       "1",
-      "v4"
-    );
-    await expect(service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+      "v4-ordinary"
+    )).rejects.toThrow("冲销修订必须使用全额冲销批准来源");
+
+    const prior = await observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: zeroDelta.versionId },
+      select: { sourceVersionId: true }
+    });
+    const reversalEvidenceFileId = `${fixture.prefix}-evidence-v4-reversal`;
+    await first.fileObject.create({
+      data: {
+        id: reversalEvidenceFileId,
+        bucket: "local-test",
+        objectKey: `${fixture.prefix}/approved-wage-v4-reversal.json`,
+        originalName: "全额冲销批准资料-v4.json",
+        mimeType: "application/json",
+        sizeBytes: 1,
+        uploadedByUserId: fixture.preparerUserId,
+        contentSha256: "a".repeat(64),
+        storageStatus: "active"
+      }
+    });
+    const zeroLine = canonicalWagePersonLine(fixture, "0");
+    const correctionHeader = await observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: correction.versionId },
+      select: { sourceVersionId: true }
+    });
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...canonicalWageSourceForAmount(fixture, "0", "v4-stale"),
+      sourcePurpose: "full_reversal",
+      fullReversalTarget: {
+        statementId: baseDraft.statementId,
+        priorConfirmedVersionId: correction.versionId,
+        priorConfirmedRevision: 2,
+        priorSourceVersionId: correctionHeader.sourceVersionId
+      },
+      evidenceFileId: reversalEvidenceFileId,
+      approvedPersonLines: [zeroLine]
+    })).rejects.toThrow("全额冲销目标工资单的公司、月份或当前修订已漂移");
+    const crossServiceLine = {
+      ...zeroLine,
+      projectAllocations: zeroLine.projectAllocations.map((line) => ({ ...line, serviceSnapshotId: `${line.serviceSnapshotId}-other` })),
+      projectCostComponentAllocations: zeroLine.projectCostComponentAllocations.map((line) => ({ ...line, serviceSnapshotId: `${line.serviceSnapshotId}-other` })),
+      projectCreditorAllocations: zeroLine.projectCreditorAllocations.map((line) => ({ ...line, serviceSnapshotId: `${line.serviceSnapshotId}-other` }))
+    };
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...canonicalWageSourceForAmount(fixture, "0", "v4-cross-service"),
+      sourcePurpose: "full_reversal",
+      fullReversalTarget: {
+        statementId: baseDraft.statementId,
+        priorConfirmedVersionId: zeroDelta.versionId,
+        priorConfirmedRevision: 3,
+        priorSourceVersionId: prior.sourceVersionId
+      },
+      evidenceFileId: reversalEvidenceFileId,
+      approvedPersonLines: [crossServiceLine]
+    })).rejects.toThrow("成本组成身份集合发生变化");
+    const reversalSource = await service.createApprovedSource(fixture.preparerUserId, {
+      ...canonicalWageSourceForAmount(fixture, "0", "v4-reversal"),
+      sourcePurpose: "full_reversal",
+      fullReversalTarget: {
+        statementId: baseDraft.statementId,
+        priorConfirmedVersionId: zeroDelta.versionId,
+        priorConfirmedRevision: 3,
+        priorSourceVersionId: prior.sourceVersionId
+      },
+      evidenceFileId: reversalEvidenceFileId,
+      approvedPersonLines: [zeroLine]
+    });
+    if (!isSourceCreationResult(reversalSource)) throw new Error("全额冲销来源未返回正式来源标识");
+    await expect(service.createDraft(fixture.preparerUserId, {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: [zeroLine]
+    })).rejects.toThrow("全额冲销批准来源只能创建冲销修订");
+    await expect(service.createRevision(fixture.preparerUserId, baseDraft.statementId, {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 3,
+      disposition: "supplemental",
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: [zeroLine]
+    })).rejects.toThrow("全额冲销批准来源只能用于冲销修订");
+    await expect(service.createRevision(fixture.preparerUserId, baseDraft.statementId, {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 3,
+      disposition: "correction",
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: [zeroLine]
+    })).rejects.toThrow("全额冲销批准来源只能用于冲销修订");
+    const reversal = await service.createRevision(fixture.preparerUserId, baseDraft.statementId, {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 3,
+      disposition: "reversal",
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: [zeroLine]
+    });
+    if (!isDraftCreationResult(reversal)) throw new Error("全额冲销修订未返回正式版本标识");
+    await service.submit(fixture.preparerUserId, baseDraft.statementId, {
       idempotencyKey: randomUUID(),
       expectedRevision: 4
-    })).rejects.toThrow("工资全额冲销必须保留完整身份并提交显式零金额快照");
+    });
+    await service.confirm(fixture.confirmerUserId, baseDraft.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 4
+    });
+    await expect(service.createRevision(fixture.preparerUserId, baseDraft.statementId, {
+      sourceVersionId: reversalSource.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 4,
+      disposition: "reversal",
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "0",
+      personLines: [zeroLine]
+    })).rejects.toThrow("全额冲销目标工资单的公司、月份或当前修订已漂移");
 
     const refs = await observer.wagePayableRef.findMany({
       where: {
         confirmedVersionId: {
-          in: [baseDraft.versionId, correction.versionId, zeroDelta.versionId, invalidReversal.versionId]
+          in: [baseDraft.versionId, correction.versionId, zeroDelta.versionId, reversal.versionId]
         }
       },
       orderBy: { createdAt: "asc" }
     });
-    expect(refs).toHaveLength(2);
+    expect(refs).toHaveLength(3);
     expect(refs.map((ref) => [ref.direction, ref.amountCents])).toEqual([
       ["increase", 100000n],
-      ["decrease", 40000n]
+      ["decrease", 40000n],
+      ["decrease", 60000n]
     ]);
     expect(refs[1]?.adjustsPayableRefId).toBe(refs[0]?.id);
+    expect(refs[2]?.adjustsPayableRefId).toBe(refs[0]?.id);
     const rootProjection = await first.$queryRaw<Array<{ projection: Prisma.JsonValue }>>(Prisma.sql`
       SELECT jg_canonical_wage_delta_projection(
         ${correction.versionId},
@@ -1027,11 +1307,11 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
             `${baseDraft.versionId}:${fixture.projectId}`,
             `${correction.versionId}:${fixture.projectId}`,
             `${zeroDelta.versionId}:${fixture.projectId}`,
-            `${invalidReversal.versionId}:${fixture.projectId}`
+            `${reversal.versionId}:${fixture.projectId}`
           ]
         }
       }
-    })).resolves.toBe(2);
+    })).resolves.toBe(3);
     await expect(observer.wageStatementVersion.findUniqueOrThrow({
       where: { id: zeroDelta.versionId },
       select: { status: true, operatingProjectionSnapshot: true }
@@ -1044,9 +1324,122 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       })
     }));
     await expect(observer.wageStatementVersion.findUniqueOrThrow({
-      where: { id: invalidReversal.versionId },
+      where: { id: reversal.versionId },
       select: { status: true, confirmedAt: true, confirmedByUserId: true }
-    })).resolves.toEqual({ status: "submitted", confirmedAt: null, confirmedByUserId: null });
+    })).resolves.toEqual(expect.objectContaining({ status: "confirmed" }));
+  });
+
+  it("fails closed on invalid full-reversal bindings, batch input and lock-after evidence drift", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const { service, sourceResult, draftResult } = await createSubmittedCanonicalWage(
+      first,
+      fixture,
+      canonicalWageSourceInput(fixture),
+      "100000"
+    );
+    await service.confirm(fixture.confirmerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    });
+    const evidenceFileId = `${fixture.prefix}-full-reversal-drift-evidence`;
+    await first.fileObject.create({
+      data: {
+        id: evidenceFileId,
+        bucket: "local-test",
+        objectKey: `${fixture.prefix}/full-reversal-drift.json`,
+        originalName: "全额冲销漂移证据.json",
+        mimeType: "application/json",
+        sizeBytes: 1,
+        uploadedByUserId: fixture.preparerUserId,
+        contentSha256: "a".repeat(64),
+        storageStatus: "active"
+      }
+    });
+    const zeroLine = canonicalWagePersonLine(fixture, "0");
+    const target = {
+      statementId: draftResult.statementId,
+      priorConfirmedVersionId: draftResult.versionId,
+      priorConfirmedRevision: 1,
+      priorSourceVersionId: sourceResult.id
+    };
+    const fullInput: WageSourceInput = {
+      ...canonicalWageSourceForAmount(fixture, "0", "full-reversal-drift"),
+      sourcePurpose: "full_reversal",
+      fullReversalTarget: target,
+      evidenceFileId,
+      approvedPersonLines: [zeroLine]
+    };
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...fullInput,
+      idempotencyKey: randomUUID(),
+      fullReversalTarget: undefined
+    })).rejects.toThrow("全额冲销批准来源必须绑定目标工资单和紧邻已确认版本");
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...fullInput,
+      idempotencyKey: randomUUID(),
+      employmentCompanyId: `${fixture.companyId}-other`,
+      approvedPersonLines: [{ ...zeroLine, employmentCompanyId: `${fixture.companyId}-other` }]
+    })).rejects.toThrow("全额冲销目标工资单的公司、月份或当前修订已漂移");
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...fullInput,
+      idempotencyKey: randomUUID(),
+      wageMonth: "2026-09",
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-30",
+      approvedPersonLines: [{
+        ...zeroLine,
+        employmentPeriodStart: "2026-09-01",
+        employmentPeriodEnd: "2026-09-30",
+        projectAllocations: zeroLine.projectAllocations.map((allocation) => ({ ...allocation, serviceMonth: "2026-09" }))
+      }]
+    })).rejects.toThrow("全额冲销目标工资单的公司、月份或当前修订已漂移");
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...fullInput,
+      idempotencyKey: randomUUID(),
+      fullReversalTarget: { ...target, statementId: `${target.statementId}-other` }
+    })).rejects.toThrow("工资承担单不存在");
+
+    const sourcesBeforeBatch = await observer.wageApprovedSourceVersion.count();
+    await expect(service.createApprovedSource(fixture.preparerUserId, {
+      ...fullInput,
+      idempotencyKey: randomUUID(),
+      externalReference: `${fullInput.externalReference}-invalid-batch`,
+      approvedPersonLines: [zeroLine, zeroLine]
+    })).rejects.toThrow();
+    await expect(observer.wageApprovedSourceVersion.count()).resolves.toBe(sourcesBeforeBatch);
+
+    const source = await service.createApprovedSource(fixture.preparerUserId, fullInput);
+    if (!isSourceCreationResult(source)) throw new Error("漂移测试全额冲销来源未返回正式来源标识");
+    const revisionIdempotencyKey = randomUUID();
+    let revisionAttempt: Promise<unknown> | undefined;
+    await first.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "FileObject" WHERE "id" = ${evidenceFileId} FOR UPDATE
+      `);
+      revisionAttempt = wageService(second).createRevision(fixture.preparerUserId, draftResult.statementId, {
+        sourceVersionId: source.id,
+        idempotencyKey: revisionIdempotencyKey,
+        expectedRevision: 1,
+        disposition: "reversal",
+        wageMonth: fixture.wageMonth,
+        sourceTotalCents: "0",
+        personLines: [zeroLine]
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await tx.fileObject.update({
+        where: { id: evidenceFileId },
+        data: { contentSha256: "b".repeat(64) }
+      });
+    });
+    if (!revisionAttempt) throw new Error("全额冲销锁后漂移测试未启动");
+    await expect(revisionAttempt).rejects.toThrow("外部批准工资资料证据已失效或校验值漂移");
+    await expect(observer.wageStatement.findUniqueOrThrow({
+      where: { id: draftResult.statementId },
+      select: { currentRevision: true }
+    })).resolves.toEqual({ currentRevision: 1 });
+    await expect(observer.wageCommandReceipt.count({
+      where: { idempotencyKey: revisionIdempotencyKey }
+    })).resolves.toBe(0);
   });
 });
 
@@ -1333,6 +1726,7 @@ function canonicalWageSourceInput(fixture: Awaited<ReturnType<typeof seedCanonic
   return {
     idempotencyKey: randomUUID(),
     expectedRevision: 0,
+    sourcePurpose: "ordinary" as const,
     employmentCompanyId: fixture.companyId,
     wageMonth: fixture.wageMonth,
     periodStart: "2026-08-01",
@@ -1445,6 +1839,7 @@ function approvedSource(
 function approvedSourceBase(id: string, evidenceFileId: string) {
   return {
     id,
+    sourcePurpose: "ordinary",
     employmentCompanyId: `wage-company-${randomUUID()}`,
     wageMonth: "2026-08",
     periodStart: new Date("2026-08-01T00:00:00.000Z"),
