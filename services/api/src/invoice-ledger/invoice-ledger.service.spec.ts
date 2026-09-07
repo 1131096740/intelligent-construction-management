@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import type { CreateInvoiceExceptionConfirmationDto } from "./dto/create-invoice-exception-confirmation.dto";
 import type { CreateNoInvoiceConfirmationDto } from "./dto/create-no-invoice-confirmation.dto";
 import type { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoice.dto";
@@ -286,6 +287,9 @@ function createHarness(options?: {
   procurementStatus?: string;
   globalRoles?: Partial<Record<string, RoleKey[]>>;
   projectRoles?: Partial<Record<string, RoleKey[]>>;
+  projectRolesByProject?: Partial<
+    Record<string, Partial<Record<string, RoleKey[]>>>
+  >;
   activeUsers?: Partial<Record<string, boolean>>;
   fileOwners?: Record<string, string>;
   approvalDelegations?: Array<{
@@ -797,13 +801,16 @@ function createHarness(options?: {
                   "global",
                   globalRoles[where.userId] ?? []
                 )
-              : where.projectId === procurement.projectId
-                ? positionRows(
-                    where.userId,
-                    "project",
-                    projectRoles[where.userId] ?? []
-                  )
-                : []
+              : positionRows(
+                  where.userId,
+                  "project",
+                  options?.projectRolesByProject?.[where.projectId]?.[
+                    where.userId
+                  ] ??
+                    (where.projectId === procurement.projectId
+                      ? projectRoles[where.userId] ?? []
+                      : [])
+                )
           )
       )
     },
@@ -888,12 +895,14 @@ function createHarness(options?: {
   const closure = {
     recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
   };
+  const companyRoles = new CompanyRoleResolverService(prisma as never);
   const service = new InvoiceLedgerService(
     prisma as never,
     audit as never,
     files as never,
     pilot as never,
-    closure as never
+    closure as never,
+    companyRoles
   );
 
   return {
@@ -901,6 +910,7 @@ function createHarness(options?: {
     prisma,
     tx,
     audit,
+    companyRoles,
     files,
     procurement,
     receipt,
@@ -1769,7 +1779,6 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       expectedRevision: 1,
       confirmRepair: true
     };
-
     await expect(
       harness.service.resolveEvidenceRepairImpact(firstImpactId, ACTORS.financeDirector, command)
     ).resolves.toMatchObject({ replayed: false });
@@ -1877,6 +1886,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
   });
 
   it("binds an evidence repair to one current exact-scope clearing confirmation delegation", async () => {
+    const delegatorProjectRoles: RoleKey[] = [];
     const approvalDelegations = [{
       fromUserId: ACTORS.financeDirector,
       toUserId: ACTORS.otherHandler,
@@ -1891,7 +1901,10 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
         "global-invoice-file-2": ACTORS.globalFinanceStaff
       },
       globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] },
-      projectRoles: { [ACTORS.otherHandler]: [] },
+      projectRoles: {
+        [ACTORS.otherHandler]: [],
+        [ACTORS.financeDirector]: delegatorProjectRoles
+      },
       approvalDelegations
     });
     const invalidated = await harness.service.createGlobalInvoice(
@@ -1939,6 +1952,14 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       delegatorUserId: ACTORS.financeDirector,
       confirmRepair: true
     };
+    const rootResolver = jest.spyOn(
+      harness.companyRoles,
+      "resolveActiveRoleScopes"
+    );
+    const transactionResolver = jest.spyOn(
+      harness.companyRoles,
+      "resolveActiveRoleScopesInTransaction"
+    );
 
     await expect(
       harness.service.resolveEvidenceRepairImpact(
@@ -1955,6 +1976,28 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       resourceId: "case-1",
       enabled: true
     });
+    const beforeGlobalOnlyAttempt = {
+      revision: harness.invoiceRecords.find((row) => row.id === invalidated.id)!.revision,
+      resolutionCount: harness.evidenceRepairResolutions.length,
+      auditCount: harness.audit.record.mock.calls.length
+    };
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(
+        harness.evidenceRepairImpacts[0]!.id as string,
+        ACTORS.otherHandler,
+        command
+      )
+    ).rejects.toThrow("只有财务主管可以复核或冲销票据事实");
+    expect(
+      harness.invoiceRecords.find((row) => row.id === invalidated.id)!.revision
+    ).toBe(beforeGlobalOnlyAttempt.revision);
+    expect(harness.evidenceRepairResolutions).toHaveLength(
+      beforeGlobalOnlyAttempt.resolutionCount
+    );
+    expect(harness.audit.record).toHaveBeenCalledTimes(
+      beforeGlobalOnlyAttempt.auditCount
+    );
+    delegatorProjectRoles.push("finance_director");
     await expect(
       harness.service.resolveEvidenceRepairImpact(
         harness.evidenceRepairImpacts[0]!.id as string,
@@ -1978,6 +2021,12 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
         })
       })
     );
+    expect(transactionResolver).toHaveBeenCalledWith(
+      harness.tx,
+      ACTORS.financeDirector,
+      "project-1"
+    );
+    expect(rootResolver).not.toHaveBeenCalled();
     approvalDelegations[1]!.enabled = false;
     await expect(
       harness.service.resolveEvidenceRepairImpact(
@@ -2513,6 +2562,166 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     expect(projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ projectId: "project-1", companyEntityId: "company-entity-1" })
     }));
+  });
+
+  it("revalidates delegated clearing allocation and reversal authority from the exact project inside the write transaction", async () => {
+    const exactProjectRoles: RoleKey[] = [];
+    const rows: Array<Record<string, unknown>> = [];
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      },
+      projectRoles: {
+        [ACTORS.otherHandler]: [],
+        [ACTORS.financeDirector]: exactProjectRoles
+      },
+      projectRolesByProject: {
+        "wrong-project": {
+          [ACTORS.financeDirector]: ["finance_director"]
+        }
+      },
+      approvalDelegations: [{
+        fromUserId: ACTORS.financeDirector,
+        toUserId: ACTORS.otherHandler,
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_case",
+        resourceId: "case-1",
+        enabled: true
+      }]
+    });
+    const rootResolver = jest.spyOn(
+      harness.companyRoles,
+      "resolveActiveRoleScopes"
+    );
+    const transactionResolver = jest.spyOn(
+      harness.companyRoles,
+      "resolveActiveRoleScopesInTransaction"
+    );
+    const invoice = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    Object.assign(harness.tx, {
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          projectId: "project-1"
+        })
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          clearingCaseId: "case-1",
+          amountCents: 6000n,
+          evidenceLevel: "B",
+          attestation: { id: "attestation-1" },
+          confirmation: { id: "confirmation-1" }
+        })
+      },
+      projectParticipatingCompany: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-company-1" })
+      },
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockImplementation(
+          ({ where }: { where: { idempotencyKey?: string; id?: string } }) =>
+            Promise.resolve(rows.find((row) =>
+              row.idempotencyKey === where.idempotencyKey || row.id === where.id
+            ) ?? null)
+        ),
+        findMany: jest.fn().mockImplementation(() => Promise.resolve(rows)),
+        aggregate: jest.fn().mockImplementation(
+          ({ where }: { where: { reversesAllocationId?: string | null } }) =>
+            Promise.resolve({
+              _sum: {
+                amountCents: rows
+                  .filter((row) => row.reversesAllocationId === where.reversesAllocationId)
+                  .reduce((sum, row) => sum + (row.amountCents as bigint), 0n)
+              }
+            })
+        ),
+        create: jest.fn().mockImplementation(
+          ({ data }: { data: Record<string, unknown> }) => {
+            const row = {
+              id: `clearing-allocation-${rows.length + 1}`,
+              reversesAllocationId: null,
+              ...data
+            };
+            rows.push(row);
+            return Promise.resolve(row);
+          }
+        )
+      }
+    });
+    const allocationInput = {
+      invoiceRecordId: invoice.id,
+      clearingCaseId: "case-1",
+      clearingEventVersionId: "version-1",
+      amountCents: "6000",
+      idempotencyKey: uuidKey(101),
+      expectedRevision: 0,
+      delegatorUserId: ACTORS.financeDirector
+    };
+    const auditCountBeforeAllocation = harness.audit.record.mock.calls.length;
+
+    await expect(
+      harness.service.createClearingAllocation(
+        ACTORS.otherHandler,
+        allocationInput
+      )
+    ).rejects.toThrow("只有财务主管可以复核或冲销票据事实");
+    expect(rows).toHaveLength(0);
+    expect(harness.invoiceRecords[0]?.revision).toBe(0);
+    expect(harness.audit.record).toHaveBeenCalledTimes(auditCountBeforeAllocation);
+
+    exactProjectRoles.push("finance_director");
+    await expect(
+      harness.service.createClearingAllocation(
+        ACTORS.otherHandler,
+        allocationInput
+      )
+    ).resolves.toMatchObject({ replayed: false });
+    expect(rows).toHaveLength(1);
+    expect(harness.invoiceRecords[0]?.revision).toBe(1);
+
+    exactProjectRoles.splice(0);
+    const auditCountBeforeReversal = harness.audit.record.mock.calls.length;
+    const reversalInput = {
+      amountCents: "1000",
+      structuredReasonCode: "allocation_correction",
+      idempotencyKey: uuidKey(102),
+      expectedRevision: 1,
+      delegatorUserId: ACTORS.financeDirector,
+      confirmReversal: true
+    };
+    await expect(
+      harness.service.reverseClearingAllocation(
+        rows[0]!.id as string,
+        ACTORS.otherHandler,
+        reversalInput
+      )
+    ).rejects.toThrow("只有财务主管可以复核或冲销票据事实");
+    expect(rows).toHaveLength(1);
+    expect(harness.invoiceRecords[0]?.revision).toBe(1);
+    expect(harness.audit.record).toHaveBeenCalledTimes(auditCountBeforeReversal);
+
+    exactProjectRoles.push("finance_director");
+    await expect(
+      harness.service.reverseClearingAllocation(
+        rows[0]!.id as string,
+        ACTORS.otherHandler,
+        reversalInput
+      )
+    ).resolves.toMatchObject({ replayed: false });
+    expect(rows).toHaveLength(2);
+    expect(harness.invoiceRecords[0]?.revision).toBe(2);
+    expect(transactionResolver).toHaveBeenCalledWith(
+      harness.tx,
+      ACTORS.financeDirector,
+      "project-1"
+    );
+    expect(rootResolver).not.toHaveBeenCalled();
   });
 
   it("requires a structured reason and B-level dual-confirmed version for a clearing amount difference", async () => {

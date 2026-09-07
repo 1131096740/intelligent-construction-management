@@ -17,6 +17,7 @@ import {
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
 import {
   missingOperatingSourceReplayService,
@@ -268,6 +269,7 @@ export class InvoiceLedgerService {
     private readonly files: FileService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly closure: SpotProcurementClosureService,
+    private readonly companyRoles: CompanyRoleResolverService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService()
@@ -4011,11 +4013,24 @@ export class InvoiceLedgerService {
     ) {
       throw new ForbiddenException("清算确认委托不存在、已失效或与当前资源不匹配");
     }
-    await this.requireFinanceDirector(
-      tx,
-      requestedDelegatorUserId,
-      projectId
-    );
+    let delegatedProjectRoles: RoleKey[];
+    try {
+      delegatedProjectRoles =
+        await this.companyRoles.resolveActiveRoleScopesInTransaction(
+          tx,
+          requestedDelegatorUserId,
+          projectId
+        );
+    } catch {
+      throw new ForbiddenException(
+        "只有财务主管可以复核或冲销票据事实"
+      );
+    }
+    if (!delegatedProjectRoles.includes("finance_director")) {
+      throw new ForbiddenException(
+        "只有财务主管可以复核或冲销票据事实"
+      );
+    }
     return requestedDelegatorUserId;
   }
 

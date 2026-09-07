@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { FileModule } from "../file/file.module";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
@@ -14,6 +15,7 @@ import { VatRateOptionService } from "./vat-rate-option.service";
   imports: [
     DatabaseModule,
     AuditModule,
+    AuthModule,
     FileModule,
     OperatingLedgerModule,
     SpotProcurementClosureModule
