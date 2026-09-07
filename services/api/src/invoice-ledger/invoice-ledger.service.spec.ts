@@ -46,6 +46,8 @@ type TestInvoiceRecord = {
   totalAmountCents: bigint;
   allocatableAmountCents: bigint;
   allocatedAmountCents: bigint;
+  revision: number;
+  taxRateSnapshot: Prisma.Decimal | null;
   status: string;
   fileId: string;
   uploadedByUserId: string;
@@ -156,6 +158,10 @@ const FILTER_KEYS = [
   "id",
   "invoiceRecordId",
   "invoiceLineId",
+  "lifecycleEventId",
+  "allocationId",
+  "impactId",
+  "replacementInvoiceRecordId",
   "sourceBusinessType",
   "sourceProcurementId",
   "procurementId",
@@ -165,7 +171,8 @@ const FILTER_KEYS = [
   "procurementLineId",
   "paymentId",
   "invalidatedAt",
-  "status"
+  "status",
+  "revision"
 ] as const;
 
 function filterRows<T extends object>(
@@ -235,10 +242,16 @@ function createGlobalInvoiceInput(overrides: Record<string, unknown> = {}) {
     totalAmountCents: "6000",
     taxExclusiveAmountCents: "5309",
     taxAmountCents: "691",
+    taxRateSnapshot: "13.000000",
     fileId: "global-invoice-file-1",
-    idempotencyKey: "global-invoice-key-1",
+    idempotencyKey: uuidKey(1),
+    expectedRevision: 0,
     ...overrides
   };
+}
+
+function uuidKey(index: number) {
+  return `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 }
 
 function createNoInvoiceInput(
@@ -275,6 +288,14 @@ function createHarness(options?: {
   projectRoles?: Partial<Record<string, RoleKey[]>>;
   activeUsers?: Partial<Record<string, boolean>>;
   fileOwners?: Record<string, string>;
+  approvalDelegations?: Array<{
+    fromUserId: string;
+    toUserId: string;
+    actionKey: string;
+    resourceType: string;
+    resourceId: string;
+    enabled?: boolean;
+  }>;
 }) {
   const lineSeeds = options?.lines ?? DEFAULT_LINES;
   const paymentSeeds = options?.payments ?? [
@@ -367,6 +388,8 @@ function createHarness(options?: {
   const noInvoices: TestConfirmation[] = [];
   const exceptions: TestConfirmation[] = [];
   const lifecycleEvents: Array<Record<string, unknown>> = [];
+  const evidenceRepairImpacts: Array<Record<string, unknown>> = [];
+  const evidenceRepairResolutions: Array<Record<string, unknown>> = [];
   let invoiceSequence = 0;
   let invoiceLineSequence = 0;
   let allocationSequence = 0;
@@ -396,11 +419,16 @@ function createHarness(options?: {
     "proof-file-2": ACTORS.handler,
     ...options?.fileOwners
   };
+  const approvalDelegations = options?.approvalDelegations ?? [];
 
   const sqlRows = (query: unknown) => {
     const text = sqlText(query);
     const values = sqlValues(query);
     if (text.includes('FROM "InvoiceRecord"')) {
+      if (text.includes('WHERE "id" =')) {
+        const byId = invoiceRecords.find((candidate) => candidate.id === values[0]);
+        return byId ? [{ ...byId }] : [];
+      }
       const identityKey = values[0];
       const record = invoiceRecords.find(
         (candidate) => candidate.identityKey === identityKey
@@ -559,11 +587,13 @@ function createHarness(options?: {
 
   const invoiceRecordModel = {
     create: jest.fn().mockImplementation(
-      ({ data }: { data: Omit<TestInvoiceRecord, "id" | "allocatedAmountCents" | "status" | "createdAt"> }) => {
+      ({ data }: { data: Omit<TestInvoiceRecord, "id" | "allocatedAmountCents" | "revision" | "taxRateSnapshot" | "status" | "createdAt"> & Partial<Pick<TestInvoiceRecord, "revision" | "taxRateSnapshot">> }) => {
         const record: TestInvoiceRecord = {
           id: `invoice-${++invoiceSequence}`,
           ...data,
           allocatedAmountCents: 0n,
+          revision: data.revision ?? 0,
+          taxRateSnapshot: data.taxRateSnapshot ?? null,
           status: "active",
           createdAt: new Date("2026-07-17T08:00:00.000Z")
         };
@@ -587,6 +617,18 @@ function createHarness(options?: {
         if (!record) throw new Error("missing invoice record in test");
         Object.assign(record, data);
         return Promise.resolve({ ...record });
+      }
+    ),
+    updateMany: jest.fn().mockImplementation(
+      ({ where, data }: { where: { id: string; revision?: number }; data: { revision?: { increment: number } } }) => {
+        const record = invoiceRecords.find((row) =>
+          row.id === where.id && (where.revision === undefined || row.revision === where.revision)
+        );
+        if (!record) return Promise.resolve({ count: 0 });
+        if (data.revision && typeof data.revision === "object" && "increment" in data.revision) {
+          record.revision += data.revision.increment;
+        }
+        return Promise.resolve({ count: 1 });
       }
     )
   };
@@ -661,9 +703,47 @@ function createHarness(options?: {
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { const event = { id: `invoice-lifecycle-${lifecycleEvents.length + 1}`, ...data }; lifecycleEvents.push(event); return Promise.resolve(event); })
     },
     invoiceRedAllocationReference: {
+      findMany: jest.fn().mockImplementation(
+        ({ where }: { where: { blueInvoiceAllocationId: { in: string[] } } }) =>
+          Promise.resolve(
+            redAllocationReferences.filter((row) =>
+              where.blueInvoiceAllocationId.in.includes(
+                row.blueInvoiceAllocationId as string
+              )
+            )
+          )
+      ),
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
         const row = { id: `invoice-red-reference-${redAllocationReferences.length + 1}`, ...data };
         redAllocationReferences.push(row);
+        return Promise.resolve(row);
+      })
+    },
+    invoiceEvidenceRepairImpact: {
+      findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(evidenceRepairImpacts.find((row) => row.id === where.id) ?? null)
+      ),
+      findMany: jest.fn().mockImplementation(({ where }: { where?: Record<string, unknown> } = {}) =>
+        Promise.resolve(filterRows(evidenceRepairImpacts, where))
+      ),
+      create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: `invoice-evidence-impact-${evidenceRepairImpacts.length + 1}`, ...data };
+        evidenceRepairImpacts.push(row);
+        return Promise.resolve(row);
+      })
+    },
+    invoiceEvidenceRepairResolution: {
+      findUnique: jest.fn().mockImplementation(({ where }: { where: { idempotencyKey?: string; impactId?: string } }) =>
+        Promise.resolve(evidenceRepairResolutions.find((row) =>
+          row.idempotencyKey === where.idempotencyKey || row.impactId === where.impactId
+        ) ?? null)
+      ),
+      findMany: jest.fn().mockImplementation(({ where }: { where?: Record<string, unknown> } = {}) =>
+        Promise.resolve(filterRows(evidenceRepairResolutions, where))
+      ),
+      create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: `invoice-evidence-resolution-${evidenceRepairResolutions.length + 1}`, ...data };
+        evidenceRepairResolutions.push(row);
         return Promise.resolve(row);
       })
     },
@@ -674,6 +754,32 @@ function createHarness(options?: {
             activeUsers[where.id] === undefined
               ? null
               : { id: where.id, isActive: activeUsers[where.id] }
+          )
+      ),
+      findMany: jest.fn().mockImplementation(
+        ({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            where.id.in.flatMap((id) =>
+              activeUsers[id] === undefined
+                ? []
+                : [{ id, isActive: activeUsers[id] }]
+            )
+          )
+      )
+    },
+    approvalDelegation: {
+      findMany: jest.fn().mockImplementation(
+        ({ where }: { where: Record<string, unknown> }) =>
+          Promise.resolve(
+            approvalDelegations
+              .filter((row) =>
+                row.toUserId === where.toUserId &&
+                row.actionKey === where.actionKey &&
+                row.resourceType === where.resourceType &&
+                row.resourceId === where.resourceId &&
+                (row.enabled ?? true) === where.enabled
+              )
+              .map((row) => ({ fromUserId: row.fromUserId }))
           )
       )
     },
@@ -805,7 +911,9 @@ function createHarness(options?: {
     noInvoices,
     exceptions,
     lifecycleEvents,
-    redAllocationReferences
+    redAllocationReferences,
+    evidenceRepairImpacts,
+    evidenceRepairResolutions
   };
 }
 
@@ -1350,6 +1458,60 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     await expect(harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput({ sellerName: "供应商乙" }))).rejects.toThrow("幂等键已用于不同的全局发票请求");
   });
 
+  it("rejects a non-UUIDv4 global invoice idempotency key before any write", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+
+    await expect(
+      harness.service.createGlobalInvoice(
+        ACTORS.globalFinanceStaff,
+        createGlobalInvoiceInput({ idempotencyKey: "global-invoice-key-legacy" })
+      )
+    ).rejects.toThrow("幂等键必须为 UUIDv4");
+    expect(harness.invoiceRecords).toHaveLength(0);
+  });
+
+  it("requires revision zero when creating a new global invoice aggregate", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+
+    await expect(
+      harness.service.createGlobalInvoice(
+        ACTORS.globalFinanceStaff,
+        createGlobalInvoiceInput({ expectedRevision: 1 })
+      )
+    ).rejects.toThrow("新建发票的预期版本必须为 0");
+    expect(harness.invoiceRecords).toHaveLength(0);
+  });
+
+  it("requires and preserves the fixed-precision tax-rate snapshot supplied on the invoice", async () => {
+    const options = {
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff" as const] }
+    };
+    const missing = createHarness(options);
+    await expect(
+      missing.service.createGlobalInvoice(
+        ACTORS.globalFinanceStaff,
+        createGlobalInvoiceInput({ taxRateSnapshot: undefined })
+      )
+    ).rejects.toThrow("请填写票面税率快照");
+    expect(missing.invoiceRecords).toHaveLength(0);
+
+    const harness = createHarness(options);
+    const created = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput({ taxRateSnapshot: "13.000000" })
+    );
+    expect(
+      harness.invoiceRecords.find((record) => record.id === created.id)?.taxRateSnapshot?.toFixed(6)
+    ).toBe("13.000000");
+  });
+
   it("uses voucher type, issuer tax id, and leading-zero external identifier as an other controlled voucher identity", async () => {
     const harness = createHarness({
       fileOwners: {
@@ -1375,13 +1537,13 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     await expect(harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, {
       ...other,
       fileId: "global-invoice-file-2",
-      idempotencyKey: "global-invoice-key-other-2",
+      idempotencyKey: uuidKey(2),
       voucherType: "cash_receipt"
     })).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, {
       ...other,
       fileId: "global-invoice-file-2",
-      idempotencyKey: "global-invoice-key-other-3"
+      idempotencyKey: uuidKey(3)
     })).rejects.toThrow("该发票身份已用于不同的发票事实");
   });
 
@@ -1399,13 +1561,354 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
       globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
     });
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
+    });
     const created = await harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
-    const command = { reasonCode: "invoice_voided", idempotencyKey: "global-void-key-1" };
+    const command = {
+      reasonCode: "invoice_voided",
+      idempotencyKey: uuidKey(9),
+      expectedRevision: 0,
+      confirmVoid: true
+    };
     await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, command)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, command)).resolves.toMatchObject({ replayed: true });
     expect(harness.lifecycleEvents).toHaveLength(1);
     expect(harness.lifecycleEvents[0]).toMatchObject({ invoiceRecordId: created.id, kind: "void" });
     await expect(harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, { ...command, reasonCode: "another_reason" })).rejects.toThrow("幂等键已用于不同的发票作废请求");
+  });
+
+  it("rejects a stale global invoice revision before appending a lifecycle fact", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const created = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+
+    await expect(
+      harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, {
+        reasonCode: "invoice_voided",
+        idempotencyKey: uuidKey(10),
+        expectedRevision: 1,
+        confirmVoid: true
+      })
+    ).rejects.toThrow("发票版本已变化，请刷新后重试");
+    expect(harness.lifecycleEvents).toHaveLength(0);
+  });
+
+  it("derives append-only evidence-repair impacts for every still-effective allocation on void", async () => {
+    const harness = createHarness({
+      fileOwners: { "global-invoice-file-1": ACTORS.globalFinanceStaff },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const created = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const allocationRows: Array<Record<string, unknown>> = [
+      { id: "allocation-a", invoiceRecordId: created.id, projectId: "project-1", clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: 4000n, reversesAllocationId: null },
+      { id: "allocation-a-reversal", invoiceRecordId: created.id, projectId: "project-1", clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: 1000n, reversesAllocationId: "allocation-a" },
+      { id: "allocation-b", invoiceRecordId: created.id, projectId: "project-2", clearingCaseId: "case-2", clearingEventVersionId: "version-2", amountCents: 2000n, reversesAllocationId: null }
+    ];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findMany: jest.fn().mockImplementation(() => Promise.resolve(allocationRows.map((row) => ({ ...row }))))
+      }
+    });
+
+    await harness.service.voidGlobalInvoice(created.id, ACTORS.financeDirector, {
+      reasonCode: "invoice_voided",
+      idempotencyKey: uuidKey(31),
+      expectedRevision: 0,
+      confirmVoid: true
+    });
+
+    expect(harness.evidenceRepairImpacts).toEqual([
+      expect.objectContaining({
+        invoiceRecordId: created.id,
+        allocationId: "allocation-a",
+        projectId: "project-1",
+        clearingCaseId: "case-1",
+        clearingEventVersionId: "version-1",
+        invalidatedAmountCents: 3000n
+      }),
+      expect.objectContaining({
+        invoiceRecordId: created.id,
+        allocationId: "allocation-b",
+        projectId: "project-2",
+        clearingCaseId: "case-2",
+        clearingEventVersionId: "version-2",
+        invalidatedAmountCents: 2000n
+      })
+    ]);
+    expect(allocationRows).toHaveLength(3);
+  });
+
+  it("resolves one pending evidence impact append-only while leaving sibling impacts pending", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-2": ACTORS.globalFinanceStaff
+      },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const invalidated = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const allocationRows = [
+      { id: "repair-allocation-a", invoiceRecordId: invalidated.id, projectId: "project-1", clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: 3000n, reversesAllocationId: null },
+      { id: "repair-allocation-b", invoiceRecordId: invalidated.id, projectId: "project-1", clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: 3000n, reversesAllocationId: null }
+    ];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findMany: jest.fn().mockResolvedValue(allocationRows)
+      }
+    });
+    await harness.service.voidGlobalInvoice(invalidated.id, ACTORS.financeDirector, {
+      reasonCode: "invoice_voided",
+      idempotencyKey: uuidKey(32),
+      expectedRevision: 0,
+      confirmVoid: true
+    });
+    const replacement = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput({
+        invoiceCode: "GLOBAL-REPLACEMENT-CODE-1",
+        invoiceNumber: "GLOBAL-REPLACEMENT-NO-1",
+        fileId: "global-invoice-file-2",
+        idempotencyKey: uuidKey(33)
+      })
+    );
+    const firstImpactId = harness.evidenceRepairImpacts[0]?.id as string;
+    const command = {
+      replacementInvoiceRecordId: replacement.id,
+      replacementFileId: "global-invoice-file-2",
+      reasonCode: "replacement_invoice_verified",
+      idempotencyKey: uuidKey(34),
+      expectedRevision: 1,
+      confirmRepair: true
+    };
+
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(firstImpactId, ACTORS.financeDirector, command)
+    ).resolves.toMatchObject({ replayed: false });
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(firstImpactId, ACTORS.financeDirector, command)
+    ).resolves.toMatchObject({ replayed: true });
+    expect(harness.evidenceRepairResolutions).toHaveLength(1);
+    expect(harness.evidenceRepairResolutions[0]).toMatchObject({
+      impactId: firstImpactId,
+      invalidatedInvoiceRecordId: invalidated.id,
+      replacementInvoiceRecordId: replacement.id,
+      replacementFileId: "global-invoice-file-2",
+      expectedRevision: 1
+    });
+    expect(harness.evidenceRepairImpacts).toHaveLength(2);
+    expect(harness.evidenceRepairResolutions.some((row) =>
+      row.impactId === harness.evidenceRepairImpacts[1]?.id
+    )).toBe(false);
+  });
+
+  it("rejects evidence repair above a replacement invoice cap without revision, resolution, or audit side effects", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-2": ACTORS.globalFinanceStaff
+      },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
+    });
+    const invalidated = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const allocationRows = [
+      { id: "cap-allocation-a", invoiceRecordId: invalidated.id, projectId: "project-1", clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: 3000n, reversesAllocationId: null },
+      { id: "cap-allocation-b", invoiceRecordId: invalidated.id, projectId: "project-1", clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: 3000n, reversesAllocationId: null }
+    ];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findMany: jest.fn().mockResolvedValue(allocationRows)
+      }
+    });
+    await harness.service.voidGlobalInvoice(
+      invalidated.id,
+      ACTORS.financeDirector,
+      {
+        reasonCode: "invoice_voided",
+        idempotencyKey: uuidKey(35),
+        expectedRevision: 0,
+        confirmVoid: true
+      }
+    );
+    const replacement = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput({
+        invoiceCode: "GLOBAL-CAP-REPLACEMENT-CODE",
+        invoiceNumber: "GLOBAL-CAP-REPLACEMENT-NO",
+        totalAmountCents: "5000",
+        taxExclusiveAmountCents: "4425",
+        taxAmountCents: "575",
+        fileId: "global-invoice-file-2",
+        idempotencyKey: uuidKey(36)
+      })
+    );
+    await harness.service.resolveEvidenceRepairImpact(
+      harness.evidenceRepairImpacts[0]!.id as string,
+      ACTORS.financeDirector,
+      {
+        replacementInvoiceRecordId: replacement.id,
+        replacementFileId: "global-invoice-file-2",
+        reasonCode: "replacement_invoice_verified",
+        idempotencyKey: uuidKey(37),
+        expectedRevision: 1,
+        confirmRepair: true
+      }
+    );
+    const beforeRejectedAttempt = {
+      revision: harness.invoiceRecords.find((row) => row.id === invalidated.id)!.revision,
+      resolutionCount: harness.evidenceRepairResolutions.length,
+      auditCount: harness.audit.record.mock.calls.length
+    };
+
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(
+        harness.evidenceRepairImpacts[1]!.id as string,
+        ACTORS.financeDirector,
+        {
+          replacementInvoiceRecordId: replacement.id,
+          replacementFileId: "global-invoice-file-2",
+          reasonCode: "replacement_invoice_verified",
+          idempotencyKey: uuidKey(38),
+          expectedRevision: 2,
+          confirmRepair: true
+        }
+      )
+    ).rejects.toThrow("替代发票累计修复金额超过票面含税额");
+    expect(
+      harness.invoiceRecords.find((row) => row.id === invalidated.id)!.revision
+    ).toBe(beforeRejectedAttempt.revision);
+    expect(harness.evidenceRepairResolutions).toHaveLength(
+      beforeRejectedAttempt.resolutionCount
+    );
+    expect(harness.audit.record).toHaveBeenCalledTimes(
+      beforeRejectedAttempt.auditCount
+    );
+  });
+
+  it("binds an evidence repair to one current exact-scope clearing confirmation delegation", async () => {
+    const approvalDelegations = [{
+      fromUserId: ACTORS.financeDirector,
+      toUserId: ACTORS.otherHandler,
+      actionKey: "clearing.confirm",
+      resourceType: "clearing_case",
+      resourceId: "another-case",
+      enabled: true
+    }];
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-2": ACTORS.globalFinanceStaff
+      },
+      globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] },
+      projectRoles: { [ACTORS.otherHandler]: [] },
+      approvalDelegations
+    });
+    const invalidated = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "delegated-repair-allocation",
+          invoiceRecordId: invalidated.id,
+          projectId: "project-1",
+          clearingCaseId: "case-1",
+          clearingEventVersionId: "version-1",
+          amountCents: 3000n,
+          reversesAllocationId: null
+        }])
+      }
+    });
+    await harness.service.voidGlobalInvoice(
+      invalidated.id,
+      ACTORS.financeDirector,
+      {
+        reasonCode: "invoice_voided",
+        idempotencyKey: uuidKey(39),
+        expectedRevision: 0,
+        confirmVoid: true
+      }
+    );
+    const replacement = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput({
+        invoiceCode: "GLOBAL-DELEGATED-REPLACEMENT-CODE",
+        invoiceNumber: "GLOBAL-DELEGATED-REPLACEMENT-NO",
+        fileId: "global-invoice-file-2",
+        idempotencyKey: uuidKey(40)
+      })
+    );
+    const command = {
+      replacementInvoiceRecordId: replacement.id,
+      replacementFileId: "global-invoice-file-2",
+      reasonCode: "replacement_invoice_verified",
+      idempotencyKey: uuidKey(41),
+      expectedRevision: 1,
+      delegatorUserId: ACTORS.financeDirector,
+      confirmRepair: true
+    };
+
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(
+        harness.evidenceRepairImpacts[0]!.id as string,
+        ACTORS.otherHandler,
+        command
+      )
+    ).rejects.toThrow("清算确认委托不存在、已失效或与当前资源不匹配");
+    approvalDelegations.push({
+      fromUserId: ACTORS.financeDirector,
+      toUserId: ACTORS.otherHandler,
+      actionKey: "clearing.confirm",
+      resourceType: "clearing_case",
+      resourceId: "case-1",
+      enabled: true
+    });
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(
+        harness.evidenceRepairImpacts[0]!.id as string,
+        ACTORS.otherHandler,
+        command
+      )
+    ).resolves.toMatchObject({ replayed: false });
+    expect(harness.evidenceRepairResolutions).toEqual([
+      expect.objectContaining({
+        actualActorUserId: ACTORS.otherHandler,
+        delegatorUserId: ACTORS.financeDirector
+      })
+    ]);
+    expect(harness.audit.record).toHaveBeenLastCalledWith(
+      harness.tx,
+      expect.objectContaining({
+        actorUserId: ACTORS.otherHandler,
+        metadata: expect.objectContaining({
+          actualActorUserId: ACTORS.otherHandler,
+          delegatorUserId: ACTORS.financeDirector
+        })
+      })
+    );
+    approvalDelegations[1]!.enabled = false;
+    await expect(
+      harness.service.resolveEvidenceRepairImpact(
+        harness.evidenceRepairImpacts[0]!.id as string,
+        ACTORS.otherHandler,
+        command
+      )
+    ).rejects.toThrow("清算确认委托不存在、已失效或与当前资源不匹配");
   });
 
   it("creates a red global invoice only from precise active blue allocations and records its immutable references", async () => {
@@ -1417,7 +1920,15 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"], [ACTORS.financeDirector]: ["finance_director"] }
     });
     const blue = await harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
-    const clearingAllocations: Array<Record<string, unknown>> = [{ id: "blue-clearing-allocation-1", invoiceRecordId: blue.id, reversesAllocationId: null, amountCents: 6000n }];
+    const clearingAllocations: Array<Record<string, unknown>> = [{
+      id: "blue-clearing-allocation-1",
+      invoiceRecordId: blue.id,
+      projectId: "project-1",
+      clearingCaseId: "case-1",
+      clearingEventVersionId: "version-1",
+      reversesAllocationId: null,
+      amountCents: 6000n
+    }];
     Object.assign(harness.tx, {
       invoiceClearingAllocation: {
         findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve(clearingAllocations.find((row) => row.id === where.id) ?? null)),
@@ -1425,16 +1936,256 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       }
     });
     const input = {
-      ...createGlobalInvoiceInput({ invoiceCode: "GLOBAL-RED-CODE-1", invoiceNumber: "GLOBAL-RED-NO-1", fileId: "global-invoice-file-2", idempotencyKey: "global-red-key-1" }),
+      ...createGlobalInvoiceInput({ invoiceCode: "GLOBAL-RED-CODE-1", invoiceNumber: "GLOBAL-RED-NO-1", fileId: "global-invoice-file-2", idempotencyKey: uuidKey(12) }),
       blueInvoiceRecordId: blue.id,
       reasonCode: "sales_return",
+      confirmRed: true,
       blueAllocationReferences: [{ blueInvoiceAllocationId: "blue-clearing-allocation-1", amountCents: "6000" }]
     };
     await expect(harness.service.createRedGlobalInvoice(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createRedGlobalInvoice(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
     expect(harness.lifecycleEvents).toEqual([expect.objectContaining({ invoiceRecordId: blue.id, kind: "red" })]);
     expect(harness.redAllocationReferences).toEqual([expect.objectContaining({ blueInvoiceAllocationId: "blue-clearing-allocation-1", amountCents: 6000n })]);
+    expect(harness.evidenceRepairImpacts).toEqual([expect.objectContaining({
+      invoiceRecordId: blue.id,
+      allocationId: "blue-clearing-allocation-1",
+      projectId: "project-1",
+      clearingCaseId: "case-1",
+      clearingEventVersionId: "version-1",
+      invalidatedAmountCents: 6000n
+    })]);
     await expect(harness.service.createRedGlobalInvoice(ACTORS.financeDirector, { ...input, reasonCode: "other_reason" })).rejects.toThrow("幂等键已用于不同的红字发票请求");
+  });
+
+  it("rejects a stale blue-invoice revision before creating red lifecycle facts", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-2": ACTORS.financeDirector
+      },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      }
+    });
+    const blue = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "blue-clearing-allocation-stale",
+          invoiceRecordId: blue.id,
+          reversesAllocationId: null,
+          amountCents: 6000n
+        }),
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    });
+
+    await expect(
+      harness.service.createRedGlobalInvoice(ACTORS.financeDirector, {
+        ...createGlobalInvoiceInput({
+          invoiceCode: "GLOBAL-RED-CODE-STALE",
+          invoiceNumber: "GLOBAL-RED-NO-STALE",
+          fileId: "global-invoice-file-2",
+          idempotencyKey: uuidKey(11),
+          expectedRevision: 1
+        }),
+        blueInvoiceRecordId: blue.id,
+        reasonCode: "sales_return",
+        confirmRed: true,
+        blueAllocationReferences: [{
+          blueInvoiceAllocationId: "blue-clearing-allocation-stale",
+          amountCents: "6000"
+        }]
+      })
+    ).rejects.toThrow("发票版本已变化，请刷新后重试");
+    expect(harness.lifecycleEvents).toHaveLength(0);
+    expect(harness.redAllocationReferences).toHaveLength(0);
+  });
+
+  it("rejects a second red lifecycle from consuming the same blue allocation", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-red-invoice-file-1": ACTORS.financeDirector,
+        "global-red-invoice-file-2": ACTORS.financeDirector
+      },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      }
+    });
+    const blue = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const blueAllocation = {
+      id: "blue-clearing-allocation-shared",
+      invoiceRecordId: blue.id,
+      reversesAllocationId: null,
+      amountCents: 6000n
+    };
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findUnique: jest.fn().mockResolvedValue(blueAllocation),
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    });
+    const first = {
+      ...createGlobalInvoiceInput({
+        invoiceCode: "GLOBAL-RED-CODE-A",
+        invoiceNumber: "GLOBAL-RED-NO-A",
+        fileId: "global-red-invoice-file-1",
+        idempotencyKey: uuidKey(13)
+      }),
+      blueInvoiceRecordId: blue.id,
+      reasonCode: "sales_return",
+      confirmRed: true,
+      blueAllocationReferences: [
+        {
+          blueInvoiceAllocationId: blueAllocation.id,
+          amountCents: "6000"
+        }
+      ]
+    };
+    await expect(
+      harness.service.createRedGlobalInvoice(ACTORS.financeDirector, first)
+    ).resolves.toMatchObject({ replayed: false });
+
+    await expect(
+      harness.service.createRedGlobalInvoice(ACTORS.financeDirector, {
+        ...first,
+        invoiceCode: "GLOBAL-RED-CODE-B",
+        invoiceNumber: "GLOBAL-RED-NO-B",
+        fileId: "global-red-invoice-file-2",
+        idempotencyKey: uuidKey(14),
+        expectedRevision: 1
+      })
+    ).rejects.toThrow("蓝字清算发票分配已被其他红字生命周期引用");
+    expect(harness.redAllocationReferences).toHaveLength(1);
+  });
+
+  it("shares a blue allocation cap between partial red references and ordinary reversals", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-red-invoice-file-partial": ACTORS.financeDirector
+      },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      }
+    });
+    const blue = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+    const rows: Array<Record<string, unknown>> = [
+      {
+        id: "blue-clearing-allocation-partial",
+        invoiceRecordId: blue.id,
+        projectId: "project-1",
+        clearingCaseId: "case-1",
+        clearingEventVersionId: "version-1",
+        reversesAllocationId: null,
+        amountCents: 6000n
+      }
+    ];
+    Object.assign(harness.tx, {
+      invoiceClearingAllocation: {
+        findUnique: jest
+          .fn()
+          .mockImplementation(({ where }: { where: { id?: string; idempotencyKey?: string } }) =>
+            Promise.resolve(
+              rows.find(
+                (row) =>
+                  row.id === where.id ||
+                  row.idempotencyKey === where.idempotencyKey
+              ) ?? null
+            )
+          ),
+        findMany: jest
+          .fn()
+          .mockImplementation(({ where }: { where: { reversesAllocationId?: { in: string[] } } }) =>
+            Promise.resolve(
+              rows.filter(
+                (row) =>
+                  row.reversesAllocationId &&
+                  where.reversesAllocationId?.in.includes(
+                    row.reversesAllocationId as string
+                  )
+              )
+            )
+          ),
+        aggregate: jest
+          .fn()
+          .mockImplementation(({ where }: { where: { reversesAllocationId: string } }) =>
+            Promise.resolve({
+              _sum: {
+                amountCents: rows
+                  .filter(
+                    (row) =>
+                      row.reversesAllocationId === where.reversesAllocationId
+                  )
+                  .reduce(
+                    (sum, row) => sum + (row.amountCents as bigint),
+                    0n
+                  )
+              }
+            })
+          ),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+            const row = {
+              id: `clearing-allocation-${rows.length + 1}`,
+              ...data
+            };
+            rows.push(row);
+            return Promise.resolve(row);
+          })
+      }
+    });
+
+    await expect(
+      harness.service.createRedGlobalInvoice(ACTORS.financeDirector, {
+        ...createGlobalInvoiceInput({
+          invoiceCode: "GLOBAL-RED-CODE-PARTIAL",
+          invoiceNumber: "GLOBAL-RED-NO-PARTIAL",
+          totalAmountCents: "4000",
+          taxExclusiveAmountCents: "4000",
+          taxAmountCents: "0",
+          fileId: "global-red-invoice-file-partial",
+          idempotencyKey: uuidKey(15)
+        }),
+        blueInvoiceRecordId: blue.id,
+        reasonCode: "sales_return",
+        confirmRed: true,
+        blueAllocationReferences: [
+          {
+            blueInvoiceAllocationId: "blue-clearing-allocation-partial",
+            amountCents: "4000"
+          }
+        ]
+      })
+    ).resolves.toMatchObject({ replayed: false });
+
+    await expect(
+      harness.service.reverseClearingAllocation(
+        "blue-clearing-allocation-partial",
+        ACTORS.financeDirector,
+        {
+          amountCents: "2001",
+          structuredReasonCode: "allocation_correction",
+          idempotencyKey: uuidKey(18),
+          expectedRevision: 1,
+          confirmReversal: true
+        }
+      )
+    ).rejects.toThrow("反向分配与红字引用累计超过原清算发票分配金额");
   });
 
   it("reissues a global invoice as a linked new fact and preserves company and direction", async () => {
@@ -1447,14 +2198,48 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
     });
     const original = await harness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
     const input = {
-      ...createGlobalInvoiceInput({ invoiceCode: "GLOBAL-REISSUE-CODE-1", invoiceNumber: "GLOBAL-REISSUE-NO-1", fileId: "global-invoice-file-3", idempotencyKey: "global-reissue-key-1" }),
+      ...createGlobalInvoiceInput({ invoiceCode: "GLOBAL-REISSUE-CODE-1", invoiceNumber: "GLOBAL-REISSUE-NO-1", fileId: "global-invoice-file-3", idempotencyKey: uuidKey(17) }),
       originalInvoiceRecordId: original.id,
-      reasonCode: "issued_with_wrong_name"
+      reasonCode: "issued_with_wrong_name",
+      confirmReissue: true
     };
     await expect(harness.service.createReissueGlobalInvoice(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createReissueGlobalInvoice(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
     expect(harness.lifecycleEvents).toEqual([expect.objectContaining({ invoiceRecordId: original.id, kind: "reissue" })]);
     await expect(harness.service.createReissueGlobalInvoice(ACTORS.financeDirector, { ...input, direction: "outbound" })).rejects.toThrow("幂等键已用于不同的发票重开请求");
+  });
+
+  it("rejects a stale original-invoice revision before creating reissue facts", async () => {
+    const harness = createHarness({
+      fileOwners: {
+        "global-invoice-file-1": ACTORS.globalFinanceStaff,
+        "global-invoice-file-3": ACTORS.financeDirector
+      },
+      globalRoles: {
+        [ACTORS.globalFinanceStaff]: ["finance_staff"],
+        [ACTORS.financeDirector]: ["finance_director"]
+      }
+    });
+    const original = await harness.service.createGlobalInvoice(
+      ACTORS.globalFinanceStaff,
+      createGlobalInvoiceInput()
+    );
+
+    await expect(
+      harness.service.createReissueGlobalInvoice(ACTORS.financeDirector, {
+        ...createGlobalInvoiceInput({
+          invoiceCode: "GLOBAL-REISSUE-CODE-STALE",
+          invoiceNumber: "GLOBAL-REISSUE-NO-STALE",
+          fileId: "global-invoice-file-3",
+          idempotencyKey: uuidKey(16),
+          expectedRevision: 1
+        }),
+        originalInvoiceRecordId: original.id,
+        reasonCode: "issued_with_wrong_name",
+        confirmReissue: true
+      })
+    ).rejects.toThrow("发票版本已变化，请刷新后重试");
+    expect(harness.lifecycleEvents).toHaveLength(0);
   });
 
   it("allocates a global invoice only to a confirmed clearing version, replays its idempotency key, and caps total evidence", async () => {
@@ -1476,14 +2261,21 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
         create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => { const row = { id: `clearing-allocation-${rows.length + 1}`, reversesAllocationId: null, ...data }; rows.push(row); return Promise.resolve(row); })
       }
     });
-    const input = { invoiceRecordId: invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-key-1" };
+    const input = { invoiceRecordId: invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: uuidKey(20), expectedRevision: 0 };
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, {
+      ...input,
+      idempotencyKey: uuidKey(19),
+      expectedRevision: 1
+    })).rejects.toThrow("发票版本已变化，请刷新后重试");
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: false });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, input)).resolves.toMatchObject({ replayed: true });
-    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", structuredReasonCode: "partial_reconciliation", idempotencyKey: "allocation-key-2" })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
-    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-1" })).resolves.toMatchObject({ replayed: false });
-    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-1" })).resolves.toMatchObject({ replayed: true });
-    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "2001", structuredReasonCode: "allocation_correction", idempotencyKey: "allocation-reversal-over-cap" })).rejects.toThrow("反向分配金额超过原清算发票分配的剩余有效金额");
-    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "4000", structuredReasonCode: "partial_reconciliation", idempotencyKey: "allocation-key-replacement" })).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "1", structuredReasonCode: "partial_reconciliation", idempotencyKey: uuidKey(21), expectedRevision: 1 })).rejects.toThrow("有效发票清算分配累计超过票面含税额");
+    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: uuidKey(22), expectedRevision: 0, confirmReversal: true })).rejects.toThrow("发票版本已变化，请刷新后重试");
+    const reversal = { amountCents: "4000", structuredReasonCode: "allocation_correction", idempotencyKey: uuidKey(23), expectedRevision: 1, confirmReversal: true };
+    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, reversal)).resolves.toMatchObject({ replayed: false });
+    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, reversal)).resolves.toMatchObject({ replayed: true });
+    await expect(harness.service.reverseClearingAllocation("clearing-allocation-1", ACTORS.financeDirector, { amountCents: "2001", structuredReasonCode: "allocation_correction", idempotencyKey: uuidKey(24), expectedRevision: 2, confirmReversal: true })).rejects.toThrow("反向分配金额超过原清算发票分配的剩余有效金额");
+    await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, { ...input, amountCents: "4000", structuredReasonCode: "partial_reconciliation", idempotencyKey: uuidKey(25), expectedRevision: 2 })).resolves.toMatchObject({ replayed: false });
     expect(projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ projectId: "project-1", companyEntityId: "company-entity-1" })
     }));
@@ -1505,7 +2297,8 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       clearingCaseId: "case-1",
       clearingEventVersionId: "version-1",
       amountCents: "6000",
-      idempotencyKey: "allocation-difference-key-1"
+      idempotencyKey: uuidKey(26),
+      expectedRevision: 0
     })).rejects.toThrow("清算额差异必须填写结构化原因并引用已完成 B 级双人确认的清算版本");
   });
 
@@ -1522,7 +2315,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       invoiceClearingAllocation: { findUnique: jest.fn().mockResolvedValue(null) }
     });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, {
-      invoiceRecordId: invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "1", idempotencyKey: "allocation-key-company-mismatch"
+      invoiceRecordId: invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "1", idempotencyKey: uuidKey(27), expectedRevision: 0
     })).rejects.toThrow("发票归属我方主体未在清算项目有效参与公司范围内");
   });
 
@@ -1535,7 +2328,7 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       invoiceClearingAllocation: { findUnique: jest.fn().mockResolvedValue(null) }
     });
     await expect(harness.service.createClearingAllocation(ACTORS.financeDirector, {
-      invoiceRecordId: projectInvoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-project-invoice"
+      invoiceRecordId: projectInvoice.invoice.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: uuidKey(28), expectedRevision: 0
     })).rejects.toThrow("清分分配只能使用全局蓝字或重开发票");
 
     const globalHarness = createHarness({
@@ -1543,14 +2336,22 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       globalRoles: { [ACTORS.globalFinanceStaff]: ["finance_staff"] }
     });
     const global = await globalHarness.service.createGlobalInvoice(ACTORS.globalFinanceStaff, createGlobalInvoiceInput());
-    await globalHarness.service.voidGlobalInvoice(global.id, ACTORS.financeDirector, { reasonCode: "invoice_voided", idempotencyKey: "void-before-allocation" });
+    Object.assign(globalHarness.tx, {
+      invoiceClearingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
+    });
+    await globalHarness.service.voidGlobalInvoice(global.id, ACTORS.financeDirector, {
+      reasonCode: "invoice_voided",
+      idempotencyKey: uuidKey(30),
+      expectedRevision: 0,
+      confirmVoid: true
+    });
     Object.assign(globalHarness.tx, {
       clearingCase: { findUnique: jest.fn().mockResolvedValue({ id: "case-1", projectId: "project-1" }) },
       clearingEventVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", clearingCaseId: "case-1", amountCents: 6000n, evidenceLevel: "B", attestation: { id: "attestation-1" }, confirmation: { id: "confirmation-1" } }) },
       invoiceClearingAllocation: { findUnique: jest.fn().mockResolvedValue(null) }
     });
     await expect(globalHarness.service.createClearingAllocation(ACTORS.financeDirector, {
-      invoiceRecordId: global.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: "allocation-voided-invoice"
+      invoiceRecordId: global.id, clearingCaseId: "case-1", clearingEventVersionId: "version-1", amountCents: "6000", idempotencyKey: uuidKey(29), expectedRevision: 1
     })).rejects.toThrow("该发票证据已进入待修复状态，不能新增清分分配");
   });
 

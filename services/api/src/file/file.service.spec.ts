@@ -1598,6 +1598,368 @@ describe("FileService", () => {
     }
   );
 
+  it("issues a short-lived ticket to the current active uploader of an exactly bound global invoice file", async () => {
+    const file = {
+      id: "global-invoice-file-1",
+      bucket: "private-local",
+      objectKey: "uploads/global-invoice-file-1.pdf",
+      originalName: "全局发票.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "uploader-1",
+      storageStatus: "active",
+      contentSha256: null
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      invoiceRecord: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "global-invoice-1",
+          projectId: null,
+          sourceBusinessType: "global_clearing_invoice"
+        }])
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: "uploader-1", isActive: true })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const spotAccess = {
+      resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied")
+    };
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage,
+      spotAccess as unknown as SpotProcurementAccessService
+    );
+
+    const ticket = await service.createDownloadTicket(file.id, {
+      actorUserId: "uploader-1",
+      downloadReason: "全局发票复核"
+    });
+
+    expect(ticket.downloadUrl).toContain("expiresAt=");
+    expect(spotAccess.resolveFileDownloadAccess).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      actorUserId: "uploader-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: file.id,
+      metadata: expect.objectContaining({
+        actualActorUserId: "uploader-1",
+        delegatorUserId: null,
+        invoiceRecordId: "global-invoice-1"
+      })
+    }));
+  });
+
+  it.each(["finance_staff", "finance_director"])(
+    "allows a current active global %s to download an exactly bound global invoice file",
+    async (roleKey) => {
+      const file = {
+        id: `global-${roleKey}-file`,
+        bucket: "private-local",
+        objectKey: `uploads/global-${roleKey}-file.pdf`,
+        originalName: "全局发票.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "other-uploader",
+        storageStatus: "active",
+        contentSha256: null
+      };
+      const tx = {
+        fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+        invoiceRecord: {
+          findMany: jest.fn().mockResolvedValue([{
+            id: `global-${roleKey}-invoice`,
+            projectId: null,
+            sourceBusinessType: "global_clearing_invoice"
+          }])
+        },
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: `${roleKey}-1`, isActive: true })
+        },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: `position-${roleKey}` }])
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue([{ id: `position-${roleKey}`, key: roleKey }])
+        },
+        $queryRaw: jest.fn().mockResolvedValue([])
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as unknown as PrismaService;
+      const spotAccess = { resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied") };
+      const service = new FileService(
+        prisma,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage,
+        spotAccess as unknown as SpotProcurementAccessService
+      );
+
+      await expect(service.createDownloadTicket(file.id, {
+        actorUserId: `${roleKey}-1`,
+        downloadReason: "全局发票复核"
+      })).resolves.toEqual(expect.objectContaining({ fileId: file.id }));
+      expect(spotAccess.resolveFileDownloadAccess).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["project_manager", "super_admin"])(
+    "denies and audits a current active global-invoice requester with only %s",
+    async (roleKey) => {
+      const file = {
+        id: `global-denied-${roleKey}-file`,
+        bucket: "private-local",
+        objectKey: `uploads/global-denied-${roleKey}-file.pdf`,
+        originalName: "全局发票.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "other-uploader",
+        storageStatus: "active",
+        contentSha256: null
+      };
+      const tx = {
+        fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+        invoiceRecord: {
+          findMany: jest.fn().mockResolvedValue([{
+            id: `global-denied-${roleKey}-invoice`,
+            projectId: null,
+            sourceBusinessType: "global_clearing_invoice"
+          }])
+        },
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: "requester-1", isActive: true })
+        },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: `position-${roleKey}` }])
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue([{ id: `position-${roleKey}`, key: roleKey }])
+        },
+        $queryRaw: jest.fn().mockResolvedValue([])
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as unknown as PrismaService;
+      const service = new FileService(prisma, audit as never, storage as never);
+
+      await expect(service.createDownloadTicket(file.id, {
+        actorUserId: "requester-1",
+        downloadReason: "全局发票复核"
+      })).rejects.toThrow("当前账号无权下载该全局发票附件");
+      expect(audit.record).toHaveBeenCalledWith(tx, {
+        actorUserId: "requester-1",
+        action: "file.download.denied",
+        businessType: "file_object",
+        businessId: file.id,
+        metadata: {
+          reasonCode: "global_invoice_file_not_authorized",
+          actualActorUserId: "requester-1",
+          delegatorUserId: null,
+          resourceType: "invoice_record",
+          resourceId: `global-denied-${roleKey}-invoice`,
+          invoiceRecordId: `global-denied-${roleKey}-invoice`
+        }
+      });
+    }
+  );
+
+  it("rejects and audits an inactive global-invoice uploader", async () => {
+    const file = {
+      id: "global-inactive-uploader-file",
+      bucket: "private-local",
+      objectKey: "uploads/global-inactive-uploader-file.pdf",
+      originalName: "全局发票.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "inactive-uploader",
+      storageStatus: "active",
+      contentSha256: null
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      invoiceRecord: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "global-inactive-uploader-invoice",
+          projectId: null,
+          sourceBusinessType: "global_clearing_invoice"
+        }])
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: "inactive-uploader", isActive: false })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as never, storage as never);
+
+    await expect(service.createDownloadTicket(file.id, {
+      actorUserId: "inactive-uploader",
+      downloadReason: "全局发票复核"
+    })).rejects.toThrow("当前账号无权下载该全局发票附件");
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      metadata: expect.objectContaining({ reasonCode: "actual_actor_inactive" })
+    }));
+  });
+
+  it("binds a delegated global-invoice ticket to the exact actor, delegator and invoice and revalidates it at read time", async () => {
+    let delegationEnabled = true;
+    const file = {
+      id: "global-delegated-file",
+      bucket: "private-local",
+      objectKey: "uploads/global-delegated-file.pdf",
+      originalName: "全局发票.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "other-uploader",
+      storageStatus: "active",
+      contentSha256: null
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      invoiceRecord: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "global-delegated-invoice",
+          projectId: null,
+          sourceBusinessType: "global_clearing_invoice_reissue"
+        }])
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: "actual-actor", isActive: true }),
+        findMany: jest.fn().mockResolvedValue([
+          { id: "actual-actor", isActive: true },
+          { id: "finance-director-1", isActive: true }
+        ])
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockImplementation(async () =>
+          delegationEnabled ? [{ fromUserId: "finance-director-1" }] : []
+        )
+      },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(async ({ where }: { where: { userId: string } }) =>
+          where.userId === "finance-director-1"
+            ? [{ positionId: "position-finance-director" }]
+            : []
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "position-finance-director",
+          key: "finance_director"
+        }])
+      },
+      $queryRaw: jest.fn().mockResolvedValue([])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+      wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as never, storage as never);
+
+    const ticket = await service.createDownloadTicket(file.id, {
+      actorUserId: "actual-actor",
+      delegatorUserId: "finance-director-1",
+      downloadReason: "全局发票复核"
+    });
+    const ticketQuery = new URL(`http://local.test${ticket.downloadUrl}`).searchParams;
+    expect(ticketQuery.get("delegatorUserId")).toBe("finance-director-1");
+    expect(tx.approvalDelegation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        toUserId: "actual-actor",
+        actionKey: "clearing.confirm",
+        resourceType: "invoice_record",
+        resourceId: "global-delegated-invoice",
+        enabled: true
+      })
+    }));
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      metadata: expect.objectContaining({
+        actualActorUserId: "actual-actor",
+        delegatorUserId: "finance-director-1",
+        resourceId: "global-delegated-invoice"
+      })
+    }));
+
+    delegationEnabled = false;
+    await expect(service.readPrivateFile(file.id, {
+      actorUserId: "actual-actor",
+      delegatorUserId: "finance-director-1",
+      expiresAt: ticketQuery.get("expiresAt")!,
+      downloadReason: ticketQuery.get("downloadReason")!,
+      accessMode: "download",
+      token: ticketQuery.get("token")!
+    })).rejects.toThrow("当前账号无权下载该全局发票附件");
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenLastCalledWith(tx, expect.objectContaining({
+      action: "file.download.denied",
+      metadata: expect.objectContaining({
+        reasonCode: "invalid_delegation",
+        actualActorUserId: "actual-actor",
+        delegatorUserId: "finance-director-1",
+        resourceId: "global-delegated-invoice"
+      })
+    }));
+  });
+
+  it.each(["disabled", "expired", "cross_scope"])(
+    "rejects an explicitly supplied %s global-invoice delegation",
+    async () => {
+      const file = {
+        id: "global-invalid-delegation-file",
+        bucket: "private-local",
+        objectKey: "uploads/global-invalid-delegation-file.pdf",
+        originalName: "全局发票.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "other-uploader",
+        storageStatus: "active",
+        contentSha256: null
+      };
+      const tx = {
+        fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+        invoiceRecord: {
+          findMany: jest.fn().mockResolvedValue([{
+            id: "global-invalid-delegation-invoice",
+            projectId: null,
+            sourceBusinessType: "global_clearing_invoice_red"
+          }])
+        },
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: "actual-actor", isActive: true }),
+          findMany: jest.fn().mockResolvedValue([
+            { id: "actual-actor", isActive: true },
+            { id: "finance-director-1", isActive: true }
+          ])
+        },
+        approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+        $queryRaw: jest.fn().mockResolvedValue([])
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as unknown as PrismaService;
+      const service = new FileService(prisma, audit as never, storage as never);
+
+      await expect(service.createDownloadTicket(file.id, {
+        actorUserId: "actual-actor",
+        delegatorUserId: "finance-director-1",
+        downloadReason: "全局发票复核"
+      })).rejects.toThrow("当前账号无权下载该全局发票附件");
+      expect(audit.record).toHaveBeenLastCalledWith(tx, expect.objectContaining({
+        action: "file.download.denied",
+        metadata: expect.objectContaining({ reasonCode: "invalid_delegation" })
+      }));
+    }
+  );
+
   it("fails closed outside test when file download secret is missing", () => {
     const previous = {
       nodeEnv: process.env.NODE_ENV,

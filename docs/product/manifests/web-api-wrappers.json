@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 25,
-    "exportedFunctionCount": 551,
-    "transportWrapperCount": 531,
+    "exportedFunctionCount": 553,
+    "transportWrapperCount": 533,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 553,
+    "mainRequestBindingCount": 555,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 553,
-    "productionConsumerCount": 425,
+    "requestEdgeCount": 555,
+    "productionConsumerCount": 427,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -11604,7 +11604,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 51,
+          "sourceLine": 80,
           "method": "GET",
           "path": "/global-invoices/capabilities",
           "normalizedPath": "/global-invoices/capabilities",
@@ -11624,6 +11624,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchGlobalInvoiceEvidenceRepairImpacts",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 86,
+          "method": "GET",
+          "path": "/invoice-evidence-repair-impacts",
+          "normalizedPath": "/invoice-evidence-repair-impacts",
+          "normalizedKey": "GET /invoice-evidence-repair-impacts",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchGlobalInvoiceEvidenceRepairImpacts"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchGlobalInvoices",
       "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
       "kind": "transport",
@@ -11631,7 +11660,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 45,
+          "sourceLine": 74,
           "method": "GET",
           "path": "/global-invoices",
           "normalizedPath": "/global-invoices",
@@ -11640,6 +11669,36 @@
           "localCallChains": [
             [
               "fetchGlobalInvoices"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/global-invoice.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "resolveGlobalInvoiceEvidenceRepairImpact",
+      "apiFile": "apps/web-admin/src/api/global-invoice.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/invoice-evidence-repair-impacts/:param/resolution",
+          "normalizedPath": "/invoice-evidence-repair-impacts/:param/resolution",
+          "normalizedKey": "POST /invoice-evidence-repair-impacts/:param/resolution",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "resolveGlobalInvoiceEvidenceRepairImpact",
+              "post"
             ]
           ]
         }

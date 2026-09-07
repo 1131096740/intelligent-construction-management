@@ -405,18 +405,75 @@ export class PermissionGuard implements CanActivate {
     const delegatorUserId = typeof request.body?.delegatorUserId === "string"
       ? request.body.delegatorUserId.trim()
       : "";
-    const scope = clearingDelegationScope(request, action);
-    if (!delegatorUserId || !scope) return false;
+    const scopes = await this.clearingDelegationScopes(request, action);
+    if (!delegatorUserId || !scopes.length) return false;
     const delegationClient = this.prisma as Partial<ActiveApprovalDelegationClient>;
     if (!delegationClient.approvalDelegation || !delegationClient.user) return false;
-    const delegatorIds = await activeScopedApprovalDelegatorIds(
-      delegationClient as ActiveApprovalDelegationClient,
-      userId,
-      scope
-    );
-    if (!delegatorIds.includes(delegatorUserId)) return false;
+    let exactDelegation = false;
+    for (const scope of scopes) {
+      const delegatorIds = await activeScopedApprovalDelegatorIds(
+        delegationClient as ActiveApprovalDelegationClient,
+        userId,
+        scope
+      );
+      if (delegatorIds.includes(delegatorUserId)) {
+        exactDelegation = true;
+        break;
+      }
+    }
+    if (!exactDelegation) return false;
     const roleKeys = await this.companyRoles.resolveActiveRoleScopes(delegatorUserId);
     return canPerform(action, roleKeys);
+  }
+
+  private async clearingDelegationScopes(
+    request: AuthenticatedRequest,
+    action: BusinessAction
+  ) {
+    const impactId = request.params?.impactId;
+    if (impactId) {
+      const impact = await this.prisma.invoiceEvidenceRepairImpact.findUnique({
+        where: { id: impactId },
+        select: { projectId: true, clearingCaseId: true }
+      });
+      return impact
+        ? [
+            {
+              actionKey: action,
+              resourceType: "clearing_case",
+              resourceId: impact.clearingCaseId
+            },
+            {
+              actionKey: action,
+              resourceType: "clearing_project",
+              resourceId: impact.projectId
+            }
+          ]
+        : [];
+    }
+    const clearingAllocationId = request.params?.clearingAllocationId;
+    if (clearingAllocationId) {
+      const allocation = await this.prisma.invoiceClearingAllocation.findUnique({
+        where: { id: clearingAllocationId },
+        select: { projectId: true, clearingCaseId: true }
+      });
+      return allocation
+        ? [
+            {
+              actionKey: action,
+              resourceType: "clearing_case",
+              resourceId: allocation.clearingCaseId
+            },
+            {
+              actionKey: action,
+              resourceType: "clearing_project",
+              resourceId: allocation.projectId
+            }
+          ]
+        : [];
+    }
+    const scope = clearingDelegationScope(request, action);
+    return scope ? [scope] : [];
   }
 
   private async extractProjectId(
@@ -460,6 +517,18 @@ export class PermissionGuard implements CanActivate {
         throw new ForbiddenException("清算发票分配不存在或当前账号无权访问");
       }
       return allocation.projectId;
+    }
+
+    const evidenceRepairImpactId = request.params?.impactId;
+    if (evidenceRepairImpactId) {
+      const impact = await this.prisma.invoiceEvidenceRepairImpact.findUnique({
+        where: { id: evidenceRepairImpactId },
+        select: { projectId: true, clearingCaseId: true }
+      });
+      if (!impact) {
+        throw new ForbiddenException("发票证据修复资源不存在或当前账号无权访问");
+      }
+      return impact.projectId;
     }
 
     const allocationId = request.params?.allocationId;
@@ -726,6 +795,16 @@ function clearingDelegationScope(
   const caseId = request.params?.caseId;
   if (typeof caseId === "string" && caseId) {
     return { actionKey: action, resourceType: "clearing_case", resourceId: caseId };
+  }
+  const bodyCaseId = typeof request.body?.clearingCaseId === "string"
+    ? request.body.clearingCaseId.trim()
+    : "";
+  if (bodyCaseId) {
+    return {
+      actionKey: action,
+      resourceType: "clearing_case",
+      resourceId: bodyCaseId
+    };
   }
   const projectId = typeof request.body?.projectId === "string"
     ? request.body.projectId

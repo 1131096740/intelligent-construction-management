@@ -22,6 +22,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
+import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding,
@@ -47,6 +48,7 @@ export interface UploadPrivateFileInput {
 
 export interface ReadPrivateFileInput {
   actorUserId: string;
+  delegatorUserId?: string;
   expiresAt: string;
   token: string;
   downloadReason?: string;
@@ -57,6 +59,7 @@ export type FileTicketAccessMode = "download" | "preview";
 
 export interface CreateFileDownloadTicketInput {
   actorUserId: string;
+  delegatorUserId?: string;
   downloadReason?: string;
   accessMode?: FileTicketAccessMode;
 }
@@ -71,6 +74,23 @@ class WageSensitiveFileAccessDeniedException extends ForbiddenException {
   constructor() {
     super("当前账号无权下载工资敏感依据");
   }
+}
+
+class GlobalInvoiceFileAccessDeniedException extends ForbiddenException {
+  constructor(
+    readonly invoiceRecordId: string,
+    readonly delegatorUserId: string | null,
+    readonly reasonCode: string
+  ) {
+    super("当前账号无权下载该全局发票附件");
+  }
+}
+
+interface GlobalInvoiceFileAccessContext {
+  businessType: "global_invoice";
+  invoiceRecordId: string;
+  actualActorUserId: string;
+  delegatorUserId: string | null;
 }
 
 export interface InternalFileBuffer {
@@ -653,6 +673,18 @@ function normalizeDownloadReason(value: string | undefined): string {
   return reason;
 }
 
+function normalizeOptionalDelegatorUserId(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const delegatorUserId = value.trim();
+  if (!delegatorUserId) {
+    throw new BadRequestException("委托人编号不能为空白");
+  }
+  if (delegatorUserId.length > 128) {
+    throw new BadRequestException("委托人编号不能超过 128 个字符");
+  }
+  return delegatorUserId;
+}
+
 const SAFE_ERROR_FACT = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 
 function safeErrorSummary(error: unknown, stage: string) {
@@ -1060,6 +1092,7 @@ export class FileService {
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
     const accessMode = input.accessMode ?? "download";
+    const delegatorUserId = normalizeOptionalDelegatorUserId(input.delegatorUserId);
 
     return this.withWageDeniedAccessAudit(fileId, input.actorUserId, () => this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.findUnique({
@@ -1074,7 +1107,12 @@ export class FileService {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
 
-      await this.assertCanDownloadFileObject(tx, file, input.actorUserId);
+      const access = await this.assertCanDownloadFileObject(
+        tx,
+        file,
+        input.actorUserId,
+        delegatorUserId
+      );
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
@@ -1083,7 +1121,8 @@ export class FileService {
         input.actorUserId,
         expiresAt,
         downloadReason,
-        accessMode
+        accessMode,
+        delegatorUserId
       );
       await this.audit.record(tx, {
         actorUserId: input.actorUserId,
@@ -1093,6 +1132,13 @@ export class FileService {
         metadata: {
           expiresAt,
           downloadReason,
+          ...(access?.businessType === "global_invoice" ? {
+            actualActorUserId: access.actualActorUserId,
+            delegatorUserId: access.delegatorUserId,
+            resourceType: "invoice_record",
+            resourceId: access.invoiceRecordId,
+            invoiceRecordId: access.invoiceRecordId
+          } : {}),
           ...(accessMode === "preview" ? { accessMode } : {})
         }
       });
@@ -1109,21 +1155,30 @@ export class FileService {
           expiresAt
         )}&downloadReason=${encodeURIComponent(
           downloadReason
-        )}&accessMode=${accessMode}&token=${encodeURIComponent(token)}`
+        )}&accessMode=${accessMode}${
+          delegatorUserId
+            ? `&delegatorUserId=${encodeURIComponent(delegatorUserId)}`
+            : ""
+        }&token=${encodeURIComponent(token)}`
       };
     }));
   }
 
-  async getDownloadTicketCapability(fileId: string, actorUserId: string) {
+  async getDownloadTicketCapability(
+    fileId: string,
+    actorUserId: string,
+    requestedDelegatorUserId?: string
+  ) {
     if (!actorUserId.trim()) {
       throw new Error("下载人信息缺失，请重新登录后再下载资料");
     }
+    const delegatorUserId = normalizeOptionalDelegatorUserId(requestedDelegatorUserId);
     return this.withWageDeniedAccessAudit(fileId, actorUserId, () => this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.findUnique({ where: { id: fileId } });
       if (!file) {
         throw new Error("资料文件不存在或已被移除");
       }
-      await this.assertCanDownloadFileObject(tx, file, actorUserId);
+      await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId);
       return {
         availableActions: ["create_private_file_download_ticket" as const],
         action: {
@@ -1144,16 +1199,18 @@ export class FileService {
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
     const accessMode = input.accessMode ?? "download";
+    const delegatorUserId = normalizeOptionalDelegatorUserId(input.delegatorUserId);
     const validTicket = this.verifyDownloadToken(
       fileId,
       input.actorUserId,
       input.expiresAt,
       downloadReason,
       accessMode,
+      delegatorUserId,
       input.token
     );
 
-    if (!validTicket && !(input.accessMode === undefined && this.verifyLegacyDownloadToken(
+    if (!validTicket && !(delegatorUserId === undefined && input.accessMode === undefined && this.verifyLegacyDownloadToken(
       fileId,
       input.actorUserId,
       input.expiresAt,
@@ -1163,7 +1220,7 @@ export class FileService {
       throw new BadRequestException("下载链接校验失败，请重新申请下载");
     }
 
-    const file = await this.withWageDeniedAccessAudit(fileId, input.actorUserId, () => this.prisma.$transaction(async (tx) => {
+    const authorized = await this.withWageDeniedAccessAudit(fileId, input.actorUserId, () => this.prisma.$transaction(async (tx) => {
       const found = await tx.fileObject.findUnique({
         where: { id: fileId }
       });
@@ -1172,12 +1229,18 @@ export class FileService {
         throw new Error("资料文件不存在或已被移除");
       }
 
-      await this.assertCanDownloadFileObject(tx, found, input.actorUserId);
+      const access = await this.assertCanDownloadFileObject(
+        tx,
+        found,
+        input.actorUserId,
+        delegatorUserId
+      );
       if (accessMode === "preview" && found.mimeType !== "application/pdf") {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
-      return found;
+      return { file: found, access };
     }));
+    const { file, access } = authorized;
 
     const buffer = await this.readVerifiedFileBuffer(file);
     const wageEvidence = await this.isWageEvidenceFile(file.id);
@@ -1200,6 +1263,13 @@ export class FileService {
           originalName: file.originalName,
           sizeBytes: file.sizeBytes,
           downloadReason,
+          ...(access?.businessType === "global_invoice" ? {
+            actualActorUserId: access.actualActorUserId,
+            delegatorUserId: access.delegatorUserId,
+            resourceType: "invoice_record",
+            resourceId: access.invoiceRecordId,
+            invoiceRecordId: access.invoiceRecordId
+          } : {}),
           ...(accessMode === "preview" ? { accessMode } : {})
         }
       })
@@ -1801,8 +1871,9 @@ export class FileService {
   private async assertCanDownloadFileObject(
     tx: Prisma.TransactionClient,
     file: FileObject,
-    actorUserId: string
-  ) {
+    actorUserId: string,
+    delegatorUserId?: string
+  ): Promise<GlobalInvoiceFileAccessContext | undefined> {
     const wageEvidenceAccess = await this.resolveWageEvidenceFileAccess(
       tx,
       file.id,
@@ -1860,6 +1931,14 @@ export class FileService {
     ) {
       throw new ForbiddenException("审批单必须通过专用下载入口下载");
     }
+
+    const globalInvoiceAccess = await this.resolveGlobalInvoiceFileAccess(
+      tx,
+      file,
+      actorUserId,
+      delegatorUserId
+    );
+    if (globalInvoiceAccess) return globalInvoiceAccess;
 
     const governedSettlementAccess = await this.governedSettlementSignedDocumentAccess(
       tx,
@@ -2925,6 +3004,23 @@ export class FileService {
     try {
       return await operation();
     } catch (error) {
+      if (error instanceof GlobalInvoiceFileAccessDeniedException) {
+        await this.prisma.$transaction((tx) => this.audit.record(tx, {
+          actorUserId,
+          action: "file.download.denied",
+          businessType: "file_object",
+          businessId: fileId,
+          metadata: {
+            reasonCode: error.reasonCode,
+            actualActorUserId: actorUserId,
+            delegatorUserId: error.delegatorUserId,
+            resourceType: "invoice_record",
+            resourceId: error.invoiceRecordId,
+            invoiceRecordId: error.invoiceRecordId
+          }
+        }));
+        throw error;
+      }
       if (!(error instanceof WageSensitiveFileAccessDeniedException)) throw error;
       // The guarded read transaction has rolled back.  Record the denied
       // access in a separate transaction before returning the same 403.
@@ -2977,6 +3073,107 @@ export class FileService {
     return positions.some((position) => allowedRoles.includes(position.key as RoleKey));
   }
 
+  private async resolveGlobalInvoiceFileAccess(
+    tx: Prisma.TransactionClient,
+    file: FileObject,
+    actorUserId: string,
+    requestedDelegatorUserId?: string
+  ): Promise<GlobalInvoiceFileAccessContext | null> {
+    const invoiceRecordClient = (tx as unknown as {
+      invoiceRecord?: Prisma.TransactionClient["invoiceRecord"];
+    }).invoiceRecord;
+    if (!invoiceRecordClient) return null;
+    const invoiceRecords = await invoiceRecordClient.findMany({
+      where: { fileId: file.id },
+      select: { id: true, projectId: true, sourceBusinessType: true },
+      take: 2
+    });
+    const globalInvoiceRecords = invoiceRecords.filter(
+      (invoice) =>
+        invoice.projectId === null &&
+        [
+          "global_clearing_invoice",
+          "global_clearing_invoice_red",
+          "global_clearing_invoice_reissue"
+        ].includes(invoice.sourceBusinessType)
+    );
+    if (!globalInvoiceRecords.length) return null;
+    if (
+      invoiceRecords.length !== 1 ||
+      globalInvoiceRecords.length !== 1 ||
+      await hasNonReceiptBusinessFileBinding(tx, [file.id], INVOICE_RECORD_FILE_BINDING)
+    ) {
+      throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+    }
+
+    const invoiceRecord = globalInvoiceRecords[0];
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    const delegatorUserId = requestedDelegatorUserId ?? null;
+    if (!actor?.isActive) {
+      throw new GlobalInvoiceFileAccessDeniedException(
+        invoiceRecord.id,
+        delegatorUserId,
+        "actual_actor_inactive"
+      );
+    }
+
+    if (delegatorUserId) {
+      if (delegatorUserId === actorUserId) {
+        throw new GlobalInvoiceFileAccessDeniedException(
+          invoiceRecord.id,
+          delegatorUserId,
+          "invalid_delegation"
+        );
+      }
+      const activeDelegatorIds = await activeScopedApprovalDelegatorIds(
+        tx,
+        actorUserId,
+        {
+          actionKey: "clearing.confirm",
+          resourceType: "invoice_record",
+          resourceId: invoiceRecord.id
+        }
+      );
+      if (
+        !activeDelegatorIds.includes(delegatorUserId) ||
+        !(await this.hasGlobalRole(
+          tx,
+          delegatorUserId,
+          ["finance_staff", "finance_director"]
+        ))
+      ) {
+        throw new GlobalInvoiceFileAccessDeniedException(
+          invoiceRecord.id,
+          delegatorUserId,
+          "invalid_delegation"
+        );
+      }
+    } else if (
+      file.uploadedByUserId !== actorUserId &&
+      !(await this.hasGlobalRole(
+        tx,
+        actorUserId,
+        ["finance_staff", "finance_director"]
+      ))
+    ) {
+      throw new GlobalInvoiceFileAccessDeniedException(
+        invoiceRecord.id,
+        null,
+        "global_invoice_file_not_authorized"
+      );
+    }
+
+    return {
+      businessType: "global_invoice",
+      invoiceRecordId: invoiceRecord.id,
+      actualActorUserId: actorUserId,
+      delegatorUserId
+    };
+  }
+
   private async loadActorRoleKeys(
     tx: Prisma.TransactionClient,
     actorUserId: string,
@@ -3004,10 +3201,15 @@ export class FileService {
     actorUserId: string,
     expiresAt: string,
     downloadReason: string,
-    accessMode: FileTicketAccessMode
+    accessMode: FileTicketAccessMode,
+    delegatorUserId?: string
   ) {
     return createHmac("sha256", this.downloadSecret())
-      .update(`${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}`)
+      .update(
+        `${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}${
+          delegatorUserId ? `.${delegatorUserId}` : ""
+        }`
+      )
       .digest("base64url");
   }
 
@@ -3017,10 +3219,18 @@ export class FileService {
     expiresAt: string,
     downloadReason: string,
     accessMode: FileTicketAccessMode,
+    delegatorUserId: string | undefined,
     token: string
   ) {
     const expected = Buffer.from(
-      this.signDownloadToken(fileId, actorUserId, expiresAt, downloadReason, accessMode)
+      this.signDownloadToken(
+        fileId,
+        actorUserId,
+        expiresAt,
+        downloadReason,
+        accessMode,
+        delegatorUserId
+      )
     );
     const actual = Buffer.from(token);
 

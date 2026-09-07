@@ -81,6 +81,7 @@ export class FileController {
     return this.files.createDownloadTicket(fileId, {
       actorUserId: user.id,
       downloadReason: input.downloadReason,
+      ...(input.delegatorUserId ? { delegatorUserId: input.delegatorUserId } : {}),
       ...(input.accessMode ? { accessMode: input.accessMode } : {})
     });
   }
@@ -88,9 +89,10 @@ export class FileController {
   @Get(":fileId/download-ticket-capability")
   downloadTicketCapability(
     @Param("fileId") fileId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("delegatorUserId") delegatorUserId?: string
   ) {
-    return this.files.getDownloadTicketCapability(fileId, user.id);
+    return this.files.getDownloadTicketCapability(fileId, user.id, delegatorUserId);
   }
 
   // 下载走短时效票据（expiresAt + token），用于可直接打开的链接，因此不强制 Bearer。
@@ -103,13 +105,15 @@ export class FileController {
     @Query("downloadReason") downloadReason: string,
     @Query("accessMode") accessMode: "download" | "preview" | undefined,
     @Query("token") token: string,
-    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void },
+    @Query("delegatorUserId") delegatorUserId?: string
   ) {
     const result = await this.files.readPrivateFile(fileId, {
       actorUserId,
       expiresAt,
       downloadReason,
       accessMode,
+      ...(delegatorUserId ? { delegatorUserId } : {}),
       token
     });
 

@@ -1,3 +1,4 @@
+import { IsBoolean, IsInt, Min } from "class-validator";
 import { IsMaxUnicodeTextLength, IsRequiredText } from "../../validation/static-field-validation";
 
 export class VoidGlobalInvoiceDto {
@@ -8,4 +9,11 @@ export class VoidGlobalInvoiceDto {
   @IsRequiredText({ requiredMessage: "请填写幂等键", typeMessage: "幂等键必须是文字", blankMessage: "请填写幂等键" })
   @IsMaxUnicodeTextLength({ max: 128, message: "幂等键不能超过 128 个字符" })
   idempotencyKey!: string;
+
+  @IsInt({ message: "预期版本必须是整数" })
+  @Min(0, { message: "预期版本不能小于 0" })
+  expectedRevision!: number;
+
+  @IsBoolean({ message: "请明确确认作废发票" })
+  confirmVoid!: boolean;
 }

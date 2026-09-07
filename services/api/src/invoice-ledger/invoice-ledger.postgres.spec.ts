@@ -1,0 +1,554 @@
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { PrismaClient, type PrismaClient as PrismaClientType } from "@prisma/client";
+
+const DATABASE_NAME = "jiangkong_invoice_ledger_pol260";
+const localRequire = createRequire(__filename);
+const EXPECTED_MIGRATION_COUNT = (
+  localRequire(resolve(__dirname, "../../prisma/migration-baseline.cjs")) as {
+    deriveMigrationBaseline: (migrationRoot: string) => {
+      expectedDirectoryCount: number;
+    };
+  }
+).deriveMigrationBaseline(resolve(__dirname, "../../prisma/migrations"))
+  .expectedDirectoryCount;
+
+describe("POL-11B invoice ledger PostgreSQL authority", () => {
+  const integrationTest =
+    process.env.RUN_INVOICE_LEDGER_POSTGRESQL16 === "1" ? it : it.skip;
+
+  integrationTest(
+    "serializes competing red references against one blue allocation",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const clients = [0, 1, 2].map(
+        () => new PrismaClient({ datasources: { db: { url: databaseUrl } } })
+      );
+      try {
+        await Promise.all(clients.map((client) => client.$connect()));
+        await assertFullyMigrated(clients[2]!);
+        const fixture = await seedRedCompetition(clients[2]!);
+
+        const outcomes = await Promise.allSettled([
+          clients[0]!.invoiceRedAllocationReference.create({
+            data: {
+              lifecycleEventId: fixture.firstLifecycleEventId,
+              redInvoiceRecordId: fixture.firstRedInvoiceRecordId,
+              blueInvoiceAllocationId: fixture.blueInvoiceAllocationId,
+              amountCents: 4000n
+            }
+          }),
+          clients[1]!.invoiceRedAllocationReference.create({
+            data: {
+              lifecycleEventId: fixture.secondLifecycleEventId,
+              redInvoiceRecordId: fixture.secondRedInvoiceRecordId,
+              blueInvoiceAllocationId: fixture.blueInvoiceAllocationId,
+              amountCents: 4000n
+            }
+          })
+        ]);
+
+        expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+        expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+        await expect(
+          clients[2]!.invoiceRedAllocationReference.aggregate({
+            where: { blueInvoiceAllocationId: fixture.blueInvoiceAllocationId },
+            _sum: { amountCents: true }
+          })
+        ).resolves.toMatchObject({ _sum: { amountCents: 4000n } });
+      } finally {
+        await Promise.allSettled(clients.map((client) => client.$disconnect()));
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "serializes a red reference against an ordinary allocation reversal",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const clients = [0, 1, 2].map(
+        () => new PrismaClient({ datasources: { db: { url: databaseUrl } } })
+      );
+      try {
+        await Promise.all(clients.map((client) => client.$connect()));
+        await assertFullyMigrated(clients[2]!);
+        const fixture = await seedRedCompetition(clients[2]!);
+
+        const outcomes = await Promise.allSettled([
+          clients[0]!.invoiceRedAllocationReference.create({
+            data: {
+              lifecycleEventId: fixture.firstLifecycleEventId,
+              redInvoiceRecordId: fixture.firstRedInvoiceRecordId,
+              blueInvoiceAllocationId: fixture.blueInvoiceAllocationId,
+              amountCents: 4000n
+            }
+          }),
+          clients[1]!.invoiceClearingAllocation.create({
+            data: {
+              invoiceRecordId: fixture.blueInvoiceRecordId,
+              projectId: fixture.projectId,
+              clearingCaseId: fixture.clearingCaseId,
+              clearingEventVersionId: fixture.clearingEventVersionId,
+              amountCents: 4000n,
+              structuredReasonCode: "allocation_correction",
+              reversesAllocationId: fixture.blueInvoiceAllocationId,
+              createdByUserId: fixture.actorUserId,
+              idempotencyKey: randomUUID(),
+              requestFingerprint: "d".repeat(64)
+            }
+          })
+        ]);
+
+        expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+        expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+      } finally {
+        await Promise.allSettled(clients.map((client) => client.$disconnect()));
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "serializes competing evidence repairs against one replacement invoice cap",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const clients = [0, 1, 2].map(
+        () => new PrismaClient({ datasources: { db: { url: databaseUrl } } })
+      );
+      try {
+        await Promise.all(clients.map((client) => client.$connect()));
+        await assertFullyMigrated(clients[2]!);
+        const fixture = await seedEvidenceRepairCompetition(clients[2]!);
+
+        const outcomes = await Promise.allSettled(
+          fixture.impactIds.map((impactId, index) =>
+            clients[index]!.invoiceEvidenceRepairResolution.create({
+              data: {
+                impactId,
+                invalidatedInvoiceRecordId: fixture.invalidatedInvoiceRecordId,
+                replacementInvoiceRecordId: fixture.replacementInvoiceRecordId,
+                replacementFileId: fixture.replacementFileId,
+                reasonCode: "replacement_invoice_verified",
+                actualActorUserId: fixture.actorUserId,
+                expectedRevision: 1,
+                idempotencyKey: randomUUID(),
+                requestFingerprint: String(index + 7).repeat(64)
+              }
+            })
+          )
+        );
+
+        expect(
+          outcomes.filter((outcome) => outcome.status === "fulfilled")
+        ).toHaveLength(1);
+        expect(
+          outcomes.filter((outcome) => outcome.status === "rejected")
+        ).toHaveLength(1);
+        const resolutions =
+          await clients[2]!.invoiceEvidenceRepairResolution.findMany({
+            where: {
+              replacementInvoiceRecordId: fixture.replacementInvoiceRecordId
+            }
+          });
+        expect(resolutions).toHaveLength(1);
+        const resolvedImpact =
+          await clients[2]!.invoiceEvidenceRepairImpact.findUniqueOrThrow({
+            where: { id: resolutions[0]!.impactId }
+          });
+        expect(resolvedImpact.invalidatedAmountCents).toBe(4000n);
+        await expect(
+          clients[2]!.invoiceEvidenceRepairImpact.count({
+            where: { id: { in: fixture.impactIds } }
+          })
+        ).resolves.toBe(2);
+        await expect(
+          clients[2]!.invoiceClearingAllocation.count({
+            where: { id: { in: fixture.allocationIds } }
+          })
+        ).resolves.toBe(2);
+      } finally {
+        await Promise.allSettled(clients.map((client) => client.$disconnect()));
+      }
+    },
+    60_000
+  );
+
+  integrationTest(
+    "rejects an evidence impact that does not exactly match its lifecycle allocation",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const client = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      try {
+        await client.$connect();
+        await assertFullyMigrated(client);
+        const fixture = await seedEvidenceRepairCompetition(client);
+        const lifecycleEventId = `pol260-mismatched-impact-${randomUUID()}`;
+        await client.invoiceLifecycleEvent.create({
+          data: {
+            id: lifecycleEventId,
+            invoiceRecordId: fixture.invalidatedInvoiceRecordId,
+            kind: "void",
+            reasonCode: "invoice_voided",
+            createdByUserId: fixture.actorUserId,
+            idempotencyKey: randomUUID(),
+            requestFingerprint: "9".repeat(64)
+          }
+        });
+
+        await expect(
+          client.invoiceEvidenceRepairImpact.create({
+            data: {
+              lifecycleEventId,
+              invoiceRecordId: fixture.invalidatedInvoiceRecordId,
+              allocationId: fixture.allocationIds[0]!,
+              projectId: "wrong-project",
+              clearingCaseId: fixture.clearingCaseId,
+              clearingEventVersionId: fixture.clearingEventVersionId,
+              invalidatedAmountCents: 3999n,
+              reasonCode: "invoice_voided",
+              actualActorUserId: fixture.actorUserId
+            }
+          })
+        ).rejects.toThrow();
+      } finally {
+        await client.$disconnect();
+      }
+    },
+    60_000
+  );
+});
+
+function assertDedicatedDatabase() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl || process.env.NODE_ENV === "production") {
+    throw new Error("POL-11B 动态验收必须连接非生产隔离数据库");
+  }
+  const parsed = new URL(databaseUrl);
+  if (
+    !["postgresql:", "postgres:"].includes(parsed.protocol) ||
+    !["127.0.0.1", "localhost", "::1"].includes(parsed.hostname) ||
+    parsed.pathname !== `/${DATABASE_NAME}`
+  ) {
+    throw new Error("POL-11B 动态验收只允许本机固定一次性 PostgreSQL 数据库");
+  }
+  return databaseUrl;
+}
+
+async function assertFullyMigrated(client: PrismaClientType) {
+  const [row] = await client.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count
+      FROM "_prisma_migrations"
+     WHERE finished_at IS NOT NULL
+       AND rolled_back_at IS NULL
+  `;
+  expect(row?.count).toBe(BigInt(EXPECTED_MIGRATION_COUNT));
+}
+
+async function seedRedCompetition(client: PrismaClientType) {
+  const suffix = randomUUID();
+  const actorUserId = `pol260-actor-${suffix}`;
+  const blueInvoiceRecordId = `pol260-blue-${suffix}`;
+  const firstRedInvoiceRecordId = `pol260-red-a-${suffix}`;
+  const secondRedInvoiceRecordId = `pol260-red-b-${suffix}`;
+  const blueInvoiceAllocationId = `pol260-allocation-${suffix}`;
+  const firstLifecycleEventId = `pol260-lifecycle-a-${suffix}`;
+  const secondLifecycleEventId = `pol260-lifecycle-b-${suffix}`;
+  const clearingCaseId = `pol260-case-${suffix}`;
+  const clearingEventId = `pol260-event-${suffix}`;
+  const clearingEventVersionId = `pol260-version-${suffix}`;
+
+  await client.user.create({
+    data: { id: actorUserId, name: "POL-11B 动态验收财务主管" }
+  });
+  await client.fileObject.createMany({
+    data: [
+      blueInvoiceRecordId,
+      firstRedInvoiceRecordId,
+      secondRedInvoiceRecordId
+    ].map((invoiceId, index) => ({
+      id: `file-${invoiceId}`,
+      bucket: "private-local",
+      objectKey: `pol260/${invoiceId}.pdf`,
+      originalName: `invoice-${index + 1}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 10,
+      uploadedByUserId: actorUserId,
+      contentSha256: String(index + 1).repeat(64)
+    }))
+  });
+  const invoiceData = (
+    id: string,
+    sourceBusinessType: string,
+    totalAmountCents: bigint
+  ) => ({
+    id,
+    projectId: null,
+    identityKey: `identity-${id}`,
+    identityKind: "traditional",
+    owningCompanyEntityId: "pol260-company",
+    direction: "inbound",
+    invoiceType: "vat_general",
+    invoiceCode: `CODE-${id}`,
+    invoiceNumber: `NO-${id}`,
+    issueDate: new Date("2026-09-07T00:00:00.000Z"),
+    sellerName: "POL-11B 销售方",
+    sellerTaxId: "91310000POL260SELL",
+    buyerName: "POL-11B 购买方",
+    buyerTaxId: "91310000POL260BUYR",
+    taxExclusiveAmountCents: totalAmountCents,
+    taxAmountCents: 0n,
+    totalAmountCents,
+    allocatableAmountCents: totalAmountCents,
+    fileId: `file-${id}`,
+    uploadedByUserId: actorUserId,
+    sourceBusinessType,
+    sourceBusinessId: `source-${id}`
+  });
+  await client.invoiceRecord.createMany({
+    data: [
+      invoiceData(blueInvoiceRecordId, "global_clearing_invoice", 6000n),
+      invoiceData(firstRedInvoiceRecordId, "global_clearing_invoice_red", 4000n),
+      invoiceData(secondRedInvoiceRecordId, "global_clearing_invoice_red", 4000n)
+    ]
+  });
+  await client.clearingCase.create({
+    data: {
+      id: clearingCaseId,
+      projectId: `pol260-project-${suffix}`,
+      constructionEnterpriseAssignmentId: `pol260-assignment-${suffix}`,
+      category: "project_receivable",
+      governedSubjectKey: `pol260-subject-${suffix}`,
+      authoritativeGrossCapCents: 6000n,
+      createdByUserId: actorUserId
+    }
+  });
+  await client.clearingEvent.create({
+    data: {
+      id: clearingEventId,
+      clearingCaseId,
+      kind: "invoice_evidence",
+      workflowStatus: "confirmed",
+      createdByUserId: actorUserId
+    }
+  });
+  await client.clearingEventVersion.create({
+    data: {
+      id: clearingEventVersionId,
+      clearingEventId,
+      clearingCaseId,
+      versionNo: 1,
+      workflowStatus: "confirmed",
+      amountCents: 6000n,
+      evidenceLevel: "B",
+      payloadSnapshot: {},
+      actorSetSnapshot: {},
+      fingerprint: "f".repeat(64),
+      createdByUserId: actorUserId
+    }
+  });
+  await client.invoiceClearingAllocation.create({
+    data: {
+      id: blueInvoiceAllocationId,
+      invoiceRecordId: blueInvoiceRecordId,
+      projectId: `pol260-project-${suffix}`,
+      clearingCaseId,
+      clearingEventVersionId,
+      amountCents: 6000n,
+      createdByUserId: actorUserId,
+      idempotencyKey: randomUUID(),
+      requestFingerprint: "a".repeat(64)
+    }
+  });
+  await client.invoiceLifecycleEvent.createMany({
+    data: [
+      {
+        id: firstLifecycleEventId,
+        invoiceRecordId: blueInvoiceRecordId,
+        relatedInvoiceRecordId: firstRedInvoiceRecordId,
+        kind: "red",
+        reasonCode: "sales_return",
+        createdByUserId: actorUserId,
+        idempotencyKey: randomUUID(),
+        requestFingerprint: "b".repeat(64)
+      },
+      {
+        id: secondLifecycleEventId,
+        invoiceRecordId: blueInvoiceRecordId,
+        relatedInvoiceRecordId: secondRedInvoiceRecordId,
+        kind: "red",
+        reasonCode: "sales_return",
+        createdByUserId: actorUserId,
+        idempotencyKey: randomUUID(),
+        requestFingerprint: "c".repeat(64)
+      }
+    ]
+  });
+  return {
+    actorUserId,
+    blueInvoiceRecordId,
+    blueInvoiceAllocationId,
+    projectId: `pol260-project-${suffix}`,
+    clearingCaseId,
+    clearingEventVersionId,
+    firstLifecycleEventId,
+    firstRedInvoiceRecordId,
+    secondLifecycleEventId,
+    secondRedInvoiceRecordId
+  };
+}
+
+async function seedEvidenceRepairCompetition(client: PrismaClientType) {
+  const suffix = randomUUID();
+  const actorUserId = `pol260-repair-actor-${suffix}`;
+  const invalidatedInvoiceRecordId = `pol260-invalidated-${suffix}`;
+  const replacementInvoiceRecordId = `pol260-replacement-${suffix}`;
+  const replacementFileId = `file-${replacementInvoiceRecordId}`;
+  const lifecycleEventId = `pol260-void-${suffix}`;
+  const clearingCaseId = `pol260-repair-case-${suffix}`;
+  const clearingEventId = `pol260-repair-event-${suffix}`;
+  const clearingEventVersionId = `pol260-repair-version-${suffix}`;
+  const projectId = `pol260-repair-project-${suffix}`;
+  const allocationIds = [
+    `pol260-repair-allocation-a-${suffix}`,
+    `pol260-repair-allocation-b-${suffix}`
+  ];
+  const impactIds = [
+    `pol260-impact-a-${suffix}`,
+    `pol260-impact-b-${suffix}`
+  ];
+
+  await client.user.create({
+    data: { id: actorUserId, name: "POL-11B 证据修复动态验收财务主管" }
+  });
+  await client.fileObject.createMany({
+    data: [invalidatedInvoiceRecordId, replacementInvoiceRecordId].map(
+      (invoiceId, index) => ({
+        id: `file-${invoiceId}`,
+        bucket: "private-local",
+        objectKey: `pol260/${invoiceId}.pdf`,
+        originalName: `repair-invoice-${index + 1}.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: 10,
+        uploadedByUserId: actorUserId,
+        contentSha256: String(index + 4).repeat(64)
+      })
+    )
+  });
+  const invoiceData = (id: string, totalAmountCents: bigint) => ({
+    id,
+    projectId: null,
+    identityKey: `identity-${id}`,
+    identityKind: "traditional",
+    owningCompanyEntityId: "pol260-repair-company",
+    direction: "inbound",
+    invoiceType: "vat_general",
+    invoiceCode: `CODE-${id}`,
+    invoiceNumber: `NO-${id}`,
+    issueDate: new Date("2026-09-07T00:00:00.000Z"),
+    sellerName: "POL-11B 销售方",
+    sellerTaxId: "91310000POL260SELL",
+    buyerName: "POL-11B 购买方",
+    buyerTaxId: "91310000POL260BUYR",
+    taxExclusiveAmountCents: totalAmountCents,
+    taxAmountCents: 0n,
+    totalAmountCents,
+    allocatableAmountCents: totalAmountCents,
+    fileId: `file-${id}`,
+    uploadedByUserId: actorUserId,
+    sourceBusinessType: "global_clearing_invoice",
+    sourceBusinessId: `source-${id}`
+  });
+  await client.invoiceRecord.createMany({
+    data: [
+      invoiceData(invalidatedInvoiceRecordId, 8000n),
+      invoiceData(replacementInvoiceRecordId, 6000n)
+    ]
+  });
+  await client.clearingCase.create({
+    data: {
+      id: clearingCaseId,
+      projectId,
+      constructionEnterpriseAssignmentId: `pol260-repair-assignment-${suffix}`,
+      category: "project_receivable",
+      governedSubjectKey: `pol260-repair-subject-${suffix}`,
+      authoritativeGrossCapCents: 8000n,
+      createdByUserId: actorUserId
+    }
+  });
+  await client.clearingEvent.create({
+    data: {
+      id: clearingEventId,
+      clearingCaseId,
+      kind: "invoice_evidence",
+      workflowStatus: "confirmed",
+      createdByUserId: actorUserId
+    }
+  });
+  await client.clearingEventVersion.create({
+    data: {
+      id: clearingEventVersionId,
+      clearingEventId,
+      clearingCaseId,
+      versionNo: 1,
+      workflowStatus: "confirmed",
+      amountCents: 8000n,
+      evidenceLevel: "B",
+      payloadSnapshot: {},
+      actorSetSnapshot: {},
+      fingerprint: "e".repeat(64),
+      createdByUserId: actorUserId
+    }
+  });
+  await client.invoiceClearingAllocation.createMany({
+    data: allocationIds.map((id) => ({
+      id,
+      invoiceRecordId: invalidatedInvoiceRecordId,
+      projectId,
+      clearingCaseId,
+      clearingEventVersionId,
+      amountCents: 4000n,
+      createdByUserId: actorUserId,
+      idempotencyKey: randomUUID(),
+      requestFingerprint: "a".repeat(64)
+    }))
+  });
+  await client.invoiceLifecycleEvent.create({
+    data: {
+      id: lifecycleEventId,
+      invoiceRecordId: invalidatedInvoiceRecordId,
+      kind: "void",
+      reasonCode: "invoice_voided",
+      createdByUserId: actorUserId,
+      idempotencyKey: randomUUID(),
+      requestFingerprint: "b".repeat(64)
+    }
+  });
+  await client.invoiceEvidenceRepairImpact.createMany({
+    data: impactIds.map((id, index) => ({
+      id,
+      lifecycleEventId,
+      invoiceRecordId: invalidatedInvoiceRecordId,
+      allocationId: allocationIds[index]!,
+      projectId,
+      clearingCaseId,
+      clearingEventVersionId,
+      invalidatedAmountCents: 4000n,
+      reasonCode: "invoice_voided",
+      actualActorUserId: actorUserId
+    }))
+  });
+  return {
+    actorUserId,
+    invalidatedInvoiceRecordId,
+    replacementInvoiceRecordId,
+    replacementFileId,
+    clearingCaseId,
+    clearingEventVersionId,
+    allocationIds,
+    impactIds
+  };
+}

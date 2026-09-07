@@ -2,7 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 import { apiFetch } from "./api-fetch";
-import { allocateGlobalInvoice, createGlobalInvoice, createRedGlobalInvoice, createReissueGlobalInvoice, fetchGlobalInvoices, reverseGlobalInvoiceAllocation, voidGlobalInvoice } from "./global-invoice.api";
+import {
+  allocateGlobalInvoice,
+  createGlobalInvoice,
+  createRedGlobalInvoice,
+  createReissueGlobalInvoice,
+  fetchGlobalInvoiceEvidenceRepairImpacts,
+  fetchGlobalInvoices,
+  resolveGlobalInvoiceEvidenceRepairImpact,
+  reverseGlobalInvoiceAllocation,
+  voidGlobalInvoice
+} from "./global-invoice.api";
 
 const mockApiFetch = vi.mocked(apiFetch);
 const response = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -30,5 +40,28 @@ describe("global invoice API", () => {
     mockApiFetch.mockImplementation(() => Promise.resolve(response([])));
     await fetchGlobalInvoices();
     expect(mockApiFetch).toHaveBeenCalledWith("/global-invoices");
+  });
+
+  it("loads evidence-repair state and posts an explicit revision-bound confirmation", async () => {
+    mockApiFetch.mockImplementation(() => Promise.resolve(response({ id: "resolution-1", replayed: false })));
+    await fetchGlobalInvoiceEvidenceRepairImpacts();
+    await resolveGlobalInvoiceEvidenceRepairImpact("impact-1", {
+      replacementInvoiceRecordId: "replacement-invoice-1",
+      replacementFileId: "replacement-file-1",
+      reasonCode: "replacement_invoice_verified",
+      expectedRevision: 3,
+      idempotencyKey: "00000000-0000-4000-8000-000000000001",
+      confirmRepair: true
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/invoice-evidence-repair-impacts");
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/invoice-evidence-repair-impacts/impact-1/resolution",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"confirmRepair":true')
+      })
+    );
   });
 });

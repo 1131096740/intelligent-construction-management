@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-09-06）
+## 当前结论（更新至 2026-09-07）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -21,6 +21,8 @@
 - [x] 完整发布收据：[`docs/progress/2026-08-05-go-live-conditional-go.md`](docs/progress/2026-08-05-go-live-conditional-go.md)。
 
 ## 当前正在推进
+
+- [~] POL-11B-REPAIR（Issue #260，2026-09-07）：基于 live `origin/main@674c01f25c3a63a808248b57da78abe7366f718a` 的唯一 clean 隔离非生产候选，按方案 A 与 E-CAP/V1 修复全局发票红字、普通反向清分共享额度、发票 aggregate revision CAS、UUIDv4 幂等指纹、票面税率快照与 append-only 证据修复。作废/红字产生的影响精确绑定既有 allocation/case/confirmed version；resolution 只接受同公司同方向、仍有效、已绑定私有附件的蓝字或重开发票，同 replacement 累计解决额不得超过票面总额，并发竞争最多一笔成功，不改写原清分、案件、版本或经济事实。全部写入口保留 actual actor/delegator/resource/ref fingerprint、显式二次确认、replay-before-stale 与原子审计；附件下载仅允许 uploader 或 current active global finance staff/director，委托精确绑定既有 `clearing.confirm` 资源并在签发/读取两阶段重验，`super_admin` 不取得业务权限。Web 复用共享 route role helper、TDesign 与 `--jg-*` tokens，展示中文 stale/待修复状态。当前 targeted API 5 suites / 430 passed、Web 3 files / 55 passed；API/Web typecheck、lint（0 error）、build、business-errors、`check:ui`、Prisma validate/generate 与官方 manifests 已通过（577 routes、533 wrappers / 555 bindings、289 actions、0 blocker / 0 unclassified）；canonical PostgreSQL 16 动态清单覆盖 48 files / 182 tests、remaining=0，票据 runner 从空库应用 165 migrations 后 4/4 通过并完成容器清理。完整 `release:local`、最终未变化 SHA 的 canonical dynamic gate、Standards/Spec 双轴复审、fixed-head CI 与 GitHub 收口仍待完成。未部署、未运行生产 migration/apply/backfill，未访问或写入生产数据库、COS、权限或真实清算/发票/工资/付款数据，未启动 #261/#262。
 
 - [~] POL-12A-REPAIR（Issue #263，2026-09-06）：从 #255 收口并释放共享车道后的 live `origin/main@fe9b0d1d0cd52c28fa4bfec81afba39ff85814e3` 建立唯一隔离非生产候选，只修复 #263 冻结 findings；#216 的委托/代理 SoD finding 继续由 #262 承担。本票将外部批准来源收窄为劳动关系、人员金额、成本组成和债权权威事实，项目分摊与两张矩阵由财务在草稿填写；退回历史版本保持 `superseded`，新版本通过受控更新命令编辑。来源/草稿创建先按幂等键取得事务级 advisory lock，自然唯一冲突退出事务后按同键指纹读取胜出回执；工作台分页上限 50，六类事实改为受控 `createMany` 批写；确认按版本、来源、证据、服务依据、人员、组成、债权、分摊及两张矩阵稳定加锁，并在锁后重读来源 fingerprint、证据、完整事实与逐分平衡。新增晚于既有 terminal 的前向 migration，数据库拒绝批准来源及非草稿工资事实 UPDATE/DELETE；删除 shared wage 重复角色映射并复用 canonical permissions。当前 API 工资域静态回归 97/97（另 15 项动态用例待 PG16）、Web 定向 10/10、API/Web typecheck、API lint、Web lint（0 error）、CI 编排 78/78 与迁移 baseline 163/clean 已通过；最终 clean SHA 的 PostgreSQL 16（并发 replay、锁后漂移、不可变、退回编辑、分页、批写回滚）、全量 `release:local`、Standards/Spec 双轴复审、fixed-head CI 与 GitHub 收口仍待完成。未部署、未运行生产迁移，未访问或写入生产数据库/COS/权限/真实工资、付款、归零、激活或回滚。
 - [~] POL-12B-R2（Issue #266，2026-09-07）：基于开工 live `origin/main@c9a4253dda027ab6243579e5633d3aa0ca89642f` 的唯一 clean 隔离候选，将外部批准工资来源持久化为 `ordinary` / `full_reversal` 受控用途。普通来源仍必须大于零且禁止冲销；全额冲销来源必须显式携带非空人员、成本、债权、项目及 `serviceSnapshotId` 的全零矩阵，并绑定同公司/同月紧邻已确认版本、前置来源与唯一 canonical 原始应付根闭包指纹。创建来源、创建/编辑修订和确认均以稳定顺序加锁重读，拒绝非冲销消费、普通来源冲销、跨根、跨服务快照、陈旧目标、重复来源、无实际负向差额和任何成本/应付负数；保留 #106 分配/超结算和 #262 SoD 既有边界。Web 导入仅显示非敏感用途标签，复用 `canPrepare` 和既有 revision route，未新增角色、权限或业务动作。新增终点 migration 及官方动态/全站 manifests；全新一次性 PostgreSQL 16 库已从空库完成 164 migrations，工资动态套件 17/17 通过，覆盖多 `serviceSnapshotId` 的真实全额冲销、每个 adjustment 的原根闭合、并发同键回放、同键异载荷、批次零写入、锁后证据漂移、陈旧/跨单/跨公司/跨月/跨服务快照、用途错配、重复消费与来源/已确认事实不可变。目前窄范围 API/Web typecheck、API 44/44、Web 11/11，Web API/page-action/route-usage/capability manifests 已绿；全量静态/动态发布门、双轴复审与 GitHub 收口待绑定最终精确 SHA。未部署、未执行生产迁移，未访问或写入生产数据库/COS/权限/真实工资、付款、归零、激活或回滚。

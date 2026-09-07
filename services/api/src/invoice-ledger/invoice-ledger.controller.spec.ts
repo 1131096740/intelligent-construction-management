@@ -7,6 +7,7 @@ import type { CreateProcurementInvoiceDto } from "./dto/create-procurement-invoi
 import type { CreateGlobalInvoiceDto } from "./dto/create-global-invoice.dto";
 import type { CreateRedGlobalInvoiceDto } from "./dto/create-red-global-invoice.dto";
 import type { CreateReissueGlobalInvoiceDto } from "./dto/create-reissue-global-invoice.dto";
+import type { ResolveInvoiceEvidenceRepairDto } from "./dto/resolve-invoice-evidence-repair.dto";
 import { InvoiceLedgerController } from "./invoice-ledger.controller";
 
 type RuntimeDto = new () => object;
@@ -15,8 +16,10 @@ type InvoiceLedgerMethod =
   | "createGlobalInvoice"
   | "createRedGlobalInvoice"
   | "createReissueGlobalInvoice"
+  | "voidGlobalInvoice"
   | "createClearingAllocation"
   | "reverseClearingAllocation"
+  | "resolveEvidenceRepairImpact"
   | "reverseAllocation"
   | "createNoInvoiceConfirmation"
   | "reviewNoInvoiceConfirmation"
@@ -121,8 +124,10 @@ const validGlobalInvoice: CreateGlobalInvoiceDto = {
   totalAmountCents: "13000",
   taxExclusiveAmountCents: "11504",
   taxAmountCents: "1496",
+  taxRateSnapshot: "13.000000",
   fileId: "global-invoice-file-1",
-  idempotencyKey: "global-invoice-key-1"
+  idempotencyKey: "00000000-0000-4000-8000-000000000001",
+  expectedRevision: 0
 };
 
 const validRedGlobalInvoice: CreateRedGlobalInvoiceDto = {
@@ -130,9 +135,10 @@ const validRedGlobalInvoice: CreateRedGlobalInvoiceDto = {
   invoiceCode: "GLOBAL-RED-CODE-001",
   invoiceNumber: "GLOBAL-RED-NO-001",
   fileId: "global-red-invoice-file-1",
-  idempotencyKey: "global-red-invoice-key-1",
+  idempotencyKey: "00000000-0000-4000-8000-000000000002",
   blueInvoiceRecordId: "blue-invoice-1",
   reasonCode: "sales_return",
+  confirmRed: true,
   blueAllocationReferences: [
     { blueInvoiceAllocationId: "blue-allocation-1", amountCents: "13000" }
   ]
@@ -143,9 +149,19 @@ const validReissueGlobalInvoice: CreateReissueGlobalInvoiceDto = {
   invoiceCode: "GLOBAL-REISSUE-CODE-001",
   invoiceNumber: "GLOBAL-REISSUE-NO-001",
   fileId: "global-reissue-invoice-file-1",
-  idempotencyKey: "global-reissue-invoice-key-1",
+  idempotencyKey: "00000000-0000-4000-8000-000000000003",
   originalInvoiceRecordId: "original-invoice-1",
-  reasonCode: "issued_with_wrong_name"
+  reasonCode: "issued_with_wrong_name",
+  confirmReissue: true
+};
+
+const validEvidenceRepair: ResolveInvoiceEvidenceRepairDto = {
+  replacementInvoiceRecordId: "replacement-invoice-1",
+  replacementFileId: "replacement-file-1",
+  reasonCode: "replacement_invoice_verified",
+  idempotencyKey: "00000000-0000-4000-8000-000000000004",
+  expectedRevision: 1,
+  confirmRepair: true
 };
 
 describe("InvoiceLedgerController", () => {
@@ -158,8 +174,10 @@ describe("InvoiceLedgerController", () => {
       ["createGlobalInvoice", "global-invoices"],
       ["createRedGlobalInvoice", "global-invoices/red"],
       ["createReissueGlobalInvoice", "global-invoices/reissue"],
+      ["voidGlobalInvoice", "global-invoices/:invoiceRecordId/void"],
       ["createClearingAllocation", "invoice-clearing-allocations"],
       ["reverseClearingAllocation", "invoice-clearing-allocations/:clearingAllocationId/reversal"],
+      ["resolveEvidenceRepairImpact", "invoice-evidence-repair-impacts/:impactId/resolution"],
       ["reverseAllocation", "invoice-allocations/:allocationId/reversal"],
       [
         "createNoInvoiceConfirmation",
@@ -222,6 +240,12 @@ describe("InvoiceLedgerController", () => {
         InvoiceLedgerController.prototype.reverseClearingAllocation
       )
     ).toBe("clearing.confirm");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        InvoiceLedgerController.prototype.resolveEvidenceRepairImpact
+      )
+    ).toBe("clearing.confirm");
 
     for (const method of [
       "reviewNoInvoiceConfirmation",
@@ -242,6 +266,8 @@ describe("InvoiceLedgerController", () => {
       createGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-invoice-1" }),
       createRedGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-red-invoice-1" }),
       createReissueGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-reissue-invoice-1" }),
+      voidGlobalInvoice: jest.fn().mockResolvedValue({ id: "global-invoice-lifecycle-1" }),
+      resolveEvidenceRepairImpact: jest.fn().mockResolvedValue({ id: "resolution-1" }),
       reverseAllocation: jest.fn().mockResolvedValue({ id: "allocation-1" }),
       createNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
       reviewNoInvoiceConfirmation: jest.fn().mockResolvedValue({ id: "no-invoice-1" }),
@@ -275,6 +301,18 @@ describe("InvoiceLedgerController", () => {
     await controller.createGlobalInvoice(user, validGlobalInvoice);
     await controller.createRedGlobalInvoice(user, validRedGlobalInvoice);
     await controller.createReissueGlobalInvoice(user, validReissueGlobalInvoice);
+    const voidBody = {
+      reasonCode: "invoice_voided",
+      idempotencyKey: "00000000-0000-4000-8000-000000000005",
+      expectedRevision: 0,
+      confirmVoid: true
+    };
+    await controller.voidGlobalInvoice("global-invoice-1", user, voidBody);
+    await controller.resolveEvidenceRepairImpact(
+      "impact-1",
+      user,
+      validEvidenceRepair
+    );
     await controller.reverseAllocation("allocation-1", user, reverseBody);
     await controller.createNoInvoiceConfirmation(
       "procurement-1",
@@ -315,6 +353,16 @@ describe("InvoiceLedgerController", () => {
     expect(service.createReissueGlobalInvoice).toHaveBeenCalledWith(
       "actor-1",
       validReissueGlobalInvoice
+    );
+    expect(service.voidGlobalInvoice).toHaveBeenCalledWith(
+      "global-invoice-1",
+      "actor-1",
+      voidBody
+    );
+    expect(service.resolveEvidenceRepairImpact).toHaveBeenCalledWith(
+      "impact-1",
+      "actor-1",
+      validEvidenceRepair
     );
     expect(service.reverseAllocation).toHaveBeenCalledWith(
       "allocation-1",
@@ -364,6 +412,10 @@ describe("InvoiceLedgerController", () => {
     await expect(
       validateBody("createReissueGlobalInvoice", 1, validReissueGlobalInvoice)
     ).resolves.toMatchObject(validReissueGlobalInvoice);
+    expect(bodyMetatype("resolveEvidenceRepairImpact", 2)).not.toBe(Object);
+    await expect(
+      validateBody("resolveEvidenceRepairImpact", 2, validEvidenceRepair)
+    ).resolves.toMatchObject(validEvidenceRepair);
   });
 
   it("rejects unsupported invoice types, missing identities and nested unknown fields", async () => {

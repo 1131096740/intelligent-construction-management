@@ -1,4 +1,5 @@
 import { CreateGlobalInvoiceDto } from "./create-global-invoice.dto";
+import { IsBoolean } from "class-validator";
 import { IsMaxUnicodeTextLength, IsRequiredText } from "../../validation/static-field-validation";
 
 export class CreateReissueGlobalInvoiceDto extends CreateGlobalInvoiceDto {
@@ -9,4 +10,7 @@ export class CreateReissueGlobalInvoiceDto extends CreateGlobalInvoiceDto {
   @IsRequiredText({ requiredMessage: "请填写重开原因", typeMessage: "重开原因必须是文字", blankMessage: "重开原因不能为空白" })
   @IsMaxUnicodeTextLength({ max: 100, message: "重开原因不能超过 100 个字符" })
   reasonCode!: string;
+
+  @IsBoolean({ message: "请明确确认重开发票" })
+  confirmReissue!: boolean;
 }

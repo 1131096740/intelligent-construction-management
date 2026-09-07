@@ -814,6 +814,70 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("derives evidence-repair clearing scope from the persisted impact for an exact delegation", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      invoiceEvidenceRepairImpact: {
+        findUnique: jest.fn().mockResolvedValue({
+          projectId: "project-1",
+          clearingCaseId: "case-1"
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([
+          { fromUserId: "finance-director-1" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegatee-1", isActive: true },
+          { id: "finance-director-1", isActive: true }
+        ]),
+        findUnique: jest.fn().mockResolvedValue({ isActive: true })
+      }
+    };
+    const companyRoles = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_director"])
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("clearing.confirm")
+      } as never,
+      prisma as never,
+      undefined,
+      companyRoles as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "delegatee-1" },
+          params: { impactId: "impact-1" },
+          body: { delegatorUserId: "finance-director-1" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.invoiceEvidenceRepairImpact.findUnique).toHaveBeenCalledWith({
+      where: { id: "impact-1" },
+      select: { projectId: true, clearingCaseId: true }
+    });
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        toUserId: "delegatee-1",
+        actionKey: "clearing.confirm",
+        resourceType: "clearing_case",
+        resourceId: "case-1",
+        enabled: true
+      }),
+      select: { fromUserId: true }
+    });
+  });
+
   it("rejects delegated approval when the delegator is inactive despite residual project roles", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

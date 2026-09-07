@@ -203,6 +203,18 @@ describe("FileController authorization wiring", () => {
     expect(result).toEqual(value);
   });
 
+  it("accepts an explicit nonblank delegator for a resource-bound download ticket", async () => {
+    const value = {
+      confirmationPassword: "current-password",
+      downloadReason: "全局发票复核",
+      delegatorUserId: "finance-director-1"
+    };
+    const result = await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
+
+    expect(result).toBeInstanceOf(CreateDownloadTicketDto);
+    expect(result).toEqual(value);
+  });
+
   it("accepts the explicit PDF preview ticket mode and rejects unknown modes", async () => {
     const preview = {
       confirmationPassword: "current-password",
@@ -463,6 +475,33 @@ describe("FileController authorization wiring", () => {
     });
   });
 
+  it("forwards an explicit global-invoice delegator only after password confirmation", async () => {
+    const files = {
+      createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
+    };
+    const controller = new FileController(files as never, auth as never);
+
+    await controller.createDownloadTicket(
+      "file-1",
+      { id: "actual-actor", name: "经办人", phone: "13800000000" },
+      {
+        confirmationPassword: "current-password",
+        downloadReason: "全局发票复核",
+        delegatorUserId: "finance-director-1"
+      }
+    );
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("actual-actor", "current-password");
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
+      actorUserId: "actual-actor",
+      delegatorUserId: "finance-director-1",
+      downloadReason: "全局发票复核"
+    });
+  });
+
   it("derives private file download capability from the authenticated account", async () => {
     const files = {
       getDownloadTicketCapability: jest.fn().mockResolvedValue({
@@ -482,7 +521,8 @@ describe("FileController authorization wiring", () => {
 
     expect(files.getDownloadTicketCapability).toHaveBeenCalledWith(
       "file-1",
-      "user-1"
+      "user-1",
+      undefined
     );
   });
 

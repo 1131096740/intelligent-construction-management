@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 164,
-    "terminalMigration": "20260907090000_pol266_full_reversal_source_authority",
-    "terminalMigrationChecksum": "40a1d61bc78cf74e2a39617bdd624d46858c7dc4d24c23bece26671347c5fafb",
+    "expectedDirectoryCount": 165,
+    "terminalMigration": "20260907130000_pol260_invoice_ledger_repair",
+    "terminalMigrationChecksum": "5b74ed2c867652323fa64e9145437b6b26d2b43c21bc84f1aaa30f62fd628f62",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 47,
-    "fullyPendingSuites": 36,
+    "pendingFiles": 48,
+    "fullyPendingSuites": 37,
     "partiallyPendingSuites": 11,
-    "pendingTests": 178,
-    "coveredFiles": 47,
-    "coveredTests": 178,
+    "pendingTests": 182,
+    "coveredFiles": 48,
+    "coveredTests": 182,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -186,6 +186,22 @@
       "runner": {
         "kind": "node",
         "path": "services/api/prisma/verify-fund-execution-v7.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "invoice_ledger_pol260",
+      "pendingTests": 4,
+      "testFiles": [
+        {
+          "path": "services/api/src/invoice-ledger/invoice-ledger.postgres.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/src/invoice-ledger/run-invoice-ledger-postgresql16-local.cjs"
       },
       "state": "executable_local_runner"
     },

@@ -1,4 +1,4 @@
-import { IsIn, ValidateIf } from "class-validator";
+import { IsIn, IsInt, Matches, Min, ValidateIf } from "class-validator";
 import { VAT_INVOICE_TYPES, type VatInvoiceType } from "@jiangkong/shared-domain";
 import {
   IsCanonicalMoneyText,
@@ -72,6 +72,10 @@ export class CreateGlobalInvoiceDto {
   @IsCanonicalMoneyText({ typeMessage: "发票税额格式不正确", formatMessage: "发票税额必须按分填写为 0 或更大的整数", rangeMessage: "发票税额超出系统可保存范围" })
   taxAmountCents!: string;
 
+  @IsRequiredText({ requiredMessage: "请填写票面税率快照", typeMessage: "票面税率快照必须是文字", blankMessage: "请填写票面税率快照" })
+  @Matches(/^(?:\d{1,2}|100)\.\d{6}$/u, { message: "票面税率快照必须为 0.000000 至 100.000000 的固定六位小数" })
+  taxRateSnapshot!: string;
+
   @IsRequiredText({ requiredMessage: "请上传发票文件", typeMessage: "发票文件编号必须是文字", blankMessage: "请上传发票文件" })
   @IsMaxUnicodeTextLength({ max: 128, message: "发票文件编号不能超过 128 个字符" })
   fileId!: string;
@@ -79,4 +83,8 @@ export class CreateGlobalInvoiceDto {
   @IsRequiredText({ requiredMessage: "请填写幂等键", typeMessage: "幂等键必须是文字", blankMessage: "请填写幂等键" })
   @IsMaxUnicodeTextLength({ max: 128, message: "幂等键不能超过 128 个字符" })
   idempotencyKey!: string;
+
+  @IsInt({ message: "预期版本必须是整数" })
+  @Min(0, { message: "预期版本不能小于 0" })
+  expectedRevision!: number;
 }
