@@ -220,6 +220,83 @@ describe("POL-11B invoice ledger PostgreSQL authority", () => {
     },
     60_000
   );
+
+  integrationTest(
+    "allows only the exact replacement file snapshot without weakening exclusive file protection",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const client = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      try {
+        await client.$connect();
+        await assertFullyMigrated(client);
+        const fixture = await seedEvidenceRepairCompetition(client);
+        const impactId = fixture.impactIds[0]!;
+
+        await expect(
+          client.invoiceEvidenceRepairResolution.create({
+            data: {
+              impactId,
+              invalidatedInvoiceRecordId: fixture.invalidatedInvoiceRecordId,
+              replacementInvoiceRecordId: fixture.replacementInvoiceRecordId,
+              replacementFileId: `file-${fixture.invalidatedInvoiceRecordId}`,
+              reasonCode: "replacement_invoice_verified",
+              actualActorUserId: fixture.actorUserId,
+              expectedRevision: 1,
+              idempotencyKey: randomUUID(),
+              requestFingerprint: "8".repeat(64)
+            }
+          })
+        ).rejects.toThrow();
+        await expect(
+          client.invoiceEvidenceRepairResolution.count({ where: { impactId } })
+        ).resolves.toBe(0);
+
+        await expect(
+          client.invoiceEvidenceRepairResolution.create({
+            data: {
+              impactId,
+              invalidatedInvoiceRecordId: fixture.invalidatedInvoiceRecordId,
+              replacementInvoiceRecordId: fixture.replacementInvoiceRecordId,
+              replacementFileId: fixture.replacementFileId,
+              reasonCode: "replacement_invoice_verified",
+              actualActorUserId: fixture.actorUserId,
+              expectedRevision: 1,
+              idempotencyKey: randomUUID(),
+              requestFingerprint: "7".repeat(64)
+            }
+          })
+        ).resolves.toMatchObject({
+          replacementFileId: fixture.replacementFileId
+        });
+
+        await expect(
+          client.fileObject.create({
+            data: {
+              id: `pol260-replacement-chain-${randomUUID()}`,
+              bucket: "private-local",
+              objectKey: `pol260/replacement-chain-${randomUUID()}.pdf`,
+              originalName: "replacement-chain.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 10,
+              uploadedByUserId: fixture.actorUserId,
+              contentSha256: "6".repeat(64),
+              supersedesFileObjectId: fixture.replacementFileId
+            }
+          })
+        ).rejects.toThrow();
+        await expect(
+          client.fileObject.delete({
+            where: { id: fixture.replacementFileId }
+          })
+        ).rejects.toThrow();
+      } finally {
+        await client.$disconnect();
+      }
+    },
+    60_000
+  );
 });
 
 function assertDedicatedDatabase() {

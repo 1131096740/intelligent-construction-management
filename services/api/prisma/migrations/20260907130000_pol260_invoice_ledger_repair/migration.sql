@@ -94,6 +94,35 @@ ALTER TABLE "InvoiceEvidenceRepairResolution" ADD CONSTRAINT "InvoiceEvidenceRep
 ALTER TABLE "InvoiceEvidenceRepairResolution" ADD CONSTRAINT "InvoiceEvidenceRepairResolution_replacementFileId_fkey"
   FOREIGN KEY ("replacementFileId") REFERENCES "FileObject"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- The replacement file is an immutable snapshot of the file already owned by
+-- the replacement InvoiceRecord. Keep it visible to the canonical inventory,
+-- but exclude this exact derived reference from collision ownership: the
+-- resolution guard below proves the same invoice/file coordinate on insert.
+SELECT pg_advisory_xact_lock(190731, 260);
+ALTER FUNCTION jg_file_business_binding_columns()
+  RENAME TO jg_file_business_binding_columns_before_pol260_invoice_evidence_repair;
+CREATE FUNCTION jg_file_business_binding_columns()
+RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT * FROM jg_file_business_binding_columns_before_pol260_invoice_evidence_repair()
+  UNION ALL
+  VALUES ('InvoiceEvidenceRepairResolution', 'replacementFileId', FALSE);
+$$;
+
+CREATE OR REPLACE FUNCTION jg_file_business_collision_columns()
+RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT *
+  FROM jg_file_business_binding_columns()
+  WHERE NOT (
+    ("tableName" = 'SpotProcurementPaymentArchiveFile' AND "columnName" = 'fileId')
+    OR (
+      "tableName" = 'InvoiceEvidenceRepairResolution'
+      AND "columnName" = 'replacementFileId'
+    )
+  );
+$$;
+
 CREATE TRIGGER "InvoiceEvidenceRepairImpact_immutable"
 BEFORE UPDATE OR DELETE ON "InvoiceEvidenceRepairImpact"
 FOR EACH ROW EXECUTE FUNCTION "prevent_invoice_lifecycle_mutation"();
