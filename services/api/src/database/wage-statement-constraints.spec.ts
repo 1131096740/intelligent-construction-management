@@ -28,6 +28,17 @@ export function wageStatementDatabaseUrl(value: string | undefined) {
   return url.toString();
 }
 
+function wageDownloadTicketInput(downloadUrl: string) {
+  const url = new URL(`http://local${downloadUrl}`);
+  return {
+    actorUserId: url.searchParams.get("actorUserId") ?? "",
+    expiresAt: url.searchParams.get("expiresAt") ?? "",
+    downloadReason: url.searchParams.get("downloadReason") ?? "",
+    accessMode: (url.searchParams.get("accessMode") ?? "download") as "download",
+    token: url.searchParams.get("token") ?? ""
+  };
+}
+
 describe("wage statement database target guard", () => {
   it("rejects a production or non-local database target", () => {
     expect(() =>
@@ -825,17 +836,6 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       undefined,
       new CompanyRoleResolverService(first as never)
     );
-    const ticketInput = (downloadUrl: string) => {
-      const url = new URL(`http://local${downloadUrl}`);
-      return {
-        actorUserId: url.searchParams.get("actorUserId") ?? "",
-        expiresAt: url.searchParams.get("expiresAt") ?? "",
-        downloadReason: url.searchParams.get("downloadReason") ?? "",
-        accessMode: (url.searchParams.get("accessMode") ?? "download") as "download",
-        token: url.searchParams.get("token") ?? ""
-      };
-    };
-
     const revokedReason = "岗位撤销后的工资依据复核";
     const revokedTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
       actorUserId: fixture.preparerUserId,
@@ -846,7 +846,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     });
     await expect(files.readPrivateFile(
       fixture.evidenceFileId,
-      ticketInput(revokedTicket.downloadUrl)
+      wageDownloadTicketInput(revokedTicket.downloadUrl)
     )).rejects.toThrow("当前账号无权下载工资敏感依据");
 
     const financeStaff = await second.position.findUniqueOrThrow({
@@ -871,7 +871,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     });
     await expect(files.readPrivateFile(
       fixture.evidenceFileId,
-      ticketInput(disabledTicket.downloadUrl)
+      wageDownloadTicketInput(disabledTicket.downloadUrl)
     )).rejects.toThrow("当前账号无权下载工资敏感依据");
 
     const attempts = await observer.auditLog.findMany({
@@ -924,22 +924,11 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       undefined,
       new CompanyRoleResolverService(first as never)
     );
-    const ticketInput = (downloadUrl: string) => {
-      const url = new URL(`http://local${downloadUrl}`);
-      return {
-        actorUserId: url.searchParams.get("actorUserId") ?? "",
-        expiresAt: url.searchParams.get("expiresAt") ?? "",
-        downloadReason: url.searchParams.get("downloadReason") ?? "",
-        accessMode: (url.searchParams.get("accessMode") ?? "download") as "download",
-        token: url.searchParams.get("token") ?? ""
-      };
-    };
-
     const expiredTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
       actorUserId: fixture.preparerUserId,
       downloadReason: "过期工资依据复核"
     });
-    const expiredInput = ticketInput(expiredTicket.downloadUrl);
+    const expiredInput = wageDownloadTicketInput(expiredTicket.downloadUrl);
     const dateNow = jest.spyOn(Date, "now").mockReturnValue(Date.parse(expiredInput.expiresAt) + 1);
     try {
       await expect(files.readPrivateFile(fixture.evidenceFileId, expiredInput))
@@ -989,22 +978,11 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       undefined,
       new CompanyRoleResolverService(first as never)
     );
-    const ticketInput = (downloadUrl: string) => {
-      const url = new URL(`http://local${downloadUrl}`);
-      return {
-        actorUserId: url.searchParams.get("actorUserId") ?? "",
-        expiresAt: url.searchParams.get("expiresAt") ?? "",
-        downloadReason: url.searchParams.get("downloadReason") ?? "",
-        accessMode: (url.searchParams.get("accessMode") ?? "download") as "download",
-        token: url.searchParams.get("token") ?? ""
-      };
-    };
-
     const invalidTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
       actorUserId: fixture.preparerUserId,
       downloadReason: "无效工资依据复核"
     });
-    const invalidInput = ticketInput(invalidTicket.downloadUrl);
+    const invalidInput = wageDownloadTicketInput(invalidTicket.downloadUrl);
     const signedToken = invalidInput.token;
     await expect(files.readPrivateFile(fixture.evidenceFileId, {
       ...invalidInput,
