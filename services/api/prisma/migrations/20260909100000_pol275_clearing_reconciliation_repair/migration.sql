@@ -1685,10 +1685,11 @@ BEGIN
       SELECT jsonb_agg(allocation.value -> 'clearingAllocationId' ORDER BY allocation.ordinal)
       FROM jsonb_array_elements(intent -> 'eventAllocations') WITH ORDINALITY allocation(value, ordinal)
     ), '[]'::JSONB)
-    OR planned_ids -> 'definitionReversalId' IS DISTINCT FROM
+    OR planned_ids -> 'definitionReversalId' IS DISTINCT FROM (
       CASE WHEN jsonb_typeof(intent -> 'definitionReversal') = 'object'
         THEN intent -> 'definitionReversal' -> 'definitionReversalId'
         ELSE 'null'::JSONB END
+    )
   THEN
     RAISE EXCEPTION 'POL-275 plannedIds 与冻结关系集合不闭合' USING ERRCODE = '23514';
   END IF;
