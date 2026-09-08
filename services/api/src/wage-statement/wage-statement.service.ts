@@ -10,6 +10,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canPerform,
+  type RoleKey,
   WAGE_COST_COMPONENT_CODES,
   WAGE_CREDITOR_CATEGORIES
 } from "@jiangkong/shared-domain";
@@ -46,6 +47,14 @@ const MAX_WAGE_DETAIL_ROWS_PER_PERSON = 100;
 const MAX_WAGE_MATRIX_CELLS_PER_PERSON = 10_000;
 
 type ActiveApprovalDelegationEdge = { fromUserId: string; toUserId: string };
+type WageConfirmationDelegationRow = ActiveApprovalDelegationEdge & {
+  actionKey: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  enabled: boolean;
+  startsAt: Date;
+  endsAt: Date;
+};
 
 function delegationIdentitySet(
   userId: string,
@@ -304,6 +313,12 @@ type FullReversalBinding = {
   rootClosureFingerprint: string;
   rootPayableRefIds: string[];
 };
+
+class WageSensitiveReadAccessDeniedException extends ForbiddenException {
+  constructor() {
+    super("当前公司岗位无权查看工资汇总");
+  }
+}
 
 @Injectable()
 export class WageStatementService {
@@ -860,61 +875,65 @@ export class WageStatementService {
   }
 
   async listWorkbench(actorUserId: string, query: WageStatementWorkbenchQueryDto = {}) {
-    await this.assertReadAuthority(actorUserId);
-    const { page, pageSize } = workbenchPage(query);
-    const [statements, total] = await Promise.all([
-      this.prisma.wageStatement.findMany({
-        select: WAGE_WORKBENCH_SELECT,
-        orderBy: [{ wageMonth: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
-        skip: (page - 1) * pageSize,
-        take: pageSize
-      }),
-      this.prisma.wageStatement.count()
-    ]);
-    const currentVersionIds = statements.map((statement) => {
-      const version = statement.versions.find((candidate) => candidate.revision === statement.currentRevision);
-      if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
-      return version.id;
+    return this.withSensitiveReadAccess(actorUserId, null, "workbench", async (tx, roles) => {
+      const { page, pageSize } = workbenchPage(query);
+      const [statements, total] = await Promise.all([
+        tx.wageStatement.findMany({
+          select: WAGE_WORKBENCH_SELECT,
+          orderBy: [{ wageMonth: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize
+        }),
+        tx.wageStatement.count()
+      ]);
+      const currentVersionIds = statements.map((statement) => {
+        const version = statement.versions.find((candidate) => candidate.revision === statement.currentRevision);
+        if (!version) throw new ConflictException("工资承担单当前版本缺失，请停止操作并复核数据");
+        return version.id;
+      });
+      const countRows = currentVersionIds.length
+        ? await tx.$queryRaw<WageWorkbenchCountRow[]>(Prisma.sql`
+            SELECT
+              p."statementVersionId" AS "statementVersionId",
+              COUNT(DISTINCT p.id)::BIGINT AS "personLineCount",
+              COUNT(DISTINCT p."positionCategorySnapshot"->>'category')::BIGINT AS "positionCategoryCount",
+              COUNT(a.id)::BIGINT AS "projectAllocationCount"
+            FROM "WagePersonLine" p
+            LEFT JOIN "WageProjectAllocation" a ON a."personLineId" = p.id
+            WHERE p."statementVersionId" IN (${Prisma.join(currentVersionIds)})
+            GROUP BY p."statementVersionId"
+          `)
+        : [];
+      const countsByVersionId = new Map(countRows.map((row) => [row.statementVersionId, row]));
+      const companyNames = await this.companyNames(
+        statements.map((statement) => statement.employmentCompanyId),
+        tx
+      );
+      return {
+        capabilities: this.capabilitiesForRoles(roles),
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+        items: statements.map((statement) => {
+          const aggregate = this.workbenchAggregate(statement, companyNames, countsByVersionId);
+          return {
+            statementId: statement.id,
+            employmentCompanyName: aggregate.employmentCompanyName,
+            wageMonth: statement.wageMonth,
+            status: aggregate.status,
+            statusLabel: aggregate.statusLabel,
+            revision: statement.currentRevision,
+            sourceLabel: aggregate.sourceLabel,
+            personLineCount: aggregate.personLineCount,
+            positionCategoryCount: aggregate.positionCategoryCount,
+            projectAllocationCount: aggregate.projectAllocationCount,
+            latestReviewReturn: aggregate.latestReviewReturn,
+            updatedAt: statement.updatedAt.toISOString()
+          };
+        })
+      };
     });
-    const countRows = currentVersionIds.length
-      ? await this.prisma.$queryRaw<WageWorkbenchCountRow[]>(Prisma.sql`
-          SELECT
-            p."statementVersionId" AS "statementVersionId",
-            COUNT(DISTINCT p.id)::BIGINT AS "personLineCount",
-            COUNT(DISTINCT p."positionCategorySnapshot"->>'category')::BIGINT AS "positionCategoryCount",
-            COUNT(a.id)::BIGINT AS "projectAllocationCount"
-          FROM "WagePersonLine" p
-          LEFT JOIN "WageProjectAllocation" a ON a."personLineId" = p.id
-          WHERE p."statementVersionId" IN (${Prisma.join(currentVersionIds)})
-          GROUP BY p."statementVersionId"
-        `)
-      : [];
-    const countsByVersionId = new Map(countRows.map((row) => [row.statementVersionId, row]));
-    const companyNames = await this.companyNames(statements.map((statement) => statement.employmentCompanyId));
-    return {
-      capabilities: await this.capabilities(actorUserId),
-      page,
-      pageSize,
-      total,
-      totalPages: Math.ceil(total / pageSize),
-      items: statements.map((statement) => {
-        const aggregate = this.workbenchAggregate(statement, companyNames, countsByVersionId);
-        return {
-          statementId: statement.id,
-          employmentCompanyName: aggregate.employmentCompanyName,
-          wageMonth: statement.wageMonth,
-          status: aggregate.status,
-          statusLabel: aggregate.statusLabel,
-          revision: statement.currentRevision,
-          sourceLabel: aggregate.sourceLabel,
-          personLineCount: aggregate.personLineCount,
-          positionCategoryCount: aggregate.positionCategoryCount,
-          projectAllocationCount: aggregate.projectAllocationCount,
-          latestReviewReturn: aggregate.latestReviewReturn,
-          updatedAt: statement.updatedAt.toISOString()
-        };
-      })
-    };
   }
 
   private workbenchAggregate(
@@ -943,37 +962,47 @@ export class WageStatementService {
   }
 
   async readSummary(actorUserId: string, statementId: string) {
-    await this.assertReadAuthority(actorUserId);
-    const statement = await this.aggregateStatement(statementId);
-    const aggregate = this.aggregate(statement, await this.companyNames([statement.employmentCompanyId]));
-    return {
-      capabilities: await this.capabilities(actorUserId),
-      employmentCompanyName: aggregate.employmentCompanyName,
-      wageMonth: statement.wageMonth,
-      statusLabel: aggregate.statusLabel,
-      revision: statement.currentRevision,
-      sourceLabel: aggregate.sourceLabel,
-      personLineCount: aggregate.personLineCount,
-      positionCategoryCount: aggregate.positionCategoryCount,
-      projectAllocationCount: aggregate.projectAllocationCount,
-      latestReviewReturn: aggregate.latestReviewReturn,
-      categories: aggregate.categories
-    };
+    const id = required(statementId, "工资承担单不能为空");
+    return this.withSensitiveReadAccess(actorUserId, id, "summary", async (tx, roles) => {
+      const statement = await this.aggregateStatement(id, tx);
+      const aggregate = this.aggregate(
+        statement,
+        await this.companyNames([statement.employmentCompanyId], tx)
+      );
+      return {
+        capabilities: this.capabilitiesForRoles(roles),
+        employmentCompanyName: aggregate.employmentCompanyName,
+        wageMonth: statement.wageMonth,
+        statusLabel: aggregate.statusLabel,
+        revision: statement.currentRevision,
+        sourceLabel: aggregate.sourceLabel,
+        personLineCount: aggregate.personLineCount,
+        positionCategoryCount: aggregate.positionCategoryCount,
+        projectAllocationCount: aggregate.projectAllocationCount,
+        latestReviewReturn: aggregate.latestReviewReturn,
+        categories: aggregate.categories
+      };
+    });
   }
 
   async readImportPreview(actorUserId: string, statementId: string) {
-    await this.assertReadAuthority(actorUserId);
-    const statement = await this.aggregateStatement(statementId);
-    const aggregate = this.aggregate(statement, await this.companyNames([statement.employmentCompanyId]));
-    return {
-      employmentCompanyName: aggregate.employmentCompanyName,
-      wageMonth: statement.wageMonth,
-      sourceLabel: aggregate.sourceLabel,
-      sourceStatusLabel: "已冻结外部批准来源",
-      personLineCount: aggregate.personLineCount,
-      positionCategoryCount: aggregate.positionCategoryCount,
-      projectAllocationCount: aggregate.projectAllocationCount
-    };
+    const id = required(statementId, "工资承担单不能为空");
+    return this.withSensitiveReadAccess(actorUserId, id, "import_preview", async (tx) => {
+      const statement = await this.aggregateStatement(id, tx);
+      const aggregate = this.aggregate(
+        statement,
+        await this.companyNames([statement.employmentCompanyId], tx)
+      );
+      return {
+        employmentCompanyName: aggregate.employmentCompanyName,
+        wageMonth: statement.wageMonth,
+        sourceLabel: aggregate.sourceLabel,
+        sourceStatusLabel: "已冻结外部批准来源",
+        personLineCount: aggregate.personLineCount,
+        positionCategoryCount: aggregate.positionCategoryCount,
+        projectAllocationCount: aggregate.projectAllocationCount
+      };
+    });
   }
 
   /**
@@ -1028,21 +1057,32 @@ export class WageStatementService {
     statementId: string,
     downloadReason: string
   ) {
-    void downloadReason;
-    const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
-    if (!canPerform("wage_sensitive_export", roles)) {
-      throw new ForbiddenException("当前公司岗位无权导出工资敏感资料");
-    }
     const id = required(statementId, "工资承担单不能为空");
+    const reason = required(downloadReason, "导出原因不能为空");
+    let allowed = false;
+    try {
+      const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+      allowed = canPerform("wage_sensitive_export", roles);
+    } catch {
+      // Inactive or otherwise unresolvable principals are denied and audited.
+    }
     await this.prisma.$transaction(async (tx) => {
       await this.audit.record(tx, {
         actorUserId,
         action: "wage_sensitive_export.denied",
         businessType: "wage_statement",
         businessId: id,
-        metadata: jsonValue({ reasonCode: "wage_sensitive_export_artifact_unavailable" })
+        metadata: jsonValue({
+          reasonCode: allowed
+            ? "wage_sensitive_export_artifact_unavailable"
+            : "wage_sensitive_export_not_authorized",
+          downloadReason: reason
+        })
       });
     });
+    if (!allowed) {
+      throw new ForbiddenException("当前公司岗位无权导出工资敏感资料");
+    }
     throw new ConflictException("工资敏感导出工件尚未生成，暂不能导出");
   }
 
@@ -1693,7 +1733,7 @@ export class WageStatementService {
       if (version.status !== "draft") throw new ConflictException("只有草稿工资承担单可以提交");
       await tx.wageStatementVersion.update({
         where: { id: version.id },
-        data: { status: "submitted", submittedByUserId: actorUserId, submittedAt: new Date(), lastEditedByUserId: actorUserId }
+        data: { status: "submitted", submittedByUserId: actorUserId, submittedAt: new Date() }
       });
       const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "submitted" };
       await this.receipt(tx, input, "wage_statement.submit", id, fingerprintValue, actorUserId, result);
@@ -1806,6 +1846,12 @@ export class WageStatementService {
     const id = required(statementId, "工资承担单不能为空");
     const fingerprintValue = commandFingerprint("wage_statement.confirm", id, input, actorUserId);
     return this.executeWithReceiptReplay(input.idempotencyKey, fingerprintValue, "statement", async () => this.serializable(async (tx) => {
+      await this.assertActionInTransaction(
+        tx,
+        actorUserId,
+        "wage_statement.confirm",
+        "当前公司岗位无权确认工资承担单"
+      );
       const replay = await this.replay(tx, input.idempotencyKey, fingerprintValue);
       if (replay) return replay;
       const statement = await this.lockStatement(tx, id);
@@ -1817,7 +1863,7 @@ export class WageStatementService {
       // effective through this existing segregated confirmation transaction.
       wageVersionKind(version.kind);
       const lockedVersion = await this.lockAndRevalidateConfirmationFacts(tx, statement, version.id);
-      await this.assertConfirmationSeparation(tx, actorUserId, version);
+      await this.assertConfirmationSeparation(tx, actorUserId, lockedVersion);
       await this.assertNoAssignedWageConflictInTransaction(tx, lockedVersion.id, statement.wageMonth);
       await this.projectConfirmedVersion(tx, lockedVersion.id, statement.employmentCompanyId, statement.currentRevision, actorUserId);
       await tx.wageStatementVersion.update({ where: { id: lockedVersion.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date() } });
@@ -1897,10 +1943,7 @@ export class WageStatementService {
   private async assertConfirmationSeparation(
     tx: Tx,
     actorUserId: string,
-    version: Pick<
-      Awaited<ReturnType<WageStatementService["currentVersion"]>>,
-      "createdByUserId" | "lastEditedByUserId" | "submittedByUserId"
-    >
+    version: Pick<WageConfirmationVersion, "id" | "createdByUserId" | "lastEditedByUserId" | "submittedByUserId">
   ) {
     const preparerIds = [
       version.createdByUserId,
@@ -1908,14 +1951,50 @@ export class WageStatementService {
       version.submittedByUserId
     ].filter((id): id is string => Boolean(id));
     const now = new Date();
-    const delegations = await tx.approvalDelegation.findMany({
+    const rows = await tx.approvalDelegation.findMany({
       where: {
         enabled: true,
         startsAt: { lte: now },
-        endsAt: { gte: now }
+        endsAt: { gt: now },
+        OR: [
+          { actionKey: null, resourceType: null, resourceId: null },
+          {
+            actionKey: "wage_statement.confirm",
+            resourceType: "wage_statement_version",
+            resourceId: version.id
+          }
+        ]
       },
-      select: { fromUserId: true, toUserId: true }
+      select: {
+        fromUserId: true,
+        toUserId: true,
+        actionKey: true,
+        resourceType: true,
+        resourceId: true,
+        enabled: true,
+        startsAt: true,
+        endsAt: true
+      }
     });
+    const scopedRows = rows.filter((row): row is WageConfirmationDelegationRow => {
+      const standing = row.actionKey === null && row.resourceType === null && row.resourceId === null;
+      const exactVersion = row.actionKey === "wage_statement.confirm" &&
+        row.resourceType === "wage_statement_version" && row.resourceId === version.id;
+      return row.enabled && row.startsAt <= now && row.endsAt > now && (standing || exactVersion);
+    });
+    const principalIds = [...new Set(scopedRows.flatMap((row) => [row.fromUserId, row.toUserId]))];
+    const principals = principalIds.length
+      ? await tx.user.findMany({
+          where: { id: { in: principalIds } },
+          select: { id: true, isActive: true }
+        })
+      : [];
+    const activePrincipalIds = new Set(
+      principals.filter((principal) => principal.isActive).map((principal) => principal.id)
+    );
+    const delegations = scopedRows.filter((row) =>
+      activePrincipalIds.has(row.fromUserId) && activePrincipalIds.has(row.toUserId)
+    );
     const effectiveActorIds = delegationIdentitySet(actorUserId, delegations);
     const effectivePreparerIds = new Set(
       preparerIds.flatMap((preparerId) => [...delegationIdentitySet(preparerId, delegations)])
@@ -2620,11 +2699,72 @@ export class WageStatementService {
     }
   }
 
-  private async assertReadAuthority(actorUserId: string) {
-    const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
-    if (!canPerform("wage_sensitive_read", roles)) {
-      throw new ForbiddenException("当前公司岗位无权查看工资汇总");
+  private async withSensitiveReadAccess<T>(
+    actorUserId: string,
+    statementId: string | null,
+    accessSurface: "workbench" | "summary" | "import_preview",
+    read: (tx: Tx, roles: RoleKey[]) => Promise<T>
+  ): Promise<T> {
+    try {
+      return await this.serializable(async (tx) => {
+        let roles: RoleKey[];
+        try {
+          roles = await this.lockActiveGlobalRoleScopes(tx, actorUserId);
+        } catch {
+          throw new WageSensitiveReadAccessDeniedException();
+        }
+        if (!canPerform("wage_sensitive_read", roles)) {
+          throw new WageSensitiveReadAccessDeniedException();
+        }
+        const result = await read(tx, roles);
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "wage_sensitive_read",
+          businessType: statementId ? "wage_statement" : "wage_statement_workbench",
+          businessId: statementId,
+          metadata: jsonValue({
+            reasonCode: "wage_sensitive_read_authorized",
+            accessSurface
+          })
+        });
+        return result;
+      });
+    } catch (error) {
+      if (!(error instanceof WageSensitiveReadAccessDeniedException)) throw error;
+      await this.prisma.$transaction((tx) => this.audit.record(tx, {
+        actorUserId,
+        action: "wage_sensitive_read.denied",
+        businessType: statementId ? "wage_statement" : "wage_statement_workbench",
+        businessId: statementId,
+        metadata: jsonValue({
+          reasonCode: "wage_sensitive_read_not_authorized",
+          accessSurface
+        })
+      }));
+      throw error;
     }
+  }
+
+  private async lockActiveGlobalRoleScopes(tx: Tx, actorUserId: string): Promise<RoleKey[]> {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT id FROM "User" WHERE id = ${actorUserId} FOR UPDATE
+    `);
+    await tx.$queryRaw(Prisma.sql`
+      SELECT id
+      FROM "UserPosition"
+      WHERE "userId" = ${actorUserId} AND "projectId" IS NULL
+      ORDER BY id
+      FOR UPDATE
+    `);
+    await tx.$queryRaw(Prisma.sql`
+      SELECT p.id
+      FROM "Position" p
+      INNER JOIN "UserPosition" up ON up."positionId" = p.id
+      WHERE up."userId" = ${actorUserId} AND up."projectId" IS NULL
+      ORDER BY p.id
+      FOR UPDATE OF p
+    `);
+    return this.companyRoles.resolveActiveRoleScopesInTransaction(tx, actorUserId);
   }
 
   private async nonSensitiveSummaryAccess(actorUserId: string): Promise<
@@ -2668,6 +2808,10 @@ export class WageStatementService {
    */
   async capabilities(actorUserId: string) {
     const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+    return this.capabilitiesForRoles(roles);
+  }
+
+  private capabilitiesForRoles(roles: RoleKey[]) {
     return {
       canPrepare: canPerform("wage_statement.prepare", roles),
       canSubmit: canPerform("wage_statement.submit", roles),
@@ -2679,9 +2823,12 @@ export class WageStatementService {
     };
   }
 
-  private async aggregateStatement(statementId: string) {
+  private async aggregateStatement(
+    statementId: string,
+    client: Pick<Tx, "wageStatement"> = this.prisma
+  ) {
     const id = required(statementId, "工资承担单不能为空");
-    const statement = await this.prisma.wageStatement.findUnique({
+    const statement = await client.wageStatement.findUnique({
       where: { id },
       select: WAGE_AGGREGATE_SELECT
     });
@@ -2689,10 +2836,13 @@ export class WageStatementService {
     return statement;
   }
 
-  private async companyNames(companyIds: string[]) {
+  private async companyNames(
+    companyIds: string[],
+    client: Pick<Tx, "companyEntity"> = this.prisma
+  ) {
     const ids = [...new Set(companyIds)];
     const companies = ids.length
-      ? await this.prisma.companyEntity.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+      ? await client.companyEntity.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
       : [];
     const names = new Map(companies.map((company) => [company.id, company.name]));
     if (names.size !== ids.length) {
@@ -2780,6 +2930,21 @@ export class WageStatementService {
 
   private async assertAction(actorUserId: string, action: "wage_statement.submit" | "wage_statement.return" | "wage_statement.confirm", message: string) {
     const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+    if (!canPerform(action, roles)) throw new ForbiddenException(message);
+  }
+
+  private async assertActionInTransaction(
+    tx: Tx,
+    actorUserId: string,
+    action: "wage_statement.confirm",
+    message: string
+  ) {
+    let roles: RoleKey[];
+    try {
+      roles = await this.lockActiveGlobalRoleScopes(tx, actorUserId);
+    } catch {
+      throw new ForbiddenException(message);
+    }
     if (!canPerform(action, roles)) throw new ForbiddenException(message);
   }
 

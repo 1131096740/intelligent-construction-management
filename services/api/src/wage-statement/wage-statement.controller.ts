@@ -22,7 +22,6 @@ export class WageStatementController {
   }
 
   @Get("workbench")
-  @RequirePositions("finance_staff", "finance_director")
   workbench(@CurrentUser() user: AuthenticatedUser, @Query() query: WageStatementWorkbenchQueryDto = {}) {
     return this.wages.listWorkbench(user.id, query);
   }
@@ -35,19 +34,16 @@ export class WageStatementController {
   }
 
   @Get(":statementId/summary")
-  @RequirePositions("finance_staff", "finance_director")
   summary(@CurrentUser() user: AuthenticatedUser, @Param("statementId") statementId: string) {
     return this.wages.readSummary(user.id, statementId);
   }
 
   @Get(":statementId/import-preview")
-  @RequirePositions("finance_staff", "finance_director")
   importPreview(@CurrentUser() user: AuthenticatedUser, @Param("statementId") statementId: string) {
     return this.wages.readImportPreview(user.id, statementId);
   }
 
   @Post(":statementId/sensitive-export-ticket")
-  @RequirePositions("finance_staff", "finance_director")
   async createSensitiveExportTicket(
     @CurrentUser() user: AuthenticatedUser,
     @Param("statementId") statementId: string,

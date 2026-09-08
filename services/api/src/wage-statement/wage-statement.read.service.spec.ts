@@ -38,24 +38,43 @@ describe("WageStatementService aggregate reads", () => {
       updatedAt: new Date("2026-08-31T10:00:00.000Z"),
       versions: [currentVersion]
     };
-    const prisma = {
-      $queryRaw: jest.fn().mockResolvedValue([{
-        statementVersionId: "version-1",
-        personLineCount: 2n,
-        positionCategoryCount: 1n,
-        projectAllocationCount: 2n
-      }]),
-      wageStatement: {
-        findMany: jest.fn().mockResolvedValue([statement]),
-        count: jest.fn().mockResolvedValue(1),
-        findUnique: jest.fn().mockResolvedValue(statement)
-      },
-      companyEntity: {
-        findMany: jest.fn().mockResolvedValue([{ id: "company-1", name: "甲公司" }])
-      }
+    const queryRaw = jest.fn().mockResolvedValue([{
+      statementVersionId: "version-1",
+      personLineCount: 2n,
+      positionCategoryCount: 1n,
+      projectAllocationCount: 2n
+    }]);
+    const wageStatement = {
+      findMany: jest.fn().mockResolvedValue([statement]),
+      count: jest.fn().mockResolvedValue(1),
+      findUnique: jest.fn().mockResolvedValue(statement)
     };
-    const roles = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]) };
-    return { service: new WageStatementService(prisma as never, roles as never), prisma, roles };
+    const companyEntity = {
+      findMany: jest.fn().mockResolvedValue([{ id: "company-1", name: "甲公司" }])
+    };
+    const transactionClient = {
+      $queryRaw: queryRaw,
+      wageStatement,
+      companyEntity,
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof transactionClient) => unknown) => work(transactionClient)),
+      $queryRaw: queryRaw,
+      wageStatement,
+      companyEntity
+    };
+    const roles = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]),
+      resolveActiveRoleScopesInTransaction: jest.fn().mockResolvedValue(["finance_staff"])
+    };
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    return {
+      service: new WageStatementService(prisma as never, roles as never, audit as never),
+      prisma,
+      roles,
+      audit
+    };
   }
 
   it("returns only non-sensitive company-month aggregates to an authorized global finance user", async () => {
@@ -108,7 +127,6 @@ describe("WageStatementService aggregate reads", () => {
       orderBy: { revision: "desc" },
       take: 2
     }));
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     expect(result).toEqual(expect.objectContaining({ page: 2, pageSize: 20, total: 31, totalPages: 2 }));
     await expect(service.listWorkbench("finance-user", { page: 1, pageSize: 51 } as never)).rejects.toThrow("工资工作台每页最多读取 50 条");
   });
@@ -162,6 +180,48 @@ describe("WageStatementService aggregate reads", () => {
     }
   });
 
+  it("audits every allowed or denied sensitive aggregate read without wage facts", async () => {
+    const { service, roles, audit } = setup();
+
+    await service.listWorkbench("finance-user");
+    await service.readSummary("finance-user", "statement-1");
+    await service.readImportPreview("finance-user", "statement-1");
+
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "finance-user",
+      action: "wage_sensitive_read",
+      businessType: "wage_statement_workbench",
+      businessId: null,
+      metadata: { reasonCode: "wage_sensitive_read_authorized", accessSurface: "workbench" }
+    }));
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "wage_sensitive_read",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: { reasonCode: "wage_sensitive_read_authorized", accessSurface: "summary" }
+    }));
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "wage_sensitive_read",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: { reasonCode: "wage_sensitive_read_authorized", accessSurface: "import_preview" }
+    }));
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("employee-secret");
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("100000");
+
+    audit.record.mockClear();
+    roles.resolveActiveRoleScopesInTransaction.mockResolvedValue(["project_manager"]);
+    await expect(service.readSummary("project-user", "statement-1"))
+      .rejects.toThrow("当前公司岗位无权查看工资汇总");
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), {
+      actorUserId: "project-user",
+      action: "wage_sensitive_read.denied",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: { reasonCode: "wage_sensitive_read_not_authorized", accessSurface: "summary" }
+    });
+  });
+
   it("projects a prior review_returned audit state while keeping the current replacement draft usable", async () => {
     const { service, prisma } = setup();
     const statement = (await prisma.wageStatement.findUnique())!;
@@ -179,7 +239,7 @@ describe("WageStatementService aggregate reads", () => {
 
   it("rejects a non-finance global user before querying wage data", async () => {
     const { service, prisma, roles } = setup();
-    roles.resolveActiveRoleScopes.mockResolvedValue(["project_manager"]);
+    roles.resolveActiveRoleScopesInTransaction.mockResolvedValue(["project_manager"]);
 
     await expect(service.listWorkbench("project-user")).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.wageStatement.findMany).not.toHaveBeenCalled();

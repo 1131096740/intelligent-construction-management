@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { AuditService } from "../audit/audit.service";
+import { FileService, PrivateFileStorage } from "../file/file.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { WageStatementService } from "../wage-statement/wage-statement.service";
 
@@ -25,6 +26,17 @@ export function wageStatementDatabaseUrl(value: string | undefined) {
     throw new Error("工资承担单动态测试拒绝非本机专用数据库");
   }
   return url.toString();
+}
+
+function wageDownloadTicketInput(downloadUrl: string) {
+  const url = new URL(`http://local${downloadUrl}`);
+  return {
+    actorUserId: url.searchParams.get("actorUserId") ?? "",
+    expiresAt: url.searchParams.get("expiresAt") ?? "",
+    downloadReason: url.searchParams.get("downloadReason") ?? "",
+    accessMode: (url.searchParams.get("accessMode") ?? "download") as "download",
+    token: url.searchParams.get("token") ?? ""
+  };
 }
 
 describe("wage statement database target guard", () => {
@@ -613,6 +625,413 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     })).resolves.toEqual({ status: "submitted", confirmedAt: null });
   });
 
+  it("linearizes a sensitive wage read against concurrent global-role revocation", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const { draftResult } = await createSubmittedCanonicalWage(
+      first,
+      fixture,
+      canonicalWageSourceInput(fixture),
+      "100000"
+    );
+    const advisoryKey = 262_001;
+    const pauseFunction = "jg_test_pause_wage_sensitive_read_audit";
+    const pauseTrigger = "jg_test_pause_wage_sensitive_read_audit_trigger";
+    let releaseBarrier: () => void = () => {};
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    let announceLock: () => void = () => {};
+    const lockReady = new Promise<void>((resolve) => {
+      announceLock = resolve;
+    });
+
+    await first.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION ${pauseFunction}() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.action = 'wage_sensitive_read' THEN
+          PERFORM pg_advisory_xact_lock(${advisoryKey});
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await first.$executeRawUnsafe(`
+      CREATE TRIGGER ${pauseTrigger}
+      BEFORE INSERT ON "AuditLog"
+      FOR EACH ROW EXECUTE FUNCTION ${pauseFunction}()
+    `);
+
+    const advisoryOwner = observer.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_lock(${advisoryKey})::TEXT AS "lockAcquired"`);
+      announceLock();
+      await barrier;
+      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_unlock(${advisoryKey})::TEXT AS "lockReleased"`);
+    });
+    await lockReady;
+
+    let sensitiveRead: Promise<unknown> | undefined;
+    let revocation: Promise<unknown> | undefined;
+    let revocationCommittedBeforeReadAudit = false;
+    try {
+      sensitiveRead = wageService(first).readImportPreview(
+        fixture.preparerUserId,
+        draftResult.statementId
+      );
+      let auditReachedBarrier = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const [waiter] = await second.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+          SELECT COUNT(*)::BIGINT AS count
+          FROM pg_locks
+          WHERE locktype = 'advisory' AND NOT granted
+        `);
+        if ((waiter?.count ?? 0n) > 0n) {
+          auditReachedBarrier = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(auditReachedBarrier).toBe(true);
+
+      revocation = second.userPosition.delete({
+        where: { id: `${fixture.prefix}-preparer-position` }
+      });
+      revocationCommittedBeforeReadAudit = await Promise.race([
+        revocation.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 500))
+      ]);
+    } finally {
+      releaseBarrier();
+      await advisoryOwner;
+    }
+
+    const preview = await sensitiveRead;
+    await revocation;
+    await first.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${pauseTrigger} ON "AuditLog"`);
+    await first.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${pauseFunction}()`);
+
+    expect(revocationCommittedBeforeReadAudit).toBe(false);
+    expect(preview).toEqual(expect.objectContaining({
+      wageMonth: fixture.wageMonth,
+      personLineCount: 1
+    }));
+    await expect(wageService(first).readImportPreview(
+      fixture.preparerUserId,
+      draftResult.statementId
+    )).rejects.toThrow("当前公司岗位无权查看工资汇总");
+    await expect(observer.auditLog.count({
+      where: {
+        actorUserId: fixture.preparerUserId,
+        businessId: draftResult.statementId,
+        action: "wage_sensitive_read.denied"
+      }
+    })).resolves.toBe(1);
+  }, 20_000);
+
+  it("rejects confirmation after a concurrent global-role revocation linearizes first", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const { draftResult } = await createSubmittedCanonicalWage(
+      first,
+      fixture,
+      canonicalWageSourceInput(fixture),
+      "100000"
+    );
+    const idempotencyKey = randomUUID();
+    let releaseRevocation: () => void = () => {};
+    const revocationBarrier = new Promise<void>((resolve) => {
+      releaseRevocation = resolve;
+    });
+    let announceRevocation: () => void = () => {};
+    const revocationReady = new Promise<void>((resolve) => {
+      announceRevocation = resolve;
+    });
+    let revocationBackendPid = 0;
+
+    const revocation = first.$transaction(async (tx) => {
+      const [backend] = await tx.$queryRaw<Array<{ pid: number }>>(
+        Prisma.sql`SELECT pg_backend_pid()::INTEGER AS pid`
+      );
+      revocationBackendPid = backend?.pid ?? 0;
+      await tx.userPosition.delete({
+        where: { id: `${fixture.prefix}-confirmer-position` }
+      });
+      announceRevocation();
+      await revocationBarrier;
+    });
+    await revocationReady;
+
+    let confirmation: Promise<unknown> | undefined;
+    let confirmationSettledBeforeRevocationCommit = false;
+    let confirmationBlockedOnRevocation = false;
+    try {
+      confirmation = wageService(second).confirm(
+        fixture.confirmerUserId,
+        draftResult.statementId,
+        { idempotencyKey, expectedRevision: 1 }
+      );
+      void confirmation.then(
+        () => { confirmationSettledBeforeRevocationCommit = true; },
+        () => { confirmationSettledBeforeRevocationCommit = true; }
+      );
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const [waiter] = await observer.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+          SELECT COUNT(*)::BIGINT AS count
+          FROM pg_stat_activity activity
+          WHERE ${revocationBackendPid} = ANY(pg_blocking_pids(activity.pid))
+        `);
+        if ((waiter?.count ?? 0n) > 0n) {
+          confirmationBlockedOnRevocation = true;
+          break;
+        }
+        if (confirmationSettledBeforeRevocationCommit) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    } finally {
+      releaseRevocation();
+      await revocation;
+    }
+
+    expect(confirmationSettledBeforeRevocationCommit).toBe(false);
+    expect(confirmationBlockedOnRevocation).toBe(true);
+    if (!confirmation) throw new Error("工资确认撤权线性化测试未启动");
+    await expect(confirmation).rejects.toThrow("当前公司岗位无权确认工资承担单");
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      select: { status: true, confirmedAt: true, confirmedByUserId: true }
+    })).resolves.toEqual({ status: "submitted", confirmedAt: null, confirmedByUserId: null });
+    await expect(observer.wagePayableRef.count({
+      where: { confirmedVersionId: draftResult.versionId }
+    })).resolves.toBe(0);
+    await expect(observer.operatingFact.count({
+      where: {
+        sourceType: "wage_statement_version",
+        sourceBusinessId: `${draftResult.versionId}:${fixture.projectId}`
+      }
+    })).resolves.toBe(0);
+    await expect(observer.wageCommandReceipt.count({
+      where: { idempotencyKey }
+    })).resolves.toBe(0);
+    await expect(observer.auditLog.count({
+      where: {
+        actorUserId: fixture.confirmerUserId,
+        businessId: draftResult.versionId,
+        action: "wage_statement.confirm"
+      }
+    })).resolves.toBe(0);
+  }, 20_000);
+
+  it("rechecks a wage-evidence ticket after role revocation or account disable and persists reason-only deny audits", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const source = await wageService(first).createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(source)) throw new Error("工资来源创建未返回正式来源标识");
+    const storage = {
+      read: jest.fn().mockRejectedValue(new Error("denied reads must not reach storage"))
+    } as unknown as PrivateFileStorage;
+    const files = new FileService(
+      first as never,
+      new AuditService(),
+      storage,
+      undefined,
+      new CompanyRoleResolverService(first as never)
+    );
+    const revokedReason = "岗位撤销后的工资依据复核";
+    const revokedTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
+      actorUserId: fixture.preparerUserId,
+      downloadReason: revokedReason
+    });
+    await second.userPosition.delete({
+      where: { id: `${fixture.prefix}-preparer-position` }
+    });
+    await expect(files.readPrivateFile(
+      fixture.evidenceFileId,
+      wageDownloadTicketInput(revokedTicket.downloadUrl)
+    )).rejects.toThrow("当前账号无权下载工资敏感依据");
+
+    const financeStaff = await second.position.findUniqueOrThrow({
+      where: { key: "finance_staff" },
+      select: { id: true }
+    });
+    await second.userPosition.create({
+      data: {
+        id: `${fixture.prefix}-preparer-position-restored`,
+        userId: fixture.preparerUserId,
+        positionId: financeStaff.id
+      }
+    });
+    const disabledReason = "账号停用后的工资依据复核";
+    const disabledTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
+      actorUserId: fixture.preparerUserId,
+      downloadReason: disabledReason
+    });
+    await second.user.update({
+      where: { id: fixture.preparerUserId },
+      data: { isActive: false }
+    });
+    await expect(files.readPrivateFile(
+      fixture.evidenceFileId,
+      wageDownloadTicketInput(disabledTicket.downloadUrl)
+    )).rejects.toThrow("当前账号无权下载工资敏感依据");
+
+    const attempts = await observer.auditLog.findMany({
+      where: {
+        actorUserId: fixture.preparerUserId,
+        businessId: fixture.evidenceFileId,
+        action: { in: ["file.download.ticket", "wage_sensitive_download.denied"] }
+      },
+      orderBy: { createdAt: "asc" },
+      select: { action: true, metadata: true }
+    });
+    expect(attempts.filter((attempt) => attempt.action === "file.download.ticket")).toHaveLength(2);
+    expect(attempts.filter((attempt) => attempt.action === "wage_sensitive_download.denied")).toEqual([
+      {
+        action: "wage_sensitive_download.denied",
+        metadata: {
+          reasonCode: "wage_sensitive_download_not_authorized",
+          downloadReason: revokedReason
+        }
+      },
+      {
+        action: "wage_sensitive_download.denied",
+        metadata: {
+          reasonCode: "wage_sensitive_download_not_authorized",
+          downloadReason: disabledReason
+        }
+      }
+    ]);
+    const auditPayload = JSON.stringify(attempts);
+    expect(auditPayload).not.toContain("token");
+    expect(auditPayload).not.toContain("100000");
+    expect(auditPayload).not.toContain("sourceSnapshot");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it("audits an expired wage-evidence ticket attempt without sensitive metadata", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const source = await wageService(first).createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(source)) throw new Error("工资来源创建未返回正式来源标识");
+    const storage = {
+      read: jest.fn().mockRejectedValue(new Error("denied reads must not reach storage"))
+    } as unknown as PrivateFileStorage;
+    const files = new FileService(
+      first as never,
+      new AuditService(),
+      storage,
+      undefined,
+      new CompanyRoleResolverService(first as never)
+    );
+    const expiredTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
+      actorUserId: fixture.preparerUserId,
+      downloadReason: "过期工资依据复核"
+    });
+    const expiredInput = wageDownloadTicketInput(expiredTicket.downloadUrl);
+    const dateNow = jest.spyOn(Date, "now").mockReturnValue(Date.parse(expiredInput.expiresAt) + 1);
+    try {
+      await expect(files.readPrivateFile(fixture.evidenceFileId, expiredInput))
+        .rejects.toThrow("下载链接已过期，请重新申请下载");
+    } finally {
+      dateNow.mockRestore();
+    }
+
+    const attempts = await observer.auditLog.findMany({
+      where: {
+        action: "wage_sensitive_download.denied",
+        metadata: { equals: { reasonCode: "wage_sensitive_download_ticket_expired" } }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 1,
+      select: { actorUserId: true, action: true, businessId: true, metadata: true }
+    });
+    expect(attempts).toEqual([{
+      actorUserId: null,
+      action: "wage_sensitive_download.denied",
+      businessId: null,
+      metadata: { reasonCode: "wage_sensitive_download_ticket_expired" }
+    }]);
+    const auditPayload = JSON.stringify(attempts);
+    expect(auditPayload).not.toContain(expiredInput.token);
+    expect(auditPayload).not.toContain("100000");
+    expect(auditPayload).not.toContain("approvedPersonLines");
+    expect(auditPayload).not.toContain("外部批准工资资料.json");
+    expect(auditPayload).not.toContain("复核");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it("audits an invalid wage-evidence token attempt without sensitive metadata", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const source = await wageService(first).createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(source)) throw new Error("工资来源创建未返回正式来源标识");
+    const storage = {
+      read: jest.fn().mockRejectedValue(new Error("denied reads must not reach storage"))
+    } as unknown as PrivateFileStorage;
+    const files = new FileService(
+      first as never,
+      new AuditService(),
+      storage,
+      undefined,
+      new CompanyRoleResolverService(first as never)
+    );
+    const invalidTicket = await files.createDownloadTicket(fixture.evidenceFileId, {
+      actorUserId: fixture.preparerUserId,
+      downloadReason: "无效工资依据复核"
+    });
+    const invalidInput = wageDownloadTicketInput(invalidTicket.downloadUrl);
+    const signedToken = invalidInput.token;
+    await expect(files.readPrivateFile(fixture.evidenceFileId, {
+      ...invalidInput,
+      token: `invalid-${signedToken}`
+    })).rejects.toThrow("下载链接校验失败，请重新申请下载");
+
+    const attempts = await observer.auditLog.findMany({
+      where: {
+        action: "wage_sensitive_download.denied",
+        metadata: { equals: { reasonCode: "wage_sensitive_download_ticket_invalid" } }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 1,
+      select: { actorUserId: true, action: true, businessId: true, metadata: true }
+    });
+    expect(attempts).toEqual([{
+      actorUserId: null,
+      action: "wage_sensitive_download.denied",
+      businessId: null,
+      metadata: { reasonCode: "wage_sensitive_download_ticket_invalid" }
+    }]);
+    const auditPayload = JSON.stringify(attempts);
+    expect(auditPayload).not.toContain(signedToken);
+    expect(auditPayload).not.toContain("100000");
+    expect(auditPayload).not.toContain("approvedPersonLines");
+    expect(auditPayload).not.toContain("外部批准工资资料.json");
+    expect(auditPayload).not.toContain("复核");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it("prevents a second public wage source from creating an ambiguous evidence binding", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const source = await wageService(first).createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(source)) throw new Error("工资来源创建未返回正式来源标识");
+
+    await expect(wageService(first).createApprovedSource(fixture.preparerUserId, {
+      ...canonicalWageSourceInput(fixture),
+      idempotencyKey: randomUUID(),
+      externalReference: `${fixture.prefix}-DUPLICATE`,
+      sourceVersion: "v2"
+    })).rejects.toThrow("该我方公司的外部工资来源版本已存在");
+    await expect(observer.wageApprovedSourceVersion.count({
+      where: { evidenceFileId: fixture.evidenceFileId }
+    })).resolves.toBe(1);
+  });
+
   it("keeps SoD, active identity, idempotency and concurrent confirmation intact", async () => {
     const fixture = await seedCanonicalWageFixture(first);
     const { service, draftResult } = await createSubmittedCanonicalWage(
@@ -673,6 +1092,177 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
         sourceBusinessId: `${draftResult.versionId}:${fixture.projectId}`
       }
     })).resolves.toBe(1);
+  });
+
+  it("applies SoD only to active standing or exact current-version delegation closures", async () => {
+    const fixture = await seedCanonicalWageFixture(first);
+    const editorUserId = `${fixture.prefix}-editor`;
+    const submitterUserId = `${fixture.prefix}-submitter`;
+    await first.user.createMany({
+      data: [
+        { id: editorUserId, name: "工资编辑人", mustChangePassword: false, isActive: true },
+        { id: submitterUserId, name: "工资提交人", mustChangePassword: false, isActive: true }
+      ]
+    });
+    const [financeStaff, financeDirector] = await Promise.all([
+      first.position.findUniqueOrThrow({ where: { key: "finance_staff" }, select: { id: true } }),
+      first.position.findUniqueOrThrow({ where: { key: "finance_director" }, select: { id: true } })
+    ]);
+    await first.userPosition.createMany({
+      data: [
+        { id: `${fixture.prefix}-preparer-director`, userId: fixture.preparerUserId, positionId: financeDirector.id },
+        { id: `${fixture.prefix}-editor-staff`, userId: editorUserId, positionId: financeStaff.id },
+        { id: `${fixture.prefix}-editor-director`, userId: editorUserId, positionId: financeDirector.id },
+        { id: `${fixture.prefix}-submitter-staff`, userId: submitterUserId, positionId: financeStaff.id },
+        { id: `${fixture.prefix}-submitter-director`, userId: submitterUserId, positionId: financeDirector.id }
+      ]
+    });
+    const service = wageService(first);
+    const sourceResult = await service.createApprovedSource(
+      fixture.preparerUserId,
+      canonicalWageSourceInput(fixture)
+    );
+    if (!isSourceCreationResult(sourceResult)) throw new Error("工资来源创建未返回正式来源标识");
+    const draftResult = await service.createDraft(fixture.preparerUserId, {
+      sourceVersionId: sourceResult.id,
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [canonicalWagePersonLine(fixture, "100000")]
+    });
+    if (!isDraftCreationResult(draftResult)) throw new Error("工资草稿创建未返回正式单据标识");
+    await service.updateDraft(editorUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1,
+      wageMonth: fixture.wageMonth,
+      sourceTotalCents: "100000",
+      personLines: [canonicalWagePersonLine(fixture, "100000")]
+    });
+    await service.submit(submitterUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    });
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      select: { createdByUserId: true, lastEditedByUserId: true, submittedByUserId: true }
+    })).resolves.toEqual({
+      createdByUserId: fixture.preparerUserId,
+      lastEditedByUserId: editorUserId,
+      submittedByUserId: submitterUserId
+    });
+
+    const participants = [fixture.preparerUserId, editorUserId, submitterUserId];
+    for (const participantUserId of participants) {
+      await expect(service.confirm(participantUserId, draftResult.statementId, {
+        idempotencyKey: randomUUID(),
+        expectedRevision: 1
+      })).rejects.toThrow("职责分离冲突");
+    }
+    const activeFrom = new Date("2026-01-01T00:00:00.000Z");
+    const activeUntil = new Date("2030-01-01T00:00:00.000Z");
+    for (const participantUserId of participants) {
+      for (const scope of [
+        {},
+        {
+          actionKey: "wage_statement.confirm",
+          resourceType: "wage_statement_version",
+          resourceId: draftResult.versionId
+        }
+      ]) {
+        const delegation = await first.approvalDelegation.create({
+          data: {
+            fromUserId: participantUserId,
+            toUserId: fixture.confirmerUserId,
+            startsAt: activeFrom,
+            endsAt: activeUntil,
+            ...scope
+          }
+        });
+        await expect(service.confirm(fixture.confirmerUserId, draftResult.statementId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: 1
+        })).rejects.toThrow("职责分离冲突");
+        await first.approvalDelegation.delete({ where: { id: delegation.id } });
+      }
+    }
+
+    await expect(first.approvalDelegation.create({
+      data: {
+        fromUserId: fixture.preparerUserId,
+        toUserId: fixture.confirmerUserId,
+        startsAt: activeFrom,
+        endsAt: activeUntil,
+        actionKey: null,
+        resourceType: "wage_statement_version",
+        resourceId: draftResult.versionId
+      }
+    })).rejects.toThrow("ApprovalDelegation_scope_all_or_none");
+
+    await first.approvalDelegation.createMany({
+      data: [
+        {
+          fromUserId: fixture.preparerUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: "payment.confirm",
+          resourceType: "wage_statement_version",
+          resourceId: draftResult.versionId
+        },
+        {
+          fromUserId: editorUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: "wage_statement.confirm",
+          resourceType: "wage_statement",
+          resourceId: draftResult.versionId
+        },
+        {
+          fromUserId: submitterUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          actionKey: "wage_statement.confirm",
+          resourceType: "wage_statement_version",
+          resourceId: "wrong-version"
+        },
+        {
+          fromUserId: editorUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: new Date("2025-01-01T00:00:00.000Z"),
+          endsAt: new Date("2026-01-01T00:00:00.000Z")
+        },
+        {
+          fromUserId: fixture.preparerUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil,
+          enabled: false
+        },
+        {
+          fromUserId: submitterUserId,
+          toUserId: fixture.confirmerUserId,
+          startsAt: activeFrom,
+          endsAt: activeUntil
+        }
+      ]
+    });
+    await first.user.update({ where: { id: submitterUserId }, data: { isActive: false } });
+    await expect(service.confirm(fixture.confirmerUserId, draftResult.statementId, {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 1
+    })).resolves.toEqual({
+      statementId: draftResult.statementId,
+      versionId: draftResult.versionId,
+      revision: 1,
+      status: "confirmed"
+    });
+    await expect(observer.wageStatementVersion.findUniqueOrThrow({
+      where: { id: draftResult.versionId },
+      select: { status: true, confirmedByUserId: true }
+    })).resolves.toEqual({ status: "confirmed", confirmedByUserId: fixture.confirmerUserId });
   });
 
   it("keeps the existing payee requirement for every other project wage source", async () => {

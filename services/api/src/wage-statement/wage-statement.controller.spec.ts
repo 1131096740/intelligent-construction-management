@@ -36,11 +36,14 @@ describe("WageStatementController wage workbench governance", () => {
     });
     expect(wages.capabilities).toHaveBeenCalledWith("finance-user");
 
-    for (const method of ["capabilities", "workbench", "summary", "importPreview", "createSensitiveExportTicket", "createApprovedSource", "createDraft", "createRevision", "updateDraft", "submit"] as const) {
+    for (const method of ["capabilities", "createApprovedSource", "createDraft", "createRevision", "updateDraft", "submit"] as const) {
       expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, WageStatementController.prototype[method])).toEqual([
         "finance_staff",
         "finance_director"
       ]);
+    }
+    for (const method of ["workbench", "summary", "importPreview", "createSensitiveExportTicket"] as const) {
+      expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, WageStatementController.prototype[method])).toBeUndefined();
     }
     for (const method of ["returnForReview", "confirm"] as const) {
       expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, WageStatementController.prototype[method])).toEqual(["finance_director"]);

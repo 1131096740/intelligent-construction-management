@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "b90c9a6fd7701ef47908bdd57fa7ce533421f77681bfe6b867f05f225aae9d66",
+      "sha256": "8b93e4ba8c1aab1488a984e4b7f21f2b6291db0a76c259bee43d86735a7c9303",
       "status": "ready",
       "summary": {
         "routeCount": 577
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9491889bd63025c5af39a5185ef250de6f7d389080fbcbc9ba66746da37a64dd",
+      "sha256": "1ab41128d0643a4cf5893bb6906074475f504d3c9b528a9beb1c1f0da82b33ba",
       "status": "ready",
       "summary": {
         "routeCount": 577,
@@ -8695,12 +8695,9 @@
         "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "positions",
+        "guardAuthorization": "authenticated_only",
         "isPublic": false,
-        "requiredPositions": [
-          "finance_director",
-          "finance_staff"
-        ],
+        "requiredPositions": [],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,
@@ -8772,12 +8769,9 @@
         "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "positions",
+        "guardAuthorization": "authenticated_only",
         "isPublic": false,
-        "requiredPositions": [
-          "finance_director",
-          "finance_staff"
-        ],
+        "requiredPositions": [],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,
@@ -8862,12 +8856,9 @@
         "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "positions",
+        "guardAuthorization": "authenticated_only",
         "isPublic": false,
-        "requiredPositions": [
-          "finance_director",
-          "finance_staff"
-        ],
+        "requiredPositions": [],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,
@@ -32594,12 +32585,9 @@
         "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "positions",
+        "guardAuthorization": "authenticated_only",
         "isPublic": false,
-        "requiredPositions": [
-          "finance_director",
-          "finance_staff"
-        ],
+        "requiredPositions": [],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,

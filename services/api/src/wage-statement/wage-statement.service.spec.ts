@@ -89,7 +89,13 @@ describe("WageStatementService", () => {
       wageCommandReceipt: { findUnique: jest.fn() },
       wageApprovedSourceCommandReceipt: { findUnique: jest.fn() }
     };
-    const roles = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]) };
+    const resolveActiveRoleScopes = jest.fn().mockResolvedValue(["finance_staff"]);
+    const roles = {
+      resolveActiveRoleScopes,
+      resolveActiveRoleScopesInTransaction: jest.fn((_tx: unknown, actorUserId: string) =>
+        resolveActiveRoleScopes(actorUserId)
+      )
+    };
     const operatingLedger = { appendConfirmedSourceInTransaction: jest.fn().mockResolvedValue({ id: "operating-1" }) };
     const service = new WageStatementService(prisma as never, roles as never, undefined, operatingLedger as never);
     // Legacy command tests isolate receipt/segregation behavior. Projection's
@@ -99,7 +105,12 @@ describe("WageStatementService", () => {
       lockAndRevalidateConfirmationFacts: (_tx: unknown, _statement: unknown, versionId: string) => Promise<{ id: string }>;
     };
     jest.spyOn(servicePrototype, "projectConfirmedVersion").mockResolvedValue(undefined);
-    const revalidationSpy = jest.spyOn(servicePrototype, "lockAndRevalidateConfirmationFacts").mockImplementation(async (_tx, _statement, versionId) => ({ id: versionId }));
+    const revalidationSpy = jest.spyOn(servicePrototype, "lockAndRevalidateConfirmationFacts").mockImplementation(async (_tx, _statement, versionId) => ({
+      id: versionId,
+      createdByUserId: "author-1",
+      lastEditedByUserId: "editor-1",
+      submittedByUserId: "submitter-1"
+    }) as never);
     return { service, tx, roles, prisma, operatingLedger, revalidationSpy };
   }
 
@@ -563,18 +574,32 @@ describe("WageStatementService", () => {
     expect(tx.wageStatement.create).not.toHaveBeenCalled();
   });
 
-  it("submits exactly the current draft revision and records a replayable command receipt", async () => {
+  it("submits exactly the current draft revision without replacing its last wage-fact editor", async () => {
     const { service, tx, prisma } = setup();
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
-    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "draft" });
+    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({
+      id: "version-1",
+      statementId: "statement-1",
+      revision: 1,
+      status: "draft",
+      createdByUserId: "creator-1",
+      lastEditedByUserId: "editor-1"
+    });
     tx.wageStatementVersion.update = jest.fn().mockResolvedValue({ id: "version-1", revision: 1, status: "submitted" });
 
-    await expect(service.submit("actor-1", "statement-1", { idempotencyKey: "22222222-2222-4222-8222-222222222222", expectedRevision: 1 }))
+    await expect(service.submit("submitter-1", "statement-1", { idempotencyKey: "22222222-2222-4222-8222-222222222222", expectedRevision: 1 }))
       .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "submitted" });
 
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ isolationLevel: "Serializable" }));
-    expect(tx.wageStatementVersion.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "submitted", submittedByUserId: "actor-1" }) }));
+    expect(tx.wageStatementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: {
+        status: "submitted",
+        submittedByUserId: "submitter-1",
+        submittedAt: expect.any(Date)
+      }
+    });
     expect(tx.wageCommandReceipt.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "wage_statement.submit", aggregateId: "statement-1", expectedRevision: 1 }) });
   });
 
@@ -669,17 +694,30 @@ describe("WageStatementService", () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(10);
   });
 
-  it("refuses confirmation by a creator, editor, or submitter and permits only an independent finance director", async () => {
-    const { service, tx, roles } = setup();
+  it.each(["author-1", "editor-1", "submitter-1"])(
+    "rebuilds the locked current version participants and refuses direct confirmation by %s",
+    async (participantUserId) => {
+    const { service, tx, roles, revalidationSpy } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
-    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "submitted", createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1" });
+    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({
+      id: "version-1", statementId: "statement-1", revision: 1, status: "submitted",
+      createdByUserId: "prior-author", lastEditedByUserId: "prior-editor", submittedByUserId: "prior-submitter"
+    });
     tx.wageStatementVersion.update = jest.fn().mockResolvedValue({ id: "version-1" });
+    revalidationSpy.mockResolvedValue({
+      id: "version-1",
+      createdByUserId: "author-1",
+      lastEditedByUserId: "editor-1",
+      submittedByUserId: "submitter-1"
+    } as never);
 
-    await expect(service.confirm("submitter-1", "statement-1", { idempotencyKey: "44444444-4444-4444-8444-444444444444", expectedRevision: 1 })).rejects.toThrow("职责分离冲突");
-    await expect(service.confirm("director-1", "statement-1", { idempotencyKey: "55555555-5555-4555-8555-555555555555", expectedRevision: 1 }))
-      .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "confirmed" });
+    await expect(service.confirm(participantUserId, "statement-1", {
+      idempotencyKey: "44444444-4444-4444-8444-444444444444",
+      expectedRevision: 1
+    })).rejects.toThrow("职责分离冲突");
+    expect(tx.wageStatementVersion.update).not.toHaveBeenCalled();
   });
 
   it("locks the ordinary #105 project-month scope before rejecting a matching #214 PERSON wage line", async () => {
@@ -727,7 +765,7 @@ describe("WageStatementService", () => {
     const service = new WageStatementService(prisma as never, roles as never, audit as never);
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_staff"]);
 
-    await expect(service.createSensitiveExportTicket("finance-user", "statement-1", "核对工资归档"))
+    await expect(service.createSensitiveExportTicket("finance-user", "statement-1", "  核对工资归档  "))
       .rejects.toThrow("工资敏感导出工件尚未生成");
     expect(prisma.$transaction).toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
@@ -735,21 +773,41 @@ describe("WageStatementService", () => {
       action: "wage_sensitive_export.denied",
       businessType: "wage_statement",
       businessId: "statement-1",
-      metadata: expect.objectContaining({ reasonCode: "wage_sensitive_export_artifact_unavailable" })
+      metadata: {
+        reasonCode: "wage_sensitive_export_artifact_unavailable",
+        downloadReason: "核对工资归档"
+      }
     }));
 
+    audit.record.mockClear();
     roles.resolveActiveRoleScopes.mockResolvedValue(["super_admin"]);
     await expect(service.createSensitiveExportTicket("admin-user", "statement-1", "核对工资归档"))
       .rejects.toThrow("当前公司岗位无权导出工资敏感资料");
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), {
+      actorUserId: "admin-user",
+      action: "wage_sensitive_export.denied",
+      businessType: "wage_statement",
+      businessId: "statement-1",
+      metadata: {
+        reasonCode: "wage_sensitive_export_not_authorized",
+        downloadReason: "核对工资归档"
+      }
+    });
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("token");
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("100000");
   });
 
   it.each([
-    ["the confirmer is the delegate of a submitter", "delegate-1", { fromUserId: "submitter-1", toUserId: "delegate-1" }],
-    ["the confirmer delegated to a submitter", "delegator-1", { fromUserId: "delegator-1", toUserId: "submitter-1" }],
-    ["the confirmer is the scoped delegate of a submitter", "delegate-1", { fromUserId: "submitter-1", toUserId: "delegate-1", actionKey: "wage_statement.confirm", resourceType: "wage_statement", resourceId: "statement-1" }],
-    ["the confirmer scoped-delegated to a submitter", "delegator-1", { fromUserId: "delegator-1", toUserId: "submitter-1", actionKey: "wage_statement.confirm", resourceType: "wage_statement", resourceId: "statement-1" }]
-  ])("refuses confirmation when %s", async (_label, confirmerUserId, delegation) => {
-    const { service, tx, roles } = setup();
+    ["creator standing-delegated to the actor", "author-1", "director-1", null, null, null],
+    ["editor standing-delegated to the actor", "editor-1", "director-1", null, null, null],
+    ["submitter standing-delegated to the actor", "submitter-1", "director-1", null, null, null],
+    ["actor standing-delegated to the submitter", "director-1", "submitter-1", null, null, null],
+    ["creator exactly delegated confirmation to the actor", "author-1", "director-1", "wage_statement.confirm", "wage_statement_version", "version-1"],
+    ["editor exactly delegated confirmation to the actor", "editor-1", "director-1", "wage_statement.confirm", "wage_statement_version", "version-1"],
+    ["submitter exactly delegated confirmation to the actor", "submitter-1", "director-1", "wage_statement.confirm", "wage_statement_version", "version-1"],
+    ["actor exactly delegated confirmation to the submitter", "director-1", "submitter-1", "wage_statement.confirm", "wage_statement_version", "version-1"]
+  ])("refuses confirmation when %s", async (_label, fromUserId, toUserId, actionKey, resourceType, resourceId) => {
+    const { service, tx, roles, revalidationSpy } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
@@ -757,15 +815,123 @@ describe("WageStatementService", () => {
       id: "version-1", statementId: "statement-1", revision: 1, status: "submitted",
       createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
     });
-    tx.approvalDelegation.findMany.mockResolvedValue([delegation]);
+    revalidationSpy.mockResolvedValue({
+      id: "version-1", createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
+    } as never);
+    tx.approvalDelegation.findMany.mockResolvedValue([{
+      fromUserId,
+      toUserId,
+      actionKey,
+      resourceType,
+      resourceId,
+      enabled: true,
+      startsAt: new Date("2026-01-01T00:00:00.000Z"),
+      endsAt: new Date("2030-01-01T00:00:00.000Z")
+    }]);
+    tx.user.findMany.mockResolvedValue([
+      { id: fromUserId, isActive: true },
+      { id: toUserId, isActive: true }
+    ]);
 
-    await expect(service.confirm(confirmerUserId, "statement-1", {
+    await expect(service.confirm("director-1", "statement-1", {
       idempotencyKey: "66666666-6666-4666-8666-666666666666", expectedRevision: 1
     })).rejects.toThrow("职责分离冲突");
     expect(tx.wageStatementVersion.update).not.toHaveBeenCalled();
     expect(tx.approvalDelegation.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ enabled: true, startsAt: { lte: expect.any(Date) }, endsAt: { gte: expect.any(Date) } })
+      where: {
+        enabled: true,
+        startsAt: { lte: expect.any(Date) },
+        endsAt: { gt: expect.any(Date) },
+        OR: [
+          { actionKey: null, resourceType: null, resourceId: null },
+          {
+            actionKey: "wage_statement.confirm",
+            resourceType: "wage_statement_version",
+            resourceId: "version-1"
+          }
+        ]
+      }
     }));
+    expect(tx.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: { id: true, isActive: true }
+    }));
+  });
+
+  it("refuses a transitive exact-version delegation closure involving the submitter", async () => {
+    const { service, tx, roles, revalidationSpy } = setup();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
+    tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
+    tx.wageStatementVersion.findUnique.mockResolvedValue({
+      id: "version-1", statementId: "statement-1", revision: 1, status: "submitted",
+      createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
+    });
+    revalidationSpy.mockResolvedValue({
+      id: "version-1", createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
+    } as never);
+    tx.approvalDelegation.findMany.mockResolvedValue([
+      {
+        fromUserId: "submitter-1", toUserId: "delegate-middle",
+        actionKey: "wage_statement.confirm", resourceType: "wage_statement_version", resourceId: "version-1",
+        enabled: true, startsAt: new Date("2026-01-01T00:00:00.000Z"), endsAt: new Date("2030-01-01T00:00:00.000Z")
+      },
+      {
+        fromUserId: "delegate-middle", toUserId: "director-1",
+        actionKey: "wage_statement.confirm", resourceType: "wage_statement_version", resourceId: "version-1",
+        enabled: true, startsAt: new Date("2026-01-01T00:00:00.000Z"), endsAt: new Date("2030-01-01T00:00:00.000Z")
+      }
+    ]);
+    tx.user.findMany.mockResolvedValue([
+      { id: "submitter-1", isActive: true },
+      { id: "delegate-middle", isActive: true },
+      { id: "director-1", isActive: true }
+    ]);
+
+    await expect(service.confirm("director-1", "statement-1", {
+      idempotencyKey: "67676767-6767-4767-8767-676767676767", expectedRevision: 1
+    })).rejects.toThrow("职责分离冲突");
+  });
+
+  it.each([
+    ["unrelated action", { actionKey: "payment.confirm", resourceType: "wage_statement_version", resourceId: "version-1" }, []],
+    ["wrong resource type", { actionKey: "wage_statement.confirm", resourceType: "wage_statement", resourceId: "version-1" }, []],
+    ["wrong version", { actionKey: "wage_statement.confirm", resourceType: "wage_statement_version", resourceId: "version-2" }, []],
+    ["partial-null scope", { actionKey: null, resourceType: "wage_statement_version", resourceId: "version-1" }, []],
+    ["expired", { actionKey: null, resourceType: null, resourceId: null, endsAt: new Date("2026-01-01T00:00:00.000Z") }, []],
+    ["disabled", { actionKey: null, resourceType: null, resourceId: null, enabled: false }, []],
+    ["inactive principal", { actionKey: null, resourceType: null, resourceId: null }, ["submitter-1"]]
+  ])("does not falsely reject an independent confirmer for %s delegation", async (_label, scope, inactiveUserIds) => {
+    const { service, tx, roles, revalidationSpy } = setup();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
+    tx.$queryRaw.mockResolvedValue([{ id: "statement-1" }]);
+    tx.wageStatement.findUnique.mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
+    tx.wageStatementVersion.findUnique.mockResolvedValue({
+      id: "version-1", statementId: "statement-1", revision: 1, status: "submitted",
+      createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
+    });
+    revalidationSpy.mockResolvedValue({
+      id: "version-1", createdByUserId: "author-1", lastEditedByUserId: "editor-1", submittedByUserId: "submitter-1"
+    } as never);
+    const delegation = Object.assign({
+      fromUserId: "submitter-1",
+      toUserId: "director-1",
+      actionKey: null,
+      resourceType: null,
+      resourceId: null,
+      enabled: true,
+      startsAt: new Date("2026-01-01T00:00:00.000Z"),
+      endsAt: new Date("2030-01-01T00:00:00.000Z")
+    }, scope);
+    tx.approvalDelegation.findMany.mockResolvedValue([delegation]);
+    const inactivePrincipals = new Set<string>(inactiveUserIds as string[]);
+    tx.user.findMany.mockResolvedValue([
+      { id: "submitter-1", isActive: !inactivePrincipals.has("submitter-1") },
+      { id: "director-1", isActive: !inactivePrincipals.has("director-1") }
+    ]);
+
+    await expect(service.confirm("director-1", "statement-1", {
+      idempotencyKey: "68686868-6868-4868-8868-686868686868", expectedRevision: 1
+    })).resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "confirmed" });
   });
 
   it("accepts a controlled correction version through the existing confirmation seam without exposing a public adjustment command", async () => {
