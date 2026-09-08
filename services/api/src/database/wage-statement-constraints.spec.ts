@@ -868,6 +868,18 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       }
     }
 
+    await expect(first.approvalDelegation.create({
+      data: {
+        fromUserId: fixture.preparerUserId,
+        toUserId: fixture.confirmerUserId,
+        startsAt: activeFrom,
+        endsAt: activeUntil,
+        actionKey: null,
+        resourceType: "wage_statement_version",
+        resourceId: draftResult.versionId
+      }
+    })).rejects.toThrow("ApprovalDelegation_scope_all_or_none");
+
     await first.approvalDelegation.createMany({
       data: [
         {
@@ -896,15 +908,6 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
           actionKey: "wage_statement.confirm",
           resourceType: "wage_statement_version",
           resourceId: "wrong-version"
-        },
-        {
-          fromUserId: fixture.preparerUserId,
-          toUserId: fixture.confirmerUserId,
-          startsAt: activeFrom,
-          endsAt: activeUntil,
-          actionKey: null,
-          resourceType: "wage_statement_version",
-          resourceId: draftResult.versionId
         },
         {
           fromUserId: editorUserId,
