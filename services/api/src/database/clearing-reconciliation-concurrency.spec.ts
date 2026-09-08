@@ -2173,6 +2173,7 @@ async function prepareAndAttestV1Event(
       kind: input.kind,
       amountCents: input.amountCents,
       evidenceLevel: "B",
+      businessReason: "POL-275 本机 PG16 核对关系与经营影响闭合验证",
       reconciliationIntent: input.reconciliationIntent
     }
   ));
