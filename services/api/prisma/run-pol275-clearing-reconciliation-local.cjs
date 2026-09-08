@@ -343,10 +343,8 @@ async function collectEvidence(url, expectedMigrationCount) {
              procedure.prosecdef AS "securityDefiner",
              procedure.proconfig AS "configuration"
         FROM pg_catalog.pg_proc procedure
-        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
-       WHERE namespace.nspname = 'public'
-         AND procedure.proname = 'pol275_append_reconciliation_set'
-         AND pg_get_function_identity_arguments(procedure.oid) = 'text, text'
+       WHERE procedure.oid =
+             'public.pol275_append_reconciliation_set(text,text)'::regprocedure
     `);
     const evidence = {
       serverVersion: database.serverVersion,
