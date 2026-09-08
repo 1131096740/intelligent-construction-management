@@ -701,6 +701,24 @@ async function main() {
     try {
       await deployMigrations(path.join(prismaRoot, "schema.prisma"), fullReplayEnvironment);
     } catch (error) {
+      const diagnosticPath = "/tmp/pol275-terminal-migration.sql";
+      await command(docker, [
+        "cp",
+        path.join(migrationsRoot, TERMINAL_MIGRATION, "migration.sql"),
+        `${containerName}:${diagnosticPath}`
+      ]).then(() => command(docker, [
+        "exec",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "jiangkong",
+        "-d",
+        FULL_REPLAY_DATABASE_NAME,
+        "-f",
+        diagnosticPath
+      ], { forwardOutput: true })).catch(() => undefined);
       const logs = await command(docker, ["logs", "--since", "2m", containerName])
         .catch(() => ({ stdout: "", stderr: "" }));
       const diagnostics = selectPostgresDiagnostics(
