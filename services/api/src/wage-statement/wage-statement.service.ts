@@ -1714,7 +1714,7 @@ export class WageStatementService {
       if (version.status !== "draft") throw new ConflictException("只有草稿工资承担单可以提交");
       await tx.wageStatementVersion.update({
         where: { id: version.id },
-        data: { status: "submitted", submittedByUserId: actorUserId, submittedAt: new Date(), lastEditedByUserId: actorUserId }
+        data: { status: "submitted", submittedByUserId: actorUserId, submittedAt: new Date() }
       });
       const result = { statementId: id, versionId: version.id, revision: statement.currentRevision, status: "submitted" };
       await this.receipt(tx, input, "wage_statement.submit", id, fingerprintValue, actorUserId, result);

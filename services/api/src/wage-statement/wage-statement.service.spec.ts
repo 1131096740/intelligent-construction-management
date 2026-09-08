@@ -568,18 +568,32 @@ describe("WageStatementService", () => {
     expect(tx.wageStatement.create).not.toHaveBeenCalled();
   });
 
-  it("submits exactly the current draft revision and records a replayable command receipt", async () => {
+  it("submits exactly the current draft revision without replacing its last wage-fact editor", async () => {
     const { service, tx, prisma } = setup();
     tx.$queryRaw = jest.fn().mockResolvedValue([{ id: "statement-1" }]);
     tx.wageStatement.findUnique = jest.fn().mockResolvedValue({ id: "statement-1", employmentCompanyId: "company-1", wageMonth: "2026-08", currentRevision: 1 });
-    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({ id: "version-1", statementId: "statement-1", revision: 1, status: "draft" });
+    tx.wageStatementVersion.findUnique = jest.fn().mockResolvedValue({
+      id: "version-1",
+      statementId: "statement-1",
+      revision: 1,
+      status: "draft",
+      createdByUserId: "creator-1",
+      lastEditedByUserId: "editor-1"
+    });
     tx.wageStatementVersion.update = jest.fn().mockResolvedValue({ id: "version-1", revision: 1, status: "submitted" });
 
-    await expect(service.submit("actor-1", "statement-1", { idempotencyKey: "22222222-2222-4222-8222-222222222222", expectedRevision: 1 }))
+    await expect(service.submit("submitter-1", "statement-1", { idempotencyKey: "22222222-2222-4222-8222-222222222222", expectedRevision: 1 }))
       .resolves.toEqual({ statementId: "statement-1", versionId: "version-1", revision: 1, status: "submitted" });
 
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ isolationLevel: "Serializable" }));
-    expect(tx.wageStatementVersion.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "submitted", submittedByUserId: "actor-1" }) }));
+    expect(tx.wageStatementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: {
+        status: "submitted",
+        submittedByUserId: "submitter-1",
+        submittedAt: expect.any(Date)
+      }
+    });
     expect(tx.wageCommandReceipt.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "wage_statement.submit", aggregateId: "statement-1", expectedRevision: 1 }) });
   });
 
