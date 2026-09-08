@@ -631,7 +631,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           expectedCaseRevision: clearingCase.revision,
           kind: "withheld",
           amountCents: "40",
-          businessReason: "按已确认保证金权威来源记录本次暂扣"
+          businessReason: "按已确认保证金权威来源记录本次暂扣",
+          requiresAttestation: true
         });
         let caseRevision = (await client.clearingCase.findUniqueOrThrow({ where: { id: caseId }, select: { revision: true } })).revision;
         const open = await confirmV1Event(client, service, actors, {
@@ -2218,6 +2219,7 @@ async function confirmLegacyEvent(
     kind: "withheld" | "final_confirmed";
     amountCents: string;
     businessReason?: string;
+    requiresAttestation?: boolean;
     allocations?: Array<{
       sourceEventVersionId: string;
       sourceKind: "withheld" | "authority_cap";
@@ -2226,9 +2228,19 @@ async function confirmLegacyEvent(
   }
 ): Promise<string> {
   const prepared = await prepareLegacyEvent(service, actors, input);
+  const confirmationRevision = input.requiresAttestation
+    ? eventResult(await service.attestEvent(
+        actors.attesterUserId,
+        prepared.eventId,
+        {
+          idempotencyKey: randomUUID(),
+          expectedRevision: prepared.eventRevision
+        }
+      )).revision
+    : prepared.eventRevision;
   await service.confirmEvent(actors.confirmerUserId, prepared.eventId, {
     idempotencyKey: randomUUID(),
-    expectedRevision: prepared.eventRevision,
+    expectedRevision: confirmationRevision,
     allocations: input.allocations ?? []
   });
   return prepared.versionId;
@@ -2247,6 +2259,7 @@ async function prepareLegacyEvent(
     kind: "withheld" | "final_confirmed";
     amountCents: string;
     businessReason?: string;
+    requiresAttestation?: boolean;
     allocations?: Array<{
       sourceEventVersionId: string;
       sourceKind: "withheld" | "authority_cap";
