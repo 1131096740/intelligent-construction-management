@@ -356,6 +356,13 @@ model ClearingCase {
   createdAt                          DateTime        @default(now())
   updatedAt                          DateTime        @updatedAt
   events                             ClearingEvent[]
+  reconciliationItems               ClearingReconciliationItem[]
+  reconciliationRevisions           ClearingReconciliationRevision[]
+  reconciliationCoverages           ClearingReconciliationCoverage[]
+  reconciliationResolutions         ClearingReconciliationResolution[]
+  reconciliationDefinitionReversals ClearingReconciliationDefinitionReversal[]
+  reconciliationResolutionLines     ClearingReconciliationResolutionLine[]
+  reconciliationDecisionSeals       ClearingReconciliationDecisionSeal[]
 
   @@unique([projectId, constructionEnterpriseAssignmentId, category, governedSubjectKey], map: "ClearingCase_natural_key")
   @@index([projectId, status, updatedAt])
@@ -403,8 +410,17 @@ model ClearingEventVersion {
   impactLinks       ClearingImpactLink[]
   previousVersion   ClearingEventVersion?        @relation("ClearingEventVersionHistory", fields: [previousVersionId], references: [id], onDelete: Restrict)
   nextVersions      ClearingEventVersion[]       @relation("ClearingEventVersionHistory")
+  openedReconciliationItem       ClearingReconciliationItem?                @relation("ReconciliationItemOpeningDecision")
+  reconciliationRevisionDecisions ClearingReconciliationRevision[]          @relation("ReconciliationRevisionDecision")
+  reconciliationLegacyAdoptions ClearingReconciliationRevision[]            @relation("ReconciliationRevisionLegacyAdoption")
+  reconciliationCoverageSources ClearingReconciliationCoverage[]            @relation("ReconciliationCoverageWithheldSource")
+  reconciliationCoverageDecisions ClearingReconciliationCoverage[]          @relation("ReconciliationCoverageDecision")
+  reconciliationResolutionDecisions ClearingReconciliationResolution[]      @relation("ReconciliationResolutionDecision")
+  reconciliationDefinitionReversalDecisions ClearingReconciliationDefinitionReversal[] @relation("ReconciliationDefinitionReversalDecision")
+  reconciliationDecisionSeal    ClearingReconciliationDecisionSeal?         @relation("ReconciliationDecisionSealVersion")
 
   @@unique([clearingEventId, versionNo])
+  @@unique([id, clearingCaseId])
   @@index([clearingCaseId, createdAt])
   @@index([previousVersionId])
 }
@@ -440,10 +456,184 @@ model ClearingAllocation {
   sourceEventVersion        ClearingEventVersion? @relation("ClearingAllocationSource", fields: [sourceEventVersionId], references: [id], onDelete: Restrict)
   reversesAllocation        ClearingAllocation?   @relation("ClearingAllocationReversal", fields: [reversesAllocationId], references: [id], onDelete: Restrict)
   reversedByAllocations     ClearingAllocation[]  @relation("ClearingAllocationReversal")
+  reconciliationResolutionLine ClearingReconciliationResolutionLine?
 
   @@index([eventVersionId])
   @@index([sourceEventVersionId])
   @@index([reversesAllocationId])
+}
+
+model ClearingReconciliationItem {
+  id                            String   @id @default(uuid())
+  clearingCaseId                String
+  lineageRootItemId             String
+  additionOfItemId              String?
+  openingDecisionEventVersionId String   @unique
+  createdByUserId               String
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+  clearingCase                  ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lineageRootItem               ClearingReconciliationItem @relation("ReconciliationItemRoot", fields: [lineageRootItemId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  lineageItems                  ClearingReconciliationItem[] @relation("ReconciliationItemRoot")
+  additionOfItem                ClearingReconciliationItem? @relation("ReconciliationItemAddition", fields: [additionOfItemId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  additions                     ClearingReconciliationItem[] @relation("ReconciliationItemAddition")
+  openingDecisionEventVersion   ClearingEventVersion @relation("ReconciliationItemOpeningDecision", fields: [openingDecisionEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  revisions                     ClearingReconciliationRevision[]
+
+  @@unique([id, clearingCaseId])
+  @@unique([openingDecisionEventVersionId, clearingCaseId])
+  @@index([clearingCaseId, createdAt, id])
+  @@index([lineageRootItemId, createdAt, id])
+  @@index([additionOfItemId])
+}
+
+model ClearingReconciliationRevision {
+  id                                  String   @id @default(uuid())
+  itemId                              String
+  clearingCaseId                      String
+  revisionNo                          Int
+  kind                                String
+  amountCents                         BigInt
+  currencyCode                        String   @default("CNY")
+  decisionEventVersionId              String   @unique
+  adoptsLegacyPendingEventVersionId   String?  @unique
+  replacesRevisionId                  String?
+  replacedOpenAmountCents             BigInt?
+  correctsDefinitionReversalId        String?
+  effectiveCaseRevision               Int
+  confirmedAt                         DateTime @db.Timestamptz(3)
+  item                                ClearingReconciliationItem @relation(fields: [itemId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  clearingCase                        ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionEventVersion                ClearingEventVersion @relation("ReconciliationRevisionDecision", fields: [decisionEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  adoptsLegacyPendingEventVersion     ClearingEventVersion? @relation("ReconciliationRevisionLegacyAdoption", fields: [adoptsLegacyPendingEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  replacesRevision                    ClearingReconciliationRevision? @relation("ReconciliationRevisionReplacement", fields: [replacesRevisionId, itemId, clearingCaseId], references: [id, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  replacementRevisions                ClearingReconciliationRevision[] @relation("ReconciliationRevisionReplacement")
+  correctsDefinitionReversal          ClearingReconciliationDefinitionReversal? @relation("ReconciliationRevisionCorrection", fields: [correctsDefinitionReversalId, itemId, clearingCaseId], references: [id, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  correctedByDefinitionReversal       ClearingReconciliationDefinitionReversal? @relation("ReconciliationDefinitionTarget")
+  coverages                           ClearingReconciliationCoverage[]
+  resolutions                         ClearingReconciliationResolution[]
+  resolutionLines                     ClearingReconciliationResolutionLine[]
+
+  @@unique([id, itemId, clearingCaseId])
+  @@unique([itemId, revisionNo])
+  @@unique([clearingCaseId, effectiveCaseRevision])
+  @@index([clearingCaseId, confirmedAt, effectiveCaseRevision])
+}
+
+model ClearingReconciliationCoverage {
+  id                          String   @id @default(uuid())
+  reconciliationRevisionId    String
+  itemId                      String
+  clearingCaseId              String
+  withheldEventVersionId      String
+  amountCents                 BigInt
+  decisionEventVersionId      String
+  intentLineNo                Int
+  effectiveCaseRevision       Int
+  confirmedAt                 DateTime @db.Timestamptz(3)
+  revision                    ClearingReconciliationRevision @relation(fields: [reconciliationRevisionId, itemId, clearingCaseId], references: [id, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  clearingCase                ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  withheldEventVersion        ClearingEventVersion @relation("ReconciliationCoverageWithheldSource", fields: [withheldEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  decisionEventVersion        ClearingEventVersion @relation("ReconciliationCoverageDecision", fields: [decisionEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  resolutionLines             ClearingReconciliationResolutionLine[]
+
+  @@unique([id, reconciliationRevisionId, itemId, clearingCaseId])
+  @@unique([decisionEventVersionId, withheldEventVersionId])
+  @@unique([decisionEventVersionId, intentLineNo])
+  @@index([withheldEventVersionId, confirmedAt])
+  @@index([reconciliationRevisionId, confirmedAt])
+  @@index([clearingCaseId, confirmedAt, itemId])
+}
+
+model ClearingReconciliationResolution {
+  id                          String   @id @default(uuid())
+  reconciliationRevisionId    String
+  itemId                      String
+  clearingCaseId              String
+  entryKind                   String
+  resultKind                  String
+  amountCents                 BigInt
+  decisionEventVersionId      String
+  intentItemNo                Int
+  reversesResolutionId        String?
+  effectiveCaseRevision       Int
+  confirmedAt                 DateTime @db.Timestamptz(3)
+  revision                    ClearingReconciliationRevision @relation(fields: [reconciliationRevisionId, itemId, clearingCaseId], references: [id, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  clearingCase                ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionEventVersion        ClearingEventVersion @relation("ReconciliationResolutionDecision", fields: [decisionEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  reversesResolution          ClearingReconciliationResolution? @relation("ReconciliationResolutionReversal", fields: [reversesResolutionId, reconciliationRevisionId, itemId, clearingCaseId], references: [id, reconciliationRevisionId, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  reversedByResolutions       ClearingReconciliationResolution[] @relation("ReconciliationResolutionReversal")
+  lines                       ClearingReconciliationResolutionLine[]
+
+  @@unique([id, reconciliationRevisionId, itemId, clearingCaseId])
+  @@unique([decisionEventVersionId, intentItemNo])
+  @@index([itemId, confirmedAt, effectiveCaseRevision])
+  @@index([reversesResolutionId])
+  @@index([decisionEventVersionId])
+}
+
+model ClearingReconciliationDefinitionReversal {
+  id                          String   @id @default(uuid())
+  targetRevisionId            String   @unique
+  itemId                      String
+  clearingCaseId              String
+  decisionEventVersionId      String   @unique
+  reversedAmountCents         BigInt
+  effectiveCaseRevision       Int
+  confirmedAt                 DateTime @db.Timestamptz(3)
+  targetRevision              ClearingReconciliationRevision @relation("ReconciliationDefinitionTarget", fields: [targetRevisionId, itemId, clearingCaseId], references: [id, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  clearingCase                ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionEventVersion        ClearingEventVersion @relation("ReconciliationDefinitionReversalDecision", fields: [decisionEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  correctedByRevisions        ClearingReconciliationRevision[] @relation("ReconciliationRevisionCorrection")
+
+  @@unique([id, itemId, clearingCaseId])
+  @@unique([targetRevisionId, itemId, clearingCaseId])
+  @@index([itemId, confirmedAt, effectiveCaseRevision])
+}
+
+model ClearingReconciliationResolutionLine {
+  id                          String   @id @default(uuid())
+  resolutionId                String
+  reconciliationRevisionId    String
+  itemId                      String
+  clearingCaseId              String
+  sourceKind                  String
+  coverageId                  String?
+  amountCents                 BigInt
+  intentLineNo                Int
+  clearingAllocationId        String?  @unique
+  reversesResolutionLineId    String?
+  resolution                  ClearingReconciliationResolution @relation(fields: [resolutionId, reconciliationRevisionId, itemId, clearingCaseId], references: [id, reconciliationRevisionId, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  revision                    ClearingReconciliationRevision @relation(fields: [reconciliationRevisionId, itemId, clearingCaseId], references: [id, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  clearingCase                ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  coverage                    ClearingReconciliationCoverage? @relation(fields: [coverageId, reconciliationRevisionId, itemId, clearingCaseId], references: [id, reconciliationRevisionId, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  clearingAllocation          ClearingAllocation? @relation(fields: [clearingAllocationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversesResolutionLine      ClearingReconciliationResolutionLine? @relation("ReconciliationResolutionLineReversal", fields: [reversesResolutionLineId, reconciliationRevisionId, itemId, clearingCaseId], references: [id, reconciliationRevisionId, itemId, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+  reversedByResolutionLines   ClearingReconciliationResolutionLine[] @relation("ReconciliationResolutionLineReversal")
+
+  @@unique([id, reconciliationRevisionId, itemId, clearingCaseId])
+  @@unique([resolutionId, intentLineNo])
+  @@index([coverageId])
+  @@index([reversesResolutionLineId])
+}
+
+model ClearingReconciliationDecisionSeal {
+  decisionEventVersionId   String   @id
+  clearingCaseId           String
+  intentSchema             String
+  eventVersionFingerprint  String
+  relationSetHash          String
+  revisionCount            Int
+  coverageCount            Int
+  resolutionCount          Int
+  resolutionLineCount      Int
+  definitionReversalCount  Int
+  eventAllocationCount     Int
+  ordinaryAllocationCount  Int
+  sealedAt                 DateTime @db.Timestamptz(3)
+  clearingCase             ClearingCase @relation(fields: [clearingCaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisionEventVersion     ClearingEventVersion @relation("ReconciliationDecisionSealVersion", fields: [decisionEventVersionId, clearingCaseId], references: [id, clearingCaseId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([decisionEventVersionId, clearingCaseId])
 }
 
 model ClearingImpactLink {

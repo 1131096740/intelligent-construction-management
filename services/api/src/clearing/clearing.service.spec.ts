@@ -11,9 +11,13 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
   tx?: TTx;
   ledgerResult?: { id: string; impactIds: string[] };
   authorities?: { resolveCaseSelection: jest.Mock };
+  selectionRefs?: { matches: jest.Mock };
 }) {
   const tx = input?.tx ?? ({} as TTx);
   const prisma = {
+    clearingEvent: {
+      findUnique: jest.fn().mockResolvedValue({ kind: "coverage_added" })
+    },
     ...(input?.prisma ?? {}),
     $transaction: jest.fn(async (work: (client: unknown) => Promise<unknown>, options: unknown) => {
       expect(options).toEqual({ isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -34,7 +38,14 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
   };
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
   return {
-    service: new ClearingService(prisma as never, roleResolver as never, ledger as never, audit as never, input?.authorities as never),
+    service: new ClearingService(
+      prisma as never,
+      roleResolver as never,
+      ledger as never,
+      audit as never,
+      input?.authorities as never,
+      input?.selectionRefs as never
+    ),
     prisma,
     roleResolver,
     ledger,
@@ -922,5 +933,443 @@ describe("ClearingService", () => {
         reversesImpactId: "source-funds-link"
       })
     });
+  });
+
+  it("binds a V1 confirmation to the exact submitted version and invokes the controlled writer", async () => {
+    const intent = {
+      schema: "clearing_reconciliation_intent/V1",
+      operation: "add_coverage",
+      plannedIds: {
+        newItemId: null,
+        revisionId: null,
+        coverageIds: [],
+        resolutionIds: [],
+        resolutionLineIds: [],
+        definitionReversalId: null,
+        clearingAllocationIds: []
+      },
+      plannedPairedWithheld: null,
+      itemDefinition: null,
+      coverages: [],
+      resolutions: [],
+      definitionReversal: null,
+      eventAllocations: []
+    };
+    const rawResults = [
+      [{ id: "event-1" }],
+      [{ id: "case-1" }],
+      [{ total: 0n }],
+      [{ relation_set_hash: "seal-hash" }]
+    ];
+    const tx = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      },
+      $queryRaw: jest.fn().mockImplementation(() => Promise.resolve(rawResults.shift())),
+      clearingEvent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "event-1",
+          clearingCaseId: "case-1",
+          kind: "coverage_added",
+          workflowStatus: "submitted",
+          revision: 2,
+          currentVersionNo: 2
+        }),
+        update: jest.fn().mockResolvedValue({ revision: 3 })
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-2",
+          clearingEventId: "event-1",
+          clearingCaseId: "case-1",
+          versionNo: 2,
+          workflowStatus: "submitted",
+          amountCents: 1n,
+          currencyCode: "CNY",
+          evidenceLevel: "A",
+          payloadSnapshot: { reconciliationIntent: intent },
+          actorSetSnapshot: ["staff-1"],
+          fingerprint: "a".repeat(64),
+          createdByUserId: "staff-1"
+        })
+      },
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          projectId: "project-1",
+          constructionEnterpriseAssignmentId: "assignment-1",
+          category: "management_fee",
+          governedSubjectKey: "管理费-2026",
+          authoritativeGrossCapCents: 1000n,
+          revision: 7
+        }),
+        update: jest.fn().mockResolvedValue({ revision: 8 })
+      },
+      clearingConfirmation: { create: jest.fn().mockResolvedValue({ id: "confirmation-1" }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const { service } = serviceWith({ tx });
+
+    await expect(service.confirmEvent("director-1", "event-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 2,
+      expectedCaseRevision: 7,
+      eventVersionId: "version-2",
+      expectedFingerprint: "a".repeat(64),
+      confirmed: true
+    })).resolves.toEqual({
+      id: "event-1",
+      versionId: "version-2",
+      revision: 3,
+      workflowStatus: "confirmed"
+    });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
+    expect(tx.clearingConfirmation.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects relationship overrides at the V1 confirmation boundary", async () => {
+    const { service, prisma } = serviceWith();
+
+    await expect(service.confirmEvent("director-1", "event-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 2,
+      expectedCaseRevision: 7,
+      eventVersionId: "version-2",
+      expectedFingerprint: "a".repeat(64),
+      confirmed: true,
+      allocations: []
+    })).rejects.toThrow("V1 确认不接受关系或分配覆盖字段");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses to submit a V1 draft through a different event version fingerprint", async () => {
+    const tx = {
+      clearingCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "event-1" }]),
+      clearingEvent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "event-1",
+          clearingCaseId: "case-1",
+          kind: "pending_reconciliation",
+          workflowStatus: "draft",
+          revision: 1,
+          currentVersionNo: 1
+        })
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          workflowStatus: "draft",
+          payloadSnapshot: {
+            reconciliationIntent: { schema: "clearing_reconciliation_intent/V1" }
+          },
+          fingerprint: "a".repeat(64)
+        })
+      }
+    };
+    const { service } = serviceWith({ tx });
+
+    await expect(service.submitEvent("finance-1", "event-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 1,
+      eventVersionId: "version-1",
+      expectedFingerprint: "b".repeat(64)
+    })).rejects.toThrow("exact eventVersionId + fingerprint");
+  });
+
+  it("refuses to attest a V1 submission through a stale event version", async () => {
+    const tx = {
+      clearingCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "event-1" }]),
+      clearingEvent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "event-1",
+          clearingCaseId: "case-1",
+          kind: "pending_reconciliation",
+          workflowStatus: "submitted",
+          revision: 2,
+          currentVersionNo: 2
+        })
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-2",
+          workflowStatus: "submitted",
+          evidenceLevel: "B",
+          payloadSnapshot: {
+            reconciliationIntent: { schema: "clearing_reconciliation_intent/V1" }
+          },
+          fingerprint: "a".repeat(64)
+        })
+      }
+    };
+    const { service } = serviceWith({ tx });
+
+    await expect(service.attestEvent("finance-1", "event-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 2,
+      eventVersionId: "version-1",
+      expectedFingerprint: "a".repeat(64)
+    })).rejects.toThrow("exact eventVersionId + fingerprint");
+  });
+
+  it("freezes an independent pending item with server planned IDs during prepare", async () => {
+    const tx = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "case-1" }]),
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          projectId: "project-1",
+          constructionEnterpriseAssignmentId: "assignment-1",
+          category: "management_fee",
+          governedSubjectKey: "管理费-2026",
+          authoritativeGrossCapCents: 1000n,
+          currencyCode: "CNY",
+          revision: 1,
+          sourceDiscriminator: null,
+          authorityVersionId: null,
+          authoritySnapshotRef: null
+        }),
+        update: jest.fn().mockResolvedValue({ revision: 2 })
+      },
+      clearingEvent: { create: jest.fn().mockImplementation(({ data }) => data) },
+      clearingEventVersion: { create: jest.fn().mockImplementation(({ data }) => data) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const { service } = serviceWith({ tx });
+
+    await service.createEvent("finance-1", "case-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 1,
+      kind: "pending_reconciliation",
+      amountCents: "100",
+      evidenceLevel: "B",
+      reconciliationIntent: {
+        operation: "open_item",
+        itemDefinition: { mode: "independent", amountCents: "100" },
+        coverages: []
+      }
+    });
+
+    const data = tx.clearingEventVersion.create.mock.calls[0]![0].data;
+    expect(data.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(data.payloadSnapshot).toEqual({
+      reconciliationIntent: expect.objectContaining({
+        schema: "clearing_reconciliation_intent/V1",
+        operation: "open_item",
+        itemDefinition: expect.objectContaining({
+          mode: "independent",
+          amountCents: "100",
+          itemId: expect.any(String),
+          revisionId: expect.any(String),
+          revisionNo: 1
+        }),
+        plannedIds: expect.objectContaining({
+          newItemId: expect.any(String),
+          revisionId: expect.any(String)
+        }),
+        coverages: expect.arrayContaining([
+          expect.objectContaining({
+            lineNo: 1,
+            amountCents: "100",
+            withheldEventVersionFingerprint: expect.stringMatching(
+              /^[0-9a-f]{64}$/
+            )
+          })
+        ]),
+        resolutions: [],
+        eventAllocations: []
+      })
+    });
+  });
+
+  it("resolves a short-lived withheld selection into a stable coverage snapshot during prepare", async () => {
+    const tx = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "case-1" }]),
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          projectId: "project-1",
+          constructionEnterpriseAssignmentId: "assignment-1",
+          category: "management_fee",
+          governedSubjectKey: "管理费",
+          authoritativeGrossCapCents: 1000n,
+          currencyCode: "CNY",
+          revision: 4,
+          sourceDiscriminator: null,
+          authorityVersionId: "authority-1",
+          authoritySnapshotRef: "authority-fingerprint"
+        }),
+        update: jest.fn().mockResolvedValue({ revision: 5 })
+      },
+      clearingReconciliationRevision: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "revision-1",
+          itemId: "item-1",
+          clearingCaseId: "case-1",
+          revisionNo: 1
+        }),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      clearingReconciliationDefinitionReversal: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      clearingEvent: { create: jest.fn().mockImplementation(({ data }) => data) },
+      clearingEventVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "withheld-version-1",
+            clearingCaseId: "case-1",
+            amountCents: 100n,
+            fingerprint: "c".repeat(64),
+            clearingEvent: { kind: "withheld" },
+            confirmation: { eventVersionId: "withheld-version-1" }
+          }
+        ]),
+        create: jest.fn().mockImplementation(({ data }) => data)
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const selectionRefs = { matches: jest.fn().mockReturnValue(true) };
+    const { service } = serviceWith({ tx, selectionRefs });
+
+    await service.createEvent("finance-1", "case-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 4,
+      kind: "coverage_added",
+      amountCents: "40",
+      evidenceLevel: "B",
+      businessReason: "补充绑定已确认暂扣",
+      reconciliationIntent: {
+        operation: "add_coverage",
+        targetRevisionId: "revision-1",
+        coverages: [
+          { sourceSelectionRef: "fac1.short-lived", amountCents: "40" }
+        ]
+      }
+    });
+
+    const payload = tx.clearingEventVersion.create.mock.calls[0]![0].data.payloadSnapshot;
+    expect(JSON.stringify(payload)).not.toContain("fac1.short-lived");
+    expect(payload.reconciliationIntent.coverages).toEqual([
+      expect.objectContaining({
+        lineNo: 1,
+        reconciliationRevisionId: "revision-1",
+        withheldEventVersionId: "withheld-version-1",
+        withheldEventVersionFingerprint: "c".repeat(64),
+        amountCents: "40"
+      })
+    ]);
+  });
+
+  it("freezes a resolution line and its one-to-one economic allocation during prepare", async () => {
+    const tx = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "case-1" }]),
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "case-1",
+          projectId: "project-1",
+          constructionEnterpriseAssignmentId: "assignment-1",
+          category: "management_fee",
+          governedSubjectKey: "管理费",
+          authoritativeGrossCapCents: 1000n,
+          currencyCode: "CNY",
+          revision: 4,
+          sourceDiscriminator: null,
+          authorityVersionId: "authority-1",
+          authoritySnapshotRef: "authority-fingerprint"
+        }),
+        update: jest.fn().mockResolvedValue({ revision: 5 })
+      },
+      clearingReconciliationRevision: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "revision-1",
+          itemId: "item-1",
+          clearingCaseId: "case-1",
+          revisionNo: 1
+        }),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      clearingReconciliationDefinitionReversal: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      clearingReconciliationCoverage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "coverage-1",
+            reconciliationRevisionId: "revision-1",
+            itemId: "item-1",
+            clearingCaseId: "case-1",
+            withheldEventVersionId: "withheld-version-1",
+            amountCents: 100n,
+            withheldEventVersion: { fingerprint: "c".repeat(64) }
+          }
+        ])
+      },
+      clearingEvent: { create: jest.fn().mockImplementation(({ data }) => data) },
+      clearingEventVersion: { create: jest.fn().mockImplementation(({ data }) => data) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const selectionRefs = { matches: jest.fn().mockReturnValue(true) };
+    const { service } = serviceWith({ tx, selectionRefs });
+
+    await service.createEvent("finance-1", "case-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 4,
+      kind: "final_confirmed",
+      amountCents: "40",
+      evidenceLevel: "B",
+      reconciliationIntent: {
+        operation: "resolve",
+        resolutions: [{
+          reconciliationRevisionId: "revision-1",
+          amountCents: "40",
+          lines: [{
+            sourceKind: "withheld_coverage",
+            sourceSelectionRef: "fac1.coverage",
+            amountCents: "40"
+          }]
+        }],
+        ordinaryAllocations: []
+      }
+    });
+
+    const intent = tx.clearingEventVersion.create.mock.calls[0]![0]
+      .data.payloadSnapshot.reconciliationIntent;
+    expect(JSON.stringify(intent)).not.toContain("fac1.coverage");
+    expect(intent.resolutions[0].lines[0]).toEqual(expect.objectContaining({
+      sourceKind: "withheld_coverage",
+      coverageId: "coverage-1",
+      plannedClearingAllocationId: expect.any(String),
+      frozenSource: {
+        kind: "withheld_coverage",
+        coverageId: "coverage-1",
+        withheldEventVersionId: "withheld-version-1",
+        withheldEventVersionFingerprint: "c".repeat(64)
+      }
+    }));
+    expect(intent.eventAllocations).toEqual([
+      expect.objectContaining({
+        allocationNo: 1,
+        purpose: "reconciliation_line",
+        allocationSourceKind: "withheld",
+        sourceEventVersionId: "withheld-version-1",
+        amountCents: "40"
+      })
+    ]);
   });
 });

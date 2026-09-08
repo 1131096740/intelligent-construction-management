@@ -1,5 +1,14 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+function expectArtifactContains(
+  artifactName: string,
+  artifact: string,
+  expectedTokens: readonly string[]
+) {
+  const missing = expectedTokens.filter((token) => !artifact.includes(token));
+  expect({ artifactName, missing }).toEqual({ artifactName, missing: [] });
+}
 
 describe("POL-11A clearing schema artifact", () => {
   const schema = readFileSync(join(__dirname, "../../prisma/schema.prisma"), "utf8");
@@ -17,6 +26,13 @@ describe("POL-11A clearing schema artifact", () => {
     ),
     "utf8"
   );
+  const reconciliationMigrationPath = join(
+    __dirname,
+    "../../prisma/migrations/20260909100000_pol275_clearing_reconciliation_repair/migration.sql"
+  );
+  const reconciliationMigration = existsSync(reconciliationMigrationPath)
+    ? readFileSync(reconciliationMigrationPath, "utf8")
+    : "";
 
   it("keeps stable case/event identities separate from immutable submitted versions", () => {
     expect(schema).toContain("model ClearingCase {");
@@ -92,5 +108,47 @@ describe("POL-11A clearing schema artifact", () => {
     expect(authorityMigration).toContain("AssignedWageAuthorityLine_parent_consistency");
     expect(authorityMigration).toContain("GuaranteeObligationVersion_nonoverlap");
     expect(authorityMigration).toContain('"ClearingCase_authority_fields_check"');
+  });
+
+  it("seals the seven append-only reconciliation relations behind one controlled writer", () => {
+    const modelTokens: string[] = [];
+    const migrationTokens: string[] = [];
+    for (const model of [
+      "ClearingReconciliationItem",
+      "ClearingReconciliationRevision",
+      "ClearingReconciliationCoverage",
+      "ClearingReconciliationResolution",
+      "ClearingReconciliationDefinitionReversal",
+      "ClearingReconciliationResolutionLine",
+      "ClearingReconciliationDecisionSeal"
+    ]) {
+      modelTokens.push(`model ${model} {`);
+      migrationTokens.push(`CREATE TABLE "${model}"`);
+      migrationTokens.push(`CREATE TRIGGER "${model}_pol275_immutable"`);
+    }
+    modelTokens.push("@@unique([id, clearingCaseId])");
+    migrationTokens.push(
+      '"ClearingEventVersion_id_clearingCaseId_key"',
+      '"ClearingAllocation_no_self_reversal"',
+      "ON DELETE RESTRICT ON UPDATE RESTRICT",
+      'CREATE OR REPLACE FUNCTION "pol214_clearing_allocation_guard"()',
+      "pg_catalog.pg_advisory_xact_lock",
+      "coverage_relief := NEW.\"amountCents\"",
+      'CREATE FUNCTION "pol275_clearing_impact_link_guard"()',
+      'CREATE TRIGGER "ClearingImpactLink_pol275_insert_guard"',
+      'CREATE CONSTRAINT TRIGGER "ClearingImpactLink_pol275_v1_closure"',
+      'CREATE FUNCTION "pol275_relation_set_hash_v1"',
+      'CREATE FUNCTION "pol275_append_reconciliation_set"',
+      "SECURITY DEFINER",
+      "SET search_path = pg_catalog, public, pg_temp",
+      "DEFERRABLE INITIALLY DEFERRED",
+      'REVOKE ALL ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) FROM PUBLIC',
+      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON TABLE",
+      'GRANT EXECUTE ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT)',
+      'CREATE ROLE "jg_pol275_owner" NOLOGIN NOINHERIT',
+      'CREATE ROLE "jg_pol275_runtime" NOLOGIN NOINHERIT'
+    );
+    expectArtifactContains("schema.prisma", schema, modelTokens);
+    expectArtifactContains("POL-275 migration", reconciliationMigration, migrationTokens);
   });
 });

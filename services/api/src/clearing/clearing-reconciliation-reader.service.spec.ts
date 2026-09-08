@@ -1,0 +1,111 @@
+import { Prisma } from "@prisma/client";
+
+import { ClearingReconciliationReaderService } from "./clearing-reconciliation-reader.service";
+
+describe("ClearingReconciliationReaderService", () => {
+  it("participates in the caller transaction and returns coverage-incomplete instead of zero", async () => {
+    const tx = {
+      clearingEventVersion: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      clearingReconciliationRevision: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "revision-1",
+            itemId: "item-1",
+            decisionEventVersionId: "pending-v1",
+            adoptsLegacyPendingEventVersionId: null,
+            revisionNo: 1,
+            kind: "open",
+            amountCents: 100n,
+            replacesRevisionId: null,
+            confirmedAt: new Date("2026-09-01T00:00:00.000Z"),
+            effectiveCaseRevision: 1
+          }
+        ])
+      },
+      clearingReconciliationCoverage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "coverage-1",
+            reconciliationRevisionId: "revision-1",
+            withheldEventVersionId: "withheld-v1",
+            amountCents: 40n,
+            confirmedAt: new Date("2026-09-01T00:00:00.000Z"),
+            effectiveCaseRevision: 1
+          }
+        ])
+      },
+      clearingReconciliationResolution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      clearingReconciliationResolutionLine: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      clearingReconciliationDefinitionReversal: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const prisma = { $transaction: jest.fn() };
+    const roles = { resolveActiveRoleScopesInTransaction: jest.fn() };
+    const service = new ClearingReconciliationReaderService(
+      prisma as never,
+      roles as never
+    );
+
+    await expect(service.readClearingReconciliationRiskInTransaction(
+      tx as never,
+      {
+        projectId: "project-1",
+        asOf: new Date("2026-09-02T00:00:00.000Z")
+      }
+    )).resolves.toEqual(expect.objectContaining({
+      projectId: "project-1",
+      relationshipCompleteness: "coverage_incomplete",
+      openPendingGrossCents: 100n,
+      openCoveredCents: 40n,
+      openUncoveredCents: 60n
+    }));
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("opens one repeatable-read read-only transaction for the actor-facing reader", async () => {
+    const tx = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+      clearingEventVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationRevision: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationCoverage: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationResolution: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationResolutionLine: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationDefinitionReversal: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (work, options) => {
+        expect(options).toEqual({
+          isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead
+        });
+        return work(tx);
+      })
+    };
+    const roles = {
+      resolveActiveRoleScopesInTransaction: jest.fn().mockResolvedValue([
+        "finance_staff"
+      ])
+    };
+    const service = new ClearingReconciliationReaderService(
+      prisma as never,
+      roles as never
+    );
+
+    await service.readClearingReconciliationRiskForActor("finance-1", {
+      projectId: "project-1",
+      asOf: new Date("2026-09-02T00:00:00.000Z")
+    });
+
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith("SET TRANSACTION READ ONLY");
+    expect(roles.resolveActiveRoleScopesInTransaction).toHaveBeenCalledWith(
+      tx,
+      "finance-1"
+    );
+  });
+});

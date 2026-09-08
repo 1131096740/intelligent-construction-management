@@ -37,6 +37,7 @@
     "verify:settlement-approval-withdrawal-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:settlement-approval-withdrawal-concurrency:local",
     "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local",
     "verify:payment-approval-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:payment-approval-concurrency:local",
+    "verify:pol275-clearing-reconciliation:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol275-clearing-reconciliation:local",
     "verify:contract-template-scenario-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:contract-template-scenario-concurrency:local",
     "check:fast": "node scripts/ops/run-fast-local-check.mjs",
     "release:local": "bash scripts/ops/run-local-release-gate.sh",

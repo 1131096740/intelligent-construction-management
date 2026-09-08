@@ -25,6 +25,11 @@ const {
 const {
   probePostgresReady
 } = require("./verify-fund-execution-v7.cjs");
+const {
+  assertSafeEnvironment: assertPol275SafeEnvironment,
+  inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
+  runtimeEnvironment: createPol275RuntimeEnvironment
+} = require("./run-pol275-clearing-reconciliation-local.cjs");
 
 const runnerPath = path.join(
   __dirname,
@@ -56,24 +61,89 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 196 pending tests as executable local coverage", () => {
+test("manifest derives all 200 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 48,
-    fullyPendingSuites: 37,
+    pendingFiles: 50,
+    fullyPendingSuites: 39,
     partiallyPendingSuites: 11,
-    pendingTests: 196,
-    coveredFiles: 48,
-    coveredTests: 196,
+    pendingTests: 200,
+    coveredFiles: 50,
+    coveredTests: 200,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
+});
+
+test("canonical manifest executes all four POL-275 PG16 gates", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "clearing_reconciliation_pol275"
+  );
+
+  assert.deepEqual(group, {
+    id: "clearing_reconciliation_pol275",
+    pendingTests: 4,
+    testFiles: [
+      {
+        path: "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
+        pendingTests: 3,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/database/clearing-reconciliation-legacy-compatibility.spec.ts",
+        pendingTests: 1,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "workspaceScript",
+      script: "verify:pol275-clearing-reconciliation:local",
+      path: "services/api/prisma/run-pol275-clearing-reconciliation-local.cjs",
+      evidenceEnv: "POL275_CLEARING_RECONCILIATION_EVIDENCE_PATH"
+    },
+    state: "executable_local_runner"
+  });
+});
+
+test("POL-275 runner fails closed without confirmation and inherited database targets", () => {
+  assert.throws(
+    () => assertPol275SafeEnvironment({ NODE_ENV: "test" }),
+    /LOCAL_PG16_DYNAMIC_GATE/u
+  );
+  assert.deepEqual(
+    inheritedPol275DatabaseTargetNames({
+      DATABASE_URL: "secret-one",
+      WAGE_DATABASE_URL: "secret-two",
+      PATH: "/usr/bin"
+    }),
+    ["DATABASE_URL", "WAGE_DATABASE_URL"]
+  );
+  assert.throws(
+    () => assertPol275SafeEnvironment({
+      NODE_ENV: "test",
+      LOCAL_PG16_DYNAMIC_GATE: "LOCAL_PG16_DYNAMIC_GATE",
+      DATABASE_URL: "must-not-be-used"
+    }),
+    /DATABASE_URL/u
+  );
+});
+
+test("POL-275 runner preserves rather than repurposes the caller home", () => {
+  const environment = createPol275RuntimeEnvironment(
+    { HOME: "/caller/home", PATH: "/usr/bin" },
+    "/tmp/pol275",
+    "postgresql://local/test",
+    "local-secret"
+  );
+  assert.equal(environment.HOME, "/caller/home");
+  assert.equal(environment.TMPDIR, "/tmp/pol275");
 });
 
 test("canonical manifest executes all 26 fund execution v7 PG tests", () => {
@@ -130,7 +200,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=196/u
+    /inventory\.coveredTests=26，派生值=200/u
   );
 });
 

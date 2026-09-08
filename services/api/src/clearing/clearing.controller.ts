@@ -13,10 +13,14 @@ import type {
   SubmitClearingEventDto
 } from "./clearing.dto";
 import { ClearingService } from "./clearing.service";
+import { ClearingReconciliationReaderService } from "./clearing-reconciliation-reader.service";
 
 @Controller("clearing-cases")
 export class ClearingController {
-  constructor(private readonly clearing: ClearingService) {}
+  constructor(
+    private readonly clearing: ClearingService,
+    private readonly reconciliationReader: ClearingReconciliationReaderService
+  ) {}
 
   @Get("capabilities")
   capabilities(@CurrentUser() user: AuthenticatedUser) {
@@ -29,6 +33,20 @@ export class ClearingController {
     @Query("projectId") projectId?: string
   ) {
     return this.clearing.list(user.id, projectId);
+  }
+
+  @Get("reconciliation-risk")
+  @RequireProjectRole("clearing.read")
+  reconciliationRisk(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("projectId") projectId: string,
+    @Query("asOf") asOf?: string
+  ) {
+    const instant = asOf ? new Date(asOf) : undefined;
+    return this.reconciliationReader.readClearingReconciliationRiskForActor(
+      user.id,
+      { projectId, asOf: instant }
+    );
   }
 
   @Get(":caseId")

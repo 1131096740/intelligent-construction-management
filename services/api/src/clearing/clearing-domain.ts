@@ -18,6 +18,7 @@ export interface ClearingAllocationInput {
   sourceKind: ClearingAllocationSourceKind;
   amountCents: bigint;
   sourceRemainingCents: bigint;
+  reversesAllocationId?: string | null;
 }
 
 export interface ClearingAllocationPlan extends ClearingAllocationInput {
@@ -106,13 +107,14 @@ function planAllocations(
     "supplemental",
     "returned"
   ].includes(input.kind);
-  if (!requiresAllocation) {
+  const isTechnicalReversal = input.kind === "technical_reversal";
+  if (!requiresAllocation && !isTechnicalReversal) {
     if (input.allocations.length) {
       throw new BadRequestException("当前事件类型不接受金额分配");
     }
     return [];
   }
-  if (!input.allocations.length) {
+  if (requiresAllocation && !input.allocations.length) {
     throw new BadRequestException("最终、补扣或退回必须提供显式分配");
   }
 
@@ -127,7 +129,7 @@ function planAllocations(
       allocation.sourceRemainingCents,
       "来源剩余余额不能为负数"
     );
-    if (allocation.amountCents > allocation.sourceRemainingCents) {
+    if (!isTechnicalReversal && allocation.amountCents > allocation.sourceRemainingCents) {
       throw new BadRequestException("清算分配超过来源剩余余额");
     }
     if (
@@ -154,6 +156,12 @@ function planAllocations(
     ) {
       throw new BadRequestException("退回必须精确引用原暂扣或最终事实");
     }
+    if (isTechnicalReversal && !allocation.reversesAllocationId) {
+      throw new BadRequestException("技术反向分配必须精确引用原 allocation");
+    }
+    if (!isTechnicalReversal && allocation.reversesAllocationId) {
+      throw new BadRequestException("非技术反向事件不得引用原 allocation");
+    }
 
     const sourceKey =
       allocation.sourceKind === "authority_cap"
@@ -168,7 +176,7 @@ function planAllocations(
     }
     const consumedCents =
       (consumed?.consumedCents ?? 0n) + allocation.amountCents;
-    if (consumedCents > allocation.sourceRemainingCents) {
+    if (!isTechnicalReversal && consumedCents > allocation.sourceRemainingCents) {
       throw new BadRequestException("清算分配超过来源剩余余额");
     }
     consumedBySource.set(sourceKey, {
@@ -180,10 +188,15 @@ function planAllocations(
     return {
       ...allocation,
       sourceRemainingAfterCents:
-        allocation.sourceRemainingCents - consumedCents
+        isTechnicalReversal
+          ? allocation.sourceRemainingCents + consumedCents
+          : allocation.sourceRemainingCents - consumedCents
     };
   });
-  if (allocatedCents !== input.amountCents) {
+  if (
+    (!isTechnicalReversal || input.allocations.length > 0) &&
+    allocatedCents !== input.amountCents
+  ) {
     throw new BadRequestException("显式分配合计必须等于事件金额");
   }
   return plans;
@@ -232,6 +245,11 @@ function buildImpacts(
     ];
   }
   if (input.kind === "pending_reconciliation") return [];
+  if (
+    input.kind === "coverage_added" ||
+    input.kind === "continued_withheld" ||
+    input.kind === "technical_reversal"
+  ) return [];
 
   const impacts: ClearingImpactPlan[] = [];
   const withheldCents = allocations

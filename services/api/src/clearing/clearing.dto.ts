@@ -22,13 +22,20 @@ export interface CreateClearingEventDto extends ClearingCommandDto {
   evidenceLevel?: "A" | "B";
   payableRef?: string;
   payload?: Record<string, unknown>;
+  reconciliationIntent?: Record<string, unknown>;
   businessReason?: string;
   evidenceRef?: string;
 }
 
-export interface SubmitClearingEventDto extends ClearingCommandDto {}
+export interface SubmitClearingEventDto extends ClearingCommandDto {
+  eventVersionId?: string;
+  expectedFingerprint?: string;
+}
 
-export interface AttestClearingEventDto extends ClearingCommandDto {}
+export interface AttestClearingEventDto extends ClearingCommandDto {
+  eventVersionId?: string;
+  expectedFingerprint?: string;
+}
 
 export interface ClearingAllocationDto {
   sourceEventVersionId?: string;
@@ -38,8 +45,13 @@ export interface ClearingAllocationDto {
 }
 
 export interface ConfirmClearingEventDto extends ClearingCommandDto {
-  allocations: ClearingAllocationDto[];
+  allocations?: ClearingAllocationDto[];
   pairedWithheldAmountCents?: string;
+  eventVersionId?: string;
+  expectedFingerprint?: string;
+  expectedCaseRevision?: number;
+  confirmed?: boolean;
+  attestationId?: string;
 }
 
 export interface ReturnClearingEventDto extends ClearingCommandDto {

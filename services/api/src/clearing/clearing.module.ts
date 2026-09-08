@@ -9,11 +9,21 @@ import { ClearingService } from "./clearing.service";
 import { AffiliateClearingAuthorityController } from "./affiliate-clearing-authority.controller";
 import { AffiliateClearingAuthorityService } from "./affiliate-clearing-authority.service";
 import { AffiliateClearingSelectionRefService } from "./affiliate-clearing-selection-ref.service";
+import { ClearingReconciliationReaderService } from "./clearing-reconciliation-reader.service";
 
 @Module({
   imports: [DatabaseModule, AuditModule, AuthModule, OperatingLedgerModule],
   controllers: [ClearingController, AffiliateClearingAuthorityController],
-  providers: [ClearingService, AffiliateClearingAuthorityService, AffiliateClearingSelectionRefService],
-  exports: [ClearingService, AffiliateClearingAuthorityService]
+  providers: [
+    ClearingService,
+    AffiliateClearingAuthorityService,
+    AffiliateClearingSelectionRefService,
+    ClearingReconciliationReaderService
+  ],
+  exports: [
+    ClearingService,
+    AffiliateClearingAuthorityService,
+    ClearingReconciliationReaderService
+  ]
 })
 export class ClearingModule {}
