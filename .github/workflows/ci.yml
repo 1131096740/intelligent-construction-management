@@ -185,6 +185,7 @@ jobs:
           - settlement_draft_lifecycle
           - fund_execution_v7
           - invoice_ledger_pol260
+          - clearing_reconciliation_pol275
           - remaining_dynamic_postgresql16
     steps:
       - name: Checkout
