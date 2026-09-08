@@ -1159,7 +1159,7 @@ BEGIN
                    = reverse_lines.source_allocation_id
                ) || ':'
              ELSE 'original:' END || key_rule.impact_key AS source_impact_key,
-             'technical-' || current_allocation.value ->> 'allocationNo'
+             'technical-' || (current_allocation.value ->> 'allocationNo')
                || ':' || key_rule.impact_key AS current_impact_key
       FROM reverse_lines
       JOIN LATERAL (

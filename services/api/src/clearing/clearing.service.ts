@@ -1485,6 +1485,19 @@ export class ClearingService {
     attestation: ClearingEvidenceAttestation | null,
     reconciliationIntent: Record<string, unknown> | null
   ) {
+    const rawItemDefinition = reconciliationIntent?.itemDefinition;
+    const itemDefinition =
+      rawItemDefinition &&
+      typeof rawItemDefinition === "object" &&
+      !Array.isArray(rawItemDefinition)
+        ? rawItemDefinition as Record<string, unknown>
+        : null;
+    const replacingRevisionId =
+      itemDefinition &&
+      itemDefinition.mode === "replacement" &&
+      typeof itemDefinition.replacesRevisionId === "string"
+        ? itemDefinition.replacesRevisionId
+        : null;
     const rows = await tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
       SELECT COALESCE(SUM(
         source."amountCents"
@@ -1495,6 +1508,19 @@ export class ClearingService {
             WHERE allocation."sourceEventVersionId" = source.id
           ), 0)
         - public."pol275_active_coverage_occupancy"(source.id)
+        + CASE WHEN ${replacingRevisionId}::text IS NULL THEN 0 ELSE COALESCE((
+            SELECT SUM(coverage."amountCents") - COALESCE(SUM((
+              SELECT COALESCE(SUM(CASE WHEN resolution."entryKind" = 'resolution'
+                THEN line."amountCents" ELSE -line."amountCents" END), 0)
+              FROM "ClearingReconciliationResolutionLine" line
+              JOIN "ClearingReconciliationResolution" resolution
+                ON resolution.id = line."resolutionId"
+              WHERE line."coverageId" = coverage.id
+            )), 0)
+            FROM "ClearingReconciliationCoverage" coverage
+            WHERE coverage."reconciliationRevisionId" = ${replacingRevisionId}
+              AND coverage."withheldEventVersionId" = source.id
+          ), 0) END
       ), 0)::bigint AS remaining
       FROM "ClearingEventVersion" source
       JOIN "ClearingEvent" source_event

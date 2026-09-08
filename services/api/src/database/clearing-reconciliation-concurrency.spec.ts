@@ -630,7 +630,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           caseId,
           expectedCaseRevision: clearingCase.revision,
           kind: "withheld",
-          amountCents: "40"
+          amountCents: "40",
+          businessReason: "按已确认保证金权威来源记录本次暂扣"
         });
         let caseRevision = (await client.clearingCase.findUniqueOrThrow({ where: { id: caseId }, select: { revision: true } })).revision;
         const open = await confirmV1Event(client, service, actors, {
@@ -2216,6 +2217,7 @@ async function confirmLegacyEvent(
     expectedCaseRevision: number;
     kind: "withheld" | "final_confirmed";
     amountCents: string;
+    businessReason?: string;
     allocations?: Array<{
       sourceEventVersionId: string;
       sourceKind: "withheld" | "authority_cap";
@@ -2244,6 +2246,7 @@ async function prepareLegacyEvent(
     expectedCaseRevision: number;
     kind: "withheld" | "final_confirmed";
     amountCents: string;
+    businessReason?: string;
     allocations?: Array<{
       sourceEventVersionId: string;
       sourceKind: "withheld" | "authority_cap";
@@ -2264,7 +2267,9 @@ async function prepareLegacyEvent(
       kind: input.kind,
       amountCents: input.amountCents,
       evidenceLevel: "A",
-      payload: { reason: "POL-275 no-V1 compatibility probe" }
+      ...(input.businessReason
+        ? { businessReason: input.businessReason }
+        : { payload: { reason: "POL-275 no-V1 compatibility probe" } })
     }
   ));
   const submitted = eventResult(await service.submitEvent(
