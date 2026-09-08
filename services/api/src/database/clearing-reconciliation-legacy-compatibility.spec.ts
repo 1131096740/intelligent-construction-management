@@ -70,7 +70,8 @@ describe("POL-275 old process / new schema compatibility", () => {
 
         await service.confirmEvent(confirmerUserId, prepared.id, {
           idempotencyKey: randomUUID(),
-          expectedRevision: submitted.revision
+          expectedRevision: submitted.revision,
+          allocations: []
         });
 
         const [proof] = await client.$queryRaw<Array<{

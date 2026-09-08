@@ -684,7 +684,8 @@ async function confirmLegacyEvent(
   ));
   await service.confirmEvent(actors.confirmerUserId, prepared.id, {
     idempotencyKey: randomUUID(),
-    expectedRevision: submitted.revision
+    expectedRevision: submitted.revision,
+    allocations: []
   });
   return submitted.versionId;
 }
