@@ -1486,21 +1486,23 @@ export class ClearingService {
     reconciliationIntent: Record<string, unknown> | null
   ) {
     const rows = await tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
-      SELECT
-        (COALESCE((
-          SELECT SUM(v."amountCents")
-          FROM "ClearingEvent" e
-          JOIN "ClearingEventVersion" v ON v."clearingEventId" = e.id
-          JOIN "ClearingConfirmation" c ON c."eventVersionId" = v.id
-          WHERE e."clearingCaseId" = ${clearingCase.id} AND e.kind = 'withheld'
-        ), 0) -
-        COALESCE((
-          SELECT SUM(a."amountCents")
-          FROM "ClearingAllocation" a
-          JOIN "ClearingEventVersion" v ON v.id = a."sourceEventVersionId"
-          JOIN "ClearingEvent" e ON e.id = v."clearingEventId"
-          WHERE e."clearingCaseId" = ${clearingCase.id} AND e.kind = 'withheld'
-        ), 0))::bigint AS remaining
+      SELECT COALESCE(SUM(
+        source."amountCents"
+        - COALESCE((
+            SELECT SUM(CASE WHEN allocation."reversesAllocationId" IS NULL
+              THEN allocation."amountCents" ELSE -allocation."amountCents" END)
+            FROM "ClearingAllocation" allocation
+            WHERE allocation."sourceEventVersionId" = source.id
+          ), 0)
+        - public."pol275_active_coverage_occupancy"(source.id)
+      ), 0)::bigint AS remaining
+      FROM "ClearingEventVersion" source
+      JOIN "ClearingEvent" source_event
+        ON source_event.id = source."clearingEventId"
+      JOIN "ClearingConfirmation" source_confirmation
+        ON source_confirmation."eventVersionId" = source.id
+      WHERE source."clearingCaseId" = ${clearingCase.id}
+        AND source_event.kind = 'withheld'
     `);
     const remaining = rows[0]?.remaining ?? 0n;
     const plannedPair = reconciliationIntent

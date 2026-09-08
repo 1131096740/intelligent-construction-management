@@ -1960,7 +1960,7 @@ BEGIN
         AND "itemId" = target_revision."itemId"
       FOR UPDATE;
       IF NOT FOUND OR original_resolution."entryKind" <> 'resolution'
-        OR original_resolution."resultKind" <> resolution ->> 'resultKind'
+        OR original_resolution."resultKind" <> (resolution ->> 'resultKind')
       THEN
         RAISE EXCEPTION 'POL-275 技术反向未精确引用原解决' USING ERRCODE = '23514';
       END IF;
@@ -2003,8 +2003,8 @@ BEGIN
         WHERE "id" = resolution_line ->> 'reversesResolutionLineId'
           AND "resolutionId" = original_resolution."id"
         FOR UPDATE;
-        IF NOT FOUND OR original_line."sourceKind" <> resolution_line ->> 'sourceKind'
-          OR original_line."coverageId" IS DISTINCT FROM resolution_line ->> 'coverageId'
+        IF NOT FOUND OR original_line."sourceKind" <> (resolution_line ->> 'sourceKind')
+          OR original_line."coverageId" IS DISTINCT FROM (resolution_line ->> 'coverageId')
         THEN
           RAISE EXCEPTION 'POL-275 技术反向行未精确引用原解决行' USING ERRCODE = '23514';
         END IF;

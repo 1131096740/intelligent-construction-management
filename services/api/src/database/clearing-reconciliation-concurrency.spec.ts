@@ -1249,6 +1249,42 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             mutate
           );
         }
+        const frozenFinalIntent = (submittedFinal.payloadSnapshot as {
+          reconciliationIntent: {
+            eventAllocations: Array<{
+              clearingAllocationId: string;
+              allocationSourceKind: string;
+              sourceEventVersionId: string;
+              amountCents: string;
+            }>;
+          };
+        }).reconciliationIntent;
+        const frozenFinalAllocation = frozenFinalIntent.eventAllocations[0]!;
+        await expect(client.$transaction(async (tx) => {
+          await tx.clearingConfirmation.create({
+            data: {
+              eventVersionId: preparedFinal.versionId,
+              confirmedByUserId: actors.confirmerUserId,
+              confirmerActorSetSnapshot: [actors.confirmerUserId]
+            }
+          });
+          await tx.clearingAllocation.create({
+            data: {
+              id: frozenFinalAllocation.clearingAllocationId,
+              eventVersionId: preparedFinal.versionId,
+              sourceEventVersionId: frozenFinalAllocation.sourceEventVersionId,
+              sourceKind: frozenFinalAllocation.allocationSourceKind,
+              amountCents: BigInt(frozenFinalAllocation.amountCents),
+              sourceRemainingAfterCents: 0n
+            }
+          });
+          await tx.$queryRaw(Prisma.sql`
+            SELECT public."pol275_append_reconciliation_set"(
+              ${preparedFinal.versionId},
+              ${preparedFinal.fingerprint}
+            )
+          `);
+        })).rejects.toThrow(/冻结意图与普通经营影响集合不闭合/iu);
         const finalCase = await client.clearingCase.findUniqueOrThrow({
           where: { id: validCase.id },
           select: { revision: true }
@@ -1278,20 +1314,6 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           "original:construction-enterprise-funds-decrease",
           "original:construction-enterprise-funds-release"
         ]);
-        await expect(client.$transaction(async (tx) => {
-          await tx.clearingImpactLink.deleteMany({
-            where: { eventVersionId: finalDecision.versionId }
-          });
-          await tx.$queryRaw(Prisma.sql`
-            SELECT public."pol275_assert_reconciliation_closure"(${finalDecision.versionId})
-          `);
-        })).rejects.toThrow(/不闭合/iu);
-        assert.equal(
-          await client.clearingImpactLink.count({
-            where: { eventVersionId: finalDecision.versionId }
-          }),
-          3
-        );
         await expect(client.$executeRaw(Prisma.sql`
           INSERT INTO "ClearingImpactLink" (
             "id", "eventVersionId", "operatingFactId", "operatingImpactId",
@@ -1911,6 +1933,7 @@ async function createAuthorityBackedClearingCase(
   });
   const contractFileId = `${prefix}_affiliate_contract_file`;
   const signatureFileId = `${prefix}_contract_director_signature_file`;
+  const authorityEvidenceFileId = `${prefix}_authority_evidence_file`;
   await client.fileObject.createMany({
     data: [
       {
@@ -1933,6 +1956,17 @@ async function createAuthorityBackedClearingCase(
         sizeBytes: 100,
         uploadedByUserId: actors.confirmerUserId,
         contentSha256: "b".repeat(64),
+        storageStatus: "active"
+      },
+      {
+        id: authorityEvidenceFileId,
+        bucket: "private-local",
+        objectKey: `tests/${authorityEvidenceFileId}.pdf`,
+        originalName: "POL-275保证金权威条款.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 100,
+        uploadedByUserId: actors.preparerUserId,
+        contentSha256: "c".repeat(64),
         storageStatus: "active"
       }
     ]
@@ -1988,7 +2022,10 @@ async function createAuthorityBackedClearingCase(
     fixture.projectId
   );
   const rawContractSelectionRef = contractOptions.options.find(
-    (option) => option.optionKind === "contract"
+    (option) =>
+      option.optionKind === "contract" &&
+      typeof option.label === "string" &&
+      option.label.includes(contract.contractReference)
   )?.selectionRef;
   assert.equal(typeof rawContractSelectionRef, "string");
   const contractSelectionRef = rawContractSelectionRef as string;
@@ -1998,7 +2035,7 @@ async function createAuthorityBackedClearingCase(
     expectedRevision: 0,
     contractSelectionRef,
     effectiveFrom: "2026-08-01",
-    evidenceRef: contractFileId,
+    evidenceRef: authorityEvidenceFileId,
     wageLines: [],
     guaranteeObligations: [
       {
