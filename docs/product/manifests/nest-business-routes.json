@@ -3531,12 +3531,9 @@
       "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "authenticated_only",
       "isPublic": false,
-      "requiredPositions": [
-        "finance_director",
-        "finance_staff"
-      ],
+      "requiredPositions": [],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -3575,12 +3572,9 @@
       "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "authenticated_only",
       "isPublic": false,
-      "requiredPositions": [
-        "finance_director",
-        "finance_staff"
-      ],
+      "requiredPositions": [],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -3617,12 +3611,9 @@
       "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "authenticated_only",
       "isPublic": false,
-      "requiredPositions": [
-        "finance_director",
-        "finance_staff"
-      ],
+      "requiredPositions": [],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -10951,12 +10942,9 @@
       "sourceFile": "services/api/src/wage-statement/wage-statement.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "authenticated_only",
       "isPublic": false,
-      "requiredPositions": [
-        "finance_director",
-        "finance_staff"
-      ],
+      "requiredPositions": [],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
