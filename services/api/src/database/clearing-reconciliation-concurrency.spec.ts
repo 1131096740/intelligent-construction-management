@@ -4,11 +4,13 @@ import * as assert from "node:assert/strict";
 import { Prisma, PrismaClient } from "@prisma/client";
 
 import { AuditService } from "../audit/audit.service";
+import { AffiliateClearingAuthorityService } from "../clearing/affiliate-clearing-authority.service";
 import { AffiliateClearingSelectionRefService } from "../clearing/affiliate-clearing-selection-ref.service";
 import { ClearingService } from "../clearing/clearing.service";
 import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { ProjectOperatingProfileService } from "../project/project-operating-profile.service";
+import { ProjectAffiliateCompanyContractService } from "../project/project-affiliate-company-contract.service";
 import { ProjectService } from "../project/project.service";
 
 describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
@@ -411,7 +413,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           where: { decisionEventVersionId: t1.versionId }
         });
         const timeline: Date[] = [await confirmationTime(client, t1.versionId)];
-        await client.$queryRaw`SELECT pg_sleep(0.01)`;
+        await client.$queryRaw`SELECT 1 AS slept FROM pg_sleep(0.01)`;
 
         const beforeT2 = await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId },
@@ -452,7 +454,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           include: { lines: true }
         });
         timeline.push(await confirmationTime(client, t2.versionId));
-        await client.$queryRaw`SELECT pg_sleep(0.01)`;
+        await client.$queryRaw`SELECT 1 AS slept FROM pg_sleep(0.01)`;
 
         const beforeT3 = await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId }, select: { revision: true }
@@ -483,7 +485,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }
         });
         timeline.push(await confirmationTime(client, t3.versionId));
-        await client.$queryRaw`SELECT pg_sleep(0.01)`;
+        await client.$queryRaw`SELECT 1 AS slept FROM pg_sleep(0.01)`;
 
         const beforeT4 = await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId }, select: { revision: true }
@@ -506,7 +508,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }
         });
         timeline.push(await confirmationTime(client, t4.versionId));
-        await client.$queryRaw`SELECT pg_sleep(0.01)`;
+        await client.$queryRaw`SELECT 1 AS slept FROM pg_sleep(0.01)`;
 
         const beforeT5 = await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId }, select: { revision: true }
@@ -605,7 +607,6 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
       const databaseUrl = assertDedicatedDatabase();
       const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
       const prefix = `pol275_mixed_${randomUUID().replace(/-/gu, "")}`;
-      const caseId = `${prefix}_case`;
       const actors = {
         preparerUserId: `${prefix}_preparer`,
         attesterUserId: `${prefix}_attester`,
@@ -614,22 +615,17 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
       try {
         await client.$connect();
         const fixture = await seedOperatingLedgerFixture(client, { prefix, ...actors });
-        const clearingCase = await client.clearingCase.create({
-          data: {
-            id: caseId,
-            projectId: fixture.projectId,
-            constructionEnterpriseAssignmentId: fixture.assignmentId,
-            category: "management_fee",
-            governedSubjectKey: `${prefix}_subject`,
-            authoritativeGrossCapCents: 1000n,
-            authorityVersionId: `${prefix}_authority`,
-            authoritySnapshotRef: `${prefix}_authority_snapshot`,
-            sourceDiscriminator: "construction_enterprise_management_fee",
-            createdByUserId: actors.preparerUserId
-          }
-        });
         const selectionRefs = new AffiliateClearingSelectionRefService({ secret: `${prefix}_secret` });
-        const service = clearingService(client, actors, selectionRefs);
+        const authorityFixture = await createAuthorityBackedClearingCase(
+          client,
+          actors,
+          fixture,
+          selectionRefs,
+          prefix
+        );
+        const clearingCase = authorityFixture.clearingCase;
+        const service = authorityFixture.service;
+        const caseId = clearingCase.id;
         const withheld = await confirmLegacyEvent(service, actors, {
           caseId,
           expectedCaseRevision: clearingCase.revision,
@@ -648,8 +644,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             coverages: [{
               sourceSelectionRef: selectionRefs.issue({
                 actorUserId: actors.preparerUserId,
-                authorityVersionId: `${prefix}_authority`,
-                authorityFingerprint: `${prefix}_authority_snapshot`,
+                authorityVersionId: clearingCase.authorityVersionId!,
+                authorityFingerprint: clearingCase.authoritySnapshotRef!,
                 purpose: "allocation",
                 selectedKey: withheld,
                 revision: caseRevision
@@ -676,8 +672,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                   sourceKind: "withheld_coverage",
                   sourceSelectionRef: selectionRefs.issue({
                     actorUserId: actors.preparerUserId,
-                    authorityVersionId: `${prefix}_authority`,
-                    authorityFingerprint: `${prefix}_authority_snapshot`,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
                     purpose: "allocation",
                     selectedKey: coverage.id,
                     revision: caseRevision
@@ -688,8 +684,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                   sourceKind: "authority_cap",
                   sourceSelectionRef: selectionRefs.issue({
                     actorUserId: actors.preparerUserId,
-                    authorityVersionId: `${prefix}_authority`,
-                    authorityFingerprint: `${prefix}_authority_snapshot`,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
                     purpose: "allocation",
                     selectedKey: caseId,
                     revision: caseRevision
@@ -744,8 +740,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 sourceKind: "prior_economic_event",
                 sourceSelectionRef: selectionRefs.issue({
                   actorUserId: actors.preparerUserId,
-                  authorityVersionId: `${prefix}_authority`,
-                  authorityFingerprint: `${prefix}_authority_snapshot`,
+                  authorityVersionId: clearingCase.authorityVersionId!,
+                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
                   purpose: "allocation",
                   selectedKey: priorAllocation.id,
                   revision: caseRevision
@@ -1184,101 +1180,6 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         const selectionRefs = new AffiliateClearingSelectionRefService({ secret: `${prefix}_secret` });
         const service = clearingService(client, actors, selectionRefs);
 
-        for (const [caseSuffix, mutation] of [
-          ["ordinal", Prisma.sql`
-            UPDATE "ClearingEventVersion"
-               SET "payloadSnapshot" = jsonb_set(
-                 "payloadSnapshot",
-                 '{reconciliationIntent,coverages,0,lineNo}',
-                 '2'::jsonb,
-                 FALSE
-               )
-             WHERE "id" = __VERSION_ID__
-          `],
-          ["nested", Prisma.sql`
-            UPDATE "ClearingEventVersion"
-               SET "payloadSnapshot" = jsonb_set(
-                 "payloadSnapshot",
-                 '{reconciliationIntent,itemDefinition,unexpected}',
-                 '"forbidden"'::jsonb,
-                 TRUE
-               )
-             WHERE "id" = __VERSION_ID__
-          `]
-        ] as const) {
-          const malformedCase = await client.clearingCase.create({
-            data: {
-              id: `${prefix}_${caseSuffix}_case`,
-              projectId: fixture.projectId,
-              constructionEnterpriseAssignmentId: fixture.assignmentId,
-              category: "management_fee",
-              governedSubjectKey: `${prefix}_${caseSuffix}_subject`,
-              authoritativeGrossCapCents: 1000n,
-              createdByUserId: actors.preparerUserId
-            }
-          });
-          const prepared = eventResult(await service.createEvent(
-            actors.preparerUserId,
-            malformedCase.id,
-            {
-              idempotencyKey: randomUUID(),
-              expectedRevision: malformedCase.revision,
-              kind: "pending_reconciliation",
-              amountCents: "10",
-              evidenceLevel: "B",
-              reconciliationIntent: {
-                operation: "open_item",
-                itemDefinition: { mode: "independent", amountCents: "10" },
-                coverages: []
-              }
-            }
-          ));
-          const draft = await requiredVersion(client, prepared.versionId);
-          const statement = mutation.sql.replace(
-            "__VERSION_ID__",
-            `'${draft.id.replaceAll("'", "''")}'`
-          );
-          await client.$executeRawUnsafe(statement, ...mutation.values);
-          const submitted = eventResult(await service.submitEvent(
-            actors.preparerUserId,
-            prepared.id,
-            {
-              idempotencyKey: randomUUID(),
-              expectedRevision: prepared.revision,
-              eventVersionId: draft.id,
-              expectedFingerprint: draft.fingerprint
-            }
-          ));
-          const submittedVersion = await requiredVersion(client, submitted.versionId);
-          const attested = eventResult(await service.attestEvent(
-            actors.attesterUserId,
-            prepared.id,
-            {
-              idempotencyKey: randomUUID(),
-              expectedRevision: submitted.revision,
-              eventVersionId: submittedVersion.id,
-              expectedFingerprint: submittedVersion.fingerprint
-            }
-          ));
-          const currentCase = await client.clearingCase.findUniqueOrThrow({
-            where: { id: malformedCase.id }, select: { revision: true }
-          });
-          await expect(service.confirmEvent(actors.confirmerUserId, prepared.id, {
-            idempotencyKey: randomUUID(),
-            expectedRevision: attested.revision,
-            expectedCaseRevision: currentCase.revision,
-            eventVersionId: submittedVersion.id,
-            expectedFingerprint: submittedVersion.fingerprint,
-            confirmed: true
-          })).rejects.toThrow(/冻结|ordinal|完整键|连续/iu);
-          assert.equal(
-            await client.clearingConfirmation.count({
-              where: { eventVersionId: submittedVersion.id }
-            }),
-            0
-          );
-        }
-
         const validCase = await client.clearingCase.create({
           data: {
             id: `${prefix}_valid_case`,
@@ -1304,7 +1205,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         const revision = await client.clearingReconciliationRevision.findUniqueOrThrow({ where: { decisionEventVersionId: opened.versionId } });
         const coverage = await client.clearingReconciliationCoverage.findFirstOrThrow({ where: { decisionEventVersionId: opened.versionId } });
         const currentCase = await client.clearingCase.findUniqueOrThrow({ where: { id: validCase.id }, select: { revision: true } });
-        const finalDecision = await confirmV1Event(client, service, actors, {
+        const preparedFinal = await prepareAndAttestV1Event(client, service, actors, {
           caseId: validCase.id,
           expectedCaseRevision: currentCase.revision,
           kind: "final_confirmed",
@@ -1323,6 +1224,51 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             ordinaryAllocations: []
           }
         });
+        const submittedFinal = await client.clearingEventVersion.findUniqueOrThrow({
+          where: { id: preparedFinal.versionId }
+        });
+        for (const [caseSuffix, mutate] of [
+          ["ordinal", (payload: Record<string, unknown>) => {
+            const intent = payload.reconciliationIntent as {
+              resolutions: Array<{ lines: Array<Record<string, unknown>> }>;
+            };
+            intent.resolutions[0]!.lines[0]!.lineNo = 2;
+          }],
+          ["nested", (payload: Record<string, unknown>) => {
+            const intent = payload.reconciliationIntent as {
+              resolutions: Array<{ lines: Array<Record<string, unknown>> }>;
+            };
+            intent.resolutions[0]!.lines[0]!.unexpected = "forbidden";
+          }]
+        ] as const) {
+          await expectMalformedFrozenResolutionRejected(
+            client,
+            submittedFinal,
+            actors,
+            caseSuffix,
+            mutate
+          );
+        }
+        const finalCase = await client.clearingCase.findUniqueOrThrow({
+          where: { id: validCase.id },
+          select: { revision: true }
+        });
+        await service.confirmEvent(
+          actors.confirmerUserId,
+          preparedFinal.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: preparedFinal.eventRevision,
+            expectedCaseRevision: finalCase.revision,
+            eventVersionId: preparedFinal.versionId,
+            expectedFingerprint: preparedFinal.fingerprint,
+            confirmed: true
+          }
+        );
+        const finalDecision = {
+          eventId: preparedFinal.eventId,
+          versionId: preparedFinal.versionId
+        };
         const sourceLinks = await client.clearingImpactLink.findMany({
           where: { eventVersionId: finalDecision.versionId },
           orderBy: { sourceImpactKey: "asc" }
@@ -1904,23 +1850,207 @@ function clearingService(
     attesterUserId: string;
     confirmerUserId: string;
   },
-  selectionRefs?: AffiliateClearingSelectionRefService
+  selectionRefs?: AffiliateClearingSelectionRefService,
+  authorities?: AffiliateClearingAuthorityService
 ) {
-  const roleResolver = {
+  const roleResolver = clearingRoleResolver(actors);
+  return new ClearingService(
+    client as never,
+    roleResolver as never,
+    new OperatingLedgerService(client as never),
+    new AuditService(client as never),
+    authorities,
+    selectionRefs
+  );
+}
+
+function clearingRoleResolver(actors: {
+  preparerUserId: string;
+  attesterUserId: string;
+  confirmerUserId: string;
+}) {
+  return {
     resolveActiveRoleScopes: jest.fn(async (userId: string) =>
       userId === actors.confirmerUserId
         ? ["finance_director"]
         : ["finance_staff"]
     )
   };
-  return new ClearingService(
+}
+
+async function createAuthorityBackedClearingCase(
+  client: PrismaClient,
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  fixture: {
+    projectId: string;
+    assignmentId: string;
+    companyId: string;
+  },
+  selectionRefs: AffiliateClearingSelectionRefService,
+  prefix: string
+) {
+  await client.projectMember.createMany({
+    data: [
+      {
+        id: `${prefix}_contract_staff_member`,
+        projectId: fixture.projectId,
+        userId: actors.preparerUserId,
+        positionKey: "contract_staff"
+      },
+      {
+        id: `${prefix}_contract_director_member`,
+        projectId: fixture.projectId,
+        userId: actors.confirmerUserId,
+        positionKey: "contract_director"
+      }
+    ]
+  });
+  const contractFileId = `${prefix}_affiliate_contract_file`;
+  const signatureFileId = `${prefix}_contract_director_signature_file`;
+  await client.fileObject.createMany({
+    data: [
+      {
+        id: contractFileId,
+        bucket: "private-local",
+        objectKey: `tests/${contractFileId}.pdf`,
+        originalName: "POL-275挂靠管理协议.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 100,
+        uploadedByUserId: actors.preparerUserId,
+        contentSha256: "a".repeat(64),
+        storageStatus: "active"
+      },
+      {
+        id: signatureFileId,
+        bucket: "private-local",
+        objectKey: `tests/${signatureFileId}.png`,
+        originalName: "POL-275合同主管签名.png",
+        mimeType: "image/png",
+        sizeBytes: 100,
+        uploadedByUserId: actors.confirmerUserId,
+        contentSha256: "b".repeat(64),
+        storageStatus: "active"
+      }
+    ]
+  });
+  await client.handwrittenSignatureVersion.create({
+    data: {
+      id: `${prefix}_contract_director_signature_version`,
+      userId: actors.confirmerUserId,
+      fileId: signatureFileId,
+      contentSha256: "b".repeat(64),
+      source: "canvas"
+    }
+  });
+
+  const audit = new AuditService(client as never);
+  const contractService = new ProjectAffiliateCompanyContractService(
+    client as never,
+    audit,
+    { confirmPassword: jest.fn().mockResolvedValue(undefined) } as never
+  );
+  const contract = await contractService.record(
+    fixture.projectId,
+    actors.preparerUserId,
+    {
+      contractReference: `${prefix}-AFFILIATE-CONTRACT`,
+      contractName: "POL-275挂靠管理协议",
+      signedAt: "2026-08-01",
+      rightsObligationsSummary: "双方确认保证金权威上限、返还条件与清算边界。",
+      companyEntityId: fixture.companyId,
+      fileId: contractFileId,
+      idempotencyKey: randomUUID()
+    }
+  );
+  await contractService.confirm(
+    fixture.projectId,
+    contract.id,
+    actors.confirmerUserId,
+    {
+      confirmationPassword: "local-pg16-only",
+      confirmationActionId: randomUUID()
+    }
+  );
+
+  const roleResolver = clearingRoleResolver(actors);
+  const authorityService = new AffiliateClearingAuthorityService(
     client as never,
     roleResolver as never,
-    new OperatingLedgerService(client as never),
-    new AuditService(client as never),
-    undefined,
-    selectionRefs
+    selectionRefs,
+    audit
   );
+  const contractOptions = await authorityService.options(
+    actors.preparerUserId,
+    fixture.projectId
+  );
+  const rawContractSelectionRef = contractOptions.options.find(
+    (option) => option.optionKind === "contract"
+  )?.selectionRef;
+  assert.equal(typeof rawContractSelectionRef, "string");
+  const contractSelectionRef = rawContractSelectionRef as string;
+  const authorityIdempotencyKey = randomUUID();
+  await authorityService.createAuthority(actors.preparerUserId, {
+    idempotencyKey: authorityIdempotencyKey,
+    expectedRevision: 0,
+    contractSelectionRef,
+    effectiveFrom: "2026-08-01",
+    evidenceRef: contractFileId,
+    wageLines: [],
+    guaranteeObligations: [
+      {
+        selectionRef: contractSelectionRef,
+        baseAmountCents: "1000",
+        calculationMode: "FIXED_AMOUNT",
+        fixedAmountCents: "1000",
+        returnCondition: "核对完成后按确认结果返还",
+        evidenceCoordinate: "挂靠管理协议保证金条款"
+      }
+    ]
+  });
+  const authority = await client.affiliateClearingAuthorityVersion.findUniqueOrThrow({
+    where: { idempotencyKey: authorityIdempotencyKey }
+  });
+  await authorityService.submitAuthority(
+    actors.preparerUserId,
+    authority.id,
+    { idempotencyKey: randomUUID(), expectedRevision: 1 }
+  );
+  await authorityService.confirmAuthority(
+    actors.confirmerUserId,
+    authority.id,
+    { idempotencyKey: randomUUID(), expectedRevision: 2 }
+  );
+  const authorityOptions = await authorityService.options(
+    actors.preparerUserId,
+    fixture.projectId
+  );
+  const rawAuthoritySelectionRef = authorityOptions.options.find(
+    (option) => option.optionKind === "guarantee"
+  )?.selectionRef;
+  assert.equal(typeof rawAuthoritySelectionRef, "string");
+  const authoritySelectionRef = rawAuthoritySelectionRef as string;
+
+  const service = clearingService(
+    client,
+    actors,
+    selectionRefs,
+    authorityService
+  );
+  const created = await service.createCase(actors.preparerUserId, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 0,
+    category: "deposit",
+    authoritySelectionRef,
+    guaranteeTrancheAmountCents: "1000"
+  }) as { id: string };
+  const clearingCase = await client.clearingCase.findUniqueOrThrow({
+    where: { id: created.id }
+  });
+  return { clearingCase, service };
 }
 
 async function confirmV1Event(
@@ -2153,6 +2283,79 @@ async function currentCaseRevision(
   })).revision;
 }
 
+async function expectMalformedFrozenResolutionRejected(
+  client: PrismaClient,
+  source: {
+    clearingCaseId: string;
+    amountCents: bigint;
+    currencyCode: string;
+    payloadSnapshot: Prisma.JsonValue;
+  },
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  suffix: string,
+  mutate: (payload: Record<string, unknown>) => void
+): Promise<void> {
+  const payload = JSON.parse(
+    JSON.stringify(source.payloadSnapshot)
+  ) as Record<string, unknown>;
+  mutate(payload);
+  const eventId = `malformed_${suffix}_${randomUUID()}`;
+  const versionId = `malformed_version_${suffix}_${randomUUID()}`;
+  const fingerprint = (suffix === "ordinal" ? "d" : "e").repeat(64);
+  await expect(client.$transaction(async (tx) => {
+    await tx.clearingEvent.create({
+      data: {
+        id: eventId,
+        clearingCaseId: source.clearingCaseId,
+        kind: "final_confirmed",
+        workflowStatus: "submitted",
+        revision: 2,
+        currentVersionNo: 1,
+        createdByUserId: actors.preparerUserId
+      }
+    });
+    await tx.clearingEventVersion.create({
+      data: {
+        id: versionId,
+        clearingEventId: eventId,
+        clearingCaseId: source.clearingCaseId,
+        versionNo: 1,
+        workflowStatus: "submitted",
+        amountCents: source.amountCents,
+        currencyCode: source.currencyCode,
+        evidenceLevel: "A",
+        payloadSnapshot: payload as Prisma.InputJsonValue,
+        actorSetSnapshot: [actors.preparerUserId],
+        fingerprint,
+        createdByUserId: actors.preparerUserId
+      }
+    });
+    await tx.clearingConfirmation.create({
+      data: {
+        eventVersionId: versionId,
+        confirmedByUserId: actors.confirmerUserId,
+        confirmerActorSetSnapshot: [actors.confirmerUserId]
+      }
+    });
+    await tx.$queryRaw(Prisma.sql`
+      SELECT public."pol275_append_reconciliation_set"(
+        ${versionId},
+        ${fingerprint}
+      )
+    `);
+  })).rejects.toThrow(
+    /POL-275 冻结 resolution\/line 字段、来源或 ordinal 无效/iu
+  );
+  assert.equal(
+    await client.clearingEvent.count({ where: { id: eventId } }),
+    0
+  );
+}
+
 function assertExactlyOneFulfilled(
   results: ReadonlyArray<PromiseSettledResult<unknown>>
 ): void {
@@ -2174,7 +2377,7 @@ async function seedOperatingLedgerFixture(
     attesterUserId: string;
     confirmerUserId: string;
   }
-): Promise<{ projectId: string; assignmentId: string }> {
+): Promise<{ projectId: string; assignmentId: string; companyId: string }> {
   const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
   if (!secret) {
     throw new Error("POL-275 PostgreSQL 测试缺少一次性经营账写入密钥");
@@ -2273,7 +2476,11 @@ async function seedOperatingLedgerFixture(
   await profile.updateProfile(project.id, fixture.preparerUserId, {
     operatingLedgerEffectiveDate: "2026-08-01"
   });
-  return { projectId: project.id, assignmentId: assignment.id };
+  return {
+    projectId: project.id,
+    assignmentId: assignment.id,
+    companyId: company.id
+  };
 }
 
 function eventResult(value: unknown): {

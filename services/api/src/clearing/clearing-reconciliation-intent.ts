@@ -685,12 +685,16 @@ async function freezeResolutionReversal(
       if (lineAmount > targetLine.amountCents - (lineReversed._sum.amountCents ?? 0n)) {
         throw new ConflictException("解决技术反向行超过原行剩余效果");
       }
-      const frozenSource = targetLine.clearingAllocation
+      const frozenResolutionSource = frozenResolutionLineSource(
+        targetIntent,
+        targetLine.id
+      );
+      const frozenAllocationSource = targetLine.clearingAllocation
         ? frozenEventAllocationSource(
             targetIntent,
             targetLine.clearingAllocation.id
           )
-        : frozenResolutionLineSource(targetIntent, targetLine.id);
+        : null;
       const resolutionLineId = randomUUID();
       resolutionLineIds.push(resolutionLineId);
       let plannedClearingAllocationId: string | null = null;
@@ -706,7 +710,7 @@ async function freezeResolutionReversal(
           sourceEventVersionId:
             targetLine.clearingAllocation.sourceEventVersionId,
           amountCents: lineAmount.toString(),
-          frozenSource
+          frozenSource: frozenAllocationSource
         });
       }
       lineTotal += lineAmount;
@@ -718,7 +722,7 @@ async function freezeResolutionReversal(
         amountCents: lineAmount.toString(),
         reversesResolutionLineId: targetLine.id,
         plannedClearingAllocationId,
-        frozenSource
+        frozenSource: frozenResolutionSource
       });
     }
     if (lineTotal !== amountCents) {
@@ -907,8 +911,7 @@ async function freezeCoverageSelections(
   }
   const candidates = await input.tx.clearingEventVersion.findMany({
     where: {
-      clearingCaseId: input.clearingCase.id,
-      workflowStatus: "confirmed"
+      clearingCaseId: input.clearingCase.id
     },
     include: { clearingEvent: true, confirmation: true }
   });
@@ -929,6 +932,7 @@ async function freezeCoverageSelections(
     const selected = candidates.find(
       (candidate) =>
         candidate.confirmation &&
+        candidate.clearingEvent.workflowStatus === "confirmed" &&
         candidate.clearingEvent.kind === "withheld" &&
         input.selectionRefs?.matches(sourceSelectionRef, {
           actorUserId: input.actorUserId,
@@ -1208,8 +1212,7 @@ async function freezePriorEconomicSource(
   const allocations = await input.tx.clearingAllocation.findMany({
     where: {
       eventVersion: {
-        clearingCaseId: input.clearingCase.id,
-        workflowStatus: "confirmed"
+        clearingCaseId: input.clearingCase.id
       },
       reversesAllocationId: null
     },
@@ -1227,6 +1230,7 @@ async function freezePriorEconomicSource(
     const eventKind = candidate.eventVersion.clearingEvent.kind;
     return (
       candidate.eventVersion.confirmation &&
+      candidate.eventVersion.clearingEvent.workflowStatus === "confirmed" &&
       (eventKind === "final_confirmed" || eventKind === "supplemental") &&
       input.selectionRefs?.matches(sourceSelectionRef, {
         actorUserId: input.actorUserId,
@@ -1291,8 +1295,7 @@ async function freezeOrdinaryAllocations(
   }
   const candidates = await input.tx.clearingEventVersion.findMany({
     where: {
-      clearingCaseId: input.clearingCase.id,
-      workflowStatus: "confirmed"
+      clearingCaseId: input.clearingCase.id
     },
     include: { clearingEvent: true, confirmation: true }
   });
@@ -1372,6 +1375,7 @@ async function freezeOrdinaryAllocations(
       const selected = candidates.find(
         (candidate) =>
           candidate.confirmation &&
+          candidate.clearingEvent.workflowStatus === "confirmed" &&
           candidate.clearingEvent.kind === sourceKind &&
           input.selectionRefs?.matches(sourceSelectionRef, {
             actorUserId: input.actorUserId,

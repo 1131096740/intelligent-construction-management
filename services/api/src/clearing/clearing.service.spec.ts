@@ -1403,7 +1403,7 @@ describe("ClearingService", () => {
             clearingCaseId: "case-1",
             amountCents: 100n,
             fingerprint: "c".repeat(64),
-            clearingEvent: { kind: "withheld" },
+            clearingEvent: { kind: "withheld", workflowStatus: "confirmed" },
             confirmation: { eventVersionId: "withheld-version-1" }
           }
         ]),
