@@ -1045,7 +1045,7 @@ DECLARE
   expected_ordinary_count INTEGER;
   impact_mismatch BOOLEAN;
 BEGIN
-  SELECT version."clearingCaseId", version."fingerprint", version."payloadSnapshot",
+  SELECT version."clearingCaseId", version."amountCents", version."fingerprint", version."payloadSnapshot",
          version."versionNo" AS version_no,
          clearing_case."projectId" AS project_id,
          clearing_case."constructionEnterpriseAssignmentId" AS assignment_id,

@@ -2060,8 +2060,7 @@ async function confirmLegacyEvent(
   await service.confirmEvent(actors.confirmerUserId, prepared.eventId, {
     idempotencyKey: randomUUID(),
     expectedRevision: prepared.eventRevision,
-    allocations: input.allocations ?? [],
-    confirmed: true
+    allocations: input.allocations ?? []
   });
   return prepared.versionId;
 }
