@@ -72,8 +72,12 @@ export interface LinkFileReplacementInput {
 }
 
 class WageSensitiveFileAccessDeniedException extends ForbiddenException {
-  constructor() {
-    super("当前账号无权下载工资敏感依据");
+  constructor(
+    readonly reasonCode = "wage_sensitive_download_not_authorized",
+    readonly includeDownloadReason = true,
+    message = "当前账号无权下载工资敏感依据"
+  ) {
+    super(message);
   }
 }
 
@@ -1205,7 +1209,11 @@ export class FileService {
     }
 
     if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
-      throw new BadRequestException("下载链接已过期，请重新申请下载");
+      return this.rejectWageTicketPreflight(
+        fileId,
+        "wage_sensitive_download_ticket_expired",
+        new BadRequestException("下载链接已过期，请重新申请下载")
+      );
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
     const accessMode = input.accessMode ?? "download";
@@ -1227,7 +1235,11 @@ export class FileService {
       downloadReason,
       input.token
     ))) {
-      throw new BadRequestException("下载链接校验失败，请重新申请下载");
+      return this.rejectWageTicketPreflight(
+        fileId,
+        "wage_sensitive_download_ticket_invalid",
+        new BadRequestException("下载链接校验失败，请重新申请下载")
+      );
     }
 
     const authorized = await this.withWageDeniedAccessAudit(fileId, input.actorUserId, () => this.prisma.$transaction(async (tx) => {
@@ -2998,7 +3010,11 @@ export class FileService {
     });
     if (!sources.length) return null;
     if (sources.length !== 1) {
-      throw new ForbiddenException("工资敏感依据存在异常绑定，暂不能下载");
+      throw new WageSensitiveFileAccessDeniedException(
+        "wage_sensitive_download_binding_ambiguous",
+        false,
+        "工资敏感依据存在异常绑定，暂不能下载"
+      );
     }
     let roleKeys: RoleKey[];
     try {
@@ -3049,12 +3065,31 @@ export class FileService {
         businessType: "wage_evidence_file",
         businessId: fileId,
         metadata: {
-          reasonCode: "wage_sensitive_download_not_authorized",
-          ...(downloadReason ? { downloadReason } : {})
+          reasonCode: error.reasonCode,
+          ...(error.includeDownloadReason && downloadReason ? { downloadReason } : {})
         }
       }));
       throw error;
     }
+  }
+
+  private async rejectWageTicketPreflight(
+    fileId: string,
+    reasonCode:
+      | "wage_sensitive_download_ticket_expired"
+      | "wage_sensitive_download_ticket_invalid",
+    error: BadRequestException
+  ): Promise<never> {
+    if (await this.isWageEvidenceFile(fileId)) {
+      await this.prisma.$transaction((tx) => this.audit.record(tx, {
+        actorUserId: null,
+        action: "wage_sensitive_download.denied",
+        businessType: "wage_evidence_file",
+        businessId: null,
+        metadata: { reasonCode }
+      }));
+    }
+    throw error;
   }
 
   private async isWageEvidenceFile(fileId: string): Promise<boolean> {

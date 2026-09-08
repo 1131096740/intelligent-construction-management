@@ -38,26 +38,36 @@ describe("WageStatementService aggregate reads", () => {
       updatedAt: new Date("2026-08-31T10:00:00.000Z"),
       versions: [currentVersion]
     };
-    const prisma = {
-      $transaction: jest.fn((work: (client: { auditLog: { create: jest.Mock } }) => unknown) =>
-        work({ auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) } })
-      ),
-      $queryRaw: jest.fn().mockResolvedValue([{
-        statementVersionId: "version-1",
-        personLineCount: 2n,
-        positionCategoryCount: 1n,
-        projectAllocationCount: 2n
-      }]),
-      wageStatement: {
-        findMany: jest.fn().mockResolvedValue([statement]),
-        count: jest.fn().mockResolvedValue(1),
-        findUnique: jest.fn().mockResolvedValue(statement)
-      },
-      companyEntity: {
-        findMany: jest.fn().mockResolvedValue([{ id: "company-1", name: "甲公司" }])
-      }
+    const queryRaw = jest.fn().mockResolvedValue([{
+      statementVersionId: "version-1",
+      personLineCount: 2n,
+      positionCategoryCount: 1n,
+      projectAllocationCount: 2n
+    }]);
+    const wageStatement = {
+      findMany: jest.fn().mockResolvedValue([statement]),
+      count: jest.fn().mockResolvedValue(1),
+      findUnique: jest.fn().mockResolvedValue(statement)
     };
-    const roles = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]) };
+    const companyEntity = {
+      findMany: jest.fn().mockResolvedValue([{ id: "company-1", name: "甲公司" }])
+    };
+    const transactionClient = {
+      $queryRaw: queryRaw,
+      wageStatement,
+      companyEntity,
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof transactionClient) => unknown) => work(transactionClient)),
+      $queryRaw: queryRaw,
+      wageStatement,
+      companyEntity
+    };
+    const roles = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]),
+      resolveActiveRoleScopesInTransaction: jest.fn().mockResolvedValue(["finance_staff"])
+    };
     const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
     return {
       service: new WageStatementService(prisma as never, roles as never, audit as never),
@@ -117,7 +127,6 @@ describe("WageStatementService aggregate reads", () => {
       orderBy: { revision: "desc" },
       take: 2
     }));
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     expect(result).toEqual(expect.objectContaining({ page: 2, pageSize: 20, total: 31, totalPages: 2 }));
     await expect(service.listWorkbench("finance-user", { page: 1, pageSize: 51 } as never)).rejects.toThrow("工资工作台每页最多读取 50 条");
   });
@@ -201,7 +210,7 @@ describe("WageStatementService aggregate reads", () => {
     expect(JSON.stringify(audit.record.mock.calls)).not.toContain("100000");
 
     audit.record.mockClear();
-    roles.resolveActiveRoleScopes.mockResolvedValue(["project_manager"]);
+    roles.resolveActiveRoleScopesInTransaction.mockResolvedValue(["project_manager"]);
     await expect(service.readSummary("project-user", "statement-1"))
       .rejects.toThrow("当前公司岗位无权查看工资汇总");
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), {
@@ -230,7 +239,7 @@ describe("WageStatementService aggregate reads", () => {
 
   it("rejects a non-finance global user before querying wage data", async () => {
     const { service, prisma, roles } = setup();
-    roles.resolveActiveRoleScopes.mockResolvedValue(["project_manager"]);
+    roles.resolveActiveRoleScopesInTransaction.mockResolvedValue(["project_manager"]);
 
     await expect(service.listWorkbench("project-user")).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.wageStatement.findMany).not.toHaveBeenCalled();

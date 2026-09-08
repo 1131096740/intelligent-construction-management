@@ -89,7 +89,13 @@ describe("WageStatementService", () => {
       wageCommandReceipt: { findUnique: jest.fn() },
       wageApprovedSourceCommandReceipt: { findUnique: jest.fn() }
     };
-    const roles = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["finance_staff"]) };
+    const resolveActiveRoleScopes = jest.fn().mockResolvedValue(["finance_staff"]);
+    const roles = {
+      resolveActiveRoleScopes,
+      resolveActiveRoleScopesInTransaction: jest.fn((_tx: unknown, actorUserId: string) =>
+        resolveActiveRoleScopes(actorUserId)
+      )
+    };
     const operatingLedger = { appendConfirmedSourceInTransaction: jest.fn().mockResolvedValue({ id: "operating-1" }) };
     const service = new WageStatementService(prisma as never, roles as never, undefined, operatingLedger as never);
     // Legacy command tests isolate receipt/segregation behavior. Projection's

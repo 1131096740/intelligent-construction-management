@@ -165,6 +165,53 @@ describe("FileService", () => {
     }
   });
 
+  it("audits an unreachable ambiguous wage-evidence binding defensively without sensitive metadata", async () => {
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue({
+        id: "wage-evidence-ambiguous",
+        originalName: "张三-100000工资依据.pdf",
+        mimeType: "application/pdf"
+      }) },
+      wageApprovedSourceVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }, { id: "wage-source-2" }])
+      },
+      user: { findUnique: jest.fn() },
+      userPosition: { findMany: jest.fn() },
+      position: { findMany: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+      wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "wage-source-1" }) }
+    };
+    const service = new FileService(
+      prisma as never,
+      audit as never,
+      storage as never,
+      undefined,
+      new CompanyRoleResolverService(prisma as never)
+    );
+
+    await expect(service.createDownloadTicket("wage-evidence-ambiguous", {
+      actorUserId: "finance-user",
+      downloadReason: "异常绑定工资依据复核"
+    })).rejects.toThrow("工资敏感依据存在异常绑定，暂不能下载");
+
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-user",
+      action: "wage_sensitive_download.denied",
+      businessType: "wage_evidence_file",
+      businessId: "wage-evidence-ambiguous",
+      metadata: { reasonCode: "wage_sensitive_download_binding_ambiguous" }
+    });
+    const auditPayload = JSON.stringify(audit.record.mock.calls);
+    expect(auditPayload).not.toContain("异常绑定工资依据复核");
+    expect(auditPayload).not.toContain("张三");
+    expect(auditPayload).not.toContain("100000");
+    expect(auditPayload).not.toContain("token");
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
   it("denies a generated upload that is still owned by an incomplete settlement claim", async () => {
     const service = new FileService(
       {} as PrismaService,

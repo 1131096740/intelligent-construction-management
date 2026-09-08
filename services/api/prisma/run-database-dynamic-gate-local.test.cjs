@@ -56,7 +56,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 191 pending tests as executable local coverage", () => {
+test("manifest derives all 196 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -65,9 +65,9 @@ test("manifest derives all 191 pending tests as executable local coverage", () =
     pendingFiles: 48,
     fullyPendingSuites: 37,
     partiallyPendingSuites: 11,
-    pendingTests: 191,
+    pendingTests: 196,
     coveredFiles: 48,
-    coveredTests: 191,
+    coveredTests: 196,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -130,7 +130,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=191/u
+    /inventory\.coveredTests=26，派生值=196/u
   );
 });
 
@@ -248,7 +248,7 @@ test("remaining runner can isolate one exact database subgroup", () => {
 test("wage subgroup upgrades from the immediately preceding migration baseline", () => {
   const group = remainingGroups.find(({ id }) => id === "wage_statement");
   assert.ok(group);
-  assert.equal(group.pendingTests, 19);
+  assert.equal(group.pendingTests, 24);
   assert.equal(group.preTerminalMigrationFixture, "terminal_migration");
   assert.equal(group.requiresOperatingLedgerWriteSecret, true);
 });
