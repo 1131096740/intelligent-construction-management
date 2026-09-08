@@ -251,7 +251,7 @@ async function prepareLegacyProcessSource(temporaryRoot) {
   );
   await symlink(path.join(root, "node_modules"), path.join(sourceRoot, "node_modules"), "dir");
   await symlink(
-    path.join(root, "node_modules"),
+    path.join(apiRoot, "node_modules"),
     path.join(sourceRoot, "services", "api", "node_modules"),
     "dir"
   );
@@ -273,7 +273,10 @@ async function runLegacyProcessGate(sourceRoot, environment) {
       cwd: legacyApiRoot,
       env: {
         ...environment,
-        NODE_PATH: path.join(root, "node_modules"),
+        NODE_PATH: [
+          path.join(apiRoot, "node_modules"),
+          path.join(root, "node_modules")
+        ].join(path.delimiter),
         RUN_POL275_LEGACY_PROCESS_COMPATIBILITY: "1"
       },
       forwardOutput: true,
