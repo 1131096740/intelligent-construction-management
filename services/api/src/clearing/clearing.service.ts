@@ -39,6 +39,7 @@ import {
   assertClearingActorsDisjoint,
   buildClearingConfirmationPlan,
   fingerprintClearingCommand,
+  fingerprintClearingReconciliationEventVersion,
   type ClearingAllocationInput,
   type ClearingConfirmationPlan
 } from "./clearing-domain";
@@ -522,21 +523,16 @@ export class ClearingService {
             reconciliationIntent: frozenReconciliationIntent
           }
         : effectiveEventInput.payload;
+      const eventVersionActorSet = mergeActorIds(identity.actorIds);
       const eventVersionFingerprint = frozenReconciliationIntent
-        ? fingerprintClearingCommand({
-            action: "clearing.event.version",
-            aggregateId: eventId,
-            expectedRevision: 1,
-            actorUserId: identity.actualUserId,
-            delegatorUserId: identity.delegatorUserId,
-            payload: {
-              kind: input.kind,
-              amountCents: effectiveEventInput.amountCents,
-              currencyCode: "CNY",
-              payableRef: effectiveEventInput.payableRef,
-              evidenceLevel: effectiveEventInput.evidenceLevel,
-              payloadSnapshot
-            }
+        ? fingerprintClearingReconciliationEventVersion({
+            clearingCaseId: clearingCase.id,
+            eventKind: input.kind,
+            amountCents: positiveCents(effectiveEventInput.amountCents).toString(),
+            currencyCode: "CNY",
+            previousVersionId: null,
+            actorSetSnapshot: eventVersionActorSet,
+            reconciliationIntent: frozenReconciliationIntent
           })
         : fingerprint;
       const event = await tx.clearingEvent.create({
@@ -561,7 +557,7 @@ export class ClearingService {
           payableRef: effectiveEventInput.payableRef,
           evidenceLevel: effectiveEventInput.evidenceLevel,
           payloadSnapshot: jsonObject(payloadSnapshot),
-          actorSetSnapshot: identity.actorIds,
+          actorSetSnapshot: eventVersionActorSet,
           fingerprint: eventVersionFingerprint,
           createdByUserId: identity.actualUserId
         }
@@ -616,6 +612,21 @@ export class ClearingService {
       }
       const nextVersionNo = event.currentVersionNo + 1;
       const versionId = randomUUID();
+      const submittedActorSet = mergeActorIds(
+        actorIds(current.actorSetSnapshot),
+        identity.actorIds
+      );
+      const submittedFingerprint = submittedReconciliationIntent
+        ? fingerprintClearingReconciliationEventVersion({
+            clearingCaseId: event.clearingCaseId,
+            eventKind: event.kind as ClearingEventKind,
+            amountCents: current.amountCents.toString(),
+            currencyCode: "CNY",
+            previousVersionId: current.id,
+            actorSetSnapshot: submittedActorSet,
+            reconciliationIntent: submittedReconciliationIntent
+          })
+        : fingerprint;
       await tx.clearingEventVersion.create({
         data: {
           id: versionId,
@@ -628,10 +639,8 @@ export class ClearingService {
           payableRef: current.payableRef,
           evidenceLevel: current.evidenceLevel,
           payloadSnapshot: jsonInput(current.payloadSnapshot),
-          actorSetSnapshot: mergeActorIds(actorIds(current.actorSetSnapshot), identity.actorIds),
-          fingerprint: submittedReconciliationIntent
-            ? current.fingerprint
-            : fingerprint,
+          actorSetSnapshot: submittedActorSet,
+          fingerprint: submittedFingerprint,
           previousVersionId: current.id,
           createdByUserId: identity.actualUserId
         }
@@ -774,21 +783,19 @@ export class ClearingService {
             reconciliationIntent: frozenReconciliationIntent
           }
         : effectiveEventInput.payload;
+      const revisedActorSet = mergeActorIds(
+        actorIds(current.actorSetSnapshot),
+        identity.actorIds
+      );
       const eventVersionFingerprint = frozenReconciliationIntent
-        ? fingerprintClearingCommand({
-            action: "clearing.event.version",
-            aggregateId: event.id,
-            expectedRevision: nextVersionNo,
-            actorUserId: identity.actualUserId,
-            delegatorUserId: identity.delegatorUserId,
-            payload: {
-              kind: input.kind,
-              amountCents: effectiveEventInput.amountCents,
-              currencyCode: "CNY",
-              payableRef: effectiveEventInput.payableRef,
-              evidenceLevel: effectiveEventInput.evidenceLevel,
-              payloadSnapshot
-            }
+        ? fingerprintClearingReconciliationEventVersion({
+            clearingCaseId: event.clearingCaseId,
+            eventKind: input.kind,
+            amountCents: positiveCents(effectiveEventInput.amountCents).toString(),
+            currencyCode: "CNY",
+            previousVersionId: current.id,
+            actorSetSnapshot: revisedActorSet,
+            reconciliationIntent: frozenReconciliationIntent
           })
         : fingerprint;
       await tx.clearingEventVersion.create({
@@ -802,7 +809,7 @@ export class ClearingService {
           payableRef: effectiveEventInput.payableRef,
           evidenceLevel: effectiveEventInput.evidenceLevel,
           payloadSnapshot: jsonObject(payloadSnapshot),
-          actorSetSnapshot: mergeActorIds(actorIds(current.actorSetSnapshot), identity.actorIds),
+          actorSetSnapshot: revisedActorSet,
           fingerprint: eventVersionFingerprint,
           previousVersionId: current.id,
           createdByUserId: identity.actualUserId
@@ -2315,11 +2322,21 @@ function reconciliationEventAllocations(intent: Record<string, unknown>): Array<
   if (!Array.isArray(intent.eventAllocations)) {
     throw new ConflictException("V1 冻结 allocation plan 损坏，请停止操作并复核数据");
   }
-  return intent.eventAllocations.map((entry) => {
+  const plans = intent.eventAllocations.map((entry, index) => {
     const plan = asRecord(entry);
+    assertExactSnapshotKeys(plan, [
+      "allocationNo",
+      "clearingAllocationId",
+      "purpose",
+      "resolutionLineId",
+      "allocationSourceKind",
+      "sourceEventVersionId",
+      "amountCents",
+      "frozenSource"
+    ], "V1 冻结 allocation plan");
     if (
       !Number.isSafeInteger(plan.allocationNo) ||
-      Number(plan.allocationNo) < 1 ||
+      Number(plan.allocationNo) !== index + 1 ||
       !["reconciliation_line", "ordinary_remainder"].includes(String(plan.purpose)) ||
       (plan.resolutionLineId !== null && typeof plan.resolutionLineId !== "string") ||
       typeof plan.amountCents !== "string" ||
@@ -2335,6 +2352,38 @@ function reconciliationEventAllocations(intent: Record<string, unknown>): Array<
     ) {
       throw new ConflictException("V1 冻结 allocation plan 损坏，请停止操作并复核数据");
     }
+    const frozenSource = asRecord(plan.frozenSource);
+    if (plan.allocationSourceKind === "withheld") {
+      assertExactSnapshotKeys(frozenSource, [
+        "kind",
+        "sourceEventVersionId",
+        "sourceEventVersionFingerprint"
+      ], "V1 冻结 withheld allocation 来源");
+      if (frozenSource.kind !== "withheld") {
+        throw new ConflictException("V1 冻结 withheld allocation 来源类型损坏");
+      }
+    } else if (plan.allocationSourceKind === "authority_cap") {
+      assertExactSnapshotKeys(frozenSource, [
+        "kind",
+        "authorityVersionId",
+        "authoritySnapshotRef",
+        "sourceDiscriminator"
+      ], "V1 冻结 authority allocation 来源");
+      if (frozenSource.kind !== "authority_cap") {
+        throw new ConflictException("V1 冻结 authority allocation 来源类型损坏");
+      }
+    } else {
+      assertExactSnapshotKeys(frozenSource, [
+        "kind",
+        "sourceEventVersionId",
+        "sourceEventVersionFingerprint",
+        "sourceClearingAllocationId",
+        "sourceImpactId"
+      ], "V1 冻结 prior-event allocation 来源");
+      if (frozenSource.kind !== "prior_economic_event") {
+        throw new ConflictException("V1 冻结 prior-event allocation 来源类型损坏");
+      }
+    }
     return {
       allocationNo: Number(plan.allocationNo),
       purpose: plan.purpose as "reconciliation_line" | "ordinary_remainder",
@@ -2347,9 +2396,27 @@ function reconciliationEventAllocations(intent: Record<string, unknown>): Array<
         | "final_confirmed"
         | "supplemental",
       sourceEventVersionId: plan.sourceEventVersionId,
-      frozenSource: asRecord(plan.frozenSource)
+      frozenSource
     };
   });
+  if (new Set(plans.map((plan) => plan.clearingAllocationId)).size !== plans.length) {
+    throw new ConflictException("V1 冻结 allocation ID 不得重复");
+  }
+  return plans;
+}
+
+function assertExactSnapshotKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  label: string
+): void {
+  const expected = new Set(keys);
+  if (
+    Object.keys(value).length !== expected.size ||
+    Object.keys(value).some((key) => !expected.has(key))
+  ) {
+    throw new ConflictException(`${label}字段集合不正确，请停止操作并复核数据`);
+  }
 }
 
 function reversedResolutionLineIdFromIntent(

@@ -61,7 +61,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 200 pending tests as executable local coverage", () => {
+test("manifest derives all 206 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -70,9 +70,9 @@ test("manifest derives all 200 pending tests as executable local coverage", () =
     pendingFiles: 50,
     fullyPendingSuites: 39,
     partiallyPendingSuites: 11,
-    pendingTests: 200,
+    pendingTests: 206,
     coveredFiles: 50,
-    coveredTests: 200,
+    coveredTests: 206,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -81,7 +81,7 @@ test("manifest derives all 200 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all four POL-275 PG16 gates", () => {
+test("canonical manifest executes all 10 POL-275 PG16 tests", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "clearing_reconciliation_pol275"
@@ -89,11 +89,11 @@ test("canonical manifest executes all four POL-275 PG16 gates", () => {
 
   assert.deepEqual(group, {
     id: "clearing_reconciliation_pol275",
-    pendingTests: 4,
+    pendingTests: 10,
     testFiles: [
       {
         path: "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
-        pendingTests: 3,
+        pendingTests: 9,
         suiteStatus: "fully_pending"
       },
       {
@@ -200,7 +200,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=200/u
+    /inventory\.coveredTests=26，派生值=206/u
   );
 });
 

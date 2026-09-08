@@ -121,7 +121,8 @@ async function freezeItemDefinition(
     const later = await input.tx.clearingReconciliationRevision.findFirst({
       where: {
         itemId: target.itemId,
-        revisionNo: { gt: target.revisionNo }
+        revisionNo: { gt: target.revisionNo },
+        correctedByDefinitionReversal: { is: null }
       }
     });
     if (later) {
@@ -139,6 +140,9 @@ async function freezeItemDefinition(
     if ((reversal?.id ?? null) !== requestedCorrection) {
       throw new ConflictException("替代目标的定义反向状态已漂移，请刷新后重试");
     }
+    if (reversal && target.revisionNo !== 1) {
+      throw new ConflictException("只有首次 open 定义反向后可使用 corrected replacement");
+    }
     const [open] = await input.tx.$queryRaw<Array<{ openAmountCents: bigint }>>(Prisma.sql`
       SELECT (
         revision."amountCents" - COALESCE(SUM(
@@ -152,13 +156,17 @@ async function freezeItemDefinition(
       WHERE revision.id = ${target.id}
       GROUP BY revision.id, revision."amountCents"
     `);
-    const openAmountCents = open?.openAmountCents ?? target.amountCents;
-    if (reversal && openAmountCents !== 0n) {
-      throw new ConflictException("定义反向后的纠正替代必须从零开放金额重建");
-    }
+    const openAmountCents = reversal
+      ? 0n
+      : open?.openAmountCents ?? target.amountCents;
+    const latestHistorical = await input.tx.clearingReconciliationRevision.findFirst({
+      where: { itemId: target.itemId },
+      orderBy: { revisionNo: "desc" },
+      select: { revisionNo: true }
+    });
     itemId = target.itemId;
     lineageRootItemId = target.item.lineageRootItemId;
-    revisionNo = target.revisionNo + 1;
+    revisionNo = (latestHistorical?.revisionNo ?? target.revisionNo) + 1;
     replacesRevisionId = target.id;
     replacedOpenAmountCents = (reversal ? 0n : openAmountCents).toString();
     correctsDefinitionReversalId = reversal?.id ?? null;
@@ -260,7 +268,8 @@ async function freezeCoverageAddition(input: FreezeInput): Promise<Record<string
     input.tx.clearingReconciliationRevision.findFirst({
       where: {
         itemId: targetRevision.itemId,
-        revisionNo: { gt: targetRevision.revisionNo }
+        revisionNo: { gt: targetRevision.revisionNo },
+        correctedByDefinitionReversal: { is: null }
       }
     }),
     input.tx.clearingReconciliationDefinitionReversal.findUnique({
@@ -792,6 +801,71 @@ async function freezeDefinitionReversal(
   if (!/^[0-9a-f]{64}$/.test(target.decisionEventVersion.fingerprint)) {
     throw new ConflictException("定义反向目标版本 fingerprint 损坏");
   }
+  const [capacity] = await input.tx.$queryRaw<Array<{ exceedsCapacity: boolean }>>(Prisma.sql`
+    WITH restored_revision AS (
+      SELECT revision.id
+      FROM "ClearingReconciliationRevision" revision
+      WHERE revision."itemId" = ${target.itemId}
+        AND revision."revisionNo" < ${target.revisionNo}
+        AND NOT EXISTS (
+          SELECT 1 FROM "ClearingReconciliationDefinitionReversal" reversed
+          WHERE reversed."targetRevisionId" = revision.id
+        )
+      ORDER BY revision."revisionNo" DESC
+      LIMIT 1
+    ), affected_source AS (
+      SELECT coverage."withheldEventVersionId" AS source_id
+      FROM "ClearingReconciliationCoverage" coverage
+      WHERE coverage."reconciliationRevisionId" = ${target.id}
+      UNION
+      SELECT coverage."withheldEventVersionId"
+      FROM "ClearingReconciliationCoverage" coverage
+      WHERE coverage."reconciliationRevisionId" = (SELECT id FROM restored_revision)
+    )
+    SELECT EXISTS (
+      SELECT 1
+      FROM affected_source affected
+      JOIN "ClearingEventVersion" source ON source.id = affected.source_id
+      WHERE public."pol275_active_coverage_occupancy"(affected.source_id)
+        - COALESCE((
+            SELECT SUM(coverage."amountCents" - COALESCE((
+              SELECT SUM(CASE WHEN resolution."entryKind" = 'resolution'
+                THEN line."amountCents" ELSE -line."amountCents" END)
+              FROM "ClearingReconciliationResolutionLine" line
+              JOIN "ClearingReconciliationResolution" resolution
+                ON resolution.id = line."resolutionId"
+              WHERE line."coverageId" = coverage.id
+            ), 0))
+            FROM "ClearingReconciliationCoverage" coverage
+            WHERE coverage."reconciliationRevisionId" = ${target.id}
+              AND coverage."withheldEventVersionId" = affected.source_id
+          ), 0)
+        + COALESCE((
+            SELECT SUM(coverage."amountCents" - COALESCE((
+              SELECT SUM(CASE WHEN resolution."entryKind" = 'resolution'
+                THEN line."amountCents" ELSE -line."amountCents" END)
+              FROM "ClearingReconciliationResolutionLine" line
+              JOIN "ClearingReconciliationResolution" resolution
+                ON resolution.id = line."resolutionId"
+              WHERE line."coverageId" = coverage.id
+            ), 0))
+            FROM "ClearingReconciliationCoverage" coverage
+            WHERE coverage."reconciliationRevisionId" = (SELECT id FROM restored_revision)
+              AND coverage."withheldEventVersionId" = affected.source_id
+          ), 0)
+        + COALESCE((
+            SELECT SUM(CASE WHEN allocation."reversesAllocationId" IS NULL
+              THEN allocation."amountCents" ELSE -allocation."amountCents" END)
+            FROM "ClearingAllocation" allocation
+            WHERE allocation."sourceEventVersionId" = affected.source_id
+          ), 0) > source."amountCents"
+    ) AS "exceedsCapacity"
+  `);
+  if (capacity?.exceedsCapacity) {
+    throw new ConflictException(
+      "定义反向会恢复超过暂扣来源容量的旧覆盖，必须先精确解除后继占用"
+    );
+  }
   const definitionReversalId = randomUUID();
   return {
     schema: "clearing_reconciliation_intent/V1",
@@ -1011,7 +1085,8 @@ async function assertCurrentRevision(
     input.tx.clearingReconciliationRevision.findFirst({
       where: {
         itemId: revision.itemId,
-        revisionNo: { gt: revision.revisionNo }
+        revisionNo: { gt: revision.revisionNo },
+        correctedByDefinitionReversal: { is: null }
       }
     }),
     input.tx.clearingReconciliationDefinitionReversal.findUnique({

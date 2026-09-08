@@ -32,6 +32,7 @@ const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
 const DATABASE_NAME = "jiangkong_pol275";
 const FULL_REPLAY_DATABASE_NAME = "jiangkong_pol275_empty";
+const ROLE_COLLISION_DATABASE_NAME = "jiangkong_pol275_role_collision";
 const TERMINAL_MIGRATION =
   "20260909100000_pol275_clearing_reconciliation_repair";
 const LEGACY_PROCESS_SHA = "1fc3355a89db66785a9815f7e47df58d44a4293e";
@@ -200,6 +201,58 @@ async function deployMigrations(schemaPath, environment) {
   );
 }
 
+async function assertRoleCollisionFailsClosed(
+  schemaPath,
+  environment,
+  collisionUrl
+) {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: collisionUrl } }
+  });
+  try {
+    await prisma.$connect();
+    await prisma.$executeRawUnsafe(
+      'CREATE ROLE "jg_pol275_owner" NOLOGIN NOINHERIT'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE ROLE "jg_pol275_runtime" NOLOGIN NOINHERIT'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE ROLE "jg_pol275_untrusted_member" NOLOGIN NOINHERIT'
+    );
+    await prisma.$executeRawUnsafe(
+      'GRANT "jg_pol275_owner" TO "jg_pol275_untrusted_member"'
+    );
+    let rejected = false;
+    try {
+      await deployMigrations(schemaPath, environment);
+    } catch (error) {
+      rejected = /成员关系|role.*membership|P3018/iu.test(String(error?.message));
+    }
+    if (!rejected) {
+      fail("恶意预置 role membership 未使终态迁移失败关闭");
+    }
+    return {
+      databaseName: ROLE_COLLISION_DATABASE_NAME,
+      unsafeMembershipRejected: true
+    };
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'REVOKE "jg_pol275_owner" FROM "jg_pol275_untrusted_member"'
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      'DROP ROLE IF EXISTS "jg_pol275_untrusted_member"'
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      'DROP ROLE IF EXISTS "jg_pol275_runtime"'
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      'DROP ROLE IF EXISTS "jg_pol275_owner"'
+    ).catch(() => undefined);
+    await prisma.$disconnect();
+  }
+}
+
 async function preparePreTerminalPrisma(temporaryRoot) {
   const destination = path.join(temporaryRoot, "pre-terminal-prisma");
   await cp(prismaRoot, destination, {
@@ -310,6 +363,7 @@ async function collectEvidence(url, expectedMigrationCount) {
     `);
     const roles = await prisma.$queryRawUnsafe(`
       SELECT rolname AS "roleName", rolcanlogin AS "canLogin",
+             rolinherit AS "canInherit",
              rolsuper AS "isSuperuser", rolcreaterole AS "canCreateRole",
              rolcreatedb AS "canCreateDatabase", rolreplication AS "canReplicate",
              rolbypassrls AS "canBypassRls"
@@ -323,6 +377,16 @@ async function collectEvidence(url, expectedMigrationCount) {
         (SELECT COUNT(*)::integer
            FROM pg_catalog.pg_auth_members membership
           WHERE membership.roleid = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'jg_pol275_owner')) AS "ownerMemberCount",
+        (SELECT COUNT(*)::integer
+           FROM pg_catalog.pg_auth_members membership
+          WHERE membership.roleid IN (
+                  SELECT oid FROM pg_catalog.pg_roles
+                  WHERE rolname IN ('jg_pol275_owner', 'jg_pol275_runtime')
+                )
+             OR membership.member IN (
+                  SELECT oid FROM pg_catalog.pg_roles
+                  WHERE rolname IN ('jg_pol275_owner', 'jg_pol275_runtime')
+                )) AS "unsafeMembershipCount",
         has_schema_privilege('jg_pol275_runtime', 'public', 'CREATE') AS "runtimeCanCreateInPublic",
         has_function_privilege('jg_pol275_runtime', 'public.pol275_append_reconciliation_set(text,text)', 'EXECUTE') AS "runtimeCanExecuteWriter",
         NOT EXISTS (
@@ -389,7 +453,7 @@ function assertEvidence(evidence, expectedMigrationCount) {
   if (
     evidence.roles.length !== 2 ||
     evidence.roles.some((role) =>
-      role.canLogin || role.isSuperuser || role.canCreateRole ||
+      role.canLogin || role.canInherit || role.isSuperuser || role.canCreateRole ||
       role.canCreateDatabase || role.canReplicate || role.canBypassRls
     )
   ) {
@@ -398,6 +462,7 @@ function assertEvidence(evidence, expectedMigrationCount) {
   if (
     evidence.authority.runtimeMemberOfOwner ||
     evidence.authority.ownerMemberCount !== 0 ||
+    evidence.authority.unsafeMembershipCount !== 0 ||
     evidence.authority.runtimeCanCreateInPublic ||
     !evidence.authority.runtimeCanExecuteWriter ||
     !evidence.authority.publicCannotExecuteWriter
@@ -442,6 +507,7 @@ async function main() {
   const ledgerSecret = randomUUID();
   const upgradeUrl = databaseUrl(password, port, DATABASE_NAME);
   const fullReplayUrl = databaseUrl(password, port, FULL_REPLAY_DATABASE_NAME);
+  const collisionUrl = databaseUrl(password, port, ROLE_COLLISION_DATABASE_NAME);
   const upgradeEnvironment = runtimeEnvironment(
     sourceEnvironment,
     temporaryRoot,
@@ -452,6 +518,12 @@ async function main() {
     sourceEnvironment,
     temporaryRoot,
     fullReplayUrl,
+    ledgerSecret
+  );
+  const collisionEnvironment = runtimeEnvironment(
+    sourceEnvironment,
+    temporaryRoot,
+    collisionUrl,
     ledgerSecret
   );
   const cleanup = createRunnerCleanup({
@@ -509,6 +581,22 @@ async function main() {
       "jiangkong",
       FULL_REPLAY_DATABASE_NAME
     ]);
+    await command(docker, [
+      "exec",
+      containerName,
+      "createdb",
+      "-U",
+      "jiangkong",
+      ROLE_COLLISION_DATABASE_NAME
+    ]);
+
+    const preTerminalSchema = await preparePreTerminalPrisma(temporaryRoot);
+    await deployMigrations(preTerminalSchema, collisionEnvironment);
+    const roleCollisionEvidence = await assertRoleCollisionFailsClosed(
+      path.join(prismaRoot, "schema.prisma"),
+      collisionEnvironment,
+      collisionUrl
+    );
 
     await deployMigrations(path.join(prismaRoot, "schema.prisma"), fullReplayEnvironment);
     const fullReplayEvidence = await collectEvidence(
@@ -516,7 +604,6 @@ async function main() {
       baseline.expectedDirectoryCount
     );
 
-    const preTerminalSchema = await preparePreTerminalPrisma(temporaryRoot);
     await deployMigrations(preTerminalSchema, upgradeEnvironment);
     await deployMigrations(path.join(prismaRoot, "schema.prisma"), upgradeEnvironment);
     await runCurrentProcessGate(upgradeEnvironment);
@@ -536,9 +623,10 @@ async function main() {
       containerImage: IMAGE,
       containerImageId: dockerReceipt.imageId,
       migrationBaseline: baseline,
+      roleCollision: roleCollisionEvidence,
       fullReplay: fullReplayEvidence,
       upgradeReplay: upgradeEvidence,
-      currentProcessDynamicTests: 3,
+      currentProcessDynamicTests: 9,
       legacyProcessCompatibilityTests: 1,
       productionTouched: false,
       finishedAt: new Date().toISOString()
@@ -565,6 +653,7 @@ module.exports = {
   CONFIRMATION,
   DATABASE_NAME,
   FULL_REPLAY_DATABASE_NAME,
+  ROLE_COLLISION_DATABASE_NAME,
   IMAGE,
   LEGACY_PROCESS_SHA,
   RECONCILIATION_TABLES,

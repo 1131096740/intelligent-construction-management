@@ -3,7 +3,8 @@ import { ConflictException } from "@nestjs/common";
 import {
   assertClearingActorsDisjoint,
   buildClearingConfirmationPlan,
-  fingerprintClearingCommand
+  fingerprintClearingCommand,
+  fingerprintClearingReconciliationEventVersion
 } from "./clearing-domain";
 
 describe("clearing confirmation domain", () => {
@@ -166,5 +167,32 @@ describe("clearing confirmation domain", () => {
 
     expect(first).toBe(reordered);
     expect(first).not.toBe(otherActor);
+  });
+
+  it("uses the approved domain-separated RFC 8785 contract for V1 event versions", () => {
+    const input = {
+      clearingCaseId: "case-1",
+      eventKind: "pending_reconciliation" as const,
+      amountCents: "100",
+      currencyCode: "CNY" as const,
+      previousVersionId: null,
+      actorSetSnapshot: ["actor-a", "actor-b"],
+      reconciliationIntent: {
+        schema: "clearing_reconciliation_intent/V1",
+        operation: "open_item"
+      }
+    };
+
+    expect(fingerprintClearingReconciliationEventVersion(input)).toBe(
+      "a3aee1ed63761de886c9aaeebcff5e8fd22caa84b0c5390c18e8a237bb64c820"
+    );
+    expect(fingerprintClearingReconciliationEventVersion({
+      ...input,
+      previousVersionId: "version-1"
+    })).not.toBe(fingerprintClearingReconciliationEventVersion(input));
+    expect(fingerprintClearingReconciliationEventVersion({
+      ...input,
+      actorSetSnapshot: ["actor-a", "actor-b", "actor-c"]
+    })).not.toBe(fingerprintClearingReconciliationEventVersion(input));
   });
 });

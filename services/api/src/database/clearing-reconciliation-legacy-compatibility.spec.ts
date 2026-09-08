@@ -16,7 +16,7 @@ describe("POL-275 old process / new schema compatibility", () => {
       : it.skip;
 
   compatibilityTest(
-    "confirms the no-V1 public contract without creating reconciliation rows",
+    "confirms the no-V1 public contract with non-empty allocations and no reconciliation rows",
     async () => {
       const databaseUrl = assertDedicatedDatabase();
       const client = new PrismaClient({
@@ -74,8 +74,47 @@ describe("POL-275 old process / new schema compatibility", () => {
           allocations: []
         });
 
+        const afterWithheld = await client.clearingCase.findUniqueOrThrow({
+          where: { id: clearingCase.id },
+          select: { revision: true }
+        });
+        const finalPrepared = eventResult(await service.createEvent(
+          preparerUserId,
+          clearingCase.id,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: afterWithheld.revision,
+            kind: "final_confirmed",
+            amountCents: "10",
+            evidenceLevel: "A",
+            payload: {
+              reason: "POL-275 old process non-empty allocation compatibility"
+            }
+          }
+        ));
+        const finalSubmitted = eventResult(await service.submitEvent(
+          preparerUserId,
+          finalPrepared.id,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: finalPrepared.revision
+          }
+        ));
+        await service.confirmEvent(confirmerUserId, finalPrepared.id, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: finalSubmitted.revision,
+          allocations: [{
+            sourceEventVersionId: submitted.versionId,
+            sourceKind: "withheld",
+            amountCents: "10"
+          }]
+        });
+
         const [proof] = await client.$queryRaw<Array<{
           confirmationCount: bigint;
+          finalConfirmationCount: bigint;
+          finalAllocationCount: bigint;
+          finalImpactCount: bigint;
           itemCount: bigint;
           revisionCount: bigint;
           coverageCount: bigint;
@@ -87,6 +126,14 @@ describe("POL-275 old process / new schema compatibility", () => {
           SELECT
             (SELECT COUNT(*) FROM "ClearingConfirmation"
               WHERE "eventVersionId" = ${submitted.versionId}) AS "confirmationCount",
+            (SELECT COUNT(*) FROM "ClearingConfirmation"
+              WHERE "eventVersionId" = ${finalSubmitted.versionId}) AS "finalConfirmationCount",
+            (SELECT COUNT(*) FROM "ClearingAllocation"
+              WHERE "eventVersionId" = ${finalSubmitted.versionId}
+                AND "sourceEventVersionId" = ${submitted.versionId}
+                AND "amountCents" = 10) AS "finalAllocationCount",
+            (SELECT COUNT(*) FROM "ClearingImpactLink"
+              WHERE "eventVersionId" = ${finalSubmitted.versionId}) AS "finalImpactCount",
             (SELECT COUNT(*) FROM "ClearingReconciliationItem"
               WHERE "openingDecisionEventVersionId" = ${submitted.versionId}) AS "itemCount",
             (SELECT COUNT(*) FROM "ClearingReconciliationRevision"
@@ -107,6 +154,9 @@ describe("POL-275 old process / new schema compatibility", () => {
         `);
         assert.deepEqual(proof, {
           confirmationCount: 1n,
+          finalConfirmationCount: 1n,
+          finalAllocationCount: 1n,
+          finalImpactCount: 3n,
           itemCount: 0n,
           revisionCount: 0n,
           coverageCount: 0n,

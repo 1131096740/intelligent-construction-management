@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 166,
     "terminalMigration": "20260909100000_pol275_clearing_reconciliation_repair",
-    "terminalMigrationChecksum": "3edc23b53c2ced8db72cecd315d6f967d1b3196ff759c9093e0958aa7fa28503",
+    "terminalMigrationChecksum": "17b6cce2aea75c31b467c3ac4a3fe47c17298fe759ae8a2c6a7cbf8b61a85f84",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 50,
     "fullyPendingSuites": 39,
     "partiallyPendingSuites": 11,
-    "pendingTests": 200,
+    "pendingTests": 206,
     "coveredFiles": 50,
-    "coveredTests": 200,
+    "coveredTests": 206,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -207,11 +207,11 @@
     },
     {
       "id": "clearing_reconciliation_pol275",
-      "pendingTests": 4,
+      "pendingTests": 10,
       "testFiles": [
         {
           "path": "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
-          "pendingTests": 3,
+          "pendingTests": 9,
           "suiteStatus": "fully_pending"
         },
         {
