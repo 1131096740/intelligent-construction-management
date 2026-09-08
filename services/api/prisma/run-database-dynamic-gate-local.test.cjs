@@ -29,7 +29,8 @@ const {
   assertSafeEnvironment: assertPol275SafeEnvironment,
   inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
-  runtimeEnvironment: createPol275RuntimeEnvironment
+  runtimeEnvironment: createPol275RuntimeEnvironment,
+  selectPostgresDiagnostics
 } = require("./run-pol275-clearing-reconciliation-local.cjs");
 
 const runnerPath = path.join(
@@ -171,6 +172,18 @@ test("POL-275 role-collision receipt accepts only the exact 42501 membership gua
       meta: { code: "42501", message: "unrelated permission denial" }
     }),
     false
+  );
+});
+
+test("POL-275 runner reports only bounded PostgreSQL error diagnostics", () => {
+  assert.equal(
+    selectPostgresDiagnostics([
+      "LOG: statement: sensitive bulk SQL",
+      "ERROR: first migration error",
+      "CONTEXT: PL/pgSQL function inline_code_block line 9",
+      "STATEMENT: sensitive bulk SQL"
+    ].join("\n")),
+    "ERROR: first migration error\nCONTEXT: PL/pgSQL function inline_code_block line 9"
   );
 });
 

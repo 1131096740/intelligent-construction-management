@@ -66,6 +66,14 @@ function isExpectedRoleMembershipGuardError(error) {
   );
 }
 
+function selectPostgresDiagnostics(output) {
+  return String(output)
+    .split(/\r?\n/u)
+    .filter((line) => /\b(?:ERROR|CONTEXT|DETAIL|HINT):/u.test(line))
+    .slice(-20)
+    .join("\n");
+}
+
 function inheritedDatabaseTargetNames(environment) {
   return Object.keys(environment)
     .filter((name) => name === "DATABASE_URL" || name.endsWith("_DATABASE_URL"))
@@ -690,7 +698,19 @@ async function main() {
       collisionUrl
     );
 
-    await deployMigrations(path.join(prismaRoot, "schema.prisma"), fullReplayEnvironment);
+    try {
+      await deployMigrations(path.join(prismaRoot, "schema.prisma"), fullReplayEnvironment);
+    } catch (error) {
+      const logs = await command(docker, ["logs", "--since", "2m", containerName])
+        .catch(() => ({ stdout: "", stderr: "" }));
+      const diagnostics = selectPostgresDiagnostics(
+        `${logs.stdout}\n${logs.stderr}`
+      );
+      if (diagnostics) {
+        process.stderr.write(`POL-275 PostgreSQL 首错诊断：\n${diagnostics}\n`);
+      }
+      throw error;
+    }
     const fullReplayEvidence = await collectEvidence(
       fullReplayUrl,
       baseline.expectedDirectoryCount
@@ -754,5 +774,6 @@ module.exports = {
   assertSafeEnvironment,
   inheritedDatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
-  runtimeEnvironment
+  runtimeEnvironment,
+  selectPostgresDiagnostics
 };
