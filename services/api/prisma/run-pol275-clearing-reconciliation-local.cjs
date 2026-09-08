@@ -55,6 +55,17 @@ function fail(message) {
   throw new Error(`POL-275 PostgreSQL 16 动态验收失败：${message}`);
 }
 
+function isExpectedRoleMembershipGuardError(error) {
+  return Boolean(
+    error &&
+      error.code === "P2010" &&
+      error.meta?.code === "42501" &&
+      /POL-275 同名技术角色已有成员关系，拒绝迁移且不自动清理/u.test(
+        String(error.meta?.message ?? error.message)
+      )
+  );
+}
+
 function inheritedDatabaseTargetNames(environment) {
   return Object.keys(environment)
     .filter((name) => name === "DATABASE_URL" || name.endsWith("_DATABASE_URL"))
@@ -223,18 +234,99 @@ async function assertRoleCollisionFailsClosed(
     await prisma.$executeRawUnsafe(
       'GRANT "jg_pol275_owner" TO "jg_pol275_untrusted_member"'
     );
-    let rejected = false;
+    let membershipGuardRejected = false;
+    try {
+      await prisma.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1
+              FROM pg_catalog.pg_auth_members membership
+             WHERE membership.roleid IN (
+                     SELECT oid FROM pg_catalog.pg_roles
+                      WHERE rolname IN ('jg_pol275_owner', 'jg_pol275_runtime')
+                   )
+                OR membership.member IN (
+                     SELECT oid FROM pg_catalog.pg_roles
+                      WHERE rolname IN ('jg_pol275_owner', 'jg_pol275_runtime')
+                   )
+          ) THEN
+            RAISE EXCEPTION 'POL-275 同名技术角色已有成员关系，拒绝迁移且不自动清理'
+              USING ERRCODE = '42501';
+          END IF;
+        END;
+        $$
+      `);
+    } catch (error) {
+      if (!isExpectedRoleMembershipGuardError(error)) throw error;
+      membershipGuardRejected = true;
+    }
+    if (!membershipGuardRejected) {
+      fail("独立 role membership guard 未以 42501 精确拒绝恶意预置关系");
+    }
+    let migrationRejected = false;
+    let migrationFailureMessage = "";
     try {
       await deployMigrations(schemaPath, environment);
     } catch (error) {
-      rejected = /成员关系|role.*membership|P3018/iu.test(String(error?.message));
+      migrationRejected = true;
+      migrationFailureMessage = String(error?.message ?? error);
     }
-    if (!rejected) {
+    if (!migrationRejected) {
       fail("恶意预置 role membership 未使终态迁移失败关闭");
+    }
+    const [failedMigration] = await prisma.$queryRawUnsafe(`
+      SELECT finished_at AS "finishedAt", rolled_back_at AS "rolledBackAt"
+        FROM "_prisma_migrations"
+       WHERE migration_name = '${TERMINAL_MIGRATION}'
+       ORDER BY started_at DESC
+       LIMIT 1
+    `);
+    const [rollbackState] = await prisma.$queryRawUnsafe(`
+      SELECT
+        (SELECT COUNT(*)::integer
+           FROM pg_catalog.pg_auth_members membership
+          WHERE membership.roleid IN (
+                  SELECT oid FROM pg_catalog.pg_roles
+                   WHERE rolname IN ('jg_pol275_owner', 'jg_pol275_runtime')
+                )
+             OR membership.member IN (
+                  SELECT oid FROM pg_catalog.pg_roles
+                   WHERE rolname IN ('jg_pol275_owner', 'jg_pol275_runtime')
+                )) AS "unsafeMembershipCount",
+        NOT EXISTS (
+          SELECT 1
+            FROM unnest(ARRAY[${RECONCILIATION_TABLES.map((table) => `'${table}'`).join(", ")}])
+                 AS candidate("tableName")
+           WHERE to_regclass(format('public.%I', candidate."tableName")) IS NOT NULL
+        ) AS "terminalTablesAbsent",
+        NOT EXISTS (
+          SELECT 1
+            FROM pg_catalog.pg_constraint
+           WHERE conname IN (
+             'ClearingEventVersion_id_clearingCaseId_key',
+             'ClearingAllocation_no_self_reversal'
+           )
+        ) AS "terminalConstraintsAbsent"
+    `);
+    if (
+      !failedMigration ||
+      failedMigration.finishedAt !== null ||
+      failedMigration.rolledBackAt !== null ||
+      rollbackState?.unsafeMembershipCount !== 1 ||
+      rollbackState?.terminalTablesAbsent !== true ||
+      rollbackState?.terminalConstraintsAbsent !== true
+    ) {
+      fail("恶意 role membership 拒绝后未保持原成员关系、迁移未完成且终态对象零落地");
     }
     return {
       databaseName: ROLE_COLLISION_DATABASE_NAME,
-      unsafeMembershipRejected: true
+      membershipGuardSqlstate: "42501",
+      unsafeMembershipRejected: true,
+      terminalMigrationFinished: false,
+      terminalTablesAbsent: true,
+      terminalConstraintsAbsent: true,
+      originalFailure: migrationFailureMessage
     };
   } finally {
     await prisma.$executeRawUnsafe(
@@ -661,5 +753,6 @@ module.exports = {
   assertEvidence,
   assertSafeEnvironment,
   inheritedDatabaseTargetNames,
+  isExpectedRoleMembershipGuardError,
   runtimeEnvironment
 };

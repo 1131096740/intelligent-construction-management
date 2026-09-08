@@ -28,6 +28,7 @@ const {
 const {
   assertSafeEnvironment: assertPol275SafeEnvironment,
   inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
+  isExpectedRoleMembershipGuardError,
   runtimeEnvironment: createPol275RuntimeEnvironment
 } = require("./run-pol275-clearing-reconciliation-local.cjs");
 
@@ -144,6 +145,33 @@ test("POL-275 runner preserves rather than repurposes the caller home", () => {
   );
   assert.equal(environment.HOME, "/caller/home");
   assert.equal(environment.TMPDIR, "/tmp/pol275");
+});
+
+test("POL-275 role-collision receipt accepts only the exact 42501 membership guard", () => {
+  assert.equal(
+    isExpectedRoleMembershipGuardError({
+      code: "P2010",
+      meta: {
+        code: "42501",
+        message: "ERROR: POL-275 同名技术角色已有成员关系，拒绝迁移且不自动清理"
+      }
+    }),
+    true
+  );
+  assert.equal(
+    isExpectedRoleMembershipGuardError({
+      code: "P2010",
+      meta: { code: "42601", message: "syntax error" }
+    }),
+    false
+  );
+  assert.equal(
+    isExpectedRoleMembershipGuardError({
+      code: "P2010",
+      meta: { code: "42501", message: "unrelated permission denial" }
+    }),
+    false
+  );
 });
 
 test("canonical manifest executes all 26 fund execution v7 PG tests", () => {
