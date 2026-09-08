@@ -1723,6 +1723,9 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           END
           $pol275_runtime_grants$
         `);
+        await client.$executeRawUnsafe(
+          `GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO "${probeRole}"`
+        );
         await probeClient.$connect();
         const [probeIdentity] = await probeClient.$queryRaw<Array<{
           sessionUser: string;
@@ -2057,7 +2060,8 @@ async function confirmLegacyEvent(
   await service.confirmEvent(actors.confirmerUserId, prepared.eventId, {
     idempotencyKey: randomUUID(),
     expectedRevision: prepared.eventRevision,
-    allocations: input.allocations ?? []
+    allocations: input.allocations ?? [],
+    confirmed: true
   });
   return prepared.versionId;
 }

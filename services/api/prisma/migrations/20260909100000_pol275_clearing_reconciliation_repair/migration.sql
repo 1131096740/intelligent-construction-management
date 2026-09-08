@@ -2267,7 +2267,7 @@ GRANT USAGE ON SCHEMA public TO "jg_pol275_owner", "jg_pol275_runtime";
 GRANT SELECT ON TABLE
   "ClearingCase", "ClearingEvent", "ClearingEventVersion", "ClearingConfirmation",
   "ClearingEvidenceAttestation", "ClearingAllocation", "ClearingImpactLink",
-  "OperatingFact", "OperatingImpactEntry"
+  "OperatingFact", "OperatingImpactEntry", "ProjectAffiliateAssignment"
   TO "jg_pol275_owner";
 GRANT SELECT ON TABLE
   "ClearingReconciliationItem", "ClearingReconciliationRevision",
