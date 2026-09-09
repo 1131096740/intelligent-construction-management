@@ -879,6 +879,127 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           "return-1:construction-enterprise-funds-return"
         ]);
         assert.ok(returnedLinks.every((link) => link.reversesImpactId));
+        const sourceReturnLinks = await client.clearingImpactLink.findMany({
+          where: {
+            eventVersionId: mixed.versionId,
+            sourceImpactKey: {
+              in: [
+                "original:confirmed-cost",
+                "original:construction-enterprise-funds-decrease"
+              ]
+            }
+          },
+          orderBy: { sourceImpactKey: "asc" }
+        });
+        const returnedVersion = await client.clearingEventVersion.findUniqueOrThrow({
+          where: { id: returned.versionId }
+        });
+        const returnedIntent = (returnedVersion.payloadSnapshot as {
+          reconciliationIntent: {
+            eventAllocations: Array<{
+              frozenSource: { sourceImpactIds: string[] };
+            }>;
+          };
+        }).reconciliationIntent;
+        assert.deepEqual(
+          returnedIntent.eventAllocations[0]!.frozenSource.sourceImpactIds,
+          sourceReturnLinks.map((link) => link.id)
+        );
+        assert.deepEqual(
+          returnedLinks.map((link) => link.reversesImpactId).sort(),
+          sourceReturnLinks.map((link) => link.id).sort()
+        );
+
+        const prepareCompetingReturn = async () => {
+          caseRevision = await currentCaseRevision(client, caseId);
+          const opened = await confirmV1Event(client, service, actors, {
+            caseId,
+            expectedCaseRevision: caseRevision,
+            kind: "pending_reconciliation",
+            amountCents: "30",
+            reconciliationIntent: {
+              operation: "open_item",
+              itemDefinition: { mode: "independent", amountCents: "30" },
+              coverages: []
+            }
+          });
+          const openedRevision = await client.clearingReconciliationRevision.findUniqueOrThrow({
+            where: { decisionEventVersionId: opened.versionId }
+          });
+          caseRevision = await currentCaseRevision(client, caseId);
+          return prepareAndAttestV1Event(client, service, actors, {
+            caseId,
+            expectedCaseRevision: caseRevision,
+            kind: "returned",
+            amountCents: "30",
+            reconciliationIntent: {
+              operation: "resolve",
+              resolutions: [{
+                reconciliationRevisionId: openedRevision.id,
+                amountCents: "30",
+                lines: [{
+                  sourceKind: "prior_economic_event",
+                  sourceSelectionRef: selectionRefs.issue({
+                    actorUserId: actors.preparerUserId,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    purpose: "allocation",
+                    selectedKey: priorAllocation.id,
+                    revision: caseRevision
+                  }),
+                  amountCents: "30"
+                }]
+              }],
+              ordinaryAllocations: []
+            }
+          });
+        };
+        const firstCompetingReturn = await prepareCompetingReturn();
+        const secondCompetingReturn = await prepareCompetingReturn();
+        caseRevision = await currentCaseRevision(client, caseId);
+        await service.confirmEvent(actors.confirmerUserId, firstCompetingReturn.eventId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: firstCompetingReturn.eventRevision,
+          expectedCaseRevision: caseRevision,
+          eventVersionId: firstCompetingReturn.versionId,
+          expectedFingerprint: firstCompetingReturn.fingerprint,
+          confirmed: true
+        });
+        caseRevision = await currentCaseRevision(client, caseId);
+        await expect(service.confirmEvent(
+          actors.confirmerUserId,
+          secondCompetingReturn.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: secondCompetingReturn.eventRevision,
+            expectedCaseRevision: caseRevision,
+            eventVersionId: secondCompetingReturn.versionId,
+            expectedFingerprint: secondCompetingReturn.fingerprint,
+            confirmed: true
+          }
+        )).rejects.toThrow(/既有经济事件可退回金额已漂移/iu);
+        assert.equal(
+          await client.clearingAllocation.aggregate({
+            where: {
+              eventVersionId: { in: [returned.versionId, firstCompetingReturn.versionId] },
+              sourceEventVersionId: mixed.versionId
+            },
+            _sum: { amountCents: true }
+          }).then((result) => result._sum.amountCents),
+          60n
+        );
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: secondCompetingReturn.versionId }
+          }),
+          0
+        );
+        assert.equal(
+          await client.clearingReconciliationDecisionSeal.count({
+            where: { decisionEventVersionId: secondCompetingReturn.versionId }
+          }),
+          0
+        );
       } finally {
         await client.$disconnect();
       }
@@ -1465,6 +1586,144 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         assert.equal(
           await client.clearingEvent.count({ where: { clearingCaseId: caseId } }),
           eventCountBefore
+        );
+
+        const reversedTargetCaseId = `${prefix}_reversed_target_case`;
+        const reversedTargetCase = await client.clearingCase.create({
+          data: {
+            id: reversedTargetCaseId,
+            projectId: fixture.projectId,
+            constructionEnterpriseAssignmentId: fixture.assignmentId,
+            category: "management_fee",
+            governedSubjectKey: `${prefix}_reversed_target_subject`,
+            authoritativeGrossCapCents: 1000n,
+            createdByUserId: actors.preparerUserId
+          }
+        });
+        const reversedTargetSource = await confirmLegacyEvent(service, actors, {
+          caseId: reversedTargetCaseId,
+          expectedCaseRevision: reversedTargetCase.revision,
+          kind: "withheld",
+          amountCents: "100"
+        });
+        let reversedTargetCaseRevision = await currentCaseRevision(
+          client,
+          reversedTargetCaseId
+        );
+        const reversedTargetOpen = await confirmV1Event(client, service, actors, {
+          caseId: reversedTargetCaseId,
+          expectedCaseRevision: reversedTargetCaseRevision,
+          kind: "pending_reconciliation",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "100" },
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                reversedTargetCaseId,
+                reversedTargetCaseRevision,
+                reversedTargetSource
+              ),
+              amountCents: "50"
+            }]
+          }
+        });
+        const reversedTargetRevision = await client.clearingReconciliationRevision.findUniqueOrThrow({
+          where: { decisionEventVersionId: reversedTargetOpen.versionId }
+        });
+        reversedTargetCaseRevision = await currentCaseRevision(
+          client,
+          reversedTargetCaseId
+        );
+        const staleCoverageCandidate = await prepareAndAttestV1Event(
+          client,
+          service,
+          actors,
+          {
+            caseId: reversedTargetCaseId,
+            expectedCaseRevision: reversedTargetCaseRevision,
+            kind: "coverage_added",
+            amountCents: "25",
+            reconciliationIntent: {
+              operation: "add_coverage",
+              targetRevisionId: reversedTargetRevision.id,
+              coverages: [{
+                sourceSelectionRef: issueAllocationSelection(
+                  selectionRefs,
+                  actors.preparerUserId,
+                  reversedTargetCaseId,
+                  reversedTargetCaseRevision,
+                  reversedTargetSource
+                ),
+                amountCents: "25"
+              }]
+            }
+          }
+        );
+        reversedTargetCaseRevision = await currentCaseRevision(
+          client,
+          reversedTargetCaseId
+        );
+        await confirmV1Event(client, service, actors, {
+          caseId: reversedTargetCaseId,
+          expectedCaseRevision: reversedTargetCaseRevision,
+          kind: "technical_reversal",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "reverse_definition",
+            targetRevisionId: reversedTargetRevision.id
+          }
+        });
+        reversedTargetCaseRevision = await currentCaseRevision(
+          client,
+          reversedTargetCaseId
+        );
+        await expect(service.confirmEvent(
+          actors.confirmerUserId,
+          staleCoverageCandidate.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: staleCoverageCandidate.eventRevision,
+            expectedCaseRevision: reversedTargetCaseRevision,
+            eventVersionId: staleCoverageCandidate.versionId,
+            expectedFingerprint: staleCoverageCandidate.fingerprint,
+            confirmed: true
+          }
+        )).rejects.toThrow(/只能给当前有效 revision 补充覆盖/iu);
+        await expect(client.$transaction(async (tx) => {
+          await tx.clearingConfirmation.create({
+            data: {
+              eventVersionId: staleCoverageCandidate.versionId,
+              confirmedByUserId: actors.confirmerUserId,
+              confirmerActorSetSnapshot: [actors.confirmerUserId]
+            }
+          });
+          await tx.$queryRaw(Prisma.sql`
+            SELECT public."pol275_append_reconciliation_set"(
+              ${staleCoverageCandidate.versionId},
+              ${staleCoverageCandidate.fingerprint}
+            )
+          `);
+        })).rejects.toThrow(/只能给当前有效 revision 补充覆盖/iu);
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: staleCoverageCandidate.versionId }
+          }),
+          0
+        );
+        assert.equal(
+          await client.clearingReconciliationCoverage.count({
+            where: { decisionEventVersionId: staleCoverageCandidate.versionId }
+          }),
+          0
+        );
+        assert.equal(
+          await client.clearingReconciliationDecisionSeal.count({
+            where: { decisionEventVersionId: staleCoverageCandidate.versionId }
+          }),
+          0
         );
       } finally {
         await client.$disconnect();

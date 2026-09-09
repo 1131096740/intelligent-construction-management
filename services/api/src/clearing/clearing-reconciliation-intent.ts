@@ -1283,22 +1283,65 @@ async function freezePriorEconomicSource(
     );
   });
   const kind = selected?.eventVersion.clearingEvent.kind;
-  const impact = selected?.eventVersion.impactLinks
-    .slice()
-    .sort((left, right) => left.id.localeCompare(right.id))[0];
+  const sourceImpacts = [
+    "original:confirmed-cost",
+    "original:construction-enterprise-funds-decrease"
+  ].map((sourceImpactKey) =>
+    selected?.eventVersion.impactLinks.find(
+      (candidate) => candidate.sourceImpactKey === sourceImpactKey
+    )
+  );
   if (
     !selected ||
     (kind !== "final_confirmed" && kind !== "supplemental") ||
-    !impact ||
+    sourceImpacts.some((impact) => !impact) ||
+    new Set(sourceImpacts.map((impact) => impact!.id)).size !== 2 ||
+    new Set(sourceImpacts.map((impact) => impact!.operatingFactId)).size !== 1 ||
     !/^[0-9a-f]{64}$/.test(selected.eventVersion.fingerprint)
   ) {
     throw new BadRequestException("既有经济事件选择已过期、跨案或影响链不完整");
   }
-  const reversed = await input.tx.clearingAllocation.aggregate({
-    where: { reversesAllocationId: selected.id },
-    _sum: { amountCents: true }
-  });
-  const remaining = selected.amountCents - (reversed._sum.amountCents ?? 0n);
+  const [capacity] = await input.tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
+    SELECT (
+      original."amountCents"
+      - COALESCE((
+          SELECT SUM(direct_reversal."amountCents")
+          FROM "ClearingAllocation" direct_reversal
+          WHERE direct_reversal."reversesAllocationId" = original.id
+        ), 0)
+      - COALESCE((
+          SELECT SUM(
+            returned_allocation."amountCents" - COALESCE((
+              SELECT SUM(return_reversal."amountCents")
+              FROM "ClearingAllocation" return_reversal
+              WHERE return_reversal."reversesAllocationId" = returned_allocation.id
+            ), 0)
+          )
+          FROM "ClearingAllocation" returned_allocation
+          JOIN "ClearingEventVersion" returned_version
+            ON returned_version.id = returned_allocation."eventVersionId"
+          JOIN "ClearingEvent" returned_event
+            ON returned_event.id = returned_version."clearingEventId"
+          JOIN "ClearingConfirmation" returned_confirmation
+            ON returned_confirmation."eventVersionId" = returned_version.id
+          WHERE returned_event.kind = 'returned'
+            AND returned_allocation."reversesAllocationId" IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+              ) frozen_plan
+              WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+                AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+                AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original.id
+            )
+        ), 0)
+    )::bigint AS remaining
+    FROM "ClearingAllocation" original
+    WHERE original.id = ${selected.id}
+      AND original."reversesAllocationId" IS NULL
+  `);
+  const remaining = capacity?.remaining ?? 0n;
   if (amountCents > remaining) {
     throw new ConflictException("既有经济事件可退回金额已漂移，请重新准备版本");
   }
@@ -1312,7 +1355,7 @@ async function freezePriorEconomicSource(
       sourceEventVersionId: selected.eventVersionId,
       sourceEventVersionFingerprint: selected.eventVersion.fingerprint,
       sourceClearingAllocationId: selected.id,
-      sourceImpactId: impact.id
+      sourceImpactIds: sourceImpacts.map((impact) => impact!.id)
     }
   };
 }

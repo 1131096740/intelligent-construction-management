@@ -635,6 +635,7 @@ DECLARE
   original_record RECORD;
   net_used BIGINT;
   reversed_used BIGINT;
+  prior_return_used BIGINT;
   final_net_used BIGINT;
   occupancy BIGINT;
   coverage_relief BIGINT := 0;
@@ -736,7 +737,32 @@ BEGIN
       SELECT COALESCE(SUM("amountCents"), 0)::BIGINT INTO reversed_used
       FROM public."ClearingAllocation"
       WHERE "reversesAllocationId" = original_record."id";
-      IF reversed_used + NEW."amountCents" > original_record."amountCents" THEN
+      SELECT COALESCE(SUM(
+        returned_allocation."amountCents" - COALESCE((
+          SELECT SUM(return_reversal."amountCents")
+          FROM public."ClearingAllocation" return_reversal
+          WHERE return_reversal."reversesAllocationId" = returned_allocation."id"
+        ), 0)
+      ), 0)::BIGINT INTO prior_return_used
+      FROM public."ClearingAllocation" returned_allocation
+      JOIN public."ClearingEventVersion" returned_version
+        ON returned_version."id" = returned_allocation."eventVersionId"
+      JOIN public."ClearingEvent" returned_event
+        ON returned_event."id" = returned_version."clearingEventId"
+      JOIN public."ClearingConfirmation" returned_confirmation
+        ON returned_confirmation."eventVersionId" = returned_version."id"
+      WHERE returned_event."kind" = 'returned'
+        AND returned_allocation."reversesAllocationId" IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+          ) frozen_plan
+          WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation."id"
+            AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+            AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original_record."id"
+        );
+      IF reversed_used + prior_return_used + NEW."amountCents" > original_record."amountCents" THEN
         RAISE EXCEPTION '技术反向超过原分配剩余效果' USING ERRCODE = '23514';
       END IF;
     END IF;
@@ -784,6 +810,91 @@ BEGIN
     RAISE EXCEPTION '清算分配来源不存在、未确认、跨案或类型不一致' USING ERRCODE = '23514';
   END IF;
 
+  IF target_intent ->> 'schema' = 'clearing_reconciliation_intent/V1'
+    AND target_kind = 'returned'
+    AND NEW."reversesAllocationId" IS NULL
+    AND NEW."sourceKind" IN ('final_confirmed', 'supplemental')
+    AND allocation_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+  THEN
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(
+        'pol275:allocation:' || (allocation_plan -> 'frozenSource' ->> 'sourceClearingAllocationId'),
+        0
+      )
+    );
+    SELECT * INTO original_record
+    FROM public."ClearingAllocation"
+    WHERE "id" = allocation_plan -> 'frozenSource' ->> 'sourceClearingAllocationId'
+    FOR UPDATE;
+    IF NOT FOUND OR original_record."reversesAllocationId" IS NOT NULL
+      OR original_record."eventVersionId" <> NEW."sourceEventVersionId"
+      OR (
+        SELECT COUNT(*)
+        FROM public."ClearingImpactLink" source_link
+        WHERE source_link."id" IN (
+          SELECT source_impact_id.value #>> '{}'
+          FROM jsonb_array_elements(
+            allocation_plan -> 'frozenSource' -> 'sourceImpactIds'
+          ) source_impact_id(value)
+        )
+          AND source_link."eventVersionId" = NEW."sourceEventVersionId"
+          AND source_link."sourceImpactKey" IN (
+            'original:confirmed-cost',
+            'original:construction-enterprise-funds-decrease'
+          )
+      ) <> 2
+      OR (
+        SELECT COUNT(DISTINCT source_link."operatingFactId")
+        FROM public."ClearingImpactLink" source_link
+        WHERE source_link."id" IN (
+          SELECT source_impact_id.value #>> '{}'
+          FROM jsonb_array_elements(
+            allocation_plan -> 'frozenSource' -> 'sourceImpactIds'
+          ) source_impact_id(value)
+        )
+      ) <> 1
+    THEN
+      RAISE EXCEPTION 'POL-275 冻结既有经济 allocation/impact 集合已漂移' USING ERRCODE = '23514';
+    END IF;
+    SELECT COALESCE(SUM("amountCents"), 0)::BIGINT INTO reversed_used
+    FROM public."ClearingAllocation"
+    WHERE "reversesAllocationId" = original_record."id";
+    SELECT COALESCE(SUM(
+      returned_allocation."amountCents" - COALESCE((
+        SELECT SUM(return_reversal."amountCents")
+        FROM public."ClearingAllocation" return_reversal
+        WHERE return_reversal."reversesAllocationId" = returned_allocation."id"
+      ), 0)
+    ), 0)::BIGINT INTO prior_return_used
+    FROM public."ClearingAllocation" returned_allocation
+    JOIN public."ClearingEventVersion" returned_version
+      ON returned_version."id" = returned_allocation."eventVersionId"
+    JOIN public."ClearingEvent" returned_event
+      ON returned_event."id" = returned_version."clearingEventId"
+    JOIN public."ClearingConfirmation" returned_confirmation
+      ON returned_confirmation."eventVersionId" = returned_version."id"
+    WHERE returned_event."kind" = 'returned'
+      AND returned_allocation."reversesAllocationId" IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(
+          returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+        ) frozen_plan
+        WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation."id"
+          AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+          AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original_record."id"
+      );
+    IF reversed_used + prior_return_used + NEW."amountCents" > original_record."amountCents" THEN
+      RAISE EXCEPTION 'POL-275 真实退回超过原 allocation 剩余效果' USING ERRCODE = '23514';
+    END IF;
+    IF NEW."sourceRemainingAfterCents"
+      <> original_record."amountCents" - reversed_used - prior_return_used - NEW."amountCents"
+    THEN
+      RAISE EXCEPTION 'POL-275 原 allocation 退回余额快照不一致' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+  END IF;
+
   SELECT COALESCE(SUM(CASE WHEN allocation."reversesAllocationId" IS NULL
     THEN allocation."amountCents" ELSE -allocation."amountCents" END), 0)::BIGINT
     INTO net_used
@@ -811,7 +922,32 @@ BEGIN
     SELECT COALESCE(SUM("amountCents"), 0)::BIGINT INTO reversed_used
       FROM public."ClearingAllocation"
      WHERE "reversesAllocationId" = original_record."id";
-    IF reversed_used + NEW."amountCents" > original_record."amountCents" THEN
+    SELECT COALESCE(SUM(
+      returned_allocation."amountCents" - COALESCE((
+        SELECT SUM(return_reversal."amountCents")
+        FROM public."ClearingAllocation" return_reversal
+        WHERE return_reversal."reversesAllocationId" = returned_allocation."id"
+      ), 0)
+    ), 0)::BIGINT INTO prior_return_used
+    FROM public."ClearingAllocation" returned_allocation
+    JOIN public."ClearingEventVersion" returned_version
+      ON returned_version."id" = returned_allocation."eventVersionId"
+    JOIN public."ClearingEvent" returned_event
+      ON returned_event."id" = returned_version."clearingEventId"
+    JOIN public."ClearingConfirmation" returned_confirmation
+      ON returned_confirmation."eventVersionId" = returned_version."id"
+    WHERE returned_event."kind" = 'returned'
+      AND returned_allocation."reversesAllocationId" IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(
+          returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+        ) frozen_plan
+        WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation."id"
+          AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+          AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original_record."id"
+      );
+    IF reversed_used + prior_return_used + NEW."amountCents" > original_record."amountCents" THEN
       RAISE EXCEPTION '技术反向超过原分配剩余效果' USING ERRCODE = '23514';
     END IF;
     final_net_used := net_used - NEW."amountCents";
@@ -1435,6 +1571,7 @@ BEGIN
              allocation.ordinal::INTEGER AS allocation_no,
              allocation.value ->> 'allocationSourceKind' AS allocation_source_kind,
              allocation.value ->> 'sourceEventVersionId' AS source_event_version_id,
+             allocation.value -> 'frozenSource' AS frozen_source,
              (allocation.value ->> 'amountCents')::BIGINT AS amount_cents
       FROM jsonb_array_elements(intent -> 'eventAllocations')
         WITH ORDINALITY allocation(value, ordinal)
@@ -1452,7 +1589,8 @@ BEGIN
              p_decision_event_version_id::TEXT AS source_business_id,
              'original'::TEXT AS entry_kind,
              NULL::TEXT AS source_event_version_id,
-             NULL::TEXT AS source_link_key
+             NULL::TEXT AS source_link_key,
+             NULL::TEXT AS frozen_source_link_id
       FROM final_release
       WHERE version_record.event_kind IN ('final_confirmed', 'supplemental')
         AND final_release.amount_cents > 0
@@ -1460,14 +1598,14 @@ BEGIN
       SELECT 'original:confirmed-cost', 'confirmed-cost', 'confirmed_cost',
              version_record."amountCents", 'increase',
              'construction_enterprise_deduction', p_decision_event_version_id,
-             'original', NULL, NULL
+             'original', NULL, NULL, NULL
       WHERE version_record.event_kind IN ('final_confirmed', 'supplemental')
       UNION ALL
       SELECT 'original:construction-enterprise-funds-decrease',
              'construction-enterprise-funds-decrease',
              'construction_enterprise_funds_decrease',
              version_record."amountCents", 'decrease', NULL,
-             p_decision_event_version_id, 'original', NULL, NULL
+             p_decision_event_version_id, 'original', NULL, NULL, NULL
       WHERE version_record.event_kind IN ('final_confirmed', 'supplemental')
       UNION ALL
       SELECT 'return-' || allocation_no || ':construction-enterprise-funds-release',
@@ -1476,7 +1614,7 @@ BEGIN
              'increase', NULL,
              p_decision_event_version_id || ':return-' || allocation_no,
              'correction', source_event_version_id,
-             'original:construction-enterprise-funds-freeze'
+             'original:construction-enterprise-funds-freeze', NULL
       FROM allocation_plan
       WHERE version_record.event_kind = 'returned'
         AND allocation_source_kind = 'withheld'
@@ -1485,7 +1623,8 @@ BEGIN
              'confirmed-cost-return', 'confirmed_cost', amount_cents,
              'decrease', 'construction_enterprise_deduction',
              p_decision_event_version_id || ':return-' || allocation_no,
-             'correction', source_event_version_id, 'original:confirmed-cost'
+             'correction', source_event_version_id, 'original:confirmed-cost',
+             frozen_source -> 'sourceImpactIds' ->> 0
       FROM allocation_plan
       WHERE version_record.event_kind = 'returned'
         AND allocation_source_kind IN ('final_confirmed', 'supplemental')
@@ -1496,7 +1635,8 @@ BEGIN
              'increase', NULL,
              p_decision_event_version_id || ':return-' || allocation_no,
              'correction', source_event_version_id,
-             'original:construction-enterprise-funds-decrease'
+             'original:construction-enterprise-funds-decrease',
+             frozen_source -> 'sourceImpactIds' ->> 1
       FROM allocation_plan
       WHERE version_record.event_kind = 'returned'
         AND allocation_source_kind IN ('final_confirmed', 'supplemental')
@@ -1508,6 +1648,10 @@ BEGIN
       LEFT JOIN public."ClearingImpactLink" source_link
         ON source_link."eventVersionId" = expected_base.source_event_version_id
        AND source_link."sourceImpactKey" = expected_base.source_link_key
+       AND (
+         expected_base.frozen_source_link_id IS NULL
+         OR source_link."id" = expected_base.frozen_source_link_id
+       )
     ), actual AS (
       SELECT link."sourceImpactKey" AS source_impact_key,
              link."amountCents" AS link_amount_cents,
@@ -2033,14 +2177,24 @@ BEGIN
         WHEN 'prior_economic_event' THEN NOT public."pol275_jsonb_has_exact_keys"(
           resolution_line.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint',
-            'sourceClearingAllocationId', 'sourceImpactId'
+            'sourceClearingAllocationId', 'sourceImpactIds'
           ]) OR resolution_line.value -> 'frozenSource' ->> 'kind' <> 'prior_economic_event'
             OR resolution_line.value -> 'coverageId' <> 'null'::JSONB
             OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceEventVersionId', FALSE)
             OR jsonb_typeof(resolution_line.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
             OR resolution_line.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
             OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceClearingAllocationId', FALSE)
-            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceImpactId', FALSE)
+            OR jsonb_typeof(resolution_line.value -> 'frozenSource' -> 'sourceImpactIds') <> 'array'
+            OR jsonb_array_length(resolution_line.value -> 'frozenSource' -> 'sourceImpactIds') <> 2
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(resolution_line.value -> 'frozenSource' -> 'sourceImpactIds') source_impact_id(value)
+              WHERE NOT public."pol275_jsonb_is_nonempty_string_v1"(source_impact_id.value, FALSE)
+            )
+            OR (
+              SELECT COUNT(DISTINCT source_impact_id.value #>> '{}')
+              FROM jsonb_array_elements(resolution_line.value -> 'frozenSource' -> 'sourceImpactIds') source_impact_id(value)
+            ) <> 2
         ELSE TRUE
       END
   ) THEN
@@ -2104,25 +2258,45 @@ BEGIN
         WHEN 'final_confirmed' THEN NOT public."pol275_jsonb_has_exact_keys"(
           allocation.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint',
-            'sourceClearingAllocationId', 'sourceImpactId'
+            'sourceClearingAllocationId', 'sourceImpactIds'
           ]) OR allocation.value -> 'frozenSource' ->> 'kind' <> 'prior_economic_event'
             OR jsonb_typeof(allocation.value -> 'sourceEventVersionId') <> 'string'
             OR allocation.value ->> 'sourceEventVersionId' IS DISTINCT FROM allocation.value -> 'frozenSource' ->> 'sourceEventVersionId'
             OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
             OR allocation.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
             OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceClearingAllocationId', FALSE)
-            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceImpactId', FALSE)
+            OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceImpactIds') <> 'array'
+            OR jsonb_array_length(allocation.value -> 'frozenSource' -> 'sourceImpactIds') <> 2
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(allocation.value -> 'frozenSource' -> 'sourceImpactIds') source_impact_id(value)
+              WHERE NOT public."pol275_jsonb_is_nonempty_string_v1"(source_impact_id.value, FALSE)
+            )
+            OR (
+              SELECT COUNT(DISTINCT source_impact_id.value #>> '{}')
+              FROM jsonb_array_elements(allocation.value -> 'frozenSource' -> 'sourceImpactIds') source_impact_id(value)
+            ) <> 2
         WHEN 'supplemental' THEN NOT public."pol275_jsonb_has_exact_keys"(
           allocation.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint',
-            'sourceClearingAllocationId', 'sourceImpactId'
+            'sourceClearingAllocationId', 'sourceImpactIds'
           ]) OR allocation.value -> 'frozenSource' ->> 'kind' <> 'prior_economic_event'
             OR jsonb_typeof(allocation.value -> 'sourceEventVersionId') <> 'string'
             OR allocation.value ->> 'sourceEventVersionId' IS DISTINCT FROM allocation.value -> 'frozenSource' ->> 'sourceEventVersionId'
             OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
             OR allocation.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
             OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceClearingAllocationId', FALSE)
-            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceImpactId', FALSE)
+            OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceImpactIds') <> 'array'
+            OR jsonb_array_length(allocation.value -> 'frozenSource' -> 'sourceImpactIds') <> 2
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(allocation.value -> 'frozenSource' -> 'sourceImpactIds') source_impact_id(value)
+              WHERE NOT public."pol275_jsonb_is_nonempty_string_v1"(source_impact_id.value, FALSE)
+            )
+            OR (
+              SELECT COUNT(DISTINCT source_impact_id.value #>> '{}')
+              FROM jsonb_array_elements(allocation.value -> 'frozenSource' -> 'sourceImpactIds') source_impact_id(value)
+            ) <> 2
         ELSE TRUE
       END
   ) THEN
@@ -2413,14 +2587,21 @@ BEGIN
     THEN
       RAISE EXCEPTION 'POL-275 覆盖来源不是同案精确已确认暂扣版本' USING ERRCODE = '23514';
     END IF;
-    IF intent ->> 'operation' = 'add_coverage' AND EXISTS (
-      SELECT 1 FROM public."ClearingReconciliationRevision" later
-      WHERE later."itemId" = target_revision."itemId"
-        AND later."revisionNo" > target_revision."revisionNo"
-        AND NOT EXISTS (
-          SELECT 1 FROM public."ClearingReconciliationDefinitionReversal" reversed
-          WHERE reversed."targetRevisionId" = later."id"
-        )
+    IF intent ->> 'operation' = 'add_coverage' AND (
+      EXISTS (
+        SELECT 1
+        FROM public."ClearingReconciliationDefinitionReversal" target_reversal
+        WHERE target_reversal."targetRevisionId" = target_revision."id"
+      )
+      OR EXISTS (
+        SELECT 1 FROM public."ClearingReconciliationRevision" later
+        WHERE later."itemId" = target_revision."itemId"
+          AND later."revisionNo" > target_revision."revisionNo"
+          AND NOT EXISTS (
+            SELECT 1 FROM public."ClearingReconciliationDefinitionReversal" reversed
+            WHERE reversed."targetRevisionId" = later."id"
+          )
+      )
     ) THEN
       RAISE EXCEPTION 'POL-275 只能给当前有效 revision 补充覆盖' USING ERRCODE = '40001';
     END IF;

@@ -18,6 +18,7 @@ export interface ClearingAllocationInput {
   sourceKind: ClearingAllocationSourceKind;
   amountCents: bigint;
   sourceRemainingCents: bigint;
+  sourceCapacityKey?: string;
   reversesAllocationId?: string | null;
 }
 
@@ -193,9 +194,10 @@ function planAllocations(
     }
 
     const sourceKey =
-      allocation.sourceKind === "authority_cap"
+      allocation.sourceCapacityKey ??
+      (allocation.sourceKind === "authority_cap"
         ? "authority_cap"
-        : `${allocation.sourceKind}:${allocation.sourceEventVersionId}`;
+        : `${allocation.sourceKind}:${allocation.sourceEventVersionId}`);
     const consumed = consumedBySource.get(sourceKey);
     if (
       consumed &&

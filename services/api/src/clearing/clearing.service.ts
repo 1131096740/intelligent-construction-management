@@ -930,6 +930,13 @@ export class ClearingService {
         "clearing_event",
         eventId
       );
+      if (reconciliationIntent?.operation === "add_coverage") {
+        await this.assertCoverageTargetStillCurrent(
+          tx,
+          clearingCase,
+          reconciliationIntent
+        );
+      }
 
       if (event.kind === "pending_reconciliation") {
         await this.ensurePendingHasWithheld(
@@ -1165,11 +1172,34 @@ export class ClearingService {
     if (event.kind === "returned") {
       for (const [index, allocation] of plan.allocations.entries()) {
         if (!allocation.sourceEventVersionId) continue;
+        const frozen = frozenAllocationPlans[index];
+        const frozenSource = frozen ? asRecord(frozen.frozenSource) : null;
+        const sourceImpactIds = frozenSource?.kind === "prior_economic_event"
+          ? priorEconomicSourceImpactIds(frozenSource)
+          : null;
         const sourceLinks = await tx.clearingImpactLink.findMany({
-          where: { eventVersionId: allocation.sourceEventVersionId },
+          where: sourceImpactIds
+            ? {
+                eventVersionId: allocation.sourceEventVersionId,
+                id: { in: sourceImpactIds }
+              }
+            : { eventVersionId: allocation.sourceEventVersionId },
           orderBy: { sourceImpactKey: "asc" }
         });
-        if (!sourceLinks.length) throw new ConflictException("退回来源缺少正式经营账投影");
+        if (
+          !sourceLinks.length ||
+          (sourceImpactIds &&
+            (sourceLinks.length !== 2 ||
+              !sourceLinks.every((link) => sourceImpactIds.includes(link.id)) ||
+              ![
+                "original:confirmed-cost",
+                "original:construction-enterprise-funds-decrease"
+              ].every((key) =>
+                sourceLinks.some((link) => link.sourceImpactKey === key)
+              )))
+        ) {
+          throw new ConflictException("退回来源缺少冻结的 exact 经营账投影");
+        }
         const sourceFactIds = new Set(sourceLinks.map((link) => link.operatingFactId));
         if (sourceFactIds.size !== 1) {
           throw new ConflictException("退回来源经营账投影损坏，请停止操作并复核数据");
@@ -1806,28 +1836,28 @@ export class ClearingService {
           frozenSource.sourceClearingAllocationId,
           "V1 冻结既有经济 allocation 坐标损坏"
         );
-        const sourceImpactId = requiredText(
-          frozenSource.sourceImpactId,
-          "V1 冻结既有经济 impact 坐标损坏"
+        const capacity = await this.lockPriorEconomicAllocationCapacity(
+          tx,
+          sourceEventVersionId,
+          sourceClearingAllocationId,
+          priorEconomicSourceImpactIds(frozenSource)
         );
-        const expectedTargetEventVersionId = sourceEventVersionId;
-        const [allocation, impact] = await Promise.all([
-          tx.clearingAllocation.findUnique({
-            where: { id: sourceClearingAllocationId },
-            select: { eventVersionId: true }
-          }),
-          tx.clearingImpactLink.findUnique({
-            where: { id: sourceImpactId },
-            select: { eventVersionId: true }
-          })
-        ]);
-        if (
-          !allocation ||
-          allocation.eventVersionId !== expectedTargetEventVersionId ||
-          !impact ||
-          impact.eventVersionId !== expectedTargetEventVersionId
-        ) {
-          throw new ConflictException("V1 冻结既有经济来源链已漂移，必须 revise");
+        if (!reversedAllocation) {
+          const sourceKey = `prior_economic_event:${sourceClearingAllocationId}`;
+          const plannedConsumption =
+            (plannedConsumptionBySource.get(sourceKey) ?? 0n) + amountCents;
+          if (plannedConsumption > capacity.remaining) {
+            throw new ConflictException("既有经济事件可退回金额已漂移，请重新准备版本");
+          }
+          plannedConsumptionBySource.set(sourceKey, plannedConsumption);
+          output.push({
+            sourceEventVersionId,
+            sourceKind: plan.allocationSourceKind,
+            amountCents,
+            sourceRemainingCents: capacity.remaining,
+            sourceCapacityKey: sourceKey
+          });
+          continue;
         }
       }
       const [available] = await tx.$queryRaw<
@@ -1882,6 +1912,154 @@ export class ClearingService {
     return output;
   }
 
+  private async assertCoverageTargetStillCurrent(
+    tx: Tx,
+    clearingCase: ClearingCase,
+    reconciliationIntent: Record<string, unknown>
+  ): Promise<void> {
+    if (!Array.isArray(reconciliationIntent.coverages)) {
+      throw new ConflictException("V1 冻结补充覆盖计划损坏，请停止操作并复核数据");
+    }
+    const targetRevisionIds = new Set(
+      reconciliationIntent.coverages.map((entry) =>
+        requiredText(
+          asRecord(entry).reconciliationRevisionId,
+          "V1 冻结补充覆盖缺少目标 revision"
+        )
+      )
+    );
+    if (targetRevisionIds.size !== 1) {
+      throw new ConflictException("V1 冻结补充覆盖必须绑定唯一目标 revision");
+    }
+    const targetRevisionId = [...targetRevisionIds][0]!;
+    const [target] = await tx.$queryRaw<Array<{
+      itemId: string;
+      revisionNo: number;
+    }>>(Prisma.sql`
+      SELECT revision."itemId", revision."revisionNo"
+      FROM "ClearingReconciliationRevision" revision
+      WHERE revision.id = ${targetRevisionId}
+        AND revision."clearingCaseId" = ${clearingCase.id}
+      FOR UPDATE
+    `);
+    if (!target) {
+      throw new ConflictException("V1 冻结补充覆盖目标 revision 已漂移");
+    }
+    const [state] = await tx.$queryRaw<Array<{
+      reversed: boolean;
+      hasLaterEffective: boolean;
+    }>>(Prisma.sql`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM "ClearingReconciliationDefinitionReversal" reversal
+          WHERE reversal."targetRevisionId" = ${targetRevisionId}
+        ) AS reversed,
+        EXISTS (
+          SELECT 1
+          FROM "ClearingReconciliationRevision" later
+          WHERE later."itemId" = ${target.itemId}
+            AND later."revisionNo" > ${target.revisionNo}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "ClearingReconciliationDefinitionReversal" later_reversal
+              WHERE later_reversal."targetRevisionId" = later.id
+            )
+        ) AS "hasLaterEffective"
+    `);
+    if (state?.reversed || state?.hasLaterEffective) {
+      throw new ConflictException("只能给当前有效 revision 补充覆盖");
+    }
+  }
+
+  private async lockPriorEconomicAllocationCapacity(
+    tx: Tx,
+    sourceEventVersionId: string,
+    sourceClearingAllocationId: string,
+    sourceImpactIds: readonly string[]
+  ): Promise<{ remaining: bigint }> {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:allocation:' || ${sourceClearingAllocationId}, 0)
+      )
+    `);
+    const [original] = await tx.$queryRaw<Array<{
+      eventVersionId: string;
+      amountCents: bigint;
+      reversesAllocationId: string | null;
+    }>>(Prisma.sql`
+      SELECT allocation."eventVersionId", allocation."amountCents",
+             allocation."reversesAllocationId"
+      FROM "ClearingAllocation" allocation
+      WHERE allocation.id = ${sourceClearingAllocationId}
+      FOR UPDATE
+    `);
+    const sourceLinks = await tx.clearingImpactLink.findMany({
+      where: {
+        id: { in: [...sourceImpactIds] },
+        eventVersionId: sourceEventVersionId
+      },
+      select: { id: true, sourceImpactKey: true, operatingFactId: true }
+    });
+    if (
+      !original ||
+      original.eventVersionId !== sourceEventVersionId ||
+      original.reversesAllocationId !== null ||
+      sourceLinks.length !== 2 ||
+      !sourceLinks.every((link) => sourceImpactIds.includes(link.id)) ||
+      new Set(sourceLinks.map((link) => link.operatingFactId)).size !== 1 ||
+      ![
+        "original:confirmed-cost",
+        "original:construction-enterprise-funds-decrease"
+      ].every((key) => sourceLinks.some((link) => link.sourceImpactKey === key))
+    ) {
+      throw new ConflictException("V1 冻结既有经济来源链已漂移，必须 revise");
+    }
+    const [capacity] = await tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
+      SELECT (
+        original."amountCents"
+        - COALESCE((
+            SELECT SUM(direct_reversal."amountCents")
+            FROM "ClearingAllocation" direct_reversal
+            WHERE direct_reversal."reversesAllocationId" = original.id
+          ), 0)
+        - COALESCE((
+            SELECT SUM(
+              returned_allocation."amountCents" - COALESCE((
+                SELECT SUM(return_reversal."amountCents")
+                FROM "ClearingAllocation" return_reversal
+                WHERE return_reversal."reversesAllocationId" = returned_allocation.id
+              ), 0)
+            )
+            FROM "ClearingAllocation" returned_allocation
+            JOIN "ClearingEventVersion" returned_version
+              ON returned_version.id = returned_allocation."eventVersionId"
+            JOIN "ClearingEvent" returned_event
+              ON returned_event.id = returned_version."clearingEventId"
+            JOIN "ClearingConfirmation" returned_confirmation
+              ON returned_confirmation."eventVersionId" = returned_version.id
+            WHERE returned_event.kind = 'returned'
+              AND returned_allocation."reversesAllocationId" IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(
+                  returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+                ) frozen_plan
+                WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+                  AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+                  AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original.id
+              )
+          ), 0)
+      )::bigint AS remaining
+      FROM "ClearingAllocation" original
+      WHERE original.id = ${sourceClearingAllocationId}
+    `);
+    if (!capacity || capacity.remaining < 0n) {
+      throw new ConflictException("既有经济事件原 allocation 占用已损坏");
+    }
+    return capacity;
+  }
+
   private async reversedAllocationIdFromFrozenIntent(
     tx: Tx,
     clearingCase: ClearingCase,
@@ -1918,6 +2096,11 @@ export class ClearingService {
     sourceEventVersionId: string | null,
     amountCents: bigint
   ) {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:allocation:' || ${reversesAllocationId}, 0)
+      )
+    `);
     const original = await tx.clearingAllocation.findUnique({
       where: { id: reversesAllocationId },
       include: {
@@ -1937,7 +2120,39 @@ export class ClearingService {
       where: { reversesAllocationId: original.id },
       _sum: { amountCents: true }
     });
-    if (amountCents > original.amountCents - (reversed._sum.amountCents ?? 0n)) {
+    const [priorReturns] = await tx.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+      SELECT COALESCE(SUM(
+        returned_allocation."amountCents" - COALESCE((
+          SELECT SUM(return_reversal."amountCents")
+          FROM "ClearingAllocation" return_reversal
+          WHERE return_reversal."reversesAllocationId" = returned_allocation.id
+        ), 0)
+      ), 0)::bigint AS total
+      FROM "ClearingAllocation" returned_allocation
+      JOIN "ClearingEventVersion" returned_version
+        ON returned_version.id = returned_allocation."eventVersionId"
+      JOIN "ClearingEvent" returned_event
+        ON returned_event.id = returned_version."clearingEventId"
+      JOIN "ClearingConfirmation" returned_confirmation
+        ON returned_confirmation."eventVersionId" = returned_version.id
+      WHERE returned_event.kind = 'returned'
+        AND returned_allocation."reversesAllocationId" IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+          ) frozen_plan
+          WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+            AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+            AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = ${original.id}
+        )
+    `);
+    if (
+      amountCents >
+      original.amountCents -
+        (reversed._sum.amountCents ?? 0n) -
+        (priorReturns?.total ?? 0n)
+    ) {
       throw new ConflictException("技术反向超过原 allocation 剩余效果");
     }
     return original;
@@ -2547,11 +2762,12 @@ function reconciliationEventAllocations(intent: Record<string, unknown>): Array<
         "sourceEventVersionId",
         "sourceEventVersionFingerprint",
         "sourceClearingAllocationId",
-        "sourceImpactId"
+        "sourceImpactIds"
       ], "V1 冻结 prior-event allocation 来源");
       if (frozenSource.kind !== "prior_economic_event") {
         throw new ConflictException("V1 冻结 prior-event allocation 来源类型损坏");
       }
+      priorEconomicSourceImpactIds(frozenSource);
     }
     return {
       allocationNo: Number(plan.allocationNo),
@@ -2572,6 +2788,24 @@ function reconciliationEventAllocations(intent: Record<string, unknown>): Array<
     throw new ConflictException("V1 冻结 allocation ID 不得重复");
   }
   return plans;
+}
+
+function priorEconomicSourceImpactIds(
+  frozenSource: Record<string, unknown>
+): [string, string] {
+  if (
+    !Array.isArray(frozenSource.sourceImpactIds) ||
+    frozenSource.sourceImpactIds.length !== 2 ||
+    frozenSource.sourceImpactIds.some(
+      (value) => typeof value !== "string" || value.trim().length === 0
+    ) ||
+    new Set(frozenSource.sourceImpactIds).size !== 2
+  ) {
+    throw new ConflictException(
+      "V1 冻结既有经济 impact 集合损坏，请停止操作并复核数据"
+    );
+  }
+  return frozenSource.sourceImpactIds as [string, string];
 }
 
 function assertExactSnapshotKeys(

@@ -1108,7 +1108,7 @@ describe("ClearingService", () => {
       plannedIds: {
         newItemId: null,
         revisionId: null,
-        coverageIds: [],
+        coverageIds: ["coverage-1"],
         resolutionIds: [],
         resolutionLineIds: [],
         definitionReversalId: null,
@@ -1116,7 +1116,7 @@ describe("ClearingService", () => {
       },
       plannedPairedWithheld: null,
       itemDefinition: null,
-      coverages: [],
+      coverages: [{ reconciliationRevisionId: "revision-1" }],
       resolutions: [],
       definitionReversal: null,
       eventAllocations: []
@@ -1124,6 +1124,9 @@ describe("ClearingService", () => {
     const rawResults = [
       [{ id: "event-1" }],
       [{ id: "case-1" }],
+      [{ lockedUsers: 1n, lockedPositions: 1n, lockedDelegations: 0n }],
+      [{ itemId: "item-1", revisionNo: 1 }],
+      [{ reversed: false, hasLaterEffective: false }],
       [{ total: 0n }],
       [{ relation_set_hash: "seal-hash" }]
     ];
@@ -1191,7 +1194,7 @@ describe("ClearingService", () => {
       workflowStatus: "confirmed"
     });
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(5);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(7);
     expect(tx.clearingConfirmation.create).toHaveBeenCalledTimes(1);
   });
 
