@@ -11,7 +11,6 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -21,6 +20,7 @@ import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
 import { UploadPrivateFileDto } from "./dto/upload-private-file.dto";
 import { FileService } from "./file.service";
 import {
+  FileInterceptor,
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "./uploaded-file";

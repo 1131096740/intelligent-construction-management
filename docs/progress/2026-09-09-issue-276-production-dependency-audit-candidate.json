@@ -1,0 +1,73 @@
+{
+  "actions": [
+    {
+      "action": "review",
+      "module": "@nestjs/core",
+      "resolves": [
+        {
+          "id": 1117063,
+          "path": "services__api>@nestjs/core",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    }
+  ],
+  "advisories": {
+    "1117063": {
+      "findings": [
+        {
+          "version": "10.4.22",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > @nestjs/core@10.4.22",
+            "services/api > @nestjs/platform-express@10.4.22 > @nestjs/core@10.4.22"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nestjs/nest/security/advisories/GHSA-36xv-jgw5-4q75\n- https://github.com/nestjs/nest/pull/16686\n- https://github.com/nestjs/nest/commit/83558ae774a990a7916141d3abe0b6548ff3a8b2\n- https://github.com/nestjs/nest/releases/tag/v11.1.18\n- https://nvd.nist.gov/vuln/detail/CVE-2026-35515\n- https://github.com/advisories/GHSA-36xv-jgw5-4q75",
+      "created": "2026-04-06T17:59:51.000Z",
+      "id": 1117063,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n_What kind of vulnerability is it? Who is impacted?_\n\n[`SseStream._transform()`](https://github.com/nestjs/nest/blob/dea5279ef8fcb568de158003e4281759a2cd7675/packages/core/router/sse-stream.ts) interpolates `message.type` and `message.id` directly into Server-Sent Events text protocol output without sanitizing newline characters (`\\r`, `\\n`). Since the SSE protocol treats both `\\r` and `\\n` as field delimiters and `\\n\\n` as event boundaries, an attacker who can influence these fields through upstream data sources can inject arbitrary SSE events, spoof event types, and corrupt reconnection state. Spring Framework's own security patch ([6e97587](https://github.com/spring-projects/spring-framework/commit/6e9758700a4946be1dca85ca937ef2603e291301)) validates these same fields (`id`, `event`) for the same reason.\n\nActual impact:\n\n- **Event spoofing**: Attacker forges SSE events with arbitrary `event:` types, causing client-side `EventSource.addEventListener()` callbacks to fire for wrong event types.\n- **Data injection**: Attacker injects arbitrary `data:` payloads, potentially triggering XSS if the client renders SSE data as HTML without sanitization.\n- **Reconnection corruption**: Attacker injects `id:` fields, corrupting the `Last-Event-ID` header on reconnection, causing the client to miss or replay events.\n- **Attack precondition**: Requires the developer to map user-influenced data to the `type` or `id` fields of SSE messages. Direct HTTP request input does not reach these fields without developer code bridging the gap.\n-\n### Patches\n_Has the problem been patched? What versions should users upgrade to?_\n\nPatched in `@nestjs/core@11.1.18`",
+      "reported_by": null,
+      "title": "@nestjs/core Improperly Neutralizes Special Elements in Output Used by a Downstream Component ('Injection')",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-35515"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "@nestjs/core",
+      "vulnerable_versions": "<=11.1.17",
+      "github_advisory_id": "GHSA-36xv-jgw5-4q75",
+      "recommendation": "Upgrade to version 11.1.18 or later",
+      "patched_versions": ">=11.1.18",
+      "updated": "2026-04-24T20:46:24.000Z",
+      "cvss": {
+        "score": 6.1,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:N/A:L"
+      },
+      "cwe": [
+        "CWE-74"
+      ],
+      "url": "https://github.com/advisories/GHSA-36xv-jgw5-4q75"
+    }
+  },
+  "muted": [],
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 0,
+      "critical": 0
+    },
+    "dependencies": 351,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 351
+  }
+}

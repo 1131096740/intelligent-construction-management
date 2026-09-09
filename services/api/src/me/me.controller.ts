@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { FileInterceptor } from "../file/uploaded-file";
 import { MeService } from "./me.service";
 
 interface MemoryUploadedFile {

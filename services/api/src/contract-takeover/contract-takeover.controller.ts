@@ -12,7 +12,6 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canPerform,
@@ -30,6 +29,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTaxFactsService } from "../contract-tax-facts/contract-tax-facts.service";
 import { FileService } from "../file/file.service";
 import {
+  FileInterceptor,
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";

@@ -11,7 +11,6 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   BUSINESS_ENTRY_OPERATIONS,
   type BusinessEntrySubmissionTarget,
@@ -20,7 +19,7 @@ import {
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
-import type { MemoryUploadedFile } from "../file/uploaded-file";
+import { FileInterceptor, type MemoryUploadedFile } from "../file/uploaded-file";
 import {
   BUSINESS_ENTRY_XLSX_MIME,
   BusinessEntryExcelService

@@ -1,4 +1,6 @@
 import PizZip from "pizzip";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import {
   formatChineseUppercaseMoney,
   formatMoneyCents,
@@ -65,7 +67,30 @@ function requiredValues(values: Record<string, unknown> = {}) {
   };
 }
 
+const nodeRequire = createRequire(__filename);
+
+function xmldomVersionUsedByDocxtemplater(): string {
+  const docxtemplaterEntry = nodeRequire.resolve("docxtemplater");
+  const xmldomEntry = nodeRequire.resolve("@xmldom/xmldom", {
+    paths: [dirname(docxtemplaterEntry)]
+  });
+  return (nodeRequire(join(dirname(xmldomEntry), "..", "package.json")) as {
+    version: string;
+  }).version;
+}
+
 describe("contract DOCX renderer", () => {
+  it("runs the patched XML parser through the real Docxtemplater renderer", () => {
+    expect(xmldomVersionUsedByDocxtemplater()).toBe("0.9.12");
+
+    const result = renderContractDocx(
+      createDocx(paragraph("{contract.name}|{document.watermark}")),
+      { values: requiredValues() }
+    );
+
+    expect(renderedDocumentXml(result)).toContain("钢材采购合同");
+  });
+
   it("renders contract, field, clause, and party placeholders", () => {
     const template = createDocx(
       paragraph(
