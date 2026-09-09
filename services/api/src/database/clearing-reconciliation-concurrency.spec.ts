@@ -827,6 +827,193 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           await client.clearingImpactLink.count({ where: { eventVersionId: mixed.versionId } }),
           3
         );
+        const allocation40 = mixedAllocations.find(
+          (allocation) => allocation.amountCents === 40n
+        );
+        const allocation60 = mixedAllocations.find(
+          (allocation) => allocation.amountCents === 60n
+        );
+        assert.ok(allocation40);
+        assert.ok(allocation60);
+
+        const allocationScopedOpen = await confirmV1Event(
+          client,
+          service,
+          actors,
+          {
+            caseId,
+            expectedCaseRevision: await currentCaseRevision(client, caseId),
+            kind: "pending_reconciliation",
+            amountCents: "160",
+            reconciliationIntent: {
+              operation: "open_item",
+              itemDefinition: { mode: "independent", amountCents: "160" },
+              coverages: []
+            }
+          }
+        );
+        const allocationScopedRevision =
+          await client.clearingReconciliationRevision.findUniqueOrThrow({
+            where: { decisionEventVersionId: allocationScopedOpen.versionId }
+          });
+        caseRevision = await currentCaseRevision(client, caseId);
+        const allocationScopedPrepared = eventResult(await service.createEvent(
+          actors.preparerUserId,
+          caseId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: caseRevision,
+            kind: "returned",
+            amountCents: "100",
+            evidenceLevel: "B",
+            businessReason: "验证同事件不同 allocation 的准备容量相互独立",
+            reconciliationIntent: {
+              operation: "resolve",
+              resolutions: [{
+                reconciliationRevisionId: allocationScopedRevision.id,
+                amountCents: "40",
+                lines: [{
+                  sourceKind: "prior_economic_event",
+                  sourceSelectionRef: selectionRefs.issue({
+                    actorUserId: actors.preparerUserId,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    purpose: "allocation",
+                    selectedKey: allocation40.id,
+                    revision: caseRevision
+                  }),
+                  amountCents: "40"
+                }]
+              }],
+              ordinaryAllocations: [{
+                sourceKind: "final_confirmed",
+                sourceSelectionRef: selectionRefs.issue({
+                  actorUserId: actors.preparerUserId,
+                  authorityVersionId: clearingCase.authorityVersionId!,
+                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                  purpose: "allocation",
+                  selectedKey: allocation60.id,
+                  revision: caseRevision
+                }),
+                amountCents: "60"
+              }]
+            }
+          }
+        ));
+        const allocationScopedVersion = await client.clearingEventVersion.findUniqueOrThrow({
+          where: { id: allocationScopedPrepared.versionId }
+        });
+        const allocationScopedIntent = (allocationScopedVersion.payloadSnapshot as {
+          reconciliationIntent: {
+            eventAllocations: Array<{
+              amountCents: string;
+              frozenSource: { sourceClearingAllocationId: string };
+            }>;
+          };
+        }).reconciliationIntent;
+        assert.deepEqual(
+          allocationScopedIntent.eventAllocations.map((allocation) => [
+            allocation.frozenSource.sourceClearingAllocationId,
+            allocation.amountCents
+          ]),
+          [[allocation40.id, "40"], [allocation60.id, "60"]]
+        );
+
+        caseRevision = await currentCaseRevision(client, caseId);
+        await expect(service.createEvent(actors.preparerUserId, caseId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: caseRevision,
+          kind: "returned",
+          amountCents: "61",
+          evidenceLevel: "B",
+          businessReason: "验证同 allocation 多行准备累计超额失败关闭",
+          reconciliationIntent: {
+            operation: "resolve",
+            resolutions: [{
+              reconciliationRevisionId: allocationScopedRevision.id,
+              amountCents: "61",
+              lines: ["30", "31"].map((amountCents) => ({
+                sourceKind: "prior_economic_event",
+                sourceSelectionRef: selectionRefs.issue({
+                  actorUserId: actors.preparerUserId,
+                  authorityVersionId: clearingCase.authorityVersionId!,
+                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                  purpose: "allocation",
+                  selectedKey: allocation60.id,
+                  revision: caseRevision
+                }),
+                amountCents
+              }))
+            }],
+            ordinaryAllocations: []
+          }
+        })).rejects.toThrow(/既有经济事件可退回金额已漂移/iu);
+
+        const revisable = eventResult(await service.createEvent(
+          actors.preparerUserId,
+          caseId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: caseRevision,
+            kind: "returned",
+            amountCents: "60",
+            evidenceLevel: "B",
+            businessReason: "验证 revise 复用 exact allocation 累计容量",
+            reconciliationIntent: {
+              operation: "resolve",
+              resolutions: [{
+                reconciliationRevisionId: allocationScopedRevision.id,
+                amountCents: "60",
+                lines: [{
+                  sourceKind: "prior_economic_event",
+                  sourceSelectionRef: selectionRefs.issue({
+                    actorUserId: actors.preparerUserId,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    purpose: "allocation",
+                    selectedKey: allocation60.id,
+                    revision: caseRevision
+                  }),
+                  amountCents: "60"
+                }]
+              }],
+              ordinaryAllocations: []
+            }
+          }
+        ));
+        caseRevision = await currentCaseRevision(client, caseId);
+        await expect(service.reviseEvent(
+          actors.preparerUserId,
+          revisable.id,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: revisable.revision,
+            kind: "returned",
+            amountCents: "61",
+            evidenceLevel: "B",
+            businessReason: "验证 revise 同 allocation 多行累计超额失败关闭",
+            reconciliationIntent: {
+              operation: "resolve",
+              resolutions: [{
+                reconciliationRevisionId: allocationScopedRevision.id,
+                amountCents: "61",
+                lines: ["30", "31"].map((amountCents) => ({
+                  sourceKind: "prior_economic_event",
+                  sourceSelectionRef: selectionRefs.issue({
+                    actorUserId: actors.preparerUserId,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    purpose: "allocation",
+                    selectedKey: allocation60.id,
+                    revision: caseRevision
+                  }),
+                  amountCents
+                }))
+              }],
+              ordinaryAllocations: []
+            }
+          }
+        )).rejects.toThrow(/既有经济事件可退回金额已漂移/iu);
 
         caseRevision = (await client.clearingCase.findUniqueOrThrow({ where: { id: caseId }, select: { revision: true } })).revision;
         const returnOpen = await confirmV1Event(client, service, actors, {
@@ -997,6 +1184,217 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         assert.equal(
           await client.clearingReconciliationDecisionSeal.count({
             where: { decisionEventVersionId: secondCompetingReturn.versionId }
+          }),
+          0
+        );
+
+        const legacyAfterV1 = await prepareLegacyEvent(service, actors, {
+          caseId,
+          expectedCaseRevision: await currentCaseRevision(client, caseId),
+          kind: "returned",
+          amountCents: "1",
+          businessReason: "验证旧退回不得进入精确 allocation 退回链"
+        });
+        await expect(service.confirmEvent(
+          actors.confirmerUserId,
+          legacyAfterV1.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: legacyAfterV1.eventRevision,
+            allocations: [{
+              sourceEventVersionId: mixed.versionId,
+              sourceKind: "final_confirmed",
+              amountCents: "1"
+            }]
+          }
+        )).rejects.toThrow(/精确 allocation 退回链.*旧退回不得混用/iu);
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: legacyAfterV1.versionId }
+          }),
+          0
+        );
+
+        const createLegacyFinalSource = async (suffix: string) => {
+          const sourceVersionId = await confirmLegacyEvent(service, actors, {
+            caseId,
+            expectedCaseRevision: await currentCaseRevision(client, caseId),
+            kind: "final_confirmed",
+            amountCents: "100",
+            businessReason: `验证退回兼容闭合-${suffix}`,
+            allocations: [{ sourceKind: "authority_cap", amountCents: "100" }]
+          });
+          const sourceAllocation = await client.clearingAllocation.findFirstOrThrow({
+            where: { eventVersionId: sourceVersionId }
+          });
+          return { sourceVersionId, sourceAllocation };
+        };
+        const openReturnItem = async (amountCents: string) => {
+          const opened = await confirmV1Event(client, service, actors, {
+            caseId,
+            expectedCaseRevision: await currentCaseRevision(client, caseId),
+            kind: "pending_reconciliation",
+            amountCents,
+            reconciliationIntent: {
+              operation: "open_item",
+              itemDefinition: { mode: "independent", amountCents },
+              coverages: []
+            }
+          });
+          return client.clearingReconciliationRevision.findUniqueOrThrow({
+            where: { decisionEventVersionId: opened.versionId },
+            select: { id: true }
+          });
+        };
+
+        const legacyFirstSource = await createLegacyFinalSource("legacy-first");
+        await confirmLegacyEvent(service, actors, {
+          caseId,
+          expectedCaseRevision: await currentCaseRevision(client, caseId),
+          kind: "returned",
+          amountCents: "60",
+          businessReason: "先确认无法映射 allocation 的旧退回",
+          allocations: [{
+            sourceEventVersionId: legacyFirstSource.sourceVersionId,
+            sourceKind: "final_confirmed",
+            amountCents: "60"
+          }]
+        });
+        const legacyFirstRevision = await openReturnItem("60");
+        const legacyFirstCaseRevision = await currentCaseRevision(client, caseId);
+        const returnedCountBeforePrepare = await client.clearingEvent.count({
+          where: { clearingCaseId: caseId, kind: "returned" }
+        });
+        await expect(service.createEvent(actors.preparerUserId, caseId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: legacyFirstCaseRevision,
+          kind: "returned",
+          amountCents: "60",
+          evidenceLevel: "B",
+          businessReason: "验证旧退回后 V1 精确退回失败关闭",
+          reconciliationIntent: {
+            operation: "resolve",
+            resolutions: [{
+              reconciliationRevisionId: legacyFirstRevision.id,
+              amountCents: "60",
+              lines: [{
+                sourceKind: "prior_economic_event",
+                sourceSelectionRef: selectionRefs.issue({
+                  actorUserId: actors.preparerUserId,
+                  authorityVersionId: clearingCase.authorityVersionId!,
+                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                  purpose: "allocation",
+                  selectedKey: legacyFirstSource.sourceAllocation.id,
+                  revision: legacyFirstCaseRevision
+                }),
+                amountCents: "60"
+              }]
+            }],
+            ordinaryAllocations: []
+          }
+        })).rejects.toThrow(/无法精确映射 allocation 的旧退回/iu);
+        assert.equal(
+          await client.clearingEvent.count({
+            where: { clearingCaseId: caseId, kind: "returned" }
+          }),
+          returnedCountBeforePrepare
+        );
+
+        const concurrentSource = await createLegacyFinalSource("concurrent");
+        const concurrentRevision = await openReturnItem("60");
+        const v1PrepareCaseRevision = await currentCaseRevision(client, caseId);
+        const v1Concurrent = await prepareAndAttestV1Event(
+          client,
+          service,
+          actors,
+          {
+            caseId,
+            expectedCaseRevision: v1PrepareCaseRevision,
+            kind: "returned",
+            amountCents: "60",
+            reconciliationIntent: {
+              operation: "resolve",
+              resolutions: [{
+                reconciliationRevisionId: concurrentRevision.id,
+                amountCents: "60",
+                lines: [{
+                  sourceKind: "prior_economic_event",
+                  sourceSelectionRef: selectionRefs.issue({
+                    actorUserId: actors.preparerUserId,
+                    authorityVersionId: clearingCase.authorityVersionId!,
+                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    purpose: "allocation",
+                    selectedKey: concurrentSource.sourceAllocation.id,
+                    revision: v1PrepareCaseRevision
+                  }),
+                  amountCents: "60"
+                }]
+              }],
+              ordinaryAllocations: []
+            }
+          }
+        );
+        const legacyConcurrent = await prepareLegacyEvent(service, actors, {
+          caseId,
+          expectedCaseRevision: await currentCaseRevision(client, caseId),
+          kind: "returned",
+          amountCents: "60",
+          businessReason: "与 V1 精确退回并发竞争"
+        });
+        const confirmationCaseRevision = await currentCaseRevision(client, caseId);
+        const concurrentResults = await Promise.allSettled([
+          service.confirmEvent(actors.confirmerUserId, v1Concurrent.eventId, {
+            idempotencyKey: randomUUID(),
+            expectedRevision: v1Concurrent.eventRevision,
+            expectedCaseRevision: confirmationCaseRevision,
+            eventVersionId: v1Concurrent.versionId,
+            expectedFingerprint: v1Concurrent.fingerprint,
+            confirmed: true
+          }),
+          service.confirmEvent(actors.confirmerUserId, legacyConcurrent.eventId, {
+            idempotencyKey: randomUUID(),
+            expectedRevision: legacyConcurrent.eventRevision,
+            allocations: [{
+              sourceEventVersionId: concurrentSource.sourceVersionId,
+              sourceKind: "final_confirmed",
+              amountCents: "60"
+            }]
+          })
+        ]);
+        assertExactlyOneFulfilled(concurrentResults);
+        const concurrentVersionIds = [
+          v1Concurrent.versionId,
+          legacyConcurrent.versionId
+        ];
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: { in: concurrentVersionIds } }
+          }),
+          1
+        );
+        assert.equal(
+          await client.clearingAllocation.aggregate({
+            where: {
+              eventVersionId: { in: concurrentVersionIds },
+              sourceEventVersionId: concurrentSource.sourceVersionId
+            },
+            _sum: { amountCents: true }
+          }).then((result) => result._sum.amountCents),
+          60n
+        );
+        const loserIndex = concurrentResults.findIndex(
+          (result) => result.status === "rejected"
+        );
+        const loserVersionId = concurrentVersionIds[loserIndex]!;
+        assert.equal(
+          await client.clearingAllocation.count({
+            where: { eventVersionId: loserVersionId }
+          }),
+          0
+        );
+        assert.equal(
+          await client.clearingReconciliationDecisionSeal.count({
+            where: { decisionEventVersionId: loserVersionId }
           }),
           0
         );
@@ -3248,13 +3646,17 @@ async function confirmLegacyEvent(
   input: {
     caseId: string;
     expectedCaseRevision: number;
-    kind: "withheld" | "final_confirmed";
+    kind: "withheld" | "final_confirmed" | "returned";
     amountCents: string;
     businessReason?: string;
     requiresAttestation?: boolean;
     allocations?: Array<{
-      sourceEventVersionId: string;
-      sourceKind: "withheld" | "authority_cap";
+      sourceEventVersionId?: string;
+      sourceKind:
+        | "withheld"
+        | "authority_cap"
+        | "final_confirmed"
+        | "supplemental";
       amountCents: string;
     }>;
   }
@@ -3288,13 +3690,17 @@ async function prepareLegacyEvent(
   input: {
     caseId: string;
     expectedCaseRevision: number;
-    kind: "withheld" | "final_confirmed";
+    kind: "withheld" | "final_confirmed" | "returned";
     amountCents: string;
     businessReason?: string;
     requiresAttestation?: boolean;
     allocations?: Array<{
-      sourceEventVersionId: string;
-      sourceKind: "withheld" | "authority_cap";
+      sourceEventVersionId?: string;
+      sourceKind:
+        | "withheld"
+        | "authority_cap"
+        | "final_confirmed"
+        | "supplemental";
       amountCents: string;
     }>;
   }

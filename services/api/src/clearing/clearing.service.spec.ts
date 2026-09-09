@@ -981,6 +981,7 @@ describe("ClearingService", () => {
         .mockResolvedValueOnce([{ id: "return-event" }])
         .mockResolvedValueOnce([{ id: "case-1" }])
         .mockResolvedValueOnce([{ total: 0n }])
+        .mockResolvedValueOnce([{ incompatible: false }])
         .mockResolvedValueOnce([{ total: 0n }]),
       clearingEvent: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1064,7 +1065,8 @@ describe("ClearingService", () => {
           affiliateCreditCodeSnapshot: null
         })
       },
-      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
+      $executeRaw: jest.fn().mockResolvedValue(1)
     };
     const { service } = serviceWith({
       tx,

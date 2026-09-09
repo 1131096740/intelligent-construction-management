@@ -1725,6 +1725,17 @@ export class ClearingService {
       ) {
         throw new BadRequestException("清算分配来源不存在、未确认或类型不一致");
       }
+      if (
+        kind === "returned" &&
+        (allocation.sourceKind === "final_confirmed" ||
+          allocation.sourceKind === "supplemental")
+      ) {
+        await this.lockReturnSourceEventCompatibility(
+          tx,
+          resolvedSourceId,
+          "legacy"
+        );
+      }
       const used = await tx.clearingAllocation.aggregate({
         where: { sourceEventVersionId: resolvedSourceId },
         _sum: { amountCents: true }
@@ -1978,6 +1989,11 @@ export class ClearingService {
     sourceClearingAllocationId: string,
     sourceImpactIds: readonly string[]
   ): Promise<{ remaining: bigint }> {
+    await this.lockReturnSourceEventCompatibility(
+      tx,
+      sourceEventVersionId,
+      "v1"
+    );
     await tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(
         hashtextextended('pol275:allocation:' || ${sourceClearingAllocationId}, 0)
@@ -2008,10 +2024,17 @@ export class ClearingService {
       sourceLinks.length !== 2 ||
       !sourceLinks.every((link) => sourceImpactIds.includes(link.id)) ||
       new Set(sourceLinks.map((link) => link.operatingFactId)).size !== 1 ||
-      ![
-        "original:confirmed-cost",
-        "original:construction-enterprise-funds-decrease"
-      ].every((key) => sourceLinks.some((link) => link.sourceImpactKey === key))
+      !sourceLinks.some(
+        (link) =>
+          link.id === sourceImpactIds[0] &&
+          link.sourceImpactKey === "original:confirmed-cost"
+      ) ||
+      !sourceLinks.some(
+        (link) =>
+          link.id === sourceImpactIds[1] &&
+          link.sourceImpactKey ===
+            "original:construction-enterprise-funds-decrease"
+      )
     ) {
       throw new ConflictException("V1 冻结既有经济来源链已漂移，必须 revise");
     }
@@ -2058,6 +2081,75 @@ export class ClearingService {
       throw new ConflictException("既有经济事件原 allocation 占用已损坏");
     }
     return capacity;
+  }
+
+  private async lockReturnSourceEventCompatibility(
+    tx: Tx,
+    sourceEventVersionId: string,
+    mode: "legacy" | "v1"
+  ): Promise<void> {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:event-version:' || ${sourceEventVersionId}, 0)
+      )
+    `);
+    const [conflict] = await tx.$queryRaw<Array<{ incompatible: boolean }>>(
+      mode === "v1"
+        ? Prisma.sql`
+            SELECT EXISTS (
+              SELECT 1
+              FROM "ClearingAllocation" returned_allocation
+              JOIN "ClearingEventVersion" returned_version
+                ON returned_version.id = returned_allocation."eventVersionId"
+              JOIN "ClearingEvent" returned_event
+                ON returned_event.id = returned_version."clearingEventId"
+              JOIN "ClearingConfirmation" returned_confirmation
+                ON returned_confirmation."eventVersionId" = returned_version.id
+              WHERE returned_event.kind = 'returned'
+                AND returned_allocation."reversesAllocationId" IS NULL
+                AND returned_allocation."sourceEventVersionId" = ${sourceEventVersionId}
+                AND returned_version."payloadSnapshot"
+                  -> 'reconciliationIntent' ->> 'schema'
+                  IS DISTINCT FROM 'clearing_reconciliation_intent/V1'
+            ) AS incompatible
+          `
+        : Prisma.sql`
+            SELECT EXISTS (
+              SELECT 1
+              FROM "ClearingAllocation" returned_allocation
+              JOIN "ClearingEventVersion" returned_version
+                ON returned_version.id = returned_allocation."eventVersionId"
+              JOIN "ClearingEvent" returned_event
+                ON returned_event.id = returned_version."clearingEventId"
+              JOIN "ClearingConfirmation" returned_confirmation
+                ON returned_confirmation."eventVersionId" = returned_version.id
+              WHERE returned_event.kind = 'returned'
+                AND returned_allocation."reversesAllocationId" IS NULL
+                AND returned_allocation."sourceEventVersionId" = ${sourceEventVersionId}
+                AND returned_version."payloadSnapshot"
+                  -> 'reconciliationIntent' ->> 'schema'
+                  = 'clearing_reconciliation_intent/V1'
+                AND EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(
+                    returned_version."payloadSnapshot"
+                      -> 'reconciliationIntent' -> 'eventAllocations'
+                  ) frozen_plan
+                  WHERE frozen_plan ->> 'clearingAllocationId'
+                    = returned_allocation.id
+                    AND frozen_plan -> 'frozenSource' ->> 'kind'
+                      = 'prior_economic_event'
+                )
+            ) AS incompatible
+          `
+    );
+    if (conflict?.incompatible) {
+      throw new ConflictException(
+        mode === "v1"
+          ? "既有经济事件已有无法精确映射 allocation 的旧退回，必须失败关闭"
+          : "既有经济事件已进入精确 allocation 退回链，旧退回不得混用"
+      );
+    }
   }
 
   private async reversedAllocationIdFromFrozenIntent(

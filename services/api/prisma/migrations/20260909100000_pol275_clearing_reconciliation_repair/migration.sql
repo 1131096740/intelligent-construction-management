@@ -660,6 +660,15 @@ BEGIN
     FROM public."ClearingCase"
    WHERE "id" = target_case_id;
 
+  IF target_kind = 'returned'
+    AND NOT EXISTS (
+      SELECT 1 FROM public."ClearingConfirmation"
+      WHERE "eventVersionId" = NEW."eventVersionId"
+    )
+  THEN
+    RAISE EXCEPTION 'POL-275 退回分配只能与确认同事务写入' USING ERRCODE = '23514';
+  END IF;
+
   IF target_intent ->> 'schema' = 'clearing_reconciliation_intent/V1' THEN
     IF NOT EXISTS (
       SELECT 1 FROM public."ClearingConfirmation"
@@ -810,6 +819,60 @@ BEGIN
     RAISE EXCEPTION '清算分配来源不存在、未确认、跨案或类型不一致' USING ERRCODE = '23514';
   END IF;
 
+  IF target_kind = 'returned'
+    AND NEW."reversesAllocationId" IS NULL
+    AND NEW."sourceKind" IN ('final_confirmed', 'supplemental')
+  THEN
+    IF target_intent ->> 'schema' = 'clearing_reconciliation_intent/V1'
+      AND EXISTS (
+        SELECT 1
+        FROM public."ClearingAllocation" returned_allocation
+        JOIN public."ClearingEventVersion" returned_version
+          ON returned_version."id" = returned_allocation."eventVersionId"
+        JOIN public."ClearingEvent" returned_event
+          ON returned_event."id" = returned_version."clearingEventId"
+        JOIN public."ClearingConfirmation" returned_confirmation
+          ON returned_confirmation."eventVersionId" = returned_version."id"
+        WHERE returned_event."kind" = 'returned'
+          AND returned_allocation."reversesAllocationId" IS NULL
+          AND returned_allocation."sourceEventVersionId" = NEW."sourceEventVersionId"
+          AND returned_version."payloadSnapshot"
+            -> 'reconciliationIntent' ->> 'schema'
+            IS DISTINCT FROM 'clearing_reconciliation_intent/V1'
+      )
+    THEN
+      RAISE EXCEPTION 'POL-275 既有经济事件已有无法精确映射 allocation 的旧退回' USING ERRCODE = '23514';
+    ELSIF target_intent ->> 'schema' IS DISTINCT FROM 'clearing_reconciliation_intent/V1'
+      AND EXISTS (
+        SELECT 1
+        FROM public."ClearingAllocation" returned_allocation
+        JOIN public."ClearingEventVersion" returned_version
+          ON returned_version."id" = returned_allocation."eventVersionId"
+        JOIN public."ClearingEvent" returned_event
+          ON returned_event."id" = returned_version."clearingEventId"
+        JOIN public."ClearingConfirmation" returned_confirmation
+          ON returned_confirmation."eventVersionId" = returned_version."id"
+        WHERE returned_event."kind" = 'returned'
+          AND returned_allocation."reversesAllocationId" IS NULL
+          AND returned_allocation."sourceEventVersionId" = NEW."sourceEventVersionId"
+          AND returned_version."payloadSnapshot"
+            -> 'reconciliationIntent' ->> 'schema'
+            = 'clearing_reconciliation_intent/V1'
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              returned_version."payloadSnapshot"
+                -> 'reconciliationIntent' -> 'eventAllocations'
+            ) frozen_plan
+            WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation."id"
+              AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+          )
+      )
+    THEN
+      RAISE EXCEPTION 'POL-275 既有经济事件已进入精确 allocation 退回链，旧退回不得混用' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+
   IF target_intent ->> 'schema' = 'clearing_reconciliation_intent/V1'
     AND target_kind = 'returned'
     AND NEW."reversesAllocationId" IS NULL
@@ -852,6 +915,23 @@ BEGIN
           ) source_impact_id(value)
         )
       ) <> 1
+      OR NOT EXISTS (
+        SELECT 1
+        FROM public."ClearingImpactLink" source_link
+        WHERE source_link."id"
+          = allocation_plan -> 'frozenSource' -> 'sourceImpactIds' ->> 0
+          AND source_link."eventVersionId" = NEW."sourceEventVersionId"
+          AND source_link."sourceImpactKey" = 'original:confirmed-cost'
+      )
+      OR NOT EXISTS (
+        SELECT 1
+        FROM public."ClearingImpactLink" source_link
+        WHERE source_link."id"
+          = allocation_plan -> 'frozenSource' -> 'sourceImpactIds' ->> 1
+          AND source_link."eventVersionId" = NEW."sourceEventVersionId"
+          AND source_link."sourceImpactKey"
+            = 'original:construction-enterprise-funds-decrease'
+      )
     THEN
       RAISE EXCEPTION 'POL-275 冻结既有经济 allocation/impact 集合已漂移' USING ERRCODE = '23514';
     END IF;

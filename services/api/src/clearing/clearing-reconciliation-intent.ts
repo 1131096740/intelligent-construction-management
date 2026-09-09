@@ -391,6 +391,7 @@ async function freezeResolution(input: FreezeInput): Promise<Record<string, unkn
   const resolutionLineIds: string[] = [];
   const clearingAllocationIds: string[] = [];
   const coverageConsumed = new Map<string, bigint>();
+  const priorEconomicConsumed = new Map<string, bigint>();
   let resolvedTotal = 0n;
 
   for (const [itemIndex, entry] of input.draft.resolutions.entries()) {
@@ -533,7 +534,8 @@ async function freezeResolution(input: FreezeInput): Promise<Record<string, unkn
         const prior = await freezePriorEconomicSource(
           input,
           sourceSelectionRef,
-          amountCents
+          amountCents,
+          priorEconomicConsumed
         );
         sourceEventVersionId = prior.sourceEventVersionId;
         allocationSourceKind = prior.allocationSourceKind;
@@ -594,7 +596,8 @@ async function freezeResolution(input: FreezeInput): Promise<Record<string, unkn
     resultKind,
     input.draft.ordinaryAllocations,
     eventAllocations.length + 1,
-    eventAllocations
+    eventAllocations,
+    priorEconomicConsumed
   );
   for (const allocation of ordinaryAllocations) {
     eventAllocations.push(allocation);
@@ -1236,7 +1239,8 @@ async function openCoverageAmount(
 async function freezePriorEconomicSource(
   input: FreezeInput,
   sourceSelectionRef: string,
-  amountCents: bigint
+  amountCents: bigint,
+  plannedConsumption: Map<string, bigint>
 ): Promise<{
   sourceEventVersionId: string;
   allocationSourceKind: "final_confirmed" | "supplemental";
@@ -1301,6 +1305,31 @@ async function freezePriorEconomicSource(
   ) {
     throw new BadRequestException("既有经济事件选择已过期、跨案或影响链不完整");
   }
+  const [legacyReturn] = await input.tx.$queryRaw<Array<{
+    hasLegacyReturn: boolean;
+  }>>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM "ClearingAllocation" returned_allocation
+      JOIN "ClearingEventVersion" returned_version
+        ON returned_version.id = returned_allocation."eventVersionId"
+      JOIN "ClearingEvent" returned_event
+        ON returned_event.id = returned_version."clearingEventId"
+      JOIN "ClearingConfirmation" returned_confirmation
+        ON returned_confirmation."eventVersionId" = returned_version.id
+      WHERE returned_event.kind = 'returned'
+        AND returned_allocation."reversesAllocationId" IS NULL
+        AND returned_allocation."sourceEventVersionId" = ${selected.eventVersionId}
+        AND returned_version."payloadSnapshot"
+          -> 'reconciliationIntent' ->> 'schema'
+          IS DISTINCT FROM 'clearing_reconciliation_intent/V1'
+    ) AS "hasLegacyReturn"
+  `);
+  if (legacyReturn?.hasLegacyReturn) {
+    throw new ConflictException(
+      "既有经济事件已有无法精确映射 allocation 的旧退回，必须失败关闭"
+    );
+  }
   const [capacity] = await input.tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
     SELECT (
       original."amountCents"
@@ -1342,9 +1371,12 @@ async function freezePriorEconomicSource(
       AND original."reversesAllocationId" IS NULL
   `);
   const remaining = capacity?.remaining ?? 0n;
-  if (amountCents > remaining) {
+  const nextPlannedConsumption =
+    (plannedConsumption.get(selected.id) ?? 0n) + amountCents;
+  if (nextPlannedConsumption > remaining) {
     throw new ConflictException("既有经济事件可退回金额已漂移，请重新准备版本");
   }
+  plannedConsumption.set(selected.id, nextPlannedConsumption);
   return {
     sourceEventVersionId: selected.eventVersionId,
     allocationSourceKind: kind,
@@ -1365,7 +1397,8 @@ async function freezeOrdinaryAllocations(
   resultKind: "final_confirmed" | "real_return" | "continued_withheld",
   drafts: unknown[],
   startingOrdinal: number,
-  existingPlans: Array<Record<string, unknown>>
+  existingPlans: Array<Record<string, unknown>>,
+  priorEconomicConsumed: Map<string, bigint>
 ): Promise<Array<Record<string, unknown>>> {
   if (drafts.length === 0) return [];
   if (resultKind === "continued_withheld") {
@@ -1444,7 +1477,8 @@ async function freezeOrdinaryAllocations(
       const prior = await freezePriorEconomicSource(
         input,
         sourceSelectionRef,
-        amountCents
+        amountCents,
+        priorEconomicConsumed
       );
       if (prior.allocationSourceKind !== sourceKind) {
         throw new BadRequestException("ordinary 既有经济事件类型与选择不一致");
@@ -1494,23 +1528,25 @@ async function freezeOrdinaryAllocations(
         sourceEventVersionFingerprint: selected.fingerprint
       };
     }
-    const alreadyPlanned = [...existingPlans, ...output]
-      .filter((plan) =>
-        plan.allocationSourceKind === sourceKind &&
-        plan.sourceEventVersionId === sourceEventVersionId
-      )
-      .reduce((sum, plan) => sum + BigInt(String(plan.amountCents)), 0n);
-    const plannedCoverageRelief = sourceKind === "withheld"
-      ? [...existingPlans, ...output]
-          .filter((plan) =>
-            plan.allocationSourceKind === sourceKind &&
-            plan.sourceEventVersionId === sourceEventVersionId &&
-            plan.purpose === "reconciliation_line"
-          )
-          .reduce((sum, plan) => sum + BigInt(String(plan.amountCents)), 0n)
-      : 0n;
-    if (alreadyPlanned + amountCents > sourceRemaining + plannedCoverageRelief) {
-      throw new ConflictException("ordinary allocation 来源容量已漂移，请重新准备版本");
+    if (frozenSource.kind !== "prior_economic_event") {
+      const alreadyPlanned = [...existingPlans, ...output]
+        .filter((plan) =>
+          plan.allocationSourceKind === sourceKind &&
+          plan.sourceEventVersionId === sourceEventVersionId
+        )
+        .reduce((sum, plan) => sum + BigInt(String(plan.amountCents)), 0n);
+      const plannedCoverageRelief = sourceKind === "withheld"
+        ? [...existingPlans, ...output]
+            .filter((plan) =>
+              plan.allocationSourceKind === sourceKind &&
+              plan.sourceEventVersionId === sourceEventVersionId &&
+              plan.purpose === "reconciliation_line"
+            )
+            .reduce((sum, plan) => sum + BigInt(String(plan.amountCents)), 0n)
+        : 0n;
+      if (alreadyPlanned + amountCents > sourceRemaining + plannedCoverageRelief) {
+        throw new ConflictException("ordinary allocation 来源容量已漂移，请重新准备版本");
+      }
     }
     output.push({
       allocationNo: startingOrdinal + index,
