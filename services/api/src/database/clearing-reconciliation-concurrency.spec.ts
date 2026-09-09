@@ -1195,12 +1195,20 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           amountCents: "1",
           businessReason: "验证旧退回不得进入精确 allocation 退回链"
         });
+        const legacyAfterV1Attested = eventResult(await service.attestEvent(
+          actors.attesterUserId,
+          legacyAfterV1.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: legacyAfterV1.eventRevision
+          }
+        ));
         await expect(service.confirmEvent(
           actors.confirmerUserId,
           legacyAfterV1.eventId,
           {
             idempotencyKey: randomUUID(),
-            expectedRevision: legacyAfterV1.eventRevision,
+            expectedRevision: legacyAfterV1Attested.revision,
             allocations: [{
               sourceEventVersionId: mixed.versionId,
               sourceKind: "final_confirmed",
@@ -1341,6 +1349,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           amountCents: "60",
           businessReason: "与 V1 精确退回并发竞争"
         });
+        const legacyConcurrentAttested = eventResult(await service.attestEvent(
+          actors.attesterUserId,
+          legacyConcurrent.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: legacyConcurrent.eventRevision
+          }
+        ));
         const confirmationCaseRevision = await currentCaseRevision(client, caseId);
         const concurrentResults = await Promise.allSettled([
           service.confirmEvent(actors.confirmerUserId, v1Concurrent.eventId, {
@@ -1353,7 +1369,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }),
           service.confirmEvent(actors.confirmerUserId, legacyConcurrent.eventId, {
             idempotencyKey: randomUUID(),
-            expectedRevision: legacyConcurrent.eventRevision,
+            expectedRevision: legacyConcurrentAttested.revision,
             allocations: [{
               sourceEventVersionId: concurrentSource.sourceVersionId,
               sourceKind: "final_confirmed",
