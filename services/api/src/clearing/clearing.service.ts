@@ -321,7 +321,7 @@ export class ClearingService {
       : authority.sourceDiscriminator === "construction_enterprise_guarantee"
         ? "withheld"
         : "final_confirmed";
-    const amountCents = positiveCents(input.amountCents);
+    const amountCents = positiveInternalBigIntCents(input.amountCents);
     const evidenceLevel = authority.coverageKind === "ROLE_SUMMARY" ? "B" : "A";
     if (input.evidenceLevel !== evidenceLevel) throw new ConflictException("正式清分证据等级必须由权威覆盖类型派生");
     if (evidenceLevel === "B") {
@@ -3001,6 +3001,16 @@ function positiveCents(value: unknown): bigint {
     throw new BadRequestException("金额超过数据库整数分上限");
   }
   return cents;
+}
+
+function positiveInternalBigIntCents(value: unknown): bigint {
+  if (typeof value !== "bigint" || value <= 0n) {
+    throw new ConflictException("历史清分金额必须是正整数分");
+  }
+  if (value > POSTGRES_BIGINT_MAX) {
+    throw new ConflictException("历史清分金额超过数据库整数分上限");
+  }
+  return value;
 }
 
 function requiredText(value: unknown, message: string): string {

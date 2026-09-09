@@ -1192,6 +1192,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           suffix: string,
           amountCents: bigint
         ) => {
+          assert.equal(typeof amountCents, "bigint");
           const mappingId = randomUUID();
           const sourceFingerprint = createHash("sha256")
             .update(`${prefix}:${suffix}:${amountCents.toString()}`, "utf8")
