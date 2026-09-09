@@ -300,6 +300,39 @@ async function freezeCoverageAddition(input: FreezeInput): Promise<Record<string
   if (total !== input.eventAmountCents) {
     throw new BadRequestException("coverage_added 事件金额必须等于覆盖行合计");
   }
+  const [capacity] = await input.tx.$queryRaw<Array<{
+    openAmountCents: bigint;
+    activeCoverageCents: bigint;
+  }>>(Prisma.sql`
+    SELECT (
+      revision."amountCents" - COALESCE((
+        SELECT SUM(CASE WHEN resolution."entryKind" = 'resolution'
+          THEN resolution."amountCents" ELSE -resolution."amountCents" END)
+        FROM "ClearingReconciliationResolution" resolution
+        WHERE resolution."reconciliationRevisionId" = revision.id
+      ), 0)
+    )::bigint AS "openAmountCents",
+    COALESCE((
+      SELECT SUM(coverage."amountCents" - COALESCE((
+        SELECT SUM(CASE WHEN resolution."entryKind" = 'resolution'
+          THEN line."amountCents" ELSE -line."amountCents" END)
+        FROM "ClearingReconciliationResolutionLine" line
+        JOIN "ClearingReconciliationResolution" resolution
+          ON resolution.id = line."resolutionId"
+        WHERE line."coverageId" = coverage.id
+      ), 0))
+      FROM "ClearingReconciliationCoverage" coverage
+      WHERE coverage."reconciliationRevisionId" = revision.id
+    ), 0)::bigint AS "activeCoverageCents"
+    FROM "ClearingReconciliationRevision" revision
+    WHERE revision.id = ${targetRevision.id}
+  `);
+  if (
+    !capacity ||
+    capacity.activeCoverageCents + total > capacity.openAmountCents
+  ) {
+    throw new ConflictException("补充覆盖超过目标 revision 当前未解决金额");
+  }
   return {
     schema: "clearing_reconciliation_intent/V1",
     operation: "add_coverage",
@@ -1424,7 +1457,16 @@ async function freezeOrdinaryAllocations(
         plan.sourceEventVersionId === sourceEventVersionId
       )
       .reduce((sum, plan) => sum + BigInt(String(plan.amountCents)), 0n);
-    if (alreadyPlanned + amountCents > sourceRemaining) {
+    const plannedCoverageRelief = sourceKind === "withheld"
+      ? [...existingPlans, ...output]
+          .filter((plan) =>
+            plan.allocationSourceKind === sourceKind &&
+            plan.sourceEventVersionId === sourceEventVersionId &&
+            plan.purpose === "reconciliation_line"
+          )
+          .reduce((sum, plan) => sum + BigInt(String(plan.amountCents)), 0n)
+      : 0n;
+    if (alreadyPlanned + amountCents > sourceRemaining + plannedCoverageRelief) {
       throw new ConflictException("ordinary allocation 来源容量已漂移，请重新准备版本");
     }
     output.push({

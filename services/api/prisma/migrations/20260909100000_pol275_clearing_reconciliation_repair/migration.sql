@@ -820,6 +820,39 @@ BEGIN
   IF target_intent ->> 'schema' = 'clearing_reconciliation_intent/V1'
     AND NEW."reversesAllocationId" IS NULL
     AND NEW."sourceKind" = 'withheld'
+  THEN
+    SELECT COALESCE(SUM(existing."amountCents"), 0)::BIGINT
+      INTO coverage_relief
+      FROM public."ClearingAllocation" existing
+     WHERE existing."eventVersionId" = NEW."eventVersionId"
+       AND existing."reversesAllocationId" IS NULL
+       AND existing."sourceKind" = 'withheld'
+       AND existing."sourceEventVersionId" = NEW."sourceEventVersionId"
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(target_intent -> 'eventAllocations') prior_plan
+         WHERE prior_plan ->> 'clearingAllocationId' = existing."id"
+           AND prior_plan ->> 'purpose' = 'reconciliation_line'
+           AND prior_plan ->> 'allocationSourceKind' = existing."sourceKind"
+           AND prior_plan ->> 'sourceEventVersionId' = existing."sourceEventVersionId"
+           AND (prior_plan ->> 'amountCents')::BIGINT = existing."amountCents"
+           AND EXISTS (
+             SELECT 1
+             FROM jsonb_array_elements(target_intent -> 'resolutions') resolution_entry
+             CROSS JOIN LATERAL jsonb_array_elements(resolution_entry -> 'lines') line_entry
+             JOIN public."ClearingReconciliationCoverage" coverage
+               ON coverage."id" = line_entry ->> 'coverageId'
+              AND coverage."withheldEventVersionId" = existing."sourceEventVersionId"
+             WHERE line_entry ->> 'resolutionLineId' = prior_plan ->> 'resolutionLineId'
+               AND line_entry ->> 'sourceKind' = 'withheld_coverage'
+               AND line_entry ->> 'plannedClearingAllocationId' = existing."id"
+               AND (line_entry ->> 'amountCents')::BIGINT = existing."amountCents"
+           )
+       );
+  END IF;
+  IF target_intent ->> 'schema' = 'clearing_reconciliation_intent/V1'
+    AND NEW."reversesAllocationId" IS NULL
+    AND NEW."sourceKind" = 'withheld'
     AND allocation_plan ->> 'purpose' = 'reconciliation_line'
   THEN
     SELECT line_entry INTO resolution_line_plan
@@ -835,7 +868,7 @@ BEGIN
           AND coverage."withheldEventVersionId" = NEW."sourceEventVersionId"
       )
     THEN
-      coverage_relief := NEW."amountCents";
+      coverage_relief := coverage_relief + NEW."amountCents";
     END IF;
   END IF;
   IF final_net_used < 0
@@ -1243,6 +1276,9 @@ BEGIN
   IF NOT FOUND THEN RETURN; END IF;
   intent := version_record."payloadSnapshot" -> 'reconciliationIntent';
   IF intent IS NULL OR intent ->> 'schema' IS DISTINCT FROM 'clearing_reconciliation_intent/V1' THEN
+    IF version_record.event_kind IN ('coverage_added', 'continued_withheld', 'technical_reversal') THEN
+      RAISE EXCEPTION 'POL-275 新核对事件确认必须使用 V1 意图并同事务封印' USING ERRCODE = '23514';
+    END IF;
     RETURN;
   END IF;
   SELECT * INTO seal_record
@@ -1674,6 +1710,8 @@ DECLARE
   max_revision_no INTEGER;
   source_id TEXT;
   capacity_exceeded BOOLEAN;
+  revision_open_amount BIGINT;
+  revision_open_coverage BIGINT;
 BEGIN
   IF p_expected_event_version_fingerprint !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'POL-275 事件版本指纹格式无效' USING ERRCODE = '23514';
@@ -2363,6 +2401,32 @@ BEGIN
       (coverage_item ->> 'amountCents')::BIGINT, p_decision_event_version_id,
       (coverage_item ->> 'lineNo')::INTEGER, effective_case_revision, confirmed_at
     );
+    SELECT (
+      revision."amountCents" - COALESCE((
+        SELECT SUM(CASE WHEN result."entryKind" = 'resolution'
+          THEN result."amountCents" ELSE -result."amountCents" END)
+        FROM public."ClearingReconciliationResolution" result
+        WHERE result."reconciliationRevisionId" = revision."id"
+      ), 0)
+    )::BIGINT,
+    COALESCE((
+      SELECT SUM(existing_coverage."amountCents" - COALESCE((
+        SELECT SUM(CASE WHEN result."entryKind" = 'resolution'
+          THEN line."amountCents" ELSE -line."amountCents" END)
+        FROM public."ClearingReconciliationResolutionLine" line
+        JOIN public."ClearingReconciliationResolution" result
+          ON result."id" = line."resolutionId"
+        WHERE line."coverageId" = existing_coverage."id"
+      ), 0))
+      FROM public."ClearingReconciliationCoverage" existing_coverage
+      WHERE existing_coverage."reconciliationRevisionId" = revision."id"
+    ), 0)::BIGINT
+      INTO revision_open_amount, revision_open_coverage
+      FROM public."ClearingReconciliationRevision" revision
+     WHERE revision."id" = target_revision."id";
+    IF revision_open_coverage > revision_open_amount THEN
+      RAISE EXCEPTION 'POL-275 revision 有效覆盖超过当前未解决金额' USING ERRCODE = '23514';
+    END IF;
     coverage_total := coverage_total + (coverage_item ->> 'amountCents')::BIGINT;
   END LOOP;
   IF intent ->> 'operation' = 'add_coverage' AND coverage_total <> version_record."amountCents" THEN

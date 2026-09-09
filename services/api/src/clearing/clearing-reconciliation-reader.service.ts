@@ -85,7 +85,8 @@ export class ClearingReconciliationReaderService {
       coverages,
       resolutions,
       resolutionLines,
-      definitionReversals
+      definitionReversals,
+      requiredV1Decisions
     ] = await Promise.all([
       tx.clearingEventVersion.findMany({
         where: {
@@ -112,6 +113,7 @@ export class ClearingReconciliationReaderService {
           kind: true,
           amountCents: true,
           replacesRevisionId: true,
+          correctsDefinitionReversalId: true,
           confirmedAt: true,
           effectiveCaseRevision: true
         },
@@ -184,8 +186,39 @@ export class ClearingReconciliationReaderService {
           { effectiveCaseRevision: "asc" },
           { id: "asc" }
         ]
+      }),
+      tx.clearingEventVersion.findMany({
+        where: {
+          clearingEvent: {
+            kind: {
+              in: ["coverage_added", "continued_withheld", "technical_reversal"]
+            },
+            clearingCase: { projectId: input.projectId }
+          },
+          confirmation: { confirmedAt: { lte: asOf } }
+        },
+        select: {
+          payloadSnapshot: true,
+          reconciliationDecisionSeal: { select: { decisionEventVersionId: true } }
+        }
       })
     ]);
+
+    if (requiredV1Decisions.some((version) =>
+      !hasV1Intent(version.payloadSnapshot) || !version.reconciliationDecisionSeal
+    )) {
+      return {
+        projectId: input.projectId,
+        asOf: asOf.toISOString(),
+        relationshipCompleteness: "integrity_conflict" as const,
+        openPendingGrossCents: null,
+        openCoveredCents: null,
+        openUncoveredCents: null,
+        continuedWithheldRetainedCents: null,
+        coveredWithheldSources: [],
+        items: []
+      };
+    }
 
     const result = reduceClearingReconciliationRisk({
       asOf: asOf.toISOString(),
@@ -219,6 +252,19 @@ export class ClearingReconciliationReaderService {
     });
     return { projectId: input.projectId, ...result };
   }
+}
+
+function hasV1Intent(payloadSnapshot: Prisma.JsonValue): boolean {
+  if (!payloadSnapshot || typeof payloadSnapshot !== "object" || Array.isArray(payloadSnapshot)) {
+    return false;
+  }
+  const intent = (payloadSnapshot as Record<string, unknown>).reconciliationIntent;
+  return Boolean(
+    intent &&
+    typeof intent === "object" &&
+    !Array.isArray(intent) &&
+    (intent as Record<string, unknown>).schema === "clearing_reconciliation_intent/V1"
+  );
 }
 
 function assertReaderInput(input: ReaderInput): void {

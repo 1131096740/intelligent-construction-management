@@ -260,6 +260,72 @@ describe("clearing shared contract", () => {
     });
   });
 
+  it("replays a new replacement against the restored effective revision after definition reversal", () => {
+    const risk = reduceClearingReconciliationRisk({
+      asOf: "2026-09-05T00:00:00.000Z",
+      legacyPendingEvents: [],
+      revisions: [
+        {
+          id: "revision-1",
+          itemId: "item-1",
+          decisionEventVersionId: "pending-v1",
+          adoptsLegacyPendingEventVersionId: null,
+          revisionNo: 1,
+          kind: "open",
+          amountCents: 100n,
+          replacesRevisionId: null,
+          confirmedAt: "2026-09-01T00:00:00.000Z",
+          effectiveCaseRevision: 1
+        },
+        {
+          id: "revision-2",
+          itemId: "item-1",
+          decisionEventVersionId: "pending-v2",
+          adoptsLegacyPendingEventVersionId: null,
+          revisionNo: 2,
+          kind: "replace",
+          amountCents: 80n,
+          replacesRevisionId: "revision-1",
+          confirmedAt: "2026-09-02T00:00:00.000Z",
+          effectiveCaseRevision: 2
+        },
+        {
+          id: "revision-3",
+          itemId: "item-1",
+          decisionEventVersionId: "pending-v3",
+          adoptsLegacyPendingEventVersionId: null,
+          revisionNo: 3,
+          kind: "replace",
+          amountCents: 70n,
+          replacesRevisionId: "revision-1",
+          confirmedAt: "2026-09-04T00:00:00.000Z",
+          effectiveCaseRevision: 4
+        }
+      ],
+      coverages: [],
+      resolutions: [],
+      resolutionLines: [],
+      definitionReversals: [{
+        id: "definition-reversal-2",
+        targetRevisionId: "revision-2",
+        confirmedAt: "2026-09-03T00:00:00.000Z",
+        effectiveCaseRevision: 3
+      }]
+    });
+
+    expect(risk).toMatchObject({
+      relationshipCompleteness: "coverage_incomplete",
+      openPendingGrossCents: 70n,
+      openCoveredCents: 0n,
+      openUncoveredCents: 70n,
+      items: [{
+        itemId: "item-1",
+        currentRevisionId: "revision-3",
+        openAmountCents: 70n
+      }]
+    });
+  });
+
   it("fails closed for an orphan resolution line instead of treating it as zero", () => {
     expect(reduceClearingReconciliationRisk({
       asOf: "2026-09-01T00:00:00.000Z",

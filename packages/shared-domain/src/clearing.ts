@@ -93,6 +93,7 @@ export interface ClearingReconciliationRevisionProjection {
   kind: "open" | "replace";
   amountCents: bigint;
   replacesRevisionId: string | null;
+  correctsDefinitionReversalId?: string | null;
   confirmedAt: string;
   effectiveCaseRevision: number;
 }
@@ -200,36 +201,79 @@ export function reduceClearingReconciliationRisk(
     || left.id.localeCompare(right.id);
 
   const revisions = input.revisions.filter(visible).slice().sort(compareEffective);
-  const reversals = input.definitionReversals.filter(visible);
-  const reversedRevisionIds = new Set(reversals.map((row) => row.targetRevisionId));
-  if (reversedRevisionIds.size !== reversals.length) return conflict();
-
+  const reversals = input.definitionReversals.filter(visible).slice().sort(compareEffective);
   const revisionById = new Map(revisions.map((row) => [row.id, row]));
+  const reversalById = new Map(reversals.map((row) => [row.id, row]));
+  if (revisionById.size !== revisions.length || reversalById.size !== reversals.length) {
+    return conflict();
+  }
+  const reversedRevisionIds = new Set<string>();
   const currentByItem = new Map<string, ClearingReconciliationRevisionProjection>();
+  const seenByItem = new Map<string, ClearingReconciliationRevisionProjection[]>();
   const definitionReversedItems = new Set<string>();
-  for (const revision of revisions) {
-    if (revision.amountCents <= 0n || !Number.isInteger(revision.revisionNo) || revision.revisionNo < 1) {
+  const definitionEvents = [
+    ...revisions.map((row) => ({ eventType: "revision" as const, row })),
+    ...reversals.map((row) => ({ eventType: "reversal" as const, row }))
+  ].sort((left, right) => compareEffective(left.row, right.row));
+  for (const event of definitionEvents) {
+    if (event.eventType === "reversal") {
+      const target = revisionById.get(event.row.targetRevisionId);
+      if (
+        !target ||
+        reversedRevisionIds.has(target.id) ||
+        currentByItem.get(target.itemId)?.id !== target.id
+      ) {
+        return conflict();
+      }
+      reversedRevisionIds.add(target.id);
+      const restored = (seenByItem.get(target.itemId) ?? [])
+        .filter((candidate) => !reversedRevisionIds.has(candidate.id))
+        .sort((left, right) => right.revisionNo - left.revisionNo)[0];
+      if (restored) {
+        currentByItem.set(target.itemId, restored);
+        definitionReversedItems.delete(target.itemId);
+      } else {
+        currentByItem.delete(target.itemId);
+        definitionReversedItems.add(target.itemId);
+      }
+      continue;
+    }
+
+    const revision = event.row;
+    const seen = seenByItem.get(revision.itemId) ?? [];
+    if (
+      revision.amountCents <= 0n ||
+      !Number.isInteger(revision.revisionNo) ||
+      revision.revisionNo !== seen.length + 1
+    ) {
       return conflict();
     }
     if (revision.kind === "open") {
       if (revision.revisionNo !== 1 || revision.replacesRevisionId !== null) return conflict();
     } else {
-      const replaced = revision.replacesRevisionId ? revisionById.get(revision.replacesRevisionId) : undefined;
-      if (!replaced || replaced.itemId !== revision.itemId || replaced.revisionNo + 1 !== revision.revisionNo) {
+      const replaced = revision.replacesRevisionId
+        ? revisionById.get(revision.replacesRevisionId)
+        : undefined;
+      const current = currentByItem.get(revision.itemId);
+      const correctedReversal = revision.correctsDefinitionReversalId
+        ? reversalById.get(revision.correctsDefinitionReversalId)
+        : undefined;
+      const correctsReversedFirstDefinition =
+        !current &&
+        replaced?.revisionNo === 1 &&
+        correctedReversal?.targetRevisionId === replaced.id;
+      if (
+        !replaced ||
+        replaced.itemId !== revision.itemId ||
+        (current?.id !== replaced.id && !correctsReversedFirstDefinition)
+      ) {
         return conflict();
       }
     }
-    if (reversedRevisionIds.has(revision.id)) {
-      definitionReversedItems.add(revision.itemId);
-      continue;
-    }
-    const current = currentByItem.get(revision.itemId);
-    if (!current || revision.revisionNo > current.revisionNo) {
-      currentByItem.set(revision.itemId, revision);
-      definitionReversedItems.delete(revision.itemId);
-    } else if (revision.revisionNo === current.revisionNo) {
-      return conflict();
-    }
+    seen.push(revision);
+    seenByItem.set(revision.itemId, seen);
+    currentByItem.set(revision.itemId, revision);
+    definitionReversedItems.delete(revision.itemId);
   }
 
   const modeledPendingIds = new Set<string>();

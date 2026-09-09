@@ -757,6 +757,85 @@ describe("ClearingService", () => {
     ).rejects.toThrow("清算分配格式不正确");
   });
 
+  it.each(["coverage_added", "continued_withheld", "technical_reversal"] as const)(
+    "requires V1 intent when preparing or revising the new reconciliation kind %s",
+    async (kind) => {
+      const { service, prisma } = serviceWith();
+      const input = {
+        idempotencyKey: COMMAND_ID,
+        expectedRevision: 1,
+        kind,
+        amountCents: "1",
+        evidenceLevel: "B" as const
+      };
+
+      await expect(service.createEvent("finance-1", "case-1", input))
+        .rejects.toThrow("必须使用 V1 核对意图");
+      await expect(service.reviseEvent("finance-1", "event-1", input))
+        .rejects.toThrow("必须使用 V1 核对意图");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it("fails closed when a pre-existing new reconciliation event is submitted or confirmed without V1", async () => {
+    const draftTx = {
+      clearingCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "event-1" }]),
+      clearingEvent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "event-1",
+          clearingCaseId: "case-1",
+          kind: "coverage_added",
+          workflowStatus: "draft",
+          revision: 1,
+          currentVersionNo: 1
+        })
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          workflowStatus: "draft",
+          payloadSnapshot: {},
+          fingerprint: "a".repeat(64)
+        })
+      }
+    };
+    const { service: draftService } = serviceWith({ tx: draftTx });
+    await expect(draftService.submitEvent("finance-1", "event-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 1
+    })).rejects.toThrow("缺少 V1 核对意图");
+
+    const submittedTx = {
+      clearingCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "event-1" }]),
+      clearingEvent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "event-1",
+          clearingCaseId: "case-1",
+          kind: "coverage_added",
+          workflowStatus: "submitted",
+          revision: 2,
+          currentVersionNo: 2
+        })
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-2",
+          workflowStatus: "submitted",
+          payloadSnapshot: {},
+          fingerprint: "b".repeat(64)
+        })
+      }
+    };
+    const { service: submittedService } = serviceWith({ tx: submittedTx });
+    await expect(submittedService.confirmEvent("director-1", "event-1", {
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      expectedRevision: 2,
+      allocations: []
+    })).rejects.toThrow("缺少 V1 核对意图");
+  });
+
   it("requires the explicit reopen action before a returned event can be revised or submitted", async () => {
     const returnedEvent = {
       id: "event-1",
@@ -1452,7 +1531,13 @@ describe("ClearingService", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: "receipt-1" })
       },
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "case-1" }]),
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "case-1" }])
+        .mockResolvedValueOnce([{ remaining: 100n }])
+        .mockResolvedValueOnce([{ openAmountCents: 100n, activeCoverageCents: 0n }])
+        .mockResolvedValueOnce([{ id: "case-1" }])
+        .mockResolvedValueOnce([{ remaining: 100n }])
+        .mockResolvedValueOnce([{ openAmountCents: 100n, activeCoverageCents: 80n }]),
       clearingCase: {
         findUnique: jest.fn().mockResolvedValue({
           id: "case-1",
@@ -1527,6 +1612,22 @@ describe("ClearingService", () => {
         amountCents: "40"
       })
     ]);
+
+    await expect(service.createEvent("finance-1", "case-1", {
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      expectedRevision: 4,
+      kind: "coverage_added",
+      amountCents: "30",
+      evidenceLevel: "B",
+      reconciliationIntent: {
+        operation: "add_coverage",
+        targetRevisionId: "revision-1",
+        coverages: [
+          { sourceSelectionRef: "fac1.short-lived", amountCents: "30" }
+        ]
+      }
+    })).rejects.toThrow("超过目标 revision 当前未解决金额");
+    expect(tx.clearingEvent.create).toHaveBeenCalledTimes(1);
   });
 
   it("freezes a resolution line and its one-to-one economic allocation during prepare", async () => {

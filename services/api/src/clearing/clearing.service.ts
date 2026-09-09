@@ -616,6 +616,7 @@ export class ClearingService {
       const submittedReconciliationIntent = reconciliationIntentFrom(
         current.payloadSnapshot
       );
+      assertRequiredReconciliationIntent(event.kind, submittedReconciliationIntent);
       if (submittedReconciliationIntent) {
         assertExactVersionCommand(input, current.id, current.fingerprint);
       }
@@ -880,6 +881,7 @@ export class ClearingService {
       const version = await this.currentVersion(tx, event);
       if (version.workflowStatus !== "submitted") throw new ConflictException("当前事件版本不是已提交版本");
       const reconciliationIntent = reconciliationIntentFrom(version.payloadSnapshot);
+      assertRequiredReconciliationIntent(event.kind, reconciliationIntent);
       if (reconciliationIntent) {
         validateVersionBoundConfirmation(input);
         if (
@@ -1717,6 +1719,8 @@ export class ClearingService {
   ): Promise<ClearingAllocationInput[]> {
     const plans = reconciliationEventAllocations(reconciliationIntent);
     const output: ClearingAllocationInput[] = [];
+    const plannedConsumptionBySource = new Map<string, bigint>();
+    const plannedCoverageReliefBySource = new Map<string, bigint>();
     for (const plan of plans) {
       const amountCents = positiveCents(plan.amountCents);
       const frozenSource = asRecord(plan.frozenSource);
@@ -1854,11 +1858,18 @@ export class ClearingService {
         allocationConsumesFrozenCoverage(reconciliationIntent, plan)
           ? amountCents
           : 0n;
-      if (
-        !reversedAllocation &&
-        amountCents > (available?.usable ?? 0n) + frozenCoverageRelief
-      ) {
-        throw new ConflictException("V1 冻结来源容量已漂移，必须 revise");
+      if (!reversedAllocation) {
+        const sourceKey = `${plan.allocationSourceKind}:${sourceEventVersionId}`;
+        const plannedConsumption =
+          (plannedConsumptionBySource.get(sourceKey) ?? 0n) + amountCents;
+        const plannedCoverageRelief =
+          (plannedCoverageReliefBySource.get(sourceKey) ?? 0n) +
+          frozenCoverageRelief;
+        if (plannedConsumption > (available?.usable ?? 0n) + plannedCoverageRelief) {
+          throw new ConflictException("V1 冻结来源容量已漂移，必须 revise");
+        }
+        plannedConsumptionBySource.set(sourceKey, plannedConsumption);
+        plannedCoverageReliefBySource.set(sourceKey, plannedCoverageRelief);
       }
       output.push({
         sourceEventVersionId,
@@ -2215,6 +2226,9 @@ function isAuthorityClearingCategory(category: CreateClearingCaseDto["category"]
 function validateEventInput(input: CreateClearingEventDto) {
   validateCommand(input);
   if (!isClearingEventKind(input.kind)) throw new BadRequestException("清分事件类型不正确");
+  if (requiresReconciliationIntent(input.kind) && input.reconciliationIntent === undefined) {
+    throw new BadRequestException("当前清算事件类型必须使用 V1 核对意图");
+  }
   if (input.amountCents !== undefined) positiveCents(input.amountCents);
   if (input.evidenceLevel !== undefined && !['A', 'B'].includes(input.evidenceLevel)) throw new BadRequestException("清分正式流程只接受 A/B 级证据");
   if (input.payload !== undefined && (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload))) {
@@ -2230,6 +2244,19 @@ function validateEventInput(input: CreateClearingEventDto) {
   }
   if (input.reconciliationIntent !== undefined && input.payload !== undefined) {
     throw new BadRequestException("V1 核对意图由服务端独立冻结，不接受额外 payload");
+  }
+}
+
+function requiresReconciliationIntent(kind: string): boolean {
+  return ["coverage_added", "continued_withheld", "technical_reversal"].includes(kind);
+}
+
+function assertRequiredReconciliationIntent(
+  kind: string,
+  intent: Record<string, unknown> | null
+): void {
+  if (requiresReconciliationIntent(kind) && !intent) {
+    throw new ConflictException("当前清算事件缺少 V1 核对意图，必须 revise 后重试");
   }
 }
 

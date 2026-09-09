@@ -993,6 +993,42 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }).then((value) => value._sum.amountCents),
           100n
         );
+        caseRevision = await currentCaseRevision(client, caseId);
+        const excessCoverageSource = await confirmLegacyEvent(service, actors, {
+          caseId,
+          expectedCaseRevision: caseRevision,
+          kind: "withheld",
+          amountCents: "10"
+        });
+        caseRevision = await currentCaseRevision(client, caseId);
+        const eventCountBeforeExcessCoverage = await client.clearingEvent.count({
+          where: { clearingCaseId: caseId }
+        });
+        await expect(service.createEvent(actors.preparerUserId, caseId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: caseRevision,
+          kind: "coverage_added",
+          amountCents: "1",
+          evidenceLevel: "B",
+          reconciliationIntent: {
+            operation: "add_coverage",
+            targetRevisionId: r1.id,
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                caseId,
+                caseRevision,
+                excessCoverageSource
+              ),
+              amountCents: "1"
+            }]
+          }
+        })).rejects.toThrow(/超过目标 revision 当前未解决金额/iu);
+        assert.equal(
+          await client.clearingEvent.count({ where: { clearingCaseId: caseId } }),
+          eventCountBeforeExcessCoverage
+        );
 
         caseRevision = (await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId }, select: { revision: true }
@@ -1172,6 +1208,18 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         });
         assert.equal(r3.revisionNo, 3);
         assert.equal(r3.replacesRevisionId, r1.id);
+        const restoredProjection = await new ClearingReconciliationReaderService(
+          client as never,
+          new CompanyRoleResolverService(client as never)
+        ).readClearingReconciliationRiskInTransaction(client as never, {
+          projectId: fixture.projectId
+        });
+        assert.equal(restoredProjection.relationshipCompleteness, "complete");
+        assert.equal(
+          restoredProjection.items.find((item) => item.itemId === r1.itemId)
+            ?.currentRevisionId,
+          r3.id
+        );
 
         const correctedCaseId = `${prefix}_corrected_capacity_case`;
         const correctedCase = await client.clearingCase.create({
@@ -1620,6 +1668,213 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
   );
 
   integrationTest(
+    "supports cumulative same-source coverage relief for coverage lines and ordinary remainder",
+    async () => {
+      const databaseUrl = assertDedicatedDatabase();
+      const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+      const prefix = `pol275_same_source_${randomUUID().replace(/-/gu, "")}`;
+      const actors = {
+        preparerUserId: `${prefix}_preparer`,
+        attesterUserId: `${prefix}_attester`,
+        confirmerUserId: `${prefix}_confirmer`
+      };
+      try {
+        await client.$connect();
+        const fixture = await seedOperatingLedgerFixture(client, { prefix, ...actors });
+        const selectionRefs = new AffiliateClearingSelectionRefService({
+          secret: `${prefix}_secret`
+        });
+        const service = clearingService(client, actors, selectionRefs);
+        const createCase = (suffix: string) => client.clearingCase.create({
+          data: {
+            id: `${prefix}_${suffix}_case`,
+            projectId: fixture.projectId,
+            constructionEnterpriseAssignmentId: fixture.assignmentId,
+            category: "management_fee",
+            governedSubjectKey: `${prefix}_${suffix}_subject`,
+            authoritativeGrossCapCents: 1000n,
+            createdByUserId: actors.preparerUserId
+          }
+        });
+
+        const splitCase = await createCase("split");
+        const splitSource = await confirmLegacyEvent(service, actors, {
+          caseId: splitCase.id,
+          expectedCaseRevision: splitCase.revision,
+          kind: "withheld",
+          amountCents: "100"
+        });
+        let caseRevision = await currentCaseRevision(client, splitCase.id);
+        const splitOpen = await confirmV1Event(client, service, actors, {
+          caseId: splitCase.id,
+          expectedCaseRevision: caseRevision,
+          kind: "pending_reconciliation",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "100" },
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                splitCase.id,
+                caseRevision,
+                splitSource
+              ),
+              amountCents: "40"
+            }]
+          }
+        });
+        const splitRevision = await client.clearingReconciliationRevision.findUniqueOrThrow({
+          where: { decisionEventVersionId: splitOpen.versionId }
+        });
+        caseRevision = await currentCaseRevision(client, splitCase.id);
+        await confirmV1Event(client, service, actors, {
+          caseId: splitCase.id,
+          expectedCaseRevision: caseRevision,
+          kind: "coverage_added",
+          amountCents: "60",
+          reconciliationIntent: {
+            operation: "add_coverage",
+            targetRevisionId: splitRevision.id,
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                splitCase.id,
+                caseRevision,
+                splitSource
+              ),
+              amountCents: "60"
+            }]
+          }
+        });
+        const splitCoverages = await client.clearingReconciliationCoverage.findMany({
+          where: { reconciliationRevisionId: splitRevision.id },
+          orderBy: { amountCents: "asc" }
+        });
+        caseRevision = await currentCaseRevision(client, splitCase.id);
+        const splitResolution = await confirmV1Event(client, service, actors, {
+          caseId: splitCase.id,
+          expectedCaseRevision: caseRevision,
+          kind: "final_confirmed",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "resolve",
+            resolutions: [{
+              reconciliationRevisionId: splitRevision.id,
+              amountCents: "100",
+              lines: splitCoverages.map((coverage) => ({
+                sourceKind: "withheld_coverage",
+                sourceSelectionRef: issueAllocationSelection(
+                  selectionRefs,
+                  actors.preparerUserId,
+                  splitCase.id,
+                  caseRevision,
+                  coverage.id
+                ),
+                amountCents: coverage.amountCents.toString()
+              }))
+            }],
+            ordinaryAllocations: []
+          }
+        });
+        const splitAllocations = await client.clearingAllocation.findMany({
+          where: { eventVersionId: splitResolution.versionId }
+        });
+        assert.equal(splitAllocations.length, 2);
+        assert.equal(
+          splitAllocations.reduce((sum, allocation) => sum + allocation.amountCents, 0n),
+          100n
+        );
+
+        const remainderCase = await createCase("remainder");
+        const remainderSource = await confirmLegacyEvent(service, actors, {
+          caseId: remainderCase.id,
+          expectedCaseRevision: remainderCase.revision,
+          kind: "withheld",
+          amountCents: "100"
+        });
+        caseRevision = await currentCaseRevision(client, remainderCase.id);
+        const remainderOpen = await confirmV1Event(client, service, actors, {
+          caseId: remainderCase.id,
+          expectedCaseRevision: caseRevision,
+          kind: "pending_reconciliation",
+          amountCents: "40",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "40" },
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                remainderCase.id,
+                caseRevision,
+                remainderSource
+              ),
+              amountCents: "40"
+            }]
+          }
+        });
+        const remainderRevision = await client.clearingReconciliationRevision.findUniqueOrThrow({
+          where: { decisionEventVersionId: remainderOpen.versionId }
+        });
+        const remainderCoverage = await client.clearingReconciliationCoverage.findFirstOrThrow({
+          where: { reconciliationRevisionId: remainderRevision.id }
+        });
+        caseRevision = await currentCaseRevision(client, remainderCase.id);
+        const remainderResolution = await confirmV1Event(client, service, actors, {
+          caseId: remainderCase.id,
+          expectedCaseRevision: caseRevision,
+          kind: "final_confirmed",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "resolve",
+            resolutions: [{
+              reconciliationRevisionId: remainderRevision.id,
+              amountCents: "40",
+              lines: [{
+                sourceKind: "withheld_coverage",
+                sourceSelectionRef: issueAllocationSelection(
+                  selectionRefs,
+                  actors.preparerUserId,
+                  remainderCase.id,
+                  caseRevision,
+                  remainderCoverage.id
+                ),
+                amountCents: "40"
+              }]
+            }],
+            ordinaryAllocations: [{
+              sourceKind: "withheld",
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                remainderCase.id,
+                caseRevision,
+                remainderSource
+              ),
+              amountCents: "60"
+            }]
+          }
+        });
+        const remainderAllocations = await client.clearingAllocation.findMany({
+          where: { eventVersionId: remainderResolution.versionId },
+          orderBy: { createdAt: "asc" }
+        });
+        assert.equal(remainderAllocations.length, 2);
+        assert.equal(
+          remainderAllocations.reduce((sum, allocation) => sum + allocation.amountCents, 0n),
+          100n
+        );
+      } finally {
+        await client.$disconnect();
+      }
+    },
+    90_000
+  );
+
+  integrationTest(
     "serializes approved coverage, replacement, allocation and permission-revoke races",
     async () => {
       const databaseUrl = assertDedicatedDatabase();
@@ -1703,6 +1958,13 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         assertExactlyOneFulfilled(await Promise.allSettled(
           coverageCandidates.map((candidate) => confirmCandidate(candidate, revisionNo))
         ));
+        assert.equal(
+          await client.clearingReconciliationCoverage.aggregate({
+            where: { reconciliationRevisionId: coverageRevision.id },
+            _sum: { amountCents: true }
+          }).then((value) => value._sum.amountCents),
+          100n
+        );
 
         const revisionRaceCase = await createCase("revision");
         const revisionOpen = await confirmV1Event(client, service, actors, {
@@ -2190,6 +2452,54 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           confirmerUserId
         };
         const service = clearingService(client, actors);
+        for (const kind of [
+          "coverage_added",
+          "continued_withheld",
+          "technical_reversal"
+        ]) {
+          const directEventId = `${prefix}_${kind}_direct_event`;
+          const directVersionId = `${prefix}_${kind}_direct_version`;
+          await expect(client.$transaction(async (tx) => {
+            await tx.clearingEvent.create({
+              data: {
+                id: directEventId,
+                clearingCaseId: caseId,
+                kind,
+                workflowStatus: "submitted",
+                revision: 1,
+                currentVersionNo: 1,
+                createdByUserId: preparerUserId
+              }
+            });
+            await tx.clearingEventVersion.create({
+              data: {
+                id: directVersionId,
+                clearingEventId: directEventId,
+                clearingCaseId: caseId,
+                versionNo: 1,
+                workflowStatus: "submitted",
+                amountCents: 1n,
+                currencyCode: "CNY",
+                evidenceLevel: "A",
+                payloadSnapshot: {},
+                actorSetSnapshot: [preparerUserId],
+                fingerprint: "a".repeat(64),
+                createdByUserId: preparerUserId
+              }
+            });
+            await tx.clearingConfirmation.create({
+              data: {
+                eventVersionId: directVersionId,
+                confirmedByUserId: confirmerUserId,
+                confirmerActorSetSnapshot: [confirmerUserId]
+              }
+            });
+          })).rejects.toThrow(/新核对事件确认必须使用 V1 意图/iu);
+          assert.equal(
+            await client.clearingEvent.count({ where: { id: directEventId } }),
+            0
+          );
+        }
         const legacyVersionId = await confirmLegacyEvent(service, actors, {
           caseId,
           expectedCaseRevision: 1,

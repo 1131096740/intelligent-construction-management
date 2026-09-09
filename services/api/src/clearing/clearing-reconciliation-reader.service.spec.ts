@@ -108,4 +108,44 @@ describe("ClearingReconciliationReaderService", () => {
       "finance-1"
     );
   });
+
+  it("fails closed when a confirmed new reconciliation kind lacks V1 intent or DecisionSeal", async () => {
+    const tx = {
+      clearingEventVersion: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([{
+            payloadSnapshot: {},
+            reconciliationDecisionSeal: null
+          }])
+      },
+      clearingReconciliationRevision: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationCoverage: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationResolution: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationResolutionLine: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationDefinitionReversal: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ClearingReconciliationReaderService(
+      {} as never,
+      {} as never
+    );
+
+    await expect(service.readClearingReconciliationRiskInTransaction(
+      tx as never,
+      {
+        projectId: "project-1",
+        asOf: new Date("2026-09-02T00:00:00.000Z")
+      }
+    )).resolves.toEqual({
+      projectId: "project-1",
+      asOf: "2026-09-02T00:00:00.000Z",
+      relationshipCompleteness: "integrity_conflict",
+      openPendingGrossCents: null,
+      openCoveredCents: null,
+      openUncoveredCents: null,
+      continuedWithheldRetainedCents: null,
+      coveredWithheldSources: [],
+      items: []
+    });
+  });
 });
