@@ -40,6 +40,8 @@
 ## 候选方案与残余
 
 - 根 overrides 固定 `@xmldom/xmldom@0.9.12`、`multer@2.3.0`、`qs@6.16.0`；API 直接依赖最低版本提升为 `sharp^0.35.4`，并由锁文件固定实际解析。
+- 所有 16 个包含 multipart 业务入口的 controller 都改为从 `file/uploaded-file.ts` 使用同一个 `FileInterceptor` 包装器；包装器保留每个入口原有 `fileSize`，并把 `multer@2.3.0` 新增的 `fieldArrayIndexLimit` 固定为 `0`。当前 Web 与 API 的 multipart 契约只使用 `file`、`idempotencyKey`、`businessType` 等平面字段，不存在合法的正数 bracket-array index，因此该最小值不改变现有业务字段语义。
+- `LIMIT_FIELD_ARRAY_INDEX`、`LIMIT_FIELD_NESTING` 与 `INVALID_FIELD_NAME` 统一在 controller service/私有存储前转换为固定中文 400 `上传表单结构不正确，请检查后重试`；正常文件、文件名、MIME、字节、上传人及幂等键继续原样进入既有 `FileService`，权限、审计、事务与私有访问逻辑不变。
 - 修复后 `pnpm why` 只解析到上述四个安全版本；Sharp 运行时版本为 `sharp 0.35.4 / libvips 8.18.6 / heif 1.23.2`。
 - 修复后正式 `pnpm audit --prod --audit-level high` 退出 0；全量 `pnpm audit --prod --json` 只剩 1 个 moderate，`0 high / 0 low / 0 critical`。
 - 候选命令原始输出 SHA-256 `defdfed5dda0442a28ca9dcac72dd623ccaf61b7501f47268d5d11786ce35be5`；语义等价的格式化归档为 [2026-09-09-issue-276-production-dependency-audit-candidate.json](2026-09-09-issue-276-production-dependency-audit-candidate.json)，归档 SHA-256 `d8b6775a45ca09bdbcc1d9b431f6799f86641fcb6f71a647f5723e4c7379fc88`。两组哈希分别留账。
@@ -50,8 +52,18 @@
 - RED：live-main 基线 full production audit 退出 1，元数据含 15 high。
 - GREEN：同一候选、同一生产依赖集合的正式 high 阈值 audit 退出 0，仅报告 1 moderate。
 - frozen lockfile install：Node 20 / pnpm 9.15.9 下通过。
-- 受影响公开接缝：合同 DOCX 渲染、抽取、图片附件追加与处理器；零星采购照片水印及上传；通用私有文件 controller/service，共 8 suites / 394 tests 通过。
+- 受影响接缝共 9 suites / 399 tests 通过，逐条映射如下：
+
+| 升级路径 | 公开入口 / 真实依赖执行 | 兼容与安全断言 |
+| --- | --- | --- |
+| Nest platform → `multer@2.3.0` | `uploaded-file.integration.spec.ts` 启动真实 Nest HTTP，向 `POST /files` 发送浏览器同构 `FormData`，执行实际 `FileInterceptor`/Busboy/Multer；现有 controller 全部改用同一包装器 | 正常 PDF multipart 保留文件名、MIME、字节、上传人和幂等键并返回 201；`items[4294967294]` 返回固定中文 400，`FileService.uploadPrivateFile` 为 0 次，证明未触达私有存储/数据库写入口；实际解析版本断言为 2.3.0 |
+| Express/body-parser → `qs@6.16.0` | 同一真实 Nest 应用向 `POST /files/:fileId/download-ticket` 发送 `application/x-www-form-urlencoded`，同时从 `@nestjs/platform-express` 的实际生产依赖路径加载 qs | 正常中文下载原因和密码通过真实表单解析进入既有二次确认/票据 service；公告的 bracket-comma array-limit 绕过抛出 `RangeError`，attacker-controlled `constructor.isBuffer` parse→stringify 不再抛错；实际解析版本断言为 6.16.0 |
+| `docxtemplater@3.69.0` → `@xmldom/xmldom@0.9.12` | `contract-docx-renderer.spec.ts` 经导出的 `renderContractDocx` 真实创建、解析和渲染 DOCX，并从 Docxtemplater 的实际依赖路径核验版本；extractor/appender/processor 套件继续执行真实 ZIP/XML/DOCX 流程 | 中文合同、金额、清单循环和水印兼容；未解析必填项、破损 DOCX/XML、超大 archive/XML、超量段落/表格/字符均 fail-closed 且保留固定中文错误；实际解析版本断言为 0.9.12 |
+| API → `sharp@0.35.4` | `ReceiptWatermarkService.generate` 通过公开服务方法实际解码 PNG/JPEG、自动旋转、渲染文字卡并再次读取输出元数据 | PNG/JPEG 输出、像素/尺寸/哈希兼容；MIME 不匹配、损坏/透明/过小图像、控制字符、超长文本及 native 错误均 fail-closed；实际运行时断言为 Sharp 0.35.4、libheif 1.23.2 |
+
+- 通用私有文件 controller/service 原有权限、角色、二次确认、ACL、幂等、事务、审计、存储补偿和固定中文错误回归继续通过；本轮只在实际 multipart 解析器前沿新增安全限制和错误映射。
 - API typecheck、lint、build 通过。最终 exact-SHA 的完整 `release:local`、disposable PostgreSQL 16、官方 manifests、P0/RC-06 浏览器门、双轴审查和 GitHub CI 以 #276 最终交付回执为准。
+- 历史固定点 `33c7f5d47136d77da028856d692a50bf9a66e81a` 的完整 `release:local` 曾 16/16 通过，但新增上述必要安全配置与真实 HTTP 回归后已失效；不会把该旧回执冒充最终验收。
 
 ## 边界
 

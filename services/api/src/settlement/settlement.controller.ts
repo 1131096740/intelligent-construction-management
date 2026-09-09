@@ -13,7 +13,6 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS,
   DRAFT_LEDGER_VIEWS,
@@ -52,6 +51,7 @@ import { RecordSettlementRecoveryDto, ReverseSettlementRecoveryDto } from "./dto
 import { SettlementRecoveryService } from "./settlement-recovery.service";
 import { FileService } from "../file/file.service";
 import {
+  FileInterceptor,
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";

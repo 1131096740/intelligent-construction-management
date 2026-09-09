@@ -11,12 +11,11 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { FileService } from "../file/file.service";
-import { type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
+import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { AttachReceiptPhotoDto } from "./dto/attach-receipt-photo.dto";
 import { CreateReceiptDelegationDto } from "./dto/create-receipt-delegation.dto";
 import { ReviewReceiptDto } from "./dto/review-receipt.dto";
