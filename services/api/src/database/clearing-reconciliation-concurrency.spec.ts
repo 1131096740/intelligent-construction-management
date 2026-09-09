@@ -2582,6 +2582,9 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               confirmerActorSetSnapshot: [confirmerUserId]
             }
           });
+          await tx.$executeRawUnsafe(
+            'SET CONSTRAINTS "ClearingConfirmation_pol275_v1_closure" IMMEDIATE'
+          );
         })).rejects.toThrow(/V1 确认缺少同事务决策封印/iu);
         assert.equal(
           await client.clearingEvent.count({ where: { id: unsealedEventId } }),
