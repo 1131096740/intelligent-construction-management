@@ -993,43 +993,6 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }).then((value) => value._sum.amountCents),
           100n
         );
-        caseRevision = await currentCaseRevision(client, caseId);
-        const excessCoverageSource = await confirmLegacyEvent(service, actors, {
-          caseId,
-          expectedCaseRevision: caseRevision,
-          kind: "withheld",
-          amountCents: "10"
-        });
-        caseRevision = await currentCaseRevision(client, caseId);
-        const eventCountBeforeExcessCoverage = await client.clearingEvent.count({
-          where: { clearingCaseId: caseId }
-        });
-        await expect(service.createEvent(actors.preparerUserId, caseId, {
-          idempotencyKey: randomUUID(),
-          expectedRevision: caseRevision,
-          kind: "coverage_added",
-          amountCents: "1",
-          evidenceLevel: "B",
-          reconciliationIntent: {
-            operation: "add_coverage",
-            targetRevisionId: r1.id,
-            coverages: [{
-              sourceSelectionRef: issueAllocationSelection(
-                selectionRefs,
-                actors.preparerUserId,
-                caseId,
-                caseRevision,
-                excessCoverageSource
-              ),
-              amountCents: "1"
-            }]
-          }
-        })).rejects.toThrow(/超过目标 revision 当前未解决金额/iu);
-        assert.equal(
-          await client.clearingEvent.count({ where: { clearingCaseId: caseId } }),
-          eventCountBeforeExcessCoverage
-        );
-
         caseRevision = (await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId }, select: { revision: true }
         })).revision;
@@ -1219,6 +1182,84 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           restoredProjection.items.find((item) => item.itemId === r1.itemId)
             ?.currentRevisionId,
           r3.id
+        );
+
+        const coverageCapCase = await client.clearingCase.create({
+          data: {
+            id: `${prefix}_coverage_cap_case`,
+            projectId: fixture.projectId,
+            constructionEnterpriseAssignmentId: fixture.assignmentId,
+            category: "management_fee",
+            governedSubjectKey: `${prefix}_coverage_cap_subject`,
+            authoritativeGrossCapCents: 1000n,
+            createdByUserId: actors.preparerUserId
+          }
+        });
+        const coverageCapSource = await confirmLegacyEvent(service, actors, {
+          caseId: coverageCapCase.id,
+          expectedCaseRevision: coverageCapCase.revision,
+          kind: "withheld",
+          amountCents: "100"
+        });
+        let coverageCapRevision = await currentCaseRevision(client, coverageCapCase.id);
+        const coverageCapOpen = await confirmV1Event(client, service, actors, {
+          caseId: coverageCapCase.id,
+          expectedCaseRevision: coverageCapRevision,
+          kind: "pending_reconciliation",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "100" },
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                coverageCapCase.id,
+                coverageCapRevision,
+                coverageCapSource
+              ),
+              amountCents: "100"
+            }]
+          }
+        });
+        const coverageCapTarget = await client.clearingReconciliationRevision.findUniqueOrThrow({
+          where: { decisionEventVersionId: coverageCapOpen.versionId }
+        });
+        coverageCapRevision = await currentCaseRevision(client, coverageCapCase.id);
+        const excessCoverageSource = await confirmLegacyEvent(service, actors, {
+          caseId: coverageCapCase.id,
+          expectedCaseRevision: coverageCapRevision,
+          kind: "withheld",
+          amountCents: "10"
+        });
+        coverageCapRevision = await currentCaseRevision(client, coverageCapCase.id);
+        const eventCountBeforeExcessCoverage = await client.clearingEvent.count({
+          where: { clearingCaseId: coverageCapCase.id }
+        });
+        await expect(service.createEvent(actors.preparerUserId, coverageCapCase.id, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: coverageCapRevision,
+          kind: "coverage_added",
+          amountCents: "1",
+          evidenceLevel: "B",
+          reconciliationIntent: {
+            operation: "add_coverage",
+            targetRevisionId: coverageCapTarget.id,
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                coverageCapCase.id,
+                coverageCapRevision,
+                excessCoverageSource
+              ),
+              amountCents: "1"
+            }]
+          }
+        })).rejects.toThrow(/超过目标 revision 当前未解决金额/iu);
+        assert.equal(
+          await client.clearingEvent.count({ where: { clearingCaseId: coverageCapCase.id } }),
+          eventCountBeforeExcessCoverage
         );
 
         const correctedCaseId = `${prefix}_corrected_capacity_case`;
@@ -2500,6 +2541,52 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             0
           );
         }
+        const unsealedEventId = `${prefix}_unsealed_direct_event`;
+        const unsealedVersionId = `${prefix}_unsealed_direct_version`;
+        await expect(client.$transaction(async (tx) => {
+          await tx.clearingEvent.create({
+            data: {
+              id: unsealedEventId,
+              clearingCaseId: caseId,
+              kind: "coverage_added",
+              workflowStatus: "submitted",
+              revision: 1,
+              currentVersionNo: 1,
+              createdByUserId: preparerUserId
+            }
+          });
+          await tx.clearingEventVersion.create({
+            data: {
+              id: unsealedVersionId,
+              clearingEventId: unsealedEventId,
+              clearingCaseId: caseId,
+              versionNo: 1,
+              workflowStatus: "submitted",
+              amountCents: 1n,
+              currencyCode: "CNY",
+              evidenceLevel: "A",
+              payloadSnapshot: {
+                reconciliationIntent: {
+                  schema: "clearing_reconciliation_intent/V1"
+                }
+              },
+              actorSetSnapshot: [preparerUserId],
+              fingerprint: "b".repeat(64),
+              createdByUserId: preparerUserId
+            }
+          });
+          await tx.clearingConfirmation.create({
+            data: {
+              eventVersionId: unsealedVersionId,
+              confirmedByUserId: confirmerUserId,
+              confirmerActorSetSnapshot: [confirmerUserId]
+            }
+          });
+        })).rejects.toThrow(/V1 确认缺少同事务决策封印/iu);
+        assert.equal(
+          await client.clearingEvent.count({ where: { id: unsealedEventId } }),
+          0
+        );
         const legacyVersionId = await confirmLegacyEvent(service, actors, {
           caseId,
           expectedCaseRevision: 1,

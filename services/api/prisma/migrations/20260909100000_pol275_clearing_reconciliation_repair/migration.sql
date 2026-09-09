@@ -1625,6 +1625,37 @@ BEGIN
 END;
 $$;
 
+CREATE FUNCTION "pol275_required_v1_confirmation_guard"()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  event_kind TEXT;
+  intent JSONB;
+BEGIN
+  SELECT event."kind", version."payloadSnapshot" -> 'reconciliationIntent'
+    INTO event_kind, intent
+    FROM public."ClearingEventVersion" version
+    JOIN public."ClearingEvent" event ON event."id" = version."clearingEventId"
+   WHERE version."id" = NEW."eventVersionId";
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'POL-275 确认目标版本不存在' USING ERRCODE = '23503';
+  END IF;
+  IF event_kind IN ('coverage_added', 'continued_withheld', 'technical_reversal')
+    AND (intent IS NULL OR intent ->> 'schema' IS DISTINCT FROM 'clearing_reconciliation_intent/V1')
+  THEN
+    RAISE EXCEPTION 'POL-275 新核对事件确认必须使用 V1 意图' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "ClearingConfirmation_pol275_required_v1"
+BEFORE INSERT ON "ClearingConfirmation"
+FOR EACH ROW EXECUTE FUNCTION "pol275_required_v1_confirmation_guard"();
+
 CREATE FUNCTION "pol275_reconciliation_closure_trigger"()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1635,24 +1666,14 @@ DECLARE
   row_json JSONB := to_jsonb(NEW);
   decision_id TEXT;
 BEGIN
-  IF TG_TABLE_NAME = 'ClearingConfirmation' THEN
-    decision_id := row_json ->> 'eventVersionId';
-  ELSIF TG_TABLE_NAME = 'ClearingReconciliationItem' THEN
-    decision_id := row_json ->> 'openingDecisionEventVersionId';
-  ELSIF TG_TABLE_NAME IN (
-    'ClearingReconciliationRevision',
-    'ClearingReconciliationCoverage',
-    'ClearingReconciliationResolution',
-    'ClearingReconciliationDefinitionReversal',
-    'ClearingReconciliationDecisionSeal'
-  ) THEN
-    decision_id := row_json ->> 'decisionEventVersionId';
-  ELSIF TG_TABLE_NAME = 'ClearingReconciliationResolutionLine' THEN
+  IF TG_NARGS = 2 AND TG_ARGV[0] = 'column' THEN
+    decision_id := row_json ->> TG_ARGV[1];
+  ELSIF TG_NARGS = 1 AND TG_ARGV[0] = 'resolution_line' THEN
     SELECT "decisionEventVersionId" INTO decision_id
     FROM public."ClearingReconciliationResolution"
     WHERE "id" = row_json ->> 'resolutionId';
-  ELSIF TG_TABLE_NAME IN ('ClearingAllocation', 'ClearingImpactLink') THEN
-    decision_id := row_json ->> 'eventVersionId';
+  ELSE
+    RAISE EXCEPTION 'POL-275 闭合触发器路由参数无效' USING ERRCODE = '23514';
   END IF;
   IF decision_id IS NOT NULL THEN
     PERFORM public."pol275_assert_reconciliation_closure"(decision_id);
@@ -1661,16 +1682,16 @@ BEGIN
 END;
 $$;
 
-CREATE CONSTRAINT TRIGGER "ClearingConfirmation_pol275_v1_closure" AFTER INSERT ON "ClearingConfirmation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationItem_pol275_closure" AFTER INSERT ON "ClearingReconciliationItem" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationRevision_pol275_closure" AFTER INSERT ON "ClearingReconciliationRevision" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationCoverage_pol275_closure" AFTER INSERT ON "ClearingReconciliationCoverage" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationResolution_pol275_closure" AFTER INSERT ON "ClearingReconciliationResolution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationDefinitionReversal_pol275_closure" AFTER INSERT ON "ClearingReconciliationDefinitionReversal" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationResolutionLine_pol275_closure" AFTER INSERT ON "ClearingReconciliationResolutionLine" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingReconciliationDecisionSeal_pol275_closure" AFTER INSERT ON "ClearingReconciliationDecisionSeal" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingAllocation_pol275_v1_closure" AFTER INSERT ON "ClearingAllocation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
-CREATE CONSTRAINT TRIGGER "ClearingImpactLink_pol275_v1_closure" AFTER INSERT ON "ClearingImpactLink" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"();
+CREATE CONSTRAINT TRIGGER "ClearingConfirmation_pol275_v1_closure" AFTER INSERT ON "ClearingConfirmation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'eventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationItem_pol275_closure" AFTER INSERT ON "ClearingReconciliationItem" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'openingDecisionEventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationRevision_pol275_closure" AFTER INSERT ON "ClearingReconciliationRevision" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationCoverage_pol275_closure" AFTER INSERT ON "ClearingReconciliationCoverage" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationResolution_pol275_closure" AFTER INSERT ON "ClearingReconciliationResolution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationDefinitionReversal_pol275_closure" AFTER INSERT ON "ClearingReconciliationDefinitionReversal" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationResolutionLine_pol275_closure" AFTER INSERT ON "ClearingReconciliationResolutionLine" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('resolution_line');
+CREATE CONSTRAINT TRIGGER "ClearingReconciliationDecisionSeal_pol275_closure" AFTER INSERT ON "ClearingReconciliationDecisionSeal" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingAllocation_pol275_v1_closure" AFTER INSERT ON "ClearingAllocation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'eventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingImpactLink_pol275_v1_closure" AFTER INSERT ON "ClearingImpactLink" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'eventVersionId');
 
 CREATE FUNCTION "pol275_append_reconciliation_set"(
   p_decision_event_version_id TEXT,
@@ -2785,6 +2806,7 @@ ALTER FUNCTION "pol275_relation_insert_guard"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_clearing_impact_link_guard"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_relation_set_hash_v1"(TEXT) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_assert_reconciliation_closure"(TEXT) OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_required_v1_confirmation_guard"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_reconciliation_closure_trigger"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol214_clearing_allocation_guard"() OWNER TO "jg_pol275_owner";
@@ -2829,6 +2851,7 @@ REVOKE ALL ON FUNCTION "pol275_relation_insert_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_clearing_impact_link_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_relation_set_hash_v1"(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_assert_reconciliation_closure"(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_required_v1_confirmation_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_reconciliation_closure_trigger"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol214_clearing_allocation_guard"() FROM PUBLIC;
