@@ -537,19 +537,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             isActive: true
           }
         });
-        const employeePosition = await client.position.upsert({
-          where: { key: "employee" },
-          create: {
-            id: `${prefix}_employee_position`,
-            key: "employee",
-            name: "员工"
-          },
-          update: {}
+        const financeStaffPosition = await client.position.findUniqueOrThrow({
+          where: { key: "finance_staff" },
+          select: { id: true }
         });
         await client.userPosition.create({
           data: {
             userId: reverseDelegateeUserId,
-            positionId: employeePosition.id,
+            positionId: financeStaffPosition.id,
             projectId: null
           }
         });
