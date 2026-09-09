@@ -1188,7 +1188,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           0
         );
 
-        const createHistoricalFinalSource = async (
+        const createHistoricalConfirmedSource = async (
           suffix: string,
           amountCents: bigint
         ) => {
@@ -1205,8 +1205,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               delegatorUserId: null,
               actorIds: [actors.confirmerUserId],
               attesterActorIds: [actors.attesterUserId],
-              category: "assigned_management_salary",
-              authority: authorityFixture.historicalWageAuthority,
+              category: "deposit",
+              authority: authorityFixture.historicalGuaranteeAuthority,
               amountCents,
               evidenceLevel: "B",
               sourceType: "pol275_pg16_historical_fixture",
@@ -1263,7 +1263,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           });
         };
         const historicalSourceSelectionRef = async (
-          source: Awaited<ReturnType<typeof createHistoricalFinalSource>>
+          source: Awaited<ReturnType<typeof createHistoricalConfirmedSource>>
         ) => {
           const options = await authorityFixture.authorityService.allocationOptions(
             actors.confirmerUserId,
@@ -1271,14 +1271,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           );
           const selectionRef = options.options.find(
             (option) =>
-              option.sourceKind === "final_confirmed" &&
+              option.sourceKind === "withheld" &&
               option.amountCents === source.amountCents.toString()
           )?.selectionRef;
           assert.equal(typeof selectionRef, "string");
           return selectionRef as string;
         };
         const prepareAttestedLegacyReturn = async (
-          source: Awaited<ReturnType<typeof createHistoricalFinalSource>>,
+          source: Awaited<ReturnType<typeof createHistoricalConfirmedSource>>,
           amountCents: string,
           businessReason: string
         ) => {
@@ -1300,7 +1300,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           return { ...prepared, eventRevision: attested.revision };
         };
 
-        const v1FirstSource = await createHistoricalFinalSource("v1-first", 101n);
+        const v1FirstSource = await createHistoricalConfirmedSource("v1-first", 101n);
         const v1FirstRevision = await openHistoricalReturnItem(
           v1FirstSource.caseId,
           "60"
@@ -1349,7 +1349,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             expectedRevision: legacyAfterV1.eventRevision,
             allocations: [{
               sourceSelectionRef: await historicalSourceSelectionRef(v1FirstSource),
-              sourceKind: "final_confirmed",
+              sourceKind: "withheld",
               amountCents: "1"
             }]
           }
@@ -1361,7 +1361,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           0
         );
 
-        const legacyFirstSource = await createHistoricalFinalSource(
+        const legacyFirstSource = await createHistoricalConfirmedSource(
           "legacy-first",
           102n
         );
@@ -1375,7 +1375,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           expectedRevision: legacyFirstReturn.eventRevision,
           allocations: [{
             sourceSelectionRef: await historicalSourceSelectionRef(legacyFirstSource),
-            sourceKind: "final_confirmed",
+            sourceKind: "withheld",
             amountCents: "60"
           }]
         });
@@ -1425,7 +1425,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           returnedCountBeforePrepare
         );
 
-        const concurrentSource = await createHistoricalFinalSource(
+        const concurrentSource = await createHistoricalConfirmedSource(
           "concurrent",
           103n
         );
@@ -1494,7 +1494,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             expectedRevision: legacyConcurrent.eventRevision,
             allocations: [{
               sourceSelectionRef: concurrentLegacySelectionRef,
-              sourceKind: "final_confirmed",
+              sourceKind: "withheld",
               amountCents: "60"
             }]
           })
@@ -3654,18 +3654,15 @@ async function createAuthorityBackedClearingCase(
   )?.selectionRef;
   assert.equal(typeof rawAuthoritySelectionRef, "string");
   const authoritySelectionRef = rawAuthoritySelectionRef as string;
-  const rawHistoricalWageSelectionRef = authorityOptions.options.find(
-    (option) => option.optionKind === "assigned_wage"
-  )?.selectionRef;
-  assert.equal(typeof rawHistoricalWageSelectionRef, "string");
-  const historicalWageAuthority = await authorityService.resolveCaseSelection(
+  const historicalGuaranteeAuthority = await authorityService.resolveCaseSelection(
     actors.preparerUserId,
     {
       idempotencyKey: randomUUID(),
       expectedRevision: 0,
-      selectionRef: rawHistoricalWageSelectionRef as string
+      selectionRef: authoritySelectionRef,
+      guaranteeTrancheAmountCents: "1000"
     },
-    "assigned_management_salary"
+    "deposit"
   );
 
   const service = clearingService(
@@ -3688,7 +3685,7 @@ async function createAuthorityBackedClearingCase(
     clearingCase,
     service,
     authorityService,
-    historicalWageAuthority
+    historicalGuaranteeAuthority
   };
 }
 
