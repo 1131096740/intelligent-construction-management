@@ -1651,7 +1651,7 @@ DECLARE
   planned_ids JSONB;
   item_definition JSONB;
   definition_reversal JSONB;
-  coverage JSONB;
+  coverage_item JSONB;
   resolution JSONB;
   resolution_line_item JSONB;
   allocation_plan JSONB;
@@ -2312,12 +2312,12 @@ BEGIN
   END IF;
 
   coverage_total := 0;
-  FOR coverage IN SELECT value FROM jsonb_array_elements(intent -> 'coverages') LOOP
+  FOR coverage_item IN SELECT value FROM jsonb_array_elements(intent -> 'coverages') LOOP
     SELECT revision.*, item."lineageRootItemId"
       INTO target_revision
       FROM public."ClearingReconciliationRevision" revision
       JOIN public."ClearingReconciliationItem" item ON item."id" = revision."itemId"
-     WHERE revision."id" = coverage ->> 'reconciliationRevisionId'
+     WHERE revision."id" = coverage_item ->> 'reconciliationRevisionId'
        AND revision."clearingCaseId" = version_record."clearingCaseId"
      FOR UPDATE OF revision;
     IF NOT FOUND THEN
@@ -2325,7 +2325,7 @@ BEGIN
     END IF;
     PERFORM pg_catalog.pg_advisory_xact_lock(
       pg_catalog.hashtextextended(
-        'pol275:event-version:' || (coverage ->> 'withheldEventVersionId'),
+        'pol275:event-version:' || (coverage_item ->> 'withheldEventVersionId'),
         0
       )
     );
@@ -2335,10 +2335,10 @@ BEGIN
       FROM public."ClearingEventVersion" source
       JOIN public."ClearingEvent" event ON event."id" = source."clearingEventId"
       LEFT JOIN public."ClearingConfirmation" confirmation ON confirmation."eventVersionId" = source."id"
-     WHERE source."id" = coverage ->> 'withheldEventVersionId';
+     WHERE source."id" = coverage_item ->> 'withheldEventVersionId';
     IF NOT FOUND OR source_version."clearingCaseId" <> version_record."clearingCaseId"
       OR source_version."kind" <> 'withheld' OR source_version.confirmed IS NULL
-      OR source_version."fingerprint" <> coverage ->> 'withheldEventVersionFingerprint'
+      OR source_version."fingerprint" <> coverage_item ->> 'withheldEventVersionFingerprint'
     THEN
       RAISE EXCEPTION 'POL-275 覆盖来源不是同案精确已确认暂扣版本' USING ERRCODE = '23514';
     END IF;
@@ -2358,12 +2358,12 @@ BEGIN
       "withheldEventVersionId", "amountCents", "decisionEventVersionId",
       "intentLineNo", "effectiveCaseRevision", "confirmedAt"
     ) VALUES (
-      coverage ->> 'coverageId', target_revision."id", target_revision."itemId",
-      version_record."clearingCaseId", coverage ->> 'withheldEventVersionId',
-      (coverage ->> 'amountCents')::BIGINT, p_decision_event_version_id,
-      (coverage ->> 'lineNo')::INTEGER, effective_case_revision, confirmed_at
+      coverage_item ->> 'coverageId', target_revision."id", target_revision."itemId",
+      version_record."clearingCaseId", coverage_item ->> 'withheldEventVersionId',
+      (coverage_item ->> 'amountCents')::BIGINT, p_decision_event_version_id,
+      (coverage_item ->> 'lineNo')::INTEGER, effective_case_revision, confirmed_at
     );
-    coverage_total := coverage_total + (coverage ->> 'amountCents')::BIGINT;
+    coverage_total := coverage_total + (coverage_item ->> 'amountCents')::BIGINT;
   END LOOP;
   IF intent ->> 'operation' = 'add_coverage' AND coverage_total <> version_record."amountCents" THEN
     RAISE EXCEPTION 'POL-275 coverage_added 金额必须等于冻结覆盖行合计' USING ERRCODE = '23514';
