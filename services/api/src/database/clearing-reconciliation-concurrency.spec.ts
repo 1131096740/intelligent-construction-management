@@ -1243,17 +1243,6 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             }),
             0
           );
-          const importedSourceSelectionRef = (
-            await authorityFixture.authorityService.allocationOptions(
-              actors.confirmerUserId,
-              imported.caseId
-            )
-          ).options.find(
-            (option) =>
-              option.sourceKind === "withheld" &&
-              option.amountCents === amountCents.toString()
-          )?.selectionRef;
-          assert.equal(typeof importedSourceSelectionRef, "string");
           const preparedSource = await prepareLegacyEvent(service, actors, {
             caseId: imported.caseId,
             expectedCaseRevision: await currentCaseRevision(client, imported.caseId),
@@ -1269,6 +1258,17 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               expectedRevision: preparedSource.eventRevision
             }
           ));
+          const importedSourceSelectionRef = (
+            await authorityFixture.authorityService.allocationOptions(
+              actors.confirmerUserId,
+              imported.caseId
+            )
+          ).options.find(
+            (option) =>
+              option.sourceKind === "withheld" &&
+              option.amountCents === amountCents.toString()
+          )?.selectionRef;
+          assert.equal(typeof importedSourceSelectionRef, "string");
           await service.confirmEvent(
             actors.confirmerUserId,
             preparedSource.eventId,
