@@ -1210,7 +1210,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             idempotencyKey: randomUUID(),
             expectedRevision: legacyAfterV1Attested.revision,
             allocations: [{
-              sourceEventVersionId: mixed.versionId,
+              sourceSelectionRef: selectionRefs.issue({
+                actorUserId: actors.confirmerUserId,
+                authorityVersionId: caseId,
+                authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                purpose: "allocation",
+                selectedKey: mixed.versionId,
+                revision: await currentCaseRevision(client, caseId)
+              }),
               sourceKind: "final_confirmed",
               amountCents: "1"
             }]
@@ -1371,7 +1378,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             idempotencyKey: randomUUID(),
             expectedRevision: legacyConcurrentAttested.revision,
             allocations: [{
-              sourceEventVersionId: concurrentSource.sourceVersionId,
+              sourceSelectionRef: selectionRefs.issue({
+                actorUserId: actors.confirmerUserId,
+                authorityVersionId: caseId,
+                authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                purpose: "allocation",
+                selectedKey: concurrentSource.sourceVersionId,
+                revision: confirmationCaseRevision
+              }),
               sourceKind: "final_confirmed",
               amountCents: "60"
             }]
