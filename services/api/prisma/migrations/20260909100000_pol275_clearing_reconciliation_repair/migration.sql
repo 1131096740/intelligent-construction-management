@@ -824,8 +824,7 @@ BEGIN
     );
     SELECT * INTO original_record
     FROM public."ClearingAllocation"
-    WHERE "id" = allocation_plan -> 'frozenSource' ->> 'sourceClearingAllocationId'
-    FOR UPDATE;
+    WHERE "id" = allocation_plan -> 'frozenSource' ->> 'sourceClearingAllocationId';
     IF NOT FOUND OR original_record."reversesAllocationId" IS NOT NULL
       OR original_record."eventVersionId" <> NEW."sourceEventVersionId"
       OR (
