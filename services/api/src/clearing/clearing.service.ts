@@ -1692,7 +1692,11 @@ export class ClearingService {
       if (clearingCase.sourceDiscriminator && allocation.sourceSelectionRef) {
         if (!this.selectionRefs || !clearingCase.authoritySnapshotRef) throw new ConflictException("#214 分配 selectionRef 服务未注册，必须失败关闭");
         const candidates = await tx.clearingEventVersion.findMany({
-          where: { clearingCaseId: clearingCase.id, workflowStatus: "confirmed" },
+          where: {
+            clearingCaseId: clearingCase.id,
+            confirmation: { isNot: null },
+            clearingEvent: { workflowStatus: "confirmed" }
+          },
           include: { clearingEvent: true, confirmation: true }
         });
         const selected = candidates.find((candidate) =>
@@ -1721,6 +1725,7 @@ export class ClearingService {
         !source ||
         source.clearingCaseId !== clearingCase.id ||
         !source.confirmation ||
+        source.clearingEvent.workflowStatus !== "confirmed" ||
         source.clearingEvent.kind !== allocation.sourceKind
       ) {
         throw new BadRequestException("清算分配来源不存在、未确认或类型不一致");

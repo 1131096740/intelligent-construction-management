@@ -337,7 +337,11 @@ export class AffiliateClearingAuthorityService {
     const clearingCase = await this.prisma.clearingCase.findUnique({ where: { id: caseId } });
     if (!clearingCase?.sourceDiscriminator || !clearingCase.authoritySnapshotRef) return { options: [] };
     const versions = await this.prisma.clearingEventVersion.findMany({
-      where: { clearingCaseId: caseId, workflowStatus: "confirmed" },
+      where: {
+        clearingCaseId: caseId,
+        confirmation: { isNot: null },
+        clearingEvent: { workflowStatus: "confirmed" }
+      },
       include: { clearingEvent: true, confirmation: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });

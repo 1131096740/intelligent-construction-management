@@ -124,6 +124,11 @@ function harness() {
     affiliateClearingAuthorityVersion: { findMany: jest.fn().mockResolvedValue([]) },
     assignedWageAuthorityLine: { findMany: jest.fn().mockResolvedValue([]) },
     guaranteeObligationVersion: { findMany: jest.fn().mockResolvedValue([]) },
+    clearingCase: { findUnique: jest.fn().mockResolvedValue(null) },
+    clearingEventVersion: { findMany: jest.fn().mockResolvedValue([]) },
+    clearingAllocation: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } })
+    },
     user: { findMany: jest.fn().mockResolvedValue([{ id: "user-1", name: "张三", isActive: true }]) },
     roles: undefined
   };
@@ -2312,5 +2317,47 @@ describe("#214 AffiliateClearingAuthorityService", () => {
     expect(wageOption).toEqual(expect.objectContaining({ label: "张三", selectionRef: expect.any(String) }));
     expect(wageOption).not.toHaveProperty("authoritySnapshotRef");
     expect(wageOption).not.toHaveProperty("authorityFingerprint");
+  });
+
+  it("offers a submitted event version when its event is confirmed and it has an exact confirmation", async () => {
+    const { service, prisma, selection } = harness();
+    prisma.clearingCase.findUnique.mockResolvedValue({
+      id: "case-1",
+      sourceDiscriminator: "construction_enterprise_guarantee",
+      authoritySnapshotRef: "authority-fingerprint",
+      revision: 7
+    });
+    prisma.clearingEventVersion.findMany.mockResolvedValue([{
+      id: "source-version-1",
+      workflowStatus: "submitted",
+      amountCents: 100n,
+      evidenceLevel: "B",
+      clearingEvent: { kind: "final_confirmed", workflowStatus: "confirmed" },
+      confirmation: { eventVersionId: "source-version-1" }
+    }]);
+    prisma.clearingAllocation.aggregate.mockResolvedValue({ _sum: { amountCents: 40n } });
+
+    await expect(service.allocationOptions("finance-staff", "case-1")).resolves.toEqual({
+      options: [{
+        selectionRef: "fac1.abc.signature",
+        sourceKind: "final_confirmed",
+        amountCents: "100",
+        remainingCents: "60",
+        evidenceLevel: "B"
+      }]
+    });
+    expect(prisma.clearingEventVersion.findMany).toHaveBeenCalledWith({
+      where: {
+        clearingCaseId: "case-1",
+        confirmation: { isNot: null },
+        clearingEvent: { workflowStatus: "confirmed" }
+      },
+      include: { clearingEvent: true, confirmation: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    expect(selection.issue).toHaveBeenCalledWith(expect.objectContaining({
+      selectedKey: "source-version-1",
+      revision: 7
+    }));
   });
 });

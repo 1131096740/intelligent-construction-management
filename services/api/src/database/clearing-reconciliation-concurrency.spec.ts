@@ -1289,12 +1289,23 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               sourceKind: "withheld"
             }
           });
-          assert.equal(
-            (await client.clearingEventVersion.findUniqueOrThrow({
+          assert.deepEqual(
+            await client.clearingEventVersion.findUniqueOrThrow({
               where: { id: preparedSource.versionId },
-              select: { workflowStatus: true }
-            })).workflowStatus,
-            "confirmed"
+              select: {
+                workflowStatus: true,
+                confirmation: { select: { eventVersionId: true } },
+                clearingEvent: { select: { kind: true, workflowStatus: true } }
+              }
+            }),
+            {
+              workflowStatus: "submitted",
+              confirmation: { eventVersionId: preparedSource.versionId },
+              clearingEvent: {
+                kind: "final_confirmed",
+                workflowStatus: "confirmed"
+              }
+            }
           );
           return {
             caseId: imported.caseId,

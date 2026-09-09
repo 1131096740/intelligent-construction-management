@@ -971,7 +971,15 @@ describe("ClearingService", () => {
     });
   });
 
-  it("links every returned impact to the exact original impact", async () => {
+  it("resolves an Event-confirmed exact-Confirmation source and links every returned impact", async () => {
+    const sourceVersion = {
+      id: "source-version",
+      clearingCaseId: "case-1",
+      workflowStatus: "submitted",
+      amountCents: 100n,
+      clearingEvent: { kind: "final_confirmed", workflowStatus: "confirmed" },
+      confirmation: { id: "source-confirmation" }
+    };
     const tx = {
       clearingCommandReceipt: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -995,16 +1003,9 @@ describe("ClearingService", () => {
         update: jest.fn().mockResolvedValue({ revision: 3 })
       },
       clearingEventVersion: {
+        findMany: jest.fn().mockResolvedValue([sourceVersion]),
         findUnique: jest.fn().mockImplementation(({ where }) => {
-          if (where.id === "source-version") {
-            return {
-              id: "source-version",
-              clearingCaseId: "case-1",
-              amountCents: 100n,
-              clearingEvent: { kind: "final_confirmed" },
-              confirmation: { id: "source-confirmation" }
-            };
-          }
+          if (where.id === "source-version") return sourceVersion;
           return {
             id: "return-version",
             clearingEventId: "return-event",
@@ -1029,7 +1030,9 @@ describe("ClearingService", () => {
           category: "management_fee",
           governedSubjectKey: "管理费-2026",
           authoritativeGrossCapCents: 1000n,
-          revision: 4
+          revision: 4,
+          sourceDiscriminator: "construction_enterprise_guarantee",
+          authoritySnapshotRef: "authority-fingerprint"
         }),
         update: jest.fn().mockResolvedValue({ revision: 5 })
       },
@@ -1068,9 +1071,11 @@ describe("ClearingService", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       $executeRaw: jest.fn().mockResolvedValue(1)
     };
+    const selectionRefs = { matches: jest.fn().mockReturnValue(true) };
     const { service } = serviceWith({
       tx,
-      ledgerResult: { id: "return-fact", impactIds: ["return-cost", "return-funds"] }
+      ledgerResult: { id: "return-fact", impactIds: ["return-cost", "return-funds"] },
+      selectionRefs
     });
 
     await service.confirmEvent("director-1", "return-event", {
@@ -1078,13 +1083,25 @@ describe("ClearingService", () => {
       expectedRevision: 2,
       allocations: [
         {
-          sourceEventVersionId: "source-version",
+          sourceSelectionRef: "fac1.source-selection",
           sourceKind: "final_confirmed",
           amountCents: "100"
         }
       ]
     });
 
+    expect(tx.clearingEventVersion.findMany).toHaveBeenCalledWith({
+      where: {
+        clearingCaseId: "case-1",
+        confirmation: { isNot: null },
+        clearingEvent: { workflowStatus: "confirmed" }
+      },
+      include: { clearingEvent: true, confirmation: true }
+    });
+    expect(selectionRefs.matches).toHaveBeenCalledWith(
+      "fac1.source-selection",
+      expect.objectContaining({ selectedKey: "source-version", revision: 4 })
+    );
     expect(tx.clearingImpactLink.findMany).toHaveBeenCalledWith({
       where: { eventVersionId: "source-version" },
       orderBy: { sourceImpactKey: "asc" }
