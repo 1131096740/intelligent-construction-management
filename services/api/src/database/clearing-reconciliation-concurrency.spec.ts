@@ -583,13 +583,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             })
           })
         } as never)).resolves.toBe(true);
+        const readyT4CaseRevision = await currentCaseRevision(client, caseId);
         const t4 = eventResult(await service.confirmEvent(
           reverseDelegateeUserId,
           t4Candidate.eventId,
           {
             idempotencyKey: randomUUID(),
             expectedRevision: t4Candidate.eventRevision,
-            expectedCaseRevision: beforeT4.revision,
+            expectedCaseRevision: readyT4CaseRevision,
             eventVersionId: t4Candidate.versionId,
             expectedFingerprint: t4Candidate.fingerprint,
             delegatorUserId: actors.confirmerUserId,
