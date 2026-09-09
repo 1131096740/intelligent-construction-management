@@ -1221,22 +1221,84 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               entryKind: "original"
             })
           );
-          const sourceAllocation = await client.clearingAllocation.findFirstOrThrow({
-            where: { eventVersionId: imported.versionId }
-          });
           const sourceCase = await client.clearingCase.findUniqueOrThrow({
             where: { id: imported.caseId }
           });
-          assert.equal(
+          assert.deepEqual(
             (await client.clearingEventVersion.findUniqueOrThrow({
               where: { id: imported.versionId },
+              select: {
+                workflowStatus: true,
+                clearingEvent: { select: { kind: true } }
+              }
+            })),
+            {
+              workflowStatus: "confirmed",
+              clearingEvent: { kind: "withheld" }
+            }
+          );
+          assert.equal(
+            await client.clearingAllocation.count({
+              where: { eventVersionId: imported.versionId }
+            }),
+            0
+          );
+          const importedSourceSelectionRef = (
+            await authorityFixture.authorityService.allocationOptions(
+              actors.confirmerUserId,
+              imported.caseId
+            )
+          ).options.find(
+            (option) =>
+              option.sourceKind === "withheld" &&
+              option.amountCents === amountCents.toString()
+          )?.selectionRef;
+          assert.equal(typeof importedSourceSelectionRef, "string");
+          const preparedSource = await prepareLegacyEvent(service, actors, {
+            caseId: imported.caseId,
+            expectedCaseRevision: await currentCaseRevision(client, imported.caseId),
+            kind: "final_confirmed",
+            amountCents: amountCents.toString(),
+            businessReason: `以历史保证金暂扣形成退回来源-${suffix}`
+          });
+          const attestedSource = eventResult(await service.attestEvent(
+            actors.attesterUserId,
+            preparedSource.eventId,
+            {
+              idempotencyKey: randomUUID(),
+              expectedRevision: preparedSource.eventRevision
+            }
+          ));
+          await service.confirmEvent(
+            actors.confirmerUserId,
+            preparedSource.eventId,
+            {
+              idempotencyKey: randomUUID(),
+              expectedRevision: attestedSource.revision,
+              allocations: [{
+                sourceSelectionRef: importedSourceSelectionRef as string,
+                sourceKind: "withheld",
+                amountCents: amountCents.toString()
+              }]
+            }
+          );
+          const sourceAllocation = await client.clearingAllocation.findFirstOrThrow({
+            where: {
+              eventVersionId: preparedSource.versionId,
+              sourceEventVersionId: imported.versionId,
+              sourceKind: "withheld"
+            }
+          });
+          assert.equal(
+            (await client.clearingEventVersion.findUniqueOrThrow({
+              where: { id: preparedSource.versionId },
               select: { workflowStatus: true }
             })).workflowStatus,
             "confirmed"
           );
           return {
             caseId: imported.caseId,
-            sourceVersionId: imported.versionId,
+            sourceVersionId: preparedSource.versionId,
             sourceAllocation,
             sourceCase,
             amountCents
@@ -1271,7 +1333,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           );
           const selectionRef = options.options.find(
             (option) =>
-              option.sourceKind === "withheld" &&
+              option.sourceKind === "final_confirmed" &&
               option.amountCents === source.amountCents.toString()
           )?.selectionRef;
           assert.equal(typeof selectionRef, "string");
@@ -1349,7 +1411,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             expectedRevision: legacyAfterV1.eventRevision,
             allocations: [{
               sourceSelectionRef: await historicalSourceSelectionRef(v1FirstSource),
-              sourceKind: "withheld",
+              sourceKind: "final_confirmed",
               amountCents: "1"
             }]
           }
@@ -1375,7 +1437,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           expectedRevision: legacyFirstReturn.eventRevision,
           allocations: [{
             sourceSelectionRef: await historicalSourceSelectionRef(legacyFirstSource),
-            sourceKind: "withheld",
+            sourceKind: "final_confirmed",
             amountCents: "60"
           }]
         });
@@ -1494,7 +1556,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             expectedRevision: legacyConcurrent.eventRevision,
             allocations: [{
               sourceSelectionRef: concurrentLegacySelectionRef,
-              sourceKind: "withheld",
+              sourceKind: "final_confirmed",
               amountCents: "60"
             }]
           })
