@@ -1656,6 +1656,18 @@ CREATE TRIGGER "ClearingConfirmation_pol275_required_v1"
 BEFORE INSERT ON "ClearingConfirmation"
 FOR EACH ROW EXECUTE FUNCTION "pol275_required_v1_confirmation_guard"();
 
+CREATE FUNCTION "pol275_confirmation_closure_trigger"()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+BEGIN
+  PERFORM public."pol275_assert_reconciliation_closure"(NEW."eventVersionId");
+  RETURN NEW;
+END;
+$$;
+
 CREATE FUNCTION "pol275_reconciliation_closure_trigger"()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1682,7 +1694,7 @@ BEGIN
 END;
 $$;
 
-CREATE CONSTRAINT TRIGGER "ClearingConfirmation_pol275_v1_closure" AFTER INSERT ON "ClearingConfirmation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'eventVersionId');
+CREATE CONSTRAINT TRIGGER "ClearingConfirmation_pol275_v1_closure" AFTER INSERT ON "ClearingConfirmation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_confirmation_closure_trigger"();
 CREATE CONSTRAINT TRIGGER "ClearingReconciliationItem_pol275_closure" AFTER INSERT ON "ClearingReconciliationItem" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'openingDecisionEventVersionId');
 CREATE CONSTRAINT TRIGGER "ClearingReconciliationRevision_pol275_closure" AFTER INSERT ON "ClearingReconciliationRevision" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
 CREATE CONSTRAINT TRIGGER "ClearingReconciliationCoverage_pol275_closure" AFTER INSERT ON "ClearingReconciliationCoverage" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_reconciliation_closure_trigger"('column', 'decisionEventVersionId');
@@ -2807,6 +2819,7 @@ ALTER FUNCTION "pol275_clearing_impact_link_guard"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_relation_set_hash_v1"(TEXT) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_assert_reconciliation_closure"(TEXT) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_required_v1_confirmation_guard"() OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_confirmation_closure_trigger"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_reconciliation_closure_trigger"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol214_clearing_allocation_guard"() OWNER TO "jg_pol275_owner";
@@ -2852,6 +2865,7 @@ REVOKE ALL ON FUNCTION "pol275_clearing_impact_link_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_relation_set_hash_v1"(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_assert_reconciliation_closure"(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_required_v1_confirmation_guard"() FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_confirmation_closure_trigger"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_reconciliation_closure_trigger"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol214_clearing_allocation_guard"() FROM PUBLIC;
