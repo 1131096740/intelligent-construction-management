@@ -75,7 +75,7 @@
     "pizzip": "^3.2.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   },
   "prisma": {
     "seed": "node prisma/seed.cjs"
