@@ -88,6 +88,22 @@ export interface ClearingAllocationOption {
   evidenceLevel: "A" | "B";
 }
 
+export interface ClearingCoverageOption {
+  selectionRef: string;
+  reconciliationRevisionId: string;
+  amountCents: string;
+  remainingCents: string;
+  evidenceLevel: "A" | "B";
+}
+
+export interface ClearingPriorEconomicAllocationOption {
+  selectionRef: string;
+  sourceKind: "final_confirmed" | "supplemental";
+  amountCents: string;
+  remainingCents: string;
+  evidenceLevel: "A" | "B";
+}
+
 export interface ClearingCommandResult {
   id: string;
   versionId?: string;
@@ -146,7 +162,11 @@ export function fetchAffiliateClearingAuthorityOptions(projectId?: string) {
 }
 
 export function fetchClearingAllocationOptions(caseId: string) {
-  return readJson<{ options: ClearingAllocationOption[] }>(
+  return readJson<{
+    options: ClearingAllocationOption[];
+    coverageOptions: ClearingCoverageOption[];
+    priorEconomicAllocationOptions: ClearingPriorEconomicAllocationOption[];
+  }>(
     `/affiliate-clearing-authorities/allocation-options/${encodeURIComponent(caseId)}`,
     "加载清分分配选项失败"
   );

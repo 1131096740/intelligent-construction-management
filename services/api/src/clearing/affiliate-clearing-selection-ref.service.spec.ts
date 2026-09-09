@@ -12,6 +12,7 @@ describe("#214 authority selectionRef", () => {
     actorUserId: "finance-staff",
     authorityVersionId: "authority-1",
     authorityFingerprint: "fingerprint-1",
+    clearingCaseId: "case-1",
     purpose: "wage" as const,
     selectedKey: "person:user-1",
     amountCents: 12345n,
@@ -25,12 +26,14 @@ describe("#214 authority selectionRef", () => {
     );
   });
 
-  it("issues a short-lived opaque reference bound to actor, authority, selection and amount", () => {
+  it("issues a short-lived opaque reference bound to actor, case, purpose, selection and amount", () => {
     const ref = service.issue(binding, now);
     expect(ref).toMatch(/^fac1\.[^.]+\.[A-Za-z0-9_-]+$/);
     expect(ref).not.toContain(binding.authorityVersionId);
     expect(ref).not.toContain(binding.selectedKey);
     expect(service.matches(ref, binding, now)).toBe(true);
+    expect(service.matches(ref, { ...binding, clearingCaseId: "case-2" }, now)).toBe(false);
+    expect(service.matches(ref, { ...binding, purpose: "coverage" }, now)).toBe(false);
     expect(service.matches(ref, { ...binding, amountCents: 12346n }, now)).toBe(false);
     expect(service.matches(ref, binding, new Date("2026-09-01T00:05:00.001Z"))).toBe(false);
   });

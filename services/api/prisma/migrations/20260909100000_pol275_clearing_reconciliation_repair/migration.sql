@@ -761,6 +761,7 @@ BEGIN
       JOIN public."ClearingConfirmation" returned_confirmation
         ON returned_confirmation."eventVersionId" = returned_version."id"
       WHERE returned_event."kind" = 'returned'
+        AND returned_event."workflowStatus" = 'confirmed'
         AND returned_allocation."reversesAllocationId" IS NULL
         AND EXISTS (
           SELECT 1
@@ -807,7 +808,8 @@ BEGIN
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('pol275:event-version:' || NEW."sourceEventVersionId", 0)
   );
-  SELECT version."id", version."clearingCaseId", version."amountCents", event."kind"
+  SELECT version."id", version."clearingCaseId", version."amountCents", event."kind",
+         event."workflowStatus" AS event_status
     INTO source_record
     FROM public."ClearingEventVersion" version
     JOIN public."ClearingEvent" event ON event."id" = version."clearingEventId"
@@ -815,6 +817,7 @@ BEGIN
    WHERE version."id" = NEW."sourceEventVersionId";
   IF NOT FOUND OR source_record."clearingCaseId" <> target_case_id
     OR source_record."kind" <> NEW."sourceKind"
+    OR source_record.event_status <> 'confirmed'
   THEN
     RAISE EXCEPTION '清算分配来源不存在、未确认、跨案或类型不一致' USING ERRCODE = '23514';
   END IF;
@@ -834,6 +837,7 @@ BEGIN
         JOIN public."ClearingConfirmation" returned_confirmation
           ON returned_confirmation."eventVersionId" = returned_version."id"
         WHERE returned_event."kind" = 'returned'
+          AND returned_event."workflowStatus" = 'confirmed'
           AND returned_allocation."reversesAllocationId" IS NULL
           AND returned_allocation."sourceEventVersionId" = NEW."sourceEventVersionId"
           AND returned_version."payloadSnapshot"
@@ -853,6 +857,7 @@ BEGIN
         JOIN public."ClearingConfirmation" returned_confirmation
           ON returned_confirmation."eventVersionId" = returned_version."id"
         WHERE returned_event."kind" = 'returned'
+          AND returned_event."workflowStatus" = 'confirmed'
           AND returned_allocation."reversesAllocationId" IS NULL
           AND returned_allocation."sourceEventVersionId" = NEW."sourceEventVersionId"
           AND returned_version."payloadSnapshot"
@@ -953,6 +958,7 @@ BEGIN
     JOIN public."ClearingConfirmation" returned_confirmation
       ON returned_confirmation."eventVersionId" = returned_version."id"
     WHERE returned_event."kind" = 'returned'
+      AND returned_event."workflowStatus" = 'confirmed'
       AND returned_allocation."reversesAllocationId" IS NULL
       AND EXISTS (
         SELECT 1
@@ -1016,6 +1022,7 @@ BEGIN
     JOIN public."ClearingConfirmation" returned_confirmation
       ON returned_confirmation."eventVersionId" = returned_version."id"
     WHERE returned_event."kind" = 'returned'
+      AND returned_event."workflowStatus" = 'confirmed'
       AND returned_allocation."reversesAllocationId" IS NULL
       AND EXISTS (
         SELECT 1
@@ -1835,13 +1842,19 @@ BEGIN
       WHERE reversal."decisionEventVersionId" = p_decision_event_version_id
     ) affected
     JOIN public."ClearingEventVersion" source ON source."id" = affected.source_id
-    WHERE public."pol275_active_coverage_occupancy"(affected.source_id)
-      + COALESCE((
-        SELECT SUM(CASE WHEN allocation."reversesAllocationId" IS NULL
-          THEN allocation."amountCents" ELSE -allocation."amountCents" END)
-        FROM public."ClearingAllocation" allocation
-        WHERE allocation."sourceEventVersionId" = affected.source_id
-      ), 0) > source."amountCents"
+    JOIN public."ClearingEvent" source_event
+      ON source_event."id" = source."clearingEventId"
+    LEFT JOIN public."ClearingConfirmation" source_confirmation
+      ON source_confirmation."eventVersionId" = source."id"
+    WHERE source_confirmation."eventVersionId" IS NULL
+      OR source_event."workflowStatus" <> 'confirmed'
+      OR public."pol275_active_coverage_occupancy"(affected.source_id)
+        + COALESCE((
+          SELECT SUM(CASE WHEN allocation."reversesAllocationId" IS NULL
+            THEN allocation."amountCents" ELSE -allocation."amountCents" END)
+          FROM public."ClearingAllocation" allocation
+          WHERE allocation."sourceEventVersionId" = affected.source_id
+        ), 0) > source."amountCents"
   ) THEN
     RAISE EXCEPTION 'POL-275 覆盖与净经济分配超过暂扣来源容量' USING ERRCODE = '23514';
   END IF;
@@ -2456,6 +2469,7 @@ BEGIN
     );
     SELECT source."id", source."fingerprint", source."amountCents", source."currencyCode",
            source."clearingCaseId", event."id" AS clearing_event_id, event."kind",
+           event."workflowStatus" AS event_status,
            confirmation."eventVersionId" AS confirmed
       INTO source_version
       FROM public."ClearingEventVersion" source
@@ -2465,6 +2479,7 @@ BEGIN
     IF NOT FOUND OR source_version."clearingCaseId" <> version_record."clearingCaseId"
       OR source_version.clearing_event_id <> intent -> 'plannedPairedWithheld' ->> 'clearingEventId'
       OR source_version."kind" <> 'withheld' OR source_version.confirmed IS NULL
+      OR source_version.event_status <> 'confirmed'
       OR source_version."fingerprint" <> intent -> 'plannedPairedWithheld' ->> 'eventVersionFingerprint'
       OR source_version."amountCents" <> (intent -> 'plannedPairedWithheld' ->> 'amountCents')::BIGINT
       OR source_version."currencyCode" <> 'CNY'
@@ -2654,7 +2669,8 @@ BEGIN
       )
     );
     SELECT source."id", source."fingerprint", source."amountCents", source."clearingCaseId",
-           event."kind", confirmation."eventVersionId" AS confirmed
+           event."kind", event."workflowStatus" AS event_status,
+           confirmation."eventVersionId" AS confirmed
       INTO source_version
       FROM public."ClearingEventVersion" source
       JOIN public."ClearingEvent" event ON event."id" = source."clearingEventId"
@@ -2662,6 +2678,7 @@ BEGIN
      WHERE source."id" = coverage_item ->> 'withheldEventVersionId';
     IF NOT FOUND OR source_version."clearingCaseId" <> version_record."clearingCaseId"
       OR source_version."kind" <> 'withheld' OR source_version.confirmed IS NULL
+      OR source_version.event_status <> 'confirmed'
       OR source_version."fingerprint" <> coverage_item ->> 'withheldEventVersionFingerprint'
     THEN
       RAISE EXCEPTION 'POL-275 覆盖来源不是同案精确已确认暂扣版本' USING ERRCODE = '23514';
@@ -2811,6 +2828,30 @@ BEGIN
     );
 
     FOR resolution_line_item IN SELECT value FROM jsonb_array_elements(resolution -> 'lines') LOOP
+      IF resolution ->> 'entryKind' = 'resolution'
+        AND resolution_line_item ->> 'sourceKind' = 'withheld_coverage'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public."ClearingReconciliationCoverage" coverage
+          JOIN public."ClearingEventVersion" source
+            ON source."id" = coverage."withheldEventVersionId"
+          JOIN public."ClearingEvent" source_event
+            ON source_event."id" = source."clearingEventId"
+          JOIN public."ClearingConfirmation" source_confirmation
+            ON source_confirmation."eventVersionId" = source."id"
+          WHERE coverage."id" = resolution_line_item ->> 'coverageId'
+            AND coverage."reconciliationRevisionId" = target_revision."id"
+            AND coverage."clearingCaseId" = version_record."clearingCaseId"
+            AND source_event."kind" = 'withheld'
+            AND source_event."workflowStatus" = 'confirmed'
+            AND source."fingerprint"
+              = resolution_line_item -> 'frozenSource'
+                ->> 'withheldEventVersionFingerprint'
+        )
+      THEN
+        RAISE EXCEPTION 'POL-275 解决行覆盖来源不再是同案精确已确认暂扣版本'
+          USING ERRCODE = '23514';
+      END IF;
       IF resolution ->> 'entryKind' = 'technical_reversal' THEN
         SELECT * INTO original_line
         FROM public."ClearingReconciliationResolutionLine"
@@ -3130,6 +3171,8 @@ REVOKE ALL ON FUNCTION "pol275_reconciliation_closure_trigger"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol214_clearing_allocation_guard"() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT)
+  TO "jg_pol275_runtime";
+GRANT EXECUTE ON FUNCTION "pol275_active_coverage_occupancy"(TEXT)
   TO "jg_pol275_runtime";
 
 COMMIT;

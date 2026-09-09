@@ -335,7 +335,24 @@ export class AffiliateClearingAuthorityService {
   async allocationOptions(actorUserId: string, caseId: string) {
     await this.assertDirectAction(actorUserId, "clearing.read");
     const clearingCase = await this.prisma.clearingCase.findUnique({ where: { id: caseId } });
-    if (!clearingCase?.sourceDiscriminator || !clearingCase.authoritySnapshotRef) return { options: [] };
+    if (!clearingCase) {
+      return { options: [], coverageOptions: [], priorEconomicAllocationOptions: [] };
+    }
+    const authorityVersionId = clearingCase.authorityVersionId ?? clearingCase.id;
+    const authorityFingerprint =
+      clearingCase.authoritySnapshotRef ?? clearingCase.id;
+    const sourceBinding = (
+      purpose: AffiliateClearingSelectionBinding["purpose"],
+      selectedKey: string
+    ): AffiliateClearingSelectionBinding => ({
+      actorUserId,
+      authorityVersionId,
+      authorityFingerprint,
+      clearingCaseId: clearingCase.id,
+      purpose,
+      selectedKey,
+      revision: clearingCase.revision
+    });
     const versions = await this.prisma.clearingEventVersion.findMany({
       where: {
         clearingCaseId: caseId,
@@ -345,24 +362,271 @@ export class AffiliateClearingAuthorityService {
       include: { clearingEvent: true, confirmation: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
+    const versionIds = versions.map((version) => version.id);
+    const versionCapacityRows = versionIds.length
+      ? await this.prisma.$queryRaw<Array<{
+          id: string;
+          remaining: bigint;
+          usable: bigint;
+        }>>(Prisma.sql`
+          SELECT source.id,
+            (source."amountCents" - COALESCE(SUM(
+              CASE WHEN allocation."reversesAllocationId" IS NULL
+                THEN allocation."amountCents" ELSE -allocation."amountCents" END
+            ), 0))::bigint AS remaining,
+            (source."amountCents" - COALESCE(SUM(
+              CASE WHEN allocation."reversesAllocationId" IS NULL
+                THEN allocation."amountCents" ELSE -allocation."amountCents" END
+            ), 0) - CASE WHEN source_event.kind = 'withheld'
+              THEN public."pol275_active_coverage_occupancy"(source.id) ELSE 0 END
+            )::bigint AS usable
+          FROM "ClearingEventVersion" source
+          JOIN "ClearingEvent" source_event
+            ON source_event.id = source."clearingEventId"
+          JOIN "ClearingConfirmation" source_confirmation
+            ON source_confirmation."eventVersionId" = source.id
+          LEFT JOIN "ClearingAllocation" allocation
+            ON allocation."sourceEventVersionId" = source.id
+          WHERE source.id IN (${Prisma.join(versionIds)})
+            AND source_event."workflowStatus" = 'confirmed'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "ClearingAllocation" returned_allocation
+              JOIN "ClearingEventVersion" returned_version
+                ON returned_version.id = returned_allocation."eventVersionId"
+              JOIN "ClearingEvent" returned_event
+                ON returned_event.id = returned_version."clearingEventId"
+              JOIN "ClearingConfirmation" returned_confirmation
+                ON returned_confirmation."eventVersionId" = returned_version.id
+              WHERE returned_allocation."sourceEventVersionId" = source.id
+                AND returned_allocation."reversesAllocationId" IS NULL
+                AND returned_event.kind = 'returned'
+                AND returned_event."workflowStatus" = 'confirmed'
+                AND returned_version."payloadSnapshot"
+                  -> 'reconciliationIntent' ->> 'schema'
+                  = 'clearing_reconciliation_intent/V1'
+                AND EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(
+                    returned_version."payloadSnapshot"
+                      -> 'reconciliationIntent' -> 'eventAllocations'
+                  ) frozen_plan
+                  WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+                    AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+                )
+            )
+          GROUP BY source.id, source."amountCents", source_event.kind
+        `)
+      : [];
+    const versionCapacityById = new Map(
+      versionCapacityRows.map((row) => [row.id, row])
+    );
     const options: Array<Record<string, unknown>> = [];
     for (const version of versions) {
       if (!version.confirmation || !["withheld", "final_confirmed", "supplemental"].includes(version.clearingEvent.kind)) continue;
-      const used = await this.prisma.clearingAllocation.aggregate({
-        where: { sourceEventVersionId: version.id },
-        _sum: { amountCents: true }
-      });
-      const remaining = version.amountCents - (used._sum.amountCents ?? 0n);
+      const capacity = versionCapacityById.get(version.id);
+      if (!capacity) continue;
+      const remaining = version.clearingEvent.kind === "withheld"
+        ? capacity.usable
+        : capacity.remaining;
       if (remaining <= 0n) continue;
       options.push({
-        selectionRef: this.selectionRefs.issue(this.selectionBinding(actorUserId, caseId, clearingCase.authoritySnapshotRef, "allocation", version.id, clearingCase.revision)),
+        selectionRef: this.selectionRefs.issue(sourceBinding("allocation", version.id)),
         sourceKind: version.clearingEvent.kind,
         amountCents: version.amountCents.toString(),
         remainingCents: remaining.toString(),
         evidenceLevel: version.evidenceLevel
       });
     }
-    return { options };
+
+    const coverages = await this.prisma.clearingReconciliationCoverage.findMany({
+      where: {
+        clearingCaseId: caseId,
+        withheldEventVersion: {
+          confirmation: { isNot: null },
+          clearingEvent: { workflowStatus: "confirmed", kind: "withheld" }
+        }
+      },
+      include: {
+        withheldEventVersion: {
+          include: { clearingEvent: true, confirmation: true }
+        }
+      },
+      orderBy: [{ confirmedAt: "asc" }, { id: "asc" }]
+    });
+    const coverageIds = coverages.map((coverage) => coverage.id);
+    const coverageCapacityRows = coverageIds.length
+      ? await this.prisma.$queryRaw<Array<{ id: string; remaining: bigint }>>(Prisma.sql`
+          SELECT coverage.id,
+            (coverage."amountCents" - COALESCE(SUM(
+              CASE WHEN resolution."entryKind" = 'resolution'
+                THEN line."amountCents" ELSE -line."amountCents" END
+            ), 0))::bigint AS remaining
+          FROM "ClearingReconciliationCoverage" coverage
+          JOIN "ClearingEventVersion" source
+            ON source.id = coverage."withheldEventVersionId"
+          JOIN "ClearingEvent" source_event
+            ON source_event.id = source."clearingEventId"
+          JOIN "ClearingConfirmation" source_confirmation
+            ON source_confirmation."eventVersionId" = source.id
+          LEFT JOIN "ClearingReconciliationResolutionLine" line
+            ON line."coverageId" = coverage.id
+          LEFT JOIN "ClearingReconciliationResolution" resolution
+            ON resolution.id = line."resolutionId"
+          WHERE coverage.id IN (${Prisma.join(coverageIds)})
+            AND source_event.kind = 'withheld'
+            AND source_event."workflowStatus" = 'confirmed'
+          GROUP BY coverage.id, coverage."amountCents"
+        `)
+      : [];
+    const coverageCapacityById = new Map(
+      coverageCapacityRows.map((row) => [row.id, row.remaining])
+    );
+    const coverageOptions = coverages.flatMap((coverage) => {
+      const remaining = coverageCapacityById.get(coverage.id);
+      if (
+        remaining === undefined ||
+        remaining <= 0n ||
+        !coverage.withheldEventVersion.confirmation ||
+        coverage.withheldEventVersion.clearingEvent.workflowStatus !== "confirmed" ||
+        coverage.withheldEventVersion.clearingEvent.kind !== "withheld"
+      ) {
+        return [];
+      }
+      return [{
+        selectionRef: this.selectionRefs.issue(sourceBinding("coverage", coverage.id)),
+        reconciliationRevisionId: coverage.reconciliationRevisionId,
+        amountCents: coverage.amountCents.toString(),
+        remainingCents: remaining.toString(),
+        evidenceLevel: coverage.withheldEventVersion.evidenceLevel
+      }];
+    });
+
+    const economicAllocations = await this.prisma.clearingAllocation.findMany({
+      where: {
+        reversesAllocationId: null,
+        eventVersion: {
+          clearingCaseId: caseId,
+          confirmation: { isNot: null },
+          clearingEvent: {
+            workflowStatus: "confirmed",
+            kind: { in: ["final_confirmed", "supplemental"] }
+          }
+        }
+      },
+      include: {
+        eventVersion: {
+          include: {
+            clearingEvent: true,
+            confirmation: true,
+            impactLinks: true
+          }
+        }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    const eligibleEconomicAllocations = economicAllocations.filter((allocation) => {
+      const impacts = allocation.eventVersion.impactLinks.filter((impact) =>
+        impact.sourceImpactKey === "original:confirmed-cost" ||
+        impact.sourceImpactKey ===
+          "original:construction-enterprise-funds-decrease"
+      );
+      return allocation.eventVersion.confirmation &&
+        allocation.eventVersion.clearingEvent.workflowStatus === "confirmed" &&
+        impacts.length === 2 &&
+        new Set(impacts.map((impact) => impact.sourceImpactKey)).size === 2 &&
+        new Set(impacts.map((impact) => impact.operatingFactId)).size === 1;
+    });
+    const economicAllocationIds = eligibleEconomicAllocations.map(
+      (allocation) => allocation.id
+    );
+    const economicCapacityRows = economicAllocationIds.length
+      ? await this.prisma.$queryRaw<Array<{ id: string; remaining: bigint }>>(Prisma.sql`
+          SELECT original.id,
+            (original."amountCents"
+              - COALESCE((
+                  SELECT SUM(direct_reversal."amountCents")
+                  FROM "ClearingAllocation" direct_reversal
+                  WHERE direct_reversal."reversesAllocationId" = original.id
+                ), 0)
+              - COALESCE((
+                  SELECT SUM(
+                    returned_allocation."amountCents" - COALESCE((
+                      SELECT SUM(return_reversal."amountCents")
+                      FROM "ClearingAllocation" return_reversal
+                      WHERE return_reversal."reversesAllocationId" = returned_allocation.id
+                    ), 0)
+                  )
+                  FROM "ClearingAllocation" returned_allocation
+                  JOIN "ClearingEventVersion" returned_version
+                    ON returned_version.id = returned_allocation."eventVersionId"
+                  JOIN "ClearingEvent" returned_event
+                    ON returned_event.id = returned_version."clearingEventId"
+                  JOIN "ClearingConfirmation" returned_confirmation
+                    ON returned_confirmation."eventVersionId" = returned_version.id
+                  WHERE returned_event.kind = 'returned'
+                    AND returned_event."workflowStatus" = 'confirmed'
+                    AND returned_allocation."reversesAllocationId" IS NULL
+                    AND EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(
+                        returned_version."payloadSnapshot"
+                          -> 'reconciliationIntent' -> 'eventAllocations'
+                      ) frozen_plan
+                      WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+                        AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+                        AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original.id
+                    )
+                ), 0)
+            )::bigint AS remaining
+          FROM "ClearingAllocation" original
+          JOIN "ClearingEventVersion" source
+            ON source.id = original."eventVersionId"
+          JOIN "ClearingEvent" source_event
+            ON source_event.id = source."clearingEventId"
+          JOIN "ClearingConfirmation" source_confirmation
+            ON source_confirmation."eventVersionId" = source.id
+          WHERE original.id IN (${Prisma.join(economicAllocationIds)})
+            AND original."reversesAllocationId" IS NULL
+            AND source_event."workflowStatus" = 'confirmed'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "ClearingAllocation" legacy_return
+              JOIN "ClearingEventVersion" legacy_version
+                ON legacy_version.id = legacy_return."eventVersionId"
+              JOIN "ClearingEvent" legacy_event
+                ON legacy_event.id = legacy_version."clearingEventId"
+              JOIN "ClearingConfirmation" legacy_confirmation
+                ON legacy_confirmation."eventVersionId" = legacy_version.id
+              WHERE legacy_return."sourceEventVersionId" = source.id
+                AND legacy_return."reversesAllocationId" IS NULL
+                AND legacy_event.kind = 'returned'
+                AND legacy_event."workflowStatus" = 'confirmed'
+                AND legacy_version."payloadSnapshot"
+                  -> 'reconciliationIntent' ->> 'schema'
+                  IS DISTINCT FROM 'clearing_reconciliation_intent/V1'
+            )
+        `)
+      : [];
+    const economicCapacityById = new Map(
+      economicCapacityRows.map((row) => [row.id, row.remaining])
+    );
+    const priorEconomicAllocationOptions = eligibleEconomicAllocations.flatMap(
+      (allocation) => {
+        const remaining = economicCapacityById.get(allocation.id);
+        if (remaining === undefined || remaining <= 0n) return [];
+        return [{
+          selectionRef: this.selectionRefs.issue(
+            sourceBinding("prior_economic_allocation", allocation.id)
+          ),
+          sourceKind: allocation.eventVersion.clearingEvent.kind,
+          amountCents: allocation.amountCents.toString(),
+          remainingCents: remaining.toString(),
+          evidenceLevel: allocation.eventVersion.evidenceLevel
+        }];
+      }
+    );
+    return { options, coverageOptions, priorEconomicAllocationOptions };
   }
 
   async createAuthority(actorUserId: string, input: CreateAffiliateClearingAuthorityDto) {

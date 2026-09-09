@@ -545,6 +545,7 @@ async function collectEvidence(url, expectedMigrationCount) {
                 )) AS "unsafeMembershipCount",
         has_schema_privilege('jg_pol275_runtime', 'public', 'CREATE') AS "runtimeCanCreateInPublic",
         has_function_privilege('jg_pol275_runtime', 'public.pol275_append_reconciliation_set(text,text)', 'EXECUTE') AS "runtimeCanExecuteWriter",
+        has_function_privilege('jg_pol275_runtime', 'public.pol275_active_coverage_occupancy(text)', 'EXECUTE') AS "runtimeCanExecuteOccupancy",
         NOT EXISTS (
           SELECT 1
             FROM pg_catalog.pg_proc procedure
@@ -554,7 +555,17 @@ async function collectEvidence(url, expectedMigrationCount) {
              AND procedure.proname = 'pol275_append_reconciliation_set'
              AND acl.grantee = 0
              AND acl.privilege_type = 'EXECUTE'
-        ) AS "publicCannotExecuteWriter"
+        ) AS "publicCannotExecuteWriter",
+        NOT EXISTS (
+          SELECT 1
+            FROM pg_catalog.pg_proc procedure
+            JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+            CROSS JOIN LATERAL aclexplode(COALESCE(procedure.proacl, acldefault('f', procedure.proowner))) acl
+           WHERE namespace.nspname = 'public'
+             AND procedure.proname = 'pol275_active_coverage_occupancy'
+             AND acl.grantee = 0
+             AND acl.privilege_type = 'EXECUTE'
+        ) AS "publicCannotExecuteOccupancy"
     `);
     const tablePrivileges = await prisma.$queryRawUnsafe(`
       SELECT candidate."tableName",
@@ -621,7 +632,9 @@ function assertEvidence(evidence, expectedMigrationCount) {
     evidence.authority.unsafeMembershipCount !== 0 ||
     evidence.authority.runtimeCanCreateInPublic ||
     !evidence.authority.runtimeCanExecuteWriter ||
-    !evidence.authority.publicCannotExecuteWriter
+    !evidence.authority.runtimeCanExecuteOccupancy ||
+    !evidence.authority.publicCannotExecuteWriter ||
+    !evidence.authority.publicCannotExecuteOccupancy
   ) {
     fail("POL-275 角色成员关系或受控函数 ACL 不满足隔离要求");
   }

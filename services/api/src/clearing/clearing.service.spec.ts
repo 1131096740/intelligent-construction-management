@@ -990,7 +990,8 @@ describe("ClearingService", () => {
         .mockResolvedValueOnce([{ id: "case-1" }])
         .mockResolvedValueOnce([{ total: 0n }])
         .mockResolvedValueOnce([{ incompatible: false }])
-        .mockResolvedValueOnce([{ total: 0n }]),
+        .mockResolvedValueOnce([{ remaining: 100n, usable: 100n }])
+        .mockResolvedValue([{ remaining: 100n, usable: 100n }]),
       clearingEvent: {
         findUnique: jest.fn().mockResolvedValue({
           id: "return-event",
@@ -1100,7 +1101,12 @@ describe("ClearingService", () => {
     });
     expect(selectionRefs.matches).toHaveBeenCalledWith(
       "fac1.source-selection",
-      expect.objectContaining({ selectedKey: "source-version", revision: 4 })
+      expect.objectContaining({
+        clearingCaseId: "case-1",
+        purpose: "allocation",
+        selectedKey: "source-version",
+        revision: 4
+      })
     );
     expect(tx.clearingImpactLink.findMany).toHaveBeenCalledWith({
       where: { eventVersionId: "source-version" },
@@ -1696,7 +1702,11 @@ describe("ClearingService", () => {
             clearingCaseId: "case-1",
             withheldEventVersionId: "withheld-version-1",
             amountCents: 100n,
-            withheldEventVersion: { fingerprint: "c".repeat(64) }
+            withheldEventVersion: {
+              fingerprint: "c".repeat(64),
+              clearingEvent: { kind: "withheld", workflowStatus: "confirmed" },
+              confirmation: { eventVersionId: "withheld-version-1" }
+            }
           }
         ])
       },
@@ -1751,5 +1761,14 @@ describe("ClearingService", () => {
         amountCents: "40"
       })
     ]);
+    expect(selectionRefs.matches).toHaveBeenCalledWith(
+      "fac1.coverage",
+      expect.objectContaining({
+        clearingCaseId: "case-1",
+        purpose: "coverage",
+        selectedKey: "coverage-1",
+        revision: 4
+      })
+    );
   });
 });

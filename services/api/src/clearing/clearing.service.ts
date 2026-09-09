@@ -1676,6 +1676,7 @@ export class ClearingService {
   ): Promise<ClearingAllocationInput[]> {
     const confirmedAgainstCapCents = await this.confirmedAgainstCap(tx, clearingCase.id);
     const output: ClearingAllocationInput[] = [];
+    const plannedConsumptionBySource = new Map<string, bigint>();
     for (const allocation of input.allocations ?? []) {
       const amountCents = positiveCents(allocation.amountCents);
       if (allocation.sourceKind === "authority_cap") {
@@ -1706,8 +1707,11 @@ export class ClearingService {
             allocation.sourceSelectionRef ?? "",
             {
               actorUserId,
-              authorityVersionId: clearingCase.id,
-              authorityFingerprint: clearingCase.authoritySnapshotRef ?? "",
+              authorityVersionId:
+                clearingCase.authorityVersionId ?? clearingCase.id,
+              authorityFingerprint:
+                clearingCase.authoritySnapshotRef ?? clearingCase.id,
+              clearingCaseId: clearingCase.id,
               purpose: "allocation",
               selectedKey: candidate.id,
               revision: clearingCase.revision
@@ -1741,15 +1745,25 @@ export class ClearingService {
           "legacy"
         );
       }
-      const used = await tx.clearingAllocation.aggregate({
-        where: { sourceEventVersionId: resolvedSourceId },
-        _sum: { amountCents: true }
-      });
+      const capacity = await this.lockSourceCapacity(
+        tx,
+        resolvedSourceId,
+        allocation.sourceKind
+      );
+      if (!capacity) {
+        throw new ConflictException("清算分配来源资格或容量已漂移，请刷新后重试");
+      }
+      const plannedConsumption =
+        (plannedConsumptionBySource.get(resolvedSourceId) ?? 0n) + amountCents;
+      if (plannedConsumption > capacity.usable) {
+        throw new ConflictException("清算分配与有效覆盖合计超过来源余额");
+      }
+      plannedConsumptionBySource.set(resolvedSourceId, plannedConsumption);
       output.push({
         sourceEventVersionId: resolvedSourceId,
         sourceKind: allocation.sourceKind,
         amountCents,
-        sourceRemainingCents: source.amountCents - (used._sum.amountCents ?? 0n)
+        sourceRemainingCents: capacity.remaining
       });
     }
     if (!["final_confirmed", "supplemental", "returned"].includes(kind) && output.length) {
@@ -1828,6 +1842,7 @@ export class ClearingService {
         !source ||
         source.clearingCaseId !== clearingCase.id ||
         !source.confirmation ||
+        source.clearingEvent.workflowStatus !== "confirmed" ||
         source.clearingEvent.kind !== plan.allocationSourceKind
       ) {
         throw new ConflictException("V1 冻结来源已经漂移，必须 revise 后重新提交");
@@ -1876,29 +1891,14 @@ export class ClearingService {
           continue;
         }
       }
-      const [available] = await tx.$queryRaw<
-        Array<{ remaining: bigint; usable: bigint }>
-      >(Prisma.sql`
-        SELECT (
-          source."amountCents" - COALESCE(SUM(
-            CASE WHEN allocation."reversesAllocationId" IS NULL
-              THEN allocation."amountCents" ELSE -allocation."amountCents" END
-          ), 0)
-        )::bigint AS remaining,
-        (
-          source."amountCents" - COALESCE(SUM(
-            CASE WHEN allocation."reversesAllocationId" IS NULL
-              THEN allocation."amountCents" ELSE -allocation."amountCents" END
-          ), 0)
-          - CASE WHEN ${plan.allocationSourceKind} = 'withheld'
-              THEN public."pol275_active_coverage_occupancy"(source.id) ELSE 0 END
-        )::bigint AS usable
-        FROM "ClearingEventVersion" source
-        LEFT JOIN "ClearingAllocation" allocation
-          ON allocation."sourceEventVersionId" = source.id
-        WHERE source.id = ${sourceEventVersionId}
-        GROUP BY source.id, source."amountCents"
-      `);
+      const available = await this.lockSourceCapacity(
+        tx,
+        sourceEventVersionId,
+        plan.allocationSourceKind
+      );
+      if (!available) {
+        throw new ConflictException("V1 冻结来源资格或容量已漂移，必须 revise");
+      }
       const frozenCoverageRelief =
         plan.allocationSourceKind === "withheld" &&
         allocationConsumesFrozenCoverage(reconciliationIntent, plan)
@@ -1911,7 +1911,7 @@ export class ClearingService {
         const plannedCoverageRelief =
           (plannedCoverageReliefBySource.get(sourceKey) ?? 0n) +
           frozenCoverageRelief;
-        if (plannedConsumption > (available?.usable ?? 0n) + plannedCoverageRelief) {
+        if (plannedConsumption > available.usable + plannedCoverageRelief) {
           throw new ConflictException("V1 冻结来源容量已漂移，必须 revise");
         }
         plannedConsumptionBySource.set(sourceKey, plannedConsumption);
@@ -1921,7 +1921,7 @@ export class ClearingService {
         sourceEventVersionId,
         sourceKind: plan.allocationSourceKind,
         amountCents,
-        sourceRemainingCents: available?.remaining ?? source.amountCents,
+        sourceRemainingCents: available.remaining,
         reversesAllocationId: reversedAllocation?.id ?? null
       });
     }
@@ -2008,12 +2008,21 @@ export class ClearingService {
       eventVersionId: string;
       amountCents: bigint;
       reversesAllocationId: string | null;
+      sourceKind: string;
+      sourceStatus: string;
     }>>(Prisma.sql`
       SELECT allocation."eventVersionId", allocation."amountCents",
-             allocation."reversesAllocationId"
+             allocation."reversesAllocationId", source_event.kind AS "sourceKind",
+             source_event."workflowStatus" AS "sourceStatus"
       FROM "ClearingAllocation" allocation
+      JOIN "ClearingEventVersion" source
+        ON source.id = allocation."eventVersionId"
+      JOIN "ClearingEvent" source_event
+        ON source_event.id = source."clearingEventId"
+      JOIN "ClearingConfirmation" source_confirmation
+        ON source_confirmation."eventVersionId" = source.id
       WHERE allocation.id = ${sourceClearingAllocationId}
-      FOR UPDATE
+      FOR UPDATE OF allocation, source, source_event
     `);
     const sourceLinks = await tx.clearingImpactLink.findMany({
       where: {
@@ -2026,6 +2035,9 @@ export class ClearingService {
       !original ||
       original.eventVersionId !== sourceEventVersionId ||
       original.reversesAllocationId !== null ||
+      original.sourceStatus !== "confirmed" ||
+      (original.sourceKind !== "final_confirmed" &&
+        original.sourceKind !== "supplemental") ||
       sourceLinks.length !== 2 ||
       !sourceLinks.every((link) => sourceImpactIds.includes(link.id)) ||
       new Set(sourceLinks.map((link) => link.operatingFactId)).size !== 1 ||
@@ -2067,6 +2079,7 @@ export class ClearingService {
             JOIN "ClearingConfirmation" returned_confirmation
               ON returned_confirmation."eventVersionId" = returned_version.id
             WHERE returned_event.kind = 'returned'
+              AND returned_event."workflowStatus" = 'confirmed'
               AND returned_allocation."reversesAllocationId" IS NULL
               AND EXISTS (
                 SELECT 1
@@ -2086,6 +2099,49 @@ export class ClearingService {
       throw new ConflictException("既有经济事件原 allocation 占用已损坏");
     }
     return capacity;
+  }
+
+  private async lockSourceCapacity(
+    tx: Tx,
+    sourceEventVersionId: string,
+    sourceKind: Exclude<ClearingAllocationInput["sourceKind"], "authority_cap">
+  ): Promise<{ remaining: bigint; usable: bigint } | null> {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:event-version:' || ${sourceEventVersionId}, 0)
+      )
+    `);
+    const [capacity] = await tx.$queryRaw<Array<{
+      remaining: bigint;
+      usable: bigint;
+    }>>(Prisma.sql`
+      SELECT (
+        source."amountCents" - COALESCE(SUM(
+          CASE WHEN allocation."reversesAllocationId" IS NULL
+            THEN allocation."amountCents" ELSE -allocation."amountCents" END
+        ), 0)
+      )::bigint AS remaining,
+      (
+        source."amountCents" - COALESCE(SUM(
+          CASE WHEN allocation."reversesAllocationId" IS NULL
+            THEN allocation."amountCents" ELSE -allocation."amountCents" END
+        ), 0)
+        - CASE WHEN ${sourceKind} = 'withheld'
+            THEN public."pol275_active_coverage_occupancy"(source.id) ELSE 0 END
+      )::bigint AS usable
+      FROM "ClearingEventVersion" source
+      JOIN "ClearingEvent" source_event
+        ON source_event.id = source."clearingEventId"
+      JOIN "ClearingConfirmation" source_confirmation
+        ON source_confirmation."eventVersionId" = source.id
+      LEFT JOIN "ClearingAllocation" allocation
+        ON allocation."sourceEventVersionId" = source.id
+      WHERE source.id = ${sourceEventVersionId}
+        AND source_event.kind = ${sourceKind}
+        AND source_event."workflowStatus" = 'confirmed'
+      GROUP BY source.id, source."amountCents"
+    `);
+    return capacity ?? null;
   }
 
   private async lockReturnSourceEventCompatibility(
@@ -2111,6 +2167,7 @@ export class ClearingService {
               JOIN "ClearingConfirmation" returned_confirmation
                 ON returned_confirmation."eventVersionId" = returned_version.id
               WHERE returned_event.kind = 'returned'
+                AND returned_event."workflowStatus" = 'confirmed'
                 AND returned_allocation."reversesAllocationId" IS NULL
                 AND returned_allocation."sourceEventVersionId" = ${sourceEventVersionId}
                 AND returned_version."payloadSnapshot"
@@ -2129,6 +2186,7 @@ export class ClearingService {
               JOIN "ClearingConfirmation" returned_confirmation
                 ON returned_confirmation."eventVersionId" = returned_version.id
               WHERE returned_event.kind = 'returned'
+                AND returned_event."workflowStatus" = 'confirmed'
                 AND returned_allocation."reversesAllocationId" IS NULL
                 AND returned_allocation."sourceEventVersionId" = ${sourceEventVersionId}
                 AND returned_version."payloadSnapshot"
@@ -2233,6 +2291,7 @@ export class ClearingService {
       JOIN "ClearingConfirmation" returned_confirmation
         ON returned_confirmation."eventVersionId" = returned_version.id
       WHERE returned_event.kind = 'returned'
+        AND returned_event."workflowStatus" = 'confirmed'
         AND returned_allocation."reversesAllocationId" IS NULL
         AND EXISTS (
           SELECT 1

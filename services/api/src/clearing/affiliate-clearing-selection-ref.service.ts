@@ -13,7 +13,17 @@ export type AffiliateClearingSelectionBinding = Readonly<{
   actorUserId: string;
   authorityVersionId: string;
   authorityFingerprint: string;
-  purpose: "contract" | "person" | "role" | "wage" | "guarantee" | "allocation" | "takeover";
+  clearingCaseId?: string;
+  purpose:
+    | "contract"
+    | "person"
+    | "role"
+    | "wage"
+    | "guarantee"
+    | "allocation"
+    | "coverage"
+    | "prior_economic_allocation"
+    | "takeover";
   selectedKey: string;
   amountCents?: bigint;
   revision: number;
@@ -56,6 +66,7 @@ export class AffiliateClearingSelectionRefService {
           binding.actorUserId,
           binding.authorityVersionId,
           binding.authorityFingerprint,
+          binding.clearingCaseId ?? null,
           binding.purpose,
           binding.selectedKey,
           binding.amountCents?.toString() ?? null,

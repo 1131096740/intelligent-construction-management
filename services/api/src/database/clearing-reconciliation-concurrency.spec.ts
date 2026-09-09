@@ -7,6 +7,7 @@ import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PermissionGuard } from "../auth/guards/permission.guard";
 import { AffiliateClearingAuthorityService } from "../clearing/affiliate-clearing-authority.service";
+import { AffiliateClearingAuthorityController } from "../clearing/affiliate-clearing-authority.controller";
 import { AffiliateClearingSelectionRefService } from "../clearing/affiliate-clearing-selection-ref.service";
 import { ClearingService } from "../clearing/clearing.service";
 import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
@@ -181,14 +182,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           where: { id: caseId },
           select: { revision: true }
         });
-        const coverageSelectionRef = selectionRefs.issue({
-          actorUserId: preparerUserId,
-          authorityVersionId: caseId,
-          authorityFingerprint: caseId,
-          purpose: "allocation",
-          selectedKey: coverage.id,
-          revision: beforeResolution.revision
-        });
+        const coverageSelectionRef = await publicCoverageSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          openedRevision.id,
+          coverage.amountCents.toString()
+        );
         const finalDecision = await confirmV1Event(client, service, actors, {
           caseId,
           expectedCaseRevision: beforeResolution.revision,
@@ -284,14 +285,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             where: { id: caseId },
             select: { revision: true }
           });
-          const selectionRef = selectionRefs.issue({
-            actorUserId: preparerUserId,
-            authorityVersionId: caseId,
-            authorityFingerprint: caseId,
-            purpose: "allocation",
-            selectedKey: coverage.id,
-            revision: current.revision
-          });
+          const selectionRef = await publicCoverageSelectionRef(
+            client,
+            actors,
+            selectionRefs,
+            caseId,
+            openedRevision.id,
+            coverage.amountCents.toString()
+          );
           competing.push(await prepareAndAttestV1Event(client, service, actors, {
             caseId,
             expectedCaseRevision: current.revision,
@@ -742,7 +743,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         const clearingCase = authorityFixture.clearingCase;
         const service = authorityFixture.service;
         const caseId = clearingCase.id;
-        const withheld = await confirmLegacyEvent(service, actors, {
+        await confirmLegacyEvent(service, actors, {
           caseId,
           expectedCaseRevision: clearingCase.revision,
           kind: "withheld",
@@ -760,14 +761,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             operation: "open_item",
             itemDefinition: { mode: "independent", amountCents: "100" },
             coverages: [{
-              sourceSelectionRef: selectionRefs.issue({
-                actorUserId: actors.preparerUserId,
-                authorityVersionId: clearingCase.authorityVersionId!,
-                authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                purpose: "allocation",
-                selectedKey: withheld,
-                revision: caseRevision
-              }),
+              sourceSelectionRef: await publicVersionSelectionRef(
+                client,
+                actors,
+                selectionRefs,
+                caseId,
+                "withheld",
+                "40"
+              ),
               amountCents: "40"
             }]
           }
@@ -788,14 +789,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               lines: [
                 {
                   sourceKind: "withheld_coverage",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                    purpose: "allocation",
-                    selectedKey: coverage.id,
-                    revision: caseRevision
-                  }),
+                  sourceSelectionRef: await publicCoverageSelectionRef(
+                    client,
+                    actors,
+                    selectionRefs,
+                    caseId,
+                    revision.id,
+                    coverage.amountCents.toString()
+                  ),
                   amountCents: "40"
                 },
                 {
@@ -804,6 +805,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                     actorUserId: actors.preparerUserId,
                     authorityVersionId: clearingCase.authorityVersionId!,
                     authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    clearingCaseId: caseId,
                     purpose: "allocation",
                     selectedKey: caseId,
                     revision: caseRevision
@@ -857,6 +859,22 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             where: { decisionEventVersionId: allocationScopedOpen.versionId }
           });
         caseRevision = await currentCaseRevision(client, caseId);
+        const allocation40SelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          allocation40.amountCents.toString()
+        );
+        const allocation60SelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          allocation60.amountCents.toString()
+        );
         const allocationScopedPrepared = eventResult(await service.createEvent(
           actors.preparerUserId,
           caseId,
@@ -874,27 +892,13 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 amountCents: "40",
                 lines: [{
                   sourceKind: "prior_economic_event",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                    purpose: "allocation",
-                    selectedKey: allocation40.id,
-                    revision: caseRevision
-                  }),
+                  sourceSelectionRef: allocation40SelectionRef,
                   amountCents: "40"
                 }]
               }],
               ordinaryAllocations: [{
                 sourceKind: "final_confirmed",
-                sourceSelectionRef: selectionRefs.issue({
-                  actorUserId: actors.preparerUserId,
-                  authorityVersionId: clearingCase.authorityVersionId!,
-                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                  purpose: "allocation",
-                  selectedKey: allocation60.id,
-                  revision: caseRevision
-                }),
+                sourceSelectionRef: allocation60SelectionRef,
                 amountCents: "60"
               }]
             }
@@ -920,6 +924,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         );
 
         caseRevision = await currentCaseRevision(client, caseId);
+        const overCapacitySelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          allocation60.amountCents.toString()
+        );
         await expect(service.createEvent(actors.preparerUserId, caseId, {
           idempotencyKey: randomUUID(),
           expectedRevision: caseRevision,
@@ -934,14 +946,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "61",
               lines: ["30", "31"].map((amountCents) => ({
                 sourceKind: "prior_economic_event",
-                sourceSelectionRef: selectionRefs.issue({
-                  actorUserId: actors.preparerUserId,
-                  authorityVersionId: clearingCase.authorityVersionId!,
-                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                  purpose: "allocation",
-                  selectedKey: allocation60.id,
-                  revision: caseRevision
-                }),
+                sourceSelectionRef: overCapacitySelectionRef,
                 amountCents
               }))
             }],
@@ -949,6 +954,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }
         })).rejects.toThrow(/既有经济事件可退回金额已漂移/iu);
 
+        const revisableSelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          allocation60.amountCents.toString()
+        );
         const revisable = eventResult(await service.createEvent(
           actors.preparerUserId,
           caseId,
@@ -966,14 +979,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 amountCents: "60",
                 lines: [{
                   sourceKind: "prior_economic_event",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                    purpose: "allocation",
-                    selectedKey: allocation60.id,
-                    revision: caseRevision
-                  }),
+                  sourceSelectionRef: revisableSelectionRef,
                   amountCents: "60"
                 }]
               }],
@@ -982,6 +988,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }
         ));
         caseRevision = await currentCaseRevision(client, caseId);
+        const revisedSelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          allocation60.amountCents.toString()
+        );
         await expect(service.reviseEvent(
           actors.preparerUserId,
           revisable.id,
@@ -996,17 +1010,10 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               operation: "resolve",
               resolutions: [{
                 reconciliationRevisionId: allocationScopedRevision.id,
-                amountCents: "61",
-                lines: ["30", "31"].map((amountCents) => ({
-                  sourceKind: "prior_economic_event",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                    purpose: "allocation",
-                    selectedKey: allocation60.id,
-                    revision: caseRevision
-                  }),
+              amountCents: "61",
+              lines: ["30", "31"].map((amountCents) => ({
+                sourceKind: "prior_economic_event",
+                sourceSelectionRef: revisedSelectionRef,
                   amountCents
                 }))
               }],
@@ -1031,6 +1038,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         const priorAllocation = mixedAllocations.find((allocation) => allocation.sourceKind === "authority_cap");
         assert.ok(priorAllocation);
         caseRevision = (await client.clearingCase.findUniqueOrThrow({ where: { id: caseId }, select: { revision: true } })).revision;
+        const priorAllocationSelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          priorAllocation.amountCents.toString()
+        );
         const returned = await confirmV1Event(client, service, actors, {
           caseId,
           expectedCaseRevision: caseRevision,
@@ -1043,14 +1058,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "30",
               lines: [{
                 sourceKind: "prior_economic_event",
-                sourceSelectionRef: selectionRefs.issue({
-                  actorUserId: actors.preparerUserId,
-                  authorityVersionId: clearingCase.authorityVersionId!,
-                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                  purpose: "allocation",
-                  selectedKey: priorAllocation.id,
-                  revision: caseRevision
-                }),
+                sourceSelectionRef: priorAllocationSelectionRef,
                 amountCents: "30"
               }]
             }],
@@ -1097,6 +1105,105 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           sourceReturnLinks.map((link) => link.id).sort()
         );
 
+        const driftOpen = await confirmV1Event(client, service, actors, {
+          caseId,
+          expectedCaseRevision: await currentCaseRevision(client, caseId),
+          kind: "pending_reconciliation",
+          amountCents: "1",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "1" },
+            coverages: []
+          }
+        });
+        const driftRevision =
+          await client.clearingReconciliationRevision.findUniqueOrThrow({
+            where: { decisionEventVersionId: driftOpen.versionId }
+          });
+        caseRevision = await currentCaseRevision(client, caseId);
+        const driftSelectionRef = await publicPriorEconomicSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "final_confirmed",
+          priorAllocation.amountCents.toString()
+        );
+        const driftCandidate = await prepareAndAttestV1Event(
+          client,
+          service,
+          actors,
+          {
+            caseId,
+            expectedCaseRevision: caseRevision,
+            kind: "returned",
+            amountCents: "1",
+            reconciliationIntent: {
+              operation: "resolve",
+              resolutions: [{
+                reconciliationRevisionId: driftRevision.id,
+                amountCents: "1",
+                lines: [{
+                  sourceKind: "prior_economic_event",
+                  sourceSelectionRef: driftSelectionRef,
+                  amountCents: "1"
+                }]
+              }],
+              ordinaryAllocations: []
+            }
+          }
+        );
+        const guardTargetVersionId = await confirmLegacyEvent(service, actors, {
+          caseId,
+          expectedCaseRevision: await currentCaseRevision(client, caseId),
+          kind: "withheld",
+          amountCents: "1",
+          businessReason: "数据库独立来源资格守卫探针",
+          requiresAttestation: true
+        });
+        const sourceEvent = await client.clearingEventVersion.findUniqueOrThrow({
+          where: { id: mixed.versionId },
+          select: { clearingEventId: true }
+        });
+        await client.clearingEvent.update({
+          where: { id: sourceEvent.clearingEventId },
+          data: { workflowStatus: "submitted" }
+        });
+        try {
+          await expect(service.confirmEvent(
+            actors.confirmerUserId,
+            driftCandidate.eventId,
+            {
+              idempotencyKey: randomUUID(),
+              expectedRevision: driftCandidate.eventRevision,
+              expectedCaseRevision: await currentCaseRevision(client, caseId),
+              eventVersionId: driftCandidate.versionId,
+              expectedFingerprint: driftCandidate.fingerprint,
+              confirmed: true
+            }
+          )).rejects.toThrow(/来源.*漂移|资格/iu);
+          await expect(client.$executeRaw(Prisma.sql`
+            INSERT INTO "ClearingAllocation" (
+              "id", "eventVersionId", "sourceEventVersionId", "sourceKind",
+              "amountCents", "sourceRemainingAfterCents"
+            ) VALUES (
+              ${randomUUID()}, ${guardTargetVersionId}, ${mixed.versionId},
+              'final_confirmed', 1, 69
+            )
+          `)).rejects.toThrow(/来源不存在、未确认、跨案或类型不一致/iu);
+        } finally {
+          await client.clearingEvent.update({
+            where: { id: sourceEvent.clearingEventId },
+            data: { workflowStatus: "confirmed" }
+          });
+        }
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: driftCandidate.versionId }
+          }),
+          0
+        );
+
         const prepareCompetingReturn = async () => {
           caseRevision = await currentCaseRevision(client, caseId);
           const opened = await confirmV1Event(client, service, actors, {
@@ -1114,6 +1221,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             where: { decisionEventVersionId: opened.versionId }
           });
           caseRevision = await currentCaseRevision(client, caseId);
+          const competingSelectionRef = await publicPriorEconomicSelectionRef(
+            client,
+            actors,
+            selectionRefs,
+            caseId,
+            "final_confirmed",
+            priorAllocation.amountCents.toString()
+          );
           return prepareAndAttestV1Event(client, service, actors, {
             caseId,
             expectedCaseRevision: caseRevision,
@@ -1126,14 +1241,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 amountCents: "30",
                 lines: [{
                   sourceKind: "prior_economic_event",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                    purpose: "allocation",
-                    selectedKey: priorAllocation.id,
-                    revision: caseRevision
-                  }),
+                  sourceSelectionRef: competingSelectionRef,
                   amountCents: "30"
                 }]
               }],
@@ -1258,17 +1366,15 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               expectedRevision: preparedSource.eventRevision
             }
           ));
-          const importedSourceSelectionRef = (
-            await authorityFixture.authorityService.allocationOptions(
-              actors.confirmerUserId,
-              imported.caseId
-            )
-          ).options.find(
-            (option) =>
-              option.sourceKind === "withheld" &&
-              option.amountCents === amountCents.toString()
-          )?.selectionRef;
-          assert.equal(typeof importedSourceSelectionRef, "string");
+          const importedSourceSelectionRef = await publicVersionSelectionRef(
+            client,
+            actors,
+            selectionRefs,
+            imported.caseId,
+            "withheld",
+            amountCents.toString(),
+            actors.confirmerUserId
+          );
           await service.confirmEvent(
             actors.confirmerUserId,
             preparedSource.eventId,
@@ -1337,19 +1443,15 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         };
         const historicalSourceSelectionRef = async (
           source: Awaited<ReturnType<typeof createHistoricalConfirmedSource>>
-        ) => {
-          const options = await authorityFixture.authorityService.allocationOptions(
-            actors.confirmerUserId,
-            source.caseId
-          );
-          const selectionRef = options.options.find(
-            (option) =>
-              option.sourceKind === "final_confirmed" &&
-              option.amountCents === source.amountCents.toString()
-          )?.selectionRef;
-          assert.equal(typeof selectionRef, "string");
-          return selectionRef as string;
-        };
+        ) => publicVersionSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          source.caseId,
+          "final_confirmed",
+          source.amountCents.toString(),
+          actors.confirmerUserId
+        );
         const prepareAttestedLegacyReturn = async (
           source: Awaited<ReturnType<typeof createHistoricalConfirmedSource>>,
           amountCents: string,
@@ -1394,14 +1496,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "60",
               lines: [{
                 sourceKind: "prior_economic_event",
-                sourceSelectionRef: selectionRefs.issue({
-                  actorUserId: actors.preparerUserId,
-                  authorityVersionId: v1FirstSource.sourceCase.authorityVersionId!,
-                  authorityFingerprint: v1FirstSource.sourceCase.authoritySnapshotRef!,
-                  purpose: "allocation",
-                  selectedKey: v1FirstSource.sourceAllocation.id,
-                  revision: v1FirstCaseRevision
-                }),
+                sourceSelectionRef: await publicPriorEconomicSelectionRef(
+                  client,
+                  actors,
+                  selectionRefs,
+                  v1FirstSource.caseId,
+                  "final_confirmed",
+                  v1FirstSource.sourceAllocation.amountCents.toString()
+                ),
                 amountCents: "60"
               }]
             }],
@@ -1414,19 +1516,21 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           "1",
           "验证旧退回不得进入精确 allocation 退回链"
         );
-        await expect(service.confirmEvent(
+        const legacyOptionsAfterV1 = await publicClearingSourceOptions(
+          client,
+          actors,
+          selectionRefs,
           actors.confirmerUserId,
-          legacyAfterV1.eventId,
-          {
-            idempotencyKey: randomUUID(),
-            expectedRevision: legacyAfterV1.eventRevision,
-            allocations: [{
-              sourceSelectionRef: await historicalSourceSelectionRef(v1FirstSource),
-              sourceKind: "final_confirmed",
-              amountCents: "1"
-            }]
-          }
-        )).rejects.toThrow(/精确 allocation 退回链.*旧退回不得混用/iu);
+          v1FirstSource.caseId
+        );
+        assert.equal(
+          legacyOptionsAfterV1.options.some(
+            (option) =>
+              option.sourceKind === "final_confirmed" &&
+              option.amountCents === v1FirstSource.amountCents.toString()
+          ),
+          false
+        );
         assert.equal(
           await client.clearingConfirmation.count({
             where: { eventVersionId: legacyAfterV1.versionId }
@@ -1452,45 +1556,28 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             amountCents: "60"
           }]
         });
-        const legacyFirstRevision = await openHistoricalReturnItem(
+        await openHistoricalReturnItem(
           legacyFirstSource.caseId,
           "60"
-        );
-        const legacyFirstCaseRevision = await currentCaseRevision(
-          client,
-          legacyFirstSource.caseId
         );
         const returnedCountBeforePrepare = await client.clearingEvent.count({
           where: { clearingCaseId: legacyFirstSource.caseId, kind: "returned" }
         });
-        await expect(service.createEvent(actors.preparerUserId, legacyFirstSource.caseId, {
-          idempotencyKey: randomUUID(),
-          expectedRevision: legacyFirstCaseRevision,
-          kind: "returned",
-          amountCents: "60",
-          evidenceLevel: "B",
-          businessReason: "验证旧退回后 V1 精确退回失败关闭",
-          reconciliationIntent: {
-            operation: "resolve",
-            resolutions: [{
-              reconciliationRevisionId: legacyFirstRevision.id,
-              amountCents: "60",
-              lines: [{
-                sourceKind: "prior_economic_event",
-                sourceSelectionRef: selectionRefs.issue({
-                  actorUserId: actors.preparerUserId,
-                  authorityVersionId: legacyFirstSource.sourceCase.authorityVersionId!,
-                  authorityFingerprint: legacyFirstSource.sourceCase.authoritySnapshotRef!,
-                  purpose: "allocation",
-                  selectedKey: legacyFirstSource.sourceAllocation.id,
-                  revision: legacyFirstCaseRevision
-                }),
-                amountCents: "60"
-              }]
-            }],
-            ordinaryAllocations: []
-          }
-        })).rejects.toThrow(/无法精确映射 allocation 的旧退回/iu);
+        const v1OptionsAfterLegacy = await publicClearingSourceOptions(
+          client,
+          actors,
+          selectionRefs,
+          actors.preparerUserId,
+          legacyFirstSource.caseId
+        );
+        assert.equal(
+          v1OptionsAfterLegacy.priorEconomicAllocationOptions.some(
+            (option) =>
+              option.sourceKind === "final_confirmed" &&
+              option.amountCents === legacyFirstSource.sourceAllocation.amountCents.toString()
+          ),
+          false
+        );
         assert.equal(
           await client.clearingEvent.count({
             where: { clearingCaseId: legacyFirstSource.caseId, kind: "returned" }
@@ -1526,14 +1613,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 amountCents: "60",
                 lines: [{
                   sourceKind: "prior_economic_event",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: concurrentSource.sourceCase.authorityVersionId!,
-                    authorityFingerprint: concurrentSource.sourceCase.authoritySnapshotRef!,
-                    purpose: "allocation",
-                    selectedKey: concurrentSource.sourceAllocation.id,
-                    revision: v1PrepareCaseRevision
-                  }),
+                  sourceSelectionRef: await publicPriorEconomicSelectionRef(
+                    client,
+                    actors,
+                    selectionRefs,
+                    concurrentSource.caseId,
+                    "final_confirmed",
+                    concurrentSource.sourceAllocation.amountCents.toString()
+                  ),
                   amountCents: "60"
                 }]
               }],
@@ -3232,9 +3319,6 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           END
           $pol275_runtime_grants$
         `);
-        await client.$executeRawUnsafe(
-          `GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO "${probeRole}"`
-        );
         await probeClient.$connect();
         const [probeIdentity] = await probeClient.$queryRaw<Array<{
           sessionUser: string;
@@ -3990,10 +4074,115 @@ function issueAllocationSelection(
     actorUserId,
     authorityVersionId: caseId,
     authorityFingerprint: caseId,
+    clearingCaseId: caseId,
     purpose: "allocation",
     selectedKey,
     revision
   });
+}
+
+async function publicClearingSourceOptions(
+  client: PrismaClient,
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  selectionRefs: AffiliateClearingSelectionRefService,
+  actorUserId: string,
+  caseId: string
+) {
+  const authorityService = new AffiliateClearingAuthorityService(
+    client as never,
+    clearingRoleResolver(actors) as never,
+    selectionRefs,
+    new AuditService(client as never)
+  );
+  const controller = new AffiliateClearingAuthorityController(authorityService);
+  return controller.allocationOptions({ id: actorUserId } as never, caseId);
+}
+
+async function publicCoverageSelectionRef(
+  client: PrismaClient,
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  selectionRefs: AffiliateClearingSelectionRefService,
+  caseId: string,
+  reconciliationRevisionId: string,
+  amountCents: string
+): Promise<string> {
+  const sourceOptions = await publicClearingSourceOptions(
+    client,
+    actors,
+    selectionRefs,
+    actors.preparerUserId,
+    caseId
+  );
+  const selectionRef = sourceOptions.coverageOptions.find(
+    (option) =>
+      option.reconciliationRevisionId === reconciliationRevisionId &&
+      option.amountCents === amountCents
+  )?.selectionRef;
+  assert.equal(typeof selectionRef, "string");
+  return selectionRef as string;
+}
+
+async function publicVersionSelectionRef(
+  client: PrismaClient,
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  selectionRefs: AffiliateClearingSelectionRefService,
+  caseId: string,
+  sourceKind: "withheld" | "final_confirmed" | "supplemental",
+  amountCents: string,
+  actorUserId = actors.preparerUserId
+): Promise<string> {
+  const sourceOptions = await publicClearingSourceOptions(
+    client,
+    actors,
+    selectionRefs,
+    actorUserId,
+    caseId
+  );
+  const selectionRef = sourceOptions.options.find(
+    (option) =>
+      option.sourceKind === sourceKind && option.amountCents === amountCents
+  )?.selectionRef;
+  assert.equal(typeof selectionRef, "string");
+  return selectionRef as string;
+}
+
+async function publicPriorEconomicSelectionRef(
+  client: PrismaClient,
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  selectionRefs: AffiliateClearingSelectionRefService,
+  caseId: string,
+  sourceKind: "final_confirmed" | "supplemental",
+  amountCents: string
+): Promise<string> {
+  const sourceOptions = await publicClearingSourceOptions(
+    client,
+    actors,
+    selectionRefs,
+    actors.preparerUserId,
+    caseId
+  );
+  const selectionRef = sourceOptions.priorEconomicAllocationOptions.find(
+    (option) =>
+      option.sourceKind === sourceKind && option.amountCents === amountCents
+  )?.selectionRef;
+  assert.equal(typeof selectionRef, "string");
+  return selectionRef as string;
 }
 
 async function confirmationTime(

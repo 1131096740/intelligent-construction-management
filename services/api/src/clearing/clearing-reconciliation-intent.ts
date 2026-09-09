@@ -383,7 +383,11 @@ async function freezeResolution(input: FreezeInput): Promise<Record<string, unkn
   }
   const coverageCandidates = await input.tx.clearingReconciliationCoverage.findMany({
     where: { clearingCaseId: input.clearingCase.id },
-    include: { withheldEventVersion: true }
+    include: {
+      withheldEventVersion: {
+        include: { clearingEvent: true, confirmation: true }
+      }
+    }
   });
   const resolutionRows: Array<Record<string, unknown>> = [];
   const eventAllocations: Array<Record<string, unknown>> = [];
@@ -474,13 +478,18 @@ async function freezeResolution(input: FreezeInput): Promise<Record<string, unkn
                 input.clearingCase.authorityVersionId ?? input.clearingCase.id,
               authorityFingerprint:
                 input.clearingCase.authoritySnapshotRef ?? input.clearingCase.id,
-              purpose: "allocation",
+              clearingCaseId: input.clearingCase.id,
+              purpose: "coverage",
               selectedKey: candidate.id,
               revision: input.clearingCase.revision
             })
         );
         if (
           !coverage ||
+          !coverage.withheldEventVersion.confirmation ||
+          coverage.withheldEventVersion.clearingEvent.kind !== "withheld" ||
+          coverage.withheldEventVersion.clearingEvent.workflowStatus !==
+            "confirmed" ||
           !/^[0-9a-f]{64}$/.test(coverage.withheldEventVersion.fingerprint)
         ) {
           throw new BadRequestException("withheld coverage 选择已过期或跨 revision");
@@ -515,6 +524,7 @@ async function freezeResolution(input: FreezeInput): Promise<Record<string, unkn
             actorUserId: input.actorUserId,
             authorityVersionId: input.clearingCase.authorityVersionId,
             authorityFingerprint: input.clearingCase.authoritySnapshotRef,
+            clearingCaseId: input.clearingCase.id,
             purpose: "allocation",
             selectedKey: input.clearingCase.id,
             revision: input.clearingCase.revision
@@ -981,6 +991,7 @@ async function freezeCoverageSelections(
             input.clearingCase.authorityVersionId ?? input.clearingCase.id,
           authorityFingerprint:
             input.clearingCase.authoritySnapshotRef ?? input.clearingCase.id,
+          clearingCaseId: input.clearingCase.id,
           purpose: "allocation",
           selectedKey: candidate.id,
           revision: input.clearingCase.revision
@@ -1280,7 +1291,8 @@ async function freezePriorEconomicSource(
           input.clearingCase.authorityVersionId ?? input.clearingCase.id,
         authorityFingerprint:
           input.clearingCase.authoritySnapshotRef ?? input.clearingCase.id,
-        purpose: "allocation",
+        clearingCaseId: input.clearingCase.id,
+        purpose: "prior_economic_allocation",
         selectedKey: candidate.id,
         revision: input.clearingCase.revision
       })
@@ -1318,6 +1330,7 @@ async function freezePriorEconomicSource(
       JOIN "ClearingConfirmation" returned_confirmation
         ON returned_confirmation."eventVersionId" = returned_version.id
       WHERE returned_event.kind = 'returned'
+        AND returned_event."workflowStatus" = 'confirmed'
         AND returned_allocation."reversesAllocationId" IS NULL
         AND returned_allocation."sourceEventVersionId" = ${selected.eventVersionId}
         AND returned_version."payloadSnapshot"
@@ -1354,6 +1367,7 @@ async function freezePriorEconomicSource(
           JOIN "ClearingConfirmation" returned_confirmation
             ON returned_confirmation."eventVersionId" = returned_version.id
           WHERE returned_event.kind = 'returned'
+            AND returned_event."workflowStatus" = 'confirmed'
             AND returned_allocation."reversesAllocationId" IS NULL
             AND EXISTS (
               SELECT 1
@@ -1449,6 +1463,7 @@ async function freezeOrdinaryAllocations(
           actorUserId: input.actorUserId,
           authorityVersionId: input.clearingCase.authorityVersionId,
           authorityFingerprint: input.clearingCase.authoritySnapshotRef,
+          clearingCaseId: input.clearingCase.id,
           purpose: "allocation",
           selectedKey: input.clearingCase.id,
           revision: input.clearingCase.revision
@@ -1498,6 +1513,7 @@ async function freezeOrdinaryAllocations(
               input.clearingCase.authorityVersionId ?? input.clearingCase.id,
             authorityFingerprint:
               input.clearingCase.authoritySnapshotRef ?? input.clearingCase.id,
+            clearingCaseId: input.clearingCase.id,
             purpose: "allocation",
             selectedKey: candidate.id,
             revision: input.clearingCase.revision
