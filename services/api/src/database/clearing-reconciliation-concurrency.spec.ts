@@ -3600,7 +3600,7 @@ async function createAuthorityBackedClearingCase(
   const rawWageRoleSelectionRef = contractOptions.options.find(
     (option) =>
       option.optionKind === "role" &&
-      option.label === "财务人员"
+      option.label === "财务员"
   )?.selectionRef;
   assert.equal(typeof rawWageRoleSelectionRef, "string");
   const wageRoleSelectionRef = rawWageRoleSelectionRef as string;
