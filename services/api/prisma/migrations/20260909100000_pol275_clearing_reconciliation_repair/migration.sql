@@ -1653,7 +1653,7 @@ DECLARE
   definition_reversal JSONB;
   coverage JSONB;
   resolution JSONB;
-  resolution_line JSONB;
+  resolution_line_item JSONB;
   allocation_plan JSONB;
   target_revision RECORD;
   target_reversal RECORD;
@@ -2453,38 +2453,38 @@ BEGIN
       effective_case_revision, confirmed_at
     );
 
-    FOR resolution_line IN SELECT value FROM jsonb_array_elements(resolution -> 'lines') LOOP
+    FOR resolution_line_item IN SELECT value FROM jsonb_array_elements(resolution -> 'lines') LOOP
       IF resolution ->> 'entryKind' = 'technical_reversal' THEN
         SELECT * INTO original_line
         FROM public."ClearingReconciliationResolutionLine"
-        WHERE "id" = resolution_line ->> 'reversesResolutionLineId'
+        WHERE "id" = resolution_line_item ->> 'reversesResolutionLineId'
           AND "resolutionId" = original_resolution."id"
         FOR UPDATE;
-        IF NOT FOUND OR original_line."sourceKind" <> (resolution_line ->> 'sourceKind')
-          OR original_line."coverageId" IS DISTINCT FROM (resolution_line ->> 'coverageId')
+        IF NOT FOUND OR original_line."sourceKind" <> (resolution_line_item ->> 'sourceKind')
+          OR original_line."coverageId" IS DISTINCT FROM (resolution_line_item ->> 'coverageId')
         THEN
           RAISE EXCEPTION 'POL-275 技术反向行未精确引用原解决行' USING ERRCODE = '23514';
         END IF;
         SELECT COALESCE(SUM("amountCents"), 0)::BIGINT INTO reversed_total
         FROM public."ClearingReconciliationResolutionLine"
         WHERE "reversesResolutionLineId" = original_line."id";
-        IF reversed_total + (resolution_line ->> 'amountCents')::BIGINT > original_line."amountCents" THEN
+        IF reversed_total + (resolution_line_item ->> 'amountCents')::BIGINT > original_line."amountCents" THEN
           RAISE EXCEPTION 'POL-275 技术反向行超过原行剩余效果' USING ERRCODE = '23514';
         END IF;
       END IF;
       IF resolution ->> 'resultKind' = 'continued_withheld'
-        AND (resolution_line ->> 'sourceKind' <> 'withheld_coverage'
-          OR resolution_line ->> 'plannedClearingAllocationId' IS NOT NULL)
+        AND (resolution_line_item ->> 'sourceKind' <> 'withheld_coverage'
+          OR resolution_line_item ->> 'plannedClearingAllocationId' IS NOT NULL)
       THEN
         RAISE EXCEPTION 'POL-275 继续暂扣只能引用覆盖且不产生经济分配' USING ERRCODE = '23514';
       END IF;
       IF resolution ->> 'resultKind' = 'real_return'
-        AND resolution_line ->> 'sourceKind' NOT IN ('withheld_coverage', 'prior_economic_event')
+        AND resolution_line_item ->> 'sourceKind' NOT IN ('withheld_coverage', 'prior_economic_event')
       THEN
         RAISE EXCEPTION 'POL-275 真实退回来源类型无效' USING ERRCODE = '23514';
       END IF;
       IF resolution ->> 'resultKind' = 'final_confirmed'
-        AND resolution_line ->> 'sourceKind' NOT IN ('withheld_coverage', 'authority_cap')
+        AND resolution_line_item ->> 'sourceKind' NOT IN ('withheld_coverage', 'authority_cap')
       THEN
         RAISE EXCEPTION 'POL-275 最终解决来源类型无效' USING ERRCODE = '23514';
       END IF;
@@ -2493,13 +2493,13 @@ BEGIN
         "sourceKind", "coverageId", "amountCents", "intentLineNo",
         "clearingAllocationId", "reversesResolutionLineId"
       ) VALUES (
-        resolution_line ->> 'resolutionLineId', resolution ->> 'resolutionId',
+        resolution_line_item ->> 'resolutionLineId', resolution ->> 'resolutionId',
         target_revision."id", target_revision."itemId", version_record."clearingCaseId",
-        resolution_line ->> 'sourceKind', resolution_line ->> 'coverageId',
-        (resolution_line ->> 'amountCents')::BIGINT,
-        (resolution_line ->> 'lineNo')::INTEGER,
-        resolution_line ->> 'plannedClearingAllocationId',
-        resolution_line ->> 'reversesResolutionLineId'
+        resolution_line_item ->> 'sourceKind', resolution_line_item ->> 'coverageId',
+        (resolution_line_item ->> 'amountCents')::BIGINT,
+        (resolution_line_item ->> 'lineNo')::INTEGER,
+        resolution_line_item ->> 'plannedClearingAllocationId',
+        resolution_line_item ->> 'reversesResolutionLineId'
       );
     END LOOP;
     IF (SELECT COALESCE(SUM("amountCents"), 0) FROM public."ClearingReconciliationResolutionLine" WHERE "resolutionId" = resolution ->> 'resolutionId')
