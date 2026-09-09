@@ -1188,66 +1188,66 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           0
         );
 
-        const legacyAfterV1 = await prepareLegacyEvent(service, actors, {
-          caseId,
-          expectedCaseRevision: await currentCaseRevision(client, caseId),
-          kind: "returned",
-          amountCents: "1",
-          businessReason: "验证旧退回不得进入精确 allocation 退回链"
-        });
-        const legacyAfterV1Attested = eventResult(await service.attestEvent(
-          actors.attesterUserId,
-          legacyAfterV1.eventId,
-          {
-            idempotencyKey: randomUUID(),
-            expectedRevision: legacyAfterV1.eventRevision
-          }
-        ));
-        await expect(service.confirmEvent(
-          actors.confirmerUserId,
-          legacyAfterV1.eventId,
-          {
-            idempotencyKey: randomUUID(),
-            expectedRevision: legacyAfterV1Attested.revision,
-            allocations: [{
-              sourceSelectionRef: selectionRefs.issue({
-                actorUserId: actors.confirmerUserId,
-                authorityVersionId: caseId,
-                authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                purpose: "allocation",
-                selectedKey: mixed.versionId,
-                revision: await currentCaseRevision(client, caseId)
-              }),
-              sourceKind: "final_confirmed",
-              amountCents: "1"
-            }]
-          }
-        )).rejects.toThrow(/精确 allocation 退回链.*旧退回不得混用/iu);
-        assert.equal(
-          await client.clearingConfirmation.count({
-            where: { eventVersionId: legacyAfterV1.versionId }
-          }),
-          0
-        );
-
-        const createLegacyFinalSource = async (suffix: string) => {
-          const sourceVersionId = await confirmLegacyEvent(service, actors, {
-            caseId,
-            expectedCaseRevision: await currentCaseRevision(client, caseId),
-            kind: "final_confirmed",
-            amountCents: "100",
-            businessReason: `验证退回兼容闭合-${suffix}`,
-            allocations: [{ sourceKind: "authority_cap", amountCents: "100" }]
-          });
+        const createHistoricalFinalSource = async (
+          suffix: string,
+          amountCents: bigint
+        ) => {
+          const mappingId = randomUUID();
+          const sourceFingerprint = createHash("sha256")
+            .update(`${prefix}:${suffix}:${amountCents.toString()}`, "utf8")
+            .digest("hex");
+          const imported = await client.$transaction((tx) =>
+            service.planHistoricalImport(tx, {
+              manifestId: `${prefix}_historical_manifest`,
+              mappingId,
+              actorUserId: actors.confirmerUserId,
+              delegatorUserId: null,
+              actorIds: [actors.confirmerUserId],
+              attesterActorIds: [actors.attesterUserId],
+              category: "assigned_management_salary",
+              authority: authorityFixture.historicalWageAuthority,
+              amountCents,
+              evidenceLevel: "B",
+              sourceType: "pol275_pg16_historical_fixture",
+              sourceBusinessId: `${prefix}:${suffix}`,
+              sourceVersion: 1,
+              sourceFingerprint,
+              sourceSnapshot: {
+                fixture: "POL-275 legacy/V1 compatibility source",
+                suffix
+              },
+              businessReason: `验证退回兼容闭合-${suffix}`,
+              entryKind: "original"
+            })
+          );
           const sourceAllocation = await client.clearingAllocation.findFirstOrThrow({
-            where: { eventVersionId: sourceVersionId }
+            where: { eventVersionId: imported.versionId }
           });
-          return { sourceVersionId, sourceAllocation };
+          const sourceCase = await client.clearingCase.findUniqueOrThrow({
+            where: { id: imported.caseId }
+          });
+          assert.equal(
+            (await client.clearingEventVersion.findUniqueOrThrow({
+              where: { id: imported.versionId },
+              select: { workflowStatus: true }
+            })).workflowStatus,
+            "confirmed"
+          );
+          return {
+            caseId: imported.caseId,
+            sourceVersionId: imported.versionId,
+            sourceAllocation,
+            sourceCase,
+            amountCents
+          };
         };
-        const openReturnItem = async (amountCents: string) => {
+        const openHistoricalReturnItem = async (
+          historicalCaseId: string,
+          amountCents: string
+        ) => {
           const opened = await confirmV1Event(client, service, actors, {
-            caseId,
-            expectedCaseRevision: await currentCaseRevision(client, caseId),
+            caseId: historicalCaseId,
+            expectedCaseRevision: await currentCaseRevision(client, historicalCaseId),
             kind: "pending_reconciliation",
             amountCents,
             reconciliationIntent: {
@@ -1261,26 +1261,135 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             select: { id: true }
           });
         };
+        const historicalSourceSelectionRef = async (
+          source: Awaited<ReturnType<typeof createHistoricalFinalSource>>
+        ) => {
+          const options = await authorityFixture.authorityService.allocationOptions(
+            actors.confirmerUserId,
+            source.caseId
+          );
+          const selectionRef = options.options.find(
+            (option) =>
+              option.sourceKind === "final_confirmed" &&
+              option.amountCents === source.amountCents.toString()
+          )?.selectionRef;
+          assert.equal(typeof selectionRef, "string");
+          return selectionRef as string;
+        };
+        const prepareAttestedLegacyReturn = async (
+          source: Awaited<ReturnType<typeof createHistoricalFinalSource>>,
+          amountCents: string,
+          businessReason: string
+        ) => {
+          const prepared = await prepareLegacyEvent(service, actors, {
+            caseId: source.caseId,
+            expectedCaseRevision: await currentCaseRevision(client, source.caseId),
+            kind: "returned",
+            amountCents,
+            businessReason
+          });
+          const attested = eventResult(await service.attestEvent(
+            actors.attesterUserId,
+            prepared.eventId,
+            {
+              idempotencyKey: randomUUID(),
+              expectedRevision: prepared.eventRevision
+            }
+          ));
+          return { ...prepared, eventRevision: attested.revision };
+        };
 
-        const legacyFirstSource = await createLegacyFinalSource("legacy-first");
-        await confirmLegacyEvent(service, actors, {
-          caseId,
-          expectedCaseRevision: await currentCaseRevision(client, caseId),
+        const v1FirstSource = await createHistoricalFinalSource("v1-first", 101n);
+        const v1FirstRevision = await openHistoricalReturnItem(
+          v1FirstSource.caseId,
+          "60"
+        );
+        const v1FirstCaseRevision = await currentCaseRevision(
+          client,
+          v1FirstSource.caseId
+        );
+        await confirmV1Event(client, service, actors, {
+          caseId: v1FirstSource.caseId,
+          expectedCaseRevision: v1FirstCaseRevision,
           kind: "returned",
           amountCents: "60",
-          businessReason: "先确认无法映射 allocation 的旧退回",
+          reconciliationIntent: {
+            operation: "resolve",
+            resolutions: [{
+              reconciliationRevisionId: v1FirstRevision.id,
+              amountCents: "60",
+              lines: [{
+                sourceKind: "prior_economic_event",
+                sourceSelectionRef: selectionRefs.issue({
+                  actorUserId: actors.preparerUserId,
+                  authorityVersionId: v1FirstSource.sourceCase.authorityVersionId!,
+                  authorityFingerprint: v1FirstSource.sourceCase.authoritySnapshotRef!,
+                  purpose: "allocation",
+                  selectedKey: v1FirstSource.sourceAllocation.id,
+                  revision: v1FirstCaseRevision
+                }),
+                amountCents: "60"
+              }]
+            }],
+            ordinaryAllocations: []
+          }
+        });
+
+        const legacyAfterV1 = await prepareAttestedLegacyReturn(
+          v1FirstSource,
+          "1",
+          "验证旧退回不得进入精确 allocation 退回链"
+        );
+        await expect(service.confirmEvent(
+          actors.confirmerUserId,
+          legacyAfterV1.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: legacyAfterV1.eventRevision,
+            allocations: [{
+              sourceSelectionRef: await historicalSourceSelectionRef(v1FirstSource),
+              sourceKind: "final_confirmed",
+              amountCents: "1"
+            }]
+          }
+        )).rejects.toThrow(/精确 allocation 退回链.*旧退回不得混用/iu);
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: legacyAfterV1.versionId }
+          }),
+          0
+        );
+
+        const legacyFirstSource = await createHistoricalFinalSource(
+          "legacy-first",
+          102n
+        );
+        const legacyFirstReturn = await prepareAttestedLegacyReturn(
+          legacyFirstSource,
+          "60",
+          "先确认无法映射 allocation 的旧退回"
+        );
+        await service.confirmEvent(actors.confirmerUserId, legacyFirstReturn.eventId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: legacyFirstReturn.eventRevision,
           allocations: [{
-            sourceEventVersionId: legacyFirstSource.sourceVersionId,
+            sourceSelectionRef: await historicalSourceSelectionRef(legacyFirstSource),
             sourceKind: "final_confirmed",
             amountCents: "60"
           }]
         });
-        const legacyFirstRevision = await openReturnItem("60");
-        const legacyFirstCaseRevision = await currentCaseRevision(client, caseId);
+        const legacyFirstRevision = await openHistoricalReturnItem(
+          legacyFirstSource.caseId,
+          "60"
+        );
+        const legacyFirstCaseRevision = await currentCaseRevision(
+          client,
+          legacyFirstSource.caseId
+        );
         const returnedCountBeforePrepare = await client.clearingEvent.count({
-          where: { clearingCaseId: caseId, kind: "returned" }
+          where: { clearingCaseId: legacyFirstSource.caseId, kind: "returned" }
         });
-        await expect(service.createEvent(actors.preparerUserId, caseId, {
+        await expect(service.createEvent(actors.preparerUserId, legacyFirstSource.caseId, {
           idempotencyKey: randomUUID(),
           expectedRevision: legacyFirstCaseRevision,
           kind: "returned",
@@ -1296,8 +1405,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 sourceKind: "prior_economic_event",
                 sourceSelectionRef: selectionRefs.issue({
                   actorUserId: actors.preparerUserId,
-                  authorityVersionId: clearingCase.authorityVersionId!,
-                  authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                  authorityVersionId: legacyFirstSource.sourceCase.authorityVersionId!,
+                  authorityFingerprint: legacyFirstSource.sourceCase.authoritySnapshotRef!,
                   purpose: "allocation",
                   selectedKey: legacyFirstSource.sourceAllocation.id,
                   revision: legacyFirstCaseRevision
@@ -1310,20 +1419,29 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         })).rejects.toThrow(/无法精确映射 allocation 的旧退回/iu);
         assert.equal(
           await client.clearingEvent.count({
-            where: { clearingCaseId: caseId, kind: "returned" }
+            where: { clearingCaseId: legacyFirstSource.caseId, kind: "returned" }
           }),
           returnedCountBeforePrepare
         );
 
-        const concurrentSource = await createLegacyFinalSource("concurrent");
-        const concurrentRevision = await openReturnItem("60");
-        const v1PrepareCaseRevision = await currentCaseRevision(client, caseId);
+        const concurrentSource = await createHistoricalFinalSource(
+          "concurrent",
+          103n
+        );
+        const concurrentRevision = await openHistoricalReturnItem(
+          concurrentSource.caseId,
+          "60"
+        );
+        const v1PrepareCaseRevision = await currentCaseRevision(
+          client,
+          concurrentSource.caseId
+        );
         const v1Concurrent = await prepareAndAttestV1Event(
           client,
           service,
           actors,
           {
-            caseId,
+            caseId: concurrentSource.caseId,
             expectedCaseRevision: v1PrepareCaseRevision,
             kind: "returned",
             amountCents: "60",
@@ -1336,8 +1454,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                   sourceKind: "prior_economic_event",
                   sourceSelectionRef: selectionRefs.issue({
                     actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
+                    authorityVersionId: concurrentSource.sourceCase.authorityVersionId!,
+                    authorityFingerprint: concurrentSource.sourceCase.authoritySnapshotRef!,
                     purpose: "allocation",
                     selectedKey: concurrentSource.sourceAllocation.id,
                     revision: v1PrepareCaseRevision
@@ -1349,22 +1467,18 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             }
           }
         );
-        const legacyConcurrent = await prepareLegacyEvent(service, actors, {
-          caseId,
-          expectedCaseRevision: await currentCaseRevision(client, caseId),
-          kind: "returned",
-          amountCents: "60",
-          businessReason: "与 V1 精确退回并发竞争"
-        });
-        const legacyConcurrentAttested = eventResult(await service.attestEvent(
-          actors.attesterUserId,
-          legacyConcurrent.eventId,
-          {
-            idempotencyKey: randomUUID(),
-            expectedRevision: legacyConcurrent.eventRevision
-          }
-        ));
-        const confirmationCaseRevision = await currentCaseRevision(client, caseId);
+        const legacyConcurrent = await prepareAttestedLegacyReturn(
+          concurrentSource,
+          "60",
+          "与 V1 精确退回并发竞争"
+        );
+        const confirmationCaseRevision = await currentCaseRevision(
+          client,
+          concurrentSource.caseId
+        );
+        const concurrentLegacySelectionRef = await historicalSourceSelectionRef(
+          concurrentSource
+        );
         const concurrentResults = await Promise.allSettled([
           service.confirmEvent(actors.confirmerUserId, v1Concurrent.eventId, {
             idempotencyKey: randomUUID(),
@@ -1376,16 +1490,9 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }),
           service.confirmEvent(actors.confirmerUserId, legacyConcurrent.eventId, {
             idempotencyKey: randomUUID(),
-            expectedRevision: legacyConcurrentAttested.revision,
+            expectedRevision: legacyConcurrent.eventRevision,
             allocations: [{
-              sourceSelectionRef: selectionRefs.issue({
-                actorUserId: actors.confirmerUserId,
-                authorityVersionId: caseId,
-                authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                purpose: "allocation",
-                selectedKey: concurrentSource.sourceVersionId,
-                revision: confirmationCaseRevision
-              }),
+              sourceSelectionRef: concurrentLegacySelectionRef,
               sourceKind: "final_confirmed",
               amountCents: "60"
             }]
@@ -3490,6 +3597,13 @@ async function createAuthorityBackedClearingCase(
   )?.selectionRef;
   assert.equal(typeof rawContractSelectionRef, "string");
   const contractSelectionRef = rawContractSelectionRef as string;
+  const rawWageRoleSelectionRef = contractOptions.options.find(
+    (option) =>
+      option.optionKind === "role" &&
+      option.label === "财务人员"
+  )?.selectionRef;
+  assert.equal(typeof rawWageRoleSelectionRef, "string");
+  const wageRoleSelectionRef = rawWageRoleSelectionRef as string;
   const authorityIdempotencyKey = randomUUID();
   await authorityService.createAuthority(actors.preparerUserId, {
     idempotencyKey: authorityIdempotencyKey,
@@ -3497,7 +3611,15 @@ async function createAuthorityBackedClearingCase(
     contractSelectionRef,
     effectiveFrom: "2026-08-01",
     evidenceRef: authorityEvidenceFileId,
-    wageLines: [],
+    wageLines: [{
+      selectionRef: wageRoleSelectionRef,
+      wageMonth: "2026-08",
+      amountCents: "1000",
+      amountMode: "CONFIRMED_AMOUNT",
+      amountRuleVersion: 1,
+      midMonthPolicy: "NOT_APPLICABLE",
+      evidenceCoordinate: "挂靠管理协议派驻财务岗位工资条款"
+    }],
     guaranteeObligations: [
       {
         selectionRef: contractSelectionRef,
@@ -3531,6 +3653,19 @@ async function createAuthorityBackedClearingCase(
   )?.selectionRef;
   assert.equal(typeof rawAuthoritySelectionRef, "string");
   const authoritySelectionRef = rawAuthoritySelectionRef as string;
+  const rawHistoricalWageSelectionRef = authorityOptions.options.find(
+    (option) => option.optionKind === "assigned_wage"
+  )?.selectionRef;
+  assert.equal(typeof rawHistoricalWageSelectionRef, "string");
+  const historicalWageAuthority = await authorityService.resolveCaseSelection(
+    actors.preparerUserId,
+    {
+      idempotencyKey: randomUUID(),
+      expectedRevision: 0,
+      selectionRef: rawHistoricalWageSelectionRef as string
+    },
+    "assigned_management_salary"
+  );
 
   const service = clearingService(
     client,
@@ -3548,7 +3683,12 @@ async function createAuthorityBackedClearingCase(
   const clearingCase = await client.clearingCase.findUniqueOrThrow({
     where: { id: created.id }
   });
-  return { clearingCase, service };
+  return {
+    clearingCase,
+    service,
+    authorityService,
+    historicalWageAuthority
+  };
 }
 
 async function confirmV1Event(
