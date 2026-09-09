@@ -1758,7 +1758,7 @@ BEGIN
   THEN
     RAISE EXCEPTION 'POL-275 冻结计划形状无效' USING ERRCODE = '23514';
   END IF;
-  IF CASE intent ->> 'operation'
+  IF (CASE intent ->> 'operation'
     WHEN 'open_item' THEN
       jsonb_typeof(intent -> 'itemDefinition') <> 'object'
       OR intent -> 'itemDefinition' ->> 'mode' NOT IN ('independent', 'addition')
@@ -1798,7 +1798,7 @@ BEGIN
       OR jsonb_typeof(intent -> 'definitionReversal') <> 'object'
       OR jsonb_array_length(intent -> 'eventAllocations') <> 0
     ELSE TRUE
-  END THEN
+  END) THEN
     RAISE EXCEPTION 'POL-275 operation 分支不互斥或包含无关关系' USING ERRCODE = '23514';
   END IF;
   IF intent -> 'plannedPairedWithheld' <> 'null'::JSONB
