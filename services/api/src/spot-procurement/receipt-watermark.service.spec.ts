@@ -39,6 +39,11 @@ describe("ReceiptWatermarkService", () => {
       .toBuffer();
   }
 
+  it("runs the patched Sharp and libheif runtime used by receipt images", () => {
+    expect(sharp.versions.sharp).toBe("0.35.4");
+    expect(sharp.versions.heif).toBe("1.23.2");
+  });
+
   it("extends the image with a bottom information card without covering the subject", async () => {
     const originalBuffer = await createPng();
     const result = await new ReceiptWatermarkService().generate({

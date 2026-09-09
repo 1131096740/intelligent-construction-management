@@ -13,7 +13,6 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -21,6 +20,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { FileService } from "../file/file.service";
 import {
+  FileInterceptor,
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";

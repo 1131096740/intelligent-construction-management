@@ -1,11 +1,10 @@
 import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { FileService } from "../file/file.service";
-import { type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
+import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";

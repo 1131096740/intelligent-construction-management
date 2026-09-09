@@ -12,11 +12,10 @@ import {
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
-import { normalizeUploadedOriginalName, type MemoryUploadedFile } from "../file/uploaded-file";
+import { FileInterceptor, normalizeUploadedOriginalName, type MemoryUploadedFile } from "../file/uploaded-file";
 import {
   AddOperatingTakeoverAttachmentGroupDto,
   ActivateOperatingTakeoverDto,
