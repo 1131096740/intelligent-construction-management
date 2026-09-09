@@ -29,6 +29,7 @@ const {
   assertSafeEnvironment: assertPol275SafeEnvironment,
   inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
+  REVIEWED_BASE_SHA,
   runtimeEnvironment: createPol275RuntimeEnvironment,
   selectPostgresDiagnostics
 } = require("./run-pol275-clearing-reconciliation-local.cjs");
@@ -146,6 +147,18 @@ test("POL-275 runner preserves rather than repurposes the caller home", () => {
   );
   assert.equal(environment.HOME, "/caller/home");
   assert.equal(environment.TMPDIR, "/tmp/pol275");
+});
+
+test("POL-275 legacy compatibility binds the reviewed base and its own frozen dependencies", () => {
+  assert.equal(REVIEWED_BASE_SHA, "3cf11b6c46b301856b554598522213f0839ef595");
+  const runnerSource = require("node:fs").readFileSync(
+    path.join(__dirname, "run-pol275-clearing-reconciliation-local.cjs"),
+    "utf8"
+  );
+  assert.match(runnerSource, /reviewed_base_frozen_lockfile_offline/u);
+  assert.match(runnerSource, /nodeModulesLinkedFromCandidate: false/u);
+  assert.doesNotMatch(runnerSource, /await symlink/u);
+  assert.doesNotMatch(runnerSource, /NODE_PATH:/u);
 });
 
 test("POL-275 role-collision receipt accepts only the exact 42501 membership guard", () => {

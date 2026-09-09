@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   BadRequestException,
@@ -105,6 +105,15 @@ export interface HistoricalClearingImportInput {
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CLEARING_SOURCE_TYPE = "clearing_event_version";
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n;
+const CLEARING_CONFIRM_AUTHORIZATION_DRIFT = "clearing_confirm_authorization_drift";
+
+class ClearingConfirmationAuthorizationDriftException extends ConflictException {
+  readonly reasonCode = CLEARING_CONFIRM_AUTHORIZATION_DRIFT;
+
+  constructor() {
+    super("清分确认前权限或委托已变化，请刷新后重试");
+  }
+}
 
 @Injectable()
 export class ClearingService {
@@ -855,7 +864,8 @@ export class ClearingService {
       eventId
     );
     const fingerprint = commandFingerprint("clearing.event.confirm", eventId, input, identity);
-    return this.serializable(async (tx) => {
+    try {
+      return await this.serializable(async (tx) => {
       const replay = await this.replay(tx, input.idempotencyKey, fingerprint);
       if (replay) return replay;
       const event = await this.lockEvent(tx, eventId);
@@ -911,7 +921,8 @@ export class ClearingService {
       ) {
         throw new ConflictException("清算事项版本冲突，请刷新后基于最新版本重试");
       }
-      await this.revalidateIdentity(
+      await this.revalidateIdentityInTransaction(
+        tx,
         identity,
         confirmationAction,
         "clearing_event",
@@ -993,7 +1004,29 @@ export class ClearingService {
         metadata: auditMetadata(identity, input.expectedRevision, plan)
       });
       return result;
-    });
+      });
+    } catch (error) {
+      if (!(error instanceof ClearingConfirmationAuthorizationDriftException)) {
+        throw error;
+      }
+      await this.serializable((tx) => this.audit.record(tx, {
+        actorUserId,
+        action: "clearing.event.confirm.denied",
+        businessType: "clearing_event",
+        businessId: eventId,
+        metadata: {
+          reasonCode: error.reasonCode,
+          requiredAction: confirmationAction,
+          expectedRevision: input.expectedRevision,
+          resourceFingerprint: opaqueAuditFingerprint(eventId),
+          actualActorFingerprint: opaqueAuditFingerprint(identity.actualUserId),
+          delegatorActorFingerprint: identity.delegatorUserId
+            ? opaqueAuditFingerprint(identity.delegatorUserId)
+            : null
+        }
+      }));
+      throw error;
+    }
   }
 
   async returnEvent(actorUserId: string, eventId: string, input: ReturnClearingEventDto) {
@@ -1492,9 +1525,10 @@ export class ClearingService {
       !Array.isArray(rawItemDefinition)
         ? rawItemDefinition as Record<string, unknown>
         : null;
-    const replacingRevisionId =
+    const replacementReliefRevisionId =
       itemDefinition &&
       itemDefinition.mode === "replacement" &&
+      itemDefinition.correctsDefinitionReversalId === null &&
       typeof itemDefinition.replacesRevisionId === "string"
         ? itemDefinition.replacesRevisionId
         : null;
@@ -1508,7 +1542,7 @@ export class ClearingService {
             WHERE allocation."sourceEventVersionId" = source.id
           ), 0)
         - public."pol275_active_coverage_occupancy"(source.id)
-        + CASE WHEN ${replacingRevisionId}::text IS NULL THEN 0 ELSE COALESCE((
+        + CASE WHEN ${replacementReliefRevisionId}::text IS NULL THEN 0 ELSE COALESCE((
             SELECT SUM(coverage."amountCents") - COALESCE(SUM((
               SELECT COALESCE(SUM(CASE WHEN resolution."entryKind" = 'resolution'
                 THEN line."amountCents" ELSE -line."amountCents" END), 0)
@@ -1518,7 +1552,7 @@ export class ClearingService {
               WHERE line."coverageId" = coverage.id
             )), 0)
             FROM "ClearingReconciliationCoverage" coverage
-            WHERE coverage."reconciliationRevisionId" = ${replacingRevisionId}
+            WHERE coverage."reconciliationRevisionId" = ${replacementReliefRevisionId}
               AND coverage."withheldEventVersionId" = source.id
           ), 0) END
       ), 0)::bigint AS remaining
@@ -1992,7 +2026,87 @@ export class ClearingService {
       resourceId
     );
     if (refreshed.actorIds.join("|") !== identity.actorIds.join("|")) {
-      throw new ConflictException("清分确认前权限或委托已变化，请刷新后重试");
+      throw new ConflictException("清分操作前权限或委托已变化，请刷新后重试");
+    }
+  }
+
+  private async revalidateIdentityInTransaction(
+    tx: Tx,
+    identity: ActorIdentity,
+    action: BusinessAction,
+    resourceType: "clearing_project" | "clearing_case" | "clearing_event",
+    resourceId: string
+  ) {
+    const actorIds = [...identity.actorIds].sort();
+    await tx.$queryRaw(Prisma.sql`
+      /* pol275_confirmation_authorization_lock */
+      WITH locked_users AS MATERIALIZED (
+        SELECT "id"
+        FROM "User"
+        WHERE "id" IN (${Prisma.join(actorIds)})
+        ORDER BY "id"
+        FOR UPDATE
+      ), locked_positions AS MATERIALIZED (
+        SELECT assignment."id" AS assignment_id, position."id" AS position_id
+        FROM "UserPosition" assignment
+        JOIN "Position" position ON position."id" = assignment."positionId"
+        WHERE assignment."userId" IN (${Prisma.join(actorIds)})
+          AND assignment."projectId" IS NULL
+        ORDER BY assignment."id", position."id"
+        FOR UPDATE OF assignment, position
+      ), locked_delegations AS MATERIALIZED (
+        SELECT delegation."id"
+        FROM "ApprovalDelegation" delegation
+        WHERE delegation."toUserId" = ${identity.actualUserId}
+          AND delegation."fromUserId" IS NOT DISTINCT FROM ${identity.delegatorUserId}
+          AND delegation."actionKey" = ${action}
+          AND delegation."resourceType" = ${resourceType}
+          AND delegation."resourceId" = ${resourceId}
+        ORDER BY delegation."id"
+        FOR UPDATE
+      )
+      SELECT
+        (SELECT COUNT(*) FROM locked_users)::bigint AS "lockedUsers",
+        (SELECT COUNT(*) FROM locked_positions)::bigint AS "lockedPositions",
+        (SELECT COUNT(*) FROM locked_delegations)::bigint AS "lockedDelegations"
+    `);
+
+    let actualRoles;
+    try {
+      actualRoles = await this.roles.resolveActiveRoleScopesInTransaction(
+        tx,
+        identity.actualUserId
+      );
+    } catch {
+      throw new ClearingConfirmationAuthorizationDriftException();
+    }
+    if (!identity.delegatorUserId) {
+      if (!canPerform(action, actualRoles)) {
+        throw new ClearingConfirmationAuthorizationDriftException();
+      }
+      return;
+    }
+
+    const activeDelegators = await activeScopedApprovalDelegatorIds(
+      tx,
+      identity.actualUserId,
+      { actionKey: action, resourceType, resourceId },
+      new Date()
+    );
+    if (!activeDelegators.includes(identity.delegatorUserId)) {
+      throw new ClearingConfirmationAuthorizationDriftException();
+    }
+    let delegatorRoles;
+    try {
+      delegatorRoles = await this.roles.resolveActiveRoleScopesInTransaction(
+        tx,
+        identity.delegatorUserId
+      );
+    } catch {
+      throw new ClearingConfirmationAuthorizationDriftException();
+    }
+    if (!canPerform(action, delegatorRoles)) {
+      throw new ClearingConfirmationAuthorizationDriftException();
     }
   }
 
@@ -2620,6 +2734,12 @@ function auditMetadata(identity: ActorIdentity, expectedRevision: number, plan?:
       impactKinds: plan.impacts.map((impact) => impact.impactKind)
     } : {})
   } as Prisma.InputJsonObject;
+}
+
+function opaqueAuditFingerprint(value: string): string {
+  return createHash("sha256")
+    .update(`pol275/audit-identifier/V1\n${value}`, "utf8")
+    .digest("hex");
 }
 
 function jsonObject(value: Record<string, unknown>): Prisma.InputJsonObject {

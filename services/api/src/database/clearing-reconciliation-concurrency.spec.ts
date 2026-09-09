@@ -1,9 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as assert from "node:assert/strict";
 
 import { Prisma, PrismaClient } from "@prisma/client";
 
 import { AuditService } from "../audit/audit.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { PermissionGuard } from "../auth/guards/permission.guard";
 import { AffiliateClearingAuthorityService } from "../clearing/affiliate-clearing-authority.service";
 import { AffiliateClearingSelectionRefService } from "../clearing/affiliate-clearing-selection-ref.service";
 import { ClearingService } from "../clearing/clearing.service";
@@ -107,14 +109,25 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           where: { id: caseId },
           select: { revision: true }
         });
-        await service.confirmEvent(confirmerUserId, prepared.id, {
+        const confirmationInput = {
           idempotencyKey: randomUUID(),
           expectedRevision: attested.revision,
           expectedCaseRevision: currentCase.revision,
           eventVersionId: submittedVersion.id,
           expectedFingerprint: submittedVersion.fingerprint,
-          confirmed: true
-        });
+          confirmed: true as const
+        };
+        const confirmed = await service.confirmEvent(
+          confirmerUserId,
+          prepared.id,
+          confirmationInput
+        );
+        const replayed = await service.confirmEvent(
+          confirmerUserId,
+          prepared.id,
+          confirmationInput
+        );
+        assert.deepEqual(replayed, confirmed);
 
         const [proof] = await client.$queryRaw<Array<{
           confirmationCount: bigint;
@@ -485,12 +498,20 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           }
         });
         timeline.push(await confirmationTime(client, t3.versionId));
+        const [continuedOccupancy] = await client.$queryRaw<Array<{
+          amountCents: bigint;
+        }>>(Prisma.sql`
+          SELECT public."pol275_active_coverage_occupancy"(
+            ${coverage.withheldEventVersionId}
+          ) AS "amountCents"
+        `);
+        assert.equal(continuedOccupancy?.amountCents, 60n);
         await client.$queryRaw`SELECT 1 AS slept FROM pg_sleep(0.01)`;
 
         const beforeT4 = await client.clearingCase.findUniqueOrThrow({
           where: { id: caseId }, select: { revision: true }
         });
-        const t4 = await confirmV1Event(client, service, actors, {
+        const t4Candidate = await prepareAndAttestV1Event(client, service, actors, {
           caseId,
           expectedCaseRevision: beforeT4.revision,
           kind: "technical_reversal",
@@ -507,6 +528,79 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             }]
           }
         });
+        const reverseDelegateeUserId = `${prefix}_reverse_delegatee`;
+        await client.user.create({
+          data: {
+            id: reverseDelegateeUserId,
+            name: "POL-275技术反向受托人",
+            mustChangePassword: false,
+            isActive: true
+          }
+        });
+        const employeePosition = await client.position.upsert({
+          where: { key: "employee" },
+          create: {
+            id: `${prefix}_employee_position`,
+            key: "employee",
+            name: "员工"
+          },
+          update: {}
+        });
+        await client.userPosition.create({
+          data: {
+            userId: reverseDelegateeUserId,
+            positionId: employeePosition.id,
+            projectId: null
+          }
+        });
+        await client.approvalDelegation.create({
+          data: {
+            id: randomUUID(),
+            fromUserId: actors.confirmerUserId,
+            toUserId: reverseDelegateeUserId,
+            actionKey: "clearing.reconciliation.reverse",
+            resourceType: "clearing_event",
+            resourceId: t4Candidate.eventId,
+            startsAt: new Date(Date.now() - 60_000),
+            endsAt: new Date(Date.now() + 60_000),
+            enabled: true
+          }
+        });
+        const reverseGuard = new PermissionGuard(
+          {
+            getAllAndOverride: jest.fn()
+              .mockReturnValueOnce(undefined)
+              .mockReturnValueOnce("clearing.confirm")
+              .mockReturnValueOnce(undefined)
+          } as never,
+          client as never,
+          undefined,
+          new CompanyRoleResolverService(client as never)
+        );
+        await expect(reverseGuard.canActivate({
+          getHandler: () => undefined,
+          getClass: () => undefined,
+          switchToHttp: () => ({
+            getRequest: () => ({
+              user: { id: reverseDelegateeUserId },
+              params: { eventId: t4Candidate.eventId },
+              body: { delegatorUserId: actors.confirmerUserId }
+            })
+          })
+        } as never)).resolves.toBe(true);
+        const t4 = eventResult(await service.confirmEvent(
+          reverseDelegateeUserId,
+          t4Candidate.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: t4Candidate.eventRevision,
+            expectedCaseRevision: beforeT4.revision,
+            eventVersionId: t4Candidate.versionId,
+            expectedFingerprint: t4Candidate.fingerprint,
+            delegatorUserId: actors.confirmerUserId,
+            confirmed: true
+          }
+        ));
         timeline.push(await confirmationTime(client, t4.versionId));
         await client.$queryRaw`SELECT 1 AS slept FROM pg_sleep(0.01)`;
 
@@ -614,6 +708,32 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
       };
       try {
         await client.$connect();
+        const jcsVector = {
+          "\uE000": ["x", 1, true],
+          "😀": null,
+          a: "9223372036854775807"
+        };
+        const expectedCanonicalJcs =
+          '{"a":"9223372036854775807","😀":null,"":["x",1,true]}';
+        const [jcsGolden] = await client.$queryRaw<Array<{
+          canonical: string;
+          hash: string;
+        }>>(Prisma.sql`
+          SELECT
+            public."pol275_jcs_v1"(${JSON.stringify(jcsVector)}::jsonb) AS canonical,
+            encode(public.digest(convert_to(
+              'pol275/relation-set/V1' || chr(10) ||
+              public."pol275_jcs_v1"(${JSON.stringify(jcsVector)}::jsonb),
+              'UTF8'
+            ), 'sha256'), 'hex') AS hash
+        `);
+        assert.equal(jcsGolden?.canonical, expectedCanonicalJcs);
+        assert.equal(
+          jcsGolden?.hash,
+          createHash("sha256")
+            .update(`pol275/relation-set/V1\n${expectedCanonicalJcs}`, "utf8")
+            .digest("hex")
+        );
         const fixture = await seedOperatingLedgerFixture(client, { prefix, ...actors });
         const selectionRefs = new AffiliateClearingSelectionRefService({ secret: `${prefix}_secret` });
         const authorityFixture = await createAuthorityBackedClearingCase(
@@ -1056,6 +1176,109 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         });
         assert.equal(r3.revisionNo, 3);
         assert.equal(r3.replacesRevisionId, r1.id);
+
+        const correctedCaseId = `${prefix}_corrected_capacity_case`;
+        const correctedCase = await client.clearingCase.create({
+          data: {
+            id: correctedCaseId,
+            projectId: fixture.projectId,
+            constructionEnterpriseAssignmentId: fixture.assignmentId,
+            category: "management_fee",
+            governedSubjectKey: `${prefix}_corrected_capacity_subject`,
+            authoritativeGrossCapCents: 1000n,
+            createdByUserId: actors.preparerUserId
+          }
+        });
+        const correctedSource = await confirmLegacyEvent(service, actors, {
+          caseId: correctedCaseId,
+          expectedCaseRevision: correctedCase.revision,
+          kind: "withheld",
+          amountCents: "100"
+        });
+        let correctedCaseRevision = await currentCaseRevision(client, correctedCaseId);
+        const correctedOpen = await confirmV1Event(client, service, actors, {
+          caseId: correctedCaseId,
+          expectedCaseRevision: correctedCaseRevision,
+          kind: "pending_reconciliation",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "100" },
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                correctedCaseId,
+                correctedCaseRevision,
+                correctedSource
+              ),
+              amountCents: "100"
+            }]
+          }
+        });
+        const correctedR1 = await client.clearingReconciliationRevision.findUniqueOrThrow({
+          where: { decisionEventVersionId: correctedOpen.versionId }
+        });
+        correctedCaseRevision = await currentCaseRevision(client, correctedCaseId);
+        const correctedReversal = await confirmV1Event(client, service, actors, {
+          caseId: correctedCaseId,
+          expectedCaseRevision: correctedCaseRevision,
+          kind: "technical_reversal",
+          amountCents: "100",
+          reconciliationIntent: {
+            operation: "reverse_definition",
+            targetRevisionId: correctedR1.id
+          }
+        });
+        const correctedReversalRow = await client.clearingReconciliationDefinitionReversal.findUniqueOrThrow({
+          where: { decisionEventVersionId: correctedReversal.versionId }
+        });
+        correctedCaseRevision = await currentCaseRevision(client, correctedCaseId);
+        await confirmLegacyEvent(service, actors, {
+          caseId: correctedCaseId,
+          expectedCaseRevision: correctedCaseRevision,
+          kind: "final_confirmed",
+          amountCents: "100",
+          allocations: [{
+            sourceEventVersionId: correctedSource,
+            sourceKind: "withheld",
+            amountCents: "100"
+          }]
+        });
+        correctedCaseRevision = await currentCaseRevision(client, correctedCaseId);
+        const correctedEventCount = await client.clearingEvent.count({
+          where: { clearingCaseId: correctedCaseId }
+        });
+        await expect(service.createEvent(actors.preparerUserId, correctedCaseId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: correctedCaseRevision,
+          kind: "pending_reconciliation",
+          amountCents: "100",
+          evidenceLevel: "B",
+          reconciliationIntent: {
+            operation: "replace_item",
+            itemDefinition: {
+              mode: "replacement",
+              replacesRevisionId: correctedR1.id,
+              correctsDefinitionReversalId: correctedReversalRow.id,
+              amountCents: "100"
+            },
+            coverages: [{
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
+                actors.preparerUserId,
+                correctedCaseId,
+                correctedCaseRevision,
+                correctedSource
+              ),
+              amountCents: "100"
+            }]
+          }
+        })).rejects.toThrow(/暂扣覆盖来源容量已漂移/iu);
+        assert.equal(
+          await client.clearingEvent.count({ where: { clearingCaseId: correctedCaseId } }),
+          correctedEventCount
+        );
       } finally {
         await client.$disconnect();
       }
@@ -1229,28 +1452,95 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
         const submittedFinal = await client.clearingEventVersion.findUniqueOrThrow({
           where: { id: preparedFinal.versionId }
         });
-        for (const [caseSuffix, mutate] of [
-          ["ordinal", (payload: Record<string, unknown>) => {
+        for (const [caseSuffix, expectedError, mutate] of [
+          ["ordinal", /resolution\/line 字段、来源或 ordinal 无效/iu, (payload: Record<string, unknown>) => {
             const intent = payload.reconciliationIntent as {
               resolutions: Array<{ lines: Array<Record<string, unknown>> }>;
             };
             intent.resolutions[0]!.lines[0]!.lineNo = 2;
           }],
-          ["nested", (payload: Record<string, unknown>) => {
+          ["nested", /resolution\/line 字段、来源或 ordinal 无效/iu, (payload: Record<string, unknown>) => {
             const intent = payload.reconciliationIntent as {
               resolutions: Array<{ lines: Array<Record<string, unknown>> }>;
             };
             intent.resolutions[0]!.lines[0]!.unexpected = "forbidden";
+          }],
+          ["numeric_cents", /resolution\/line 字段、来源或 ordinal 无效/iu, (payload: Record<string, unknown>) => {
+            const intent = payload.reconciliationIntent as {
+              resolutions: Array<Record<string, unknown>>;
+            };
+            intent.resolutions[0]!.amountCents = 25;
+          }],
+          ["unknown_purpose", /allocation 字段、来源或 ordinal 无效/iu, (payload: Record<string, unknown>) => {
+            const intent = payload.reconciliationIntent as {
+              eventAllocations: Array<Record<string, unknown>>;
+            };
+            intent.eventAllocations[0]!.purpose = "unknown_purpose";
+          }],
+          ["mixed_branch", /operation 分支不互斥或包含无关关系/iu, (payload: Record<string, unknown>) => {
+            const intent = payload.reconciliationIntent as Record<string, unknown>;
+            intent.definitionReversal = {
+              definitionReversalId: "forbidden",
+              targetRevisionId: "forbidden",
+              targetDecisionEventVersionId: "forbidden",
+              targetDecisionEventVersionFingerprint: "b".repeat(64),
+              reversedAmountCents: "25"
+            };
+          }],
+          ["planned_id", /plannedIds 与冻结关系集合不闭合/iu, (payload: Record<string, unknown>) => {
+            const intent = payload.reconciliationIntent as {
+              plannedIds: { resolutionIds: string[] };
+            };
+            intent.plannedIds.resolutionIds = ["wrong-resolution-id"];
           }]
         ] as const) {
           await expectMalformedFrozenResolutionRejected(
             client,
-            submittedFinal,
+            { ...submittedFinal, eventKind: "final_confirmed" },
             actors,
             caseSuffix,
-            mutate
+            mutate,
+            expectedError
           );
         }
+        const pairedCase = await client.clearingCase.create({
+          data: {
+            id: `${prefix}_paired_case`,
+            projectId: fixture.projectId,
+            constructionEnterpriseAssignmentId: fixture.assignmentId,
+            category: "management_fee",
+            governedSubjectKey: `${prefix}_paired_subject`,
+            authoritativeGrossCapCents: 1000n,
+            createdByUserId: actors.preparerUserId
+          }
+        });
+        const pairedDecision = await confirmV1Event(client, service, actors, {
+          caseId: pairedCase.id,
+          expectedCaseRevision: pairedCase.revision,
+          kind: "pending_reconciliation",
+          amountCents: "25",
+          reconciliationIntent: {
+            operation: "open_item",
+            itemDefinition: { mode: "independent", amountCents: "25" },
+            coverages: []
+          }
+        });
+        const pairedVersion = await client.clearingEventVersion.findUniqueOrThrow({
+          where: { id: pairedDecision.versionId }
+        });
+        await expectMalformedFrozenResolutionRejected(
+          client,
+          { ...pairedVersion, eventKind: "pending_reconciliation" },
+          actors,
+          "planned_pair_event",
+          (payload) => {
+            const intent = payload.reconciliationIntent as {
+              plannedPairedWithheld: Record<string, unknown>;
+            };
+            intent.plannedPairedWithheld.clearingEventId = "wrong-clearing-event-id";
+          },
+          /原子配对暂扣与冻结计划不一致/iu
+        );
         const frozenFinalIntent = (submittedFinal.payloadSnapshot as {
           reconciliationIntent: {
             eventAllocations: Array<{
@@ -1334,7 +1624,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
   );
 
   integrationTest(
-    "serializes the remaining four approved coverage, replacement and allocation races",
+    "serializes approved coverage, replacement, allocation and permission-revoke races",
     async () => {
       const databaseUrl = assertDedicatedDatabase();
       const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
@@ -1593,6 +1883,88 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             allocations: [{ sourceEventVersionId: restoreSource, sourceKind: "withheld", amountCents: "80" }]
           })
         ]));
+
+        const permissionRaceCase = await createCase("permission_revoke");
+        const permissionRaceCandidate = await prepareAndAttestV1Event(
+          client,
+          service,
+          actors,
+          {
+            caseId: permissionRaceCase.id,
+            expectedCaseRevision: permissionRaceCase.revision,
+            kind: "pending_reconciliation",
+            amountCents: "10",
+            reconciliationIntent: {
+              operation: "open_item",
+              itemDefinition: { mode: "independent", amountCents: "10" },
+              coverages: []
+            }
+          }
+        );
+        const canonicalRoles = new CompanyRoleResolverService(client as never);
+        let roleRevokedBetweenSnapshots = false;
+        const racingRoles = {
+          resolveActiveRoleScopes: async (userId: string, projectId?: string) => {
+            const roles = await canonicalRoles.resolveActiveRoleScopes(userId, projectId);
+            if (userId === actors.confirmerUserId && !roleRevokedBetweenSnapshots) {
+              roleRevokedBetweenSnapshots = true;
+              await client.userPosition.deleteMany({
+                where: { userId, projectId: null }
+              });
+            }
+            return roles;
+          },
+          resolveActiveRoleScopesInTransaction: (
+            tx: Prisma.TransactionClient,
+            userId: string,
+            projectId?: string
+          ) => canonicalRoles.resolveActiveRoleScopesInTransaction(tx as never, userId, projectId)
+        };
+        const racingService = new ClearingService(
+          client as never,
+          racingRoles as never,
+          new OperatingLedgerService(client as never),
+          new AuditService(client as never),
+          undefined,
+          selectionRefs
+        );
+        revisionNo = await currentCaseRevision(client, permissionRaceCase.id);
+        await expect(racingService.confirmEvent(
+          actors.confirmerUserId,
+          permissionRaceCandidate.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: permissionRaceCandidate.eventRevision,
+            expectedCaseRevision: revisionNo,
+            eventVersionId: permissionRaceCandidate.versionId,
+            expectedFingerprint: permissionRaceCandidate.fingerprint,
+            confirmed: true
+          }
+        )).rejects.toThrow(/权限或委托已变化/iu);
+        assert.equal(roleRevokedBetweenSnapshots, true);
+        assert.equal(
+          await client.clearingConfirmation.count({
+            where: { eventVersionId: permissionRaceCandidate.versionId }
+          }),
+          0
+        );
+        assert.equal(
+          await client.clearingReconciliationDecisionSeal.count({
+            where: { decisionEventVersionId: permissionRaceCandidate.versionId }
+          }),
+          0
+        );
+        const denyAudit = await client.auditLog.findFirstOrThrow({
+          where: {
+            action: "clearing.event.confirm.denied",
+            businessType: "clearing_event",
+            businessId: permissionRaceCandidate.eventId
+          }
+        });
+        assert.equal(
+          (denyAudit.metadata as { reasonCode?: string }).reasonCode,
+          "clearing_confirm_authorization_drift"
+        );
       } finally {
         await client.$disconnect();
       }
@@ -1869,7 +2241,7 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
 
 function clearingService(
   client: PrismaClient,
-  actors: {
+  _actors: {
     preparerUserId: string;
     attesterUserId: string;
     confirmerUserId: string;
@@ -1877,7 +2249,7 @@ function clearingService(
   selectionRefs?: AffiliateClearingSelectionRefService,
   authorities?: AffiliateClearingAuthorityService
 ) {
-  const roleResolver = clearingRoleResolver(actors);
+  const roleResolver = new CompanyRoleResolverService(client as never);
   return new ClearingService(
     client as never,
     roleResolver as never,
@@ -1893,11 +2265,15 @@ function clearingRoleResolver(actors: {
   attesterUserId: string;
   confirmerUserId: string;
 }) {
+  const resolve = jest.fn(async (userId: string) =>
+    userId === actors.confirmerUserId
+      ? ["finance_director"]
+      : ["finance_staff"]
+  );
   return {
-    resolveActiveRoleScopes: jest.fn(async (userId: string) =>
-      userId === actors.confirmerUserId
-        ? ["finance_director"]
-        : ["finance_staff"]
+    resolveActiveRoleScopes: resolve,
+    resolveActiveRoleScopesInTransaction: jest.fn(
+      async (_tx: unknown, userId: string) => resolve(userId)
     )
   };
 }
@@ -2346,6 +2722,7 @@ async function expectMalformedFrozenResolutionRejected(
     amountCents: bigint;
     currencyCode: string;
     payloadSnapshot: Prisma.JsonValue;
+    eventKind: "pending_reconciliation" | "final_confirmed";
   },
   actors: {
     preparerUserId: string;
@@ -2353,7 +2730,8 @@ async function expectMalformedFrozenResolutionRejected(
     confirmerUserId: string;
   },
   suffix: string,
-  mutate: (payload: Record<string, unknown>) => void
+  mutate: (payload: Record<string, unknown>) => void,
+  expectedError: RegExp
 ): Promise<void> {
   const payload = JSON.parse(
     JSON.stringify(source.payloadSnapshot)
@@ -2367,7 +2745,7 @@ async function expectMalformedFrozenResolutionRejected(
       data: {
         id: eventId,
         clearingCaseId: source.clearingCaseId,
-        kind: "final_confirmed",
+        kind: source.eventKind,
         workflowStatus: "submitted",
         revision: 2,
         currentVersionNo: 1,
@@ -2403,9 +2781,7 @@ async function expectMalformedFrozenResolutionRejected(
         ${fingerprint}
       )
     `);
-  })).rejects.toThrow(
-    /POL-275 冻结 resolution\/line 字段、来源或 ordinal 无效/iu
-  );
+  })).rejects.toThrow(expectedError);
   assert.equal(
     await client.clearingEvent.count({ where: { id: eventId } }),
     0
@@ -2453,6 +2829,45 @@ async function seedOperatingLedgerFixture(
       VALUES (${userId}, 'POL-275核对动态测试用户', FALSE, TRUE, CURRENT_TIMESTAMP)
     `);
   }
+  const financeStaffPosition = await client.position.upsert({
+    where: { key: "finance_staff" },
+    create: {
+      id: "pol275-finance-staff-position",
+      key: "finance_staff",
+      name: "财务人员"
+    },
+    update: {},
+    select: { id: true }
+  });
+  const financeDirectorPosition = await client.position.upsert({
+    where: { key: "finance_director" },
+    create: {
+      id: "pol275-finance-director-position",
+      key: "finance_director",
+      name: "财务负责人"
+    },
+    update: {},
+    select: { id: true }
+  });
+  await client.userPosition.createMany({
+    data: [
+      {
+        id: `${fixture.prefix}_preparer_finance_staff`,
+        userId: fixture.preparerUserId,
+        positionId: financeStaffPosition.id
+      },
+      {
+        id: `${fixture.prefix}_attester_finance_staff`,
+        userId: fixture.attesterUserId,
+        positionId: financeStaffPosition.id
+      },
+      {
+        id: `${fixture.prefix}_confirmer_finance_director`,
+        userId: fixture.confirmerUserId,
+        positionId: financeDirectorPosition.id
+      }
+    ]
+  });
   const audit = new AuditService(client as never);
   const projects = new ProjectService(client as never, audit);
   const project = await projects.createProject(fixture.preparerUserId, {

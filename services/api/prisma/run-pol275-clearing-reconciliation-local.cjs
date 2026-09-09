@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 "use strict";
 
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const {
   copyFile,
   cp,
   mkdir,
   mkdtemp,
+  readFile,
   rm,
-  symlink,
   writeFile
 } = require("node:fs/promises");
 const net = require("node:net");
@@ -35,7 +35,7 @@ const FULL_REPLAY_DATABASE_NAME = "jiangkong_pol275_empty";
 const ROLE_COLLISION_DATABASE_NAME = "jiangkong_pol275_role_collision";
 const TERMINAL_MIGRATION =
   "20260909100000_pol275_clearing_reconciliation_repair";
-const LEGACY_PROCESS_SHA = "1fc3355a89db66785a9815f7e47df58d44a4293e";
+const REVIEWED_BASE_SHA = "3cf11b6c46b301856b554598522213f0839ef595";
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const RECONCILIATION_TABLES = [
   "ClearingReconciliationItem",
@@ -113,6 +113,14 @@ async function assertRepositoryState(environment) {
   const status = (await command("git", ["status", "--porcelain"])).stdout;
   if (status.trim()) {
     fail("工作树不干净，拒绝生成动态验收证据");
+  }
+  const mergeBase = (await command("git", [
+    "merge-base",
+    REVIEWED_BASE_SHA,
+    head
+  ])).stdout.trim();
+  if (mergeBase !== REVIEWED_BASE_SHA) {
+    fail("当前候选并非从已复核 base SHA 派生");
   }
   return head;
 }
@@ -393,7 +401,7 @@ async function prepareLegacyProcessSource(temporaryRoot) {
     "--format=tar",
     "--output",
     archivePath,
-    LEGACY_PROCESS_SHA
+    REVIEWED_BASE_SHA
   ]);
   await command(tar, ["-xf", archivePath, "-C", sourceRoot]);
   const compatibilityTest =
@@ -402,13 +410,61 @@ async function prepareLegacyProcessSource(temporaryRoot) {
     path.join(root, compatibilityTest),
     path.join(sourceRoot, compatibilityTest)
   );
-  await symlink(path.join(root, "node_modules"), path.join(sourceRoot, "node_modules"), "dir");
-  await symlink(
-    path.join(apiRoot, "node_modules"),
-    path.join(sourceRoot, "services", "api", "node_modules"),
-    "dir"
+  const dependencyEnvironment = { ...process.env };
+  for (const name of inheritedDatabaseTargetNames(dependencyEnvironment)) {
+    delete dependencyEnvironment[name];
+  }
+  dependencyEnvironment.NODE_ENV = "test";
+  await command("pnpm", ["install", "--frozen-lockfile", "--offline"], {
+    cwd: sourceRoot,
+    env: dependencyEnvironment,
+    forwardOutput: true,
+    timeoutMs: 15 * 60 * 1000
+  });
+  await command("pnpm", ["--filter", "@jiangkong/shared-domain", "build"], {
+    cwd: sourceRoot,
+    env: dependencyEnvironment,
+    forwardOutput: true,
+    timeoutMs: 5 * 60 * 1000
+  });
+  await command("pnpm", [
+    "--filter",
+    "@jiangkong/api",
+    "exec",
+    "prisma",
+    "generate"
+  ], {
+    cwd: sourceRoot,
+    env: dependencyEnvironment,
+    forwardOutput: true,
+    timeoutMs: 5 * 60 * 1000
+  });
+  return {
+    sourceRoot,
+    dependencyReceipt: {
+      mode: "reviewed_base_frozen_lockfile_offline",
+      nodeModulesLinkedFromCandidate: false,
+      lockfileSha256: await sha256File(path.join(sourceRoot, "pnpm-lock.yaml")),
+      rootPackageSha256: await sha256File(path.join(sourceRoot, "package.json")),
+      apiPackageSha256: await sha256File(path.join(sourceRoot, "services", "api", "package.json"))
+    }
+  };
+}
+
+async function sha256File(filePath) {
+  return createHash("sha256")
+    .update(await readFile(filePath))
+    .digest("hex");
+}
+
+function legacyJestCli(sourceRoot) {
+  return path.join(
+    sourceRoot,
+    "node_modules",
+    "jest",
+    "bin",
+    "jest.js"
   );
-  return sourceRoot;
 }
 
 async function runLegacyProcessGate(sourceRoot, environment) {
@@ -416,7 +472,7 @@ async function runLegacyProcessGate(sourceRoot, environment) {
   await command(
     process.execPath,
     [
-      jestCli,
+      legacyJestCli(sourceRoot),
       "--config",
       "jest.config.cjs",
       "--runInBand",
@@ -426,10 +482,6 @@ async function runLegacyProcessGate(sourceRoot, environment) {
       cwd: legacyApiRoot,
       env: {
         ...environment,
-        NODE_PATH: [
-          path.join(apiRoot, "node_modules"),
-          path.join(root, "node_modules")
-        ].join(path.delimiter),
         RUN_POL275_LEGACY_PROCESS_COMPATIBILITY: "1"
       },
       forwardOutput: true,
@@ -737,8 +789,8 @@ async function main() {
     await deployMigrations(preTerminalSchema, upgradeEnvironment);
     await deployMigrations(path.join(prismaRoot, "schema.prisma"), upgradeEnvironment);
     await runCurrentProcessGate(upgradeEnvironment);
-    const legacySourceRoot = await prepareLegacyProcessSource(temporaryRoot);
-    await runLegacyProcessGate(legacySourceRoot, upgradeEnvironment);
+    const legacyProcess = await prepareLegacyProcessSource(temporaryRoot);
+    await runLegacyProcessGate(legacyProcess.sourceRoot, upgradeEnvironment);
     const upgradeEvidence = await collectEvidence(
       upgradeUrl,
       baseline.expectedDirectoryCount
@@ -749,7 +801,8 @@ async function main() {
       gate: "pol275-clearing-reconciliation-postgresql16",
       status: "passed",
       candidateSha,
-      legacyProcessSha: LEGACY_PROCESS_SHA,
+      legacyProcessSha: REVIEWED_BASE_SHA,
+      legacyProcessDependencies: legacyProcess.dependencyReceipt,
       containerImage: IMAGE,
       containerImageId: dockerReceipt.imageId,
       migrationBaseline: baseline,
@@ -785,7 +838,7 @@ module.exports = {
   FULL_REPLAY_DATABASE_NAME,
   ROLE_COLLISION_DATABASE_NAME,
   IMAGE,
-  LEGACY_PROCESS_SHA,
+  REVIEWED_BASE_SHA,
   RECONCILIATION_TABLES,
   TERMINAL_MIGRATION,
   assertEvidence,

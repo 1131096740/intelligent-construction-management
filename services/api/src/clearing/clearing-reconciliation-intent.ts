@@ -90,6 +90,7 @@ async function freezeItemDefinition(
   let replacedOpenAmountCents: string | null = null;
   let correctsDefinitionReversalId: string | null = null;
   let replacementTargetRevisionId: string | null = null;
+  let replacementReliefRevisionId: string | null = null;
   if (mode === "independent") {
     itemId = randomUUID();
     lineageRootItemId = itemId;
@@ -170,6 +171,10 @@ async function freezeItemDefinition(
     replacesRevisionId = target.id;
     replacedOpenAmountCents = (reversal ? 0n : openAmountCents).toString();
     correctsDefinitionReversalId = reversal?.id ?? null;
+    // A corrected replacement follows an already-reversed first definition.
+    // That historical revision no longer owns active coverage, so none of its
+    // former occupancy may be released into the corrected decision.
+    replacementReliefRevisionId = reversal ? null : target.id;
   }
 
   const revisionId = randomUUID();
@@ -177,13 +182,13 @@ async function freezeItemDefinition(
     input,
     revisionId,
     input.draft.coverages,
-    replacementTargetRevisionId
+    replacementReliefRevisionId
   );
   let plannedPairedWithheld: Record<string, unknown> | null = null;
   if (coverageRows.length === 0) {
     const available = await availableWithheldTotal(
       input,
-      replacementTargetRevisionId
+      replacementReliefRevisionId
     );
     if (available > 0n) {
       throw new BadRequestException(

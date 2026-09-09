@@ -8,6 +8,7 @@ const COMMAND_ID = "11111111-1111-4111-8111-111111111111";
 function serviceWith<TTx extends Record<string, unknown> = Record<string, never>>(input?: {
   roles?: string[];
   roleScopesByUser?: Record<string, string[]>;
+  transactionRoleScopesByUser?: Record<string, string[]>;
   prisma?: Record<string, unknown>;
   tx?: TTx;
   ledgerResult?: { id: string; impactIds: string[] };
@@ -15,6 +16,15 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
   selectionRefs?: { matches: jest.Mock };
 }) {
   const tx = input?.tx ?? ({} as TTx);
+  const originalQueryRaw = (tx as { $queryRaw?: jest.Mock }).$queryRaw;
+  if (originalQueryRaw) {
+    (tx as unknown as { $queryRaw: jest.Mock }).$queryRaw = jest.fn().mockImplementation(
+      (query: { strings?: readonly string[] }) =>
+        query.strings?.join("").includes("pol275_confirmation_authorization_lock")
+          ? Promise.resolve([{ lockedUsers: 0n, lockedPositions: 0n, lockedDelegations: 0n }])
+          : originalQueryRaw(query)
+    );
+  }
   const prisma = {
     clearingEvent: {
       findUnique: jest.fn().mockResolvedValue({ kind: "coverage_added" })
@@ -29,6 +39,14 @@ function serviceWith<TTx extends Record<string, unknown> = Record<string, never>
     resolveActiveRoleScopes: jest.fn().mockImplementation((userId: string) =>
       Promise.resolve(
         input?.roleScopesByUser?.[userId] ?? input?.roles ?? ["finance_director"]
+      )
+    ),
+    resolveActiveRoleScopesInTransaction: jest.fn().mockImplementation((_tx: unknown, userId: string) =>
+      Promise.resolve(
+        input?.transactionRoleScopesByUser?.[userId] ??
+          input?.roleScopesByUser?.[userId] ??
+          input?.roles ??
+          ["finance_director"]
       )
     )
   };
@@ -389,6 +407,74 @@ describe("ClearingService", () => {
         ]
       })
     ).rejects.toThrow("职责分离冲突");
+  });
+
+  it("rolls back confirmation and records a separate reason-only deny audit when authority drifts", async () => {
+    const tx = {
+      clearingCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "event-1" }])
+        .mockResolvedValueOnce([{ id: "case-1" }]),
+      clearingEvent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "event-1",
+          clearingCaseId: "case-1",
+          kind: "final_confirmed",
+          workflowStatus: "submitted",
+          revision: 2,
+          currentVersionNo: 1
+        }),
+        update: jest.fn()
+      },
+      clearingEventVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          clearingEventId: "event-1",
+          clearingCaseId: "case-1",
+          versionNo: 1,
+          workflowStatus: "submitted",
+          amountCents: 100n,
+          evidenceLevel: "A",
+          payloadSnapshot: {},
+          actorSetSnapshot: ["staff-1"],
+          fingerprint: "a".repeat(64),
+          createdByUserId: "staff-1"
+        })
+      },
+      clearingCase: {
+        findUnique: jest.fn().mockResolvedValue({ id: "case-1", revision: 4 }),
+        update: jest.fn()
+      }
+    };
+    const { service, prisma, audit } = serviceWith({
+      tx,
+      roleScopesByUser: { "director-1": ["finance_director"] },
+      transactionRoleScopesByUser: { "director-1": ["employee"] }
+    });
+
+    await expect(service.confirmEvent("director-1", "event-1", {
+      idempotencyKey: COMMAND_ID,
+      expectedRevision: 2,
+      allocations: [{ sourceKind: "authority_cap", amountCents: "100" }]
+    })).rejects.toThrow("权限或委托已变化");
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(tx.clearingEvent.update).not.toHaveBeenCalled();
+    expect(tx.clearingCommandReceipt.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      actorUserId: "director-1",
+      action: "clearing.event.confirm.denied",
+      businessType: "clearing_event",
+      businessId: "event-1",
+      metadata: expect.objectContaining({
+        reasonCode: "clearing_confirm_authorization_drift",
+        requiredAction: "clearing.confirm",
+        resourceFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/)
+      })
+    }));
   });
 
   it("fails closed when B-level evidence has no independent named attest", async () => {
@@ -1026,7 +1112,7 @@ describe("ClearingService", () => {
       workflowStatus: "confirmed"
     });
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(5);
     expect(tx.clearingConfirmation.create).toHaveBeenCalledTimes(1);
   });
 

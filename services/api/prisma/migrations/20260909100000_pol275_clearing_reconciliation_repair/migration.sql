@@ -418,6 +418,141 @@ AS $$
       = (SELECT COALESCE(array_agg(key ORDER BY key), ARRAY[]::TEXT[]) FROM unnest(p_keys) key);
 $$;
 
+CREATE FUNCTION "pol275_jsonb_is_nonempty_string_v1"(
+  p_value JSONB,
+  p_nullable BOOLEAN DEFAULT FALSE
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT CASE
+    WHEN p_value IS NULL OR p_value = 'null'::JSONB THEN p_nullable
+    ELSE jsonb_typeof(p_value) = 'string' AND btrim(p_value #>> '{}') <> ''
+  END;
+$$;
+
+CREATE FUNCTION "pol275_jsonb_is_cents_v1"(
+  p_value JSONB,
+  p_allow_zero BOOLEAN DEFAULT FALSE,
+  p_nullable BOOLEAN DEFAULT FALSE
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT CASE
+    WHEN p_value IS NULL OR p_value = 'null'::JSONB THEN p_nullable
+    WHEN jsonb_typeof(p_value) <> 'string' THEN FALSE
+    WHEN p_value #>> '{}' !~ '^(0|[1-9][0-9]*)$' THEN FALSE
+    WHEN NOT p_allow_zero AND p_value #>> '{}' = '0' THEN FALSE
+    ELSE length(p_value #>> '{}') < 19
+      OR (
+        length(p_value #>> '{}') = 19
+        AND p_value #>> '{}' <= '9223372036854775807'
+      )
+  END;
+$$;
+
+CREATE FUNCTION "pol275_jsonb_is_positive_integer_v1"(p_value JSONB)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT jsonb_typeof(p_value) = 'number'
+    AND p_value::TEXT ~ '^[1-9][0-9]*$'
+    AND (
+      length(p_value::TEXT) < 10
+      OR (length(p_value::TEXT) = 10 AND p_value::TEXT <= '2147483647')
+    );
+$$;
+
+CREATE FUNCTION "pol275_utf16_sort_key_v1"(p_value TEXT)
+RETURNS BYTEA
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  result BYTEA := ''::BYTEA;
+  codepoint INTEGER;
+  high_surrogate INTEGER;
+  low_surrogate INTEGER;
+  index INTEGER;
+BEGIN
+  FOR index IN 1..char_length(p_value) LOOP
+    codepoint := ascii(substr(p_value, index, 1));
+    IF codepoint BETWEEN 55296 AND 57343 OR codepoint > 1114111 THEN
+      RAISE EXCEPTION 'POL-275 JCS 文本包含无效 Unicode scalar' USING ERRCODE = '22023';
+    ELSIF codepoint <= 65535 THEN
+      result := result || decode(lpad(to_hex(codepoint), 4, '0'), 'hex');
+    ELSE
+      codepoint := codepoint - 65536;
+      high_surrogate := 55296 + (codepoint >> 10);
+      low_surrogate := 56320 + (codepoint & 1023);
+      result := result
+        || decode(lpad(to_hex(high_surrogate), 4, '0'), 'hex')
+        || decode(lpad(to_hex(low_surrogate), 4, '0'), 'hex');
+    END IF;
+  END LOOP;
+  RETURN result;
+END;
+$$;
+
+CREATE FUNCTION "pol275_jcs_v1"(p_value JSONB)
+RETURNS TEXT
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  value_type TEXT := jsonb_typeof(p_value);
+  result TEXT;
+BEGIN
+  CASE value_type
+    WHEN 'null' THEN RETURN 'null';
+    WHEN 'boolean' THEN RETURN p_value::TEXT;
+    WHEN 'string' THEN
+      PERFORM public."pol275_utf16_sort_key_v1"(p_value #>> '{}');
+      RETURN to_jsonb(p_value #>> '{}')::TEXT;
+    WHEN 'number' THEN
+      IF p_value::TEXT !~ '^-?(0|[1-9][0-9]*)$'
+        OR abs((p_value::TEXT)::NUMERIC) > 9007199254740991
+      THEN
+        RAISE EXCEPTION 'POL-275 relation-set JCS 仅接受安全整数投影' USING ERRCODE = '22023';
+      END IF;
+      RETURN p_value::TEXT;
+    WHEN 'array' THEN
+      SELECT '[' || COALESCE(string_agg(
+        public."pol275_jcs_v1"(entry.value), ',' ORDER BY entry.ordinal
+      ), '') || ']'
+        INTO result
+        FROM jsonb_array_elements(p_value) WITH ORDINALITY entry(value, ordinal);
+      RETURN result;
+    WHEN 'object' THEN
+      SELECT '{' || COALESCE(string_agg(
+        to_jsonb(entry.key)::TEXT || ':' || public."pol275_jcs_v1"(entry.value),
+        ',' ORDER BY public."pol275_utf16_sort_key_v1"(entry.key)
+      ), '') || '}'
+        INTO result
+        FROM jsonb_each(p_value) entry;
+      RETURN result;
+    ELSE
+      RAISE EXCEPTION 'POL-275 relation-set JCS 输入类型无效' USING ERRCODE = '22023';
+  END CASE;
+END;
+$$;
+
 CREATE FUNCTION "pol275_active_coverage_occupancy"(p_withheld_event_version_id TEXT)
 RETURNS BIGINT
 LANGUAGE sql
@@ -933,7 +1068,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
   SELECT encode(public.digest(convert_to(
-    'pol275/relation-set/V1' || chr(10) || jsonb_build_object(
+    'pol275/relation-set/V1' || chr(10) || public."pol275_jcs_v1"(jsonb_build_object(
       'decisionEventVersionId', version."id",
       'clearingCaseId', version."clearingCaseId",
       'counts', jsonb_build_object(
@@ -952,34 +1087,75 @@ AS $$
         WHERE item."openingDecisionEventVersionId" = version."id"
       ), '[]'::JSONB),
       'revisions', COALESCE((
-        SELECT jsonb_agg(to_jsonb(revision) ORDER BY revision."id")
+        SELECT jsonb_agg(
+          jsonb_set(
+            jsonb_set(
+              to_jsonb(revision),
+              '{amountCents}', to_jsonb(revision."amountCents"::TEXT)
+            ),
+            '{replacedOpenAmountCents}',
+            CASE WHEN revision."replacedOpenAmountCents" IS NULL
+              THEN 'null'::JSONB
+              ELSE to_jsonb(revision."replacedOpenAmountCents"::TEXT)
+            END
+          )
+          ORDER BY revision."id"
+        )
         FROM public."ClearingReconciliationRevision" revision
         WHERE revision."decisionEventVersionId" = version."id"
       ), '[]'::JSONB),
       'coverages', COALESCE((
-        SELECT jsonb_agg(to_jsonb(coverage) ORDER BY coverage."intentLineNo", coverage."id")
+        SELECT jsonb_agg(
+          jsonb_set(
+            to_jsonb(coverage),
+            '{amountCents}', to_jsonb(coverage."amountCents"::TEXT)
+          )
+          ORDER BY coverage."intentLineNo", coverage."id"
+        )
         FROM public."ClearingReconciliationCoverage" coverage
         WHERE coverage."decisionEventVersionId" = version."id"
       ), '[]'::JSONB),
       'resolutions', COALESCE((
-        SELECT jsonb_agg(to_jsonb(resolution) ORDER BY resolution."intentItemNo", resolution."id")
+        SELECT jsonb_agg(
+          jsonb_set(
+            to_jsonb(resolution),
+            '{amountCents}', to_jsonb(resolution."amountCents"::TEXT)
+          )
+          ORDER BY resolution."intentItemNo", resolution."id"
+        )
         FROM public."ClearingReconciliationResolution" resolution
         WHERE resolution."decisionEventVersionId" = version."id"
       ), '[]'::JSONB),
       'resolutionLines', COALESCE((
-        SELECT jsonb_agg(to_jsonb(line) ORDER BY resolution."intentItemNo", line."intentLineNo", line."id")
+        SELECT jsonb_agg(
+          jsonb_set(
+            to_jsonb(line),
+            '{amountCents}', to_jsonb(line."amountCents"::TEXT)
+          )
+          ORDER BY resolution."intentItemNo", line."intentLineNo", line."id"
+        )
         FROM public."ClearingReconciliationResolutionLine" line
         JOIN public."ClearingReconciliationResolution" resolution ON resolution."id" = line."resolutionId"
         WHERE resolution."decisionEventVersionId" = version."id"
       ), '[]'::JSONB),
       'definitionReversal', (
-        SELECT to_jsonb(reversal)
+        SELECT jsonb_set(
+          to_jsonb(reversal),
+          '{reversedAmountCents}', to_jsonb(reversal."reversedAmountCents"::TEXT)
+        )
         FROM public."ClearingReconciliationDefinitionReversal" reversal
         WHERE reversal."decisionEventVersionId" = version."id"
       ),
       'eventAllocations', COALESCE((
         SELECT jsonb_agg(
-          to_jsonb(allocation) - 'createdAt'
+          jsonb_set(
+            jsonb_set(
+              to_jsonb(allocation) - 'createdAt',
+              '{amountCents}', to_jsonb(allocation."amountCents"::TEXT)
+            ),
+            '{sourceRemainingAfterCents}',
+            to_jsonb(allocation."sourceRemainingAfterCents"::TEXT)
+          )
           ORDER BY (allocation_plan.value ->> 'allocationNo')::INTEGER
         )
         FROM jsonb_array_elements(
@@ -991,11 +1167,14 @@ AS $$
       ), '[]'::JSONB),
       'impacts', COALESCE((
         SELECT jsonb_agg(jsonb_build_object(
-          'link', to_jsonb(link) - 'createdAt',
+          'link', jsonb_set(
+            to_jsonb(link) - 'createdAt',
+            '{amountCents}', to_jsonb(link."amountCents"::TEXT)
+          ),
           'impact', jsonb_build_object(
             'id', impact."id",
             'impactKind', impact."impactKind",
-            'amountCents', impact."amountCents",
+            'amountCents', impact."amountCents"::TEXT,
             'direction', impact."direction",
             'subjectRole', impact."subjectRole",
             'subjectKind', impact."subjectKind",
@@ -1019,7 +1198,7 @@ AS $$
         JOIN public."OperatingFact" fact ON fact."id" = link."operatingFactId"
         WHERE link."eventVersionId" = version."id"
       ), '[]'::JSONB)
-    )::TEXT,
+    )),
     'UTF8'
   ), 'sha256'), 'hex')
   FROM public."ClearingEventVersion" version
@@ -1535,7 +1714,10 @@ BEGIN
     'schema', 'operation', 'plannedIds', 'plannedPairedWithheld',
     'itemDefinition', 'coverages', 'resolutions', 'definitionReversal',
     'eventAllocations'
-  ]) OR intent ->> 'schema' <> 'clearing_reconciliation_intent/V1' THEN
+  ]) OR jsonb_typeof(intent -> 'schema') <> 'string'
+    OR intent ->> 'schema' <> 'clearing_reconciliation_intent/V1'
+    OR jsonb_typeof(intent -> 'operation') <> 'string'
+  THEN
     RAISE EXCEPTION 'POL-275 冻结核对意图版本或字段集合无效' USING ERRCODE = '23514';
   END IF;
   planned_ids := intent -> 'plannedIds';
@@ -1549,24 +1731,139 @@ BEGIN
     OR jsonb_typeof(intent -> 'coverages') <> 'array'
     OR jsonb_typeof(intent -> 'resolutions') <> 'array'
     OR jsonb_typeof(intent -> 'eventAllocations') <> 'array'
+    OR NOT public."pol275_jsonb_is_nonempty_string_v1"(planned_ids -> 'newItemId', TRUE)
+    OR NOT public."pol275_jsonb_is_nonempty_string_v1"(planned_ids -> 'revisionId', TRUE)
+    OR NOT public."pol275_jsonb_is_nonempty_string_v1"(planned_ids -> 'definitionReversalId', TRUE)
+    OR EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(
+        (planned_ids -> 'coverageIds') ||
+        (planned_ids -> 'resolutionIds') ||
+        (planned_ids -> 'resolutionLineIds') ||
+        (planned_ids -> 'clearingAllocationIds')
+      ) planned_id
+      WHERE NOT public."pol275_jsonb_is_nonempty_string_v1"(planned_id, FALSE)
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM (VALUES
+        (planned_ids -> 'coverageIds'),
+        (planned_ids -> 'resolutionIds'),
+        (planned_ids -> 'resolutionLineIds'),
+        (planned_ids -> 'clearingAllocationIds')
+      ) lists(value)
+      WHERE jsonb_array_length(lists.value) <>
+        (SELECT COUNT(DISTINCT element #>> '{}') FROM jsonb_array_elements(lists.value) element)
+    )
   THEN
     RAISE EXCEPTION 'POL-275 冻结计划形状无效' USING ERRCODE = '23514';
   END IF;
+  IF CASE intent ->> 'operation'
+    WHEN 'open_item' THEN
+      jsonb_typeof(intent -> 'itemDefinition') <> 'object'
+      OR intent -> 'itemDefinition' ->> 'mode' NOT IN ('independent', 'addition')
+      OR jsonb_array_length(intent -> 'resolutions') <> 0
+      OR intent -> 'definitionReversal' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'eventAllocations') <> 0
+    WHEN 'replace_item' THEN
+      jsonb_typeof(intent -> 'itemDefinition') <> 'object'
+      OR intent -> 'itemDefinition' ->> 'mode' <> 'replacement'
+      OR jsonb_array_length(intent -> 'resolutions') <> 0
+      OR intent -> 'definitionReversal' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'eventAllocations') <> 0
+    WHEN 'add_coverage' THEN
+      intent -> 'plannedPairedWithheld' <> 'null'::JSONB
+      OR intent -> 'itemDefinition' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'coverages') = 0
+      OR jsonb_array_length(intent -> 'resolutions') <> 0
+      OR intent -> 'definitionReversal' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'eventAllocations') <> 0
+    WHEN 'resolve' THEN
+      intent -> 'plannedPairedWithheld' <> 'null'::JSONB
+      OR intent -> 'itemDefinition' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'coverages') <> 0
+      OR jsonb_array_length(intent -> 'resolutions') = 0
+      OR intent -> 'definitionReversal' <> 'null'::JSONB
+    WHEN 'reverse_resolution' THEN
+      intent -> 'plannedPairedWithheld' <> 'null'::JSONB
+      OR intent -> 'itemDefinition' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'coverages') <> 0
+      OR jsonb_array_length(intent -> 'resolutions') = 0
+      OR intent -> 'definitionReversal' <> 'null'::JSONB
+    WHEN 'reverse_definition' THEN
+      intent -> 'plannedPairedWithheld' <> 'null'::JSONB
+      OR intent -> 'itemDefinition' <> 'null'::JSONB
+      OR jsonb_array_length(intent -> 'coverages') <> 0
+      OR jsonb_array_length(intent -> 'resolutions') <> 0
+      OR jsonb_typeof(intent -> 'definitionReversal') <> 'object'
+      OR jsonb_array_length(intent -> 'eventAllocations') <> 0
+    ELSE TRUE
+  END THEN
+    RAISE EXCEPTION 'POL-275 operation 分支不互斥或包含无关关系' USING ERRCODE = '23514';
+  END IF;
   IF intent -> 'plannedPairedWithheld' <> 'null'::JSONB
-    AND NOT public."pol275_jsonb_has_exact_keys"(intent -> 'plannedPairedWithheld', ARRAY[
-      'clearingEventId', 'eventVersionId', 'eventVersionFingerprint',
-      'amountCents', 'currencyCode'
-    ])
+    AND (
+      NOT public."pol275_jsonb_has_exact_keys"(intent -> 'plannedPairedWithheld', ARRAY[
+        'clearingEventId', 'eventVersionId', 'eventVersionFingerprint',
+        'amountCents', 'currencyCode'
+      ])
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(
+        intent -> 'plannedPairedWithheld' -> 'clearingEventId', FALSE
+      )
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(
+        intent -> 'plannedPairedWithheld' -> 'eventVersionId', FALSE
+      )
+      OR jsonb_typeof(intent -> 'plannedPairedWithheld' -> 'eventVersionFingerprint') <> 'string'
+      OR intent -> 'plannedPairedWithheld' ->> 'eventVersionFingerprint' !~ '^[0-9a-f]{64}$'
+      OR NOT public."pol275_jsonb_is_cents_v1"(
+        intent -> 'plannedPairedWithheld' -> 'amountCents', FALSE, FALSE
+      )
+      OR jsonb_typeof(intent -> 'plannedPairedWithheld' -> 'currencyCode') <> 'string'
+      OR intent -> 'plannedPairedWithheld' ->> 'currencyCode' <> 'CNY'
+    )
   THEN
     RAISE EXCEPTION 'POL-275 冻结配对暂扣字段集合无效' USING ERRCODE = '23514';
   END IF;
   IF jsonb_typeof(intent -> 'itemDefinition') = 'object'
-    AND NOT public."pol275_jsonb_has_exact_keys"(intent -> 'itemDefinition', ARRAY[
-      'mode', 'itemId', 'lineageRootItemId', 'additionOfItemId', 'revisionId',
-      'revisionNo', 'replacesRevisionId', 'replacedOpenAmountCents',
-      'correctsDefinitionReversalId', 'adoptsLegacyPendingEventVersionId',
-      'amountCents', 'currencyCode'
-    ])
+    AND (
+      NOT public."pol275_jsonb_has_exact_keys"(intent -> 'itemDefinition', ARRAY[
+        'mode', 'itemId', 'lineageRootItemId', 'additionOfItemId', 'revisionId',
+        'revisionNo', 'replacesRevisionId', 'replacedOpenAmountCents',
+        'correctsDefinitionReversalId', 'adoptsLegacyPendingEventVersionId',
+        'amountCents', 'currencyCode'
+      ])
+      OR jsonb_typeof(intent -> 'itemDefinition' -> 'mode') <> 'string'
+      OR intent -> 'itemDefinition' ->> 'mode' NOT IN ('independent', 'addition', 'replacement')
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'itemId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'lineageRootItemId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'additionOfItemId', TRUE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'revisionId', FALSE)
+      OR NOT public."pol275_jsonb_is_positive_integer_v1"(intent -> 'itemDefinition' -> 'revisionNo')
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'replacesRevisionId', TRUE)
+      OR NOT public."pol275_jsonb_is_cents_v1"(intent -> 'itemDefinition' -> 'replacedOpenAmountCents', TRUE, TRUE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'correctsDefinitionReversalId', TRUE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'itemDefinition' -> 'adoptsLegacyPendingEventVersionId', TRUE)
+      OR NOT public."pol275_jsonb_is_cents_v1"(intent -> 'itemDefinition' -> 'amountCents', FALSE, FALSE)
+      OR jsonb_typeof(intent -> 'itemDefinition' -> 'currencyCode') <> 'string'
+      OR intent -> 'itemDefinition' ->> 'currencyCode' <> 'CNY'
+      OR CASE intent -> 'itemDefinition' ->> 'mode'
+        WHEN 'independent' THEN
+          intent -> 'itemDefinition' -> 'additionOfItemId' <> 'null'::JSONB
+          OR intent -> 'itemDefinition' -> 'replacesRevisionId' <> 'null'::JSONB
+          OR intent -> 'itemDefinition' -> 'replacedOpenAmountCents' <> 'null'::JSONB
+          OR intent -> 'itemDefinition' -> 'correctsDefinitionReversalId' <> 'null'::JSONB
+        WHEN 'addition' THEN
+          jsonb_typeof(intent -> 'itemDefinition' -> 'additionOfItemId') <> 'string'
+          OR intent -> 'itemDefinition' -> 'replacesRevisionId' <> 'null'::JSONB
+          OR intent -> 'itemDefinition' -> 'replacedOpenAmountCents' <> 'null'::JSONB
+          OR intent -> 'itemDefinition' -> 'correctsDefinitionReversalId' <> 'null'::JSONB
+        WHEN 'replacement' THEN
+          intent -> 'itemDefinition' -> 'additionOfItemId' <> 'null'::JSONB
+          OR jsonb_typeof(intent -> 'itemDefinition' -> 'replacesRevisionId') <> 'string'
+          OR jsonb_typeof(intent -> 'itemDefinition' -> 'replacedOpenAmountCents') <> 'string'
+        ELSE TRUE
+      END
+    )
   THEN
     RAISE EXCEPTION 'POL-275 冻结 itemDefinition 字段集合无效' USING ERRCODE = '23514';
   END IF;
@@ -1576,9 +1873,14 @@ BEGIN
     WHERE NOT public."pol275_jsonb_has_exact_keys"(coverage.value, ARRAY[
       'lineNo', 'coverageId', 'reconciliationRevisionId',
       'withheldEventVersionId', 'withheldEventVersionFingerprint', 'amountCents'
-    ]) OR coverage.value ->> 'lineNo' IS DISTINCT FROM coverage.ordinal::TEXT
-      OR jsonb_typeof(coverage.value -> 'amountCents') <> 'string'
-      OR coverage.value ->> 'amountCents' !~ '^[1-9][0-9]*$'
+    ]) OR NOT public."pol275_jsonb_is_positive_integer_v1"(coverage.value -> 'lineNo')
+      OR coverage.value ->> 'lineNo' IS DISTINCT FROM coverage.ordinal::TEXT
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(coverage.value -> 'coverageId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(coverage.value -> 'reconciliationRevisionId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(coverage.value -> 'withheldEventVersionId', FALSE)
+      OR jsonb_typeof(coverage.value -> 'withheldEventVersionFingerprint') <> 'string'
+      OR coverage.value ->> 'withheldEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
+      OR NOT public."pol275_jsonb_is_cents_v1"(coverage.value -> 'amountCents', FALSE, FALSE)
   ) THEN
     RAISE EXCEPTION 'POL-275 冻结 coverage 字段或 ordinal 无效' USING ERRCODE = '23514';
   END IF;
@@ -1588,10 +1890,27 @@ BEGIN
     WHERE NOT public."pol275_jsonb_has_exact_keys"(resolution_entry.value, ARRAY[
       'itemNo', 'resolutionId', 'reconciliationRevisionId', 'itemId',
       'entryKind', 'resultKind', 'reversesResolutionId', 'amountCents', 'lines'
-    ]) OR resolution_entry.value ->> 'itemNo' IS DISTINCT FROM resolution_entry.ordinal::TEXT
-      OR jsonb_typeof(resolution_entry.value -> 'amountCents') <> 'string'
-      OR resolution_entry.value ->> 'amountCents' !~ '^[1-9][0-9]*$'
+    ]) OR NOT public."pol275_jsonb_is_positive_integer_v1"(resolution_entry.value -> 'itemNo')
+      OR resolution_entry.value ->> 'itemNo' IS DISTINCT FROM resolution_entry.ordinal::TEXT
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_entry.value -> 'resolutionId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_entry.value -> 'reconciliationRevisionId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_entry.value -> 'itemId', FALSE)
+      OR jsonb_typeof(resolution_entry.value -> 'entryKind') <> 'string'
+      OR resolution_entry.value ->> 'entryKind' NOT IN ('resolution', 'technical_reversal')
+      OR jsonb_typeof(resolution_entry.value -> 'resultKind') <> 'string'
+      OR resolution_entry.value ->> 'resultKind' NOT IN ('final_confirmed', 'real_return', 'continued_withheld')
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_entry.value -> 'reversesResolutionId', TRUE)
+      OR NOT public."pol275_jsonb_is_cents_v1"(resolution_entry.value -> 'amountCents', FALSE, FALSE)
       OR jsonb_typeof(resolution_entry.value -> 'lines') <> 'array'
+      OR CASE resolution_entry.value ->> 'entryKind'
+        WHEN 'resolution' THEN
+          intent ->> 'operation' <> 'resolve'
+          OR resolution_entry.value -> 'reversesResolutionId' <> 'null'::JSONB
+        WHEN 'technical_reversal' THEN
+          intent ->> 'operation' <> 'reverse_resolution'
+          OR jsonb_typeof(resolution_entry.value -> 'reversesResolutionId') <> 'string'
+        ELSE TRUE
+      END
   ) OR EXISTS (
     SELECT 1
     FROM jsonb_array_elements(intent -> 'resolutions') resolution_entry
@@ -1600,35 +1919,75 @@ BEGIN
     WHERE NOT public."pol275_jsonb_has_exact_keys"(resolution_line.value, ARRAY[
       'lineNo', 'resolutionLineId', 'sourceKind', 'coverageId', 'amountCents',
       'reversesResolutionLineId', 'plannedClearingAllocationId', 'frozenSource'
-    ]) OR resolution_line.value ->> 'lineNo' IS DISTINCT FROM resolution_line.ordinal::TEXT
-      OR jsonb_typeof(resolution_line.value -> 'amountCents') <> 'string'
-      OR resolution_line.value ->> 'amountCents' !~ '^[1-9][0-9]*$'
+    ]) OR NOT public."pol275_jsonb_is_positive_integer_v1"(resolution_line.value -> 'lineNo')
+      OR resolution_line.value ->> 'lineNo' IS DISTINCT FROM resolution_line.ordinal::TEXT
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'resolutionLineId', FALSE)
+      OR jsonb_typeof(resolution_line.value -> 'sourceKind') <> 'string'
+      OR resolution_line.value ->> 'sourceKind' NOT IN ('withheld_coverage', 'authority_cap', 'prior_economic_event')
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'coverageId', TRUE)
+      OR NOT public."pol275_jsonb_is_cents_v1"(resolution_line.value -> 'amountCents', FALSE, FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'reversesResolutionLineId', TRUE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'plannedClearingAllocationId', TRUE)
       OR jsonb_typeof(resolution_line.value -> 'frozenSource') <> 'object'
+      OR CASE resolution_entry.value ->> 'entryKind'
+        WHEN 'resolution' THEN resolution_line.value -> 'reversesResolutionLineId' <> 'null'::JSONB
+        WHEN 'technical_reversal' THEN jsonb_typeof(resolution_line.value -> 'reversesResolutionLineId') <> 'string'
+        ELSE TRUE
+      END
+      OR CASE resolution_entry.value ->> 'resultKind'
+        WHEN 'continued_withheld' THEN resolution_line.value -> 'plannedClearingAllocationId' <> 'null'::JSONB
+        WHEN 'final_confirmed' THEN jsonb_typeof(resolution_line.value -> 'plannedClearingAllocationId') <> 'string'
+        WHEN 'real_return' THEN jsonb_typeof(resolution_line.value -> 'plannedClearingAllocationId') <> 'string'
+        ELSE TRUE
+      END
       OR CASE resolution_line.value ->> 'sourceKind'
         WHEN 'withheld_coverage' THEN NOT public."pol275_jsonb_has_exact_keys"(
           resolution_line.value -> 'frozenSource', ARRAY[
             'kind', 'coverageId', 'withheldEventVersionId',
             'withheldEventVersionFingerprint'
           ]) OR resolution_line.value -> 'frozenSource' ->> 'kind' <> 'withheld_coverage'
+            OR jsonb_typeof(resolution_line.value -> 'coverageId') <> 'string'
+            OR resolution_line.value ->> 'coverageId' IS DISTINCT FROM resolution_line.value -> 'frozenSource' ->> 'coverageId'
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'withheldEventVersionId', FALSE)
+            OR jsonb_typeof(resolution_line.value -> 'frozenSource' -> 'withheldEventVersionFingerprint') <> 'string'
+            OR resolution_line.value -> 'frozenSource' ->> 'withheldEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
         WHEN 'authority_cap' THEN NOT public."pol275_jsonb_has_exact_keys"(
           resolution_line.value -> 'frozenSource', ARRAY[
             'kind', 'authorityVersionId', 'authoritySnapshotRef', 'sourceDiscriminator'
           ]) OR resolution_line.value -> 'frozenSource' ->> 'kind' <> 'authority_cap'
+            OR resolution_line.value -> 'coverageId' <> 'null'::JSONB
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'authorityVersionId', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'authoritySnapshotRef', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceDiscriminator', FALSE)
         WHEN 'prior_economic_event' THEN NOT public."pol275_jsonb_has_exact_keys"(
           resolution_line.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint',
             'sourceClearingAllocationId', 'sourceImpactId'
           ]) OR resolution_line.value -> 'frozenSource' ->> 'kind' <> 'prior_economic_event'
+            OR resolution_line.value -> 'coverageId' <> 'null'::JSONB
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceEventVersionId', FALSE)
+            OR jsonb_typeof(resolution_line.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
+            OR resolution_line.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceClearingAllocationId', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(resolution_line.value -> 'frozenSource' -> 'sourceImpactId', FALSE)
         ELSE TRUE
       END
   ) THEN
     RAISE EXCEPTION 'POL-275 冻结 resolution/line 字段、来源或 ordinal 无效' USING ERRCODE = '23514';
   END IF;
   IF jsonb_typeof(intent -> 'definitionReversal') = 'object'
-    AND NOT public."pol275_jsonb_has_exact_keys"(intent -> 'definitionReversal', ARRAY[
-      'definitionReversalId', 'targetRevisionId', 'targetDecisionEventVersionId',
-      'targetDecisionEventVersionFingerprint', 'reversedAmountCents'
-    ])
+    AND (
+      NOT public."pol275_jsonb_has_exact_keys"(intent -> 'definitionReversal', ARRAY[
+        'definitionReversalId', 'targetRevisionId', 'targetDecisionEventVersionId',
+        'targetDecisionEventVersionFingerprint', 'reversedAmountCents'
+      ])
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'definitionReversal' -> 'definitionReversalId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'definitionReversal' -> 'targetRevisionId', FALSE)
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(intent -> 'definitionReversal' -> 'targetDecisionEventVersionId', FALSE)
+      OR jsonb_typeof(intent -> 'definitionReversal' -> 'targetDecisionEventVersionFingerprint') <> 'string'
+      OR intent -> 'definitionReversal' ->> 'targetDecisionEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
+      OR NOT public."pol275_jsonb_is_cents_v1"(intent -> 'definitionReversal' -> 'reversedAmountCents', FALSE, FALSE)
+    )
   THEN
     RAISE EXCEPTION 'POL-275 冻结 definition reversal 字段集合无效' USING ERRCODE = '23514';
   END IF;
@@ -1638,33 +1997,104 @@ BEGIN
     WHERE NOT public."pol275_jsonb_has_exact_keys"(allocation.value, ARRAY[
       'allocationNo', 'clearingAllocationId', 'purpose', 'resolutionLineId',
       'allocationSourceKind', 'sourceEventVersionId', 'amountCents', 'frozenSource'
-    ]) OR allocation.value ->> 'allocationNo' IS DISTINCT FROM allocation.ordinal::TEXT
-      OR jsonb_typeof(allocation.value -> 'amountCents') <> 'string'
-      OR allocation.value ->> 'amountCents' !~ '^[1-9][0-9]*$'
+    ]) OR NOT public."pol275_jsonb_is_positive_integer_v1"(allocation.value -> 'allocationNo')
+      OR allocation.value ->> 'allocationNo' IS DISTINCT FROM allocation.ordinal::TEXT
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'clearingAllocationId', FALSE)
+      OR jsonb_typeof(allocation.value -> 'purpose') <> 'string'
+      OR allocation.value ->> 'purpose' NOT IN ('reconciliation_line', 'ordinary_remainder')
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'resolutionLineId', TRUE)
+      OR jsonb_typeof(allocation.value -> 'allocationSourceKind') <> 'string'
+      OR allocation.value ->> 'allocationSourceKind' NOT IN ('withheld', 'authority_cap', 'final_confirmed', 'supplemental')
+      OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'sourceEventVersionId', TRUE)
+      OR NOT public."pol275_jsonb_is_cents_v1"(allocation.value -> 'amountCents', FALSE, FALSE)
       OR jsonb_typeof(allocation.value -> 'frozenSource') <> 'object'
+      OR CASE allocation.value ->> 'purpose'
+        WHEN 'reconciliation_line' THEN jsonb_typeof(allocation.value -> 'resolutionLineId') <> 'string'
+        WHEN 'ordinary_remainder' THEN allocation.value -> 'resolutionLineId' <> 'null'::JSONB
+        ELSE TRUE
+      END
       OR CASE allocation.value ->> 'allocationSourceKind'
         WHEN 'withheld' THEN NOT public."pol275_jsonb_has_exact_keys"(
           allocation.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint'
           ]) OR allocation.value -> 'frozenSource' ->> 'kind' <> 'withheld'
+            OR jsonb_typeof(allocation.value -> 'sourceEventVersionId') <> 'string'
+            OR allocation.value ->> 'sourceEventVersionId' IS DISTINCT FROM allocation.value -> 'frozenSource' ->> 'sourceEventVersionId'
+            OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
+            OR allocation.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
         WHEN 'authority_cap' THEN NOT public."pol275_jsonb_has_exact_keys"(
           allocation.value -> 'frozenSource', ARRAY[
             'kind', 'authorityVersionId', 'authoritySnapshotRef', 'sourceDiscriminator'
           ]) OR allocation.value -> 'frozenSource' ->> 'kind' <> 'authority_cap'
+            OR allocation.value -> 'sourceEventVersionId' <> 'null'::JSONB
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'authorityVersionId', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'authoritySnapshotRef', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceDiscriminator', FALSE)
         WHEN 'final_confirmed' THEN NOT public."pol275_jsonb_has_exact_keys"(
           allocation.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint',
             'sourceClearingAllocationId', 'sourceImpactId'
           ]) OR allocation.value -> 'frozenSource' ->> 'kind' <> 'prior_economic_event'
+            OR jsonb_typeof(allocation.value -> 'sourceEventVersionId') <> 'string'
+            OR allocation.value ->> 'sourceEventVersionId' IS DISTINCT FROM allocation.value -> 'frozenSource' ->> 'sourceEventVersionId'
+            OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
+            OR allocation.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceClearingAllocationId', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceImpactId', FALSE)
         WHEN 'supplemental' THEN NOT public."pol275_jsonb_has_exact_keys"(
           allocation.value -> 'frozenSource', ARRAY[
             'kind', 'sourceEventVersionId', 'sourceEventVersionFingerprint',
             'sourceClearingAllocationId', 'sourceImpactId'
           ]) OR allocation.value -> 'frozenSource' ->> 'kind' <> 'prior_economic_event'
+            OR jsonb_typeof(allocation.value -> 'sourceEventVersionId') <> 'string'
+            OR allocation.value ->> 'sourceEventVersionId' IS DISTINCT FROM allocation.value -> 'frozenSource' ->> 'sourceEventVersionId'
+            OR jsonb_typeof(allocation.value -> 'frozenSource' -> 'sourceEventVersionFingerprint') <> 'string'
+            OR allocation.value -> 'frozenSource' ->> 'sourceEventVersionFingerprint' !~ '^[0-9a-f]{64}$'
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceClearingAllocationId', FALSE)
+            OR NOT public."pol275_jsonb_is_nonempty_string_v1"(allocation.value -> 'frozenSource' -> 'sourceImpactId', FALSE)
         ELSE TRUE
       END
   ) THEN
     RAISE EXCEPTION 'POL-275 冻结 allocation 字段、来源或 ordinal 无效' USING ERRCODE = '23514';
+  END IF;
+  IF planned_ids -> 'revisionId' IS DISTINCT FROM (
+      CASE WHEN jsonb_typeof(intent -> 'itemDefinition') = 'object'
+        THEN intent -> 'itemDefinition' -> 'revisionId'
+        ELSE 'null'::JSONB END
+    )
+    OR planned_ids -> 'newItemId' IS DISTINCT FROM (
+      CASE WHEN intent -> 'itemDefinition' ->> 'mode' IN ('independent', 'addition')
+        THEN intent -> 'itemDefinition' -> 'itemId'
+        ELSE 'null'::JSONB END
+    )
+  THEN
+    RAISE EXCEPTION 'POL-275 plannedIds 的 item/revision ID 与冻结定义不闭合' USING ERRCODE = '23514';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(intent -> 'eventAllocations') allocation
+    WHERE allocation ->> 'purpose' = 'reconciliation_line'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(intent -> 'resolutions') resolution_entry
+        CROSS JOIN LATERAL jsonb_array_elements(resolution_entry -> 'lines') resolution_line
+        WHERE resolution_line ->> 'resolutionLineId' = allocation ->> 'resolutionLineId'
+          AND resolution_line ->> 'plannedClearingAllocationId' = allocation ->> 'clearingAllocationId'
+      )
+  ) OR EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(intent -> 'resolutions') resolution_entry
+    CROSS JOIN LATERAL jsonb_array_elements(resolution_entry -> 'lines') resolution_line
+    WHERE resolution_line ->> 'plannedClearingAllocationId' IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(intent -> 'eventAllocations') allocation
+        WHERE allocation ->> 'purpose' = 'reconciliation_line'
+          AND allocation ->> 'resolutionLineId' = resolution_line ->> 'resolutionLineId'
+          AND allocation ->> 'clearingAllocationId' = resolution_line ->> 'plannedClearingAllocationId'
+      )
+  ) THEN
+    RAISE EXCEPTION 'POL-275 解决行与 eventAllocations 完整计划不闭合' USING ERRCODE = '23514';
   END IF;
   IF planned_ids -> 'coverageIds' IS DISTINCT FROM COALESCE((
       SELECT jsonb_agg(coverage.value -> 'coverageId' ORDER BY coverage.ordinal)
@@ -1701,20 +2131,47 @@ BEGIN
       )
     );
     SELECT source."id", source."fingerprint", source."amountCents", source."currencyCode",
-           source."clearingCaseId", event."kind", confirmation."eventVersionId" AS confirmed
+           source."clearingCaseId", event."id" AS clearing_event_id, event."kind",
+           confirmation."eventVersionId" AS confirmed
       INTO source_version
       FROM public."ClearingEventVersion" source
       JOIN public."ClearingEvent" event ON event."id" = source."clearingEventId"
       LEFT JOIN public."ClearingConfirmation" confirmation ON confirmation."eventVersionId" = source."id"
      WHERE source."id" = intent -> 'plannedPairedWithheld' ->> 'eventVersionId';
     IF NOT FOUND OR source_version."clearingCaseId" <> version_record."clearingCaseId"
+      OR source_version.clearing_event_id <> intent -> 'plannedPairedWithheld' ->> 'clearingEventId'
       OR source_version."kind" <> 'withheld' OR source_version.confirmed IS NULL
       OR source_version."fingerprint" <> intent -> 'plannedPairedWithheld' ->> 'eventVersionFingerprint'
       OR source_version."amountCents" <> (intent -> 'plannedPairedWithheld' ->> 'amountCents')::BIGINT
       OR source_version."currencyCode" <> 'CNY'
+      OR jsonb_array_length(intent -> 'coverages') <> 1
+      OR intent -> 'coverages' -> 0 ->> 'withheldEventVersionId'
+        <> intent -> 'plannedPairedWithheld' ->> 'eventVersionId'
+      OR intent -> 'coverages' -> 0 ->> 'withheldEventVersionFingerprint'
+        <> intent -> 'plannedPairedWithheld' ->> 'eventVersionFingerprint'
+      OR intent -> 'coverages' -> 0 ->> 'amountCents'
+        <> intent -> 'plannedPairedWithheld' ->> 'amountCents'
     THEN
       RAISE EXCEPTION 'POL-275 原子配对暂扣与冻结计划不一致' USING ERRCODE = '23514';
     END IF;
+  END IF;
+
+  IF intent ->> 'operation' IN ('open_item', 'replace_item')
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(intent -> 'coverages') coverage
+      WHERE coverage ->> 'reconciliationRevisionId'
+        IS DISTINCT FROM intent -> 'itemDefinition' ->> 'revisionId'
+    )
+  THEN
+    RAISE EXCEPTION 'POL-275 定义覆盖未精确绑定冻结 revision' USING ERRCODE = '23514';
+  ELSIF intent ->> 'operation' = 'add_coverage'
+    AND (
+      SELECT COUNT(DISTINCT coverage ->> 'reconciliationRevisionId')
+      FROM jsonb_array_elements(intent -> 'coverages') coverage
+    ) <> 1
+  THEN
+    RAISE EXCEPTION 'POL-275 补充覆盖必须只绑定一个 exact revision' USING ERRCODE = '23514';
   END IF;
 
   IF intent ->> 'operation' IN ('open_item', 'replace_item') THEN
@@ -2254,6 +2711,11 @@ ALTER TABLE "ClearingReconciliationDecisionSeal" OWNER TO "jg_pol275_owner";
 
 ALTER FUNCTION "pol275_reject_reconciliation_mutation"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_jsonb_has_exact_keys"(JSONB, TEXT[]) OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_jsonb_is_nonempty_string_v1"(JSONB, BOOLEAN) OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_jsonb_is_cents_v1"(JSONB, BOOLEAN, BOOLEAN) OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_jsonb_is_positive_integer_v1"(JSONB) OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_utf16_sort_key_v1"(TEXT) OWNER TO "jg_pol275_owner";
+ALTER FUNCTION "pol275_jcs_v1"(JSONB) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_active_coverage_occupancy"(TEXT) OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_relation_insert_guard"() OWNER TO "jg_pol275_owner";
 ALTER FUNCTION "pol275_clearing_impact_link_guard"() OWNER TO "jg_pol275_owner";
@@ -2293,6 +2755,11 @@ REVOKE CREATE ON SCHEMA public FROM "jg_pol275_runtime";
 
 REVOKE ALL ON FUNCTION "pol275_reject_reconciliation_mutation"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_jsonb_has_exact_keys"(JSONB, TEXT[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_jsonb_is_nonempty_string_v1"(JSONB, BOOLEAN) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_jsonb_is_cents_v1"(JSONB, BOOLEAN, BOOLEAN) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_jsonb_is_positive_integer_v1"(JSONB) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_utf16_sort_key_v1"(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol275_jcs_v1"(JSONB) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_active_coverage_occupancy"(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_relation_insert_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol275_clearing_impact_link_guard"() FROM PUBLIC;
