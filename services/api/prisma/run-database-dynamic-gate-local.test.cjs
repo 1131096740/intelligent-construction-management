@@ -29,6 +29,7 @@ const {
   assertSafeEnvironment: assertPol275SafeEnvironment,
   inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
+  legacyJestCli,
   REVIEWED_BASE_SHA,
   runtimeEnvironment: createPol275RuntimeEnvironment,
   selectPostgresDiagnostics
@@ -151,6 +152,18 @@ test("POL-275 runner preserves rather than repurposes the caller home", () => {
 
 test("POL-275 legacy compatibility binds the reviewed base and its own frozen dependencies", () => {
   assert.equal(REVIEWED_BASE_SHA, "3cf11b6c46b301856b554598522213f0839ef595");
+  assert.equal(
+    legacyJestCli("/tmp/pol275-reviewed-base"),
+    path.join(
+      "/tmp/pol275-reviewed-base",
+      "services",
+      "api",
+      "node_modules",
+      "jest",
+      "bin",
+      "jest.js"
+    )
+  );
   const runnerSource = require("node:fs").readFileSync(
     path.join(__dirname, "run-pol275-clearing-reconciliation-local.cjs"),
     "utf8"

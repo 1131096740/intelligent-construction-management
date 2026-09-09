@@ -460,6 +460,8 @@ async function sha256File(filePath) {
 function legacyJestCli(sourceRoot) {
   return path.join(
     sourceRoot,
+    "services",
+    "api",
     "node_modules",
     "jest",
     "bin",
@@ -845,6 +847,7 @@ module.exports = {
   assertSafeEnvironment,
   inheritedDatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
+  legacyJestCli,
   runtimeEnvironment,
   selectPostgresDiagnostics
 };
