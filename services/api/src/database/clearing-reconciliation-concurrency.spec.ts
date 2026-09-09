@@ -578,8 +578,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
           new CompanyRoleResolverService(client as never)
         );
         await expect(reverseGuard.canActivate({
-          getHandler: () => undefined,
-          getClass: () => undefined,
+          getHandler: () => (() => undefined),
+          getClass: () => ({}),
           switchToHttp: () => ({
             getRequest: () => ({
               user: { id: reverseDelegateeUserId },
