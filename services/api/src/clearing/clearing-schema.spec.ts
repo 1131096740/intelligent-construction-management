@@ -158,7 +158,7 @@ describe("POL-11A clearing schema artifact", () => {
       "POL-275 冻结既有经济 allocation/impact 集合已漂移",
       "POL-275 真实退回超过原 allocation 剩余效果",
       "POL-275 原 allocation 退回余额快照不一致",
-      "target_reversal.\"targetRevisionId\" = target_revision.\"id\"",
+      "target_definition_reversal.\"targetRevisionId\" = target_revision.\"id\"",
       'CREATE FUNCTION "pol275_append_reconciliation_set"',
       "SECURITY DEFINER",
       "SET search_path = pg_catalog, public, pg_temp",

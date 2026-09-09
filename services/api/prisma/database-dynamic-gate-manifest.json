@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 166,
     "terminalMigration": "20260909100000_pol275_clearing_reconciliation_repair",
-    "terminalMigrationChecksum": "c1e77c17fbd05815cce9fd1863b71116cfdd56558299cc956771355878db23db",
+    "terminalMigrationChecksum": "20d969a946674b75ed66359d597f17e122cecc7334c58f1c69cedfa7c309de03",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

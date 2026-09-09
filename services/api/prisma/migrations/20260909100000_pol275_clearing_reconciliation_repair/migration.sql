@@ -2590,8 +2590,8 @@ BEGIN
     IF intent ->> 'operation' = 'add_coverage' AND (
       EXISTS (
         SELECT 1
-        FROM public."ClearingReconciliationDefinitionReversal" target_reversal
-        WHERE target_reversal."targetRevisionId" = target_revision."id"
+        FROM public."ClearingReconciliationDefinitionReversal" target_definition_reversal
+        WHERE target_definition_reversal."targetRevisionId" = target_revision."id"
       )
       OR EXISTS (
         SELECT 1 FROM public."ClearingReconciliationRevision" later
