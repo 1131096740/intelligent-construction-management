@@ -26,10 +26,12 @@ const {
   probePostgresReady
 } = require("./verify-fund-execution-v7.cjs");
 const {
+  CURRENT_PROCESS_DYNAMIC_TESTS,
   assertSafeEnvironment: assertPol275SafeEnvironment,
   inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
   legacyJestCli,
+  LEGACY_PROCESS_COMPATIBILITY_TESTS,
   REVIEWED_BASE_SHA,
   runtimeEnvironment: createPol275RuntimeEnvironment,
   selectPostgresDiagnostics
@@ -65,7 +67,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 206 pending tests as executable local coverage", () => {
+test("manifest derives all 207 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -74,9 +76,9 @@ test("manifest derives all 206 pending tests as executable local coverage", () =
     pendingFiles: 50,
     fullyPendingSuites: 39,
     partiallyPendingSuites: 11,
-    pendingTests: 206,
+    pendingTests: 207,
     coveredFiles: 50,
-    coveredTests: 206,
+    coveredTests: 207,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -85,7 +87,7 @@ test("manifest derives all 206 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all 10 POL-275 PG16 tests", () => {
+test("canonical manifest executes all 11 POL-275 PG16 tests", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "clearing_reconciliation_pol275"
@@ -93,11 +95,11 @@ test("canonical manifest executes all 10 POL-275 PG16 tests", () => {
 
   assert.deepEqual(group, {
     id: "clearing_reconciliation_pol275",
-    pendingTests: 10,
+    pendingTests: 11,
     testFiles: [
       {
         path: "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
-        pendingTests: 9,
+        pendingTests: 10,
         suiteStatus: "fully_pending"
       },
       {
@@ -114,6 +116,26 @@ test("canonical manifest executes all 10 POL-275 PG16 tests", () => {
     },
     state: "executable_local_runner"
   });
+});
+
+test("POL-275 receipt counts match the canonical manifest", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "clearing_reconciliation_pol275"
+  );
+  const currentProcessFile = group.testFiles.find(
+    (file) => file.path.endsWith("clearing-reconciliation-concurrency.spec.ts")
+  );
+  const legacyProcessFile = group.testFiles.find(
+    (file) => file.path.endsWith("clearing-reconciliation-legacy-compatibility.spec.ts")
+  );
+
+  assert.equal(CURRENT_PROCESS_DYNAMIC_TESTS, currentProcessFile.pendingTests);
+  assert.equal(LEGACY_PROCESS_COMPATIBILITY_TESTS, legacyProcessFile.pendingTests);
+  assert.equal(
+    CURRENT_PROCESS_DYNAMIC_TESTS + LEGACY_PROCESS_COMPATIBILITY_TESTS,
+    group.pendingTests
+  );
 });
 
 test("POL-275 runner fails closed without confirmation and inherited database targets", () => {
@@ -267,7 +289,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=206/u
+    /inventory\.coveredTests=26，派生值=207/u
   );
 });
 

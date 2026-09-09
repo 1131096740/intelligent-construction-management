@@ -36,6 +36,8 @@ const ROLE_COLLISION_DATABASE_NAME = "jiangkong_pol275_role_collision";
 const TERMINAL_MIGRATION =
   "20260909100000_pol275_clearing_reconciliation_repair";
 const REVIEWED_BASE_SHA = "3cf11b6c46b301856b554598522213f0839ef595";
+const CURRENT_PROCESS_DYNAMIC_TESTS = 10;
+const LEGACY_PROCESS_COMPATIBILITY_TESTS = 1;
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const RECONCILIATION_TABLES = [
   "ClearingReconciliationItem",
@@ -811,8 +813,8 @@ async function main() {
       roleCollision: roleCollisionEvidence,
       fullReplay: fullReplayEvidence,
       upgradeReplay: upgradeEvidence,
-      currentProcessDynamicTests: 9,
-      legacyProcessCompatibilityTests: 1,
+      currentProcessDynamicTests: CURRENT_PROCESS_DYNAMIC_TESTS,
+      legacyProcessCompatibilityTests: LEGACY_PROCESS_COMPATIBILITY_TESTS,
       productionTouched: false,
       finishedAt: new Date().toISOString()
     };
@@ -836,10 +838,12 @@ if (require.main === module) {
 
 module.exports = {
   CONFIRMATION,
+  CURRENT_PROCESS_DYNAMIC_TESTS,
   DATABASE_NAME,
   FULL_REPLAY_DATABASE_NAME,
   ROLE_COLLISION_DATABASE_NAME,
   IMAGE,
+  LEGACY_PROCESS_COMPATIBILITY_TESTS,
   REVIEWED_BASE_SHA,
   RECONCILIATION_TABLES,
   TERMINAL_MIGRATION,
