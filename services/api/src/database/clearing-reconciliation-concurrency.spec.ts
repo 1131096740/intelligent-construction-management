@@ -445,12 +445,13 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "40",
               lines: [{
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
                   selectionRefs,
-                  actors.preparerUserId,
                   caseId,
-                  beforeT2.revision,
-                  coverage.id
+                  revision.id,
+                  coverage.amountCents.toString()
                 ),
                 amountCents: "40"
               }]
@@ -485,12 +486,13 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "20",
               lines: [{
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
                   selectionRefs,
-                  actors.preparerUserId,
                   caseId,
-                  beforeT3.revision,
-                  coverage.id
+                  revision.id,
+                  coverage.amountCents.toString()
                 ),
                 amountCents: "20"
               }]
@@ -616,12 +618,13 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "50",
               lines: [{
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
                   selectionRefs,
-                  actors.preparerUserId,
                   caseId,
-                  beforeT5.revision,
-                  coverage.id
+                  revision.id,
+                  coverage.amountCents.toString()
                 ),
                 amountCents: "50"
               }]
@@ -1153,14 +1156,49 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             }
           }
         );
-        const guardTargetVersionId = await confirmLegacyEvent(service, actors, {
+        await confirmLegacyEvent(service, actors, {
           caseId,
           expectedCaseRevision: await currentCaseRevision(client, caseId),
           kind: "withheld",
           amountCents: "1",
-          businessReason: "数据库独立来源资格守卫探针",
+          businessReason: "数据库独立来源资格守卫探针来源",
           requiresAttestation: true
         });
+        const guardTarget = await prepareLegacyEvent(service, actors, {
+          caseId,
+          expectedCaseRevision: await currentCaseRevision(client, caseId),
+          kind: "final_confirmed",
+          amountCents: "1",
+          businessReason: "数据库独立来源资格守卫探针目标",
+          requiresAttestation: true
+        });
+        const guardTargetRevision = eventResult(await service.attestEvent(
+          actors.attesterUserId,
+          guardTarget.eventId,
+          {
+            idempotencyKey: randomUUID(),
+            expectedRevision: guardTarget.eventRevision
+          }
+        )).revision;
+        const guardSourceSelectionRef = await publicVersionSelectionRef(
+          client,
+          actors,
+          selectionRefs,
+          caseId,
+          "withheld",
+          "1",
+          actors.confirmerUserId
+        );
+        await service.confirmEvent(actors.confirmerUserId, guardTarget.eventId, {
+          idempotencyKey: randomUUID(),
+          expectedRevision: guardTargetRevision,
+          allocations: [{
+            sourceSelectionRef: guardSourceSelectionRef,
+            sourceKind: "withheld",
+            amountCents: "1"
+          }]
+        });
+        const guardTargetVersionId = guardTarget.versionId;
         const sourceEvent = await client.clearingEventVersion.findUniqueOrThrow({
           where: { id: mixed.versionId },
           select: { clearingEventId: true }
@@ -1905,8 +1943,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             },
             coverages: [
               {
-                sourceSelectionRef: issueAllocationSelection(
-                  selectionRefs,
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
                   actors.preparerUserId,
                   caseId,
                   caseRevision,
@@ -1915,8 +1953,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 amountCents: "40"
               },
               {
-                sourceSelectionRef: issueAllocationSelection(
-                  selectionRefs,
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
                   actors.preparerUserId,
                   caseId,
                   caseRevision,
@@ -1961,8 +1999,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             },
             coverages: [
               {
-                sourceSelectionRef: issueAllocationSelection(
-                  selectionRefs,
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
                   actors.preparerUserId,
                   caseId,
                   caseRevision,
@@ -1971,8 +2009,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 amountCents: "40"
               },
               {
-                sourceSelectionRef: issueAllocationSelection(
-                  selectionRefs,
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
                   actors.preparerUserId,
                   caseId,
                   caseRevision,
@@ -2346,8 +2384,8 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               operation: "add_coverage",
               targetRevisionId: reversedTargetRevision.id,
               coverages: [{
-                sourceSelectionRef: issueAllocationSelection(
-                  selectionRefs,
+              sourceSelectionRef: issueAllocationSelection(
+                selectionRefs,
                   actors.preparerUserId,
                   reversedTargetCaseId,
                   reversedTargetCaseRevision,
@@ -2482,7 +2520,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "25",
               lines: [{
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(selectionRefs, actors.preparerUserId, validCase.id, currentCase.revision, coverage.id),
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
+                  selectionRefs,
+                  validCase.id,
+                  revision.id,
+                  coverage.amountCents.toString()
+                ),
                 amountCents: "25"
               }]
             }],
@@ -2760,17 +2805,18 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
             resolutions: [{
               reconciliationRevisionId: splitRevision.id,
               amountCents: "100",
-              lines: splitCoverages.map((coverage) => ({
+              lines: await Promise.all(splitCoverages.map(async (coverage) => ({
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
                   selectionRefs,
-                  actors.preparerUserId,
                   splitCase.id,
-                  caseRevision,
-                  coverage.id
+                  splitRevision.id,
+                  coverage.amountCents.toString()
                 ),
                 amountCents: coverage.amountCents.toString()
-              }))
+              })))
             }],
             ordinaryAllocations: []
           }
@@ -2831,12 +2877,13 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "40",
               lines: [{
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
                   selectionRefs,
-                  actors.preparerUserId,
                   remainderCase.id,
-                  caseRevision,
-                  remainderCoverage.id
+                  remainderRevision.id,
+                  remainderCoverage.amountCents.toString()
                 ),
                 amountCents: "40"
               }]
@@ -2989,7 +3036,14 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
               amountCents: "100",
               lines: [{
                 sourceKind: "withheld_coverage",
-                sourceSelectionRef: issueAllocationSelection(selectionRefs, actors.preparerUserId, revisionRaceCase.id, revisionNo, currentCoverage.id),
+                sourceSelectionRef: await publicCoverageSelectionRef(
+                  client,
+                  actors,
+                  selectionRefs,
+                  revisionRaceCase.id,
+                  currentRevision.id,
+                  currentCoverage.amountCents.toString()
+                ),
                 amountCents: "100"
               }]
             }],

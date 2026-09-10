@@ -3174,5 +3174,11 @@ GRANT EXECUTE ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT)
   TO "jg_pol275_runtime";
 GRANT EXECUTE ON FUNCTION "pol275_active_coverage_occupancy"(TEXT)
   TO "jg_pol275_runtime";
+GRANT EXECUTE ON FUNCTION "appendOperatingFactThroughService"(
+  "OperatingLedgerFactWritePayload", TEXT, TEXT
+) TO "jg_pol275_runtime";
+GRANT EXECUTE ON FUNCTION "appendOperatingImpactThroughService"(
+  "OperatingLedgerImpactWritePayload", TEXT, TEXT
+) TO "jg_pol275_runtime";
 
 COMMIT;

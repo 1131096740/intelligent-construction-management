@@ -174,6 +174,8 @@ describe("POL-11A clearing schema artifact", () => {
       "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON TABLE",
       'GRANT EXECUTE ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT)',
       'GRANT EXECUTE ON FUNCTION "pol275_active_coverage_occupancy"(TEXT)',
+      'GRANT EXECUTE ON FUNCTION "appendOperatingFactThroughService"(',
+      'GRANT EXECUTE ON FUNCTION "appendOperatingImpactThroughService"(',
       "source_record.event_status <> 'confirmed'",
       'source_event."workflowStatus" <> \'confirmed\'',
       'CREATE ROLE "jg_pol275_owner" NOLOGIN NOINHERIT',
