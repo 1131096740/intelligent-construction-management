@@ -35,6 +35,7 @@ describe("POL-15P1 necessary expense reserve schema", () => {
     expect(migration).toContain("'A', 'B'");
     expect(migration).toContain('"currencyCode" = \'CNY\'');
     expect(migration).toContain("POL-279 replacement allocation exceeds release amount");
+    expect(migration).toContain("POL-279 replacement allocation exceeds formal impact amount");
     expect(migration).toContain("POL-279 replacement must reference a confirmed formal deduction impact");
     expect(migration).toContain("POL-279 reserve root identity is immutable");
     expect(migration).toContain("POL-279 reserve description is frozen outside its sole editable draft");

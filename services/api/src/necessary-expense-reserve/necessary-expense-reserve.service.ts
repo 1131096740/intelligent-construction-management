@@ -702,12 +702,14 @@ export class NecessaryExpenseReserveService {
         JOIN "OperatingFact" fact ON fact."id" = impact."factId"
        WHERE impact."projectId" = ${entry.reserve.projectId}
          AND fact."status" = 'confirmed'
-         AND NOT (
-           fact."sourceType" = ${NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE}
-           AND impact."impactSnapshot" ->> 'reserveId' = ${entry.reserve.id}
-         )
          AND (
-           impact."impactSnapshot" ->> 'economicIdentityKey' = ${entry.reserve.economicIdentityKey}
+           (
+             impact."impactSnapshot" ->> 'economicIdentityKey' = ${entry.reserve.economicIdentityKey}
+             AND NOT (
+               fact."sourceType" = ${NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE}
+               AND impact."impactSnapshot" ->> 'reserveId' = ${entry.reserve.id}
+             )
+           )
            OR (
              fact."sourceType" = ${NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE}
              AND fact."basisSnapshot" ->> 'evidenceSha256' = ${entry.evidenceSha256}

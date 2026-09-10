@@ -475,7 +475,9 @@ DECLARE
   impact_direction TEXT;
   impact_source_type TEXT;
   fact_status TEXT;
-  allocated BIGINT;
+  impact_amount BIGINT;
+  release_allocated BIGINT;
+  impact_allocated BIGINT;
 BEGIN
   IF TG_OP <> 'INSERT' THEN
     RAISE EXCEPTION 'POL-279 replacement allocations are append-only' USING ERRCODE = '55000';
@@ -487,15 +489,19 @@ BEGIN
   IF NOT FOUND OR release_entry."status" <> 'confirmed' OR release_entry."entryKind" <> 'release' THEN
     RAISE EXCEPTION 'POL-279 replacement must reference a confirmed release entry' USING ERRCODE = '23514';
   END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('pol279:replacement-impact:' || NEW."operatingImpactEntryId", 0)
+  );
   SELECT impact."projectId", reserve."projectId", impact."impactKind", impact."direction",
-         impact."sourceType", fact."status"
+         impact."sourceType", fact."status", impact."amountCents"
     INTO impact_project, reserve_project, impact_kind, impact_direction,
-         impact_source_type, fact_status
+         impact_source_type, fact_status, impact_amount
     FROM public."OperatingImpactEntry" impact
     JOIN public."OperatingFact" fact ON fact."id" = impact."factId"
     CROSS JOIN public."ProjectNecessaryExpenseReserve" reserve
    WHERE impact."id" = NEW."operatingImpactEntryId"
-     AND reserve."id" = release_entry."reserveId";
+     AND reserve."id" = release_entry."reserveId"
+   FOR UPDATE OF impact;
   IF impact_project IS NULL OR impact_project <> reserve_project THEN
     RAISE EXCEPTION 'POL-279 replacement impact must belong to the same project' USING ERRCODE = '23514';
   END IF;
@@ -508,10 +514,17 @@ BEGIN
     RAISE EXCEPTION 'POL-279 replacement must reference a confirmed formal deduction impact'
       USING ERRCODE = '23514';
   END IF;
-  SELECT COALESCE(SUM("amountCents"), 0) INTO allocated
+  SELECT COALESCE(SUM("amountCents"), 0) INTO impact_allocated
+    FROM public."ProjectNecessaryExpenseReserveReplacement"
+   WHERE "operatingImpactEntryId" = NEW."operatingImpactEntryId";
+  IF impact_allocated + NEW."amountCents" > impact_amount THEN
+    RAISE EXCEPTION 'POL-279 replacement allocation exceeds formal impact amount'
+      USING ERRCODE = '23514';
+  END IF;
+  SELECT COALESCE(SUM("amountCents"), 0) INTO release_allocated
     FROM public."ProjectNecessaryExpenseReserveReplacement"
    WHERE "reserveEntryId" = NEW."reserveEntryId";
-  IF allocated + NEW."amountCents" > release_entry."amountCents" THEN
+  IF release_allocated + NEW."amountCents" > release_entry."amountCents" THEN
     RAISE EXCEPTION 'POL-279 replacement allocation exceeds release amount' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;

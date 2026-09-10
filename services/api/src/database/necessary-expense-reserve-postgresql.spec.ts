@@ -120,6 +120,20 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
     }), { userId: FINANCE_STAFF_ID })).rejects.toThrow(/建立分录确认后才能追加增加/u);
 
     const confirmed = await createAndConfirmEstablishment("POL279-PG-001", "b".repeat(64), 120_000n);
+    const sameEvidenceIncrease = await service.saveDraft(draftCommand({
+      businessCode: "POL279-PG-001",
+      basis: "b".repeat(64),
+      amountCents: 1_000n,
+      reserveId: confirmed.reserveId,
+      entryKind: "increase",
+      evidenceFileId: confirmed.evidenceFileId,
+      evidenceSha256: confirmed.evidenceSha256
+    }), { userId: FINANCE_STAFF_ID });
+    const sameEvidenceSubmitted = await transition(sameEvidenceIncrease, "submit", FINANCE_STAFF_ID);
+    const sameEvidenceAttested = await transition(sameEvidenceSubmitted, "attest", PROJECT_MANAGER_ID);
+    await expect(transition(sameEvidenceAttested, "confirm", FINANCE_DIRECTOR_ID))
+      .rejects.toThrow(/duplicate_blocked/u);
+
     const increaseEvidence = await createEvidenceFixture("POL279-PG-001-increase");
     await expect(service.saveDraft(draftCommand({
       businessCode: "POL279-PG-001",
@@ -282,6 +296,20 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
   it("替代关联只接受已确认正式扣减，并对未来一般争议来源执行跨来源阻断", async () => {
     const original = await createAndConfirmEstablishment("POL279-PG-REPLACE", "e".repeat(64), 500n);
     const replacementImpact = await appendConfirmedCostImpact(200n);
+    const oversizedRelease = await prepareAdjustment(original, "release", 201n);
+    const confirmedOversizedRelease = await transition(
+      oversizedRelease,
+      "confirm",
+      FINANCE_DIRECTOR_ID
+    );
+    await expect(prisma.projectNecessaryExpenseReserveReplacement.create({
+      data: {
+        reserveEntryId: confirmedOversizedRelease.id,
+        operatingImpactEntryId: replacementImpact.id,
+        amountCents: 201n
+      }
+    })).rejects.toThrow(/replacement allocation exceeds formal impact amount/u);
+
     const releaseDraft = await service.saveDraft(draftCommand({
       businessCode: "POL279-PG-REPLACE",
       basis: "e".repeat(64),
@@ -305,6 +333,20 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
         }
       }
     })).resolves.toMatchObject({ amountCents: 200n });
+
+    const duplicateReplacementRelease = await prepareAdjustment(original, "release", 1n);
+    const confirmedDuplicateReplacementRelease = await transition(
+      duplicateReplacementRelease,
+      "confirm",
+      FINANCE_DIRECTOR_ID
+    );
+    await expect(prisma.projectNecessaryExpenseReserveReplacement.create({
+      data: {
+        reserveEntryId: confirmedDuplicateReplacementRelease.id,
+        operatingImpactEntryId: replacementImpact.id,
+        amountCents: 1n
+      }
+    })).rejects.toThrow(/replacement allocation exceeds formal impact amount/u);
 
     await prisma.$executeRawUnsafe(`
       CREATE TABLE "ProjectFundDispute" (
@@ -452,7 +494,7 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
       expectedFingerprint: attested.fingerprint,
       idempotencyKey: confirmIdempotencyKey
     }, { userId: FINANCE_DIRECTOR_ID });
-    return { ...confirmed, confirmIdempotencyKey };
+    return { ...confirmed, ...resolvedEvidence, confirmIdempotencyKey };
   }
 
   async function createEvidenceFixture(seed: string) {

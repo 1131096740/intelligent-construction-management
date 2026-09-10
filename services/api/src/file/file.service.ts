@@ -12,6 +12,7 @@ import {
   ACTION_REQUIRED_ROLES,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canUseCurrentContractApprovalForm,
+  resolveEffectiveRoleKeys,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -3330,10 +3331,22 @@ export class FileService {
     const positions = positionIds.length
       ? await tx.position.findMany({ where: { id: { in: positionIds } } })
       : [];
-    const positionKeys = positions.map((position) => position.key as RoleKey);
-    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
+    const keyByPositionId = new Map(
+      positions.map((position) => [position.id, position.key as RoleKey])
+    );
+    const globalRoleKeys = globalPositions.flatMap((position) => {
+      const key = keyByPositionId.get(position.positionId);
+      return key ? [key] : [];
+    });
+    const projectRoleKeys = [
+      ...projectPositions.flatMap((position) => {
+        const key = keyByPositionId.get(position.positionId);
+        return key ? [key] : [];
+      }),
+      ...projectMembers.map((member) => member.positionKey as RoleKey)
+    ];
 
-    return Array.from(new Set([...positionKeys, ...memberKeys]));
+    return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
   }
 
   private signDownloadToken(

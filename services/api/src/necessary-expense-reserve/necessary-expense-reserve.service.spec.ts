@@ -366,8 +366,12 @@ describe("NecessaryExpenseReserveService public business seam", () => {
       replacements: []
     })).rejects.toThrow(/duplicate_blocked/u);
     const duplicateQuery = harness.tx.$queryRaw.mock.calls[1]?.[0] as { strings?: readonly string[] };
-    expect(duplicateQuery.strings?.join("?")).toContain(
+    const duplicateSql = duplicateQuery.strings?.join("?") ?? "";
+    expect(duplicateSql).toContain(
       "fact.\"basisSnapshot\" ->> 'evidenceSha256'"
+    );
+    expect(duplicateSql).toMatch(
+      /impact\."impactSnapshot" ->> 'economicIdentityKey' = \?\s+AND NOT \([\s\S]*?impact\."impactSnapshot" ->> 'reserveId' = \?[\s\S]*?OR \(\s+fact\."sourceType" = \?[\s\S]*?fact\."basisSnapshot" ->> 'evidenceSha256' = \?/u
     );
   });
 

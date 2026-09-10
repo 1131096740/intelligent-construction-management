@@ -3,7 +3,7 @@ import { ForbiddenException } from "@nestjs/common";
 import { FileService } from "../file/file.service";
 
 describe("necessary-expense reserve evidence file access", () => {
-  function createService(role: string) {
+  function createService(role: string, scope: "project" | "global" = "project") {
     const file = {
       id: "reserve-evidence-1",
       bucket: "private-local",
@@ -28,10 +28,21 @@ describe("necessary-expense reserve evidence file access", () => {
             reserve: { projectId: "project-1" }
           })
         },
-        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
-        position: { findMany: jest.fn().mockResolvedValue([]) },
+        userPosition: {
+          findMany: jest.fn().mockImplementation(({ where }: { where: { projectId: string | null } }) =>
+            Promise.resolve(scope === "global" && where.projectId === null
+              ? [{ positionId: "position-1", projectId: null }]
+              : []))
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue(scope === "global"
+            ? [{ id: "position-1", key: role }]
+            : [])
+        },
         projectMember: {
-          findMany: jest.fn().mockResolvedValue([{ positionKey: role }])
+          findMany: jest.fn().mockResolvedValue(scope === "project"
+            ? [{ positionKey: role }]
+            : [])
         }
       },
       {
@@ -87,6 +98,26 @@ describe("necessary-expense reserve evidence file access", () => {
       actorUserId: "evidence-uploader",
       downloadReason: "查看必要费用准备依据"
     })).rejects.toThrow("当前账号无权下载该必要费用准备依据");
+  });
+
+  it("rejects a globally assigned project-only role for another project's evidence", async () => {
+    const { service } = createService("project_manager", "global");
+
+    await expect(service.createDownloadTicket("reserve-evidence-1", {
+      actorUserId: "global-project-manager-1",
+      downloadReason: "跨项目查看必要费用准备依据"
+    })).rejects.toThrow("当前账号无权下载该必要费用准备依据");
+  });
+
+  it("keeps an allowed global business role able to review reserve evidence", async () => {
+    const { service } = createService("finance_director", "global");
+
+    await expect(service.createDownloadTicket("reserve-evidence-1", {
+      actorUserId: "global-finance-director-1",
+      downloadReason: "复核必要费用准备依据"
+    })).resolves.toMatchObject({
+      downloadUrl: expect.stringContaining("expiresAt=")
+    });
   });
 
   it("keeps reserve evidence ACL fail-closed when the generated delegate is stale", async () => {
