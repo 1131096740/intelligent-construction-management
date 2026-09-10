@@ -27,6 +27,7 @@ import {
   necessaryExpenseReserveEntryKindLabels,
   necessaryExpenseReserveStatusLabels
 } from "./necessary-expense-reserve.state";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 
 const emptyCapabilities: NecessaryExpenseReserveCapabilities = {
   read: false,
@@ -64,7 +65,7 @@ const draft = reactive({
   fundHolderId: "",
   entryKind: "establish",
   adjustsEntryId: "",
-  amountCents: "",
+  amountYuan: "",
   occurredAt: "",
   evidenceLevel: "A",
   evidenceFileId: "",
@@ -100,7 +101,7 @@ const confirmedIncreaseOptions = computed(() => reserves.value.flatMap((reserve)
     .filter((entry) => entry.status === "confirmed" && ["establish", "increase"].includes(entry.entryKind))
     .map((entry) => ({
       value: entry.id,
-      label: `${reserve.businessCode} · 第 ${entry.sequenceNo} 笔 · ${entry.amountCents} 分`
+      label: `${reserve.businessCode} · 第 ${entry.sequenceNo} 笔 · ¥${centsTextToYuanText(entry.amountCents)}`
     }))
 ));
 const rows = computed(() => reserves.value.flatMap((reserve) => reserve.entries.map((entry) => ({
@@ -127,7 +128,7 @@ const columns = [
   { colKey: "businessCode", title: "业务编号", minWidth: 150 },
   { colKey: "title", title: "必要准备事项", minWidth: 220 },
   { colKey: "entryKind", title: "变化类型", width: 120 },
-  { colKey: "amountCents", title: "金额（分）", width: 130 },
+  { colKey: "amountCents", title: "金额（元）", width: 130 },
   { colKey: "occurredAt", title: "业务发生日", width: 130 },
   { colKey: "status", title: "状态", minWidth: 150 },
   { colKey: "actions", title: "操作", minWidth: 260 }
@@ -185,7 +186,7 @@ function resetDraft() {
     fundHolderId: "",
     entryKind: "establish",
     adjustsEntryId: "",
-    amountCents: "",
+    amountYuan: "",
     occurredAt: new Date().toISOString().slice(0, 10),
     evidenceLevel: "A",
     evidenceFileId: "",
@@ -237,7 +238,7 @@ function openEdit(entry: NecessaryExpenseReserveEntryReadModel) {
     fundHolderId: reserve.fundHolderId,
     entryKind: entry.entryKind,
     adjustsEntryId: entry.adjustsEntryId ?? "",
-    amountCents: entry.amountCents,
+    amountYuan: centsTextToYuanText(entry.amountCents).replaceAll(",", ""),
     occurredAt: entry.occurredAt,
     evidenceLevel: entry.evidenceLevel,
     evidenceFileId: entry.evidenceFileId,
@@ -304,7 +305,7 @@ async function saveDraft() {
       basisSummary: draft.basisSummary,
       entryKind: draft.entryKind,
       ...(draft.adjustsEntryId ? { adjustsEntryId: draft.adjustsEntryId } : {}),
-      amountCents: draft.amountCents,
+      amountCents: yuanTextToCentsText(draft.amountYuan.trim()),
       occurredAt: draft.occurredAt,
       evidenceLevel: draft.evidenceLevel,
       evidenceFileId: draft.evidenceFileId,
@@ -462,6 +463,9 @@ async function sha256File(file: File) {
         <template #entryKind="{ row }">
           {{ necessaryExpenseReserveEntryKindLabels[row.entryKind as keyof typeof necessaryExpenseReserveEntryKindLabels] }}
         </template>
+        <template #amountCents="{ row }">
+          ¥{{ centsTextToYuanText(row.amountCents) }}
+        </template>
         <template #status="{ row }">
           <t-tag :theme="row.status === 'confirmed' ? 'success' : row.status === 'returned' ? 'danger' : 'warning'">
             {{ necessaryExpenseReserveStatusLabels[row.status as keyof typeof necessaryExpenseReserveStatusLabels] }}
@@ -521,7 +525,12 @@ async function sha256File(file: File) {
         <t-form-item v-if="draft.entryKind === 'release' || draft.entryKind === 'technical_reversal'" label="所调整的已确认准备">
           <t-select v-model="draft.adjustsEntryId" :options="confirmedIncreaseOptions" />
         </t-form-item>
-        <t-form-item label="金额（整数分）"><t-input v-model="draft.amountCents" /></t-form-item>
+        <t-form-item label="金额（元）">
+          <t-input
+            v-model="draft.amountYuan"
+            placeholder="0.00"
+          />
+        </t-form-item>
         <t-form-item label="业务发生日"><t-date-picker v-model="draft.occurredAt" /></t-form-item>
         <t-form-item label="证据等级">
           <t-select v-model="draft.evidenceLevel" :options="[

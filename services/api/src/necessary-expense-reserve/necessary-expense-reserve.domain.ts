@@ -111,6 +111,10 @@ export function assertNecessaryExpenseReserveDraft(
   if (!NECESSARY_EXPENSE_RESERVE_ENTRY_KINDS.includes(input.entryKind)) {
     throw new BadRequestException("必要准备分录类型不正确");
   }
+  const reserveId = input.reserveId?.trim() || undefined;
+  if (!reserveId && input.entryKind !== "establish") {
+    throw new BadRequestException("必要准备首笔分录必须先建立准备");
+  }
   const amountCents = parsePositiveMoney(input.amountCents);
   if (input.evidenceLevel !== "A" && input.evidenceLevel !== "B") {
     throw new BadRequestException("必要费用准备只有 A 级或 B 级证据可以产生金额");
@@ -147,6 +151,7 @@ export function assertNecessaryExpenseReserveDraft(
   }
   return {
     ...input,
+    reserveId,
     projectId,
     businessCode,
     affiliateAssignmentId,

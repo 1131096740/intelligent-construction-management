@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { AuditService } from "../audit/audit.service";
 import { NecessaryExpenseReserveOperatingSourceAdapter } from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
@@ -68,7 +68,70 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
   });
 
   it("通过公开业务缝完成职责分离确认，且只写入资金限制影响", async () => {
+    await expect(service.saveDraft(draftCommand({
+      businessCode: "POL279-PG-FIRST-APP",
+      basis: "1".repeat(64),
+      amountCents: 1n,
+      entryKind: "increase"
+    }), { userId: FINANCE_STAFF_ID })).rejects.toThrow(/首笔分录必须先建立准备/u);
+
+    const rawReserveId = randomUUID();
+    const rawEconomicIdentity = createHash("sha256").update(`economic:${rawReserveId}`).digest("hex");
+    const rawSourceIdentity = createHash("sha256").update(`source:${rawReserveId}`).digest("hex");
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "ProjectNecessaryExpenseReserve" (
+        "id", "projectId", "businessCode", "affiliateAssignmentId",
+        "affiliateBusinessPartyVersionId", "affiliateNameSnapshot",
+        "affiliateCreditCodeSnapshot", "fundHolderKind", "fundHolderId",
+        "reasonKind", "title", "basisKind", "basisBusinessIdOrEvidenceSha256",
+        "basisSummary", "economicIdentityKey", "sourceIdentityKey",
+        "createdByUserId", "updatedAt"
+      ) VALUES (
+        ${rawReserveId}, ${PROJECT_ID}, ${`POL279-RAW-${rawReserveId}`}, ${ASSIGNMENT_ID},
+        ${AFFILIATE_VERSION_ID}, '示例施工企业', '91310000SEEDBUILD01',
+        'construction_enterprise', ${AFFILIATE_VERSION_ID}, 'mandatory_closeout',
+        '数据库首笔顺序保护', 'written_evidence', ${"2".repeat(64)}, '数据库动态守卫',
+        ${rawEconomicIdentity}, ${rawSourceIdentity}, ${FINANCE_STAFF_ID}, NOW()
+      )
+    `);
+    await expect(prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "ProjectNecessaryExpenseReserveEntry" (
+        "id", "reserveId", "sequenceNo", "entryKind", "amountCents", "occurredAt",
+        "reason", "evidenceLevel", "evidenceFileId", "evidenceSha256", "fingerprint",
+        "idempotencyKey", "preparedByUserId", "updatedAt"
+      ) VALUES (
+        ${randomUUID()}, ${rawReserveId}, 1, 'increase', 1, ${new Date(`${OCCURRED_AT}T00:00:00.000Z`)},
+        '非法首笔增加', 'A', ${EVIDENCE_FILE_ID}, ${EVIDENCE_SHA256}, ${"3".repeat(64)},
+        ${randomUUID()}, ${FINANCE_STAFF_ID}, NOW()
+      )
+    `)).rejects.toThrow(/first reserve entry must establish/u);
+
+    const unconfirmedEstablishment = await service.saveDraft(draftCommand({
+      businessCode: "POL279-PG-PENDING-ESTABLISH",
+      basis: "4".repeat(64),
+      amountCents: 100n
+    }), { userId: FINANCE_STAFF_ID });
+    await expect(service.saveDraft(draftCommand({
+      businessCode: "POL279-PG-PENDING-ESTABLISH",
+      basis: "4".repeat(64),
+      amountCents: 10n,
+      reserveId: unconfirmedEstablishment.reserveId,
+      entryKind: "increase"
+    }), { userId: FINANCE_STAFF_ID })).rejects.toThrow(/建立分录确认后才能追加增加/u);
+
     const confirmed = await createAndConfirmEstablishment("POL279-PG-001", "b".repeat(64), 120_000n);
+    const increaseEvidence = await createEvidenceFixture("POL279-PG-001-increase");
+    await expect(service.saveDraft(draftCommand({
+      businessCode: "POL279-PG-001",
+      basis: "b".repeat(64),
+      amountCents: 5_000n,
+      reserveId: confirmed.reserveId,
+      entryKind: "increase",
+      ...increaseEvidence
+    }), { userId: FINANCE_STAFF_ID })).resolves.toMatchObject({
+      entryKind: "increase",
+      status: "draft"
+    });
     const fact = await prisma.operatingFact.findUniqueOrThrow({
       where: {
         sourceType_sourceBusinessId: {
@@ -282,6 +345,24 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
     await expect(transition(blockedAttested, "confirm", FINANCE_DIRECTOR_ID))
       .rejects.toThrow(/duplicate_blocked/u);
 
+    const sharedEvidence = await createEvidenceFixture("POL279-PG-SAME-EVIDENCE");
+    await createAndConfirmEstablishment(
+      "POL279-PG-SAME-EVIDENCE-1",
+      "5".repeat(64),
+      66n,
+      sharedEvidence
+    );
+    const sameEvidenceDraft = await service.saveDraft(draftCommand({
+      businessCode: "POL279-PG-SAME-EVIDENCE-2",
+      basis: "6".repeat(64),
+      amountCents: 67n,
+      ...sharedEvidence
+    }), { userId: FINANCE_STAFF_ID });
+    const sameEvidenceSubmitted = await transition(sameEvidenceDraft, "submit", FINANCE_STAFF_ID);
+    const sameEvidenceAttested = await transition(sameEvidenceSubmitted, "attest", PROJECT_MANAGER_ID);
+    await expect(transition(sameEvidenceAttested, "confirm", FINANCE_DIRECTOR_ID))
+      .rejects.toThrow(/duplicate_blocked/u);
+
     await expect(service.saveDraft({
       ...draftCommand({ businessCode: "POL279-PG-C", basis: "9".repeat(64), amountCents: 1n }),
       evidenceLevel: "C" as never
@@ -300,6 +381,8 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
     replacementImpacts?: Array<{ operatingImpactEntryId: string; amountCents: string }>;
     title?: string;
     basisSummary?: string;
+    evidenceFileId?: string;
+    evidenceSha256?: string;
   }) {
     return {
       projectId: PROJECT_ID,
@@ -316,8 +399,8 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
       amountCents: input.amountCents.toString(),
       occurredAt: OCCURRED_AT,
       evidenceLevel: "A" as const,
-      evidenceFileId: EVIDENCE_FILE_ID,
-      evidenceSha256: EVIDENCE_SHA256,
+      evidenceFileId: input.evidenceFileId ?? EVIDENCE_FILE_ID,
+      evidenceSha256: input.evidenceSha256 ?? EVIDENCE_SHA256,
       reason: "PG16 动态验收",
       idempotencyKey: randomUUID(),
       ...(input.reserveId ? { reserveId: input.reserveId } : {}),
@@ -344,8 +427,19 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
     }, { userId });
   }
 
-  async function createAndConfirmEstablishment(businessCode: string, basis: string, amountCents: bigint) {
-    const draft = await service.saveDraft(draftCommand({ businessCode, basis, amountCents }), {
+  async function createAndConfirmEstablishment(
+    businessCode: string,
+    basis: string,
+    amountCents: bigint,
+    evidence?: { evidenceFileId: string; evidenceSha256: string }
+  ) {
+    const resolvedEvidence = evidence ?? await createEvidenceFixture(businessCode);
+    const draft = await service.saveDraft(draftCommand({
+      businessCode,
+      basis,
+      amountCents,
+      ...resolvedEvidence
+    }), {
       userId: FINANCE_STAFF_ID
     });
     const submitted = await transition(draft, "submit", FINANCE_STAFF_ID);
@@ -359,6 +453,24 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
       idempotencyKey: confirmIdempotencyKey
     }, { userId: FINANCE_DIRECTOR_ID });
     return { ...confirmed, confirmIdempotencyKey };
+  }
+
+  async function createEvidenceFixture(seed: string) {
+    const evidenceFileId = randomUUID();
+    const evidenceSha256 = createHash("sha256").update(`${seed}:${evidenceFileId}`).digest("hex");
+    await prisma.fileObject.create({
+      data: {
+        id: evidenceFileId,
+        bucket: "private-local",
+        objectKey: `pol279/${evidenceFileId}.pdf`,
+        originalName: `${seed}.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: 279,
+        uploadedByUserId: FINANCE_STAFF_ID,
+        contentSha256: evidenceSha256
+      }
+    });
+    return { evidenceFileId, evidenceSha256 };
   }
 
   async function prepareAdjustment(

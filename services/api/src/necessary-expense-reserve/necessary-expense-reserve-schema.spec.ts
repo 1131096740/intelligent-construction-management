@@ -40,5 +40,17 @@ describe("POL-15P1 necessary expense reserve schema", () => {
     expect(migration).toContain("POL-279 reserve description is frozen outside its sole editable draft");
     expect(migration).toContain("REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON TABLE");
     expect(migration).toContain('CREATE TRIGGER "ProjectNecessaryExpenseReserveCommandReceipt_immutable"');
+    expect(migration).toContain("POL-279 first reserve entry must establish the reserve");
+    expect(migration).toContain("POL-279 reserve establishment must be confirmed before an increase");
+  });
+
+  it("maps every custom relation, unique constraint and index name to the migration", () => {
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserve_project_fkey"');
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserve_assignment_fkey"');
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserve_project_business_key"');
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserveEntry_reserve_sequence_key"');
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserveEntry_evidence_file_fkey"');
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserveReplacement_entry_impact_key"');
+    expect(schema).toContain('map: "ProjectNecessaryExpenseReserveCommandReceipt_entry_action_idx"');
   });
 });

@@ -532,18 +532,31 @@ export class NecessaryExpenseReserveService {
     await tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(hashtextextended('pol279:reserve:' || ${reserveId}, 0))
     `);
-    const last = await tx.projectNecessaryExpenseReserveEntry.aggregate({
-      where: { reserveId },
-      _max: { sequenceNo: true }
-    });
-    if ((last._max.sequenceNo ?? 0) > 0 && draft.entryKind === "establish") {
+    const [last, confirmedEstablishment] = await Promise.all([
+      tx.projectNecessaryExpenseReserveEntry.aggregate({
+        where: { reserveId },
+        _max: { sequenceNo: true }
+      }),
+      tx.projectNecessaryExpenseReserveEntry.findFirst({
+        where: { reserveId, entryKind: "establish", status: "confirmed" },
+        select: { id: true }
+      })
+    ]);
+    const lastSequenceNo = last._max.sequenceNo ?? 0;
+    if (lastSequenceNo === 0 && draft.entryKind !== "establish") {
+      throw new ConflictException("必要准备首笔分录必须先建立准备");
+    }
+    if (lastSequenceNo > 0 && draft.entryKind === "establish") {
       throw new ConflictException("必要准备已建立，后续变化必须追加增加、释放或技术冲销");
+    }
+    if (draft.entryKind === "increase" && !confirmedEstablishment) {
+      throw new ConflictException("必要准备建立分录确认后才能追加增加");
     }
     return tx.projectNecessaryExpenseReserveEntry.create({
       data: {
         id: randomUUID(),
         reserveId,
-        sequenceNo: (last._max.sequenceNo ?? 0) + 1,
+        sequenceNo: lastSequenceNo + 1,
         draftRevision: 1,
         entryKind: draft.entryKind,
         adjustsEntryId: draft.adjustsEntryId,
@@ -695,6 +708,10 @@ export class NecessaryExpenseReserveService {
          )
          AND (
            impact."impactSnapshot" ->> 'economicIdentityKey' = ${entry.reserve.economicIdentityKey}
+           OR (
+             fact."sourceType" = ${NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE}
+             AND fact."basisSnapshot" ->> 'evidenceSha256' = ${entry.evidenceSha256}
+           )
            OR (
              impact."impactKind" IN ('estimated_clearing_expense', 'confirmed_cost', 'payable_increase')
              AND (

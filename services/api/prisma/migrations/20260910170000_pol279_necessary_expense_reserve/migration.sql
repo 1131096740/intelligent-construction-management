@@ -355,6 +355,8 @@ AS $$
 DECLARE
   target_entry public."ProjectNecessaryExpenseReserveEntry"%ROWTYPE;
   consumed BIGINT;
+  entry_count INTEGER;
+  establishment_confirmed BOOLEAN;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'POL-279 reserve entries are append-only' USING ERRCODE = '55000';
@@ -364,6 +366,30 @@ BEGIN
   END IF;
   IF TG_OP = 'INSERT' AND NEW."status" <> 'draft' THEN
     RAISE EXCEPTION 'POL-279 reserve entries must start as draft' USING ERRCODE = '23514';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('pol279:reserve:' || NEW."reserveId", 0));
+    SELECT COUNT(*) INTO entry_count
+      FROM public."ProjectNecessaryExpenseReserveEntry"
+     WHERE "reserveId" = NEW."reserveId";
+    IF entry_count = 0 AND NEW."entryKind" <> 'establish' THEN
+      RAISE EXCEPTION 'POL-279 first reserve entry must establish the reserve' USING ERRCODE = '23514';
+    END IF;
+    IF entry_count > 0 AND NEW."entryKind" = 'establish' THEN
+      RAISE EXCEPTION 'POL-279 reserve has already been established' USING ERRCODE = '23514';
+    END IF;
+    IF NEW."entryKind" = 'increase' THEN
+      SELECT EXISTS (
+        SELECT 1
+          FROM public."ProjectNecessaryExpenseReserveEntry"
+         WHERE "reserveId" = NEW."reserveId"
+           AND "entryKind" = 'establish'
+           AND "status" = 'confirmed'
+      ) INTO establishment_confirmed;
+      IF NOT establishment_confirmed THEN
+        RAISE EXCEPTION 'POL-279 reserve establishment must be confirmed before an increase' USING ERRCODE = '23514';
+      END IF;
+    END IF;
   END IF;
   IF TG_OP = 'UPDATE' AND NOT (
     (OLD."status" = 'draft' AND NEW."status" IN ('draft', 'submitted'))
@@ -392,6 +418,19 @@ BEGIN
     OLD."payloadSnapshot", OLD."fingerprint"
   ) THEN
     RAISE EXCEPTION 'POL-279 submitted reserve payload is frozen' USING ERRCODE = '55000';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW."entryKind" = 'increase' AND NEW."status" = 'confirmed' THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('pol279:reserve:' || NEW."reserveId", 0));
+    SELECT EXISTS (
+      SELECT 1
+        FROM public."ProjectNecessaryExpenseReserveEntry"
+       WHERE "reserveId" = NEW."reserveId"
+         AND "entryKind" = 'establish'
+         AND "status" = 'confirmed'
+    ) INTO establishment_confirmed;
+    IF NOT establishment_confirmed THEN
+      RAISE EXCEPTION 'POL-279 reserve establishment must be confirmed before an increase' USING ERRCODE = '23514';
+    END IF;
   END IF;
   IF NEW."status" = 'confirmed' AND NEW."adjustsEntryId" IS NOT NULL THEN
     PERFORM pg_advisory_xact_lock(hashtextextended('pol279:entry:' || NEW."adjustsEntryId", 0));

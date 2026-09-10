@@ -74,6 +74,13 @@ describe("necessary expense reserve domain", () => {
       .toThrow(BadRequestException);
   });
 
+  it("requires a new reserve to begin with an establish entry", () => {
+    expect(() => assertNecessaryExpenseReserveDraft({
+      ...draft,
+      entryKind: "increase"
+    })).toThrow("必要准备首笔分录必须先建立准备");
+  });
+
   it("enforces independent project-manager attestation before finance confirmation", () => {
     expect(() => assertNecessaryExpenseReserveTransition({
       action: "attest",

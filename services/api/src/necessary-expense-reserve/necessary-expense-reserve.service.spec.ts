@@ -78,7 +78,20 @@ describe("NecessaryExpenseReserveService public business seam", () => {
         })
       },
       projectNecessaryExpenseReserveEntry: {
-        aggregate: jest.fn().mockResolvedValue({ _max: { sequenceNo: null } }),
+        aggregate: jest.fn(async () => ({
+          _max: { sequenceNo: entry ? Number(entry.sequenceNo) : null }
+        })),
+        findFirst: jest.fn(async (args: { where: Record<string, unknown> }) => {
+          if (
+            entry &&
+            entry.reserveId === args.where.reserveId &&
+            entry.entryKind === args.where.entryKind &&
+            entry.status === args.where.status
+          ) {
+            return { id: entry.id };
+          }
+          return null;
+        }),
         findUnique: jest.fn(async (args: { where: Record<string, string> }) => {
           if (!entry) return null;
           if (args.where.idempotencyKey && entry.idempotencyKey !== args.where.idempotencyKey) {
@@ -315,6 +328,49 @@ describe("NecessaryExpenseReserveService public business seam", () => {
     expect(harness.tx.$queryRaw).not.toHaveBeenCalled();
   });
 
+  it("blocks a positive entry when a confirmed necessary reserve already uses the evidence", async () => {
+    const harness = createHarness();
+    harness.tx.$queryRaw
+      .mockResolvedValueOnce([{ duplicateExists: false }])
+      .mockResolvedValueOnce([{ id: "existing-impact" }]);
+    const service = harness.service as unknown as {
+      assertConfirmableSource(tx: unknown, entry: unknown): Promise<void>;
+    };
+    await expect(service.assertConfirmableSource(harness.tx, {
+      reserve: {
+        id: "c39f87da-8015-4241-8bbe-025903a11bb3",
+        projectId: "project-1",
+        businessCode: "必要准备-证据去重-001",
+        affiliateAssignmentId: "assignment-1",
+        fundHolderKind: "construction_enterprise",
+        fundHolderId: "affiliate-version-1",
+        reasonKind: "mandatory_closeout",
+        title: "项目收尾资料整理",
+        basisKind: "written_evidence",
+        basisBusinessIdOrEvidenceSha256: "b".repeat(64),
+        basisSummary: "同证据不得重复形成限制",
+        economicIdentityKey: "c".repeat(64)
+      },
+      id: "a81b1c41-6d8d-42c5-8574-5b55b92822de",
+      entryKind: "establish",
+      adjustsEntryId: null,
+      amountCents: 120000n,
+      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+      evidenceLevel: "A",
+      evidenceFileId: "file-1",
+      evidenceSha256,
+      reason: "建立必要准备",
+      idempotencyKey: "ca5af90d-05e5-43cc-85f5-222f10557969",
+      draftRevision: 1,
+      payloadSnapshot: { replacementImpacts: [] },
+      replacements: []
+    })).rejects.toThrow(/duplicate_blocked/u);
+    const duplicateQuery = harness.tx.$queryRaw.mock.calls[1]?.[0] as { strings?: readonly string[] };
+    expect(duplicateQuery.strings?.join("?")).toContain(
+      "fact.\"basisSnapshot\" ->> 'evidenceSha256'"
+    );
+  });
+
   it("rejects a draft update that tries to rewrite entry kind", async () => {
     const harness = createHarness();
     const baseDraft = {
@@ -350,6 +406,42 @@ describe("NecessaryExpenseReserveService public business seam", () => {
       idempotencyKey: "3bde4be6-d966-424f-9b8d-0e608a0412e3"
     }, { userId: "finance-staff-1" })).rejects.toThrow(
       "必要准备分录类型与精确调整目标创建后不可改写"
+    );
+  });
+
+  it("rejects an increase until the reserve establishment is confirmed", async () => {
+    const harness = createHarness();
+    const baseDraft = {
+      projectId: "project-1",
+      businessCode: "必要准备-004",
+      affiliateAssignmentId: "assignment-1",
+      fundHolderKind: "construction_enterprise" as const,
+      fundHolderId: "affiliate-version-1",
+      reasonKind: "mandatory_closeout" as const,
+      title: "项目收尾资料整理",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: evidenceSha256,
+      basisSummary: "经确认仍需完成的法定收尾资料",
+      amountCents: "120000",
+      occurredAt: "2026-09-01",
+      evidenceLevel: "A" as const,
+      evidenceFileId: "file-1",
+      evidenceSha256,
+      reason: "必要准备变化"
+    };
+    const established = await harness.service.saveDraft({
+      ...baseDraft,
+      entryKind: "establish",
+      idempotencyKey: draftIdempotencyKey
+    }, { userId: "finance-staff-1" });
+
+    await expect(harness.service.saveDraft({
+      ...baseDraft,
+      reserveId: String(established.reserveId),
+      entryKind: "increase",
+      idempotencyKey: "ae20fda4-06c9-4c9c-a84e-d3d958620eab"
+    }, { userId: "finance-staff-1" })).rejects.toThrow(
+      "必要准备建立分录确认后才能追加增加"
     );
   });
 });

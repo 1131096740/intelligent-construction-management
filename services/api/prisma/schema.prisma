@@ -191,6 +191,7 @@ model Project {
   fundMovementLegs                       FundMovementLeg[]                 @relation("FundMovementLegProject")
   fundMovementRelationshipsAsSource      FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipSourceProject")
   fundMovementRelationshipsAsBeneficiary FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipBeneficiaryProject")
+  necessaryExpenseReserves               ProjectNecessaryExpenseReserve[]
   isActive                               Boolean                           @default(true)
   createdAt                              DateTime                          @default(now())
   updatedAt                              DateTime                          @updatedAt
@@ -198,7 +199,7 @@ model Project {
 
 // 项目挂靠企业只通过显式映射生效；变更时结束旧行并新增快照，不覆盖历史事实。
 model ProjectAffiliateAssignment {
-  id                          String    @id @default(uuid())
+  id                          String                           @id @default(uuid())
   projectId                   String
   businessPartyId             String
   businessPartyVersionId      String
@@ -209,8 +210,9 @@ model ProjectAffiliateAssignment {
   changeReason                String
   assignedByUserId            String
   endedByUserId               String?
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  createdAt                   DateTime                         @default(now())
+  updatedAt                   DateTime                         @updatedAt
+  necessaryExpenseReserves    ProjectNecessaryExpenseReserve[]
 
   @@index([projectId, effectiveFrom])
   @@index([businessPartyId])
@@ -339,7 +341,7 @@ model OperatingImpactEntry {
 
 // POL-15P1 / #279：其他必要费用准备的稳定业务根；金额变化只追加 entry。
 model ProjectNecessaryExpenseReserve {
-  id                              String   @id @default(uuid())
+  id                              String                                @id @default(uuid())
   projectId                       String
   businessCode                    String
   affiliateAssignmentId           String
@@ -353,89 +355,91 @@ model ProjectNecessaryExpenseReserve {
   basisKind                       String
   basisBusinessIdOrEvidenceSha256 String
   basisSummary                    String
-  economicIdentityKey             String   @unique
-  sourceIdentityKey               String   @unique
+  economicIdentityKey             String                                @unique
+  sourceIdentityKey               String                                @unique
   createdByUserId                 String
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
+  createdAt                       DateTime                              @default(now())
+  updatedAt                       DateTime                              @updatedAt
+  project                         Project                               @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserve_project_fkey")
+  affiliateAssignment             ProjectAffiliateAssignment            @relation(fields: [affiliateAssignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserve_assignment_fkey")
   entries                         ProjectNecessaryExpenseReserveEntry[]
 
-  @@unique([projectId, businessCode])
-  @@index([projectId, updatedAt])
-  @@index([affiliateAssignmentId])
-  @@index([fundHolderKind, fundHolderId])
+  @@unique([projectId, businessCode], map: "ProjectNecessaryExpenseReserve_project_business_key")
+  @@index([projectId, updatedAt], map: "ProjectNecessaryExpenseReserve_project_updated_idx")
+  @@index([affiliateAssignmentId], map: "ProjectNecessaryExpenseReserve_assignment_idx")
+  @@index([fundHolderKind, fundHolderId], map: "ProjectNecessaryExpenseReserve_holder_idx")
 }
 
 // 草稿可修订；一经 confirmed 永不更新，释放和技术冲销必须追加新行。
 model ProjectNecessaryExpenseReserveEntry {
-  id                   String   @id @default(uuid())
-  reserveId            String
-  sequenceNo           Int
-  draftRevision        Int      @default(1)
-  entryKind            String
-  adjustsEntryId       String?
-  amountCents          BigInt
-  currencyCode         String   @default("CNY")
-  occurredAt           DateTime @db.Date
-  reason               String
-  evidenceLevel        String
-  evidenceFileId       String
-  evidenceSha256       String
-  status               String   @default("draft")
-  payloadSnapshot      Json?
-  fingerprint          String
-  idempotencyKey       String   @unique
-  preparedByUserId     String
-  submittedByUserId    String?
-  submittedAt          DateTime?
-  attestedByUserId     String?
-  attestedAt           DateTime?
-  confirmedByUserId    String?
-  confirmedAt          DateTime?
-  returnedByUserId     String?
-  returnedAt           DateTime?
-  returnReason         String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  reserve              ProjectNecessaryExpenseReserve @relation(fields: [reserveId], references: [id], onDelete: Restrict)
-  adjustsEntry         ProjectNecessaryExpenseReserveEntry? @relation("NecessaryExpenseReserveEntryAdjustments", fields: [adjustsEntryId], references: [id], onDelete: Restrict)
-  adjustments          ProjectNecessaryExpenseReserveEntry[] @relation("NecessaryExpenseReserveEntryAdjustments")
-  replacements         ProjectNecessaryExpenseReserveReplacement[]
-  commandReceipts      ProjectNecessaryExpenseReserveCommandReceipt[]
-  evidenceFile         FileObject @relation("NecessaryExpenseReserveEvidence", fields: [evidenceFileId], references: [id], onDelete: Restrict)
+  id                String                                         @id @default(uuid())
+  reserveId         String
+  sequenceNo        Int
+  draftRevision     Int                                            @default(1)
+  entryKind         String
+  adjustsEntryId    String?
+  amountCents       BigInt
+  currencyCode      String                                         @default("CNY")
+  occurredAt        DateTime                                       @db.Date
+  reason            String
+  evidenceLevel     String
+  evidenceFileId    String
+  evidenceSha256    String
+  status            String                                         @default("draft")
+  payloadSnapshot   Json?
+  fingerprint       String
+  idempotencyKey    String                                         @unique
+  preparedByUserId  String
+  submittedByUserId String?
+  submittedAt       DateTime?
+  attestedByUserId  String?
+  attestedAt        DateTime?
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  returnedByUserId  String?
+  returnedAt        DateTime?
+  returnReason      String?
+  createdAt         DateTime                                       @default(now())
+  updatedAt         DateTime                                       @updatedAt
+  reserve           ProjectNecessaryExpenseReserve                 @relation(fields: [reserveId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserveEntry_reserve_fkey")
+  adjustsEntry      ProjectNecessaryExpenseReserveEntry?           @relation("NecessaryExpenseReserveEntryAdjustments", fields: [adjustsEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserveEntry_adjusts_fkey")
+  adjustments       ProjectNecessaryExpenseReserveEntry[]          @relation("NecessaryExpenseReserveEntryAdjustments")
+  replacements      ProjectNecessaryExpenseReserveReplacement[]
+  commandReceipts   ProjectNecessaryExpenseReserveCommandReceipt[]
+  evidenceFile      FileObject                                     @relation("NecessaryExpenseReserveEvidence", fields: [evidenceFileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserveEntry_evidence_file_fkey")
 
-  @@unique([reserveId, sequenceNo])
-  @@index([reserveId, status, occurredAt])
-  @@index([adjustsEntryId])
+  @@unique([reserveId, sequenceNo], map: "ProjectNecessaryExpenseReserveEntry_reserve_sequence_key")
+  @@index([reserveId, status, occurredAt], map: "ProjectNecessaryExpenseReserveEntry_reserve_status_date_idx")
+  @@index([adjustsEntryId], map: "ProjectNecessaryExpenseReserveEntry_adjusts_idx")
 }
 
 // 每次 public business seam 命令只产生一个不可变回执；重放返回原结果。
 model ProjectNecessaryExpenseReserveCommandReceipt {
-  id                 String   @id @default(uuid())
+  id                 String                              @id @default(uuid())
   entryId            String
-  idempotencyKey     String   @unique
+  idempotencyKey     String                              @unique
   action             String
   actorUserId        String
   commandFingerprint String
   resultSnapshot     Json
-  createdAt          DateTime @default(now())
-  entry              ProjectNecessaryExpenseReserveEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  createdAt          DateTime                            @default(now())
+  entry              ProjectNecessaryExpenseReserveEntry @relation(fields: [entryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserveCommandReceipt_entry_fkey")
 
-  @@index([entryId, action, createdAt])
+  @@index([entryId, action, createdAt], map: "ProjectNecessaryExpenseReserveCommandReceipt_entry_action_idx")
 }
 
 // 释放转为成本、应付或其他正式扣减时，只引用既有 exact OperatingImpactEntry。
 model ProjectNecessaryExpenseReserveReplacement {
-  id                     String   @id @default(uuid())
+  id                     String                              @id @default(uuid())
   reserveEntryId         String
-  operatingImpactEntryId String   @unique
+  operatingImpactEntryId String                              @unique
   amountCents            BigInt
-  createdAt              DateTime @default(now())
-  reserveEntry           ProjectNecessaryExpenseReserveEntry @relation(fields: [reserveEntryId], references: [id], onDelete: Restrict)
-  operatingImpactEntry   OperatingImpactEntry @relation(fields: [operatingImpactEntryId], references: [id], onDelete: Restrict)
+  createdAt              DateTime                            @default(now())
+  reserveEntry           ProjectNecessaryExpenseReserveEntry @relation(fields: [reserveEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserveReplacement_entry_fkey")
+  operatingImpactEntry   OperatingImpactEntry                @relation(fields: [operatingImpactEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ProjectNecessaryExpenseReserveReplacement_impact_fkey")
 
-  @@unique([reserveEntryId, operatingImpactEntryId])
-  @@index([reserveEntryId])
+  @@unique([reserveEntryId, operatingImpactEntryId], map: "ProjectNecessaryExpenseReserveReplacement_entry_impact_key")
+  @@index([reserveEntryId], map: "ProjectNecessaryExpenseReserveReplacement_entry_idx")
 }
 
 // POL-11A 清分核心：稳定 case/event 标识与不可变版本分离，正式影响仍投影到 OperatingFact。
