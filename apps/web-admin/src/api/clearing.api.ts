@@ -104,6 +104,13 @@ export interface ClearingPriorEconomicAllocationOption {
   evidenceLevel: "A" | "B";
 }
 
+export interface ClearingAuthorityCapOption {
+  selectionRef: string;
+  sourceKind: "authority_cap";
+  amountCents: string;
+  remainingCents: string;
+}
+
 export interface ClearingCommandResult {
   id: string;
   versionId?: string;
@@ -166,6 +173,7 @@ export function fetchClearingAllocationOptions(caseId: string) {
     options: ClearingAllocationOption[];
     coverageOptions: ClearingCoverageOption[];
     priorEconomicAllocationOptions: ClearingPriorEconomicAllocationOption[];
+    authorityCapOptions: ClearingAuthorityCapOption[];
   }>(
     `/affiliate-clearing-authorities/allocation-options/${encodeURIComponent(caseId)}`,
     "加载清分分配选项失败"

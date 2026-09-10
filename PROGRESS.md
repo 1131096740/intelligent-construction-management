@@ -347,3 +347,8 @@
 - 当前发布收据：[`docs/progress/2026-08-05-go-live-conditional-go.md`](docs/progress/2026-08-05-go-live-conditional-go.md)
 - 文档导航：[`docs/README.md`](docs/README.md)
 - 文档有效性索引：[`obsidian-current/建工智管_文档有效性索引.md`](obsidian-current/建工智管_文档有效性索引.md)
+
+## #275 本轮终验补记（2026-09-10）
+
+- 候选 `0afc9a8b8f58c48de55f8c8e1e945347738578ee` 的完整专用 PG16 已通过 166 个迁移、核心 10/10、reviewed-base legacy 1/1（收据 SHA-256 `ce343128d92f7eba1364b292cc0acdeee8b62bb122dfc7a3c6584834d5213f25`）；Node.js `v20.20.2` 的完整 `release:local` 16/16 通过，含动态 PG16 207/207、P0 Playwright 3 passed / 2 skipped、RC06 16/16（收据 SHA-256 `a02abc4850ae706325adeb087f6ab43a83bdd1fbb439b600c4100f311fe6ea79`）。原 Standards 复审 PASS、0 findings；原 Spec 复审失败关闭于 1 MEDIUM：获批混合场景虽已在意图层消费 `authority_cap` token，但公共 `allocation-options` 未签发该来源，PG16 fixture 仍直接调用内部 selectionRef 服务。该 SHA 的通过记录仅为历史证据，不作下一候选的终验收据。
+- 现按最新明确授权，仅新增独立 `authorityCapOptions`，以与确认事务相同的净 authority-cap 分配/技术反向算式返回正剩余额度，并签发绑定准备人、案件、`purpose=allocation`、`selectedKey=caseId`、authority version/fingerprint 与当前 revision 的短效引用；Web 类型已同步，混合 PG16 回归仅通过 controller/service 公共 seam 取得 cap token。清算域 8 suites / 95 tests、全仓 API/Web/shared-domain typecheck、API build 与完整 release manifests（533 wrappers / 555 bindings、578 routes / 0 blockers）已通过；清单仅同步 `clearing.api.ts` 行号与派生输入哈希。未改 Schema 或迁移，终端 checksum 继续为 `47d90c84c5e9a9f7cca8463ff3332c63ab43f0e96dff0296e00693bcc3e81903`。下一新 SHA 尚未冻结，其完整专用 PG16、完整 `release:local` 与原 Standards/Spec 双审仍待执行；无 GitHub 或生产操作。

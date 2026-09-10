@@ -2322,13 +2322,14 @@ describe("#214 AffiliateClearingAuthorityService", () => {
     expect(wageOption).not.toHaveProperty("authorityFingerprint");
   });
 
-  it("issues case-bound public version, coverage and exact-allocation refs from confirmed events", async () => {
+  it("issues case-bound public authority-cap, version, coverage and exact-allocation refs", async () => {
     const { service, prisma, selection } = harness();
     prisma.clearingCase.findUnique.mockResolvedValue({
       id: "case-1",
       sourceDiscriminator: "construction_enterprise_guarantee",
       authorityVersionId: "authority-version-1",
       authoritySnapshotRef: "authority-fingerprint",
+      authoritativeGrossCapCents: 100n,
       revision: 7
     });
     prisma.clearingEventVersion.findMany.mockResolvedValue([
@@ -2381,7 +2382,8 @@ describe("#214 AffiliateClearingAuthorityService", () => {
         { id: "source-version-1", remaining: 60n, usable: 60n }
       ])
       .mockResolvedValueOnce([{ id: "coverage-1", remaining: 20n }])
-      .mockResolvedValueOnce([{ id: "allocation-1", remaining: 25n }]);
+      .mockResolvedValueOnce([{ id: "allocation-1", remaining: 25n }])
+      .mockResolvedValueOnce([{ remaining: 60n }]);
 
     await expect(service.allocationOptions("finance-staff", "case-1")).resolves.toEqual({
       options: [
@@ -2413,6 +2415,12 @@ describe("#214 AffiliateClearingAuthorityService", () => {
         amountCents: "40",
         remainingCents: "25",
         evidenceLevel: "B"
+      }],
+      authorityCapOptions: [{
+        selectionRef: "fac1.abc.signature",
+        sourceKind: "authority_cap",
+        amountCents: "100",
+        remainingCents: "60"
       }]
     });
     expect(prisma.clearingEventVersion.findMany).toHaveBeenCalledWith({
@@ -2442,6 +2450,15 @@ describe("#214 AffiliateClearingAuthorityService", () => {
       purpose: "prior_economic_allocation",
       selectedKey: "allocation-1"
     }));
+    expect(selection.issue).toHaveBeenCalledWith({
+      actorUserId: "finance-staff",
+      authorityVersionId: "authority-version-1",
+      authorityFingerprint: "authority-fingerprint",
+      clearingCaseId: "case-1",
+      purpose: "allocation",
+      selectedKey: "case-1",
+      revision: 7
+    });
   });
 
   it("rejects allocation options for a role without clearing.read", async () => {

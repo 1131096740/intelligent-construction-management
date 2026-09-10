@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "50cab10c4a0f7124d5dd00192b3ca736700ce384f42198e24b4c0150ef870884",
+      "sha256": "88d109a29ea51a45407cdf17a296068adc52f2b4e4e187397aae89b2d6c3b24d",
       "status": "ready",
       "summary": {
         "apiModuleCount": 25,

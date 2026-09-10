@@ -336,7 +336,12 @@ export class AffiliateClearingAuthorityService {
     await this.assertDirectAction(actorUserId, "clearing.read");
     const clearingCase = await this.prisma.clearingCase.findUnique({ where: { id: caseId } });
     if (!clearingCase) {
-      return { options: [], coverageOptions: [], priorEconomicAllocationOptions: [] };
+      return {
+        options: [],
+        coverageOptions: [],
+        priorEconomicAllocationOptions: [],
+        authorityCapOptions: []
+      };
     }
     const authorityVersionId = clearingCase.authorityVersionId ?? clearingCase.id;
     const authorityFingerprint =
@@ -626,7 +631,44 @@ export class AffiliateClearingAuthorityService {
         }];
       }
     );
-    return { options, coverageOptions, priorEconomicAllocationOptions };
+    const authorityCapOptions = [];
+    if (
+      clearingCase.authorityVersionId &&
+      clearingCase.authoritySnapshotRef &&
+      clearingCase.sourceDiscriminator &&
+      clearingCase.authoritativeGrossCapCents > 0n
+    ) {
+      const [capacity] = await this.prisma.$queryRaw<Array<{ remaining: bigint }>>(
+        Prisma.sql`
+          SELECT (${clearingCase.authoritativeGrossCapCents}::bigint - COALESCE(SUM(
+            CASE WHEN allocation."reversesAllocationId" IS NULL
+              THEN allocation."amountCents" ELSE -allocation."amountCents" END
+          ), 0))::bigint AS remaining
+          FROM "ClearingAllocation" allocation
+          JOIN "ClearingEventVersion" version
+            ON version.id = allocation."eventVersionId"
+          WHERE version."clearingCaseId" = ${clearingCase.id}
+            AND allocation."sourceKind" = 'authority_cap'
+        `
+      );
+      const remaining = capacity?.remaining ?? clearingCase.authoritativeGrossCapCents;
+      if (remaining > 0n) {
+        authorityCapOptions.push({
+          selectionRef: this.selectionRefs.issue(
+            sourceBinding("allocation", clearingCase.id)
+          ),
+          sourceKind: "authority_cap",
+          amountCents: clearingCase.authoritativeGrossCapCents.toString(),
+          remainingCents: remaining.toString()
+        });
+      }
+    }
+    return {
+      options,
+      coverageOptions,
+      priorEconomicAllocationOptions,
+      authorityCapOptions
+    };
   }
 
   async createAuthority(actorUserId: string, input: CreateAffiliateClearingAuthorityDto) {

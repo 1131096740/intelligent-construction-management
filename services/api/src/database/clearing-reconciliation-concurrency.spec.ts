@@ -804,15 +804,12 @@ describe("POL-275 clearing reconciliation PostgreSQL 16", () => {
                 },
                 {
                   sourceKind: "authority_cap",
-                  sourceSelectionRef: selectionRefs.issue({
-                    actorUserId: actors.preparerUserId,
-                    authorityVersionId: clearingCase.authorityVersionId!,
-                    authorityFingerprint: clearingCase.authoritySnapshotRef!,
-                    clearingCaseId: caseId,
-                    purpose: "allocation",
-                    selectedKey: caseId,
-                    revision: caseRevision
-                  }),
+                  sourceSelectionRef: await publicAuthorityCapSelectionRef(
+                    client,
+                    actors,
+                    selectionRefs,
+                    caseId
+                  ),
                   amountCents: "60"
                 }
               ]
@@ -4207,6 +4204,30 @@ async function publicVersionSelectionRef(
   const selectionRef = sourceOptions.options.find(
     (option) =>
       option.sourceKind === sourceKind && option.amountCents === amountCents
+  )?.selectionRef;
+  assert.equal(typeof selectionRef, "string");
+  return selectionRef as string;
+}
+
+async function publicAuthorityCapSelectionRef(
+  client: PrismaClient,
+  actors: {
+    preparerUserId: string;
+    attesterUserId: string;
+    confirmerUserId: string;
+  },
+  selectionRefs: AffiliateClearingSelectionRefService,
+  caseId: string
+): Promise<string> {
+  const sourceOptions = await publicClearingSourceOptions(
+    client,
+    actors,
+    selectionRefs,
+    actors.preparerUserId,
+    caseId
+  );
+  const selectionRef = sourceOptions.authorityCapOptions.find(
+    (option) => option.sourceKind === "authority_cap" && BigInt(option.remainingCents) > 0n
   )?.selectionRef;
   assert.equal(typeof selectionRef, "string");
   return selectionRef as string;
