@@ -16,11 +16,12 @@ import {
 } from "./operating-source-adapter";
 
 const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
-const POL08_ENTRY_SOURCE_TYPES = new Set([
+const SOURCE_TYPES_WITH_ADJUSTMENT_LOOKUP = new Set([
   "project_upstream_fund_fact",
   "project_affiliate_contract_fact",
   "project_affiliate_settlement_fact",
-  "project_affiliate_payment_fact"
+  "project_affiliate_payment_fact",
+  "project_necessary_expense_reserve_entry"
 ]);
 
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<{
@@ -158,7 +159,7 @@ export class OperatingSourceReplayService {
         actorUserId
       );
     }
-    if (POL08_ENTRY_SOURCE_TYPES.has(locator.sourceType)) {
+    if (SOURCE_TYPES_WITH_ADJUSTMENT_LOOKUP.has(locator.sourceType)) {
       return this.operatingLedger.appendConfirmedSourceInTransaction(
         tx,
         mapped.input,
@@ -257,7 +258,7 @@ export class OperatingSourceReplayService {
   ): Promise<ReturnType<typeof mapOperatingSourceSnapshot>> {
     if (
       mapped.entryKind === "original" ||
-      !POL08_ENTRY_SOURCE_TYPES.has(mapped.input.sourceType)
+      !SOURCE_TYPES_WITH_ADJUSTMENT_LOOKUP.has(mapped.input.sourceType)
     ) {
       return mapped;
     }

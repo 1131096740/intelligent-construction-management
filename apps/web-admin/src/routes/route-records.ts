@@ -54,6 +54,8 @@ export const settlementMaintenanceRoleKeys =
 export const operatingTakeoverRoleKeys =
   ACTION_REQUIRED_ROLES["operating_takeover.manage"];
 export const clearingRoleKeys = ACTION_REQUIRED_ROLES["clearing.read"];
+export const necessaryExpenseReserveRoleKeys =
+  ACTION_REQUIRED_ROLES["necessary_expense_reserve.read"];
 export const payableSettlementRoleKeys =
   ACTION_REQUIRED_ROLES["payable_settlement.read"];
 export const businessPartyCreateRoleKeys =
@@ -109,6 +111,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         label: "清分工作台",
         path: "/清分工作台",
         requiredGlobalRoleKeys: clearingRoleKeys
+      },
+      {
+        label: "必要费用准备",
+        path: "/必要费用准备",
+        requiredRoleKeys: necessaryExpenseReserveRoleKeys
       },
       { label: "工资承担工作台", path: "/工资承担工作台" },
       {
@@ -380,6 +387,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: {
           requiredGlobalRoleKeys: clearingRoleKeys,
           title: "清分工作台"
+        }
+      },
+      {
+        path: "必要费用准备",
+        component: () => import("../pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"),
+        meta: {
+          requiredRoleKeys: necessaryExpenseReserveRoleKeys,
+          title: "必要费用准备"
         }
       },
       {

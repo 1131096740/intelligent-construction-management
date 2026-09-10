@@ -85,7 +85,9 @@ const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
 const CURRENT_TERMINAL_MIGRATION = migrationBaseline.terminalMigration;
 const CURRENT_TERMINAL_MIGRATION_CHECKSUM =
   migrationBaseline.terminalMigrationChecksum;
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpm =
+  process.env.PNPM_BIN?.trim() ||
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
 const { command } = commandRuntime;

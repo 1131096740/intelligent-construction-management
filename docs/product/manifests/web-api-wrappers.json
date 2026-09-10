@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 25,
-    "exportedFunctionCount": 553,
-    "transportWrapperCount": 533,
+    "apiModuleCount": 26,
+    "exportedFunctionCount": 557,
+    "transportWrapperCount": 537,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 555,
+    "mainRequestBindingCount": 559,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 555,
-    "productionConsumerCount": 427,
+    "requestEdgeCount": 559,
+    "productionConsumerCount": 431,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 281,
-    "reachableProductionModuleCount": 248
+    "productionModuleCount": 284,
+    "reachableProductionModuleCount": 251
   },
   "wrappers": [
     {
@@ -7345,6 +7345,7 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
@@ -9867,7 +9868,8 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
       ],
       "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
@@ -11772,6 +11774,124 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchNecessaryExpenseReserveCapabilities",
+      "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 73,
+          "method": "GET",
+          "path": "/necessary-expense-reserves/capabilities?:param",
+          "normalizedPath": "/necessary-expense-reserves/capabilities",
+          "normalizedKey": "GET /necessary-expense-reserves/capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchNecessaryExpenseReserveCapabilities",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchNecessaryExpenseReserveWorkbench",
+      "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 73,
+          "method": "GET",
+          "path": "/necessary-expense-reserves/workbench?:param",
+          "normalizedPath": "/necessary-expense-reserves/workbench",
+          "normalizedKey": "GET /necessary-expense-reserves/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchNecessaryExpenseReserveWorkbench",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "saveNecessaryExpenseReserveDraft",
+      "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "POST",
+          "path": "/necessary-expense-reserves/drafts",
+          "normalizedPath": "/necessary-expense-reserves/drafts",
+          "normalizedKey": "POST /necessary-expense-reserves/drafts",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveNecessaryExpenseReserveDraft"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "transitionNecessaryExpenseReserve",
+      "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 117,
+          "method": "POST",
+          "path": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedPath": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "transitionNecessaryExpenseReserve"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "activateOperatingTakeover",
       "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
       "kind": "transport",
@@ -13410,6 +13530,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
       ],
       "unreachableConsumers": []

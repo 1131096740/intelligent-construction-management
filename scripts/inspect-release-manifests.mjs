@@ -3,7 +3,9 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpm =
+  process.env.PNPM_BIN ??
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 
 export const RELEASE_MANIFEST_COMMANDS = [
   {

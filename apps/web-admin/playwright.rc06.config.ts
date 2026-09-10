@@ -5,6 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
 const host = "127.0.0.1";
 const port = 4196;
 const baseURL = `http://${host}:${port}`;
+const pnpmCommand = JSON.stringify(process.env.PNPM_BIN ?? "pnpm");
 const outputDir = process.env.PLAYWRIGHT_RC06_OUTPUT_DIR ??
   join(tmpdir(), "jiangkong-rc06-mock-browser-contract");
 
@@ -44,7 +45,7 @@ export default defineConfig({
     screenshot: "only-on-failure"
   },
   webServer: {
-    command: `pnpm preview --host ${host} --port ${port} --strictPort`,
+    command: `${pnpmCommand} preview --host ${host} --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000

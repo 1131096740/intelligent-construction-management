@@ -12,7 +12,9 @@ const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpm =
+  process.env.PNPM_BIN?.trim() ||
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
 const prismaRoot = path.join(root, "services", "api", "prisma");

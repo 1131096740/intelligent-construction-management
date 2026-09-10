@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `24a34cb7ed1bd98c41bed322db3d3d428676ac2fcc326f4d451c8b0f5bf47caf` |
-| webApiWrappers | ready | `88d109a29ea51a45407cdf17a296068adc52f2b4e4e187397aae89b2d6c3b24d` |
-| webPageActions | ready | `2f6decd99aa923af3323e9d8a1782eb50646477b9c675e9abb26848ad17d7cac` |
-| routeUsage | ready | `d9c8cdad9d3fedc9e1ebe187167055682d011516e3bfd4bc20ff561d33a6f755` |
+| nestRoutes | ready | `312c7b4f016be16a4efdc04b13505d8a82c23a1fc0c2ab18a3a51c5013724341` |
+| webApiWrappers | ready | `6bd21dfb1b871ab9581497e557f4a21135082d77f63d15265fa71c84d569a0b6` |
+| webPageActions | ready | `83b216ee8da73d4914518e1b0f491d2762e32b4068a076afc57b3c959052751b` |
+| routeUsage | ready | `6eb6369b72f2cbf103fc7739e93283b605e2a005e444be36a792fde770f17a1a` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 578 |
-| pageRouteCount | 366 |
+| routeCount | 582 |
+| pageRouteCount | 370 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 34 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 555 |
+| mainRequestBindingCount | 559 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 289 |
-| actionBindingCount | 324 |
-| acceptedActionBindingCount | 304 |
+| registeredActionCount | 295 |
+| actionBindingCount | 330 |
+| acceptedActionBindingCount | 310 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 283 |
-| coveredProductionMutationConsumerPairCount | 283 |
+| productionMutationConsumerPairCount | 286 |
+| coveredProductionMutationConsumerPairCount | 286 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -126,6 +126,8 @@
 | GET | /me/signature/ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getSignatureTicket | — | not_applicable | — |
 | GET | /me/work-items | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItems | — | not_applicable | — |
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | — |
+| GET | /necessary-expense-reserves/capabilities | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#fetchNecessaryExpenseReserveCapabilities | — | not_applicable | — |
+| GET | /necessary-expense-reserves/workbench | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#fetchNecessaryExpenseReserveWorkbench | — | not_applicable | — |
 | GET | /operating-takeovers/historical-wage/options | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
@@ -375,7 +377,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
 | POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
@@ -397,6 +399,8 @@
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | signature.upload-canvas | covered | — |
 | POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
+| POST | /necessary-expense-reserves/drafts | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#saveNecessaryExpenseReserveDraft | necessary-expense-reserve.draft.save | covered | — |
+| POST | /necessary-expense-reserves/entries/:entryId/transition | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#transitionNecessaryExpenseReserve | necessary-expense-reserve.attest<br>necessary-expense-reserve.confirm<br>necessary-expense-reserve.return<br>necessary-expense-reserve.submit | covered | — |
 | POST | /operating-takeovers/historical-wage/scopes/activate | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/apply | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/attest | internal_task | operator_endpoint | — | — | not_applicable | — |

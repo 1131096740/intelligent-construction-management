@@ -149,6 +149,10 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "ProjectFinancingQuota",
     columns: ["attachmentFileId", "terminationSignatureFileId"]
   },
+  {
+    table: "ProjectNecessaryExpenseReserveEntry",
+    columns: ["evidenceFileId"]
+  },
   { table: "EmployeeLoanRepayment", columns: ["voucherFileId"] },
   { table: "EmployeeProjectLoanEntry", columns: ["voucherFileId"] },
   { table: "ApprovalActionLog", columns: ["signatureFileIdSnapshot"] },

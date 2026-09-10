@@ -835,7 +835,16 @@ describe("spot procurement core schema", () => {
   )
     ? readFileSync(invoiceLedgerRepairBindingMigrationPath, "utf8")
     : "";
-  const fileBindingRegistryMigrations = `${exclusiveFileBindingMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}`;
+  const necessaryExpenseReserveBindingMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260910170000_pol279_necessary_expense_reserve/migration.sql"
+  );
+  const necessaryExpenseReserveBindingMigration = existsSync(
+    necessaryExpenseReserveBindingMigrationPath
+  )
+    ? readFileSync(necessaryExpenseReserveBindingMigrationPath, "utf8")
+    : "";
+  const fileBindingRegistryMigrations = `${exclusiveFileBindingMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}`;
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -1177,7 +1186,7 @@ describe("spot procurement core schema", () => {
       )
     );
     const actualBindings = Array.from(
-      `${invoiceEvidenceExclusiveMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}`.matchAll(
+      `${invoiceEvidenceExclusiveMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}`.matchAll(
         /\('([^']+)', '([^']+)', (TRUE|FALSE)\)/g
       ),
       (match) => ({

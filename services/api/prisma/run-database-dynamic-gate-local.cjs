@@ -24,7 +24,9 @@ const manifestPath = path.join(
 );
 const migrationRoot = path.join(__dirname, "migrations");
 const apiSourceRoot = path.join(root, "services", "api", "src");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpm =
+  process.env.PNPM_BIN?.trim() ||
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const SUITE_STATUSES = new Set(["fully_pending", "partial_pending"]);
@@ -424,6 +426,9 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
     NODE_ENV: "test",
     CI: "true",
     DOCKER_HOST: dockerEndpoint,
+    ...(sourceEnv.PNPM_BIN?.trim()
+      ? { PNPM_BIN: sourceEnv.PNPM_BIN.trim() }
+      : {}),
     ...prismaEngineEnvironment,
     ...(corepackHome ? { COREPACK_HOME: corepackHome } : {})
   };

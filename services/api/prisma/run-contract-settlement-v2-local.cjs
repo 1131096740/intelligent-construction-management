@@ -11,7 +11,9 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "../../..");
 const databaseName = "jiangkong_contract_bill_batch_test";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpm =
+  process.env.PNPM_BIN?.trim() ||
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {

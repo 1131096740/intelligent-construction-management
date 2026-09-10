@@ -190,7 +190,7 @@ test("local release gate refuses a non-Node-20 host before writing a receipt", a
 });
 
 test("pnpm forwards local release options without a separator argument", () => {
-  const result = spawnSync("pnpm", ["release:local", "--list-checks"], {
+  const result = spawnSync(process.env.PNPM_BIN ?? "pnpm", ["release:local", "--list-checks"], {
     cwd: root,
     encoding: "utf8"
   });
@@ -226,6 +226,28 @@ test("local release gate runs the API suite in band", async () => {
     /--filter @jiangkong\/api test -- --runInBand/u
   );
   assert.match(source, /run_check workspace-test run_workspace_tests/u);
+});
+
+test("release Playwright web servers honor the configured pnpm binary", async () => {
+  const [packageJsonSource, ...configs] = await Promise.all([
+    readFile(join(root, "apps", "web-admin", "package.json"), "utf8"),
+    readFile(join(root, "apps", "web-admin", "playwright.config.ts"), "utf8"),
+    readFile(join(root, "apps", "web-admin", "playwright.rc06.config.ts"), "utf8")
+  ]);
+  const packageJson = JSON.parse(packageJsonSource);
+
+  assert.equal(
+    packageJson.scripts["pretest:e2e:rc06:mock"],
+    "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/web-admin build"
+  );
+
+  for (const source of configs) {
+    assert.match(
+      source,
+      /const pnpmCommand = JSON\.stringify\(process\.env\.PNPM_BIN \?\? "pnpm"\);/u
+    );
+    assert.match(source, /\$\{pnpmCommand\} (?:preview|dev)/u);
+  }
 });
 
 test("release receipt tool serializes an exact per-phase duration ledger", async () => {
