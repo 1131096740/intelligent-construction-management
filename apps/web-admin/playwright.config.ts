@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 const baseURL = isCI ? "http://127.0.0.1:4173" : (process.env.WEB_BASE_URL ?? "http://127.0.0.1:5173");
+const pnpmCommand = JSON.stringify(process.env.PNPM_BIN ?? "pnpm");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -19,8 +20,8 @@ export default defineConfig({
   },
   webServer: {
     command: isCI
-      ? "pnpm preview --host 127.0.0.1 --port 4173 --strictPort"
-      : "pnpm dev --host 127.0.0.1 --force",
+      ? `${pnpmCommand} preview --host 127.0.0.1 --port 4173 --strictPort`
+      : `${pnpmCommand} dev --host 127.0.0.1 --force`,
     url: baseURL,
     reuseExistingServer: !isCI,
     timeout: 120_000

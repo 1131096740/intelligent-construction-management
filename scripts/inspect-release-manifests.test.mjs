@@ -17,6 +17,11 @@ test("release manifest orchestration builds once then runs each required check o
   assert.equal(status, 0);
   assert.deepEqual(calls, RELEASE_MANIFEST_COMMANDS);
   assert.equal(
+    calls[0].command,
+    process.env.PNPM_BIN ??
+      (process.platform === "win32" ? "pnpm.cmd" : "pnpm")
+  );
+  assert.equal(
     calls.filter(
       ({ args }) =>
         args.includes("--filter") &&

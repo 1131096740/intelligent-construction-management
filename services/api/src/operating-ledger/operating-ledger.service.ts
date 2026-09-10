@@ -170,6 +170,10 @@ const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
   cost_bearing_company: new Set([
     "construction_enterprise",
     "participating_company"
+  ]),
+  fund_holder: new Set([
+    "construction_enterprise",
+    "participating_company"
   ])
 };
 const OPERATING_SUBJECT_ROLE_LABELS: Readonly<Record<OperatingSubjectRole, string>> = {
@@ -178,7 +182,8 @@ const OPERATING_SUBJECT_ROLE_LABELS: Readonly<Record<OperatingSubjectRole, strin
   approved_payer: "批准付款主体",
   actual_payer: "实际付款主体",
   payee: "收款主体",
-  cost_bearing_company: "成本承担公司主体"
+  cost_bearing_company: "成本承担公司主体",
+  fund_holder: "资金持有主体"
 };
 const FACT_SUBJECT_ROLE_BY_PROPERTY: Readonly<
   Record<keyof OperatingFactSubjects, OperatingSubjectRole>

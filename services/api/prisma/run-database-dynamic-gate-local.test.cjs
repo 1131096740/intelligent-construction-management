@@ -27,6 +27,7 @@ const {
 } = require("./verify-fund-execution-v7.cjs");
 const {
   CURRENT_PROCESS_DYNAMIC_TESTS,
+  assertCanonicalMigrationBaseline: assertPol275CanonicalMigrationBaseline,
   assertSafeEnvironment: assertPol275SafeEnvironment,
   inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
@@ -67,18 +68,18 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 207 pending tests as executable local coverage", () => {
+test("manifest derives all 211 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 50,
-    fullyPendingSuites: 39,
+    pendingFiles: 51,
+    fullyPendingSuites: 40,
     partiallyPendingSuites: 11,
-    pendingTests: 207,
-    coveredFiles: 50,
-    coveredTests: 207,
+    pendingTests: 211,
+    coveredFiles: 51,
+    coveredTests: 211,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -135,6 +136,36 @@ test("POL-275 receipt counts match the canonical manifest", () => {
   assert.equal(
     CURRENT_PROCESS_DYNAMIC_TESTS + LEGACY_PROCESS_COMPATIBILITY_TESTS,
     group.pendingTests
+  );
+});
+
+test("POL-275 runner keeps its frozen migration position while allowing later migrations", () => {
+  const pol275Migration = "20260909100000_pol275_clearing_reconciliation_repair";
+  const laterMigration = "20260910170000_pol279_necessary_expense_reserve";
+  assert.doesNotThrow(() => assertPol275CanonicalMigrationBaseline(
+    {
+      expectedDirectoryCount: 167,
+      terminalMigration: laterMigration
+    },
+    [
+      ...Array.from({ length: 165 }, (_, index) => `migration-${index}`),
+      pol275Migration,
+      laterMigration
+    ]
+  ));
+  assert.throws(
+    () => assertPol275CanonicalMigrationBaseline(
+      {
+        expectedDirectoryCount: 167,
+        terminalMigration: laterMigration
+      },
+      [
+        ...Array.from({ length: 165 }, (_, index) => `migration-${index}`),
+        "unexpected-migration",
+        laterMigration
+      ]
+    ),
+    /POL-275 第 166 个迁移/u
   );
 });
 
@@ -289,7 +320,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=207/u
+    /inventory\.coveredTests=26，派生值=211/u
   );
 });
 
@@ -549,6 +580,20 @@ test("child runner preserves explicitly configured task-local Prisma engines", (
     child.PRISMA_SCHEMA_ENGINE_BINARY,
     "/tmp/dynamic-gate/schema-engine"
   );
+});
+
+test("child runner preserves the explicitly configured pnpm binary", () => {
+  const child = createChildEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/tmp/local-home",
+      PNPM_BIN: "/tmp/task-tools/pnpm"
+    },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+
+  assert.equal(child.PNPM_BIN, "/tmp/task-tools/pnpm");
 });
 
 test("preserves an explicitly configured Corepack cache location", () => {

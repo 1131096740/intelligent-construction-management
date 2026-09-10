@@ -19,7 +19,9 @@ const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
 const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
 const EXPECTED_MIGRATION_COUNT = migrationBaseline.expectedDirectoryCount;
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpm =
+  process.env.PNPM_BIN?.trim() ||
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
 const { command } = commandRuntime;

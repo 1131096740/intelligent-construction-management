@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "24a34cb7ed1bd98c41bed322db3d3d428676ac2fcc326f4d451c8b0f5bf47caf",
+      "sha256": "312c7b4f016be16a4efdc04b13505d8a82c23a1fc0c2ab18a3a51c5013724341",
       "status": "ready",
       "summary": {
-        "routeCount": 578
+        "routeCount": 582
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "88d109a29ea51a45407cdf17a296068adc52f2b4e4e187397aae89b2d6c3b24d",
+      "sha256": "6bd21dfb1b871ab9581497e557f4a21135082d77f63d15265fa71c84d569a0b6",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 25,
-        "exportedFunctionCount": 553,
-        "transportWrapperCount": 533,
+        "apiModuleCount": 26,
+        "exportedFunctionCount": 557,
+        "transportWrapperCount": 537,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 555,
+        "mainRequestBindingCount": 559,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 555,
-        "productionConsumerCount": 427,
+        "requestEdgeCount": 559,
+        "productionConsumerCount": 431,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "2f6decd99aa923af3323e9d8a1782eb50646477b9c675e9abb26848ad17d7cac",
+      "sha256": "4b31f20dbe98dd55726b90ec4251cb1f02e49f2bfb8df3aa19a9e31f9a73f1a0",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 289,
+        "registeredActionCount": 295,
         "pageActionCount": 53,
-        "backgroundActionCount": 236,
-        "reachableVueFileCount": 136,
-        "routeRootCount": 57,
-        "totalVueFileCount": 160,
-        "parsedVueFileCount": 160,
-        "reachableProductionModuleCount": 248,
-        "templateEventDirectiveCount": 932,
+        "backgroundActionCount": 242,
+        "reachableVueFileCount": 137,
+        "routeRootCount": 58,
+        "totalVueFileCount": 161,
+        "parsedVueFileCount": 161,
+        "reachableProductionModuleCount": 251,
+        "templateEventDirectiveCount": 943,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 283,
-        "candidateProductionMutationConsumerCount": 283,
-        "acceptedProductionMutationConsumerCount": 283,
-        "productionMutationConsumerPairCount": 283,
+        "coveredProductionMutationConsumerCount": 286,
+        "candidateProductionMutationConsumerCount": 286,
+        "acceptedProductionMutationConsumerCount": 286,
+        "productionMutationConsumerPairCount": 286,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "d9c8cdad9d3fedc9e1ebe187167055682d011516e3bfd4bc20ff561d33a6f755",
+      "sha256": "6eb6369b72f2cbf103fc7739e93283b605e2a005e444be36a792fde770f17a1a",
       "status": "ready",
       "summary": {
-        "routeCount": 578,
-        "exactRouteCount": 578,
-        "normalizedRouteCount": 578,
+        "routeCount": 582,
+        "exactRouteCount": 582,
+        "normalizedRouteCount": 582,
         "classificationOverrideCount": 214,
         "consumerSurfaceOverrideCount": 35,
         "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
         "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
-        "derivedProductionPageCount": 364,
-        "pageRouteCount": 366,
+        "derivedProductionPageCount": 368,
+        "pageRouteCount": 370,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 34,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 418,
+          "web_api_wrapper": 422,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 578,
-    "pageRouteCount": 366,
+    "routeCount": 582,
+    "pageRouteCount": 370,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 34,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 555,
+    "mainRequestBindingCount": 559,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 289,
-    "actionBindingCount": 324,
-    "acceptedActionBindingCount": 304,
+    "registeredActionCount": 295,
+    "actionBindingCount": 330,
+    "acceptedActionBindingCount": 310,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 283,
-    "coveredProductionMutationConsumerPairCount": 283,
+    "productionMutationConsumerPairCount": 286,
+    "coveredProductionMutationConsumerPairCount": 286,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -4196,6 +4196,90 @@
     {
       "route": {
         "method": "GET",
+        "path": "/necessary-expense-reserves/capabilities",
+        "normalizedKey": "GET /necessary-expense-reserves/capabilities",
+        "controller": "NecessaryExpenseReserveController",
+        "handler": "getCapabilities",
+        "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "fetchNecessaryExpenseReserveCapabilities",
+          "method": "GET",
+          "path": "/necessary-expense-reserves/capabilities?:param",
+          "normalizedKey": "GET /necessary-expense-reserves/capabilities",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/necessary-expense-reserves/workbench",
+        "normalizedKey": "GET /necessary-expense-reserves/workbench",
+        "controller": "NecessaryExpenseReserveController",
+        "handler": "getWorkbench",
+        "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "fetchNecessaryExpenseReserveWorkbench",
+          "method": "GET",
+          "path": "/necessary-expense-reserves/workbench?:param",
+          "normalizedKey": "GET /necessary-expense-reserves/workbench",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/operating-takeovers/historical-wage/options",
         "normalizedKey": "GET /operating-takeovers/historical-wage/options",
         "controller": "HistoricalWageTakeoverController",
@@ -6301,6 +6385,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
           ],
           "testConsumers": [
@@ -7240,6 +7325,7 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
@@ -18093,7 +18179,8 @@
           "bodyKind": "form_data",
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -18174,6 +18261,31 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "necessary-expense-reserve.evidence.upload",
+          "bindingIndex": 0,
+          "identity": "necessary-expense-reserve.evidence.upload\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.prepare",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -19468,6 +19580,217 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/necessary-expense-reserves/drafts",
+        "normalizedKey": "POST /necessary-expense-reserves/drafts",
+        "controller": "NecessaryExpenseReserveController",
+        "handler": "saveDraft",
+        "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "saveNecessaryExpenseReserveDraft",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/drafts",
+          "normalizedKey": "POST /necessary-expense-reserves/drafts",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "necessary-expense-reserve.draft.save",
+          "bindingIndex": 0,
+          "identity": "necessary-expense-reserve.draft.save\u0000apps/web-admin/src/api/necessary-expense-reserve.api.ts\u0000saveNecessaryExpenseReserveDraft\u0000POST\u0000POST /necessary-expense-reserves/drafts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.prepare",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "saveNecessaryExpenseReserveDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/necessary-expense-reserves/entries/:entryId/transition",
+        "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+        "controller": "NecessaryExpenseReserveController",
+        "handler": "transition",
+        "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/necessary-expense-reserve.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "necessary-expense-reserve.attest",
+          "bindingIndex": 0,
+          "identity": "necessary-expense-reserve.attest\u0000apps/web-admin/src/api/necessary-expense-reserve.api.ts\u0000transitionNecessaryExpenseReserve\u0000POST\u0000POST /necessary-expense-reserves/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.attest",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "necessary-expense-reserve.confirm",
+          "bindingIndex": 0,
+          "identity": "necessary-expense-reserve.confirm\u0000apps/web-admin/src/api/necessary-expense-reserve.api.ts\u0000transitionNecessaryExpenseReserve\u0000POST\u0000POST /necessary-expense-reserves/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "necessary-expense-reserve.return",
+          "bindingIndex": 0,
+          "identity": "necessary-expense-reserve.return\u0000apps/web-admin/src/api/necessary-expense-reserve.api.ts\u0000transitionNecessaryExpenseReserve\u0000POST\u0000POST /necessary-expense-reserves/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.return",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "necessary-expense-reserve.submit",
+          "bindingIndex": 0,
+          "identity": "necessary-expense-reserve.submit\u0000apps/web-admin/src/api/necessary-expense-reserve.api.ts\u0000transitionNecessaryExpenseReserve\u0000POST\u0000POST /necessary-expense-reserves/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.submit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

@@ -15,7 +15,10 @@ const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { PrismaClient } = require("@prisma/client");
-const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
+const {
+  listMigrationDirectories,
+  loadCanonicalMigrationBaseline
+} = require("./migration-baseline.cjs");
 const {
   createCommandRuntime,
   createRunnerCleanup,
@@ -28,6 +31,9 @@ const prismaRoot = path.join(apiRoot, "prisma");
 const migrationsRoot = path.join(prismaRoot, "migrations");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const tar = process.platform === "win32" ? "tar.exe" : "tar";
+const pnpm =
+  process.env.PNPM_BIN?.trim() ||
+  (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
 const DATABASE_NAME = "jiangkong_pol275";
@@ -35,6 +41,7 @@ const FULL_REPLAY_DATABASE_NAME = "jiangkong_pol275_empty";
 const ROLE_COLLISION_DATABASE_NAME = "jiangkong_pol275_role_collision";
 const TERMINAL_MIGRATION =
   "20260909100000_pol275_clearing_reconciliation_repair";
+const POL275_MIGRATION_POSITION = 166;
 const REVIEWED_BASE_SHA = "3cf11b6c46b301856b554598522213f0839ef595";
 const CURRENT_PROCESS_DYNAMIC_TESTS = 10;
 const LEGACY_PROCESS_COMPATIBILITY_TESTS = 1;
@@ -55,6 +62,17 @@ const { command } = commandRuntime;
 
 function fail(message) {
   throw new Error(`POL-275 PostgreSQL 16 动态验收失败：${message}`);
+}
+
+function assertCanonicalMigrationBaseline(baseline, migrations) {
+  if (
+    baseline.expectedDirectoryCount !== migrations.length ||
+    migrations.length < POL275_MIGRATION_POSITION ||
+    migrations[POL275_MIGRATION_POSITION - 1] !== TERMINAL_MIGRATION ||
+    baseline.terminalMigration !== migrations.at(-1)
+  ) {
+    fail(`canonical migration baseline 未保留 POL-275 第 ${POL275_MIGRATION_POSITION} 个迁移`);
+  }
 }
 
 function isExpectedRoleMembershipGuardError(error) {
@@ -417,19 +435,19 @@ async function prepareLegacyProcessSource(temporaryRoot) {
     delete dependencyEnvironment[name];
   }
   dependencyEnvironment.NODE_ENV = "test";
-  await command("pnpm", ["install", "--frozen-lockfile", "--offline"], {
+  await command(pnpm, ["install", "--frozen-lockfile", "--offline"], {
     cwd: sourceRoot,
     env: dependencyEnvironment,
     forwardOutput: true,
     timeoutMs: 15 * 60 * 1000
   });
-  await command("pnpm", ["--filter", "@jiangkong/shared-domain", "build"], {
+  await command(pnpm, ["--filter", "@jiangkong/shared-domain", "build"], {
     cwd: sourceRoot,
     env: dependencyEnvironment,
     forwardOutput: true,
     timeoutMs: 5 * 60 * 1000
   });
-  await command("pnpm", [
+  await command(pnpm, [
     "--filter",
     "@jiangkong/api",
     "exec",
@@ -679,12 +697,10 @@ async function main() {
   assertSafeEnvironment(sourceEnvironment);
   const candidateSha = await assertRepositoryState(sourceEnvironment);
   const baseline = loadCanonicalMigrationBaseline({ migrationsRoot });
-  if (
-    baseline.terminalMigration !== TERMINAL_MIGRATION ||
-    baseline.expectedDirectoryCount !== 166
-  ) {
-    fail("canonical migration baseline 尚未固定为 POL-275 / 166");
-  }
+  assertCanonicalMigrationBaseline(
+    baseline,
+    listMigrationDirectories(migrationsRoot)
+  );
   const dockerReceipt = await assertLocalDocker();
   const port = await freePort();
   const suffix = `${Date.now()}-${process.pid}`;
@@ -878,6 +894,7 @@ module.exports = {
   REVIEWED_BASE_SHA,
   RECONCILIATION_TABLES,
   TERMINAL_MIGRATION,
+  assertCanonicalMigrationBaseline,
   assertEvidence,
   assertSafeEnvironment,
   inheritedDatabaseTargetNames,

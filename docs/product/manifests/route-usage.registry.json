@@ -3,20 +3,20 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 578,
+    "routeCount": 582,
     "classificationOverrideCount": 214,
-    "derivedProductionPageCount": 364,
+    "derivedProductionPageCount": 368,
     "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
     "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
     "usageCounts": {
-      "page": 366,
+      "page": 370,
       "external_takeover": 70,
       "exit_candidate": 108,
       "internal_task": 34,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 418,
+      "web_api_wrapper": 422,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,

@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 578,
-    "exactRouteCount": 578,
-    "normalizedRouteCount": 578,
+    "routeCount": 582,
+    "exactRouteCount": 582,
+    "normalizedRouteCount": 582,
     "classificationOverrideCount": 214,
     "consumerSurfaceOverrideCount": 35,
     "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
     "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
-    "derivedProductionPageCount": 364,
-    "pageRouteCount": 366,
+    "derivedProductionPageCount": 368,
+    "pageRouteCount": 370,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 34,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 418,
+      "web_api_wrapper": 422,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 418,
+    "productionWrapperRouteCount": 422,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -3669,6 +3669,88 @@
     },
     {
       "method": "GET",
+      "path": "/necessary-expense-reserves/capabilities",
+      "normalizedKey": "GET /necessary-expense-reserves/capabilities",
+      "controller": "NecessaryExpenseReserveController",
+      "handler": "getCapabilities",
+      "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+            "wrapper": "fetchNecessaryExpenseReserveCapabilities",
+            "method": "GET",
+            "normalizedPath": "/necessary-expense-reserves/capabilities",
+            "normalizedKey": "GET /necessary-expense-reserves/capabilities",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/necessary-expense-reserves/workbench",
+      "normalizedKey": "GET /necessary-expense-reserves/workbench",
+      "controller": "NecessaryExpenseReserveController",
+      "handler": "getWorkbench",
+      "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+            "wrapper": "fetchNecessaryExpenseReserveWorkbench",
+            "method": "GET",
+            "normalizedPath": "/necessary-expense-reserves/workbench",
+            "normalizedKey": "GET /necessary-expense-reserves/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/operating-takeovers/historical-wage/options",
       "normalizedKey": "GET /operating-takeovers/historical-wage/options",
       "controller": "HistoricalWageTakeoverController",
@@ -4301,6 +4383,7 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
@@ -5467,6 +5550,7 @@
             "normalizedKey": "GET /projects/:param/operating-profile",
             "productionConsumers": [
               "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
             ]
           }
@@ -13663,7 +13747,8 @@
             "normalizedKey": "POST /files",
             "productionConsumers": [
               "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
             ]
           }
         ],
@@ -14555,6 +14640,88 @@
             "normalizedKey": "POST /me/signature/canvas-handoffs/:param/complete",
             "productionConsumers": [
               "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/necessary-expense-reserves/drafts",
+      "normalizedKey": "POST /necessary-expense-reserves/drafts",
+      "controller": "NecessaryExpenseReserveController",
+      "handler": "saveDraft",
+      "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+            "wrapper": "saveNecessaryExpenseReserveDraft",
+            "method": "POST",
+            "normalizedPath": "/necessary-expense-reserves/drafts",
+            "normalizedKey": "POST /necessary-expense-reserves/drafts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/necessary-expense-reserves/entries/:entryId/transition",
+      "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+      "controller": "NecessaryExpenseReserveController",
+      "handler": "transition",
+      "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+            "wrapper": "transitionNecessaryExpenseReserve",
+            "method": "POST",
+            "normalizedPath": "/necessary-expense-reserves/entries/:param/transition",
+            "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
             ]
           }
         ],

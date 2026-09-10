@@ -148,6 +148,13 @@ const invoiceLedgerRepairBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const necessaryExpenseReserveBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260910170000_pol279_necessary_expense_reserve/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -172,7 +179,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -191,7 +198,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(92);
+    expect(registered).toHaveLength(93);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -202,6 +209,12 @@ describe("unified file business binding migration", () => {
     );
     expect(currentBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "terminationSignatureFileId"'
+    );
+    expect(necessaryExpenseReserveBindingMigration).toContain(
+      "('ProjectNecessaryExpenseReserveEntry', 'evidenceFileId', FALSE)"
+    );
+    expect(necessaryExpenseReserveBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "evidenceFileId" ON "ProjectNecessaryExpenseReserveEntry"'
     );
     expect(upstreamFundBindingMigration).toContain(
       "('ProjectUpstreamFundFact','evidenceFileId',FALSE)"

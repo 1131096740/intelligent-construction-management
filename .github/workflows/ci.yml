@@ -186,6 +186,7 @@ jobs:
           - fund_execution_v7
           - invoice_ledger_pol260
           - clearing_reconciliation_pol275
+          - necessary_expense_reserve_pol279
           - remaining_dynamic_postgresql16
     steps:
       - name: Checkout

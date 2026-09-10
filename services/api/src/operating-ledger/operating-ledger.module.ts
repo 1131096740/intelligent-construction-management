@@ -52,6 +52,10 @@ import {
   WageStatementOperatingSourceAdapter,
   WAGE_STATEMENT_OPERATING_SOURCE_TYPE
 } from "./wage-statement-operating-source.adapter";
+import {
+  NecessaryExpenseReserveOperatingSourceAdapter
+} from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
+import { NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE } from "@jiangkong/shared-domain";
 
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
@@ -71,7 +75,8 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE,
   CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
   OPERATING_TAKEOVER_SOURCE_TYPE,
-  WAGE_STATEMENT_OPERATING_SOURCE_TYPE
+  WAGE_STATEMENT_OPERATING_SOURCE_TYPE,
+  NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE
 ] as const);
 
 export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry {
@@ -94,7 +99,8 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
       new SpotProcurementInvoiceOperatingSourceAdapter(),
       new ContractTakeoverHistoricalPaymentOperatingSourceAdapter(),
       new OperatingTakeoverSourceAdapter(),
-      new WageStatementOperatingSourceAdapter()
+      new WageStatementOperatingSourceAdapter(),
+      new NecessaryExpenseReserveOperatingSourceAdapter()
     ],
     OPERATING_SOURCE_TYPES
   );

@@ -49,3 +49,4 @@ export * from "./business-entry-definition";
 export * from "./operating-takeover";
 export * from "./clearing";
 export * from "./wage-statement";
+export * from "./necessary-expense-reserve";

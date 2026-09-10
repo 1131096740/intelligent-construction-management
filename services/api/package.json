@@ -25,6 +25,8 @@
     "verify:pol214-authority-concurrency:local": "node prisma/run-pol214-authority-concurrency-local.cjs",
     "preverify:pol275-clearing-reconciliation:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
     "verify:pol275-clearing-reconciliation:local": "node prisma/run-pol275-clearing-reconciliation-local.cjs",
+    "preverify:pol279-necessary-expense-reserve:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
+    "verify:pol279-necessary-expense-reserve:local": "node prisma/run-pol279-necessary-expense-reserve-local.cjs",
     "preverify:contract-template-scenario-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:contract-template-scenario-concurrency:local": "node prisma/run-contract-template-scenario-concurrency-local.cjs",
     "preverify:draft-lifecycle:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",

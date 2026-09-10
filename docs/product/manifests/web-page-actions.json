@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 289,
+    "registeredActionCount": 295,
     "pageActionCount": 53,
-    "backgroundActionCount": 236,
-    "reachableVueFileCount": 136,
-    "routeRootCount": 57,
-    "totalVueFileCount": 160,
-    "parsedVueFileCount": 160,
-    "reachableProductionModuleCount": 248,
-    "templateEventDirectiveCount": 932,
+    "backgroundActionCount": 242,
+    "reachableVueFileCount": 137,
+    "routeRootCount": 58,
+    "totalVueFileCount": 161,
+    "parsedVueFileCount": 161,
+    "reachableProductionModuleCount": 251,
+    "templateEventDirectiveCount": 943,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 283,
-    "candidateProductionMutationConsumerCount": 283,
-    "acceptedProductionMutationConsumerCount": 283,
-    "productionMutationConsumerPairCount": 283,
+    "coveredProductionMutationConsumerCount": 286,
+    "candidateProductionMutationConsumerCount": 286,
+    "acceptedProductionMutationConsumerCount": 286,
+    "productionMutationConsumerPairCount": 286,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 281,
-    "reachableProductionModuleCount": 248,
-    "totalVueFileCount": 160,
-    "parsedVueFileCount": 160
+    "totalProductionModuleCount": 284,
+    "reachableProductionModuleCount": 251,
+    "totalVueFileCount": 161,
+    "parsedVueFileCount": 161
   },
   "actions": [
     {
@@ -9512,6 +9512,395 @@
             "localCallChain": [
               "voidGlobalInvoiceWithCapability",
               "voidGlobalInvoice"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "necessary-expense-reserve.attest",
+      "usage": "background",
+      "routePaths": [
+        "/必要费用准备"
+      ],
+      "ownerRoutePaths": [
+        "/必要费用准备"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attestNecessaryExpenseReserveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 340,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.attest",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/necessary-expense-reserves/entries/:entryId/transition",
+            "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+            "controller": "NecessaryExpenseReserveController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attestNecessaryExpenseReserveWithCapability",
+              "transitionNecessaryExpenseReserve"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "necessary-expense-reserve.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/必要费用准备"
+      ],
+      "ownerRoutePaths": [
+        "/必要费用准备"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmNecessaryExpenseReserveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 354,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/necessary-expense-reserves/entries/:entryId/transition",
+            "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+            "controller": "NecessaryExpenseReserveController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmNecessaryExpenseReserveWithCapability",
+              "transitionNecessaryExpenseReserve"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "necessary-expense-reserve.draft.save",
+      "usage": "background",
+      "routePaths": [
+        "/必要费用准备"
+      ],
+      "ownerRoutePaths": [
+        "/必要费用准备"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "persistNecessaryExpenseReserveDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 264,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "saveNecessaryExpenseReserveDraft",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/drafts",
+          "normalizedKey": "POST /necessary-expense-reserves/drafts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/necessary-expense-reserves/drafts",
+            "normalizedKey": "POST /necessary-expense-reserves/drafts",
+            "controller": "NecessaryExpenseReserveController",
+            "handler": "saveDraft",
+            "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "persistNecessaryExpenseReserveDraftWithCapability",
+              "saveNecessaryExpenseReserveDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "necessary-expense-reserve.evidence.upload",
+      "usage": "background",
+      "routePaths": [
+        "/必要费用准备"
+      ],
+      "ownerRoutePaths": [
+        "/必要费用准备"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadNecessaryExpenseReserveEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 257,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadNecessaryExpenseReserveEvidenceWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "necessary-expense-reserve.return",
+      "usage": "background",
+      "routePaths": [
+        "/必要费用准备"
+      ],
+      "ownerRoutePaths": [
+        "/必要费用准备"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnNecessaryExpenseReserveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 368,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.return",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/necessary-expense-reserves/entries/:entryId/transition",
+            "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+            "controller": "NecessaryExpenseReserveController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnNecessaryExpenseReserveWithCapability",
+              "transitionNecessaryExpenseReserve"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "necessary-expense-reserve.submit",
+      "usage": "background",
+      "routePaths": [
+        "/必要费用准备"
+      ],
+      "ownerRoutePaths": [
+        "/必要费用准备"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitNecessaryExpenseReserveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 326,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.submit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts",
+          "wrapper": "transitionNecessaryExpenseReserve",
+          "method": "POST",
+          "path": "/necessary-expense-reserves/entries/:param/transition",
+          "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/necessary-expense-reserves/entries/:entryId/transition",
+            "normalizedKey": "POST /necessary-expense-reserves/entries/:param/transition",
+            "controller": "NecessaryExpenseReserveController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/necessary-expense-reserve/necessary-expense-reserve.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitNecessaryExpenseReserveWithCapability",
+              "transitionNecessaryExpenseReserve"
             ]
           },
           "ticketFollowups": []

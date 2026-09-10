@@ -4865,6 +4865,66 @@
       "semantic": "business_write",
       "capability": { "kind": "detail_action", "source": "freshCase.actions", "key": "return_approval" },
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/fund-execution.api.ts", "name": "reviewFundExecutionCase", "variant": "return_to_applicant" }]
+    },
+    {
+      "id": "necessary-expense-reserve.draft.save",
+      "usage": "background",
+      "routePaths": ["/必要费用准备"],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "persistNecessaryExpenseReserveDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.prepare" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts", "name": "saveNecessaryExpenseReserveDraft" }]
+    },
+    {
+      "id": "necessary-expense-reserve.evidence.upload",
+      "usage": "background",
+      "routePaths": ["/必要费用准备"],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadNecessaryExpenseReserveEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.prepare" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadPrivateFile" }]
+    },
+    {
+      "id": "necessary-expense-reserve.submit",
+      "usage": "background",
+      "routePaths": ["/必要费用准备"],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitNecessaryExpenseReserveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.submit" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts", "name": "transitionNecessaryExpenseReserve" }]
+    },
+    {
+      "id": "necessary-expense-reserve.attest",
+      "usage": "background",
+      "routePaths": ["/必要费用准备"],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attestNecessaryExpenseReserveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.attest" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts", "name": "transitionNecessaryExpenseReserve" }]
+    },
+    {
+      "id": "necessary-expense-reserve.confirm",
+      "usage": "background",
+      "routePaths": ["/必要费用准备"],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmNecessaryExpenseReserveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts", "name": "transitionNecessaryExpenseReserve" }]
+    },
+    {
+      "id": "necessary-expense-reserve.return",
+      "usage": "background",
+      "routePaths": ["/必要费用准备"],
+      "sourceFile": "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnNecessaryExpenseReserveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.return" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts", "name": "transitionNecessaryExpenseReserve" }]
     }
   ]
 }

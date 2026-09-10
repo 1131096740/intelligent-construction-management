@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 166,
-    "terminalMigration": "20260909100000_pol275_clearing_reconciliation_repair",
-    "terminalMigrationChecksum": "47d90c84c5e9a9f7cca8463ff3332c63ab43f0e96dff0296e00693bcc3e81903",
+    "expectedDirectoryCount": 167,
+    "terminalMigration": "20260910170000_pol279_necessary_expense_reserve",
+    "terminalMigrationChecksum": "899528ac411ff7d51f0eae5441108b29c76454782f07edd96f1b3056ab916a65",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 50,
-    "fullyPendingSuites": 39,
+    "pendingFiles": 51,
+    "fullyPendingSuites": 40,
     "partiallyPendingSuites": 11,
-    "pendingTests": 207,
-    "coveredFiles": 50,
-    "coveredTests": 207,
+    "pendingTests": 211,
+    "coveredFiles": 51,
+    "coveredTests": 211,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -225,6 +225,23 @@
         "script": "verify:pol275-clearing-reconciliation:local",
         "path": "services/api/prisma/run-pol275-clearing-reconciliation-local.cjs",
         "evidenceEnv": "POL275_CLEARING_RECONCILIATION_EVIDENCE_PATH"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "necessary_expense_reserve_pol279",
+      "pendingTests": 4,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/necessary-expense-reserve-postgresql.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol279-necessary-expense-reserve:local",
+        "path": "services/api/prisma/run-pol279-necessary-expense-reserve-local.cjs"
       },
       "state": "executable_local_runner"
     },

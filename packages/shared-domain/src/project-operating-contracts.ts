@@ -18,6 +18,7 @@ export const OPERATING_FACT_KINDS = Object.freeze([
   "invoice",
   "fund_movement",
   "profit_distribution",
+  "project_cash_restriction",
   "historical_gap"
 ] as const);
 
@@ -36,6 +37,7 @@ export const OPERATING_FACT_KIND_LABELS = Object.freeze({
   invoice: "发票事实",
   fund_movement: "项目资金流动",
   profit_distribution: "项目盈亏分配",
+  project_cash_restriction: "项目现金使用限制",
   historical_gap: "历史资料缺口"
 } as const satisfies Readonly<Record<OperatingFactKind, string>>);
 
@@ -44,6 +46,8 @@ export const OPERATING_IMPACT_KINDS = Object.freeze([
   "confirmed_cost",
   "contract_commitment_reference",
   "estimated_clearing_expense",
+  "necessary_expense_reserve_increase",
+  "necessary_expense_reserve_decrease",
   "receivable_increase",
   "receivable_decrease",
   "payable_increase",
@@ -74,6 +78,8 @@ export const OPERATING_IMPACT_KIND_LABELS = Object.freeze({
   confirmed_cost: "已确认成本",
   contract_commitment_reference: "合同承诺引用",
   estimated_clearing_expense: "预计待清算费用",
+  necessary_expense_reserve_increase: "必要费用准备增加",
+  necessary_expense_reserve_decrease: "必要费用准备减少",
   receivable_increase: "应收增加",
   receivable_decrease: "应收减少",
   payable_increase: "应付增加",
@@ -123,7 +129,8 @@ export const OPERATING_SUBJECT_ROLES = Object.freeze([
   "approved_payer",
   "actual_payer",
   "payee",
-  "cost_bearing_company"
+  "cost_bearing_company",
+  "fund_holder"
 ] as const);
 
 export type OperatingSubjectRole = (typeof OPERATING_SUBJECT_ROLES)[number];
@@ -134,7 +141,8 @@ export const OPERATING_SUBJECT_ROLE_LABELS = Object.freeze({
   approved_payer: "批准付款主体",
   actual_payer: "实际付款主体",
   payee: "收款主体",
-  cost_bearing_company: "成本承担公司"
+  cost_bearing_company: "成本承担公司",
+  fund_holder: "资金持有主体"
 } as const satisfies Readonly<Record<OperatingSubjectRole, string>>);
 
 export const EVIDENCE_LEVELS = Object.freeze(["A", "B", "C"] as const);
