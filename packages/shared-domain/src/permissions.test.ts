@@ -55,7 +55,8 @@ describe("permission policy table", () => {
     for (const action of [
       "clearing.confirm",
       "clearing.return",
-      "clearing.reopen"
+      "clearing.reopen",
+      "clearing.reconciliation.reverse"
     ] as const) {
       expect(ACTION_REQUIRED_ROLES[action]).toEqual(["finance_director"]);
     }
@@ -64,6 +65,9 @@ describe("permission policy table", () => {
     expect(canPerform("clearing.confirm", ["finance_staff"])).toBe(false);
     expect(canPerform("clearing.confirm", ["finance_director"])).toBe(true);
     expect(canPerform("clearing.confirm", ["super_admin"])).toBe(false);
+    expect(canPerform("clearing.reconciliation.reverse", ["finance_staff"])).toBe(false);
+    expect(canPerform("clearing.reconciliation.reverse", ["finance_director"])).toBe(true);
+    expect(canPerform("clearing.reconciliation.reverse", ["super_admin"])).toBe(false);
   });
 
   it("limits payable settlement reads and writes to the frozen global finance duties", () => {

@@ -25,6 +25,17 @@ const {
 const {
   probePostgresReady
 } = require("./verify-fund-execution-v7.cjs");
+const {
+  CURRENT_PROCESS_DYNAMIC_TESTS,
+  assertSafeEnvironment: assertPol275SafeEnvironment,
+  inheritedDatabaseTargetNames: inheritedPol275DatabaseTargetNames,
+  isExpectedRoleMembershipGuardError,
+  legacyJestCli,
+  LEGACY_PROCESS_COMPATIBILITY_TESTS,
+  REVIEWED_BASE_SHA,
+  runtimeEnvironment: createPol275RuntimeEnvironment,
+  selectPostgresDiagnostics
+} = require("./run-pol275-clearing-reconciliation-local.cjs");
 
 const runnerPath = path.join(
   __dirname,
@@ -56,24 +67,172 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 196 pending tests as executable local coverage", () => {
+test("manifest derives all 207 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 48,
-    fullyPendingSuites: 37,
+    pendingFiles: 50,
+    fullyPendingSuites: 39,
     partiallyPendingSuites: 11,
-    pendingTests: 196,
-    coveredFiles: 48,
-    coveredTests: 196,
+    pendingTests: 207,
+    coveredFiles: 50,
+    coveredTests: 207,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
+});
+
+test("canonical manifest executes all 11 POL-275 PG16 tests", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "clearing_reconciliation_pol275"
+  );
+
+  assert.deepEqual(group, {
+    id: "clearing_reconciliation_pol275",
+    pendingTests: 11,
+    testFiles: [
+      {
+        path: "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
+        pendingTests: 10,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/database/clearing-reconciliation-legacy-compatibility.spec.ts",
+        pendingTests: 1,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "workspaceScript",
+      script: "verify:pol275-clearing-reconciliation:local",
+      path: "services/api/prisma/run-pol275-clearing-reconciliation-local.cjs",
+      evidenceEnv: "POL275_CLEARING_RECONCILIATION_EVIDENCE_PATH"
+    },
+    state: "executable_local_runner"
+  });
+});
+
+test("POL-275 receipt counts match the canonical manifest", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "clearing_reconciliation_pol275"
+  );
+  const currentProcessFile = group.testFiles.find(
+    (file) => file.path.endsWith("clearing-reconciliation-concurrency.spec.ts")
+  );
+  const legacyProcessFile = group.testFiles.find(
+    (file) => file.path.endsWith("clearing-reconciliation-legacy-compatibility.spec.ts")
+  );
+
+  assert.equal(CURRENT_PROCESS_DYNAMIC_TESTS, currentProcessFile.pendingTests);
+  assert.equal(LEGACY_PROCESS_COMPATIBILITY_TESTS, legacyProcessFile.pendingTests);
+  assert.equal(
+    CURRENT_PROCESS_DYNAMIC_TESTS + LEGACY_PROCESS_COMPATIBILITY_TESTS,
+    group.pendingTests
+  );
+});
+
+test("POL-275 runner fails closed without confirmation and inherited database targets", () => {
+  assert.throws(
+    () => assertPol275SafeEnvironment({ NODE_ENV: "test" }),
+    /LOCAL_PG16_DYNAMIC_GATE/u
+  );
+  assert.deepEqual(
+    inheritedPol275DatabaseTargetNames({
+      DATABASE_URL: "secret-one",
+      WAGE_DATABASE_URL: "secret-two",
+      PATH: "/usr/bin"
+    }),
+    ["DATABASE_URL", "WAGE_DATABASE_URL"]
+  );
+  assert.throws(
+    () => assertPol275SafeEnvironment({
+      NODE_ENV: "test",
+      LOCAL_PG16_DYNAMIC_GATE: "LOCAL_PG16_DYNAMIC_GATE",
+      DATABASE_URL: "must-not-be-used"
+    }),
+    /DATABASE_URL/u
+  );
+});
+
+test("POL-275 runner preserves rather than repurposes the caller home", () => {
+  const environment = createPol275RuntimeEnvironment(
+    { HOME: "/caller/home", PATH: "/usr/bin" },
+    "/tmp/pol275",
+    "postgresql://local/test",
+    "local-secret"
+  );
+  assert.equal(environment.HOME, "/caller/home");
+  assert.equal(environment.TMPDIR, "/tmp/pol275");
+});
+
+test("POL-275 legacy compatibility binds the reviewed base and its own frozen dependencies", () => {
+  assert.equal(REVIEWED_BASE_SHA, "3cf11b6c46b301856b554598522213f0839ef595");
+  assert.equal(
+    legacyJestCli("/tmp/pol275-reviewed-base"),
+    path.join(
+      "/tmp/pol275-reviewed-base",
+      "services",
+      "api",
+      "node_modules",
+      "jest",
+      "bin",
+      "jest.js"
+    )
+  );
+  const runnerSource = require("node:fs").readFileSync(
+    path.join(__dirname, "run-pol275-clearing-reconciliation-local.cjs"),
+    "utf8"
+  );
+  assert.match(runnerSource, /reviewed_base_frozen_lockfile_offline/u);
+  assert.match(runnerSource, /nodeModulesLinkedFromCandidate: false/u);
+  assert.doesNotMatch(runnerSource, /await symlink/u);
+  assert.doesNotMatch(runnerSource, /NODE_PATH:/u);
+});
+
+test("POL-275 role-collision receipt accepts only the exact 42501 membership guard", () => {
+  assert.equal(
+    isExpectedRoleMembershipGuardError({
+      code: "P2010",
+      meta: {
+        code: "42501",
+        message: "ERROR: POL-275 同名技术角色已有成员关系，拒绝迁移且不自动清理"
+      }
+    }),
+    true
+  );
+  assert.equal(
+    isExpectedRoleMembershipGuardError({
+      code: "P2010",
+      meta: { code: "42601", message: "syntax error" }
+    }),
+    false
+  );
+  assert.equal(
+    isExpectedRoleMembershipGuardError({
+      code: "P2010",
+      meta: { code: "42501", message: "unrelated permission denial" }
+    }),
+    false
+  );
+});
+
+test("POL-275 runner reports only bounded PostgreSQL error diagnostics", () => {
+  assert.equal(
+    selectPostgresDiagnostics([
+      "LOG: statement: sensitive bulk SQL",
+      "ERROR: first migration error",
+      "CONTEXT: PL/pgSQL function inline_code_block line 9",
+      "STATEMENT: sensitive bulk SQL"
+    ].join("\n")),
+    "ERROR: first migration error\nCONTEXT: PL/pgSQL function inline_code_block line 9"
+  );
 });
 
 test("canonical manifest executes all 26 fund execution v7 PG tests", () => {
@@ -130,7 +289,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=196/u
+    /inventory\.coveredTests=26，派生值=207/u
   );
 });
 

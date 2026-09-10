@@ -1,5 +1,14 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+function expectArtifactContains(
+  artifactName: string,
+  artifact: string,
+  expectedTokens: readonly string[]
+) {
+  const missing = expectedTokens.filter((token) => !artifact.includes(token));
+  expect({ artifactName, missing }).toEqual({ artifactName, missing: [] });
+}
 
 describe("POL-11A clearing schema artifact", () => {
   const schema = readFileSync(join(__dirname, "../../prisma/schema.prisma"), "utf8");
@@ -17,6 +26,13 @@ describe("POL-11A clearing schema artifact", () => {
     ),
     "utf8"
   );
+  const reconciliationMigrationPath = join(
+    __dirname,
+    "../../prisma/migrations/20260909100000_pol275_clearing_reconciliation_repair/migration.sql"
+  );
+  const reconciliationMigration = existsSync(reconciliationMigrationPath)
+    ? readFileSync(reconciliationMigrationPath, "utf8")
+    : "";
 
   it("keeps stable case/event identities separate from immutable submitted versions", () => {
     expect(schema).toContain("model ClearingCase {");
@@ -92,5 +108,83 @@ describe("POL-11A clearing schema artifact", () => {
     expect(authorityMigration).toContain("AssignedWageAuthorityLine_parent_consistency");
     expect(authorityMigration).toContain("GuaranteeObligationVersion_nonoverlap");
     expect(authorityMigration).toContain('"ClearingCase_authority_fields_check"');
+  });
+
+  it("seals the seven append-only reconciliation relations behind one controlled writer", () => {
+    const modelTokens: string[] = [];
+    const migrationTokens: string[] = [];
+    for (const model of [
+      "ClearingReconciliationItem",
+      "ClearingReconciliationRevision",
+      "ClearingReconciliationCoverage",
+      "ClearingReconciliationResolution",
+      "ClearingReconciliationDefinitionReversal",
+      "ClearingReconciliationResolutionLine",
+      "ClearingReconciliationDecisionSeal"
+    ]) {
+      modelTokens.push(`model ${model} {`);
+      migrationTokens.push(`CREATE TABLE "${model}"`);
+      migrationTokens.push(`CREATE TRIGGER "${model}_pol275_immutable"`);
+    }
+    modelTokens.push("@@unique([id, clearingCaseId])");
+    migrationTokens.push(
+      '"ClearingEventVersion_id_clearingCaseId_key"',
+      '"ClearingAllocation_no_self_reversal"',
+      "ON DELETE RESTRICT ON UPDATE RESTRICT",
+      'CREATE OR REPLACE FUNCTION "pol214_clearing_allocation_guard"()',
+      "pg_catalog.pg_advisory_xact_lock",
+      "coverage_relief := coverage_relief + NEW.\"amountCents\"",
+      "revision 有效覆盖超过当前未解决金额",
+      "新核对事件确认必须使用 V1 意图并同事务封印",
+      'CREATE FUNCTION "pol275_required_v1_confirmation_guard"()',
+      'CREATE TRIGGER "ClearingConfirmation_pol275_required_v1"',
+      "新核对事件确认必须使用 V1 意图",
+      'CREATE FUNCTION "pol275_confirmation_closure_trigger"()',
+      'CREATE CONSTRAINT TRIGGER "ClearingConfirmation_pol275_v1_closure" AFTER INSERT ON "ClearingConfirmation" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "pol275_confirmation_closure_trigger"()',
+      "闭合触发器路由参数无效",
+      'CREATE FUNCTION "pol275_clearing_impact_link_guard"()',
+      'CREATE TRIGGER "ClearingImpactLink_pol275_insert_guard"',
+      'CREATE CONSTRAINT TRIGGER "ClearingImpactLink_pol275_v1_closure"',
+      'CREATE FUNCTION "pol275_utf16_sort_key_v1"',
+      'CREATE FUNCTION "pol275_jcs_v1"',
+      'CREATE FUNCTION "pol275_relation_set_hash_v1"',
+      "'pol275/relation-set/V1' || chr(10) || public.\"pol275_jcs_v1\"",
+      'CREATE FUNCTION "pol275_jsonb_is_cents_v1"',
+      'CREATE FUNCTION "pol275_jsonb_is_positive_integer_v1"',
+      'POL-275 operation 分支不互斥或包含无关关系',
+      'POL-275 plannedIds 的 item/revision ID 与冻结定义不闭合',
+      'POL-275 解决行与 eventAllocations 完整计划不闭合',
+      "'sourceClearingAllocationId', 'sourceImpactIds'",
+      "sourceImpactIds' ->> 0",
+      "sourceImpactIds' ->> 1",
+      "POL-275 退回分配只能与确认同事务写入",
+      "既有经济事件已有无法精确映射 allocation 的旧退回",
+      "既有经济事件已进入精确 allocation 退回链，旧退回不得混用",
+      "POL-275 冻结既有经济 allocation/impact 集合已漂移",
+      "POL-275 真实退回超过原 allocation 剩余效果",
+      "POL-275 原 allocation 退回余额快照不一致",
+      "target_definition_reversal.\"targetRevisionId\" = target_revision.\"id\"",
+      'CREATE FUNCTION "pol275_append_reconciliation_set"',
+      "SECURITY DEFINER",
+      "SET search_path = pg_catalog, public, pg_temp",
+      "DEFERRABLE INITIALLY DEFERRED",
+      'REVOKE ALL ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT) FROM PUBLIC',
+      'REVOKE ALL ON FUNCTION "pol275_active_coverage_occupancy"(TEXT) FROM PUBLIC',
+      'REVOKE ALL ON FUNCTION "pol275_jcs_v1"(JSONB) FROM PUBLIC',
+      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON TABLE",
+      'GRANT EXECUTE ON FUNCTION "pol275_append_reconciliation_set"(TEXT, TEXT)',
+      'GRANT EXECUTE ON FUNCTION "pol275_active_coverage_occupancy"(TEXT)',
+      'GRANT EXECUTE ON FUNCTION "appendOperatingFactThroughService"(',
+      'GRANT EXECUTE ON FUNCTION "appendOperatingImpactThroughService"(',
+      "source_record.event_status <> 'confirmed'",
+      'source_event."workflowStatus" <> \'confirmed\'',
+      'CREATE ROLE "jg_pol275_owner" NOLOGIN NOINHERIT',
+      'CREATE ROLE "jg_pol275_runtime" NOLOGIN NOINHERIT'
+    );
+    expectArtifactContains("schema.prisma", schema, modelTokens);
+    expectArtifactContains("POL-275 migration", reconciliationMigration, migrationTokens);
+    expect(reconciliationMigration).not.toContain(
+      "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public"
+    );
   });
 });

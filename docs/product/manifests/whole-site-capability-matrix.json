@@ -14,15 +14,15 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "8b93e4ba8c1aab1488a984e4b7f21f2b6291db0a76c259bee43d86735a7c9303",
+      "sha256": "24a34cb7ed1bd98c41bed322db3d3d428676ac2fcc326f4d451c8b0f5bf47caf",
       "status": "ready",
       "summary": {
-        "routeCount": 577
+        "routeCount": 578
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8e0206aa97d944c18930a6947f2f9d128c047f814cd6019d3336c59ac5b30f96",
+      "sha256": "88d109a29ea51a45407cdf17a296068adc52f2b4e4e187397aae89b2d6c3b24d",
       "status": "ready",
       "summary": {
         "apiModuleCount": 25,
@@ -64,28 +64,28 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "1ab41128d0643a4cf5893bb6906074475f504d3c9b528a9beb1c1f0da82b33ba",
+      "sha256": "d9c8cdad9d3fedc9e1ebe187167055682d011516e3bfd4bc20ff561d33a6f755",
       "status": "ready",
       "summary": {
-        "routeCount": 577,
-        "exactRouteCount": 577,
-        "normalizedRouteCount": 577,
-        "classificationOverrideCount": 213,
-        "consumerSurfaceOverrideCount": 34,
-        "classificationOverrideSha256": "20815a8207e265a7c62404626c0edb0ecca51ea79d0f88bac40b767b8e46fdc8",
-        "consumerSurfaceOverrideSha256": "28aeb56e023e9d26024527bbe35d0feb4273cc2555c65e941cadc30da9b25237",
+        "routeCount": 578,
+        "exactRouteCount": 578,
+        "normalizedRouteCount": 578,
+        "classificationOverrideCount": 214,
+        "consumerSurfaceOverrideCount": 35,
+        "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
+        "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
         "derivedProductionPageCount": 364,
         "pageRouteCount": 366,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
-        "internalTaskCount": 33,
+        "internalTaskCount": 34,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
           "web_api_wrapper": 418,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 31,
+          "operator_endpoint": 32,
           "none": 120
         },
         "blockerCount": 0
@@ -93,11 +93,11 @@
     }
   },
   "summary": {
-    "routeCount": 577,
+    "routeCount": 578,
     "pageRouteCount": 366,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
-    "internalTaskRouteCount": 33,
+    "internalTaskRouteCount": 34,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 555,
     "webRequestWithoutNestCount": 0,
@@ -1270,6 +1270,33 @@
           "testConsumers": []
         }
       ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/clearing-cases/reconciliation-risk",
+        "normalizedKey": "GET /clearing-cases/reconciliation-risk",
+        "controller": "ClearingController",
+        "handler": "reconciliationRisk",
+        "sourceFile": "services/api/src/clearing/clearing.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "clearing.read",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",

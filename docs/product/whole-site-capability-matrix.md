@@ -6,20 +6,20 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `8b93e4ba8c1aab1488a984e4b7f21f2b6291db0a76c259bee43d86735a7c9303` |
-| webApiWrappers | ready | `8e0206aa97d944c18930a6947f2f9d128c047f814cd6019d3336c59ac5b30f96` |
+| nestRoutes | ready | `24a34cb7ed1bd98c41bed322db3d3d428676ac2fcc326f4d451c8b0f5bf47caf` |
+| webApiWrappers | ready | `88d109a29ea51a45407cdf17a296068adc52f2b4e4e187397aae89b2d6c3b24d` |
 | webPageActions | ready | `2f6decd99aa923af3323e9d8a1782eb50646477b9c675e9abb26848ad17d7cac` |
-| routeUsage | ready | `1ab41128d0643a4cf5893bb6906074475f504d3c9b528a9beb1c1f0da82b33ba` |
+| routeUsage | ready | `d9c8cdad9d3fedc9e1ebe187167055682d011516e3bfd4bc20ff561d33a6f755` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 577 |
+| routeCount | 578 |
 | pageRouteCount | 366 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 33 |
+| internalTaskRouteCount | 34 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 555 |
 | webRequestWithoutNestCount | 0 |
@@ -63,6 +63,7 @@
 | GET | /clearing-cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCase | — | not_applicable | — |
 | GET | /clearing-cases/capabilities | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCapabilities | — | not_applicable | — |
 | GET | /clearing-cases | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCases | — | not_applicable | — |
+| GET | /clearing-cases/reconciliation-risk | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
 | GET | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchActiveCompanyEntities | — | not_applicable | — |
 | GET | /company-entities/management | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagement | — | not_applicable | — |

@@ -49,12 +49,12 @@ export class PermissionGuard implements CanActivate {
       REQUIRED_POSITIONS_KEY,
       [context.getHandler(), context.getClass()]
     );
-    const requiredAction = this.reflector.getAllAndOverride<BusinessAction>(
+    const declaredAction = this.reflector.getAllAndOverride<BusinessAction>(
       REQUIRED_PROJECT_ACTION_KEY,
       [context.getHandler(), context.getClass()]
     );
 
-    if (!requiredPositions?.length && !requiredAction) {
+    if (!requiredPositions?.length && !declaredAction) {
       return true;
     }
 
@@ -63,6 +63,7 @@ export class PermissionGuard implements CanActivate {
     if (!request.user) {
       throw new ForbiddenException("未获取到登录用户，请重新登录");
     }
+    const requiredAction = await this.resolveRequiredAction(request, declaredAction);
 
     const anyProjectPositionScope = this.reflector.getAllAndOverride<boolean>(
       ANY_PROJECT_POSITION_SCOPE_KEY,
@@ -433,6 +434,30 @@ export class PermissionGuard implements CanActivate {
       projectId
     );
     return canPerform(action, roleKeys);
+  }
+
+  private async resolveRequiredAction(
+    request: AuthenticatedRequest,
+    declaredAction?: BusinessAction
+  ): Promise<BusinessAction | undefined> {
+    const eventId = request.params?.eventId;
+    if (
+      declaredAction !== "clearing.confirm" ||
+      typeof eventId !== "string" ||
+      !eventId.trim()
+    ) {
+      return declaredAction;
+    }
+    const event = await this.prisma.clearingEvent.findUnique({
+      where: { id: eventId.trim() },
+      select: { kind: true }
+    });
+    if (!event) {
+      throw new ForbiddenException("清算事件不存在或当前账号无权访问");
+    }
+    return event.kind === "technical_reversal"
+      ? "clearing.reconciliation.reverse"
+      : declaredAction;
   }
 
   private async clearingDelegationScopes(

@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 165,
-    "terminalMigration": "20260907130000_pol260_invoice_ledger_repair",
-    "terminalMigrationChecksum": "0686e4bb16744be49242db59a9ab36cd3edd72fb333f77447660f6a7a1853b75",
+    "expectedDirectoryCount": 166,
+    "terminalMigration": "20260909100000_pol275_clearing_reconciliation_repair",
+    "terminalMigrationChecksum": "47d90c84c5e9a9f7cca8463ff3332c63ab43f0e96dff0296e00693bcc3e81903",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 48,
-    "fullyPendingSuites": 37,
+    "pendingFiles": 50,
+    "fullyPendingSuites": 39,
     "partiallyPendingSuites": 11,
-    "pendingTests": 196,
-    "coveredFiles": 48,
-    "coveredTests": 196,
+    "pendingTests": 207,
+    "coveredFiles": 50,
+    "coveredTests": 207,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -202,6 +202,29 @@
       "runner": {
         "kind": "node",
         "path": "services/api/src/invoice-ledger/run-invoice-ledger-postgresql16-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "clearing_reconciliation_pol275",
+      "pendingTests": 11,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
+          "pendingTests": 10,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/clearing-reconciliation-legacy-compatibility.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol275-clearing-reconciliation:local",
+        "path": "services/api/prisma/run-pol275-clearing-reconciliation-local.cjs",
+        "evidenceEnv": "POL275_CLEARING_RECONCILIATION_EVIDENCE_PATH"
       },
       "state": "executable_local_runner"
     },

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   BadRequestException,
@@ -39,6 +39,7 @@ import {
   assertClearingActorsDisjoint,
   buildClearingConfirmationPlan,
   fingerprintClearingCommand,
+  fingerprintClearingReconciliationEventVersion,
   type ClearingAllocationInput,
   type ClearingConfirmationPlan
 } from "./clearing-domain";
@@ -48,6 +49,7 @@ import {
 } from "./affiliate-clearing-authority.service";
 import { assertGuaranteeWithholdingWithinCap } from "./affiliate-clearing-authority.domain";
 import { AffiliateClearingSelectionRefService } from "./affiliate-clearing-selection-ref.service";
+import { freezeClearingReconciliationIntent } from "./clearing-reconciliation-intent";
 import type {
   AttestClearingEventDto,
   ClearingCommandDto,
@@ -103,6 +105,15 @@ export interface HistoricalClearingImportInput {
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CLEARING_SOURCE_TYPE = "clearing_event_version";
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n;
+const CLEARING_CONFIRM_AUTHORIZATION_DRIFT = "clearing_confirm_authorization_drift";
+
+class ClearingConfirmationAuthorizationDriftException extends ConflictException {
+  readonly reasonCode = CLEARING_CONFIRM_AUTHORIZATION_DRIFT;
+
+  constructor() {
+    super("清分确认前权限或委托已变化，请刷新后重试");
+  }
+}
 
 @Injectable()
 export class ClearingService {
@@ -125,7 +136,8 @@ export class ClearingService {
       "clearing.attest",
       "clearing.confirm",
       "clearing.return",
-      "clearing.reopen"
+      "clearing.reopen",
+      "clearing.reconciliation.reverse"
     ] satisfies BusinessAction[]).filter(actionAllowed);
     return {
       availableActions,
@@ -135,7 +147,8 @@ export class ClearingService {
       attest: actionAllowed("clearing.attest"),
       confirm: actionAllowed("clearing.confirm"),
       return: actionAllowed("clearing.return"),
-      reopen: actionAllowed("clearing.reopen")
+      reopen: actionAllowed("clearing.reopen"),
+      reconciliationReverse: actionAllowed("clearing.reconciliation.reverse")
     };
   }
 
@@ -308,7 +321,7 @@ export class ClearingService {
       : authority.sourceDiscriminator === "construction_enterprise_guarantee"
         ? "withheld"
         : "final_confirmed";
-    const amountCents = positiveCents(input.amountCents);
+    const amountCents = positiveInternalBigIntCents(input.amountCents);
     const evidenceLevel = authority.coverageKind === "ROLE_SUMMARY" ? "B" : "A";
     if (input.evidenceLevel !== evidenceLevel) throw new ConflictException("正式清分证据等级必须由权威覆盖类型派生");
     if (evidenceLevel === "B") {
@@ -502,6 +515,35 @@ export class ClearingService {
       );
       const eventId = randomUUID();
       const versionId = randomUUID();
+      const frozenReconciliationIntent = input.reconciliationIntent
+        ? await freezeClearingReconciliationIntent({
+            tx,
+            clearingCase,
+            eventKind: input.kind,
+            eventAmountCents: positiveCents(effectiveEventInput.amountCents),
+            draft: input.reconciliationIntent,
+            actorUserId: identity.actualUserId,
+            selectionRefs: this.selectionRefs
+          })
+        : null;
+      const payloadSnapshot = frozenReconciliationIntent
+        ? {
+            ...effectiveEventInput.payload,
+            reconciliationIntent: frozenReconciliationIntent
+          }
+        : effectiveEventInput.payload;
+      const eventVersionActorSet = mergeActorIds(identity.actorIds);
+      const eventVersionFingerprint = frozenReconciliationIntent
+        ? fingerprintClearingReconciliationEventVersion({
+            clearingCaseId: clearingCase.id,
+            eventKind: input.kind,
+            amountCents: positiveCents(effectiveEventInput.amountCents).toString(),
+            currencyCode: "CNY",
+            previousVersionId: null,
+            actorSetSnapshot: eventVersionActorSet,
+            reconciliationIntent: frozenReconciliationIntent
+          })
+        : fingerprint;
       const event = await tx.clearingEvent.create({
         data: {
           id: eventId,
@@ -523,9 +565,9 @@ export class ClearingService {
           amountCents: positiveCents(effectiveEventInput.amountCents),
           payableRef: effectiveEventInput.payableRef,
           evidenceLevel: effectiveEventInput.evidenceLevel,
-          payloadSnapshot: jsonObject(effectiveEventInput.payload),
-          actorSetSnapshot: identity.actorIds,
-          fingerprint,
+          payloadSnapshot: jsonObject(payloadSnapshot),
+          actorSetSnapshot: eventVersionActorSet,
+          fingerprint: eventVersionFingerprint,
           createdByUserId: identity.actualUserId
         }
       });
@@ -571,8 +613,30 @@ export class ClearingService {
         eventId
       );
       const current = await this.currentVersion(tx, event);
+      const submittedReconciliationIntent = reconciliationIntentFrom(
+        current.payloadSnapshot
+      );
+      assertRequiredReconciliationIntent(event.kind, submittedReconciliationIntent);
+      if (submittedReconciliationIntent) {
+        assertExactVersionCommand(input, current.id, current.fingerprint);
+      }
       const nextVersionNo = event.currentVersionNo + 1;
       const versionId = randomUUID();
+      const submittedActorSet = mergeActorIds(
+        actorIds(current.actorSetSnapshot),
+        identity.actorIds
+      );
+      const submittedFingerprint = submittedReconciliationIntent
+        ? fingerprintClearingReconciliationEventVersion({
+            clearingCaseId: event.clearingCaseId,
+            eventKind: event.kind as ClearingEventKind,
+            amountCents: current.amountCents.toString(),
+            currencyCode: "CNY",
+            previousVersionId: current.id,
+            actorSetSnapshot: submittedActorSet,
+            reconciliationIntent: submittedReconciliationIntent
+          })
+        : fingerprint;
       await tx.clearingEventVersion.create({
         data: {
           id: versionId,
@@ -585,8 +649,8 @@ export class ClearingService {
           payableRef: current.payableRef,
           evidenceLevel: current.evidenceLevel,
           payloadSnapshot: jsonInput(current.payloadSnapshot),
-          actorSetSnapshot: mergeActorIds(actorIds(current.actorSetSnapshot), identity.actorIds),
-          fingerprint,
+          actorSetSnapshot: submittedActorSet,
+          fingerprint: submittedFingerprint,
           previousVersionId: current.id,
           createdByUserId: identity.actualUserId
         }
@@ -634,6 +698,9 @@ export class ClearingService {
       const version = await this.currentVersion(tx, event);
       if (version.workflowStatus !== "submitted" || version.evidenceLevel !== "B") {
         throw new BadRequestException("只有当前 B 级已提交版本可以实名 attest");
+      }
+      if (reconciliationIntentFrom(version.payloadSnapshot)) {
+        assertExactVersionCommand(input, version.id, version.fingerprint);
       }
       await this.revalidateIdentity(
         identity,
@@ -709,6 +776,38 @@ export class ClearingService {
       const effectiveEventInput = authorityEventInput(clearingCase, input);
       const nextVersionNo = event.currentVersionNo + 1;
       const versionId = randomUUID();
+      const frozenReconciliationIntent = input.reconciliationIntent
+        ? await freezeClearingReconciliationIntent({
+            tx,
+            clearingCase,
+            eventKind: input.kind,
+            eventAmountCents: positiveCents(effectiveEventInput.amountCents),
+            draft: input.reconciliationIntent,
+            actorUserId: identity.actualUserId,
+            selectionRefs: this.selectionRefs
+          })
+        : null;
+      const payloadSnapshot = frozenReconciliationIntent
+        ? {
+            ...effectiveEventInput.payload,
+            reconciliationIntent: frozenReconciliationIntent
+          }
+        : effectiveEventInput.payload;
+      const revisedActorSet = mergeActorIds(
+        actorIds(current.actorSetSnapshot),
+        identity.actorIds
+      );
+      const eventVersionFingerprint = frozenReconciliationIntent
+        ? fingerprintClearingReconciliationEventVersion({
+            clearingCaseId: event.clearingCaseId,
+            eventKind: input.kind,
+            amountCents: positiveCents(effectiveEventInput.amountCents).toString(),
+            currencyCode: "CNY",
+            previousVersionId: current.id,
+            actorSetSnapshot: revisedActorSet,
+            reconciliationIntent: frozenReconciliationIntent
+          })
+        : fingerprint;
       await tx.clearingEventVersion.create({
         data: {
           id: versionId,
@@ -719,9 +818,9 @@ export class ClearingService {
           amountCents: positiveCents(effectiveEventInput.amountCents),
           payableRef: effectiveEventInput.payableRef,
           evidenceLevel: effectiveEventInput.evidenceLevel,
-          payloadSnapshot: jsonObject(effectiveEventInput.payload),
-          actorSetSnapshot: mergeActorIds(actorIds(current.actorSetSnapshot), identity.actorIds),
-          fingerprint,
+          payloadSnapshot: jsonObject(payloadSnapshot),
+          actorSetSnapshot: revisedActorSet,
+          fingerprint: eventVersionFingerprint,
           previousVersionId: current.id,
           createdByUserId: identity.actualUserId
         }
@@ -750,23 +849,50 @@ export class ClearingService {
 
   async confirmEvent(actorUserId: string, eventId: string, input: ConfirmClearingEventDto) {
     validateCommand(input);
-    validateAllocationInputs(input.allocations);
+    if (isVersionBoundConfirmation(input)) {
+      validateVersionBoundConfirmation(input);
+    } else {
+      validateAllocationInputs(input.allocations ?? []);
+    }
+    const confirmationAction: BusinessAction = isVersionBoundConfirmation(input)
+      ? await this.confirmationAction(eventId)
+      : "clearing.confirm";
     const identity = await this.resolveIdentity(
       actorUserId,
       input.delegatorUserId,
-      "clearing.confirm",
+      confirmationAction,
       "clearing_event",
       eventId
     );
     const fingerprint = commandFingerprint("clearing.event.confirm", eventId, input, identity);
-    return this.serializable(async (tx) => {
+    try {
+      return await this.serializable(async (tx) => {
       const replay = await this.replay(tx, input.idempotencyKey, fingerprint);
       if (replay) return replay;
       const event = await this.lockEvent(tx, eventId);
+      if (
+        (event.kind === "technical_reversal") !==
+        (confirmationAction === "clearing.reconciliation.reverse")
+      ) {
+        throw new ConflictException("清算技术反向动作与冻结事件类型已漂移");
+      }
       assertRevision(event.revision, input.expectedRevision);
       if (event.workflowStatus !== "submitted") throw new ConflictException("只有已提交事件可以确认");
       const version = await this.currentVersion(tx, event);
       if (version.workflowStatus !== "submitted") throw new ConflictException("当前事件版本不是已提交版本");
+      const reconciliationIntent = reconciliationIntentFrom(version.payloadSnapshot);
+      assertRequiredReconciliationIntent(event.kind, reconciliationIntent);
+      if (reconciliationIntent) {
+        validateVersionBoundConfirmation(input);
+        if (
+          input.eventVersionId !== version.id ||
+          input.expectedFingerprint !== version.fingerprint
+        ) {
+          throw new ConflictException("V1 确认必须绑定当前 exact eventVersionId + fingerprint");
+        }
+      } else if (isVersionBoundConfirmation(input)) {
+        throw new BadRequestException("无 V1 的既有确认必须使用原 allocations 契约");
+      }
       let attestation: ClearingEvidenceAttestation | null = null;
       if (version.evidenceLevel === "B") {
         attestation = await tx.clearingEvidenceAttestation.findUnique({
@@ -777,6 +903,13 @@ export class ClearingService {
             "B级证据缺少独立实名 attest，不允许直接确认"
           );
         }
+        if (
+          reconciliationIntent &&
+          input.attestationId &&
+          input.attestationId !== attestation.id
+        ) {
+          throw new ConflictException("V1 确认引用的 attest 与当前 submitted 版本不一致");
+        }
         assertClearingActorsDisjoint(
           actorIds(attestation.attesterActorSetSnapshot),
           identity.actorIds
@@ -784,12 +917,26 @@ export class ClearingService {
       }
       assertClearingActorsDisjoint(actorIds(version.actorSetSnapshot), identity.actorIds);
       const clearingCase = await this.lockCase(tx, event.clearingCaseId);
-      await this.revalidateIdentity(
+      if (
+        reconciliationIntent &&
+        input.expectedCaseRevision !== clearingCase.revision
+      ) {
+        throw new ConflictException("清算事项版本冲突，请刷新后基于最新版本重试");
+      }
+      await this.revalidateIdentityInTransaction(
+        tx,
         identity,
-        "clearing.confirm",
+        confirmationAction,
         "clearing_event",
         eventId
       );
+      if (reconciliationIntent?.operation === "add_coverage") {
+        await this.assertCoverageTargetStillCurrent(
+          tx,
+          clearingCase,
+          reconciliationIntent
+        );
+      }
 
       if (event.kind === "pending_reconciliation") {
         await this.ensurePendingHasWithheld(
@@ -799,7 +946,8 @@ export class ClearingService {
           version,
           input,
           identity,
-          attestation
+          attestation,
+          reconciliationIntent
         );
       }
 
@@ -811,12 +959,18 @@ export class ClearingService {
           throw new ConflictException(error instanceof Error ? error.message : "保证金暂扣累计金额超过权威上限");
         }
       }
-      if (clearingCase.sourceDiscriminator && input.allocations.some((allocation) => allocation.sourceEventVersionId)) {
+      if (
+        !reconciliationIntent &&
+        clearingCase.sourceDiscriminator &&
+        (input.allocations ?? []).some((allocation) => allocation.sourceEventVersionId)
+      ) {
         throw new BadRequestException("#214 分配不得提交客户端事件版本 ID，必须使用服务端权威额度或业务 selectionRef");
       }
 
       const confirmedAgainstCapCents = await this.confirmedAgainstCap(tx, clearingCase.id);
-      const allocations = await this.allocationInputs(tx, clearingCase, event.kind as ClearingEventKind, input, identity.actualUserId);
+      const allocations = reconciliationIntent
+        ? await this.frozenAllocationInputs(tx, clearingCase, reconciliationIntent)
+        : await this.allocationInputs(tx, clearingCase, event.kind as ClearingEventKind, input, identity.actualUserId);
       const plan = buildClearingConfirmationPlan({
         kind: event.kind as ClearingEventKind,
         amountCents: version.amountCents,
@@ -825,7 +979,25 @@ export class ClearingService {
         category: clearingCase.category as never,
         allocations
       });
-      await this.persistConfirmation(tx, clearingCase, event, version, plan, identity);
+      await this.persistConfirmation(
+        tx,
+        clearingCase,
+        event,
+        version,
+        plan,
+        identity,
+        undefined,
+        undefined,
+        reconciliationIntent ?? undefined
+      );
+      if (reconciliationIntent) {
+        await tx.$queryRaw<Array<{ relation_set_hash: string }>>(Prisma.sql`
+          SELECT public."pol275_append_reconciliation_set"(
+            ${version.id},
+            ${version.fingerprint}
+          ) AS relation_set_hash
+        `);
+      }
       const updated = await tx.clearingEvent.update({
         where: { id: event.id },
         data: { workflowStatus: "confirmed", revision: { increment: 1 } }
@@ -841,7 +1013,29 @@ export class ClearingService {
         metadata: auditMetadata(identity, input.expectedRevision, plan)
       });
       return result;
-    });
+      });
+    } catch (error) {
+      if (!(error instanceof ClearingConfirmationAuthorizationDriftException)) {
+        throw error;
+      }
+      await this.serializable((tx) => this.audit.record(tx, {
+        actorUserId,
+        action: "clearing.event.confirm.denied",
+        businessType: "clearing_event",
+        businessId: eventId,
+        metadata: {
+          reasonCode: error.reasonCode,
+          requiredAction: confirmationAction,
+          expectedRevision: input.expectedRevision,
+          resourceFingerprint: opaqueAuditFingerprint(eventId),
+          actualActorFingerprint: opaqueAuditFingerprint(identity.actualUserId),
+          delegatorActorFingerprint: identity.delegatorUserId
+            ? opaqueAuditFingerprint(identity.delegatorUserId)
+            : null
+        }
+      }));
+      throw error;
+    }
   }
 
   async returnEvent(actorUserId: string, eventId: string, input: ReturnClearingEventDto) {
@@ -914,7 +1108,8 @@ export class ClearingService {
       entryKind: OperatingFactEntryKind;
       reversesImpactIds: Readonly<Record<string, string>>;
     },
-    linkedOperatingFactId?: string
+    linkedOperatingFactId?: string,
+    reconciliationIntent?: Record<string, unknown>
   ) {
     await tx.clearingConfirmation.create({
       data: {
@@ -923,27 +1118,88 @@ export class ClearingService {
         confirmerActorSetSnapshot: identity.actorIds
       }
     });
-    for (const allocation of plan.allocations) {
+    const frozenAllocationPlans = reconciliationIntent
+      ? reconciliationEventAllocations(reconciliationIntent)
+      : [];
+    for (const [allocationIndex, allocation] of plan.allocations.entries()) {
+      const frozen = frozenAllocationPlans[allocationIndex];
+      if (
+        reconciliationIntent &&
+        (!frozen ||
+          frozen.allocationSourceKind !== allocation.sourceKind ||
+          frozen.sourceEventVersionId !== allocation.sourceEventVersionId ||
+          positiveCents(frozen.amountCents) !== allocation.amountCents)
+      ) {
+        throw new ConflictException("V1 冻结 allocation plan 与确认计划已漂移");
+      }
       await tx.clearingAllocation.create({
         data: {
+          ...(frozen ? { id: frozen.clearingAllocationId } : {}),
           eventVersionId: version.id,
           sourceEventVersionId: allocation.sourceEventVersionId,
           sourceKind: allocation.sourceKind,
           amountCents: allocation.amountCents,
-          sourceRemainingAfterCents: allocation.sourceRemainingAfterCents
+          sourceRemainingAfterCents: allocation.sourceRemainingAfterCents,
+          ...(allocation.reversesAllocationId
+            ? { reversesAllocationId: allocation.reversesAllocationId }
+            : {})
         }
       });
+    }
+    if (
+      reconciliationIntent &&
+      frozenAllocationPlans.length !== plan.allocations.length
+    ) {
+      throw new ConflictException("V1 冻结 allocation plan 存在遗漏或额外行");
+    }
+    if (
+      event.kind === "technical_reversal" &&
+      reconciliationIntent?.operation === "reverse_resolution"
+    ) {
+      await this.persistTechnicalReversalImpacts(
+        tx,
+        clearingCase,
+        event,
+        version,
+        plan,
+        frozenAllocationPlans,
+        identity
+      );
+      return;
     }
     if (!plan.impacts.length) return;
 
     if (event.kind === "returned") {
       for (const [index, allocation] of plan.allocations.entries()) {
         if (!allocation.sourceEventVersionId) continue;
+        const frozen = frozenAllocationPlans[index];
+        const frozenSource = frozen ? asRecord(frozen.frozenSource) : null;
+        const sourceImpactIds = frozenSource?.kind === "prior_economic_event"
+          ? priorEconomicSourceImpactIds(frozenSource)
+          : null;
         const sourceLinks = await tx.clearingImpactLink.findMany({
-          where: { eventVersionId: allocation.sourceEventVersionId },
+          where: sourceImpactIds
+            ? {
+                eventVersionId: allocation.sourceEventVersionId,
+                id: { in: sourceImpactIds }
+              }
+            : { eventVersionId: allocation.sourceEventVersionId },
           orderBy: { sourceImpactKey: "asc" }
         });
-        if (!sourceLinks.length) throw new ConflictException("退回来源缺少正式经营账投影");
+        if (
+          !sourceLinks.length ||
+          (sourceImpactIds &&
+            (sourceLinks.length !== 2 ||
+              !sourceLinks.every((link) => sourceImpactIds.includes(link.id)) ||
+              ![
+                "original:confirmed-cost",
+                "original:construction-enterprise-funds-decrease"
+              ].every((key) =>
+                sourceLinks.some((link) => link.sourceImpactKey === key)
+              )))
+        ) {
+          throw new ConflictException("退回来源缺少冻结的 exact 经营账投影");
+        }
         const sourceFactIds = new Set(sourceLinks.map((link) => link.operatingFactId));
         if (sourceFactIds.size !== 1) {
           throw new ConflictException("退回来源经营账投影损坏，请停止操作并复核数据");
@@ -966,6 +1222,129 @@ export class ClearingService {
       return;
     }
     await this.appendLedger(tx, clearingCase, event, version, plan, identity, undefined, linkedOperatingFactId);
+  }
+
+  private async persistTechnicalReversalImpacts(
+    tx: Tx,
+    clearingCase: ClearingCase,
+    event: ClearingEvent,
+    version: ClearingEventVersion,
+    plan: ClearingConfirmationPlan,
+    frozenAllocationPlans: ReturnType<typeof reconciliationEventAllocations>,
+    identity: ActorIdentity
+  ) {
+    for (const [index, allocation] of plan.allocations.entries()) {
+      const frozen = frozenAllocationPlans[index];
+      const reversesAllocationId = allocation.reversesAllocationId;
+      if (!frozen || !reversesAllocationId) {
+        throw new ConflictException("技术反向缺少 exact original allocation");
+      }
+      const originalLine = await tx.clearingReconciliationResolutionLine.findUnique({
+        where: { clearingAllocationId: reversesAllocationId },
+        include: {
+          resolution: {
+            include: {
+              decisionEventVersion: {
+                include: { clearingEvent: true, impactLinks: true }
+              }
+            }
+          }
+        }
+      });
+      if (
+        !originalLine ||
+        originalLine.clearingCaseId !== clearingCase.id ||
+        originalLine.resolution.entryKind !== "resolution"
+      ) {
+        throw new ConflictException("技术反向 allocation 未绑定同案原解决行");
+      }
+      const originalKind = originalLine.resolution.decisionEventVersion
+        .clearingEvent.kind as ClearingEventKind;
+      if (
+        originalKind !== "final_confirmed" &&
+        originalKind !== "supplemental" &&
+        originalKind !== "returned"
+      ) {
+        throw new ConflictException("技术反向原解决没有可反向的经济事件");
+      }
+      const forwardPlan = buildClearingConfirmationPlan({
+        kind: originalKind,
+        amountCents: allocation.amountCents,
+        authoritativeGrossCapCents:
+          clearingCase.authoritativeGrossCapCents > allocation.amountCents
+            ? clearingCase.authoritativeGrossCapCents
+            : allocation.amountCents,
+        confirmedAgainstCapCents: 0n,
+        category: requiredClearingCategory(clearingCase.category),
+        allocations: [{
+          sourceEventVersionId: allocation.sourceEventVersionId,
+          sourceKind: allocation.sourceKind,
+          amountCents: allocation.amountCents,
+          sourceRemainingCents: allocation.amountCents
+        }]
+      });
+      const reversePlan: ClearingConfirmationPlan = {
+        allocations: [],
+        impacts: forwardPlan.impacts.map((impact) => ({
+          ...impact,
+          direction:
+            impact.direction === "increase"
+              ? "decrease"
+              : impact.direction === "decrease"
+                ? "increase"
+                : impact.direction
+        }))
+      };
+      const sourceLinks = originalLine.resolution.decisionEventVersion.impactLinks;
+      const originalIntent = reconciliationIntentFrom(
+        originalLine.resolution.decisionEventVersion.payloadSnapshot
+      );
+      if (!originalIntent) {
+        throw new ConflictException("技术反向原解决缺少 V1 冻结意图");
+      }
+      const originalAllocationNo = reconciliationEventAllocations(originalIntent)
+        .find((candidate) => candidate.clearingAllocationId === reversesAllocationId)
+        ?.allocationNo;
+      const sourcePrefix = originalKind === "returned"
+        ? `return-${originalAllocationNo}:`
+        : "original:";
+      if (originalKind === "returned" && !originalAllocationNo) {
+        throw new ConflictException("技术反向无法定位原真实退回 allocation ordinal");
+      }
+      const reversesImpactIds = Object.fromEntries(
+        reversePlan.impacts.map((impact) => {
+          const source = sourceLinks.find(
+            (link) => link.sourceImpactKey === `${sourcePrefix}${impact.sourceImpactKey}`
+          );
+          if (!source) {
+            throw new ConflictException("技术反向缺少 exact original impact");
+          }
+          return [impact.sourceImpactKey, source.id];
+        })
+      );
+      const sourceFactIds = new Set(
+        sourceLinks
+          .filter((link) => Object.values(reversesImpactIds).includes(link.id))
+          .map((link) => link.operatingFactId)
+      );
+      if (sourceFactIds.size !== 1) {
+        throw new ConflictException("技术反向原经营影响不属于唯一事实");
+      }
+      await this.appendLedger(
+        tx,
+        clearingCase,
+        event,
+        version,
+        reversePlan,
+        identity,
+        {
+          suffix: `technical-${index + 1}`,
+          adjustsFactId: [...sourceFactIds][0]!,
+          entryKind: "correction",
+          reversesImpactIds
+        }
+      );
+    }
   }
 
   private async appendLedger(
@@ -1168,34 +1547,76 @@ export class ClearingService {
     version: ClearingEventVersion,
     input: ConfirmClearingEventDto,
     identity: ActorIdentity,
-    attestation: ClearingEvidenceAttestation | null
+    attestation: ClearingEvidenceAttestation | null,
+    reconciliationIntent: Record<string, unknown> | null
   ) {
+    const rawItemDefinition = reconciliationIntent?.itemDefinition;
+    const itemDefinition =
+      rawItemDefinition &&
+      typeof rawItemDefinition === "object" &&
+      !Array.isArray(rawItemDefinition)
+        ? rawItemDefinition as Record<string, unknown>
+        : null;
+    const replacementReliefRevisionId =
+      itemDefinition &&
+      itemDefinition.mode === "replacement" &&
+      itemDefinition.correctsDefinitionReversalId === null &&
+      typeof itemDefinition.replacesRevisionId === "string"
+        ? itemDefinition.replacesRevisionId
+        : null;
     const rows = await tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
-      SELECT
-        (COALESCE((
-          SELECT SUM(v."amountCents")
-          FROM "ClearingEvent" e
-          JOIN "ClearingEventVersion" v ON v."clearingEventId" = e.id
-          JOIN "ClearingConfirmation" c ON c."eventVersionId" = v.id
-          WHERE e."clearingCaseId" = ${clearingCase.id} AND e.kind = 'withheld'
-        ), 0) -
-        COALESCE((
-          SELECT SUM(a."amountCents")
-          FROM "ClearingAllocation" a
-          JOIN "ClearingEventVersion" v ON v.id = a."sourceEventVersionId"
-          JOIN "ClearingEvent" e ON e.id = v."clearingEventId"
-          WHERE e."clearingCaseId" = ${clearingCase.id} AND e.kind = 'withheld'
-        ), 0))::bigint AS remaining
+      SELECT COALESCE(SUM(
+        source."amountCents"
+        - COALESCE((
+            SELECT SUM(CASE WHEN allocation."reversesAllocationId" IS NULL
+              THEN allocation."amountCents" ELSE -allocation."amountCents" END)
+            FROM "ClearingAllocation" allocation
+            WHERE allocation."sourceEventVersionId" = source.id
+          ), 0)
+        - public."pol275_active_coverage_occupancy"(source.id)
+        + CASE WHEN ${replacementReliefRevisionId}::text IS NULL THEN 0 ELSE COALESCE((
+            SELECT SUM(coverage."amountCents") - COALESCE(SUM((
+              SELECT COALESCE(SUM(CASE WHEN resolution."entryKind" = 'resolution'
+                THEN line."amountCents" ELSE -line."amountCents" END), 0)
+              FROM "ClearingReconciliationResolutionLine" line
+              JOIN "ClearingReconciliationResolution" resolution
+                ON resolution.id = line."resolutionId"
+              WHERE line."coverageId" = coverage.id
+            )), 0)
+            FROM "ClearingReconciliationCoverage" coverage
+            WHERE coverage."reconciliationRevisionId" = ${replacementReliefRevisionId}
+              AND coverage."withheldEventVersionId" = source.id
+          ), 0) END
+      ), 0)::bigint AS remaining
+      FROM "ClearingEventVersion" source
+      JOIN "ClearingEvent" source_event
+        ON source_event.id = source."clearingEventId"
+      JOIN "ClearingConfirmation" source_confirmation
+        ON source_confirmation."eventVersionId" = source.id
+      WHERE source."clearingCaseId" = ${clearingCase.id}
+        AND source_event.kind = 'withheld'
     `);
-    if ((rows[0]?.remaining ?? 0n) > 0n) return;
-    const pairedAmount = input.pairedWithheldAmountCents
-      ? positiveCents(input.pairedWithheldAmountCents)
-      : 0n;
+    const remaining = rows[0]?.remaining ?? 0n;
+    const plannedPair = reconciliationIntent
+      ? plannedPairedWithheldFrom(reconciliationIntent)
+      : null;
+    if (remaining > 0n) {
+      if (plannedPair) {
+        throw new ConflictException("已有可用暂扣时不得执行冻结的自动配对计划");
+      }
+      return;
+    }
+    const pairedAmount = reconciliationIntent
+      ? plannedPair?.amountCents ?? 0n
+      : input.pairedWithheldAmountCents
+        ? positiveCents(input.pairedWithheldAmountCents)
+        : 0n;
     if (pairedAmount !== version.amountCents) {
       throw new BadRequestException("无暂扣余额时，待核对事件必须在同一事务配对等额暂扣");
     }
     const pairedEvent = await tx.clearingEvent.create({
       data: {
+        ...(plannedPair ? { id: plannedPair.clearingEventId } : {}),
         clearingCaseId: clearingCase.id,
         kind: "withheld",
         workflowStatus: "confirmed",
@@ -1206,6 +1627,7 @@ export class ClearingService {
     });
     const pairedVersion = await tx.clearingEventVersion.create({
       data: {
+        ...(plannedPair ? { id: plannedPair.eventVersionId } : {}),
         clearingEventId: pairedEvent.id,
         clearingCaseId: clearingCase.id,
         versionNo: 1,
@@ -1214,7 +1636,9 @@ export class ClearingService {
         evidenceLevel: version.evidenceLevel,
         payloadSnapshot: { pairedPendingEventId: event.id },
         actorSetSnapshot: actorIds(version.actorSetSnapshot),
-        fingerprint: `${version.fingerprint}:paired-withheld`,
+        fingerprint:
+          plannedPair?.eventVersionFingerprint ??
+          `${version.fingerprint}:paired-withheld`,
         createdByUserId: version.createdByUserId
       }
     });
@@ -1252,7 +1676,8 @@ export class ClearingService {
   ): Promise<ClearingAllocationInput[]> {
     const confirmedAgainstCapCents = await this.confirmedAgainstCap(tx, clearingCase.id);
     const output: ClearingAllocationInput[] = [];
-    for (const allocation of input.allocations) {
+    const plannedConsumptionBySource = new Map<string, bigint>();
+    for (const allocation of input.allocations ?? []) {
       const amountCents = positiveCents(allocation.amountCents);
       if (allocation.sourceKind === "authority_cap") {
         if (allocation.sourceEventVersionId) throw new BadRequestException("权威额度不得引用来源版本");
@@ -1268,7 +1693,11 @@ export class ClearingService {
       if (clearingCase.sourceDiscriminator && allocation.sourceSelectionRef) {
         if (!this.selectionRefs || !clearingCase.authoritySnapshotRef) throw new ConflictException("#214 分配 selectionRef 服务未注册，必须失败关闭");
         const candidates = await tx.clearingEventVersion.findMany({
-          where: { clearingCaseId: clearingCase.id, workflowStatus: "confirmed" },
+          where: {
+            clearingCaseId: clearingCase.id,
+            confirmation: { isNot: null },
+            clearingEvent: { workflowStatus: "confirmed" }
+          },
           include: { clearingEvent: true, confirmation: true }
         });
         const selected = candidates.find((candidate) =>
@@ -1278,8 +1707,11 @@ export class ClearingService {
             allocation.sourceSelectionRef ?? "",
             {
               actorUserId,
-              authorityVersionId: clearingCase.id,
-              authorityFingerprint: clearingCase.authoritySnapshotRef ?? "",
+              authorityVersionId:
+                clearingCase.authorityVersionId ?? clearingCase.id,
+              authorityFingerprint:
+                clearingCase.authoritySnapshotRef ?? clearingCase.id,
+              clearingCaseId: clearingCase.id,
               purpose: "allocation",
               selectedKey: candidate.id,
               revision: clearingCase.revision
@@ -1297,25 +1729,600 @@ export class ClearingService {
         !source ||
         source.clearingCaseId !== clearingCase.id ||
         !source.confirmation ||
+        source.clearingEvent.workflowStatus !== "confirmed" ||
         source.clearingEvent.kind !== allocation.sourceKind
       ) {
         throw new BadRequestException("清算分配来源不存在、未确认或类型不一致");
       }
-      const used = await tx.clearingAllocation.aggregate({
-        where: { sourceEventVersionId: resolvedSourceId },
-        _sum: { amountCents: true }
-      });
+      if (
+        kind === "returned" &&
+        (allocation.sourceKind === "final_confirmed" ||
+          allocation.sourceKind === "supplemental")
+      ) {
+        await this.lockReturnSourceEventCompatibility(
+          tx,
+          resolvedSourceId,
+          "legacy"
+        );
+      }
+      const capacity = await this.lockSourceCapacity(
+        tx,
+        resolvedSourceId,
+        allocation.sourceKind
+      );
+      if (!capacity) {
+        throw new ConflictException("清算分配来源资格或容量已漂移，请刷新后重试");
+      }
+      const plannedConsumption =
+        (plannedConsumptionBySource.get(resolvedSourceId) ?? 0n) + amountCents;
+      if (plannedConsumption > capacity.usable) {
+        throw new ConflictException("清算分配与有效覆盖合计超过来源余额");
+      }
+      plannedConsumptionBySource.set(resolvedSourceId, plannedConsumption);
       output.push({
         sourceEventVersionId: resolvedSourceId,
         sourceKind: allocation.sourceKind,
         amountCents,
-        sourceRemainingCents: source.amountCents - (used._sum.amountCents ?? 0n)
+        sourceRemainingCents: capacity.remaining
       });
     }
     if (!["final_confirmed", "supplemental", "returned"].includes(kind) && output.length) {
       throw new BadRequestException("当前事件类型不接受金额分配");
     }
     return output;
+  }
+
+  private async frozenAllocationInputs(
+    tx: Tx,
+    clearingCase: ClearingCase,
+    reconciliationIntent: Record<string, unknown>
+  ): Promise<ClearingAllocationInput[]> {
+    const plans = reconciliationEventAllocations(reconciliationIntent);
+    const output: ClearingAllocationInput[] = [];
+    const plannedConsumptionBySource = new Map<string, bigint>();
+    const plannedCoverageReliefBySource = new Map<string, bigint>();
+    for (const plan of plans) {
+      const amountCents = positiveCents(plan.amountCents);
+      const frozenSource = asRecord(plan.frozenSource);
+      const reversesAllocationId = await this.reversedAllocationIdFromFrozenIntent(
+        tx,
+        clearingCase,
+        reconciliationIntent,
+        plan
+      );
+      const reversedAllocation = reversesAllocationId
+        ? await this.assertFrozenAllocationReversal(
+            tx,
+            clearingCase,
+            reversesAllocationId,
+            plan.allocationSourceKind,
+            plan.sourceEventVersionId,
+            amountCents
+          )
+        : null;
+      if (plan.allocationSourceKind === "authority_cap") {
+        if (
+          frozenSource.kind !== "authority_cap" ||
+          frozenSource.authorityVersionId !== clearingCase.authorityVersionId ||
+          frozenSource.authoritySnapshotRef !== clearingCase.authoritySnapshotRef ||
+          frozenSource.sourceDiscriminator !== clearingCase.sourceDiscriminator
+        ) {
+          throw new ConflictException("V1 冻结权威额度坐标已漂移，必须 revise");
+        }
+        const [cap] = await tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
+          SELECT (${clearingCase.authoritativeGrossCapCents}::bigint - COALESCE(SUM(
+            CASE WHEN allocation."reversesAllocationId" IS NULL
+              THEN allocation."amountCents" ELSE -allocation."amountCents" END
+          ), 0))::bigint AS remaining
+          FROM "ClearingAllocation" allocation
+          JOIN "ClearingEventVersion" version
+            ON version.id = allocation."eventVersionId"
+          WHERE version."clearingCaseId" = ${clearingCase.id}
+            AND allocation."sourceKind" = 'authority_cap'
+        `);
+        output.push({
+          sourceEventVersionId: null,
+          sourceKind: "authority_cap",
+          amountCents,
+          sourceRemainingCents:
+            cap?.remaining ?? clearingCase.authoritativeGrossCapCents,
+          reversesAllocationId: reversedAllocation?.id ?? null
+        });
+        continue;
+      }
+      const sourceEventVersionId = requiredText(
+        plan.sourceEventVersionId,
+        "V1 冻结分配缺少来源事件版本"
+      );
+      const source = await tx.clearingEventVersion.findUnique({
+        where: { id: sourceEventVersionId },
+        include: { clearingEvent: true, confirmation: true }
+      });
+      if (
+        !source ||
+        source.clearingCaseId !== clearingCase.id ||
+        !source.confirmation ||
+        source.clearingEvent.workflowStatus !== "confirmed" ||
+        source.clearingEvent.kind !== plan.allocationSourceKind
+      ) {
+        throw new ConflictException("V1 冻结来源已经漂移，必须 revise 后重新提交");
+      }
+      const frozenEventVersionId =
+        frozenSource.kind === "withheld_coverage"
+          ? frozenSource.withheldEventVersionId
+          : frozenSource.sourceEventVersionId;
+      const frozenFingerprint =
+        frozenSource.kind === "withheld_coverage"
+          ? frozenSource.withheldEventVersionFingerprint
+          : frozenSource.sourceEventVersionFingerprint;
+      if (
+        (frozenEventVersionId !== undefined &&
+          frozenEventVersionId !== sourceEventVersionId) ||
+        frozenFingerprint !== source.fingerprint
+      ) {
+        throw new ConflictException("V1 冻结来源 fingerprint 已漂移，必须 revise");
+      }
+      if (frozenSource.kind === "prior_economic_event") {
+        const sourceClearingAllocationId = requiredText(
+          frozenSource.sourceClearingAllocationId,
+          "V1 冻结既有经济 allocation 坐标损坏"
+        );
+        const capacity = await this.lockPriorEconomicAllocationCapacity(
+          tx,
+          sourceEventVersionId,
+          sourceClearingAllocationId,
+          priorEconomicSourceImpactIds(frozenSource)
+        );
+        if (!reversedAllocation) {
+          const sourceKey = `prior_economic_event:${sourceClearingAllocationId}`;
+          const plannedConsumption =
+            (plannedConsumptionBySource.get(sourceKey) ?? 0n) + amountCents;
+          if (plannedConsumption > capacity.remaining) {
+            throw new ConflictException("既有经济事件可退回金额已漂移，请重新准备版本");
+          }
+          plannedConsumptionBySource.set(sourceKey, plannedConsumption);
+          output.push({
+            sourceEventVersionId,
+            sourceKind: plan.allocationSourceKind,
+            amountCents,
+            sourceRemainingCents: capacity.remaining,
+            sourceCapacityKey: sourceKey
+          });
+          continue;
+        }
+      }
+      const available = await this.lockSourceCapacity(
+        tx,
+        sourceEventVersionId,
+        plan.allocationSourceKind
+      );
+      if (!available) {
+        throw new ConflictException("V1 冻结来源资格或容量已漂移，必须 revise");
+      }
+      const frozenCoverageRelief =
+        plan.allocationSourceKind === "withheld" &&
+        allocationConsumesFrozenCoverage(reconciliationIntent, plan)
+          ? amountCents
+          : 0n;
+      if (!reversedAllocation) {
+        const sourceKey = `${plan.allocationSourceKind}:${sourceEventVersionId}`;
+        const plannedConsumption =
+          (plannedConsumptionBySource.get(sourceKey) ?? 0n) + amountCents;
+        const plannedCoverageRelief =
+          (plannedCoverageReliefBySource.get(sourceKey) ?? 0n) +
+          frozenCoverageRelief;
+        if (plannedConsumption > available.usable + plannedCoverageRelief) {
+          throw new ConflictException("V1 冻结来源容量已漂移，必须 revise");
+        }
+        plannedConsumptionBySource.set(sourceKey, plannedConsumption);
+        plannedCoverageReliefBySource.set(sourceKey, plannedCoverageRelief);
+      }
+      output.push({
+        sourceEventVersionId,
+        sourceKind: plan.allocationSourceKind,
+        amountCents,
+        sourceRemainingCents: available.remaining,
+        reversesAllocationId: reversedAllocation?.id ?? null
+      });
+    }
+    return output;
+  }
+
+  private async assertCoverageTargetStillCurrent(
+    tx: Tx,
+    clearingCase: ClearingCase,
+    reconciliationIntent: Record<string, unknown>
+  ): Promise<void> {
+    if (!Array.isArray(reconciliationIntent.coverages)) {
+      throw new ConflictException("V1 冻结补充覆盖计划损坏，请停止操作并复核数据");
+    }
+    const targetRevisionIds = new Set(
+      reconciliationIntent.coverages.map((entry) =>
+        requiredText(
+          asRecord(entry).reconciliationRevisionId,
+          "V1 冻结补充覆盖缺少目标 revision"
+        )
+      )
+    );
+    if (targetRevisionIds.size !== 1) {
+      throw new ConflictException("V1 冻结补充覆盖必须绑定唯一目标 revision");
+    }
+    const targetRevisionId = [...targetRevisionIds][0]!;
+    const [target] = await tx.$queryRaw<Array<{
+      itemId: string;
+      revisionNo: number;
+    }>>(Prisma.sql`
+      SELECT revision."itemId", revision."revisionNo"
+      FROM "ClearingReconciliationRevision" revision
+      WHERE revision.id = ${targetRevisionId}
+        AND revision."clearingCaseId" = ${clearingCase.id}
+      FOR UPDATE
+    `);
+    if (!target) {
+      throw new ConflictException("V1 冻结补充覆盖目标 revision 已漂移");
+    }
+    const [state] = await tx.$queryRaw<Array<{
+      reversed: boolean;
+      hasLaterEffective: boolean;
+    }>>(Prisma.sql`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM "ClearingReconciliationDefinitionReversal" reversal
+          WHERE reversal."targetRevisionId" = ${targetRevisionId}
+        ) AS reversed,
+        EXISTS (
+          SELECT 1
+          FROM "ClearingReconciliationRevision" later
+          WHERE later."itemId" = ${target.itemId}
+            AND later."revisionNo" > ${target.revisionNo}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "ClearingReconciliationDefinitionReversal" later_reversal
+              WHERE later_reversal."targetRevisionId" = later.id
+            )
+        ) AS "hasLaterEffective"
+    `);
+    if (state?.reversed || state?.hasLaterEffective) {
+      throw new ConflictException("只能给当前有效 revision 补充覆盖");
+    }
+  }
+
+  private async lockPriorEconomicAllocationCapacity(
+    tx: Tx,
+    sourceEventVersionId: string,
+    sourceClearingAllocationId: string,
+    sourceImpactIds: readonly string[]
+  ): Promise<{ remaining: bigint }> {
+    await this.lockReturnSourceEventCompatibility(
+      tx,
+      sourceEventVersionId,
+      "v1"
+    );
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:allocation:' || ${sourceClearingAllocationId}, 0)
+      )
+    `);
+    const [original] = await tx.$queryRaw<Array<{
+      eventVersionId: string;
+      amountCents: bigint;
+      reversesAllocationId: string | null;
+      sourceKind: string;
+      sourceStatus: string;
+    }>>(Prisma.sql`
+      SELECT allocation."eventVersionId", allocation."amountCents",
+             allocation."reversesAllocationId", source_event.kind AS "sourceKind",
+             source_event."workflowStatus" AS "sourceStatus"
+      FROM "ClearingAllocation" allocation
+      JOIN "ClearingEventVersion" source
+        ON source.id = allocation."eventVersionId"
+      JOIN "ClearingEvent" source_event
+        ON source_event.id = source."clearingEventId"
+      JOIN "ClearingConfirmation" source_confirmation
+        ON source_confirmation."eventVersionId" = source.id
+      WHERE allocation.id = ${sourceClearingAllocationId}
+      FOR UPDATE OF allocation, source, source_event
+    `);
+    const sourceLinks = await tx.clearingImpactLink.findMany({
+      where: {
+        id: { in: [...sourceImpactIds] },
+        eventVersionId: sourceEventVersionId
+      },
+      select: { id: true, sourceImpactKey: true, operatingFactId: true }
+    });
+    if (
+      !original ||
+      original.eventVersionId !== sourceEventVersionId ||
+      original.reversesAllocationId !== null ||
+      original.sourceStatus !== "confirmed" ||
+      (original.sourceKind !== "final_confirmed" &&
+        original.sourceKind !== "supplemental") ||
+      sourceLinks.length !== 2 ||
+      !sourceLinks.every((link) => sourceImpactIds.includes(link.id)) ||
+      new Set(sourceLinks.map((link) => link.operatingFactId)).size !== 1 ||
+      !sourceLinks.some(
+        (link) =>
+          link.id === sourceImpactIds[0] &&
+          link.sourceImpactKey === "original:confirmed-cost"
+      ) ||
+      !sourceLinks.some(
+        (link) =>
+          link.id === sourceImpactIds[1] &&
+          link.sourceImpactKey ===
+            "original:construction-enterprise-funds-decrease"
+      )
+    ) {
+      throw new ConflictException("V1 冻结既有经济来源链已漂移，必须 revise");
+    }
+    const [capacity] = await tx.$queryRaw<Array<{ remaining: bigint }>>(Prisma.sql`
+      SELECT (
+        original."amountCents"
+        - COALESCE((
+            SELECT SUM(direct_reversal."amountCents")
+            FROM "ClearingAllocation" direct_reversal
+            WHERE direct_reversal."reversesAllocationId" = original.id
+          ), 0)
+        - COALESCE((
+            SELECT SUM(
+              returned_allocation."amountCents" - COALESCE((
+                SELECT SUM(return_reversal."amountCents")
+                FROM "ClearingAllocation" return_reversal
+                WHERE return_reversal."reversesAllocationId" = returned_allocation.id
+              ), 0)
+            )
+            FROM "ClearingAllocation" returned_allocation
+            JOIN "ClearingEventVersion" returned_version
+              ON returned_version.id = returned_allocation."eventVersionId"
+            JOIN "ClearingEvent" returned_event
+              ON returned_event.id = returned_version."clearingEventId"
+            JOIN "ClearingConfirmation" returned_confirmation
+              ON returned_confirmation."eventVersionId" = returned_version.id
+            WHERE returned_event.kind = 'returned'
+              AND returned_event."workflowStatus" = 'confirmed'
+              AND returned_allocation."reversesAllocationId" IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(
+                  returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+                ) frozen_plan
+                WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+                  AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+                  AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = original.id
+              )
+          ), 0)
+      )::bigint AS remaining
+      FROM "ClearingAllocation" original
+      WHERE original.id = ${sourceClearingAllocationId}
+    `);
+    if (!capacity || capacity.remaining < 0n) {
+      throw new ConflictException("既有经济事件原 allocation 占用已损坏");
+    }
+    return capacity;
+  }
+
+  private async lockSourceCapacity(
+    tx: Tx,
+    sourceEventVersionId: string,
+    sourceKind: Exclude<ClearingAllocationInput["sourceKind"], "authority_cap">
+  ): Promise<{ remaining: bigint; usable: bigint } | null> {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:event-version:' || ${sourceEventVersionId}, 0)
+      )
+    `);
+    const [capacity] = await tx.$queryRaw<Array<{
+      remaining: bigint;
+      usable: bigint;
+    }>>(Prisma.sql`
+      SELECT (
+        source."amountCents" - COALESCE(SUM(
+          CASE WHEN allocation."reversesAllocationId" IS NULL
+            THEN allocation."amountCents" ELSE -allocation."amountCents" END
+        ), 0)
+      )::bigint AS remaining,
+      (
+        source."amountCents" - COALESCE(SUM(
+          CASE WHEN allocation."reversesAllocationId" IS NULL
+            THEN allocation."amountCents" ELSE -allocation."amountCents" END
+        ), 0)
+        - CASE WHEN ${sourceKind} = 'withheld'
+            THEN public."pol275_active_coverage_occupancy"(source.id) ELSE 0 END
+      )::bigint AS usable
+      FROM "ClearingEventVersion" source
+      JOIN "ClearingEvent" source_event
+        ON source_event.id = source."clearingEventId"
+      JOIN "ClearingConfirmation" source_confirmation
+        ON source_confirmation."eventVersionId" = source.id
+      LEFT JOIN "ClearingAllocation" allocation
+        ON allocation."sourceEventVersionId" = source.id
+      WHERE source.id = ${sourceEventVersionId}
+        AND source_event.kind = ${sourceKind}
+        AND source_event."workflowStatus" = 'confirmed'
+      GROUP BY source.id, source."amountCents"
+    `);
+    return capacity ?? null;
+  }
+
+  private async lockReturnSourceEventCompatibility(
+    tx: Tx,
+    sourceEventVersionId: string,
+    mode: "legacy" | "v1"
+  ): Promise<void> {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:event-version:' || ${sourceEventVersionId}, 0)
+      )
+    `);
+    const [conflict] = await tx.$queryRaw<Array<{ incompatible: boolean }>>(
+      mode === "v1"
+        ? Prisma.sql`
+            SELECT EXISTS (
+              SELECT 1
+              FROM "ClearingAllocation" returned_allocation
+              JOIN "ClearingEventVersion" returned_version
+                ON returned_version.id = returned_allocation."eventVersionId"
+              JOIN "ClearingEvent" returned_event
+                ON returned_event.id = returned_version."clearingEventId"
+              JOIN "ClearingConfirmation" returned_confirmation
+                ON returned_confirmation."eventVersionId" = returned_version.id
+              WHERE returned_event.kind = 'returned'
+                AND returned_event."workflowStatus" = 'confirmed'
+                AND returned_allocation."reversesAllocationId" IS NULL
+                AND returned_allocation."sourceEventVersionId" = ${sourceEventVersionId}
+                AND returned_version."payloadSnapshot"
+                  -> 'reconciliationIntent' ->> 'schema'
+                  IS DISTINCT FROM 'clearing_reconciliation_intent/V1'
+            ) AS incompatible
+          `
+        : Prisma.sql`
+            SELECT EXISTS (
+              SELECT 1
+              FROM "ClearingAllocation" returned_allocation
+              JOIN "ClearingEventVersion" returned_version
+                ON returned_version.id = returned_allocation."eventVersionId"
+              JOIN "ClearingEvent" returned_event
+                ON returned_event.id = returned_version."clearingEventId"
+              JOIN "ClearingConfirmation" returned_confirmation
+                ON returned_confirmation."eventVersionId" = returned_version.id
+              WHERE returned_event.kind = 'returned'
+                AND returned_event."workflowStatus" = 'confirmed'
+                AND returned_allocation."reversesAllocationId" IS NULL
+                AND returned_allocation."sourceEventVersionId" = ${sourceEventVersionId}
+                AND returned_version."payloadSnapshot"
+                  -> 'reconciliationIntent' ->> 'schema'
+                  = 'clearing_reconciliation_intent/V1'
+                AND EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(
+                    returned_version."payloadSnapshot"
+                      -> 'reconciliationIntent' -> 'eventAllocations'
+                  ) frozen_plan
+                  WHERE frozen_plan ->> 'clearingAllocationId'
+                    = returned_allocation.id
+                    AND frozen_plan -> 'frozenSource' ->> 'kind'
+                      = 'prior_economic_event'
+                )
+            ) AS incompatible
+          `
+    );
+    if (conflict?.incompatible) {
+      throw new ConflictException(
+        mode === "v1"
+          ? "既有经济事件已有无法精确映射 allocation 的旧退回，必须失败关闭"
+          : "既有经济事件已进入精确 allocation 退回链，旧退回不得混用"
+      );
+    }
+  }
+
+  private async reversedAllocationIdFromFrozenIntent(
+    tx: Tx,
+    clearingCase: ClearingCase,
+    reconciliationIntent: Record<string, unknown>,
+    plan: ReturnType<typeof reconciliationEventAllocations>[number]
+  ): Promise<string | null> {
+    const reversedResolutionLineId = reversedResolutionLineIdFromIntent(
+      reconciliationIntent,
+      plan
+    );
+    if (!reversedResolutionLineId) return null;
+    const originalLine = await tx.clearingReconciliationResolutionLine.findUnique({
+      where: { id: reversedResolutionLineId },
+      select: {
+        clearingCaseId: true,
+        clearingAllocationId: true
+      }
+    });
+    if (
+      !originalLine ||
+      originalLine.clearingCaseId !== clearingCase.id ||
+      !originalLine.clearingAllocationId
+    ) {
+      throw new ConflictException("技术反向未精确引用同案原经济解决行");
+    }
+    return originalLine.clearingAllocationId;
+  }
+
+  private async assertFrozenAllocationReversal(
+    tx: Tx,
+    clearingCase: ClearingCase,
+    reversesAllocationId: string,
+    sourceKind: ClearingAllocationInput["sourceKind"],
+    sourceEventVersionId: string | null,
+    amountCents: bigint
+  ) {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended('pol275:allocation:' || ${reversesAllocationId}, 0)
+      )
+    `);
+    const original = await tx.clearingAllocation.findUnique({
+      where: { id: reversesAllocationId },
+      include: {
+        eventVersion: { select: { clearingCaseId: true } }
+      }
+    });
+    if (
+      !original ||
+      original.eventVersion.clearingCaseId !== clearingCase.id ||
+      original.reversesAllocationId !== null ||
+      original.sourceKind !== sourceKind ||
+      original.sourceEventVersionId !== sourceEventVersionId
+    ) {
+      throw new ConflictException("技术反向未精确引用同案原 allocation");
+    }
+    const reversed = await tx.clearingAllocation.aggregate({
+      where: { reversesAllocationId: original.id },
+      _sum: { amountCents: true }
+    });
+    const [priorReturns] = await tx.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+      SELECT COALESCE(SUM(
+        returned_allocation."amountCents" - COALESCE((
+          SELECT SUM(return_reversal."amountCents")
+          FROM "ClearingAllocation" return_reversal
+          WHERE return_reversal."reversesAllocationId" = returned_allocation.id
+        ), 0)
+      ), 0)::bigint AS total
+      FROM "ClearingAllocation" returned_allocation
+      JOIN "ClearingEventVersion" returned_version
+        ON returned_version.id = returned_allocation."eventVersionId"
+      JOIN "ClearingEvent" returned_event
+        ON returned_event.id = returned_version."clearingEventId"
+      JOIN "ClearingConfirmation" returned_confirmation
+        ON returned_confirmation."eventVersionId" = returned_version.id
+      WHERE returned_event.kind = 'returned'
+        AND returned_event."workflowStatus" = 'confirmed'
+        AND returned_allocation."reversesAllocationId" IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            returned_version."payloadSnapshot" -> 'reconciliationIntent' -> 'eventAllocations'
+          ) frozen_plan
+          WHERE frozen_plan ->> 'clearingAllocationId' = returned_allocation.id
+            AND frozen_plan -> 'frozenSource' ->> 'kind' = 'prior_economic_event'
+            AND frozen_plan -> 'frozenSource' ->> 'sourceClearingAllocationId' = ${original.id}
+        )
+    `);
+    if (
+      amountCents >
+      original.amountCents -
+        (reversed._sum.amountCents ?? 0n) -
+        (priorReturns?.total ?? 0n)
+    ) {
+      throw new ConflictException("技术反向超过原 allocation 剩余效果");
+    }
+    return original;
+  }
+
+  private async confirmationAction(eventId: string): Promise<BusinessAction> {
+    const event = await this.prisma.clearingEvent.findUnique({
+      where: { id: requiredText(eventId, "清算事件不能为空") },
+      select: { kind: true }
+    });
+    if (!event) throw new NotFoundException("清算事件不存在，请刷新后重试");
+    return event.kind === "technical_reversal"
+      ? "clearing.reconciliation.reverse"
+      : "clearing.confirm";
   }
 
   private async confirmedAgainstCap(tx: Tx, caseId: string): Promise<bigint> {
@@ -1401,7 +2408,87 @@ export class ClearingService {
       resourceId
     );
     if (refreshed.actorIds.join("|") !== identity.actorIds.join("|")) {
-      throw new ConflictException("清分确认前权限或委托已变化，请刷新后重试");
+      throw new ConflictException("清分操作前权限或委托已变化，请刷新后重试");
+    }
+  }
+
+  private async revalidateIdentityInTransaction(
+    tx: Tx,
+    identity: ActorIdentity,
+    action: BusinessAction,
+    resourceType: "clearing_project" | "clearing_case" | "clearing_event",
+    resourceId: string
+  ) {
+    const actorIds = [...identity.actorIds].sort();
+    await tx.$queryRaw(Prisma.sql`
+      /* pol275_confirmation_authorization_lock */
+      WITH locked_users AS MATERIALIZED (
+        SELECT "id"
+        FROM "User"
+        WHERE "id" IN (${Prisma.join(actorIds)})
+        ORDER BY "id"
+        FOR UPDATE
+      ), locked_positions AS MATERIALIZED (
+        SELECT assignment."id" AS assignment_id, position."id" AS position_id
+        FROM "UserPosition" assignment
+        JOIN "Position" position ON position."id" = assignment."positionId"
+        WHERE assignment."userId" IN (${Prisma.join(actorIds)})
+          AND assignment."projectId" IS NULL
+        ORDER BY assignment."id", position."id"
+        FOR UPDATE OF assignment, position
+      ), locked_delegations AS MATERIALIZED (
+        SELECT delegation."id"
+        FROM "ApprovalDelegation" delegation
+        WHERE delegation."toUserId" = ${identity.actualUserId}
+          AND delegation."fromUserId" IS NOT DISTINCT FROM ${identity.delegatorUserId}
+          AND delegation."actionKey" = ${action}
+          AND delegation."resourceType" = ${resourceType}
+          AND delegation."resourceId" = ${resourceId}
+        ORDER BY delegation."id"
+        FOR UPDATE
+      )
+      SELECT
+        (SELECT COUNT(*) FROM locked_users)::bigint AS "lockedUsers",
+        (SELECT COUNT(*) FROM locked_positions)::bigint AS "lockedPositions",
+        (SELECT COUNT(*) FROM locked_delegations)::bigint AS "lockedDelegations"
+    `);
+
+    let actualRoles;
+    try {
+      actualRoles = await this.roles.resolveActiveRoleScopesInTransaction(
+        tx,
+        identity.actualUserId
+      );
+    } catch {
+      throw new ClearingConfirmationAuthorizationDriftException();
+    }
+    if (!identity.delegatorUserId) {
+      if (!canPerform(action, actualRoles)) {
+        throw new ClearingConfirmationAuthorizationDriftException();
+      }
+      return;
+    }
+
+    const activeDelegators = await activeScopedApprovalDelegatorIds(
+      tx,
+      identity.actualUserId,
+      { actionKey: action, resourceType, resourceId },
+      new Date()
+    );
+    if (!activeDelegators.includes(identity.delegatorUserId)) {
+      throw new ClearingConfirmationAuthorizationDriftException();
+    }
+    let delegatorRoles;
+    try {
+      delegatorRoles = await this.roles.resolveActiveRoleScopesInTransaction(
+        tx,
+        identity.delegatorUserId
+      );
+    } catch {
+      throw new ClearingConfirmationAuthorizationDriftException();
+    }
+    if (!canPerform(action, delegatorRoles)) {
+      throw new ClearingConfirmationAuthorizationDriftException();
     }
   }
 
@@ -1510,10 +2597,37 @@ function isAuthorityClearingCategory(category: CreateClearingCaseDto["category"]
 function validateEventInput(input: CreateClearingEventDto) {
   validateCommand(input);
   if (!isClearingEventKind(input.kind)) throw new BadRequestException("清分事件类型不正确");
+  if (requiresReconciliationIntent(input.kind) && input.reconciliationIntent === undefined) {
+    throw new BadRequestException("当前清算事件类型必须使用 V1 核对意图");
+  }
   if (input.amountCents !== undefined) positiveCents(input.amountCents);
   if (input.evidenceLevel !== undefined && !['A', 'B'].includes(input.evidenceLevel)) throw new BadRequestException("清分正式流程只接受 A/B 级证据");
   if (input.payload !== undefined && (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload))) {
     throw new BadRequestException("清分事件业务快照格式不正确");
+  }
+  if (
+    input.reconciliationIntent !== undefined &&
+    (!input.reconciliationIntent ||
+      typeof input.reconciliationIntent !== "object" ||
+      Array.isArray(input.reconciliationIntent))
+  ) {
+    throw new BadRequestException("核对意图格式不正确");
+  }
+  if (input.reconciliationIntent !== undefined && input.payload !== undefined) {
+    throw new BadRequestException("V1 核对意图由服务端独立冻结，不接受额外 payload");
+  }
+}
+
+function requiresReconciliationIntent(kind: string): boolean {
+  return ["coverage_added", "continued_withheld", "technical_reversal"].includes(kind);
+}
+
+function assertRequiredReconciliationIntent(
+  kind: string,
+  intent: Record<string, unknown> | null
+): void {
+  if (requiresReconciliationIntent(kind) && !intent) {
+    throw new ConflictException("当前清算事件缺少 V1 核对意图，必须 revise 后重试");
   }
 }
 
@@ -1527,14 +2641,18 @@ function authorityEventInput(
   payload: Record<string, unknown>;
 } {
   if (!clearingCase.sourceDiscriminator) {
-    if (input.amountCents === undefined || input.evidenceLevel === undefined || input.payload === undefined) {
+    if (
+      input.amountCents === undefined ||
+      input.evidenceLevel === undefined ||
+      (input.payload === undefined && input.reconciliationIntent === undefined)
+    ) {
       throw new BadRequestException("清分事件必须提供金额、证据等级和业务快照");
     }
     return {
       amountCents: input.amountCents,
       payableRef: optionalText(input.payableRef),
       evidenceLevel: input.evidenceLevel,
-      payload: input.payload
+      payload: input.payload ?? {}
     };
   }
   if (
@@ -1548,9 +2666,11 @@ function authorityEventInput(
   const businessReason = requiredText(input.businessReason, "#214 清算事件必须填写业务原因");
   const evidenceRef = optionalText(input.evidenceRef);
   const cap = BigInt(clearingCase.authoritativeGrossCapCents);
-  const amount = clearingCase.sourceDiscriminator === "construction_enterprise_assigned_wage"
-    ? cap
-    : positiveCents(input.amountCents);
+  const amount = input.reconciliationIntent
+    ? positiveCents(input.amountCents)
+    : clearingCase.sourceDiscriminator === "construction_enterprise_assigned_wage"
+      ? cap
+      : positiveCents(input.amountCents);
   if (amount > cap) throw new ConflictException("#214 清算事件金额超过服务端权威上限");
   return {
     amountCents: amount.toString(),
@@ -1608,6 +2728,326 @@ function validateAllocationInputs(value: unknown): void {
   }
 }
 
+function isVersionBoundConfirmation(input: ConfirmClearingEventDto): boolean {
+  return [
+    "eventVersionId",
+    "expectedFingerprint",
+    "expectedCaseRevision",
+    "confirmed",
+    "attestationId"
+  ].some((key) => Object.hasOwn(input, key));
+}
+
+function validateVersionBoundConfirmation(input: ConfirmClearingEventDto): void {
+  const allowedKeys = new Set([
+    "idempotencyKey",
+    "expectedRevision",
+    "delegatorUserId",
+    "eventVersionId",
+    "expectedFingerprint",
+    "expectedCaseRevision",
+    "confirmed",
+    "attestationId"
+  ]);
+  if (
+    Object.keys(input).some((key) => !allowedKeys.has(key)) ||
+    Object.hasOwn(input, "allocations") ||
+    Object.hasOwn(input, "pairedWithheldAmountCents")
+  ) {
+    throw new BadRequestException("V1 确认不接受关系或分配覆盖字段");
+  }
+  requiredText(input.eventVersionId, "V1 确认必须引用 exact eventVersionId");
+  if (
+    typeof input.expectedFingerprint !== "string" ||
+    !/^[0-9a-f]{64}$/.test(input.expectedFingerprint)
+  ) {
+    throw new BadRequestException("V1 确认必须引用 lowercase SHA-256 fingerprint");
+  }
+  if (
+    !Number.isSafeInteger(input.expectedCaseRevision) ||
+    (input.expectedCaseRevision ?? -1) < 0
+  ) {
+    throw new BadRequestException("V1 确认必须提供非负 expectedCaseRevision");
+  }
+  if (input.confirmed !== true) {
+    throw new BadRequestException("V1 确认必须显式 confirmed=true");
+  }
+  if (input.attestationId !== undefined) {
+    requiredText(input.attestationId, "V1 attest 引用不能为空");
+  }
+}
+
+function assertExactVersionCommand(
+  input: SubmitClearingEventDto | AttestClearingEventDto,
+  eventVersionId: string,
+  fingerprint: string
+): void {
+  if (
+    input.eventVersionId !== eventVersionId ||
+    input.expectedFingerprint !== fingerprint
+  ) {
+    throw new ConflictException(
+      "V1 命令必须绑定当前 exact eventVersionId + fingerprint"
+    );
+  }
+  if (!/^[0-9a-f]{64}$/.test(input.expectedFingerprint)) {
+    throw new BadRequestException(
+      "V1 命令必须引用 lowercase SHA-256 fingerprint"
+    );
+  }
+}
+
+function reconciliationIntentFrom(value: Prisma.JsonValue): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as Record<string, unknown>;
+  if (!Object.hasOwn(payload, "reconciliationIntent")) return null;
+  const intent = asRecord(payload.reconciliationIntent);
+  if (intent.schema !== "clearing_reconciliation_intent/V1") {
+    throw new ConflictException("清算关系 intent schema 损坏，请停止操作并复核数据");
+  }
+  return intent;
+}
+
+function plannedPairedWithheldFrom(intent: Record<string, unknown>): {
+  clearingEventId: string;
+  eventVersionId: string;
+  eventVersionFingerprint: string;
+  amountCents: bigint;
+} | null {
+  if (intent.plannedPairedWithheld === null) return null;
+  const plan = asRecord(intent.plannedPairedWithheld);
+  const exactKeys = new Set([
+    "clearingEventId",
+    "eventVersionId",
+    "eventVersionFingerprint",
+    "amountCents",
+    "currencyCode"
+  ]);
+  if (
+    Object.keys(plan).length !== exactKeys.size ||
+    Object.keys(plan).some((key) => !exactKeys.has(key)) ||
+    typeof plan.clearingEventId !== "string" ||
+    typeof plan.eventVersionId !== "string" ||
+    typeof plan.eventVersionFingerprint !== "string" ||
+    !/^[0-9a-f]{64}$/.test(plan.eventVersionFingerprint) ||
+    typeof plan.amountCents !== "string" ||
+    !/^[1-9]\d*$/.test(plan.amountCents) ||
+    BigInt(plan.amountCents) > POSTGRES_BIGINT_MAX ||
+    plan.currencyCode !== "CNY"
+  ) {
+    throw new ConflictException("V1 冻结配对暂扣计划损坏，请停止操作并复核数据");
+  }
+  return {
+    clearingEventId: plan.clearingEventId,
+    eventVersionId: plan.eventVersionId,
+    eventVersionFingerprint: plan.eventVersionFingerprint,
+    amountCents: BigInt(plan.amountCents)
+  };
+}
+
+function reconciliationEventAllocations(intent: Record<string, unknown>): Array<{
+  allocationNo: number;
+  clearingAllocationId: string;
+  purpose: "reconciliation_line" | "ordinary_remainder";
+  resolutionLineId: string | null;
+  amountCents: string;
+  allocationSourceKind:
+    | "withheld"
+    | "authority_cap"
+    | "final_confirmed"
+    | "supplemental";
+  sourceEventVersionId: string | null;
+  frozenSource: Record<string, unknown>;
+}> {
+  if (!Array.isArray(intent.eventAllocations)) {
+    throw new ConflictException("V1 冻结 allocation plan 损坏，请停止操作并复核数据");
+  }
+  const plans = intent.eventAllocations.map((entry, index) => {
+    const plan = asRecord(entry);
+    assertExactSnapshotKeys(plan, [
+      "allocationNo",
+      "clearingAllocationId",
+      "purpose",
+      "resolutionLineId",
+      "allocationSourceKind",
+      "sourceEventVersionId",
+      "amountCents",
+      "frozenSource"
+    ], "V1 冻结 allocation plan");
+    if (
+      !Number.isSafeInteger(plan.allocationNo) ||
+      Number(plan.allocationNo) !== index + 1 ||
+      !["reconciliation_line", "ordinary_remainder"].includes(String(plan.purpose)) ||
+      (plan.resolutionLineId !== null && typeof plan.resolutionLineId !== "string") ||
+      typeof plan.amountCents !== "string" ||
+      typeof plan.clearingAllocationId !== "string" ||
+      ![
+        "withheld",
+        "authority_cap",
+        "final_confirmed",
+        "supplemental"
+      ].includes(String(plan.allocationSourceKind)) ||
+      (plan.sourceEventVersionId !== null &&
+        typeof plan.sourceEventVersionId !== "string")
+    ) {
+      throw new ConflictException("V1 冻结 allocation plan 损坏，请停止操作并复核数据");
+    }
+    const frozenSource = asRecord(plan.frozenSource);
+    if (plan.allocationSourceKind === "withheld") {
+      assertExactSnapshotKeys(frozenSource, [
+        "kind",
+        "sourceEventVersionId",
+        "sourceEventVersionFingerprint"
+      ], "V1 冻结 withheld allocation 来源");
+      if (frozenSource.kind !== "withheld") {
+        throw new ConflictException("V1 冻结 withheld allocation 来源类型损坏");
+      }
+    } else if (plan.allocationSourceKind === "authority_cap") {
+      assertExactSnapshotKeys(frozenSource, [
+        "kind",
+        "authorityVersionId",
+        "authoritySnapshotRef",
+        "sourceDiscriminator"
+      ], "V1 冻结 authority allocation 来源");
+      if (frozenSource.kind !== "authority_cap") {
+        throw new ConflictException("V1 冻结 authority allocation 来源类型损坏");
+      }
+    } else {
+      assertExactSnapshotKeys(frozenSource, [
+        "kind",
+        "sourceEventVersionId",
+        "sourceEventVersionFingerprint",
+        "sourceClearingAllocationId",
+        "sourceImpactIds"
+      ], "V1 冻结 prior-event allocation 来源");
+      if (frozenSource.kind !== "prior_economic_event") {
+        throw new ConflictException("V1 冻结 prior-event allocation 来源类型损坏");
+      }
+      priorEconomicSourceImpactIds(frozenSource);
+    }
+    return {
+      allocationNo: Number(plan.allocationNo),
+      purpose: plan.purpose as "reconciliation_line" | "ordinary_remainder",
+      resolutionLineId: plan.resolutionLineId as string | null,
+      amountCents: plan.amountCents,
+      clearingAllocationId: plan.clearingAllocationId,
+      allocationSourceKind: plan.allocationSourceKind as
+        | "withheld"
+        | "authority_cap"
+        | "final_confirmed"
+        | "supplemental",
+      sourceEventVersionId: plan.sourceEventVersionId,
+      frozenSource
+    };
+  });
+  if (new Set(plans.map((plan) => plan.clearingAllocationId)).size !== plans.length) {
+    throw new ConflictException("V1 冻结 allocation ID 不得重复");
+  }
+  return plans;
+}
+
+function priorEconomicSourceImpactIds(
+  frozenSource: Record<string, unknown>
+): [string, string] {
+  if (
+    !Array.isArray(frozenSource.sourceImpactIds) ||
+    frozenSource.sourceImpactIds.length !== 2 ||
+    frozenSource.sourceImpactIds.some(
+      (value) => typeof value !== "string" || value.trim().length === 0
+    ) ||
+    new Set(frozenSource.sourceImpactIds).size !== 2
+  ) {
+    throw new ConflictException(
+      "V1 冻结既有经济 impact 集合损坏，请停止操作并复核数据"
+    );
+  }
+  return frozenSource.sourceImpactIds as [string, string];
+}
+
+function assertExactSnapshotKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  label: string
+): void {
+  const expected = new Set(keys);
+  if (
+    Object.keys(value).length !== expected.size ||
+    Object.keys(value).some((key) => !expected.has(key))
+  ) {
+    throw new ConflictException(`${label}字段集合不正确，请停止操作并复核数据`);
+  }
+}
+
+function reversedResolutionLineIdFromIntent(
+  intent: Record<string, unknown>,
+  plan: ReturnType<typeof reconciliationEventAllocations>[number]
+): string | null {
+  if (intent.operation !== "reverse_resolution") return null;
+  if (plan.purpose !== "reconciliation_line" || !plan.resolutionLineId) {
+    throw new ConflictException("技术反向 allocation 未绑定 resolution line");
+  }
+  if (!Array.isArray(intent.resolutions)) {
+    throw new ConflictException("技术反向冻结 resolution plan 损坏");
+  }
+  for (const rawResolution of intent.resolutions) {
+    const resolution = asRecord(rawResolution);
+    if (!Array.isArray(resolution.lines)) continue;
+    for (const rawLine of resolution.lines) {
+      const line = asRecord(rawLine);
+      if (line.resolutionLineId !== plan.resolutionLineId) continue;
+      if (
+        resolution.entryKind !== "technical_reversal" ||
+        line.plannedClearingAllocationId !== plan.clearingAllocationId ||
+        line.amountCents !== plan.amountCents
+      ) {
+        throw new ConflictException("技术反向 allocation 与冻结解决行不一致");
+      }
+      return requiredText(
+        line.reversesResolutionLineId,
+        "技术反向解决行缺少 exact original line"
+      );
+    }
+  }
+  throw new ConflictException("技术反向 allocation 找不到冻结解决行");
+}
+
+function allocationConsumesFrozenCoverage(
+  intent: Record<string, unknown>,
+  plan: ReturnType<typeof reconciliationEventAllocations>[number]
+): boolean {
+  if (plan.purpose !== "reconciliation_line" || !plan.resolutionLineId) {
+    return false;
+  }
+  if (!Array.isArray(intent.resolutions)) {
+    throw new ConflictException("V1 冻结 resolution plan 损坏，请停止操作并复核数据");
+  }
+  for (const rawResolution of intent.resolutions) {
+    const resolution = asRecord(rawResolution);
+    if (!Array.isArray(resolution.lines)) {
+      throw new ConflictException("V1 冻结 resolution line plan 损坏");
+    }
+    for (const rawLine of resolution.lines) {
+      const line = asRecord(rawLine);
+      if (line.resolutionLineId === plan.resolutionLineId) {
+        return (
+          resolution.entryKind === "resolution" &&
+          line.sourceKind === "withheld_coverage" &&
+          line.plannedClearingAllocationId === plan.clearingAllocationId &&
+          line.amountCents === plan.amountCents
+        );
+      }
+    }
+  }
+  throw new ConflictException("V1 冻结 allocation 未找到对应 resolution line");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ConflictException("清算关系冻结快照损坏，请停止操作并复核数据");
+  }
+  return value as Record<string, unknown>;
+}
+
 function validateIdempotencyKey(value: string) {
   if (!UUID_V4.test(value)) throw new BadRequestException("幂等键必须使用 UUIDv4");
 }
@@ -1625,6 +3065,16 @@ function positiveCents(value: unknown): bigint {
     throw new BadRequestException("金额超过数据库整数分上限");
   }
   return cents;
+}
+
+function positiveInternalBigIntCents(value: unknown): bigint {
+  if (typeof value !== "bigint" || value <= 0n) {
+    throw new ConflictException("历史清分金额必须是正整数分");
+  }
+  if (value > POSTGRES_BIGINT_MAX) {
+    throw new ConflictException("历史清分金额超过数据库整数分上限");
+  }
+  return value;
 }
 
 function requiredText(value: unknown, message: string): string {
@@ -1711,6 +3161,12 @@ function auditMetadata(identity: ActorIdentity, expectedRevision: number, plan?:
       impactKinds: plan.impacts.map((impact) => impact.impactKind)
     } : {})
   } as Prisma.InputJsonObject;
+}
+
+function opaqueAuditFingerprint(value: string): string {
+  return createHash("sha256")
+    .update(`pol275/audit-identifier/V1\n${value}`, "utf8")
+    .digest("hex");
 }
 
 function jsonObject(value: Record<string, unknown>): Prisma.InputJsonObject {

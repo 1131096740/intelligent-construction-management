@@ -164,6 +164,9 @@ function clearingService(client: PrismaClient, fixture: ReturnType<typeof fixtur
   const roleResolver = {
     resolveActiveRoleScopes: jest.fn(async (userId: string) =>
       userId === fixture.staffUserId ? ["finance_staff"] : ["finance_director"]
+    ),
+    resolveActiveRoleScopesInTransaction: jest.fn(async (_tx: unknown, userId: string) =>
+      userId === fixture.staffUserId ? ["finance_staff"] : ["finance_director"]
     )
   };
   return new ClearingService(

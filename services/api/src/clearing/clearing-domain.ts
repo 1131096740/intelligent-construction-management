@@ -18,6 +18,8 @@ export interface ClearingAllocationInput {
   sourceKind: ClearingAllocationSourceKind;
   amountCents: bigint;
   sourceRemainingCents: bigint;
+  sourceCapacityKey?: string;
+  reversesAllocationId?: string | null;
 }
 
 export interface ClearingAllocationPlan extends ClearingAllocationInput {
@@ -92,10 +94,39 @@ export interface ClearingFingerprintInput {
   payload: unknown;
 }
 
+export interface ClearingReconciliationEventVersionFingerprintInput {
+  clearingCaseId: string;
+  eventKind: ClearingEventKind;
+  amountCents: string;
+  currencyCode: "CNY";
+  previousVersionId: string | null;
+  actorSetSnapshot: readonly string[];
+  reconciliationIntent: Record<string, unknown>;
+}
+
 export function fingerprintClearingCommand(
   input: ClearingFingerprintInput
 ): string {
   return createHash("sha256").update(stableJson(input)).digest("hex");
+}
+
+export function fingerprintClearingReconciliationEventVersion(
+  input: ClearingReconciliationEventVersionFingerprintInput
+): string {
+  return createHash("sha256")
+    .update(
+      `clearing-event-version/reconciliation-intent/V1\n${strictJcs({
+        clearingCaseId: input.clearingCaseId,
+        eventKind: input.eventKind,
+        amountCents: input.amountCents,
+        currencyCode: input.currencyCode,
+        previousVersionId: input.previousVersionId,
+        actorSetSnapshot: input.actorSetSnapshot,
+        reconciliationIntent: input.reconciliationIntent
+      })}`,
+      "utf8"
+    )
+    .digest("hex");
 }
 
 function planAllocations(
@@ -106,13 +137,14 @@ function planAllocations(
     "supplemental",
     "returned"
   ].includes(input.kind);
-  if (!requiresAllocation) {
+  const isTechnicalReversal = input.kind === "technical_reversal";
+  if (!requiresAllocation && !isTechnicalReversal) {
     if (input.allocations.length) {
       throw new BadRequestException("当前事件类型不接受金额分配");
     }
     return [];
   }
-  if (!input.allocations.length) {
+  if (requiresAllocation && !input.allocations.length) {
     throw new BadRequestException("最终、补扣或退回必须提供显式分配");
   }
 
@@ -127,7 +159,7 @@ function planAllocations(
       allocation.sourceRemainingCents,
       "来源剩余余额不能为负数"
     );
-    if (allocation.amountCents > allocation.sourceRemainingCents) {
+    if (!isTechnicalReversal && allocation.amountCents > allocation.sourceRemainingCents) {
       throw new BadRequestException("清算分配超过来源剩余余额");
     }
     if (
@@ -154,11 +186,18 @@ function planAllocations(
     ) {
       throw new BadRequestException("退回必须精确引用原暂扣或最终事实");
     }
+    if (isTechnicalReversal && !allocation.reversesAllocationId) {
+      throw new BadRequestException("技术反向分配必须精确引用原 allocation");
+    }
+    if (!isTechnicalReversal && allocation.reversesAllocationId) {
+      throw new BadRequestException("非技术反向事件不得引用原 allocation");
+    }
 
     const sourceKey =
-      allocation.sourceKind === "authority_cap"
+      allocation.sourceCapacityKey ??
+      (allocation.sourceKind === "authority_cap"
         ? "authority_cap"
-        : `${allocation.sourceKind}:${allocation.sourceEventVersionId}`;
+        : `${allocation.sourceKind}:${allocation.sourceEventVersionId}`);
     const consumed = consumedBySource.get(sourceKey);
     if (
       consumed &&
@@ -168,7 +207,7 @@ function planAllocations(
     }
     const consumedCents =
       (consumed?.consumedCents ?? 0n) + allocation.amountCents;
-    if (consumedCents > allocation.sourceRemainingCents) {
+    if (!isTechnicalReversal && consumedCents > allocation.sourceRemainingCents) {
       throw new BadRequestException("清算分配超过来源剩余余额");
     }
     consumedBySource.set(sourceKey, {
@@ -180,10 +219,15 @@ function planAllocations(
     return {
       ...allocation,
       sourceRemainingAfterCents:
-        allocation.sourceRemainingCents - consumedCents
+        isTechnicalReversal
+          ? allocation.sourceRemainingCents + consumedCents
+          : allocation.sourceRemainingCents - consumedCents
     };
   });
-  if (allocatedCents !== input.amountCents) {
+  if (
+    (!isTechnicalReversal || input.allocations.length > 0) &&
+    allocatedCents !== input.amountCents
+  ) {
     throw new BadRequestException("显式分配合计必须等于事件金额");
   }
   return plans;
@@ -232,6 +276,11 @@ function buildImpacts(
     ];
   }
   if (input.kind === "pending_reconciliation") return [];
+  if (
+    input.kind === "coverage_added" ||
+    input.kind === "continued_withheld" ||
+    input.kind === "technical_reversal"
+  ) return [];
 
   const impacts: ClearingImpactPlan[] = [];
   const withheldCents = allocations
@@ -315,4 +364,72 @@ function stableJson(value: unknown): string {
   }
   if (typeof value === "bigint") return JSON.stringify(value.toString());
   return JSON.stringify(value);
+}
+
+function strictJcs(value: unknown, ancestors = new Set<object>()): string {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "string") {
+    assertUnicodeScalarString(value);
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || Object.is(value, -0)) {
+      throw new TypeError("清算 JCS 不接受非有限数或负零");
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value !== "object") {
+    throw new TypeError("清算 JCS 仅接受 JSON 值");
+  }
+  if (ancestors.has(value)) throw new TypeError("清算 JCS 不接受循环引用");
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const items: string[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!(index in value)) throw new TypeError("清算 JCS 不接受数组空洞");
+        items.push(strictJcs(value[index], ancestors));
+      }
+      return `[${items.join(",")}]`;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError("清算 JCS 仅接受 plain JSON object");
+    }
+    const record = value as Record<string, unknown>;
+    const keys = Reflect.ownKeys(record);
+    if (keys.some((key) => typeof key !== "string")) {
+      throw new TypeError("清算 JCS 不接受 symbol key");
+    }
+    const stringKeys = keys as string[];
+    for (const key of stringKeys) {
+      assertUnicodeScalarString(key);
+      const descriptor = Object.getOwnPropertyDescriptor(record, key);
+      if (!descriptor?.enumerable || !("value" in descriptor)) {
+        throw new TypeError("清算 JCS 仅接受 enumerable data property");
+      }
+    }
+    stringKeys.sort();
+    return `{${stringKeys.map((key) => `${JSON.stringify(key)}:${strictJcs(record[key], ancestors)}`).join(",")}}`;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function assertUnicodeScalarString(value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) {
+        throw new TypeError("清算 JCS 文本包含 lone surrogate");
+      }
+      index += 1;
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      throw new TypeError("清算 JCS 文本包含 lone surrogate");
+    }
+  }
 }

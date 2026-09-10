@@ -79,6 +79,7 @@ function harness() {
     approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(async (work: (client: unknown) => Promise<unknown>) => work(tx)),
     projectAffiliateCompanyContract: {
       findMany: jest.fn().mockResolvedValue([{
@@ -124,6 +125,13 @@ function harness() {
     affiliateClearingAuthorityVersion: { findMany: jest.fn().mockResolvedValue([]) },
     assignedWageAuthorityLine: { findMany: jest.fn().mockResolvedValue([]) },
     guaranteeObligationVersion: { findMany: jest.fn().mockResolvedValue([]) },
+    clearingCase: { findUnique: jest.fn().mockResolvedValue(null) },
+    clearingEventVersion: { findMany: jest.fn().mockResolvedValue([]) },
+    clearingReconciliationCoverage: { findMany: jest.fn().mockResolvedValue([]) },
+    clearingAllocation: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+      findMany: jest.fn().mockResolvedValue([])
+    },
     user: { findMany: jest.fn().mockResolvedValue([{ id: "user-1", name: "张三", isActive: true }]) },
     roles: undefined
   };
@@ -2312,5 +2320,152 @@ describe("#214 AffiliateClearingAuthorityService", () => {
     expect(wageOption).toEqual(expect.objectContaining({ label: "张三", selectionRef: expect.any(String) }));
     expect(wageOption).not.toHaveProperty("authoritySnapshotRef");
     expect(wageOption).not.toHaveProperty("authorityFingerprint");
+  });
+
+  it("issues case-bound public authority-cap, version, coverage and exact-allocation refs", async () => {
+    const { service, prisma, selection } = harness();
+    prisma.clearingCase.findUnique.mockResolvedValue({
+      id: "case-1",
+      sourceDiscriminator: "construction_enterprise_guarantee",
+      authorityVersionId: "authority-version-1",
+      authoritySnapshotRef: "authority-fingerprint",
+      authoritativeGrossCapCents: 100n,
+      revision: 7
+    });
+    prisma.clearingEventVersion.findMany.mockResolvedValue([
+      {
+        id: "withheld-version-1",
+        workflowStatus: "submitted",
+        amountCents: 100n,
+        evidenceLevel: "A",
+        clearingEvent: { kind: "withheld", workflowStatus: "confirmed" },
+        confirmation: { eventVersionId: "withheld-version-1" }
+      },
+      {
+        id: "source-version-1",
+        workflowStatus: "submitted",
+        amountCents: 100n,
+        evidenceLevel: "B",
+        clearingEvent: { kind: "final_confirmed", workflowStatus: "confirmed" },
+        confirmation: { eventVersionId: "source-version-1" }
+      }
+    ]);
+    prisma.clearingReconciliationCoverage.findMany.mockResolvedValue([{
+      id: "coverage-1",
+      reconciliationRevisionId: "revision-1",
+      amountCents: 30n,
+      withheldEventVersion: {
+        id: "withheld-version-1",
+        evidenceLevel: "A",
+        fingerprint: "c".repeat(64),
+        clearingEvent: { kind: "withheld", workflowStatus: "confirmed" },
+        confirmation: { eventVersionId: "withheld-version-1" }
+      }
+    }]);
+    prisma.clearingAllocation.findMany.mockResolvedValue([{
+      id: "allocation-1",
+      eventVersionId: "source-version-1",
+      amountCents: 40n,
+      eventVersion: {
+        evidenceLevel: "B",
+        clearingEvent: { kind: "final_confirmed", workflowStatus: "confirmed" },
+        confirmation: { eventVersionId: "source-version-1" },
+        impactLinks: [
+          { id: "impact-cost", sourceImpactKey: "original:confirmed-cost", operatingFactId: "fact-1" },
+          { id: "impact-funds", sourceImpactKey: "original:construction-enterprise-funds-decrease", operatingFactId: "fact-1" }
+        ]
+      }
+    }]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([
+        { id: "withheld-version-1", remaining: 80n, usable: 50n },
+        { id: "source-version-1", remaining: 60n, usable: 60n }
+      ])
+      .mockResolvedValueOnce([{ id: "coverage-1", remaining: 20n }])
+      .mockResolvedValueOnce([{ id: "allocation-1", remaining: 25n }])
+      .mockResolvedValueOnce([{ remaining: 60n }]);
+
+    await expect(service.allocationOptions("finance-staff", "case-1")).resolves.toEqual({
+      options: [
+        {
+          selectionRef: "fac1.abc.signature",
+          sourceKind: "withheld",
+          amountCents: "100",
+          remainingCents: "50",
+          evidenceLevel: "A"
+        },
+        {
+          selectionRef: "fac1.abc.signature",
+          sourceKind: "final_confirmed",
+          amountCents: "100",
+          remainingCents: "60",
+          evidenceLevel: "B"
+        }
+      ],
+      coverageOptions: [{
+        selectionRef: "fac1.abc.signature",
+        reconciliationRevisionId: "revision-1",
+        amountCents: "30",
+        remainingCents: "20",
+        evidenceLevel: "A"
+      }],
+      priorEconomicAllocationOptions: [{
+        selectionRef: "fac1.abc.signature",
+        sourceKind: "final_confirmed",
+        amountCents: "40",
+        remainingCents: "25",
+        evidenceLevel: "B"
+      }],
+      authorityCapOptions: [{
+        selectionRef: "fac1.abc.signature",
+        sourceKind: "authority_cap",
+        amountCents: "100",
+        remainingCents: "60"
+      }]
+    });
+    expect(prisma.clearingEventVersion.findMany).toHaveBeenCalledWith({
+      where: {
+        clearingCaseId: "case-1",
+        confirmation: { isNot: null },
+        clearingEvent: { workflowStatus: "confirmed" }
+      },
+      include: { clearingEvent: true, confirmation: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    expect(selection.issue).toHaveBeenCalledWith(expect.objectContaining({
+      authorityVersionId: "authority-version-1",
+      authorityFingerprint: "authority-fingerprint",
+      clearingCaseId: "case-1",
+      purpose: "allocation",
+      selectedKey: "source-version-1",
+      revision: 7
+    }));
+    expect(selection.issue).toHaveBeenCalledWith(expect.objectContaining({
+      clearingCaseId: "case-1",
+      purpose: "coverage",
+      selectedKey: "coverage-1"
+    }));
+    expect(selection.issue).toHaveBeenCalledWith(expect.objectContaining({
+      clearingCaseId: "case-1",
+      purpose: "prior_economic_allocation",
+      selectedKey: "allocation-1"
+    }));
+    expect(selection.issue).toHaveBeenCalledWith({
+      actorUserId: "finance-staff",
+      authorityVersionId: "authority-version-1",
+      authorityFingerprint: "authority-fingerprint",
+      clearingCaseId: "case-1",
+      purpose: "allocation",
+      selectedKey: "case-1",
+      revision: 7
+    });
+  });
+
+  it("rejects allocation options for a role without clearing.read", async () => {
+    const { service, roles } = harness();
+    roles.resolveActiveRoleScopes.mockResolvedValue(["employee"]);
+
+    await expect(service.allocationOptions("employee-1", "case-1"))
+      .rejects.toThrow("当前账号没有该权威来源动作权限");
   });
 });
