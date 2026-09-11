@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `312c7b4f016be16a4efdc04b13505d8a82c23a1fc0c2ab18a3a51c5013724341` |
-| webApiWrappers | ready | `6bd21dfb1b871ab9581497e557f4a21135082d77f63d15265fa71c84d569a0b6` |
-| webPageActions | ready | `83b216ee8da73d4914518e1b0f491d2762e32b4068a076afc57b3c959052751b` |
-| routeUsage | ready | `6eb6369b72f2cbf103fc7739e93283b605e2a005e444be36a792fde770f17a1a` |
+| nestRoutes | ready | `3f630d3c21b5f7f018b9e2ce6618389a27aa3649618461021285d093fbef4326` |
+| webApiWrappers | ready | `adf3496a2bb194f99d796b556d8d6dcac9c928ac7fb5ebc1b7907e682d5d54f3` |
+| webPageActions | ready | `4477b8a81a7d8784910d078ad065dd1da0df13b767d4506c32b8be445e930a7d` |
+| routeUsage | ready | `cbb37375aa95f1ad3ef0d076b652731973061f4fc0c359edff8081b0ce17517f` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 582 |
-| pageRouteCount | 370 |
+| routeCount | 585 |
+| pageRouteCount | 373 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 34 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 559 |
+| mainRequestBindingCount | 563 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 295 |
-| actionBindingCount | 330 |
-| acceptedActionBindingCount | 310 |
+| registeredActionCount | 301 |
+| actionBindingCount | 336 |
+| acceptedActionBindingCount | 316 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 286 |
-| coveredProductionMutationConsumerPairCount | 286 |
+| productionMutationConsumerPairCount | 289 |
+| coveredProductionMutationConsumerPairCount | 289 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -141,6 +141,7 @@
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
 | GET | /payments/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentCreateCapability | — | not_applicable | — |
 | GET | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLedger<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLifecycleLedger | — | not_applicable | — |
+| GET | /project-fund-disputes/workbench | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#fetchProjectFundDisputeCapabilities<br>apps/web-admin/src/api/project-fund-dispute.api.ts#fetchProjectFundDisputeWorkbench | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts/:factId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateFactCapability | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateBusinessFacts | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateRecordCapability | — | not_applicable | — |
@@ -377,7 +378,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
 | POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
@@ -433,6 +434,8 @@
 | POST | /payments/:paymentId/pdf-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive | payment-detail.pdf-generation | covered | — |
 | POST | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest | payment-request.create-local-form | covered | — |
+| POST | /project-fund-disputes/drafts | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#saveProjectFundDisputeDraft | project-fund-dispute.draft.save | covered | — |
+| POST | /project-fund-disputes/entries/:entryId/transition | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#transitionProjectFundDispute | project-fund-dispute.attest<br>project-fund-dispute.confirm<br>project-fund-dispute.return<br>project-fund-dispute.submit | covered | — |
 | POST | /projects/:projectId/affiliate-assignment | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#assignProjectAffiliate | — | not_applicable | — |
 | POST | /projects/:projectId/affiliate-business-facts/:factId/evidence-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliateBusinessPrivateFile | project.affiliate-fact.supplement-evidence | covered | — |
 | POST | /projects/:projectId/affiliate-business-facts/:factId/evidence | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#supplementProjectAffiliateBusinessEvidence | project.affiliate-fact.supplement-evidence | covered | — |

@@ -179,6 +179,7 @@ export class NecessaryExpenseReserveService {
       payloadFingerprint: fingerprint
     });
     return this.serializable(async (tx) => {
+      await this.lockEconomicIdentity(tx, identity.economicIdentityKey);
       const roles = await this.requireAction(
         tx,
         actor.userId,
@@ -195,7 +196,6 @@ export class NecessaryExpenseReserveService {
         }
         return this.commandReceiptResult(priorReceipt.resultSnapshot);
       }
-      await this.lockEconomicIdentity(tx, identity.economicIdentityKey);
       const context = await this.readAuthoritativeContext(tx, draft);
       const existingByCommand = await tx.projectNecessaryExpenseReserveEntry.findUnique({
         where: { idempotencyKey: draft.idempotencyKey },
@@ -272,7 +272,19 @@ export class NecessaryExpenseReserveService {
       reason: command.reason?.trim() || null,
       actorUserId: actor.userId
     });
+    const confirmationIdentity = command.action === "confirm"
+      ? await this.prisma.projectNecessaryExpenseReserveEntry.findUnique({
+          where: { id: command.entryId },
+          select: { reserve: { select: { economicIdentityKey: true } } }
+        })
+      : null;
     return this.serializable(async (tx) => {
+      if (confirmationIdentity) {
+        await this.lockEconomicIdentity(
+          tx,
+          confirmationIdentity.reserve.economicIdentityKey
+        );
+      }
       await this.lockCommandIdempotency(tx, command.idempotencyKey);
       const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT entry."id"
@@ -322,7 +334,6 @@ export class NecessaryExpenseReserveService {
       }
       if (command.action === "confirm") {
         await this.lockConfirmationRows(tx, entry);
-        await this.lockEconomicIdentity(tx, entry.reserve.economicIdentityKey);
         await this.assertConfirmableSource(tx, entry);
         if (entry.entryKind === "technical_reversal") {
           const targetFact = await tx.operatingFact.findUnique({
@@ -904,7 +915,14 @@ export class NecessaryExpenseReserveService {
     })) {
       throw new ConflictException("释放替代分配超过释放金额或正式影响金额");
     }
-    for (const replacement of replacements) {
+    const orderedReplacements = [...replacements].sort((left, right) =>
+      left.operatingImpactEntryId < right.operatingImpactEntryId
+        ? -1
+        : left.operatingImpactEntryId > right.operatingImpactEntryId
+          ? 1
+          : 0
+    );
+    for (const replacement of orderedReplacements) {
       await tx.projectNecessaryExpenseReserveReplacement.create({
         data: {
           id: randomUUID(),
@@ -1038,7 +1056,7 @@ export class NecessaryExpenseReserveService {
   private lockEconomicIdentity(tx: Tx, economicIdentityKey: string) {
     return tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(
-        hashtextextended('pol279:economic:' || ${economicIdentityKey}, 0)
+        hashtextextended('pol:project-cash-restriction:economic:' || ${economicIdentityKey}, 0)
       )
     `);
   }
@@ -1176,11 +1194,84 @@ export class NecessaryExpenseReserveService {
     };
   }
 
-  private serializable<T>(work: (tx: Tx) => Promise<T>) {
-    return this.prisma.$transaction(work, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-    });
+  private async serializable<T>(work: (tx: Tx) => Promise<T>) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(work, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+        });
+      } catch (error) {
+        if (attempt === 0 && isDatabaseSerializationFailure(error)) {
+          continue;
+        }
+        if (isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error)) {
+          throw new ConflictException(
+            necessaryExpenseReserveConflictMessage(error)
+          );
+        }
+        throw error;
+      }
+    }
+    throw new ConflictException("必要准备并发冲突，请刷新后重试");
   }
+}
+
+function isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    meta?: { code?: unknown; message?: unknown };
+  };
+  const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
+  return record.code === "P2034" ||
+    record.code === "40001" ||
+    record.code === "40P01" ||
+    record.code === "23514" ||
+    record.meta?.code === "40001" ||
+    record.meta?.code === "40P01" ||
+    record.meta?.code === "23514" ||
+    message.includes("POL-279") ||
+    message.includes("40001") ||
+    message.includes("40P01") ||
+    message.includes("23514") ||
+    message.includes("could not serialize access") ||
+    message.includes("deadlock detected");
+}
+
+function necessaryExpenseReserveConflictMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const record = error as {
+      message?: unknown;
+      meta?: { message?: unknown };
+    };
+    const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
+    const remainingCapacityReason =
+      "POL-279 release or reversal exceeds remaining reserve capacity";
+    if (message.includes(remainingCapacityReason)) {
+      return remainingCapacityReason;
+    }
+  }
+  return "必要准备并发或容量校验冲突，请刷新后重试";
+}
+
+function isDatabaseSerializationFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    meta?: { code?: unknown; message?: unknown };
+  };
+  const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
+  return record.code === "P2034" ||
+    record.code === "40001" ||
+    record.code === "40P01" ||
+    record.meta?.code === "40001" ||
+    record.meta?.code === "40P01" ||
+    message.includes("40001") ||
+    message.includes("40P01") ||
+    message.includes("could not serialize access") ||
+    message.includes("deadlock detected");
 }
 
 function validateTransitionCommand(command: NecessaryExpenseReserveTransitionCommand) {

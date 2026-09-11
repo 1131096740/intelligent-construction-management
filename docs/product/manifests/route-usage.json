@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 582,
-    "exactRouteCount": 582,
-    "normalizedRouteCount": 582,
+    "routeCount": 585,
+    "exactRouteCount": 585,
+    "normalizedRouteCount": 585,
     "classificationOverrideCount": 214,
     "consumerSurfaceOverrideCount": 35,
     "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
     "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
-    "derivedProductionPageCount": 368,
-    "pageRouteCount": 370,
+    "derivedProductionPageCount": 371,
+    "pageRouteCount": 373,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 34,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 422,
+      "web_api_wrapper": 425,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 422,
+    "productionWrapperRouteCount": 425,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -4353,6 +4353,57 @@
     },
     {
       "method": "GET",
+      "path": "/project-fund-disputes/workbench",
+      "normalizedKey": "GET /project-fund-disputes/workbench",
+      "controller": "ProjectFundDisputeController",
+      "handler": "getWorkbench",
+      "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+            "wrapper": "fetchProjectFundDisputeCapabilities",
+            "method": "GET",
+            "normalizedPath": "/project-fund-disputes/workbench",
+            "normalizedKey": "GET /project-fund-disputes/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+            "wrapper": "fetchProjectFundDisputeWorkbench",
+            "method": "GET",
+            "normalizedPath": "/project-fund-disputes/workbench",
+            "normalizedKey": "GET /project-fund-disputes/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects",
       "normalizedKey": "GET /projects",
       "controller": "ProjectController",
@@ -4385,6 +4436,7 @@
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
@@ -5551,6 +5603,7 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
             ]
           }
@@ -13748,7 +13801,8 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+              "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
             ]
           }
         ],
@@ -15974,6 +16028,88 @@
             "normalizedKey": "POST /payments/:param/pdf-generation",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/project-fund-disputes/drafts",
+      "normalizedKey": "POST /project-fund-disputes/drafts",
+      "controller": "ProjectFundDisputeController",
+      "handler": "saveDraft",
+      "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+            "wrapper": "saveProjectFundDisputeDraft",
+            "method": "POST",
+            "normalizedPath": "/project-fund-disputes/drafts",
+            "normalizedKey": "POST /project-fund-disputes/drafts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/project-fund-disputes/entries/:entryId/transition",
+      "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+      "controller": "ProjectFundDisputeController",
+      "handler": "transition",
+      "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+            "wrapper": "transitionProjectFundDispute",
+            "method": "POST",
+            "normalizedPath": "/project-fund-disputes/entries/:param/transition",
+            "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
             ]
           }
         ],

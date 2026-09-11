@@ -16,7 +16,13 @@ import { PrismaService } from "../database/prisma.service";
 type ReaderInput = {
   projectId: string;
   asOf?: Date;
+  clearingCaseIds?: readonly string[];
 };
+
+export type ProjectFundDisputeClearingDuplicateState =
+  | "none"
+  | "active"
+  | "integrity_conflict";
 
 @Injectable()
 export class ClearingReconciliationReaderService {
@@ -75,8 +81,14 @@ export class ClearingReconciliationReaderService {
       SELECT CURRENT_TIMESTAMP AS "asOf"
     `))[0]?.asOf;
     if (!asOf) throw new ConflictException("数据库未返回核对读取时点");
+    const clearingCaseWhere: Prisma.ClearingCaseWhereInput = {
+      projectId: input.projectId,
+      ...(input.clearingCaseIds?.length
+        ? { id: { in: [...input.clearingCaseIds] } }
+        : {})
+    };
     const projectFilter = {
-      clearingCase: { projectId: input.projectId },
+      clearingCase: clearingCaseWhere,
       confirmedAt: { lte: asOf }
     };
     const [
@@ -92,7 +104,7 @@ export class ClearingReconciliationReaderService {
         where: {
           clearingEvent: {
             kind: "pending_reconciliation",
-            clearingCase: { projectId: input.projectId }
+            clearingCase: clearingCaseWhere
           },
           confirmation: { confirmedAt: { lte: asOf } }
         },
@@ -160,7 +172,7 @@ export class ClearingReconciliationReaderService {
       }),
       tx.clearingReconciliationResolutionLine.findMany({
         where: {
-          clearingCase: { projectId: input.projectId },
+          clearingCase: clearingCaseWhere,
           resolution: { confirmedAt: { lte: asOf } }
         },
         select: {
@@ -193,7 +205,7 @@ export class ClearingReconciliationReaderService {
             kind: {
               in: ["coverage_added", "continued_withheld", "technical_reversal"]
             },
-            clearingCase: { projectId: input.projectId }
+            clearingCase: clearingCaseWhere
           },
           confirmation: { confirmedAt: { lte: asOf } }
         },
@@ -252,6 +264,145 @@ export class ClearingReconciliationReaderService {
     });
     return { projectId: input.projectId, ...result };
   }
+
+  /**
+   * Read-only #275 seam for other formal cash-restriction sources. It compares
+   * stable case/event coordinates and then reuses the canonical reconciliation
+   * reducer so resolved cases do not keep blocking forever.
+   */
+  async readProjectFundDisputeDuplicateInTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      projectId: string;
+      constructionEnterpriseAssignmentId: string;
+      basisBusinessIdOrEvidenceSha256: string;
+      evidenceSha256: string;
+    }
+  ): Promise<ProjectFundDisputeClearingDuplicateState> {
+    requiredCoordinate(input.projectId, "项目不能为空");
+    requiredCoordinate(
+      input.constructionEnterpriseAssignmentId,
+      "施工企业档案不能为空"
+    );
+    const coordinates = new Set([
+      requiredCoordinate(
+        input.basisBusinessIdOrEvidenceSha256,
+        "争议依据坐标不能为空"
+      ),
+      requiredCoordinate(input.evidenceSha256, "争议证据哈希不能为空")
+    ]);
+    const cases = await tx.clearingCase.findMany({
+      where: {
+        projectId: input.projectId,
+        constructionEnterpriseAssignmentId:
+          input.constructionEnterpriseAssignmentId
+      },
+      select: {
+        id: true,
+        governedSubjectKey: true,
+        authorityVersionId: true,
+        authoritySnapshotRef: true,
+        sourceDiscriminator: true,
+        events: {
+          where: { workflowStatus: "confirmed" },
+          select: {
+            id: true,
+            versions: {
+              where: { confirmation: { isNot: null } },
+              select: {
+                id: true,
+                fingerprint: true,
+                payloadSnapshot: true
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!cases.length) return "none";
+    const authorityVersionIds = cases.flatMap((row) =>
+      row.authorityVersionId ? [row.authorityVersionId] : []
+    );
+    const authorityEvidence = authorityVersionIds.length
+      ? await tx.affiliateClearingAuthorityVersion.findMany({
+          where: { id: { in: authorityVersionIds } },
+          select: {
+            id: true,
+            evidenceSha256: true,
+            evidenceManifestSha256: true,
+            authorityFingerprint: true
+          }
+        })
+      : [];
+    const authorityById = new Map(
+      authorityEvidence.map((row) => [row.id, row])
+    );
+    const matchedCaseIds = cases.flatMap((row) => {
+      const authority = row.authorityVersionId
+        ? authorityById.get(row.authorityVersionId)
+        : undefined;
+      const directValues = [
+        row.id,
+        row.governedSubjectKey,
+        row.authorityVersionId,
+        row.authoritySnapshotRef,
+        row.sourceDiscriminator,
+        authority?.evidenceSha256,
+        authority?.evidenceManifestSha256,
+        authority?.authorityFingerprint
+      ];
+      const directMatch = directValues.some(
+        (value) => typeof value === "string" && coordinates.has(value)
+      );
+      const eventMatch = row.events.some((event) =>
+        coordinates.has(event.id) ||
+        event.versions.some(
+          (version) =>
+            coordinates.has(version.id) ||
+            coordinates.has(version.fingerprint) ||
+            jsonContainsExactString(version.payloadSnapshot, coordinates)
+        )
+      );
+      return directMatch || eventMatch ? [row.id] : [];
+    });
+    if (!matchedCaseIds.length) return "none";
+    const risk = await this.readClearingReconciliationRiskInTransaction(tx, {
+      projectId: input.projectId,
+      clearingCaseIds: matchedCaseIds
+    });
+    if (
+      risk.relationshipCompleteness === "integrity_conflict" ||
+      risk.relationshipCompleteness === "legacy_unmodeled"
+    ) {
+      return "integrity_conflict";
+    }
+    return risk.items.some((item) => item.openAmountCents > 0n) ||
+      (risk.continuedWithheldRetainedCents ?? 0n) > 0n
+      ? "active"
+      : "none";
+  }
+}
+
+function jsonContainsExactString(
+  value: Prisma.JsonValue | undefined,
+  coordinates: ReadonlySet<string>
+): boolean {
+  if (typeof value === "string") return coordinates.has(value);
+  if (Array.isArray(value)) {
+    return value.some((entry) => jsonContainsExactString(entry, coordinates));
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).some((entry) =>
+      jsonContainsExactString(entry, coordinates)
+    );
+  }
+  return false;
+}
+
+function requiredCoordinate(value: string, message: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new BadRequestException(message);
+  return normalized;
 }
 
 function hasV1Intent(payloadSnapshot: Prisma.JsonValue): boolean {
@@ -274,6 +425,9 @@ function assertReaderInput(input: ReaderInput): void {
     (!(input.asOf instanceof Date) || !Number.isFinite(input.asOf.getTime()))
   ) {
     throw new BadRequestException("asOf 时间无效");
+  }
+  if (input.clearingCaseIds?.some((id) => !id.trim())) {
+    throw new BadRequestException("核对事项 ID 不能为空");
   }
 }
 

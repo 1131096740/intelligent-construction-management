@@ -56,6 +56,8 @@ export const operatingTakeoverRoleKeys =
 export const clearingRoleKeys = ACTION_REQUIRED_ROLES["clearing.read"];
 export const necessaryExpenseReserveRoleKeys =
   ACTION_REQUIRED_ROLES["necessary_expense_reserve.read"];
+export const projectFundDisputeRoleKeys =
+  ACTION_REQUIRED_ROLES["project_fund_dispute.read"];
 export const payableSettlementRoleKeys =
   ACTION_REQUIRED_ROLES["payable_settlement.read"];
 export const businessPartyCreateRoleKeys =
@@ -116,6 +118,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         label: "必要费用准备",
         path: "/必要费用准备",
         requiredRoleKeys: necessaryExpenseReserveRoleKeys
+      },
+      {
+        label: "一般争议资金",
+        path: "/一般争议资金",
+        requiredRoleKeys: projectFundDisputeRoleKeys
       },
       { label: "工资承担工作台", path: "/工资承担工作台" },
       {
@@ -395,6 +402,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: {
           requiredRoleKeys: necessaryExpenseReserveRoleKeys,
           title: "必要费用准备"
+        }
+      },
+      {
+        path: "一般争议资金",
+        component: () => import("../pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"),
+        meta: {
+          requiredRoleKeys: projectFundDisputeRoleKeys,
+          title: "一般争议资金"
         }
       },
       {

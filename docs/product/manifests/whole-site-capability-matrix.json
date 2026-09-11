@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "312c7b4f016be16a4efdc04b13505d8a82c23a1fc0c2ab18a3a51c5013724341",
+      "sha256": "3f630d3c21b5f7f018b9e2ce6618389a27aa3649618461021285d093fbef4326",
       "status": "ready",
       "summary": {
-        "routeCount": 582
+        "routeCount": 585
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "6bd21dfb1b871ab9581497e557f4a21135082d77f63d15265fa71c84d569a0b6",
+      "sha256": "adf3496a2bb194f99d796b556d8d6dcac9c928ac7fb5ebc1b7907e682d5d54f3",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 26,
-        "exportedFunctionCount": 557,
-        "transportWrapperCount": 537,
+        "apiModuleCount": 27,
+        "exportedFunctionCount": 561,
+        "transportWrapperCount": 541,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 559,
+        "mainRequestBindingCount": 563,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 559,
-        "productionConsumerCount": 431,
+        "requestEdgeCount": 563,
+        "productionConsumerCount": 435,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "83b216ee8da73d4914518e1b0f491d2762e32b4068a076afc57b3c959052751b",
+      "sha256": "4477b8a81a7d8784910d078ad065dd1da0df13b767d4506c32b8be445e930a7d",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 295,
+        "registeredActionCount": 301,
         "pageActionCount": 53,
-        "backgroundActionCount": 242,
-        "reachableVueFileCount": 137,
-        "routeRootCount": 58,
-        "totalVueFileCount": 161,
-        "parsedVueFileCount": 161,
-        "reachableProductionModuleCount": 251,
-        "templateEventDirectiveCount": 943,
+        "backgroundActionCount": 248,
+        "reachableVueFileCount": 138,
+        "routeRootCount": 59,
+        "totalVueFileCount": 162,
+        "parsedVueFileCount": 162,
+        "reachableProductionModuleCount": 254,
+        "templateEventDirectiveCount": 954,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 286,
-        "candidateProductionMutationConsumerCount": 286,
-        "acceptedProductionMutationConsumerCount": 286,
-        "productionMutationConsumerPairCount": 286,
+        "coveredProductionMutationConsumerCount": 289,
+        "candidateProductionMutationConsumerCount": 289,
+        "acceptedProductionMutationConsumerCount": 289,
+        "productionMutationConsumerPairCount": 289,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "6eb6369b72f2cbf103fc7739e93283b605e2a005e444be36a792fde770f17a1a",
+      "sha256": "cbb37375aa95f1ad3ef0d076b652731973061f4fc0c359edff8081b0ce17517f",
       "status": "ready",
       "summary": {
-        "routeCount": 582,
-        "exactRouteCount": 582,
-        "normalizedRouteCount": 582,
+        "routeCount": 585,
+        "exactRouteCount": 585,
+        "normalizedRouteCount": 585,
         "classificationOverrideCount": 214,
         "consumerSurfaceOverrideCount": 35,
         "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
         "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
-        "derivedProductionPageCount": 368,
-        "pageRouteCount": 370,
+        "derivedProductionPageCount": 371,
+        "pageRouteCount": 373,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 34,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 422,
+          "web_api_wrapper": 425,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 582,
-    "pageRouteCount": 370,
+    "routeCount": 585,
+    "pageRouteCount": 373,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 34,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 559,
+    "mainRequestBindingCount": 563,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 295,
-    "actionBindingCount": 330,
-    "acceptedActionBindingCount": 310,
+    "registeredActionCount": 301,
+    "actionBindingCount": 336,
+    "acceptedActionBindingCount": 316,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 286,
-    "coveredProductionMutationConsumerPairCount": 286,
+    "productionMutationConsumerPairCount": 289,
+    "coveredProductionMutationConsumerPairCount": 289,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -4926,6 +4926,60 @@
     {
       "route": {
         "method": "GET",
+        "path": "/project-fund-disputes/workbench",
+        "normalizedKey": "GET /project-fund-disputes/workbench",
+        "controller": "ProjectFundDisputeController",
+        "handler": "getWorkbench",
+        "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "fetchProjectFundDisputeCapabilities",
+          "method": "GET",
+          "path": "/project-fund-disputes/workbench?:param",
+          "normalizedKey": "GET /project-fund-disputes/workbench",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "testConsumers": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "fetchProjectFundDisputeWorkbench",
+          "method": "GET",
+          "path": "/project-fund-disputes/workbench?:param",
+          "normalizedKey": "GET /project-fund-disputes/workbench",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-fund-dispute.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/projects/:projectId/affiliate-business-facts/:factId/capability",
         "normalizedKey": "GET /projects/:param/affiliate-business-facts/:param/capability",
         "controller": "ProjectController",
@@ -6386,6 +6440,7 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
           ],
           "testConsumers": [
@@ -7327,6 +7382,7 @@
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
@@ -18180,7 +18236,8 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+            "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -18286,6 +18343,31 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-fund-dispute.evidence.upload",
+          "bindingIndex": 0,
+          "identity": "project-fund-dispute.evidence.upload\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.prepare",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -21660,6 +21742,217 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/project-fund-disputes/drafts",
+        "normalizedKey": "POST /project-fund-disputes/drafts",
+        "controller": "ProjectFundDisputeController",
+        "handler": "saveDraft",
+        "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "saveProjectFundDisputeDraft",
+          "method": "POST",
+          "path": "/project-fund-disputes/drafts",
+          "normalizedKey": "POST /project-fund-disputes/drafts",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-fund-dispute.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-fund-dispute.draft.save",
+          "bindingIndex": 0,
+          "identity": "project-fund-dispute.draft.save\u0000apps/web-admin/src/api/project-fund-dispute.api.ts\u0000saveProjectFundDisputeDraft\u0000POST\u0000POST /project-fund-disputes/drafts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.prepare",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "saveProjectFundDisputeDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/project-fund-disputes/entries/:entryId/transition",
+        "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+        "controller": "ProjectFundDisputeController",
+        "handler": "transition",
+        "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "method": "POST",
+          "path": "/project-fund-disputes/entries/:param/transition",
+          "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-fund-dispute.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-fund-dispute.attest",
+          "bindingIndex": 0,
+          "identity": "project-fund-dispute.attest\u0000apps/web-admin/src/api/project-fund-dispute.api.ts\u0000transitionProjectFundDispute\u0000POST\u0000POST /project-fund-disputes/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.attest",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-fund-dispute.confirm",
+          "bindingIndex": 0,
+          "identity": "project-fund-dispute.confirm\u0000apps/web-admin/src/api/project-fund-dispute.api.ts\u0000transitionProjectFundDispute\u0000POST\u0000POST /project-fund-disputes/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-fund-dispute.return",
+          "bindingIndex": 0,
+          "identity": "project-fund-dispute.return\u0000apps/web-admin/src/api/project-fund-dispute.api.ts\u0000transitionProjectFundDispute\u0000POST\u0000POST /project-fund-disputes/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.return",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-fund-dispute.submit",
+          "bindingIndex": 0,
+          "identity": "project-fund-dispute.submit\u0000apps/web-admin/src/api/project-fund-dispute.api.ts\u0000transitionProjectFundDispute\u0000POST\u0000POST /project-fund-disputes/entries/:param/transition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.submit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

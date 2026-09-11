@@ -3,12 +3,17 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
 import { AuditService } from "../audit/audit.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+import { FileService } from "../file/file.service";
 import { NecessaryExpenseReserveOperatingSourceAdapter } from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
 import { NecessaryExpenseReserveService } from "../necessary-expense-reserve/necessary-expense-reserve.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { OperatingSourceAdapterRegistry } from "../operating-ledger/operating-source-adapter";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { ProjectOperatingProfileService } from "../project/project-operating-profile.service";
+import { ProjectFundDisputeOperatingSourceAdapter } from "../project-fund-dispute/project-fund-dispute-operating-source.adapter";
+import { ProjectFundDisputeService } from "../project-fund-dispute/project-fund-dispute.service";
 
 const RUN_POSTGRES = process.env.RUN_POL279_NECESSARY_EXPENSE_RESERVE_PG16 === "1";
 const describePostgres = RUN_POSTGRES ? describe : describe.skip;
@@ -27,9 +32,21 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
   const audit = new AuditService();
   const operatingLedger = new OperatingLedgerService(prisma as never);
   const adapter = new NecessaryExpenseReserveOperatingSourceAdapter();
-  const registry = new OperatingSourceAdapterRegistry([adapter], [adapter.sourceType]);
+  const disputeAdapter = new ProjectFundDisputeOperatingSourceAdapter();
+  const registry = new OperatingSourceAdapterRegistry(
+    [adapter, disputeAdapter],
+    [adapter.sourceType, disputeAdapter.sourceType]
+  );
   const replay = new OperatingSourceReplayService(prisma as never, operatingLedger, registry);
   const service = new NecessaryExpenseReserveService(prisma as never, replay, audit);
+  const roleResolver = new CompanyRoleResolverService(prisma as never);
+  const disputeService = new ProjectFundDisputeService(
+    prisma as never,
+    replay,
+    audit,
+    new ClearingReconciliationReaderService(prisma as never, roleResolver),
+    new FileService(prisma as never, audit)
+  );
   const operatingProfile = new ProjectOperatingProfileService(prisma as never, audit);
 
   beforeAll(async () => {
@@ -348,40 +365,36 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
       }
     })).rejects.toThrow(/replacement allocation exceeds formal impact amount/u);
 
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE "ProjectFundDispute" (
-        "id" TEXT PRIMARY KEY,
-        "economicIdentityKey" TEXT NOT NULL
-      )
-    `);
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE "ProjectFundDisputeEntry" (
-        "id" TEXT PRIMARY KEY,
-        "disputeId" TEXT NOT NULL,
-        "entryKind" TEXT NOT NULL,
-        "amountCents" BIGINT NOT NULL,
-        "status" TEXT NOT NULL
-      )
-    `);
     const blockedDraft = await service.saveDraft(draftCommand({
       businessCode: "POL279-PG-CROSS",
       basis: "f".repeat(64),
       amountCents: 77n
     }), { userId: FINANCE_STAFF_ID });
-    const root = await prisma.projectNecessaryExpenseReserve.findUniqueOrThrow({
-      where: { id: blockedDraft.reserveId }
-    });
-    await prisma.$executeRaw(Prisma.sql`
-      INSERT INTO "ProjectFundDispute" ("id", "economicIdentityKey")
-      VALUES (${randomUUID()}, ${root.economicIdentityKey})
-    `);
-    const dispute = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT "id" FROM "ProjectFundDispute" WHERE "economicIdentityKey" = ${root.economicIdentityKey}
-    `);
-    await prisma.$executeRaw(Prisma.sql`
-      INSERT INTO "ProjectFundDisputeEntry" ("id", "disputeId", "entryKind", "amountCents", "status")
-      VALUES (${randomUUID()}, ${dispute[0]!.id}, 'establish', 77, 'confirmed')
-    `);
+    const disputeEvidence = await createEvidenceFixture("POL280-PG-CROSS-SOURCE");
+    const disputeDraft = await disputeService.saveDraft({
+      projectId: PROJECT_ID,
+      businessCode: "POL280-PG-CROSS-SOURCE",
+      affiliateAssignmentId: ASSIGNMENT_ID,
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: AFFILIATE_VERSION_ID,
+      disputeKind: "external_restriction",
+      counterpartyKind: "external",
+      counterpartyId: "court-pol280-cross-source",
+      counterpartyNameSnapshot: "跨来源争议限制主体",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: "f".repeat(64),
+      referenceCode: "POL280-CROSS-SOURCE",
+      entryKind: "establish",
+      amountCents: "77",
+      occurredAt: OCCURRED_AT,
+      evidenceLevel: "A",
+      ...disputeEvidence,
+      disputeSummary: "与必要费用准备形成同一经济身份的正式争议资金来源",
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const disputeSubmitted = await transitionDispute(disputeDraft, "submit", FINANCE_STAFF_ID);
+    const disputeAttested = await transitionDispute(disputeSubmitted, "attest", PROJECT_MANAGER_ID);
+    await transitionDispute(disputeAttested, "confirm", FINANCE_DIRECTOR_ID);
     const blockedSubmitted = await transition(blockedDraft, "submit", FINANCE_STAFF_ID);
     const blockedAttested = await transition(blockedSubmitted, "attest", PROJECT_MANAGER_ID);
     await expect(transition(blockedAttested, "confirm", FINANCE_DIRECTOR_ID))
@@ -460,6 +473,22 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
     reason?: string
   ) {
     return service.transition({
+      entryId: entry.id,
+      action,
+      expectedRevision: entry.revision,
+      expectedFingerprint: entry.fingerprint,
+      idempotencyKey: randomUUID(),
+      ...(reason ? { reason } : {})
+    }, { userId });
+  }
+
+  async function transitionDispute(
+    entry: { id: string; revision: number; fingerprint: string },
+    action: "submit" | "attest" | "confirm" | "return",
+    userId: string,
+    reason?: string
+  ) {
+    return disputeService.transition({
       entryId: entry.id,
       action,
       expectedRevision: entry.revision,

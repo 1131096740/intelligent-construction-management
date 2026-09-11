@@ -844,7 +844,16 @@ describe("spot procurement core schema", () => {
   )
     ? readFileSync(necessaryExpenseReserveBindingMigrationPath, "utf8")
     : "";
-  const fileBindingRegistryMigrations = `${exclusiveFileBindingMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}`;
+  const projectFundDisputeBindingMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260911140000_pol280_project_fund_dispute/migration.sql"
+  );
+  const projectFundDisputeBindingMigration = existsSync(
+    projectFundDisputeBindingMigrationPath
+  )
+    ? readFileSync(projectFundDisputeBindingMigrationPath, "utf8")
+    : "";
+  const fileBindingRegistryMigrations = `${exclusiveFileBindingMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}`;
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -1186,7 +1195,7 @@ describe("spot procurement core schema", () => {
       )
     );
     const actualBindings = Array.from(
-      `${invoiceEvidenceExclusiveMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}`.matchAll(
+      `${invoiceEvidenceExclusiveMigration}\n${payerAttestationLineageMigration}\n${payerAuthorityMigration}\n${fundExecutionMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}`.matchAll(
         /\('([^']+)', '([^']+)', (TRUE|FALSE)\)/g
       ),
       (match) => ({

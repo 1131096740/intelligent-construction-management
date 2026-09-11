@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 295,
+    "registeredActionCount": 301,
     "pageActionCount": 53,
-    "backgroundActionCount": 242,
-    "reachableVueFileCount": 137,
-    "routeRootCount": 58,
-    "totalVueFileCount": 161,
-    "parsedVueFileCount": 161,
-    "reachableProductionModuleCount": 251,
-    "templateEventDirectiveCount": 943,
+    "backgroundActionCount": 248,
+    "reachableVueFileCount": 138,
+    "routeRootCount": 59,
+    "totalVueFileCount": 162,
+    "parsedVueFileCount": 162,
+    "reachableProductionModuleCount": 254,
+    "templateEventDirectiveCount": 954,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 286,
-    "candidateProductionMutationConsumerCount": 286,
-    "acceptedProductionMutationConsumerCount": 286,
-    "productionMutationConsumerPairCount": 286,
+    "coveredProductionMutationConsumerCount": 289,
+    "candidateProductionMutationConsumerCount": 289,
+    "acceptedProductionMutationConsumerCount": 289,
+    "productionMutationConsumerPairCount": 289,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 284,
-    "reachableProductionModuleCount": 251,
-    "totalVueFileCount": 161,
-    "parsedVueFileCount": 161
+    "totalProductionModuleCount": 287,
+    "reachableProductionModuleCount": 254,
+    "totalVueFileCount": 162,
+    "parsedVueFileCount": 162
   },
   "actions": [
     {
@@ -13359,6 +13359,395 @@
             "localCallChain": [
               "submitTermination",
               "executeProjectFinancingQuotaTerminationAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-fund-dispute.attest",
+      "usage": "background",
+      "routePaths": [
+        "/一般争议资金"
+      ],
+      "ownerRoutePaths": [
+        "/一般争议资金"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attestProjectFundDisputeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 357,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.attest",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "method": "POST",
+          "path": "/project-fund-disputes/entries/:param/transition",
+          "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/project-fund-disputes/entries/:entryId/transition",
+            "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+            "controller": "ProjectFundDisputeController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attestProjectFundDisputeWithCapability",
+              "transitionProjectFundDispute"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-fund-dispute.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/一般争议资金"
+      ],
+      "ownerRoutePaths": [
+        "/一般争议资金"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectFundDisputeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 371,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.confirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "method": "POST",
+          "path": "/project-fund-disputes/entries/:param/transition",
+          "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/project-fund-disputes/entries/:entryId/transition",
+            "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+            "controller": "ProjectFundDisputeController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectFundDisputeWithCapability",
+              "transitionProjectFundDispute"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-fund-dispute.draft.save",
+      "usage": "background",
+      "routePaths": [
+        "/一般争议资金"
+      ],
+      "ownerRoutePaths": [
+        "/一般争议资金"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "persistProjectFundDisputeDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 276,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "saveProjectFundDisputeDraft",
+          "method": "POST",
+          "path": "/project-fund-disputes/drafts",
+          "normalizedKey": "POST /project-fund-disputes/drafts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/project-fund-disputes/drafts",
+            "normalizedKey": "POST /project-fund-disputes/drafts",
+            "controller": "ProjectFundDisputeController",
+            "handler": "saveDraft",
+            "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "persistProjectFundDisputeDraftWithCapability",
+              "saveProjectFundDisputeDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-fund-dispute.evidence.upload",
+      "usage": "background",
+      "routePaths": [
+        "/一般争议资金"
+      ],
+      "ownerRoutePaths": [
+        "/一般争议资金"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProjectFundDisputeEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 269,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.prepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProjectFundDisputeEvidenceWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-fund-dispute.return",
+      "usage": "background",
+      "routePaths": [
+        "/一般争议资金"
+      ],
+      "ownerRoutePaths": [
+        "/一般争议资金"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnProjectFundDisputeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 385,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.return",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "method": "POST",
+          "path": "/project-fund-disputes/entries/:param/transition",
+          "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/project-fund-disputes/entries/:entryId/transition",
+            "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+            "controller": "ProjectFundDisputeController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnProjectFundDisputeWithCapability",
+              "transitionProjectFundDispute"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-fund-dispute.submit",
+      "usage": "background",
+      "routePaths": [
+        "/一般争议资金"
+      ],
+      "ownerRoutePaths": [
+        "/一般争议资金"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitProjectFundDisputeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 343,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.submit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+          "wrapper": "transitionProjectFundDispute",
+          "method": "POST",
+          "path": "/project-fund-disputes/entries/:param/transition",
+          "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/project-fund-disputes/entries/:entryId/transition",
+            "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+            "controller": "ProjectFundDisputeController",
+            "handler": "transition",
+            "sourceFile": "services/api/src/project-fund-dispute/project-fund-dispute.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitProjectFundDisputeWithCapability",
+              "transitionProjectFundDispute"
             ]
           },
           "ticketFollowups": []

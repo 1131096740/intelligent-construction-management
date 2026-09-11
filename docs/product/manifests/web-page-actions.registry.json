@@ -4925,6 +4925,66 @@
       "semantic": "business_write",
       "capability": { "kind": "server_boolean", "source": "capability.return" },
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/necessary-expense-reserve.api.ts", "name": "transitionNecessaryExpenseReserve" }]
+    },
+    {
+      "id": "project-fund-dispute.draft.save",
+      "usage": "background",
+      "routePaths": ["/一般争议资金"],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "persistProjectFundDisputeDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.prepare" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts", "name": "saveProjectFundDisputeDraft" }]
+    },
+    {
+      "id": "project-fund-dispute.evidence.upload",
+      "usage": "background",
+      "routePaths": ["/一般争议资金"],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectFundDisputeEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.prepare" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadPrivateFile" }]
+    },
+    {
+      "id": "project-fund-dispute.submit",
+      "usage": "background",
+      "routePaths": ["/一般争议资金"],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitProjectFundDisputeWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.submit" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts", "name": "transitionProjectFundDispute" }]
+    },
+    {
+      "id": "project-fund-dispute.attest",
+      "usage": "background",
+      "routePaths": ["/一般争议资金"],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attestProjectFundDisputeWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.attest" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts", "name": "transitionProjectFundDispute" }]
+    },
+    {
+      "id": "project-fund-dispute.confirm",
+      "usage": "background",
+      "routePaths": ["/一般争议资金"],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectFundDisputeWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.confirm" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts", "name": "transitionProjectFundDispute" }]
+    },
+    {
+      "id": "project-fund-dispute.return",
+      "usage": "background",
+      "routePaths": ["/一般争议资金"],
+      "sourceFile": "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnProjectFundDisputeWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "capability.return" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts", "name": "transitionProjectFundDispute" }]
     }
   ]
 }

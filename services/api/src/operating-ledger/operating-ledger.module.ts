@@ -55,7 +55,13 @@ import {
 import {
   NecessaryExpenseReserveOperatingSourceAdapter
 } from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
-import { NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE } from "@jiangkong/shared-domain";
+import {
+  NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE,
+  PROJECT_FUND_DISPUTE_SOURCE_TYPE
+} from "@jiangkong/shared-domain";
+import {
+  ProjectFundDisputeOperatingSourceAdapter
+} from "../project-fund-dispute/project-fund-dispute-operating-source.adapter";
 
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
@@ -76,7 +82,8 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
   OPERATING_TAKEOVER_SOURCE_TYPE,
   WAGE_STATEMENT_OPERATING_SOURCE_TYPE,
-  NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE
+  NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE,
+  PROJECT_FUND_DISPUTE_SOURCE_TYPE
 ] as const);
 
 export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry {
@@ -100,7 +107,8 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
       new ContractTakeoverHistoricalPaymentOperatingSourceAdapter(),
       new OperatingTakeoverSourceAdapter(),
       new WageStatementOperatingSourceAdapter(),
-      new NecessaryExpenseReserveOperatingSourceAdapter()
+      new NecessaryExpenseReserveOperatingSourceAdapter(),
+      new ProjectFundDisputeOperatingSourceAdapter()
     ],
     OPERATING_SOURCE_TYPES
   );
