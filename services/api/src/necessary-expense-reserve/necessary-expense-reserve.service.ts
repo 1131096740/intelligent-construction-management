@@ -1210,16 +1210,16 @@ function isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error: unknown):
     message?: unknown;
     meta?: { code?: unknown; message?: unknown };
   };
-  if (record.code === "P2034" || record.code === "40001" || record.code === "23514") {
-    return true;
-  }
-  if (record.code !== "P2010") return false;
-  return record.meta?.code === "40001" ||
+  const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
+  return record.code === "P2034" ||
+    record.code === "40001" ||
+    record.code === "23514" ||
+    record.meta?.code === "40001" ||
     record.meta?.code === "23514" ||
-    String(record.meta?.message ?? "").includes("POL-279") ||
-    String(record.meta?.message ?? "").includes("40001") ||
-    String(record.meta?.message ?? "").includes("could not serialize access") ||
-    String(record.message ?? "").includes("23514");
+    message.includes("POL-279") ||
+    message.includes("40001") ||
+    message.includes("23514") ||
+    message.includes("could not serialize access");
 }
 
 function validateTransitionCommand(command: NecessaryExpenseReserveTransitionCommand) {

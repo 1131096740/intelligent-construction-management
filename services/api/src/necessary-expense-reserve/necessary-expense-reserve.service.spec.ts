@@ -157,7 +157,8 @@ describe("NecessaryExpenseReserveService public business seam", () => {
   it.each([
     { code: "P2034" },
     { code: "P2010", meta: { code: "40001", message: "could not serialize access" } },
-    { code: "P2010", meta: { code: "23514" } }
+    { code: "P2010", meta: { code: "23514" } },
+    { message: "Unknown query error: SQLSTATE 23514 POL-279 capacity guard" }
   ])("maps shared-lock concurrency and capacity conflicts to HTTP 409", async (error) => {
     const harness = createHarness();
     harness.prisma.$transaction.mockRejectedValueOnce(error);

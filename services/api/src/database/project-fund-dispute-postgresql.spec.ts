@@ -620,7 +620,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
       constructionEnterpriseAssignmentId: ASSIGNMENT_ID,
       category: "management_fee",
       governedSubjectKey: clearingBasis,
-      authoritativeGrossCapCents: "88",
+      authoritativeGrossCapCents: "1000",
       expectedRevision: 0,
       idempotencyKey: randomUUID()
     }) as { id: string; revision: number };
