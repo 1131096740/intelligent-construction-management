@@ -796,7 +796,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
   it("按稳定影响坐标串行化 #279/#280 逆序多影响替代", async () => {
     const disputeOriginal = await createAndConfirmEstablishment(
       "POL280-PG-MULTI-LOCK",
-      "7".repeat(64),
+      "01".repeat(32),
       2n
     );
     const reserveEvidence = await createEvidenceFixture("POL279-PG-MULTI-LOCK");
@@ -809,7 +809,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
       reasonKind: "mandatory_closeout",
       title: "逆序多影响替代必要费用准备",
       basisKind: "written_evidence",
-      basisBusinessIdOrEvidenceSha256: "8".repeat(64),
+      basisBusinessIdOrEvidenceSha256: "02".repeat(32),
       basisSummary: "验证跨来源多影响替代的稳定锁序",
       entryKind: "establish",
       amountCents: "2",
@@ -849,7 +849,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     );
     const disputeReleaseDraft = await service.saveDraft(draftCommand({
       businessCode: "POL280-PG-MULTI-LOCK",
-      basis: "7".repeat(64),
+      basis: "01".repeat(32),
       amountCents: 2n,
       disputeId: disputeOriginal.disputeId,
       entryKind: "release",
@@ -886,7 +886,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
       reasonKind: "mandatory_closeout",
       title: "逆序多影响替代必要费用准备",
       basisKind: "written_evidence",
-      basisBusinessIdOrEvidenceSha256: "8".repeat(64),
+      basisBusinessIdOrEvidenceSha256: "02".repeat(32),
       basisSummary: "验证跨来源多影响替代的稳定锁序",
       entryKind: "release",
       adjustsEntryId: reserveOriginal.id,
