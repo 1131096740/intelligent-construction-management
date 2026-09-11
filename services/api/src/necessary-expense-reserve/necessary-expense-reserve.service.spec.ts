@@ -194,7 +194,8 @@ describe("NecessaryExpenseReserveService public business seam", () => {
   it.each([
     { code: "P2034" },
     { code: "P2010", meta: { code: "40001", message: "could not serialize access" } },
-    { code: "P2010", meta: { code: "40P01", message: "deadlock detected" } }
+    { code: "P2010", meta: { code: "40P01", message: "deadlock detected" } },
+    { code: "40P01", message: "deadlock detected" }
   ])("retries a shared-lock serialization failure once with a fresh transaction", async (error) => {
     const harness = createHarness();
     harness.prisma.$transaction.mockRejectedValueOnce(error);
@@ -203,6 +204,21 @@ describe("NecessaryExpenseReserveService public business seam", () => {
     };
     await expect(service.serializable(async () => "retried"))
       .resolves.toBe("retried");
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps a repeated shared-lock deadlock to HTTP 409 after the single retry", async () => {
+    const harness = createHarness();
+    const error = { code: "40P01", message: "deadlock detected" };
+    harness.prisma.$transaction
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error);
+    const service = harness.service as unknown as {
+      serializable(work: () => Promise<unknown>): Promise<unknown>;
+    };
+    const result = service.serializable(async () => undefined);
+    await expect(result).rejects.toBeInstanceOf(ConflictException);
+    await expect(result).rejects.toMatchObject({ status: 409 });
     expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 
