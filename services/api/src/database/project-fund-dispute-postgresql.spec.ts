@@ -483,14 +483,17 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
       expectedFingerprint: necessaryReleaseSubmitted.fingerprint,
       idempotencyKey: randomUUID()
     }, { userId: PROJECT_MANAGER_ID });
-    await expect(necessaryService.transition({
+    const crossCapacityResult = necessaryService.transition({
       entryId: necessaryReleaseAttested.id,
       action: "confirm",
       expectedRevision: necessaryReleaseAttested.revision,
       expectedFingerprint: necessaryReleaseAttested.fingerprint,
       idempotencyKey: randomUUID()
-    }, { userId: FINANCE_DIRECTOR_ID }))
-      .rejects.toThrow(/replacement allocation exceeds formal impact amount/u);
+    }, { userId: FINANCE_DIRECTOR_ID });
+    await expect(crossCapacityResult).rejects.toMatchObject({ status: 409 });
+    await expect(prisma.projectNecessaryExpenseReserveReplacement.count({
+      where: { operatingImpactEntryId: crossCapacityImpact.id }
+    })).resolves.toBe(0);
 
     const runtimeOriginal = await createAndConfirmEstablishment(
       "POL280-PG-RUNTIME-REPLACEMENT",
