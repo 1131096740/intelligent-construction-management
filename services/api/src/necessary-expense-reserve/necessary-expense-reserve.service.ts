@@ -1187,11 +1187,39 @@ export class NecessaryExpenseReserveService {
     };
   }
 
-  private serializable<T>(work: (tx: Tx) => Promise<T>) {
-    return this.prisma.$transaction(work, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-    });
+  private async serializable<T>(work: (tx: Tx) => Promise<T>) {
+    try {
+      return await this.prisma.$transaction(work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      });
+    } catch (error) {
+      if (isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error)) {
+        throw new ConflictException(
+          "必要准备并发或容量校验冲突，请刷新后重试"
+        );
+      }
+      throw error;
+    }
   }
+}
+
+function isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    meta?: { code?: unknown; message?: unknown };
+  };
+  if (record.code === "P2034" || record.code === "40001" || record.code === "23514") {
+    return true;
+  }
+  if (record.code !== "P2010") return false;
+  return record.meta?.code === "40001" ||
+    record.meta?.code === "23514" ||
+    String(record.meta?.message ?? "").includes("POL-279") ||
+    String(record.meta?.message ?? "").includes("40001") ||
+    String(record.meta?.message ?? "").includes("could not serialize access") ||
+    String(record.message ?? "").includes("23514");
 }
 
 function validateTransitionCommand(command: NecessaryExpenseReserveTransitionCommand) {

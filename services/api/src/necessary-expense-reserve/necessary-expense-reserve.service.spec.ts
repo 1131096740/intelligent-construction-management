@@ -146,12 +146,28 @@ describe("NecessaryExpenseReserveService public business seam", () => {
         replay as never,
         audit as never
       ),
+      prisma,
       tx,
       replay,
       receipts,
       currentEntry: () => entry
     };
   }
+
+  it.each([
+    { code: "P2034" },
+    { code: "P2010", meta: { code: "40001", message: "could not serialize access" } },
+    { code: "P2010", meta: { code: "23514" } }
+  ])("maps shared-lock concurrency and capacity conflicts to HTTP 409", async (error) => {
+    const harness = createHarness();
+    harness.prisma.$transaction.mockRejectedValueOnce(error);
+    const service = harness.service as unknown as {
+      serializable(work: () => Promise<unknown>): Promise<unknown>;
+    };
+    const result = service.serializable(async () => undefined);
+    await expect(result).rejects.toBeInstanceOf(ConflictException);
+    await expect(result).rejects.toMatchObject({ status: 409 });
+  });
 
   it("creates, reads, submits, independently attests and confirms in one transaction seam", async () => {
     const harness = createHarness();

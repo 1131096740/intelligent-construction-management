@@ -372,6 +372,36 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     const crossReplacementEvidence = await createEvidenceFixture(
       "POL280-PG-CROSS-REPLACEMENT-N279"
     );
+    const crossCapacityImpact = await appendConfirmedCostImpact(1n);
+    const crossCapacityEvidence = await createEvidenceFixture(
+      "POL280-PG-CROSS-REPLACEMENT-P280"
+    );
+    const crossCapacityReleaseDraft = await service.saveDraft(draftCommand({
+      businessCode: "POL280-PG-REPLACE",
+      basis: "e".repeat(64),
+      amountCents: 1n,
+      disputeId: original.disputeId,
+      entryKind: "release",
+      adjustsEntryId: original.id,
+      evidenceFileId: crossCapacityEvidence.evidenceFileId,
+      evidenceSha256: crossCapacityEvidence.evidenceSha256,
+      resolutionBasisSummary: "跨来源容量已由争议资金释放消费",
+      replacementImpacts: [{
+        operatingImpactEntryId: crossCapacityImpact.id,
+        amountCents: "1"
+      }]
+    }), { userId: FINANCE_STAFF_ID });
+    const crossCapacitySubmitted = await transition(
+      crossCapacityReleaseDraft,
+      "submit",
+      FINANCE_STAFF_ID
+    );
+    const crossCapacityAttested = await transition(
+      crossCapacitySubmitted,
+      "attest",
+      PROJECT_MANAGER_ID
+    );
+    await transition(crossCapacityAttested, "confirm", FINANCE_DIRECTOR_ID);
     const necessaryOriginal = await necessaryService.saveDraft({
       projectId: PROJECT_ID,
       businessCode: "POL280-PG-CROSS-REPLACEMENT-N279",
@@ -434,7 +464,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
       evidenceSha256: crossReplacementEvidence.evidenceSha256,
       reason: "正式影响已替代必要费用准备",
       replacementImpacts: [{
-        operatingImpactEntryId: replacementImpact.id,
+        operatingImpactEntryId: crossCapacityImpact.id,
         amountCents: "1"
       }],
       idempotencyKey: randomUUID()
