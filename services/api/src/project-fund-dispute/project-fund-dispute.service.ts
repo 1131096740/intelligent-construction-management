@@ -717,7 +717,7 @@ export class ProjectFundDisputeService {
       ) AS "duplicateExists"
     `);
     if (crossSource[0]?.duplicateExists) {
-      throw new ConflictException("duplicate_blocked：该经济事项已由一般争议资金正式来源覆盖");
+      throw new ConflictException("duplicate_blocked：该经济事项已由必要费用准备正式来源覆盖");
     }
     const clearingDuplicate =
       await this.clearingReconciliation.readProjectFundDisputeDuplicateInTransaction(
@@ -997,7 +997,14 @@ export class ProjectFundDisputeService {
     })) {
       throw new ConflictException("释放替代分配超过释放金额或正式影响金额");
     }
-    for (const replacement of replacements) {
+    const orderedReplacements = [...replacements].sort((left, right) =>
+      left.operatingImpactEntryId < right.operatingImpactEntryId
+        ? -1
+        : left.operatingImpactEntryId > right.operatingImpactEntryId
+          ? 1
+          : 0
+    );
+    for (const replacement of orderedReplacements) {
       await tx.projectFundDisputeReplacement.create({
         data: {
           id: randomUUID(),
@@ -1328,13 +1335,17 @@ function isProjectFundDisputeConcurrencyOrCapacityConflict(error: unknown): bool
   const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
   return record.code === "P2034" ||
     record.code === "40001" ||
+    record.code === "40P01" ||
     record.code === "23514" ||
     record.meta?.code === "40001" ||
+    record.meta?.code === "40P01" ||
     record.meta?.code === "23514" ||
     message.includes("POL-280") ||
     message.includes("40001") ||
+    message.includes("40P01") ||
     message.includes("23514") ||
-    message.includes("could not serialize access");
+    message.includes("could not serialize access") ||
+    message.includes("deadlock detected");
 }
 
 function isDatabaseSerializationFailure(error: unknown): boolean {
@@ -1347,9 +1358,13 @@ function isDatabaseSerializationFailure(error: unknown): boolean {
   const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
   return record.code === "P2034" ||
     record.code === "40001" ||
+    record.code === "40P01" ||
     record.meta?.code === "40001" ||
+    record.meta?.code === "40P01" ||
     message.includes("40001") ||
-    message.includes("could not serialize access");
+    message.includes("40P01") ||
+    message.includes("could not serialize access") ||
+    message.includes("deadlock detected");
 }
 
 function requiredText(value: unknown, message: string): string {

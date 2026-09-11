@@ -376,7 +376,8 @@ describe("ProjectFundDisputeService public business seam", () => {
 
   it.each([
     { code: "P2034" },
-    { code: "P2010", meta: { code: "40001", message: "could not serialize access" } }
+    { code: "P2010", meta: { code: "40001", message: "could not serialize access" } },
+    { code: "P2010", meta: { code: "40P01", message: "deadlock detected" } }
   ])("retries a serialization failure once with a fresh transaction", async (error) => {
     const harness = createHarness();
     harness.prisma.$transaction.mockRejectedValueOnce(error);

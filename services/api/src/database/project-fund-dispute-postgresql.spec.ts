@@ -793,6 +793,154 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     }, { userId: FINANCE_STAFF_ID })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("按稳定影响坐标串行化 #279/#280 逆序多影响替代", async () => {
+    const disputeOriginal = await createAndConfirmEstablishment(
+      "POL280-PG-MULTI-LOCK",
+      "7".repeat(64),
+      2n
+    );
+    const reserveEvidence = await createEvidenceFixture("POL279-PG-MULTI-LOCK");
+    const reserveDraft = await necessaryService.saveDraft({
+      projectId: PROJECT_ID,
+      businessCode: "POL279-PG-MULTI-LOCK",
+      affiliateAssignmentId: ASSIGNMENT_ID,
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: AFFILIATE_VERSION_ID,
+      reasonKind: "mandatory_closeout",
+      title: "逆序多影响替代必要费用准备",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: "8".repeat(64),
+      basisSummary: "验证跨来源多影响替代的稳定锁序",
+      entryKind: "establish",
+      amountCents: "2",
+      occurredAt: OCCURRED_AT,
+      evidenceLevel: "A",
+      evidenceFileId: reserveEvidence.evidenceFileId,
+      evidenceSha256: reserveEvidence.evidenceSha256,
+      reason: "建立逆序多影响替代场景",
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const reserveSubmitted = await necessaryService.transition({
+      entryId: reserveDraft.id,
+      action: "submit",
+      expectedRevision: reserveDraft.revision,
+      expectedFingerprint: reserveDraft.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const reserveAttested = await necessaryService.transition({
+      entryId: reserveSubmitted.id,
+      action: "attest",
+      expectedRevision: reserveSubmitted.revision,
+      expectedFingerprint: reserveSubmitted.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: PROJECT_MANAGER_ID });
+    const reserveOriginal = await necessaryService.transition({
+      entryId: reserveAttested.id,
+      action: "confirm",
+      expectedRevision: reserveAttested.revision,
+      expectedFingerprint: reserveAttested.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_DIRECTOR_ID });
+
+    const impactA = await appendConfirmedCostImpact(2n);
+    const impactB = await appendConfirmedCostImpact(2n);
+    const disputeReleaseEvidence = await createEvidenceFixture(
+      "POL280-PG-MULTI-LOCK-RELEASE"
+    );
+    const disputeReleaseDraft = await service.saveDraft(draftCommand({
+      businessCode: "POL280-PG-MULTI-LOCK",
+      basis: "7".repeat(64),
+      amountCents: 2n,
+      disputeId: disputeOriginal.disputeId,
+      entryKind: "release",
+      adjustsEntryId: disputeOriginal.id,
+      resolutionBasisSummary: "两个正式影响共同替代争议资金",
+      evidenceFileId: disputeReleaseEvidence.evidenceFileId,
+      evidenceSha256: disputeReleaseEvidence.evidenceSha256,
+      replacementImpacts: [impactB, impactA].map((impact) => ({
+        operatingImpactEntryId: impact.id,
+        amountCents: "1"
+      }))
+    }), { userId: FINANCE_STAFF_ID });
+    const disputeReleaseSubmitted = await transition(
+      disputeReleaseDraft,
+      "submit",
+      FINANCE_STAFF_ID
+    );
+    const disputeReleaseAttested = await transition(
+      disputeReleaseSubmitted,
+      "attest",
+      PROJECT_MANAGER_ID
+    );
+
+    const reserveReleaseEvidence = await createEvidenceFixture(
+      "POL279-PG-MULTI-LOCK-RELEASE"
+    );
+    const reserveReleaseDraft = await necessaryService.saveDraft({
+      projectId: PROJECT_ID,
+      reserveId: reserveOriginal.reserveId,
+      businessCode: "POL279-PG-MULTI-LOCK",
+      affiliateAssignmentId: ASSIGNMENT_ID,
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: AFFILIATE_VERSION_ID,
+      reasonKind: "mandatory_closeout",
+      title: "逆序多影响替代必要费用准备",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: "8".repeat(64),
+      basisSummary: "验证跨来源多影响替代的稳定锁序",
+      entryKind: "release",
+      adjustsEntryId: reserveOriginal.id,
+      amountCents: "2",
+      occurredAt: OCCURRED_AT,
+      evidenceLevel: "A",
+      evidenceFileId: reserveReleaseEvidence.evidenceFileId,
+      evidenceSha256: reserveReleaseEvidence.evidenceSha256,
+      reason: "两个正式影响共同替代必要费用准备",
+      replacementImpacts: [impactA, impactB].map((impact) => ({
+        operatingImpactEntryId: impact.id,
+        amountCents: "1"
+      })),
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const reserveReleaseSubmitted = await necessaryService.transition({
+      entryId: reserveReleaseDraft.id,
+      action: "submit",
+      expectedRevision: reserveReleaseDraft.revision,
+      expectedFingerprint: reserveReleaseDraft.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const reserveReleaseAttested = await necessaryService.transition({
+      entryId: reserveReleaseSubmitted.id,
+      action: "attest",
+      expectedRevision: reserveReleaseSubmitted.revision,
+      expectedFingerprint: reserveReleaseSubmitted.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: PROJECT_MANAGER_ID });
+
+    const results = await Promise.allSettled([
+      transition(disputeReleaseAttested, "confirm", FINANCE_DIRECTOR_ID),
+      necessaryService.transition({
+        entryId: reserveReleaseAttested.id,
+        action: "confirm",
+        expectedRevision: reserveReleaseAttested.revision,
+        expectedFingerprint: reserveReleaseAttested.fingerprint,
+        idempotencyKey: randomUUID()
+      }, { userId: FINANCE_DIRECTOR_ID })
+    ]);
+    expect(results.map((result) => result.status)).toEqual(["fulfilled", "fulfilled"]);
+    for (const impact of [impactA, impactB]) {
+      const [disputeCount, reserveCount] = await Promise.all([
+        prisma.projectFundDisputeReplacement.count({
+          where: { operatingImpactEntryId: impact.id }
+        }),
+        prisma.projectNecessaryExpenseReserveReplacement.count({
+          where: { operatingImpactEntryId: impact.id }
+        })
+      ]);
+      expect(disputeCount + reserveCount).toBe(2);
+    }
+  });
+
   function draftCommand(input: {
     businessCode: string;
     basis: string;
