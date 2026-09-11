@@ -1188,18 +1188,24 @@ export class NecessaryExpenseReserveService {
   }
 
   private async serializable<T>(work: (tx: Tx) => Promise<T>) {
-    try {
-      return await this.prisma.$transaction(work, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-      });
-    } catch (error) {
-      if (isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error)) {
-        throw new ConflictException(
-          "必要准备并发或容量校验冲突，请刷新后重试"
-        );
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(work, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+        });
+      } catch (error) {
+        if (attempt === 0 && isDatabaseSerializationFailure(error)) {
+          continue;
+        }
+        if (isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error)) {
+          throw new ConflictException(
+            "必要准备并发或容量校验冲突，请刷新后重试"
+          );
+        }
+        throw error;
       }
-      throw error;
     }
+    throw new ConflictException("必要准备并发冲突，请刷新后重试");
   }
 }
 
@@ -1219,6 +1225,21 @@ function isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error: unknown):
     message.includes("POL-279") ||
     message.includes("40001") ||
     message.includes("23514") ||
+    message.includes("could not serialize access");
+}
+
+function isDatabaseSerializationFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    meta?: { code?: unknown; message?: unknown };
+  };
+  const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
+  return record.code === "P2034" ||
+    record.code === "40001" ||
+    record.meta?.code === "40001" ||
+    message.includes("40001") ||
     message.includes("could not serialize access");
 }
 

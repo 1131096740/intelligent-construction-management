@@ -155,11 +155,9 @@ describe("NecessaryExpenseReserveService public business seam", () => {
   }
 
   it.each([
-    { code: "P2034" },
-    { code: "P2010", meta: { code: "40001", message: "could not serialize access" } },
     { code: "P2010", meta: { code: "23514" } },
     { message: "Unknown query error: SQLSTATE 23514 POL-279 capacity guard" }
-  ])("maps shared-lock concurrency and capacity conflicts to HTTP 409", async (error) => {
+  ])("maps shared-lock capacity conflicts to HTTP 409 without retry", async (error) => {
     const harness = createHarness();
     harness.prisma.$transaction.mockRejectedValueOnce(error);
     const service = harness.service as unknown as {
@@ -168,6 +166,21 @@ describe("NecessaryExpenseReserveService public business seam", () => {
     const result = service.serializable(async () => undefined);
     await expect(result).rejects.toBeInstanceOf(ConflictException);
     await expect(result).rejects.toMatchObject({ status: 409 });
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { code: "P2034" },
+    { code: "P2010", meta: { code: "40001", message: "could not serialize access" } }
+  ])("retries a shared-lock serialization failure once with a fresh transaction", async (error) => {
+    const harness = createHarness();
+    harness.prisma.$transaction.mockRejectedValueOnce(error);
+    const service = harness.service as unknown as {
+      serializable(work: () => Promise<string>): Promise<string>;
+    };
+    await expect(service.serializable(async () => "retried"))
+      .resolves.toBe("retried");
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 
   it("creates, reads, submits, independently attests and confirms in one transaction seam", async () => {
