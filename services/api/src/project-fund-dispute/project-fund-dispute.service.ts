@@ -727,28 +727,30 @@ export class ProjectFundDisputeService {
            )
            AND (
              (
-               impact."impactSnapshot" ->> 'economicIdentityKey' = ${entry.dispute.economicIdentityKey}
-               AND NOT (
+               NOT (
                  fact."sourceType" = ${PROJECT_FUND_DISPUTE_SOURCE_TYPE}
                  AND impact."impactSnapshot" ->> 'disputeId' = ${entry.dispute.id}
+               )
+               AND (
+                 impact."impactSnapshot" ->> 'economicIdentityKey' = ${entry.dispute.economicIdentityKey}
+                 OR fact."sourceSnapshot" ->> 'basisBusinessIdOrEvidenceSha256' = ${entry.dispute.basisBusinessIdOrEvidenceSha256}
+                 OR fact."basisSnapshot" ->> 'evidenceSha256' = ${entry.evidenceSha256}
+                 OR jsonb_path_exists(
+                   fact."sourceSnapshot",
+                   '$.** ? (@ == $needle)',
+                   jsonb_build_object('needle', to_jsonb(${entry.dispute.basisBusinessIdOrEvidenceSha256}::text))
+                 )
+                 OR jsonb_path_exists(
+                   COALESCE(fact."basisSnapshot", '{}'::jsonb),
+                   '$.** ? (@ == $needle)',
+                   jsonb_build_object('needle', to_jsonb(${entry.evidenceSha256}::text))
+                 )
                )
              )
              OR (
                fact."sourceType" = ${PROJECT_FUND_DISPUTE_SOURCE_TYPE}
+               AND impact."impactSnapshot" ->> 'disputeId' = ${entry.dispute.id}
                AND fact."basisSnapshot" ->> 'evidenceSha256' = ${entry.evidenceSha256}
-               AND impact."impactSnapshot" ->> 'disputeId' IS DISTINCT FROM ${entry.dispute.id}
-             )
-             OR fact."sourceSnapshot" ->> 'basisBusinessIdOrEvidenceSha256' = ${entry.dispute.basisBusinessIdOrEvidenceSha256}
-             OR fact."basisSnapshot" ->> 'evidenceSha256' = ${entry.evidenceSha256}
-             OR jsonb_path_exists(
-               fact."sourceSnapshot",
-               '$.** ? (@ == $needle)',
-               jsonb_build_object('needle', to_jsonb(${entry.dispute.basisBusinessIdOrEvidenceSha256}::text))
-             )
-             OR jsonb_path_exists(
-               COALESCE(fact."basisSnapshot", '{}'::jsonb),
-               '$.** ? (@ == $needle)',
-               jsonb_build_object('needle', to_jsonb(${entry.evidenceSha256}::text))
              )
            )
       )
