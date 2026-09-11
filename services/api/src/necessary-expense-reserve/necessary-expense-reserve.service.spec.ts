@@ -136,6 +136,8 @@ describe("NecessaryExpenseReserveService public business seam", () => {
       projectNecessaryExpenseReserveReplacement: { create: jest.fn() }
     };
     const prisma = {
+      projectNecessaryExpenseReserveEntry:
+        tx.projectNecessaryExpenseReserveEntry,
       $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx))
     };
     return {

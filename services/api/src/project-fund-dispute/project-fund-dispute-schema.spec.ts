@@ -45,6 +45,27 @@ describe("POL-15P2 project fund dispute schema", () => {
     expect(migration).toContain("REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON TABLE");
   });
 
+  it("shares formal-impact replacement capacity with #279 without widening runtime reads", () => {
+    expect(migration).toContain(
+      "hashtextextended('pol:formal-impact-replacement:'"
+    );
+    expect(migration).toContain(
+      'FROM public."ProjectNecessaryExpenseReserveReplacement"'
+    );
+    expect(migration).toContain(
+      'CREATE OR REPLACE FUNCTION "pol279_replacement_guard"() RETURNS trigger'
+    );
+    expect(migration).toMatch(
+      /CREATE FUNCTION "pol280_replacement_guard"\(\) RETURNS trigger\s+LANGUAGE plpgsql\s+SECURITY DEFINER/u
+    );
+    expect(migration).toMatch(
+      /CREATE OR REPLACE FUNCTION "pol279_replacement_guard"\(\) RETURNS trigger\s+LANGUAGE plpgsql\s+SECURITY DEFINER/u
+    );
+    expect(migration).not.toContain(
+      'GRANT SELECT ON TABLE "OperatingImpactEntry", "OperatingFact"'
+    );
+  });
+
   it("maps every custom relation, unique constraint and index name to M168", () => {
     expect(schema).toContain('map: "ProjectFundDispute_project_fkey"');
     expect(schema).toContain('map: "ProjectFundDispute_assignment_fkey"');

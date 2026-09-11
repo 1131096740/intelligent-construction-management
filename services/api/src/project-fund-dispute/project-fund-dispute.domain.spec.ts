@@ -1,10 +1,15 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 
 import {
+  hashEconomicAdvisoryCoordinate as hashNecessaryExpenseReserveEconomicCoordinate
+} from "../necessary-expense-reserve/necessary-expense-reserve.domain";
+
+import {
   assertProjectFundDisputeDraft,
   assertProjectFundDisputeTransition,
   buildProjectFundDisputeFingerprint,
   buildProjectFundDisputeIdentity,
+  hashEconomicAdvisoryCoordinate,
   sha256Jcs
 } from "./project-fund-dispute.domain";
 
@@ -61,6 +66,9 @@ describe("project fund dispute domain", () => {
     expect(first).toEqual(second);
     expect(first.economicIdentityKey).toMatch(/^[0-9a-f]{64}$/u);
     expect(first.sourceIdentityKey).not.toBe(first.economicIdentityKey);
+    expect(hashEconomicAdvisoryCoordinate(first.economicIdentityKey)).toBe(
+      hashNecessaryExpenseReserveEconomicCoordinate(first.economicIdentityKey)
+    );
     expect(sha256Jcs({ b: 2, a: 1 })).toBe(sha256Jcs({ a: 1, b: 2 }));
     expect(() => sha256Jcs(Number.POSITIVE_INFINITY)).toThrow("非有限数");
     const sparse: unknown[] = [];

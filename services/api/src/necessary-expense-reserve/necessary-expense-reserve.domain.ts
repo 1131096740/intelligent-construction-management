@@ -251,7 +251,7 @@ export function hashEconomicAdvisoryCoordinate(economicIdentityKey: string): str
     throw new BadRequestException("经济身份键格式不正确");
   }
   return createHash("sha256")
-    .update(`pol279:necessary-expense-reserve:${economicIdentityKey}`)
+    .update(`pol:project-cash-restriction:economic:${economicIdentityKey}`)
     .digest("hex");
 }
 

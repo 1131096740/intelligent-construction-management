@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 168,
     "terminalMigration": "20260911140000_pol280_project_fund_dispute",
-    "terminalMigrationChecksum": "82e40593dc82b6a7710fe5dcfc403a7e2a52dc6e5890e8a1e36e175f70197f35",
+    "terminalMigrationChecksum": "7633c0ce93b29d5709c6983655209236a4f8bc6f502c0d5e0911773cd6390e89",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

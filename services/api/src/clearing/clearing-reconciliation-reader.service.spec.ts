@@ -148,4 +148,58 @@ describe("ClearingReconciliationReaderService", () => {
       items: []
     });
   });
+
+  it("finds an active formal #275 duplicate by governed subject and canonical risk", async () => {
+    const tx = {
+      clearingCase: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "case-1",
+          governedSubjectKey: "formal-basis-1",
+          authorityVersionId: null,
+          authoritySnapshotRef: null,
+          sourceDiscriminator: null,
+          events: []
+        }])
+      },
+      affiliateClearingAuthorityVersion: { findMany: jest.fn() }
+    };
+    const service = new ClearingReconciliationReaderService(
+      {} as never,
+      {} as never
+    );
+    jest.spyOn(service, "readClearingReconciliationRiskInTransaction")
+      .mockResolvedValueOnce({
+        projectId: "project-1",
+        asOf: "2026-09-11T00:00:00.000Z",
+        relationshipCompleteness: "coverage_incomplete",
+        openPendingGrossCents: 100n,
+        openCoveredCents: 0n,
+        openUncoveredCents: 100n,
+        continuedWithheldRetainedCents: 0n,
+        coveredWithheldSources: [],
+        items: [{
+          itemId: "item-1",
+          currentRevisionId: "revision-1",
+          openAmountCents: 100n,
+          openCoveredCents: 0n,
+          openUncoveredCents: 100n,
+          status: "open"
+        }]
+      });
+
+    await expect(service.readProjectFundDisputeDuplicateInTransaction(
+      tx as never,
+      {
+        projectId: "project-1",
+        constructionEnterpriseAssignmentId: "assignment-1",
+        basisBusinessIdOrEvidenceSha256: "formal-basis-1",
+        evidenceSha256: "a".repeat(64)
+      }
+    )).resolves.toBe("active");
+    expect(service.readClearingReconciliationRiskInTransaction)
+      .toHaveBeenCalledWith(tx, {
+        projectId: "project-1",
+        clearingCaseIds: ["case-1"]
+      });
+  });
 });

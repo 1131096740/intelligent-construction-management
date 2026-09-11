@@ -10,6 +10,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   ACTION_REQUIRED_ROLES,
+  PROJECT_FUND_DISPUTE_TRANSITION_ACTIONS,
   PROJECT_FUND_DISPUTE_SOURCE_TYPE,
   canPerform,
   resolveEffectiveRoleKeys,
@@ -19,7 +20,9 @@ import {
 } from "@jiangkong/shared-domain";
 
 import { AuditService } from "../audit/audit.service";
+import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import {
   assertProjectFundDisputeDraft,
@@ -107,7 +110,9 @@ export class ProjectFundDisputeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly replay: OperatingSourceReplayService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly clearingReconciliation: ClearingReconciliationReaderService,
+    private readonly files: FileService
   ) {}
 
   async getWorkbench(
@@ -168,6 +173,10 @@ export class ProjectFundDisputeService {
       payloadFingerprint: fingerprint
     });
     return this.serializable(async (tx) => {
+      // This must be the first statement in the serializable transaction. A
+      // waiter therefore receives a fresh snapshot after another #279/#280
+      // confirmation commits and deterministically reaches duplicate_blocked.
+      await this.lockEconomicIdentity(tx, identity.economicIdentityKey);
       const roles = await this.requireAction(
         tx,
         actor.userId,
@@ -184,8 +193,7 @@ export class ProjectFundDisputeService {
         }
         return this.commandReceiptResult(priorReceipt.resultSnapshot);
       }
-      await this.lockEconomicIdentity(tx, identity.economicIdentityKey);
-      const context = await this.readAuthoritativeContext(tx, draft);
+      const context = await this.readAuthoritativeContext(tx, draft, actor.userId);
       const existingByCommand = await tx.projectFundDisputeEntry.findUnique({
         where: { idempotencyKey: draft.idempotencyKey },
         include: { dispute: true, replacements: true }
@@ -261,7 +269,19 @@ export class ProjectFundDisputeService {
       reason: command.reason?.trim() || null,
       actorUserId: actor.userId
     });
+    const confirmationIdentity = command.action === "confirm"
+      ? await this.prisma.projectFundDisputeEntry.findUnique({
+          where: { id: command.entryId },
+          select: { dispute: { select: { economicIdentityKey: true } } }
+        })
+      : null;
     return this.serializable(async (tx) => {
+      if (confirmationIdentity) {
+        await this.lockEconomicIdentity(
+          tx,
+          confirmationIdentity.dispute.economicIdentityKey
+        );
+      }
       await this.lockCommandIdempotency(tx, command.idempotencyKey);
       const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT entry."id"
@@ -311,8 +331,7 @@ export class ProjectFundDisputeService {
       }
       if (command.action === "confirm") {
         await this.lockConfirmationRows(tx, entry);
-        await this.lockEconomicIdentity(tx, entry.dispute.economicIdentityKey);
-        await this.assertConfirmableSource(tx, entry);
+        await this.assertConfirmableSource(tx, entry, actor.userId);
         if (entry.entryKind === "technical_reversal") {
           const targetFact = await tx.operatingFact.findUnique({
             where: {
@@ -620,7 +639,11 @@ export class ProjectFundDisputeService {
     });
   }
 
-  private async readAuthoritativeContext(tx: Tx, draft: ValidatedProjectFundDisputeDraft) {
+  private async readAuthoritativeContext(
+    tx: Tx,
+    draft: ValidatedProjectFundDisputeDraft,
+    actorUserId: string
+  ) {
     const project = await tx.project.findUnique({
       where: { id: draft.projectId },
       select: { operatingLedgerEffectiveDate: true }
@@ -659,6 +682,10 @@ export class ProjectFundDisputeService {
       });
       if (!company) throw new ConflictException("业务发生日资金持有公司不是项目有效参与公司");
     }
+    // Reuse the canonical file ACL before the non-exclusive #280 binding is
+    // created. This prevents a known id/hash from laundering a private file
+    // across projects while still allowing an authorized existing binding.
+    await this.files.assertCanDownloadFile(tx, draft.evidenceFileId, actorUserId);
     const evidence = await tx.fileObject.findUnique({
       where: { id: draft.evidenceFileId },
       select: { contentSha256: true, storageStatus: true }
@@ -671,10 +698,11 @@ export class ProjectFundDisputeService {
 
   private async assertConfirmableSource(
     tx: Tx,
-    entry: DisputeEntryWithRelations
+    entry: DisputeEntryWithRelations,
+    actorUserId: string
   ) {
     const draft = this.entryAsDraft(entry);
-    await this.readAuthoritativeContext(tx, draft);
+    await this.readAuthoritativeContext(tx, draft, actorUserId);
     // Positive entries must prove that this economic matter has not already
     // been recognized elsewhere. A release or exact technical reversal is the
     // append-only way to reduce an existing dispute and may intentionally point
@@ -690,6 +718,28 @@ export class ProjectFundDisputeService {
     `);
     if (crossSource[0]?.duplicateExists) {
       throw new ConflictException("duplicate_blocked：该经济事项已由一般争议资金正式来源覆盖");
+    }
+    const clearingDuplicate =
+      await this.clearingReconciliation.readProjectFundDisputeDuplicateInTransaction(
+        tx,
+        {
+          projectId: entry.dispute.projectId,
+          constructionEnterpriseAssignmentId:
+            entry.dispute.affiliateAssignmentId,
+          basisBusinessIdOrEvidenceSha256:
+            entry.dispute.basisBusinessIdOrEvidenceSha256,
+          evidenceSha256: entry.evidenceSha256
+        }
+      );
+    if (clearingDuplicate === "active") {
+      throw new ConflictException(
+        "duplicate_blocked：该经济事项已由 #275 待对账、覆盖或继续暂扣正式关系覆盖"
+      );
+    }
+    if (clearingDuplicate === "integrity_conflict") {
+      throw new ConflictException(
+        "duplicate_suspected：#275 核对关系不完整，无法证明该事项未被正式覆盖"
+      );
     }
     const duplicate = await tx.$queryRaw<Array<{ duplicateExists: boolean }>>(Prisma.sql`
       WITH matched AS (
@@ -1089,7 +1139,7 @@ export class ProjectFundDisputeService {
   private lockEconomicIdentity(tx: Tx, economicIdentityKey: string) {
     return tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(
-        hashtextextended('pol280:economic:' || ${economicIdentityKey}, 0)
+        hashtextextended('pol:project-cash-restriction:economic:' || ${economicIdentityKey}, 0)
       )
     `);
   }
@@ -1230,15 +1280,27 @@ export class ProjectFundDisputeService {
     };
   }
 
-  private serializable<T>(work: (tx: Tx) => Promise<T>) {
-    return this.prisma.$transaction(work, {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-    });
+  private async serializable<T>(work: (tx: Tx) => Promise<T>) {
+    try {
+      return await this.prisma.$transaction(work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      });
+    } catch (error) {
+      if (isProjectFundDisputeConcurrencyOrCapacityConflict(error)) {
+        throw new ConflictException(
+          "争议资金并发或容量校验冲突，请刷新后重试"
+        );
+      }
+      throw error;
+    }
   }
 }
 
 function validateTransitionCommand(command: ProjectFundDisputeTransitionCommand) {
   requiredText(command.entryId, "争议资金分录不能为空");
+  if (!PROJECT_FUND_DISPUTE_TRANSITION_ACTIONS.includes(command.action)) {
+    throw new BadRequestException("争议资金动作不正确");
+  }
   if (!Number.isSafeInteger(command.expectedRevision) || command.expectedRevision < 1) {
     throw new BadRequestException("expectedRevision 必须是正整数");
   }
@@ -1248,6 +1310,21 @@ function validateTransitionCommand(command: ProjectFundDisputeTransitionCommand)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(command.idempotencyKey)) {
     throw new BadRequestException("幂等键必须使用 UUIDv4");
   }
+}
+
+function isProjectFundDisputeConcurrencyOrCapacityConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    meta?: { code?: unknown; message?: unknown };
+  };
+  if (record.code === "P2034") return true;
+  if (record.code === "23514") return true;
+  if (record.code !== "P2010") return false;
+  return record.meta?.code === "23514" ||
+    String(record.meta?.message ?? "").includes("POL-280") ||
+    String(record.message ?? "").includes("23514");
 }
 
 function requiredText(value: unknown, message: string): string {

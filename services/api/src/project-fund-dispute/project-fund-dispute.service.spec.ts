@@ -1,4 +1,8 @@
-import { ConflictException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException
+} from "@nestjs/common";
 
 import { ProjectFundDisputeService } from "./project-fund-dispute.service";
 
@@ -21,6 +25,12 @@ describe("ProjectFundDisputeService public business seam", () => {
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const replay = {
       appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue({ id: "fact-1" })
+    };
+    const clearingReconciliation = {
+      readProjectFundDisputeDuplicateInTransaction: jest.fn().mockResolvedValue("none")
+    };
+    const files = {
+      assertCanDownloadFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(1),
@@ -136,16 +146,22 @@ describe("ProjectFundDisputeService public business seam", () => {
       projectFundDisputeReplacement: { create: jest.fn() }
     };
     const prisma = {
+      projectFundDisputeEntry: tx.projectFundDisputeEntry,
       $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx))
     };
     return {
       service: new ProjectFundDisputeService(
         prisma as never,
         replay as never,
-        audit as never
+        audit as never,
+        clearingReconciliation as never,
+        files as never
       ),
       tx,
       replay,
+      clearingReconciliation,
+      files,
+      prisma,
       receipts,
       currentEntry: () => entry
     };
@@ -177,6 +193,11 @@ describe("ProjectFundDisputeService public business seam", () => {
     };
 
     const created = await harness.service.saveDraft(draft, { userId: "finance-staff-1" });
+    expect(harness.files.assertCanDownloadFile).toHaveBeenCalledWith(
+      harness.tx,
+      "file-1",
+      "finance-staff-1"
+    );
     const repeatedCreate = await harness.service.saveDraft(draft, { userId: "finance-staff-1" });
     expect(repeatedCreate).toEqual(created);
     expect(harness.tx.projectFundDisputeEntry.create).toHaveBeenCalledTimes(1);
@@ -291,10 +312,75 @@ describe("ProjectFundDisputeService public business seam", () => {
     }, { userId: "finance-director-1" })).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it("rejects a private evidence file before binding when the canonical ACL denies it", async () => {
+    const harness = createHarness();
+    harness.files.assertCanDownloadFile.mockRejectedValueOnce(
+      new ForbiddenException("当前账号无权下载该资料")
+    );
+
+    await expect(harness.service.saveDraft({
+      projectId: "project-1",
+      businessCode: "争议资金-跨项目文件",
+      affiliateAssignmentId: "assignment-1",
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: "affiliate-version-1",
+      disputeKind: "upstream",
+      counterpartyKind: "owner",
+      counterpartyId: "owner-1",
+      counterpartyNameSnapshot: "项目收尾资料整理",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: evidenceSha256,
+      referenceCode: "禁止跨项目证据绑定",
+      entryKind: "establish",
+      amountCents: "120000",
+      occurredAt: "2026-09-01",
+      evidenceLevel: "A",
+      evidenceFileId: "file-foreign-project",
+      evidenceSha256,
+      disputeSummary: "跨项目读取尝试",
+      idempotencyKey: draftIdempotencyKey
+    }, { userId: "finance-staff-1" })).rejects.toBeInstanceOf(
+      ForbiddenException
+    );
+    expect(harness.tx.projectFundDisputeEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("returns a 400 for an unknown action before permission lookup", async () => {
+    const harness = createHarness();
+    await expect(harness.service.transition({
+      entryId: "entry-1",
+      action: "unknown" as never,
+      expectedRevision: 1,
+      expectedFingerprint: "a".repeat(64),
+      idempotencyKey: draftIdempotencyKey
+    }, { userId: "finance-staff-1" })).rejects.toBeInstanceOf(
+      BadRequestException
+    );
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: "P2034" },
+    { code: "P2010", meta: { code: "23514" } }
+  ])("maps database concurrency and capacity conflicts to HTTP 409", async (error) => {
+    const harness = createHarness();
+    harness.prisma.$transaction.mockRejectedValueOnce(error);
+    const service = harness.service as unknown as {
+      serializable(work: () => Promise<unknown>): Promise<unknown>;
+    };
+    const result = service.serializable(async () => undefined);
+    await expect(result).rejects.toBeInstanceOf(ConflictException);
+    await expect(result).rejects.toMatchObject({ status: 409 });
+  });
+
   it("does not apply positive-entry duplicate guards to append-only releases", async () => {
     const harness = createHarness();
     const service = harness.service as unknown as {
-      assertConfirmableSource(tx: unknown, entry: unknown): Promise<void>;
+      assertConfirmableSource(
+        tx: unknown,
+        entry: unknown,
+        actorUserId: string
+      ): Promise<void>;
     };
     await expect(service.assertConfirmableSource(harness.tx, {
       dispute: {
@@ -326,7 +412,7 @@ describe("ProjectFundDisputeService public business seam", () => {
       draftRevision: 1,
       payloadSnapshot: { replacementImpacts: [] },
       replacements: []
-    })).resolves.toBeUndefined();
+    }, "finance-director-1")).resolves.toBeUndefined();
     expect(harness.tx.$queryRaw).not.toHaveBeenCalled();
   });
 
@@ -336,7 +422,11 @@ describe("ProjectFundDisputeService public business seam", () => {
       .mockResolvedValueOnce([{ duplicateExists: false }])
       .mockResolvedValueOnce([{ duplicateExists: true }]);
     const service = harness.service as unknown as {
-      assertConfirmableSource(tx: unknown, entry: unknown): Promise<void>;
+      assertConfirmableSource(
+        tx: unknown,
+        entry: unknown,
+        actorUserId: string
+      ): Promise<void>;
     };
     await expect(service.assertConfirmableSource(harness.tx, {
       dispute: {
@@ -368,7 +458,7 @@ describe("ProjectFundDisputeService public business seam", () => {
       draftRevision: 1,
       payloadSnapshot: { replacementImpacts: [] },
       replacements: []
-    })).rejects.toThrow(/duplicate_blocked/u);
+    }, "finance-director-1")).rejects.toThrow(/duplicate_blocked/u);
     const duplicateQuery = harness.tx.$queryRaw.mock.calls[1]?.[0] as { strings?: readonly string[] };
     const duplicateSql = duplicateQuery.strings?.join("?") ?? "";
     expect(duplicateSql).toContain(
@@ -376,6 +466,59 @@ describe("ProjectFundDisputeService public business seam", () => {
     );
     expect(duplicateSql).toContain("jsonb_path_exists");
     expect(duplicateSql).toContain("construction_enterprise_funds_freeze");
+  });
+
+  it("blocks a positive entry through the formal #275 reconciliation reader seam", async () => {
+    const harness = createHarness();
+    harness.clearingReconciliation.readProjectFundDisputeDuplicateInTransaction
+      .mockResolvedValueOnce("active");
+    const service = harness.service as unknown as {
+      assertConfirmableSource(
+        tx: unknown,
+        entry: unknown,
+        actorUserId: string
+      ): Promise<void>;
+    };
+    await expect(service.assertConfirmableSource(harness.tx, {
+      dispute: {
+        id: "c39f87da-8015-4241-8bbe-025903a11bb3",
+        projectId: "project-1",
+        businessCode: "争议资金-清分去重-001",
+        affiliateAssignmentId: "assignment-1",
+        fundHolderKind: "construction_enterprise",
+        fundHolderId: "affiliate-version-1",
+        disputeKind: "upstream",
+        counterpartyKind: "owner",
+        counterpartyId: "owner-1",
+        counterpartyNameSnapshot: "项目收尾资料整理",
+        basisKind: "written_evidence",
+        basisBusinessIdOrEvidenceSha256: "b".repeat(64),
+        referenceCode: "正式待核对事项",
+        economicIdentityKey: "c".repeat(64)
+      },
+      id: "a81b1c41-6d8d-42c5-8574-5b55b92822de",
+      entryKind: "establish",
+      adjustsEntryId: null,
+      amountCents: 120000n,
+      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+      evidenceLevel: "A",
+      evidenceFileId: "file-1",
+      evidenceSha256,
+      disputeSummary: "建立争议资金",
+      idempotencyKey: "ca5af90d-05e5-43cc-85f5-222f10557969",
+      draftRevision: 1,
+      payloadSnapshot: { replacementImpacts: [] },
+      replacements: []
+    }, "finance-director-1")).rejects.toThrow(/duplicate_blocked/u);
+    expect(
+      harness.clearingReconciliation
+        .readProjectFundDisputeDuplicateInTransaction
+    ).toHaveBeenCalledWith(harness.tx, {
+      projectId: "project-1",
+      constructionEnterpriseAssignmentId: "assignment-1",
+      basisBusinessIdOrEvidenceSha256: "b".repeat(64),
+      evidenceSha256
+    });
   });
 
   it("rejects a draft update that tries to rewrite entry kind", async () => {

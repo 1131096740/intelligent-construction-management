@@ -386,6 +386,7 @@ CREATE TRIGGER "ProjectFundDisputeEntry_confirmed_immutable"
 
 CREATE FUNCTION "pol280_replacement_guard"() RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
@@ -410,7 +411,7 @@ BEGIN
     RAISE EXCEPTION 'POL-280 replacement must reference a confirmed release entry' USING ERRCODE = '23514';
   END IF;
   PERFORM pg_advisory_xact_lock(
-    hashtextextended('pol280:replacement-impact:' || NEW."operatingImpactEntryId", 0)
+    hashtextextended('pol:formal-impact-replacement:' || NEW."operatingImpactEntryId", 0)
   );
   SELECT impact."projectId", dispute."projectId", impact."impactKind", impact."direction",
          impact."sourceType", fact."status", impact."amountCents"
@@ -438,9 +439,18 @@ BEGIN
     RAISE EXCEPTION 'POL-280 replacement must reference an exact confirmed formal result impact'
       USING ERRCODE = '23514';
   END IF;
-  SELECT COALESCE(SUM("amountCents"), 0) INTO impact_allocated
-    FROM public."ProjectFundDisputeReplacement"
-   WHERE "operatingImpactEntryId" = NEW."operatingImpactEntryId";
+  SELECT
+    COALESCE((
+      SELECT SUM("amountCents")
+        FROM public."ProjectFundDisputeReplacement"
+       WHERE "operatingImpactEntryId" = NEW."operatingImpactEntryId"
+    ), 0) +
+    COALESCE((
+      SELECT SUM("amountCents")
+        FROM public."ProjectNecessaryExpenseReserveReplacement"
+       WHERE "operatingImpactEntryId" = NEW."operatingImpactEntryId"
+    ), 0)
+    INTO impact_allocated;
   IF impact_allocated + NEW."amountCents" > impact_amount THEN
     RAISE EXCEPTION 'POL-280 replacement allocation exceeds formal impact amount' USING ERRCODE = '23514';
   END IF;
@@ -457,6 +467,88 @@ $$;
 CREATE TRIGGER "ProjectFundDisputeReplacement_immutable_capacity"
   BEFORE INSERT OR UPDATE OR DELETE ON "ProjectFundDisputeReplacement"
   FOR EACH ROW EXECUTE FUNCTION "pol280_replacement_guard"();
+
+-- M167 protected each source independently. Once both formal sources exist,
+-- replace its trigger body so #279 and #280 share one impact lock and one
+-- aggregate capacity. SECURITY DEFINER keeps both NOLOGIN runtime roles on
+-- least privilege while the trigger performs its bounded cross-table reads.
+CREATE OR REPLACE FUNCTION "pol279_replacement_guard"() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  release_entry public."ProjectNecessaryExpenseReserveEntry"%ROWTYPE;
+  impact_project TEXT;
+  reserve_project TEXT;
+  impact_kind TEXT;
+  impact_direction TEXT;
+  impact_source_type TEXT;
+  fact_status TEXT;
+  impact_amount BIGINT;
+  release_allocated BIGINT;
+  impact_allocated BIGINT;
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    RAISE EXCEPTION 'POL-279 replacement allocations are append-only' USING ERRCODE = '55000';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('pol279:replacement:' || NEW."reserveEntryId", 0));
+  SELECT * INTO release_entry
+    FROM public."ProjectNecessaryExpenseReserveEntry"
+   WHERE "id" = NEW."reserveEntryId" FOR UPDATE;
+  IF NOT FOUND OR release_entry."status" <> 'confirmed' OR release_entry."entryKind" <> 'release' THEN
+    RAISE EXCEPTION 'POL-279 replacement must reference a confirmed release entry' USING ERRCODE = '23514';
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('pol:formal-impact-replacement:' || NEW."operatingImpactEntryId", 0)
+  );
+  SELECT impact."projectId", reserve."projectId", impact."impactKind", impact."direction",
+         impact."sourceType", fact."status", impact."amountCents"
+    INTO impact_project, reserve_project, impact_kind, impact_direction,
+         impact_source_type, fact_status, impact_amount
+    FROM public."OperatingImpactEntry" impact
+    JOIN public."OperatingFact" fact ON fact."id" = impact."factId"
+    CROSS JOIN public."ProjectNecessaryExpenseReserve" reserve
+   WHERE impact."id" = NEW."operatingImpactEntryId"
+     AND reserve."id" = release_entry."reserveId"
+   FOR UPDATE OF impact;
+  IF impact_project IS NULL OR impact_project <> reserve_project THEN
+    RAISE EXCEPTION 'POL-279 replacement impact must belong to the same project' USING ERRCODE = '23514';
+  END IF;
+  IF fact_status <> 'confirmed' OR impact_direction <> 'increase'
+     OR impact_source_type = 'project_necessary_expense_reserve_entry'
+     OR impact_kind NOT IN (
+       'confirmed_cost', 'payable_increase', 'estimated_clearing_expense',
+       'construction_enterprise_funds_freeze', 'project_disputed_funds_increase'
+     ) THEN
+    RAISE EXCEPTION 'POL-279 replacement must reference a confirmed formal deduction impact'
+      USING ERRCODE = '23514';
+  END IF;
+  SELECT
+    COALESCE((
+      SELECT SUM("amountCents")
+        FROM public."ProjectNecessaryExpenseReserveReplacement"
+       WHERE "operatingImpactEntryId" = NEW."operatingImpactEntryId"
+    ), 0) +
+    COALESCE((
+      SELECT SUM("amountCents")
+        FROM public."ProjectFundDisputeReplacement"
+       WHERE "operatingImpactEntryId" = NEW."operatingImpactEntryId"
+    ), 0)
+    INTO impact_allocated;
+  IF impact_allocated + NEW."amountCents" > impact_amount THEN
+    RAISE EXCEPTION 'POL-279 replacement allocation exceeds formal impact amount'
+      USING ERRCODE = '23514';
+  END IF;
+  SELECT COALESCE(SUM("amountCents"), 0) INTO release_allocated
+    FROM public."ProjectNecessaryExpenseReserveReplacement"
+   WHERE "reserveEntryId" = NEW."reserveEntryId";
+  IF release_allocated + NEW."amountCents" > release_entry."amountCents" THEN
+    RAISE EXCEPTION 'POL-279 replacement allocation exceeds release amount' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
 CREATE FUNCTION "pol280_dispute_identity_guard"() RETURNS trigger
 LANGUAGE plpgsql
@@ -545,6 +637,7 @@ REVOKE ALL ON FUNCTION "pol280_replacement_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol280_dispute_identity_guard"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol280_command_receipt_immutable"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol280_cross_source_identity_exists"(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol279_replacement_guard"() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION "pol280_cross_source_identity_exists"(TEXT)
   TO "jg_pol280_runtime";
 

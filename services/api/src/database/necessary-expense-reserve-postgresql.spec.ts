@@ -3,6 +3,9 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
 import { AuditService } from "../audit/audit.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+import { FileService } from "../file/file.service";
 import { NecessaryExpenseReserveOperatingSourceAdapter } from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
 import { NecessaryExpenseReserveService } from "../necessary-expense-reserve/necessary-expense-reserve.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
@@ -36,7 +39,14 @@ describePostgres("POL-279 necessary expense reserve PostgreSQL 16", () => {
   );
   const replay = new OperatingSourceReplayService(prisma as never, operatingLedger, registry);
   const service = new NecessaryExpenseReserveService(prisma as never, replay, audit);
-  const disputeService = new ProjectFundDisputeService(prisma as never, replay, audit);
+  const roleResolver = new CompanyRoleResolverService(prisma as never);
+  const disputeService = new ProjectFundDisputeService(
+    prisma as never,
+    replay,
+    audit,
+    new ClearingReconciliationReaderService(prisma as never, roleResolver),
+    new FileService(prisma as never, audit)
+  );
   const operatingProfile = new ProjectOperatingProfileService(prisma as never, audit);
 
   beforeAll(async () => {

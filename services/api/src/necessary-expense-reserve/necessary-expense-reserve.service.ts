@@ -179,6 +179,7 @@ export class NecessaryExpenseReserveService {
       payloadFingerprint: fingerprint
     });
     return this.serializable(async (tx) => {
+      await this.lockEconomicIdentity(tx, identity.economicIdentityKey);
       const roles = await this.requireAction(
         tx,
         actor.userId,
@@ -195,7 +196,6 @@ export class NecessaryExpenseReserveService {
         }
         return this.commandReceiptResult(priorReceipt.resultSnapshot);
       }
-      await this.lockEconomicIdentity(tx, identity.economicIdentityKey);
       const context = await this.readAuthoritativeContext(tx, draft);
       const existingByCommand = await tx.projectNecessaryExpenseReserveEntry.findUnique({
         where: { idempotencyKey: draft.idempotencyKey },
@@ -272,7 +272,19 @@ export class NecessaryExpenseReserveService {
       reason: command.reason?.trim() || null,
       actorUserId: actor.userId
     });
+    const confirmationIdentity = command.action === "confirm"
+      ? await this.prisma.projectNecessaryExpenseReserveEntry.findUnique({
+          where: { id: command.entryId },
+          select: { reserve: { select: { economicIdentityKey: true } } }
+        })
+      : null;
     return this.serializable(async (tx) => {
+      if (confirmationIdentity) {
+        await this.lockEconomicIdentity(
+          tx,
+          confirmationIdentity.reserve.economicIdentityKey
+        );
+      }
       await this.lockCommandIdempotency(tx, command.idempotencyKey);
       const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT entry."id"
@@ -322,7 +334,6 @@ export class NecessaryExpenseReserveService {
       }
       if (command.action === "confirm") {
         await this.lockConfirmationRows(tx, entry);
-        await this.lockEconomicIdentity(tx, entry.reserve.economicIdentityKey);
         await this.assertConfirmableSource(tx, entry);
         if (entry.entryKind === "technical_reversal") {
           const targetFact = await tx.operatingFact.findUnique({
@@ -1038,7 +1049,7 @@ export class NecessaryExpenseReserveService {
   private lockEconomicIdentity(tx: Tx, economicIdentityKey: string) {
     return tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(
-        hashtextextended('pol279:economic:' || ${economicIdentityKey}, 0)
+        hashtextextended('pol:project-cash-restriction:economic:' || ${economicIdentityKey}, 0)
       )
     `);
   }

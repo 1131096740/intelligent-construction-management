@@ -3,6 +3,10 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
 import { AuditService } from "../audit/audit.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+import { ClearingService } from "../clearing/clearing.service";
+import { FileService } from "../file/file.service";
 import { ProjectFundDisputeOperatingSourceAdapter } from "../project-fund-dispute/project-fund-dispute-operating-source.adapter";
 import { ProjectFundDisputeService } from "../project-fund-dispute/project-fund-dispute.service";
 import { NecessaryExpenseReserveOperatingSourceAdapter } from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
@@ -35,7 +39,25 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     [adapter.sourceType, necessaryAdapter.sourceType]
   );
   const replay = new OperatingSourceReplayService(prisma as never, operatingLedger, registry);
-  const service = new ProjectFundDisputeService(prisma as never, replay, audit);
+  const roleResolver = new CompanyRoleResolverService(prisma as never);
+  const clearingReconciliation = new ClearingReconciliationReaderService(
+    prisma as never,
+    roleResolver
+  );
+  const clearing = new ClearingService(
+    prisma as never,
+    roleResolver,
+    operatingLedger,
+    audit
+  );
+  const files = new FileService(prisma as never, audit);
+  const service = new ProjectFundDisputeService(
+    prisma as never,
+    replay,
+    audit,
+    clearingReconciliation,
+    files
+  );
   const necessaryService = new NecessaryExpenseReserveService(prisma as never, replay, audit);
   const operatingProfile = new ProjectOperatingProfileService(prisma as never, audit);
 
@@ -275,6 +297,8 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     ]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")?.reason)
+      .toMatchObject({ status: 409 });
     await expect(prisma.projectFundDisputeEntry.aggregate({
       where: { adjustsEntryId: original.id, status: "confirmed" },
       _sum: { amountCents: true }
@@ -282,7 +306,7 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
 
     const reversal = await prepareAdjustment(original, "technical_reversal", 1_000n);
     await expect(transition(reversal, "confirm", FINANCE_DIRECTOR_ID))
-      .rejects.toThrow(/exceeds remaining dispute capacity/u);
+      .rejects.toThrow(/并发或容量校验冲突/u);
 
     const exactOriginal = await createAndConfirmEstablishment(
       "POL280-PG-REVERSAL",
@@ -344,6 +368,130 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
         amountCents: 201n
       }
     })).rejects.toThrow(/replacement allocation exceeds formal impact amount/u);
+
+    const crossReplacementEvidence = await createEvidenceFixture(
+      "POL280-PG-CROSS-REPLACEMENT-N279"
+    );
+    const necessaryOriginal = await necessaryService.saveDraft({
+      projectId: PROJECT_ID,
+      businessCode: "POL280-PG-CROSS-REPLACEMENT-N279",
+      affiliateAssignmentId: ASSIGNMENT_ID,
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: AFFILIATE_VERSION_ID,
+      reasonKind: "mandatory_closeout",
+      title: "跨来源替代容量验证",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: "4".repeat(64),
+      basisSummary: "#279 与 #280 不得重复消费同一正式影响",
+      entryKind: "establish",
+      amountCents: "1",
+      occurredAt: OCCURRED_AT,
+      evidenceLevel: "A",
+      evidenceFileId: crossReplacementEvidence.evidenceFileId,
+      evidenceSha256: crossReplacementEvidence.evidenceSha256,
+      reason: "建立跨来源替代容量验证",
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const necessaryOriginalSubmitted = await necessaryService.transition({
+      entryId: necessaryOriginal.id,
+      action: "submit",
+      expectedRevision: necessaryOriginal.revision,
+      expectedFingerprint: necessaryOriginal.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const necessaryOriginalAttested = await necessaryService.transition({
+      entryId: necessaryOriginalSubmitted.id,
+      action: "attest",
+      expectedRevision: necessaryOriginalSubmitted.revision,
+      expectedFingerprint: necessaryOriginalSubmitted.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: PROJECT_MANAGER_ID });
+    const necessaryOriginalConfirmed = await necessaryService.transition({
+      entryId: necessaryOriginalAttested.id,
+      action: "confirm",
+      expectedRevision: necessaryOriginalAttested.revision,
+      expectedFingerprint: necessaryOriginalAttested.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_DIRECTOR_ID });
+    const necessaryReleaseDraft = await necessaryService.saveDraft({
+      projectId: PROJECT_ID,
+      reserveId: necessaryOriginalConfirmed.reserveId,
+      businessCode: "POL280-PG-CROSS-REPLACEMENT-N279",
+      affiliateAssignmentId: ASSIGNMENT_ID,
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: AFFILIATE_VERSION_ID,
+      reasonKind: "mandatory_closeout",
+      title: "跨来源替代容量验证",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: "4".repeat(64),
+      basisSummary: "#279 与 #280 不得重复消费同一正式影响",
+      entryKind: "release",
+      adjustsEntryId: necessaryOriginalConfirmed.id,
+      amountCents: "1",
+      occurredAt: OCCURRED_AT,
+      evidenceLevel: "A",
+      evidenceFileId: crossReplacementEvidence.evidenceFileId,
+      evidenceSha256: crossReplacementEvidence.evidenceSha256,
+      reason: "正式影响已替代必要费用准备",
+      replacementImpacts: [{
+        operatingImpactEntryId: replacementImpact.id,
+        amountCents: "1"
+      }],
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const necessaryReleaseSubmitted = await necessaryService.transition({
+      entryId: necessaryReleaseDraft.id,
+      action: "submit",
+      expectedRevision: necessaryReleaseDraft.revision,
+      expectedFingerprint: necessaryReleaseDraft.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const necessaryReleaseAttested = await necessaryService.transition({
+      entryId: necessaryReleaseSubmitted.id,
+      action: "attest",
+      expectedRevision: necessaryReleaseSubmitted.revision,
+      expectedFingerprint: necessaryReleaseSubmitted.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: PROJECT_MANAGER_ID });
+    await expect(necessaryService.transition({
+      entryId: necessaryReleaseAttested.id,
+      action: "confirm",
+      expectedRevision: necessaryReleaseAttested.revision,
+      expectedFingerprint: necessaryReleaseAttested.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_DIRECTOR_ID }))
+      .rejects.toThrow(/replacement allocation exceeds formal impact amount/u);
+
+    const runtimeOriginal = await createAndConfirmEstablishment(
+      "POL280-PG-RUNTIME-REPLACEMENT",
+      "0".repeat(64),
+      1n
+    );
+    const runtimeReleasePrepared = await prepareAdjustment(
+      runtimeOriginal,
+      "release",
+      1n
+    );
+    const runtimeRelease = await transition(
+      runtimeReleasePrepared,
+      "confirm",
+      FINANCE_DIRECTOR_ID
+    );
+    const runtimeImpact = await appendConfirmedCostImpact(1n);
+    const runtimeReplacementId = randomUUID();
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('SET LOCAL ROLE "jg_pol280_runtime"');
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "ProjectFundDisputeReplacement" (
+          "id", "disputeEntryId", "operatingImpactEntryId", "amountCents"
+        ) VALUES (
+          ${runtimeReplacementId}, ${runtimeRelease.id}, ${runtimeImpact.id}, 1
+        )
+      `);
+    });
+    await expect(prisma.projectFundDisputeReplacement.findUnique({
+      where: { id: runtimeReplacementId }
+    })).resolves.toMatchObject({ amountCents: 1n });
 
     const releaseDraft = await service.saveDraft(draftCommand({
       businessCode: "POL280-PG-REPLACE",
@@ -437,11 +585,64 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
 
     const clearingEvidence = await createEvidenceFixture("POL280-PG-CLEARING");
     const clearingBasis = "2".repeat(64);
-    await appendConfirmedCostImpact(88n, {
-      sourceType: "clearing_event_version",
-      impactKind: "estimated_clearing_expense",
-      basis: clearingBasis,
-      evidenceSha256: clearingEvidence.evidenceSha256
+    const clearingCase = await clearing.createCase(FINANCE_STAFF_ID, {
+      projectId: PROJECT_ID,
+      constructionEnterpriseAssignmentId: ASSIGNMENT_ID,
+      category: "management_fee",
+      governedSubjectKey: clearingBasis,
+      authoritativeGrossCapCents: "88",
+      expectedRevision: 0,
+      idempotencyKey: randomUUID()
+    }) as { id: string; revision: number };
+    const pending = await clearing.createEvent(
+      FINANCE_STAFF_ID,
+      clearingCase.id,
+      {
+        kind: "pending_reconciliation",
+        amountCents: "88",
+        evidenceLevel: "A",
+        businessReason: "#280 正式读取缝去重验证",
+        reconciliationIntent: {
+          operation: "open_item",
+          itemDefinition: {
+            mode: "independent",
+            amountCents: "88"
+          },
+          coverages: []
+        },
+        expectedRevision: clearingCase.revision,
+        idempotencyKey: randomUUID()
+      }
+    ) as { id: string; versionId: string; revision: number };
+    const pendingDraftVersion = await prisma.clearingEventVersion.findUniqueOrThrow({
+      where: { id: pending.versionId },
+      select: { id: true, fingerprint: true }
+    });
+    const pendingSubmitted = await clearing.submitEvent(
+      FINANCE_STAFF_ID,
+      pending.id,
+      {
+        expectedRevision: pending.revision,
+        eventVersionId: pendingDraftVersion.id,
+        expectedFingerprint: pendingDraftVersion.fingerprint,
+        idempotencyKey: randomUUID()
+      }
+    ) as { versionId: string; revision: number };
+    const pendingSubmittedVersion = await prisma.clearingEventVersion.findUniqueOrThrow({
+      where: { id: pendingSubmitted.versionId },
+      select: { id: true, fingerprint: true }
+    });
+    const pendingCaseRevision = await prisma.clearingCase.findUniqueOrThrow({
+      where: { id: clearingCase.id },
+      select: { revision: true }
+    });
+    await clearing.confirmEvent(FINANCE_DIRECTOR_ID, pending.id, {
+      expectedRevision: pendingSubmitted.revision,
+      expectedCaseRevision: pendingCaseRevision.revision,
+      eventVersionId: pendingSubmittedVersion.id,
+      expectedFingerprint: pendingSubmittedVersion.fingerprint,
+      confirmed: true,
+      idempotencyKey: randomUUID()
     });
     const clearingDraft = await service.saveDraft(draftCommand({
       businessCode: "POL280-PG-CLEARING-BLOCK",
@@ -453,6 +654,87 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     const clearingAttested = await transition(clearingSubmitted, "attest", PROJECT_MANAGER_ID);
     await expect(transition(clearingAttested, "confirm", FINANCE_DIRECTOR_ID))
       .rejects.toThrow(/duplicate_blocked/u);
+
+    const concurrentBasis = "3".repeat(64);
+    const concurrentDisputeEvidence = await createEvidenceFixture(
+      "POL280-PG-CROSS-CONCURRENT-DISPUTE"
+    );
+    const concurrentReserveEvidence = await createEvidenceFixture(
+      "POL280-PG-CROSS-CONCURRENT-RESERVE"
+    );
+    const concurrentDisputeDraft = await service.saveDraft(draftCommand({
+      businessCode: "POL280-PG-CROSS-CONCURRENT",
+      basis: concurrentBasis,
+      amountCents: 91n,
+      ...concurrentDisputeEvidence
+    }), { userId: FINANCE_STAFF_ID });
+    const concurrentDisputeSubmitted = await transition(
+      concurrentDisputeDraft,
+      "submit",
+      FINANCE_STAFF_ID
+    );
+    const concurrentDisputeAttested = await transition(
+      concurrentDisputeSubmitted,
+      "attest",
+      PROJECT_MANAGER_ID
+    );
+    const concurrentReserveDraft = await necessaryService.saveDraft({
+      projectId: PROJECT_ID,
+      businessCode: "POL280-PG-CROSS-CONCURRENT-N279",
+      affiliateAssignmentId: ASSIGNMENT_ID,
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: AFFILIATE_VERSION_ID,
+      reasonKind: "mandatory_closeout",
+      title: "并发相同经济事项必要费用准备",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: concurrentBasis,
+      basisSummary: "验证 #279/#280 共用稳定经济身份锁",
+      entryKind: "establish",
+      amountCents: "91",
+      occurredAt: OCCURRED_AT,
+      evidenceLevel: "A",
+      evidenceFileId: concurrentReserveEvidence.evidenceFileId,
+      evidenceSha256: concurrentReserveEvidence.evidenceSha256,
+      reason: "跨来源并发验证",
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const concurrentReserveSubmitted = await necessaryService.transition({
+      entryId: concurrentReserveDraft.id,
+      action: "submit",
+      expectedRevision: concurrentReserveDraft.revision,
+      expectedFingerprint: concurrentReserveDraft.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: FINANCE_STAFF_ID });
+    const concurrentReserveAttested = await necessaryService.transition({
+      entryId: concurrentReserveSubmitted.id,
+      action: "attest",
+      expectedRevision: concurrentReserveSubmitted.revision,
+      expectedFingerprint: concurrentReserveSubmitted.fingerprint,
+      idempotencyKey: randomUUID()
+    }, { userId: PROJECT_MANAGER_ID });
+    const concurrentResults = await Promise.allSettled([
+      transition(
+        concurrentDisputeAttested,
+        "confirm",
+        FINANCE_DIRECTOR_ID
+      ),
+      necessaryService.transition({
+        entryId: concurrentReserveAttested.id,
+        action: "confirm",
+        expectedRevision: concurrentReserveAttested.revision,
+        expectedFingerprint: concurrentReserveAttested.fingerprint,
+        idempotencyKey: randomUUID()
+      }, { userId: FINANCE_DIRECTOR_ID })
+    ]);
+    expect(concurrentResults.filter((result) => result.status === "fulfilled"))
+      .toHaveLength(1);
+    const concurrentRejected = concurrentResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    expect(concurrentRejected?.reason).toMatchObject({ status: 409 });
+    expect(String(concurrentRejected?.reason?.message)).toMatch(
+      /duplicate_blocked/u
+    );
 
     const sharedEvidence = await createEvidenceFixture("POL280-PG-SAME-EVIDENCE");
     await createAndConfirmEstablishment(
