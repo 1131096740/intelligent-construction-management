@@ -1199,7 +1199,7 @@ export class NecessaryExpenseReserveService {
         }
         if (isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error)) {
           throw new ConflictException(
-            "必要准备并发或容量校验冲突，请刷新后重试"
+            necessaryExpenseReserveConflictMessage(error)
           );
         }
         throw error;
@@ -1226,6 +1226,22 @@ function isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error: unknown):
     message.includes("40001") ||
     message.includes("23514") ||
     message.includes("could not serialize access");
+}
+
+function necessaryExpenseReserveConflictMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const record = error as {
+      message?: unknown;
+      meta?: { message?: unknown };
+    };
+    const message = `${String(record.message ?? "")} ${String(record.meta?.message ?? "")}`;
+    const remainingCapacityReason =
+      "POL-279 release or reversal exceeds remaining reserve capacity";
+    if (message.includes(remainingCapacityReason)) {
+      return remainingCapacityReason;
+    }
+  }
+  return "必要准备并发或容量校验冲突，请刷新后重试";
 }
 
 function isDatabaseSerializationFailure(error: unknown): boolean {

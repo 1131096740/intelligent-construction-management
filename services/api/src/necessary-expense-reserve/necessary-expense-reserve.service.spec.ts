@@ -169,6 +169,28 @@ describe("NecessaryExpenseReserveService public business seam", () => {
     expect(harness.prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves the trusted remaining-capacity reason while mapping it to HTTP 409", async () => {
+    const harness = createHarness();
+    harness.prisma.$transaction.mockRejectedValueOnce({
+      code: "P2010",
+      meta: {
+        code: "23514",
+        message:
+          "POL-279 release or reversal exceeds remaining reserve capacity"
+      }
+    });
+    const service = harness.service as unknown as {
+      serializable(work: () => Promise<unknown>): Promise<unknown>;
+    };
+    const result = service.serializable(async () => undefined);
+    await expect(result).rejects.toBeInstanceOf(ConflictException);
+    await expect(result).rejects.toMatchObject({
+      status: 409,
+      message: "POL-279 release or reversal exceeds remaining reserve capacity"
+    });
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     { code: "P2034" },
     { code: "P2010", meta: { code: "40001", message: "could not serialize access" } }
