@@ -21,7 +21,8 @@ const SOURCE_TYPES_WITH_ADJUSTMENT_LOOKUP = new Set([
   "project_affiliate_contract_fact",
   "project_affiliate_settlement_fact",
   "project_affiliate_payment_fact",
-  "project_necessary_expense_reserve_entry"
+  "project_necessary_expense_reserve_entry",
+  "project_fund_dispute_entry"
 ]);
 
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<{

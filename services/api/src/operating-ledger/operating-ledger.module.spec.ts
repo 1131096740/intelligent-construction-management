@@ -29,13 +29,17 @@ describe("OperatingLedgerModule formal source registry", () => {
       "contract_takeover_historical_payment",
       "operating_takeover",
       "wage_statement_version",
-      "project_necessary_expense_reserve_entry"
+      "project_necessary_expense_reserve_entry",
+      "project_fund_dispute_entry"
     ]);
     expect(registry.require("wage_statement_version").sourceType).toBe(
       "wage_statement_version"
     );
     expect(registry.require("project_necessary_expense_reserve_entry").sourceType).toBe(
       "project_necessary_expense_reserve_entry"
+    );
+    expect(registry.require("project_fund_dispute_entry").sourceType).toBe(
+      "project_fund_dispute_entry"
     );
     expect(() => registry.assertComplete()).not.toThrow();
     expect(() => registry.require("finance_record")).toThrow(

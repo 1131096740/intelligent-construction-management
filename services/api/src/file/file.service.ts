@@ -2398,6 +2398,50 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该必要费用准备依据");
     }
 
+    const projectFundDisputeClients = tx as unknown as {
+      projectFundDisputeEntry?: {
+        findFirst(args: {
+          where: { evidenceFileId: string };
+          select: { dispute: { select: { projectId: true } } };
+        }): Promise<{ dispute: { projectId: string } } | null>;
+      };
+      $queryRaw?: <T>(query: Prisma.Sql) => Promise<T>;
+    };
+    // Bound dispute evidence must never fall through to the uploader shortcut,
+    // including when the generated Prisma client is stale during a migration.
+    const projectFundDisputeEvidence = projectFundDisputeClients.projectFundDisputeEntry
+      ? await projectFundDisputeClients.projectFundDisputeEntry.findFirst({
+          where: { evidenceFileId: file.id },
+          select: { dispute: { select: { projectId: true } } }
+        })
+      : projectFundDisputeClients.$queryRaw
+        ? (await projectFundDisputeClients.$queryRaw<Array<{ projectId: string }>>(
+            Prisma.sql`
+              SELECT dispute."projectId" AS "projectId"
+                FROM "ProjectFundDisputeEntry" entry
+                JOIN "ProjectFundDispute" dispute ON dispute.id = entry."disputeId"
+               WHERE entry."evidenceFileId" = ${file.id}
+               LIMIT 1
+            `
+          ))[0] ?? null
+        : null;
+    if (projectFundDisputeEvidence) {
+      const projectId = "dispute" in projectFundDisputeEvidence
+        ? projectFundDisputeEvidence.dispute.projectId
+        : projectFundDisputeEvidence.projectId;
+      if (
+        await this.hasProjectRole(
+          tx,
+          actorUserId,
+          projectId,
+          ACTION_REQUIRED_ROLES["project_fund_dispute.read"]
+        )
+      ) {
+        return;
+      }
+      throw new ForbiddenException("当前账号无权下载该一般争议资金依据");
+    }
+
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
     }

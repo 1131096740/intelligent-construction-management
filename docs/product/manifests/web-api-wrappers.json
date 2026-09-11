@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 26,
-    "exportedFunctionCount": 557,
-    "transportWrapperCount": 537,
+    "apiModuleCount": 27,
+    "exportedFunctionCount": 561,
+    "transportWrapperCount": 541,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 559,
+    "mainRequestBindingCount": 563,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 559,
-    "productionConsumerCount": 431,
+    "requestEdgeCount": 563,
+    "productionConsumerCount": 435,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 284,
-    "reachableProductionModuleCount": 251
+    "productionModuleCount": 287,
+    "reachableProductionModuleCount": 254
   },
   "wrappers": [
     {
@@ -7347,6 +7347,7 @@
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
@@ -9869,7 +9870,8 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+        "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
       ],
       "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
@@ -13384,6 +13386,123 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchProjectFundDisputeCapabilities",
+      "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/project-fund-disputes/workbench?:param",
+          "normalizedPath": "/project-fund-disputes/workbench",
+          "normalizedKey": "GET /project-fund-disputes/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectFundDisputeCapabilities",
+              "fetchProjectFundDisputeWorkbench",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectFundDisputeWorkbench",
+      "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/project-fund-disputes/workbench?:param",
+          "normalizedPath": "/project-fund-disputes/workbench",
+          "normalizedKey": "GET /project-fund-disputes/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectFundDisputeWorkbench",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-fund-dispute.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "saveProjectFundDisputeDraft",
+      "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 96,
+          "method": "POST",
+          "path": "/project-fund-disputes/drafts",
+          "normalizedPath": "/project-fund-disputes/drafts",
+          "normalizedKey": "POST /project-fund-disputes/drafts",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveProjectFundDisputeDraft"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-fund-dispute.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "transitionProjectFundDispute",
+      "apiFile": "apps/web-admin/src/api/project-fund-dispute.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 116,
+          "method": "POST",
+          "path": "/project-fund-disputes/entries/:param/transition",
+          "normalizedPath": "/project-fund-disputes/entries/:param/transition",
+          "normalizedKey": "POST /project-fund-disputes/entries/:param/transition",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "transitionProjectFundDispute"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-fund-dispute.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "addProjectParticipatingCompany",
       "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
       "kind": "transport",
@@ -13531,6 +13650,7 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
       ],
       "unreachableConsumers": []

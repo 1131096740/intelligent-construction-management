@@ -39,6 +39,7 @@ import { SettlementModule } from "./settlement/settlement.module";
 import { SpotProcurementModule } from "./spot-procurement/spot-procurement.module";
 import { WageStatementModule } from "./wage-statement/wage-statement.module";
 import { NecessaryExpenseReserveModule } from "./necessary-expense-reserve/necessary-expense-reserve.module";
+import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-dispute.module";
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { NecessaryExpenseReserveModule } from "./necessary-expense-reserve/neces
     SpotProcurementModule,
     WageStatementModule,
     NecessaryExpenseReserveModule,
+    ProjectFundDisputeModule,
     InvoiceLedgerModule,
     ApprovalModule,
     FileModule,

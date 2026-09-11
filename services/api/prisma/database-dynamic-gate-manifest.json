@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 167,
-    "terminalMigration": "20260910170000_pol279_necessary_expense_reserve",
-    "terminalMigrationChecksum": "e4b3b2bb7552ba7f73f537e08b1a2796dd7ffb848327333367a72b575a7a82cc",
+    "expectedDirectoryCount": 168,
+    "terminalMigration": "20260911140000_pol280_project_fund_dispute",
+    "terminalMigrationChecksum": "82e40593dc82b6a7710fe5dcfc403a7e2a52dc6e5890e8a1e36e175f70197f35",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 51,
-    "fullyPendingSuites": 40,
+    "pendingFiles": 52,
+    "fullyPendingSuites": 41,
     "partiallyPendingSuites": 11,
-    "pendingTests": 211,
-    "coveredFiles": 51,
-    "coveredTests": 211,
+    "pendingTests": 215,
+    "coveredFiles": 52,
+    "coveredTests": 215,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -242,6 +242,23 @@
         "kind": "workspaceScript",
         "script": "verify:pol279-necessary-expense-reserve:local",
         "path": "services/api/prisma/run-pol279-necessary-expense-reserve-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "project_fund_dispute_pol280",
+      "pendingTests": 4,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/project-fund-dispute-postgresql.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol280-project-fund-dispute:local",
+        "path": "services/api/prisma/run-pol280-project-fund-dispute-local.cjs"
       },
       "state": "executable_local_runner"
     },

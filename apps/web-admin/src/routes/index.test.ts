@@ -612,6 +612,7 @@ describe("web admin routes", () => {
       { label: "历史经营接管", path: "/历史经营接管" },
       { label: "清分工作台", path: "/清分工作台" },
       { label: "必要费用准备", path: "/必要费用准备" },
+      { label: "一般争议资金", path: "/一般争议资金" },
       { label: "工资承担工作台", path: "/工资承担工作台" },
       { label: "全局发票与清分分配", path: "/全局发票与清分分配" },
       { label: "项目花名册", path: "/项目花名册" },

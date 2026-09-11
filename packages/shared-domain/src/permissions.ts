@@ -61,6 +61,12 @@ export const BUSINESS_ACTIONS = [
   "necessary_expense_reserve.attest",
   "necessary_expense_reserve.confirm",
   "necessary_expense_reserve.return",
+  "project_fund_dispute.read",
+  "project_fund_dispute.prepare",
+  "project_fund_dispute.submit",
+  "project_fund_dispute.attest",
+  "project_fund_dispute.confirm",
+  "project_fund_dispute.return",
   "clearing.read",
   "clearing.prepare",
   "clearing.submit",
@@ -267,6 +273,28 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "necessary_expense_reserve.attest": ["project_manager"],
   "necessary_expense_reserve.confirm": ["finance_director"],
   "necessary_expense_reserve.return": ["finance_director"],
+  "project_fund_dispute.read": [
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director",
+    "project_manager"
+  ],
+  "project_fund_dispute.prepare": [
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "project_fund_dispute.submit": [
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "project_fund_dispute.attest": ["project_manager", "contract_director"],
+  "project_fund_dispute.confirm": ["finance_director"],
+  "project_fund_dispute.return": ["finance_director"],
   "clearing.read": ["finance_staff", "finance_director"],
   "clearing.prepare": ["finance_staff", "finance_director"],
   "clearing.submit": ["finance_staff", "finance_director"],
