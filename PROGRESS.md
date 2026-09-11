@@ -23,6 +23,7 @@
 ## 当前正在推进
 
 - [~] POL-15P2（Issue #280）：按冻结前置规格 SHA-256 `aa6b3750715c997ebbd2d733acf6869265b9766fdf7b792d17363ba52d5cc58b` 实现项目资金争议正式来源。当前隔离候选已覆盖 root/append-only entry/replacement/command receipt Schema、第 168 条迁移、`jg_pol280_runtime` 最小权限、准备/提交—独立证明—财务总监确认/退回、A/B 私有证据与文件 ACL、首笔 `establish` 后续 `increase`、跨 #279/#275 及其他资金冻结来源去重、带解决依据和容量约束的 release/replacement、同事务 `project_cash_restriction` adapter/replay、响应式 TDesign 工作台，以及清单/CI/动态 PostgreSQL 16 编排。定向单元、Schema、类型、lint、UI 与发布清单门已通过；中央文件绑定断言遗漏已补齐并回归通过。新固定 SHA、一次性 PostgreSQL 16（168 migrations 两遍、seed、#280 动态用例）、完整 `release:local`、第三轮 Standards/Spec 双审及 GitHub exact-SHA 交付仍待执行，故保持 `[~]`。不包含 #108 全量投影、生产 migration/apply、部署、权限授予或真实业务数据操作。
+  - 候选 `078cecbc9dd8e6022179e79e30c3d62a3155091e` 的一次性 PostgreSQL 16 已完成 168 个迁移首遍、第二遍无待执行迁移和 seed；动态场景 3/4 通过，唯一失败是测试错误地期待同一争议根的后续 `increase` 复用已形成正式影响的同一证据仍可确认，与冻结的“相同依据/证据既有正式影响应 `duplicate_blocked`”规则冲突。业务守卫正确拒绝且另外三个并发释放、替代闭合、跨来源阻断场景通过，资源已清理；该 SHA 不作成功证据，也未运行 `release:local`。现仅纠正动态用例：同证据确认必须失败且零经营事实，新证据 `increase` 必须经完整公开流程确认并形成精确正式影响；下一 SHA 重新绑定完整 PG16 与后续门禁。
 
 - [x] POL-15P1（Issue #279）：最终候选 `4051b875bd7c0913b5a5a40b0617a553bfdccad4` 已通过 PostgreSQL 16、完整 `release:local` 与 Standards/Spec 双审（HIGH=0 / MEDIUM=0）；PR #281 以 merge SHA `c412e89d00362b61d1209594fe1f14f03acdd6a0` 合并，fixed-head CI `34509837006`、merge-head CI `34510730315` 均按精确 SHA 通过，Issue 已 CLOSED/COMPLETED，#93 回执已读回。未执行生产操作。
 

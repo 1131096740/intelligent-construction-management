@@ -141,19 +141,45 @@ describePostgres("POL-280 project fund dispute PostgreSQL 16", () => {
     const sameEvidenceSubmitted = await transition(sameEvidenceIncrease, "submit", FINANCE_STAFF_ID);
     const sameEvidenceAttested = await transition(sameEvidenceSubmitted, "attest", PROJECT_MANAGER_ID);
     await expect(transition(sameEvidenceAttested, "confirm", FINANCE_DIRECTOR_ID))
-      .resolves.toMatchObject({ status: "confirmed" });
+      .rejects.toThrow(/duplicate_blocked/u);
+    await expect(prisma.operatingFact.count({
+      where: {
+        sourceType: "project_fund_dispute_entry",
+        sourceBusinessId: sameEvidenceIncrease.id
+      }
+    })).resolves.toBe(0);
 
     const increaseEvidence = await createEvidenceFixture("POL280-PG-001-increase");
-    await expect(service.saveDraft(draftCommand({
+    const increased = await service.saveDraft(draftCommand({
       businessCode: "POL280-PG-001",
       basis: "b".repeat(64),
       amountCents: 5_000n,
       disputeId: confirmed.disputeId,
       entryKind: "increase",
       ...increaseEvidence
-    }), { userId: FINANCE_STAFF_ID })).resolves.toMatchObject({
+    }), { userId: FINANCE_STAFF_ID });
+    expect(increased).toMatchObject({
       entryKind: "increase",
       status: "draft"
+    });
+    const increasedSubmitted = await transition(increased, "submit", FINANCE_STAFF_ID);
+    const increasedAttested = await transition(increasedSubmitted, "attest", PROJECT_MANAGER_ID);
+    const increasedConfirmed = await transition(increasedAttested, "confirm", FINANCE_DIRECTOR_ID);
+    expect(increasedConfirmed).toMatchObject({ status: "confirmed" });
+    await expect(prisma.operatingFact.findUnique({
+      where: {
+        sourceType_sourceBusinessId: {
+          sourceType: "project_fund_dispute_entry",
+          sourceBusinessId: increased.id
+        }
+      },
+      include: { impacts: true }
+    })).resolves.toMatchObject({
+      amountCents: 5_000n,
+      impacts: [expect.objectContaining({
+        impactKind: "project_disputed_funds_increase",
+        amountCents: 5_000n
+      })]
     });
     const fact = await prisma.operatingFact.findUniqueOrThrow({
       where: {
