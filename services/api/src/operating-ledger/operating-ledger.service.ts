@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -23,6 +24,20 @@ import {
 } from "@jiangkong/shared-domain";
 
 import { PrismaService } from "../database/prisma.service";
+import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
+
+export async function translateOperatingLedgerWriteConstraint<T>(
+  operation: Promise<T>
+): Promise<T> {
+  try {
+    return await operation;
+  } catch (error) {
+    if (isPostgresSerializationFailure(error)) {
+      throw new ConflictException("经营账写入遇到并发状态变化，请刷新后重试");
+    }
+    throw error;
+  }
+}
 
 export const OPERATING_LEDGER_LEVELS = [
   "project",
@@ -237,7 +252,7 @@ export class OperatingLedgerService {
     data: Record<string, unknown>,
     actorUserId: string
   ): Promise<OperatingFactWriteRow> {
-    const rows = await tx.$queryRaw<OperatingFactWriteRow[]>(
+    const rows = await translateOperatingLedgerWriteConstraint(tx.$queryRaw<OperatingFactWriteRow[]>(
       Prisma.sql`
         SELECT *
         FROM public."appendOperatingFactThroughService"(
@@ -246,7 +261,7 @@ export class OperatingLedgerService {
           ${this.operatingLedgerWriteSecret()}
         )
       `
-    );
+    ));
     const row = rows[0];
     if (!row) throw new Error("经营账受控事实写入未返回记录");
     return row;
@@ -257,7 +272,7 @@ export class OperatingLedgerService {
     data: Record<string, unknown>,
     actorUserId: string
   ): Promise<{ id: string }> {
-    const rows = await tx.$queryRaw<Array<{ id: string }>>(
+    const rows = await translateOperatingLedgerWriteConstraint(tx.$queryRaw<Array<{ id: string }>>(
       Prisma.sql`
         SELECT *
         FROM public."appendOperatingImpactThroughService"(
@@ -266,7 +281,7 @@ export class OperatingLedgerService {
           ${this.operatingLedgerWriteSecret()}
         )
       `
-    );
+    ));
     const row = rows[0];
     if (!row) throw new Error("经营账受控影响分录写入未返回记录");
     return row;

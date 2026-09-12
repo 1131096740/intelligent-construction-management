@@ -30,6 +30,29 @@ class ConstraintTestController {
       }
     );
   }
+
+  @Get("serialization-conflict")
+  readSerializationConflict() {
+    throw new Prisma.PrismaClientKnownRequestError(
+      "Transaction failed due to a write conflict",
+      {
+        code: "P2034",
+        clientVersion: "5.22.0"
+      }
+    );
+  }
+
+  @Get("raw-serialization-conflict")
+  readRawSerializationConflict() {
+    throw new Prisma.PrismaClientKnownRequestError(
+      "Raw query failed",
+      {
+        code: "P2010",
+        clientVersion: "5.22.0",
+        meta: { code: "40001", database_error: "SQLSTATE 40001" }
+      }
+    );
+  }
 }
 
 describe("ProjectOperatingConstraintFilter", () => {
@@ -69,6 +92,21 @@ describe("ProjectOperatingConstraintFilter", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       message: "正式经营事实引用的施工企业已失效，请刷新后重试"
+    });
+  });
+
+  it.each([
+    "serialization-conflict",
+    "raw-serialization-conflict"
+  ])("maps %s at the outermost public API boundary to HTTP 409", async (path) => {
+    const address = app.getHttpServer().address() as AddressInfo;
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/project-operating-constraint-test/${path}`
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: "数据已被并发更新，请重新读取后重试"
     });
   });
 });

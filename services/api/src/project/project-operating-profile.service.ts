@@ -316,10 +316,11 @@ export class ProjectOperatingProfileService {
           id: string;
           projectId: string;
           companyEntityId: string;
+          companyEntityVersionId: string;
           endedAt: Date | null;
         }>
       >(Prisma.sql`
-        SELECT "id", "projectId", "companyEntityId", "endedAt"
+        SELECT "id", "projectId", "companyEntityId", "companyEntityVersionId", "endedAt"
         FROM "ProjectParticipatingCompany"
         WHERE "id" = ${participantId} AND "projectId" = ${projectId}
         FOR UPDATE
@@ -328,7 +329,10 @@ export class ProjectOperatingProfileService {
         throw new NotFoundException("项目参与公司不存在，请刷新后重试");
       }
 
-      const [formalFactResult] = await tx.$queryRaw<Array<{ hasFormalFacts: boolean }>>(
+      const [formalFactResult] = await tx.$queryRaw<Array<{
+        hasFormalFacts: boolean;
+        breaksLedgerCoverage: boolean;
+      }>>(
         Prisma.sql`
           SELECT (
             EXISTS (
@@ -380,13 +384,64 @@ export class ProjectOperatingProfileService {
                 AND payment."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
                 AND payment."payerCompanyEntityId" = ${participant.companyEntityId}
             )
-          ) AS "hasFormalFacts"
+            OR EXISTS (
+              SELECT 1
+              FROM "OperatingFact" fact
+              WHERE fact."projectId" = ${projectId}
+                AND (
+                  (fact."debtorSubjectKind" = 'participating_company' AND fact."debtorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                  OR (fact."creditorSubjectKind" = 'participating_company' AND fact."creditorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                  OR (fact."approvedPayerSubjectKind" = 'participating_company' AND fact."approvedPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                  OR (fact."actualPayerSubjectKind" = 'participating_company' AND fact."actualPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                  OR (fact."payeeSubjectKind" = 'participating_company' AND fact."payeeSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                  OR (fact."costBearingCompanySubjectKind" = 'participating_company' AND fact."costBearingCompanySubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                )
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM "OperatingImpactEntry" impact
+              WHERE impact."projectId" = ${projectId}
+                AND impact."subjectKind" = 'participating_company'
+                AND impact."subjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId})
+            )
+          ) AS "hasFormalFacts",
+          EXISTS (
+            SELECT 1
+            FROM "Project" project
+            WHERE project."id" = ${projectId}
+              AND project."operatingLedgerEffectiveDate" IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM "ProjectParticipatingCompany" current_participant
+                WHERE current_participant."id" = ${participantId}
+                  AND current_participant."projectId" = ${projectId}
+                  AND current_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
+                  AND (
+                    current_participant."endedAt" IS NULL
+                    OR current_participant."endedAt" > project."operatingLedgerEffectiveDate"
+                  )
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "ProjectParticipatingCompany" other_participant
+                WHERE other_participant."projectId" = ${projectId}
+                  AND other_participant."id" <> ${participantId}
+                  AND other_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
+                  AND (
+                    other_participant."endedAt" IS NULL
+                    OR other_participant."endedAt" > project."operatingLedgerEffectiveDate"
+                  )
+              )
+          ) AS "breaksLedgerCoverage"
         `
       );
       if (formalFactResult?.hasFormalFacts) {
         throw new BadRequestException(
           "该公司已有正式经营事实，只能停止新增业务，不能删除"
         );
+      }
+      if (formalFactResult?.breaksLedgerCoverage) {
+        throw new BadRequestException("启用经营账前必须至少设置一家我方参与公司");
       }
 
       await tx.projectParticipatingCompany.delete({ where: { id: participant.id } });
@@ -398,7 +453,7 @@ export class ProjectOperatingProfileService {
         metadata: { projectId, companyEntityId: participant.companyEntityId }
       });
       return { removed: true, participantId: participant.id };
-    }));
+    }), { mapSerializationConflict: true });
   }
 
   async deactivateParticipatingCompany(
@@ -420,11 +475,12 @@ export class ProjectOperatingProfileService {
           id: string;
           projectId: string;
           companyEntityId: string;
+          companyEntityVersionId: string;
           effectiveFrom: Date;
           endedAt: Date | null;
         }>
       >(Prisma.sql`
-        SELECT "id", "projectId", "companyEntityId", "effectiveFrom", "endedAt"
+        SELECT "id", "projectId", "companyEntityId", "companyEntityVersionId", "effectiveFrom", "endedAt"
         FROM "ProjectParticipatingCompany"
         WHERE "id" = ${participantId} AND "projectId" = ${projectId}
         FOR UPDATE
@@ -437,6 +493,36 @@ export class ProjectOperatingProfileService {
       }
       if (endedAt.getTime() < participant.effectiveFrom.getTime()) {
         throw new BadRequestException("停止新增业务日期不能早于参与公司生效日");
+      }
+
+      const [ledgerCoverage] = await tx.$queryRaw<Array<{ breaksLedgerCoverage: boolean }>>(
+        Prisma.sql`
+          SELECT TRUE AS "breaksLedgerCoverage"
+          FROM "Project" project
+          WHERE project."id" = ${projectId}
+            AND project."operatingLedgerEffectiveDate" IS NOT NULL
+            AND ${endedAt}::date <= project."operatingLedgerEffectiveDate"
+            AND ${participant.effectiveFrom}::date <= project."operatingLedgerEffectiveDate"
+            AND (
+              ${participant.endedAt}::date IS NULL
+              OR ${participant.endedAt}::date > project."operatingLedgerEffectiveDate"
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "ProjectParticipatingCompany" other_participant
+              WHERE other_participant."projectId" = ${projectId}
+                AND other_participant."id" <> ${participant.id}
+                AND other_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
+                AND (
+                  other_participant."endedAt" IS NULL
+                  OR other_participant."endedAt" > project."operatingLedgerEffectiveDate"
+                )
+            )
+          LIMIT 1
+        `
+      );
+      if (ledgerCoverage?.breaksLedgerCoverage) {
+        throw new BadRequestException("启用经营账前必须至少设置一家我方参与公司");
       }
 
       const [laterFact] = await tx.$queryRaw<Array<{ occurredAt: Date }>>(Prisma.sql`
@@ -457,8 +543,23 @@ export class ProjectOperatingProfileService {
           UNION ALL SELECT COALESCE(payment."approvedAt", payment."createdAt") FROM "SpotProcurementPayment" payment
             WHERE payment."projectId" = ${projectId} AND payment."payerCompanyEntityId" = ${participant.companyEntityId}
               AND payment."invalidatedAt" IS NULL AND payment."status" IN ('approved_pending_payment','partially_paid','paid')
+          UNION ALL SELECT ledger_fact."occurredAt" FROM "OperatingFact" ledger_fact
+            WHERE ledger_fact."projectId" = ${projectId}
+              AND (
+                (ledger_fact."debtorSubjectKind" = 'participating_company' AND ledger_fact."debtorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                OR (ledger_fact."creditorSubjectKind" = 'participating_company' AND ledger_fact."creditorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                OR (ledger_fact."approvedPayerSubjectKind" = 'participating_company' AND ledger_fact."approvedPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                OR (ledger_fact."actualPayerSubjectKind" = 'participating_company' AND ledger_fact."actualPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                OR (ledger_fact."payeeSubjectKind" = 'participating_company' AND ledger_fact."payeeSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+                OR (ledger_fact."costBearingCompanySubjectKind" = 'participating_company' AND ledger_fact."costBearingCompanySubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
+              )
+          UNION ALL SELECT ledger_fact."occurredAt" FROM "OperatingImpactEntry" impact
+            INNER JOIN "OperatingFact" ledger_fact ON ledger_fact."id" = impact."factId"
+            WHERE impact."projectId" = ${projectId}
+              AND impact."subjectKind" = 'participating_company'
+              AND impact."subjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId})
         ) fact
-        WHERE fact."occurredAt"::DATE >= ${endedAt}::DATE
+        WHERE fact."occurredAt" >= ${endedAt}::timestamp
         LIMIT 1
       `);
       if (laterFact) {
@@ -482,7 +583,7 @@ export class ProjectOperatingProfileService {
         }
       });
       return toParticipatingCompanyReadModel(updated);
-    }));
+    }), { mapSerializationConflict: true });
   }
 
   private async assertProjectFinanceManager(

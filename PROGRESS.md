@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-09-11）
+## 当前结论（更新至 2026-09-13）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -22,6 +22,7 @@
 
 ## 当前正在推进
 
+- [~] POL-15B 前置阻断（Issue #284 / #108）：已按 owner 批准的第十三轮方案 A、冻结规格 v1.2（SHA-256 `2c0ec253fe6864b8c2540320ef289f80be9d2c771c18826c95e6ec0fc345b8c1`）与决策包（SHA-256 `2b133f30ec51317363444333ed2efbc25e1f26dfc513bcd4bfdb6e53ef95f986`）完成独立非生产候选修复。终端迁移新增无 Project 外键的纯技术 participant-mutation fence，DELETE/end-date 在不同关系行之间形成项目级共同写冲突但 DELETE 不取得 Project 锁；Read Committed 最后退出以 `23514` 失败，Repeatable Read/Serializable 真实重叠以 `40001` 失败，公共 API 最外层统一映射 HTTP 409、不自动重试且不误收 `40P01`。七个部分索引使用默认 planner 与代表性数据执行实际六路 OR/impact 守卫；四个完整重定义函数均有 `pg_get_functiondef` 前置保真门。最终 migration checksum 为 `d5dada6fbf06db4d356567586b4327c9143ca8a307dc8290a8364793192e4afe`；全新本机 PostgreSQL 16 已通过 169 个迁移首遍、第二遍无待执行项、seed 与完整动态 29/29，含六角色 stable/version、独立 impact、八种事实/影响提交顺序、五条旧正式链、激活、12 种不同参与关系退出竞争、DELETE 不锁 Project 和默认规划器七索引；受影响 Jest 51/51、动态门自检 33/33、API typecheck/lint、Prisma validate/generate、迁移基线检查均通过，canonical 动态门为 52 文件 / 226 条、remaining=0。独立后审任务因任务槽已满未能创建；分离的本地只读复核发现并修复了围栏外键反向锁风险，但不能冒充独立审查。当前仍是未提交本地候选；没有 commit 授权，故不能形成 fixed SHA 或通过要求洁净精确 SHA 的 `release:local`，#108 继续等待 #284 合并及 merge-head CI 后重建。未执行 commit、push、PR、merge、关票、部署、生产 migration/apply、权限授予或真实业务数据操作。
 - [x] POL-15P2（Issue #280）：按冻结前置规格 SHA-256 `aa6b3750715c997ebbd2d733acf6869265b9766fdf7b792d17363ba52d5cc58b` 完成项目资金争议正式来源。最终业务候选 `5b31d60c04af8ae1867db855bfcb43c1d41f7e0f` 已通过 PostgreSQL 16 的 168 个迁移两遍、seed、#280 动态 5/5、完整 `release:local` 16/16，以及第五轮 Standards/Spec 双审（均 HIGH=0 / MEDIUM=0 / LOW=0）；PR #282 以 merge SHA `07499b4c7da87e1da7699a5ff8f363026dc50c30` 合并，fixed-head CI `34603642245`、merge-head CI `34604316041` 均按精确 SHA 通过，Issue 已 CLOSED/COMPLETED，#108 与 #93 保持 OPEN。业务范围仍不包含 #108 全量投影；未执行生产 migration/apply、部署、权限授予或真实业务数据操作。本次仅校正该既有交付的仓库进度入口；账本修正提交自身的 PR、CI 与 merge 证据只记录在远端回执，避免文档自指。
   - 候选 `078cecbc9dd8e6022179e79e30c3d62a3155091e` 的一次性 PostgreSQL 16 已完成 168 个迁移首遍、第二遍无待执行迁移和 seed；动态场景 3/4 通过，唯一失败是测试错误地期待同一争议根的后续 `increase` 复用已形成正式影响的同一证据仍可确认，与冻结的“相同依据/证据既有正式影响应 `duplicate_blocked`”规则冲突。业务守卫正确拒绝且另外三个并发释放、替代闭合、跨来源阻断场景通过，资源已清理；该 SHA 不作成功证据，也未运行 `release:local`。现仅纠正动态用例：同证据确认必须失败且零经营事实，新证据 `increase` 必须经完整公开流程确认并形成精确正式影响；下一 SHA 重新绑定完整 PG16 与后续门禁。
   - 候选 `3f23386debf4d531e482e19d3d1dcd7dbed9bec2` 的一次性 PostgreSQL 16 同样完成 168 个迁移首遍、第二遍幂等检查和 seed；动态场景 3/4 通过，纠正后的同证据负例已通过，但新证据 `increase` 仍被首次 `establish` 的相同根依据误阻断。根因是跨来源 SQL 虽排除了当前 dispute 的经济身份分支，却未对根依据分支应用同一排除，导致合法后续增加不可达。资源已清理，该 SHA 不作成功证据，也未运行 `release:local`。现仅把去重边界收敛为：当前 dispute 内继续按同证据阻断；经济身份与根依据只阻断其他 dispute 或其他正式来源，保持 #279/#275 及其他资金限制去重不变。

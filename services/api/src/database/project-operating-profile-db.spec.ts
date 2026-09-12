@@ -1,9 +1,18 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { ConflictException } from "@nestjs/common";
+import {
+  OperatingLedgerService,
+  type AppendOperatingFactInput,
+  type OperatingFactSubjects
+} from "../operating-ledger/operating-ledger.service";
 import { ProjectOperatingProfileService } from "../project/project-operating-profile.service";
 
 const TEST_DATABASE = "jiangkong_database_dynamic_misc";
+const PARTICIPANT_HISTORY_TEST_DATABASE = "jiangkong_participant_history_integrity_test";
 const LIVE_TEST_ENABLED = process.env.RUN_PROJECT_OPERATING_PROFILE_DB_TESTS === "1";
+const PARTICIPANT_HISTORY_LIVE_TEST_ENABLED =
+  process.env.RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE === "1";
 
 export function projectOperatingProfileDatabaseUrl(value: string | undefined) {
   if (!value || process.env.NODE_ENV === "production") {
@@ -13,9 +22,26 @@ export function projectOperatingProfileDatabaseUrl(value: string | undefined) {
   if (
     !["postgresql:", "postgres:"].includes(url.protocol) ||
     !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
-    url.pathname !== `/${TEST_DATABASE}`
+    ![`/${TEST_DATABASE}`, `/${PARTICIPANT_HISTORY_TEST_DATABASE}`].includes(
+      url.pathname
+    )
   ) {
     throw new Error("项目经营档案数据库测试拒绝非本机专用数据库");
+  }
+  return url.toString();
+}
+
+export function participantHistoryIntegrityDatabaseUrl(value: string | undefined) {
+  if (!value || process.env.NODE_ENV === "production") {
+    throw new Error("参与公司历史完整性测试必须连接非生产专用数据库");
+  }
+  const url = new URL(value);
+  if (
+    !["postgresql:", "postgres:"].includes(url.protocol) ||
+    !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
+    url.pathname !== `/${PARTICIPANT_HISTORY_TEST_DATABASE}`
+  ) {
+    throw new Error("参与公司历史完整性测试拒绝非本机专用数据库");
   }
   return url.toString();
 }
@@ -28,12 +54,26 @@ describe("project operating profile database target guard", () => {
       )
     ).toThrow("项目经营档案数据库测试拒绝非本机专用数据库");
   });
+
+  it("rejects a non-dedicated participant-history target", () => {
+    expect(() => participantHistoryIntegrityDatabaseUrl(
+      "postgresql://user:pass@127.0.0.1/jiangkong_database_dynamic_misc"
+    )).toThrow("参与公司历史完整性测试拒绝非本机专用数据库");
+  });
 });
 
 const databaseUrl = LIVE_TEST_ENABLED
   ? projectOperatingProfileDatabaseUrl(process.env.DATABASE_URL)
   : undefined;
 const describeDatabase = LIVE_TEST_ENABLED ? describe : describe.skip;
+const participantHistoryDatabaseUrl = PARTICIPANT_HISTORY_LIVE_TEST_ENABLED
+  ? participantHistoryIntegrityDatabaseUrl(
+    process.env.PARTICIPANT_HISTORY_INTEGRITY_DATABASE_URL ?? process.env.DATABASE_URL
+  )
+  : undefined;
+const describeParticipantHistory = PARTICIPANT_HISTORY_LIVE_TEST_ENABLED
+  ? describe
+  : describe.skip;
 
 describeDatabase("project operating profile PostgreSQL invariants", () => {
   const prisma = databaseUrl
@@ -486,6 +526,460 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
   });
 });
 
+describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 16", () => {
+  const prisma = participantHistoryDatabaseUrl
+    ? new PrismaClient({ datasources: { db: { url: participantHistoryDatabaseUrl } } })
+    : new PrismaClient();
+
+  jest.setTimeout(180_000);
+
+  beforeAll(async () => {
+    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    if (!secret) throw new Error("POL-284 PostgreSQL 测试缺少经营账写入密钥");
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
+      VALUES (1, crypt(${secret}, gen_salt('bf')))
+      ON CONFLICT ("id") DO UPDATE SET "secretHash" = EXCLUDED."secretHash"
+    `);
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("blocks DELETE and end-date for all six fact roles through stable and frozen identities", async () => {
+    const roles: Array<keyof OperatingFactSubjects> = [
+      "debtor", "creditor", "approvedPayer", "actualPayer", "payee", "costBearingCompany"
+    ];
+    for (const role of roles) {
+      for (const identity of ["stable", "version"] as const) {
+        for (const mutation of ["delete", "end"] as const) {
+          const fixture = await createFixture(prisma, {
+            operatingLedgerEffectiveDate: "2026-08-01",
+            participant: true
+          });
+          await addFallbackParticipant(prisma, fixture);
+          const targetId = identity === "stable" ? fixture.company.id : fixture.company.versionId;
+          await new OperatingLedgerService(prisma as never).appendFromSource(
+            participantFactInput(fixture, `${role}-${identity}-${mutation}`, role, targetId),
+            fixture.financeUserId
+          );
+
+          const operation = mutation === "delete"
+            ? prisma.projectParticipatingCompany.delete({ where: { id: fixture.participantId! } })
+            : prisma.projectParticipatingCompany.update({
+              where: { id: fixture.participantId! },
+              data: { endedAt: date("2026-08-14") }
+            });
+          await expect(operation).rejects.toThrow(
+            mutation === "delete"
+              ? "该公司已有正式经营事实"
+              : "停止日期当日或之后已有正式经营事实"
+          );
+        }
+      }
+    }
+  });
+
+  it("protects independent impact subjects through stable and frozen identities", async () => {
+    for (const identity of ["stable", "version"] as const) {
+      for (const mutation of ["delete", "end"] as const) {
+        const fixture = await createFixture(prisma, {
+          operatingLedgerEffectiveDate: "2026-08-01",
+          participant: true
+        });
+        await addFallbackParticipant(prisma, fixture);
+        const targetId = identity === "stable" ? fixture.company.id : fixture.company.versionId;
+        const input = participantFactInput(
+          fixture,
+          `impact-${identity}-${mutation}`,
+          "costBearingCompany",
+          fixture.partyVersionId
+        );
+        input.subjects.costBearingCompany = {
+          kind: "construction_enterprise",
+          id: fixture.partyVersionId
+        };
+        input.impacts[0] = {
+          ...input.impacts[0]!,
+          subjectRole: "cost_bearing_company",
+          subject: { kind: "participating_company", id: targetId }
+        };
+        await new OperatingLedgerService(prisma as never).appendFromSource(
+          input,
+          fixture.financeUserId
+        );
+
+        const operation = mutation === "delete"
+          ? prisma.projectParticipatingCompany.delete({ where: { id: fixture.participantId! } })
+          : prisma.projectParticipatingCompany.update({
+            where: { id: fixture.participantId! },
+            data: { endedAt: date("2026-08-14") }
+          });
+        await expect(operation).rejects.toThrow(
+          mutation === "delete"
+            ? "该公司已有正式经营事实"
+            : "停止日期当日或之后已有正式经营事实"
+        );
+      }
+    }
+  });
+
+  it("allows empty deletion, a later stop, and ignores other companies or projects", async () => {
+    const empty = await createFixture(prisma, { participant: true });
+    await expect(prisma.projectParticipatingCompany.delete({
+      where: { id: empty.participantId! }
+    })).resolves.toBeDefined();
+
+    const later = await createFixture(prisma, {
+      operatingLedgerEffectiveDate: "2026-08-01",
+      participant: true
+    });
+    await new OperatingLedgerService(prisma as never).appendFromSource(
+      participantFactInput(later, "later-end", "costBearingCompany", later.company.versionId),
+      later.financeUserId
+    );
+    await expect(prisma.projectParticipatingCompany.update({
+      where: { id: later.participantId! },
+      data: { endedAt: date("2026-08-15") }
+    })).resolves.toMatchObject({ endedAt: date("2026-08-15") });
+
+    const sameProject = await createFixture(prisma, {
+      operatingLedgerEffectiveDate: "2026-08-01",
+      participant: true
+    });
+    const other = await addFallbackParticipant(prisma, sameProject);
+    await new OperatingLedgerService(prisma as never).appendFromSource(
+      participantFactInput(sameProject, "other-company", "costBearingCompany", other.versionId),
+      sameProject.financeUserId
+    );
+    await expect(prisma.projectParticipatingCompany.delete({
+      where: { id: sameProject.participantId! }
+    })).resolves.toBeDefined();
+
+    const firstProject = await createFixture(prisma, { participant: true });
+    const secondProject = await createFixture(prisma, {
+      operatingLedgerEffectiveDate: "2026-08-01",
+      participant: true
+    });
+    await createParticipant(
+      prisma,
+      secondProject.projectId,
+      firstProject.company,
+      secondProject.financeUserId,
+      { effectiveFrom: "2026-08-01" }
+    );
+    await new OperatingLedgerService(prisma as never).appendFromSource(
+      participantFactInput(
+        secondProject,
+        "cross-project",
+        "costBearingCompany",
+        firstProject.company.versionId
+      ),
+      secondProject.financeUserId
+    );
+    await expect(prisma.projectParticipatingCompany.delete({
+      where: { id: firstProject.participantId! }
+    })).resolves.toBeDefined();
+  });
+
+  it("serializes fact and independent-impact writes against DELETE and end-date in both commit orders", async () => {
+    for (const reference of ["fact", "impact"] as const) {
+      for (const mutation of ["delete", "end"] as const) {
+        for (const first of ["writer", "mutation"] as const) {
+          await expect(runParticipantMutationRace(prisma, participantHistoryDatabaseUrl!, {
+            reference,
+            mutation,
+            first
+          })).resolves.toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it("maps a real Repeatable Read 40001 to 409 without retry or dirty fact", async () => {
+    const fixture = await createFixture(prisma, {
+      operatingLedgerEffectiveDate: "2026-08-01",
+      participant: true
+    });
+    await addFallbackParticipant(prisma, fixture);
+    const snapshotClient = new PrismaClient({
+      datasources: { db: { url: participantHistoryDatabaseUrl! } }
+    });
+    const mutationClient = new PrismaClient({
+      datasources: { db: { url: participantHistoryDatabaseUrl! } }
+    });
+    const snapshotReady = deferred<void>();
+    const continueWrite = deferred<void>();
+    const input = participantFactInput(
+      fixture,
+      "repeatable-read-40001",
+      "costBearingCompany",
+      fixture.company.versionId
+    );
+    let attempts = 0;
+    try {
+      const write = snapshotClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "ProjectParticipatingCompany"
+          WHERE "id" = ${fixture.participantId!}
+        `);
+        snapshotReady.resolve();
+        await continueWrite.promise;
+        attempts += 1;
+        return new OperatingLedgerService(snapshotClient as never)
+          .appendConfirmedSourceInTransaction(tx, input, fixture.financeUserId);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+      await snapshotReady.promise;
+      await mutationClient.projectParticipatingCompany.update({
+        where: { id: fixture.participantId! },
+        data: { endedAt: date("2026-08-14") }
+      });
+      continueWrite.resolve();
+
+      const outcome = await settled(write);
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status === "rejected") {
+        expect(outcome.reason).toBeInstanceOf(ConflictException);
+        expect((outcome.reason as ConflictException).getStatus()).toBe(409);
+        expect(String((outcome.reason as Error).message)).toContain("并发状态变化");
+      }
+      expect(attempts).toBe(1);
+      await expect(prisma.operatingFact.count({
+        where: { sourceBusinessId: input.sourceBusinessId }
+      })).resolves.toBe(0);
+    } finally {
+      continueWrite.resolve();
+      await Promise.all([snapshotClient.$disconnect(), mutationClient.$disconnect()]);
+    }
+  });
+
+  it("locks inverse multi-participant stable/version roles without deadlock", async () => {
+    const fixture = await createFixture(prisma, {
+      operatingLedgerEffectiveDate: "2026-08-01",
+      participant: true
+    });
+    const secondCompany = await addFallbackParticipant(prisma, fixture);
+    const first = participantFactInput(
+      fixture,
+      "inverse-first",
+      "debtor",
+      fixture.company.id
+    );
+    first.factKind = "owner_settlement";
+    first.subjects = {
+      debtor: { kind: "participating_company", id: fixture.company.id },
+      creditor: { kind: "participating_company", id: secondCompany.versionId }
+    };
+    const second = participantFactInput(
+      fixture,
+      "inverse-second",
+      "debtor",
+      secondCompany.id
+    );
+    second.factKind = "owner_settlement";
+    second.subjects = {
+      debtor: { kind: "participating_company", id: secondCompany.id },
+      creditor: { kind: "participating_company", id: fixture.company.versionId }
+    };
+    const firstClient = new PrismaClient({ datasources: { db: { url: participantHistoryDatabaseUrl! } } });
+    const secondClient = new PrismaClient({ datasources: { db: { url: participantHistoryDatabaseUrl! } } });
+    try {
+      const outcomes = await Promise.allSettled([
+        new OperatingLedgerService(firstClient as never).appendFromSource(first, fixture.financeUserId),
+        new OperatingLedgerService(secondClient as never).appendFromSource(second, fixture.financeUserId)
+      ]);
+      expect(outcomes.every((outcome) => outcome.status === "fulfilled")).toBe(true);
+      expect(outcomes.map(describeOutcome).join(" ")).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+    } finally {
+      await Promise.all([firstClient.$disconnect(), secondClient.$disconnect()]);
+    }
+  });
+
+  it("serializes operating-ledger activation against direct end-date in both commit orders", async () => {
+    for (const first of ["activation", "end"] as const) {
+      await expect(runActivationEndRace(
+        prisma,
+        participantHistoryDatabaseUrl!,
+        first
+      )).resolves.toBeUndefined();
+    }
+  });
+
+  it("preserves all five legacy formal-flow guards against direct end-date in both commit orders", async () => {
+    for (const flow of [
+      "contract_version",
+      "affiliate_company_contract",
+      "expense_claim",
+      "spot_payment",
+      "payment_execution_allocation"
+    ] as const) {
+      for (const first of ["writer", "end"] as const) {
+        await expect(runLegacyFlowEndRace(
+          prisma,
+          participantHistoryDatabaseUrl!,
+          flow,
+          first
+        )).resolves.toBeUndefined();
+      }
+    }
+  });
+
+  it("serializes different-participant exits through the project fence at every supported isolation level", async () => {
+    for (const isolationLevel of [
+      Prisma.TransactionIsolationLevel.ReadCommitted,
+      Prisma.TransactionIsolationLevel.RepeatableRead,
+      Prisma.TransactionIsolationLevel.Serializable
+    ]) {
+      for (const [firstMutation, secondMutation] of [
+        ["delete", "delete"],
+        ["end", "end"],
+        ["delete", "end"],
+        ["end", "delete"]
+      ] as const) {
+        await expect(runLastParticipantMutationRace(
+          prisma,
+          participantHistoryDatabaseUrl!,
+          isolationLevel,
+          firstMutation,
+          secondMutation
+        )).resolves.toBeUndefined();
+      }
+    }
+  });
+
+  it("preserves terminal validator semantics and uses all seven directed indexes with the default planner", async () => {
+    const [factDefinition] = await prisma.$queryRaw<Array<{ definition: string }>>(Prisma.sql`
+      SELECT pg_get_functiondef('"validateOperatingFactReferences"()'::regprocedure) AS definition
+    `);
+    const [impactDefinition] = await prisma.$queryRaw<Array<{ definition: string }>>(Prisma.sql`
+      SELECT pg_get_functiondef('"validateOperatingImpactEntryReferences"()'::regprocedure) AS definition
+    `);
+    expect(factDefinition?.definition).toContain("downstream_counterparty");
+    expect(factDefinition?.definition).toContain("employee");
+    expect(factDefinition?.definition).toContain("jg_validate_canonical_wage_operating_fact");
+    expect(impactDefinition?.definition).toContain("fund_execution");
+    expect(impactDefinition?.definition).toContain("经营影响累计冲销金额超过原分录");
+
+    const fixture = await createFixture(prisma, {
+      operatingLedgerEffectiveDate: "2026-08-01",
+      participant: true
+    });
+    const roleColumns = [
+      ["debtor", "debtorSubjectKind", "debtorSubjectId"],
+      ["creditor", "creditorSubjectKind", "creditorSubjectId"],
+      ["approvedPayer", "approvedPayerSubjectKind", "approvedPayerSubjectId"],
+      ["actualPayer", "actualPayerSubjectKind", "actualPayerSubjectId"],
+      ["payee", "payeeSubjectKind", "payeeSubjectId"],
+      ["costBearingCompany", "costBearingCompanySubjectKind", "costBearingCompanySubjectId"]
+    ] as const;
+    for (const [role] of roleColumns) {
+      await new OperatingLedgerService(prisma as never).appendFromSource(
+        participantFactInput(fixture, `plan-${role}`, role, fixture.company.versionId),
+        fixture.financeUserId
+      );
+    }
+    const impactInput = participantFactInput(
+      fixture,
+      "plan-impact",
+      "costBearingCompany",
+      fixture.partyVersionId
+    );
+    impactInput.subjects.costBearingCompany = {
+      kind: "construction_enterprise",
+      id: fixture.partyVersionId
+    };
+    impactInput.impacts[0] = {
+      ...impactInput.impacts[0]!,
+      subjectRole: "cost_bearing_company",
+      subject: { kind: "participating_company", id: fixture.company.versionId }
+    };
+    await new OperatingLedgerService(prisma as never).appendFromSource(
+      impactInput,
+      fixture.financeUserId
+    );
+    const noiseCompany = await addFallbackParticipant(prisma, fixture);
+    await seedRepresentativeParticipantIndexData(prisma, fixture, noiseCompany);
+    await prisma.$executeRawUnsafe(
+      'ANALYZE "OperatingFact", "OperatingImpactEntry"'
+    );
+
+    const factEndDatePlan = await explainIndexPlan(
+      prisma,
+      `SELECT 1
+       FROM "OperatingFact" fact
+       WHERE fact."projectId" = $1
+         AND fact."occurredAt" >= $4::timestamp
+         AND (
+           (fact."debtorSubjectKind" = 'participating_company' AND fact."debtorSubjectId" IN ($2, $3))
+           OR (fact."creditorSubjectKind" = 'participating_company' AND fact."creditorSubjectId" IN ($2, $3))
+           OR (fact."approvedPayerSubjectKind" = 'participating_company' AND fact."approvedPayerSubjectId" IN ($2, $3))
+           OR (fact."actualPayerSubjectKind" = 'participating_company' AND fact."actualPayerSubjectId" IN ($2, $3))
+           OR (fact."payeeSubjectKind" = 'participating_company' AND fact."payeeSubjectId" IN ($2, $3))
+           OR (fact."costBearingCompanySubjectKind" = 'participating_company' AND fact."costBearingCompanySubjectId" IN ($2, $3))
+         )`,
+      fixture.projectId,
+      fixture.company.id,
+      fixture.company.versionId,
+      "2026-08-14"
+    );
+    const factDeletePlan = await explainIndexPlan(
+      prisma,
+      `SELECT 1
+       FROM "OperatingFact" fact
+       WHERE fact."projectId" = $1
+         AND (
+           (fact."debtorSubjectKind" = 'participating_company' AND fact."debtorSubjectId" IN ($2, $3))
+           OR (fact."creditorSubjectKind" = 'participating_company' AND fact."creditorSubjectId" IN ($2, $3))
+           OR (fact."approvedPayerSubjectKind" = 'participating_company' AND fact."approvedPayerSubjectId" IN ($2, $3))
+           OR (fact."actualPayerSubjectKind" = 'participating_company' AND fact."actualPayerSubjectId" IN ($2, $3))
+           OR (fact."payeeSubjectKind" = 'participating_company' AND fact."payeeSubjectId" IN ($2, $3))
+           OR (fact."costBearingCompanySubjectKind" = 'participating_company' AND fact."costBearingCompanySubjectId" IN ($2, $3))
+         )`,
+      fixture.projectId,
+      fixture.company.id,
+      fixture.company.versionId
+    );
+    for (const [role] of roleColumns) {
+      expect(factEndDatePlan).toContain(`OperatingFact_participant_${role}_history_idx`);
+      expect(factDeletePlan).toContain(`OperatingFact_participant_${role}_history_idx`);
+    }
+    expect(factEndDatePlan).not.toContain('Seq Scan on "OperatingFact"');
+    expect(factDeletePlan).not.toContain('Seq Scan on "OperatingFact"');
+
+    const impactEndDatePlan = await explainIndexPlan(
+      prisma,
+      `SELECT 1
+       FROM "OperatingImpactEntry" impact
+       INNER JOIN "OperatingFact" fact ON fact."id" = impact."factId"
+       WHERE impact."projectId" = $1
+         AND impact."subjectKind" = 'participating_company'
+         AND impact."subjectId" IN ($2, $3)
+         AND fact."occurredAt" >= $4::timestamp`,
+      fixture.projectId,
+      fixture.company.id,
+      fixture.company.versionId,
+      "2026-08-14"
+    );
+    const impactDeletePlan = await explainIndexPlan(
+      prisma,
+      `SELECT 1
+       FROM "OperatingImpactEntry" impact
+       WHERE impact."projectId" = $1
+         AND impact."subjectKind" = 'participating_company'
+         AND impact."subjectId" IN ($2, $3)`,
+      fixture.projectId,
+      fixture.company.id,
+      fixture.company.versionId
+    );
+    expect(impactEndDatePlan).toContain("OperatingImpactEntry_participant_subject_history_idx");
+    expect(impactDeletePlan).toContain("OperatingImpactEntry_participant_subject_history_idx");
+    expect(impactEndDatePlan).not.toContain('Seq Scan on "OperatingImpactEntry"');
+    expect(impactDeletePlan).not.toContain('Seq Scan on "OperatingImpactEntry"');
+  });
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolver) => { resolve = resolver; });
@@ -567,6 +1061,8 @@ async function createFixture(
     projectId,
     assignmentId: assignment.id,
     partyVersionId,
+    affiliateNameSnapshot: assignment.affiliateNameSnapshot,
+    affiliateCreditCodeSnapshot: assignment.affiliateCreditCodeSnapshot,
     company,
     participantId: participant?.id ?? null
   };
@@ -692,4 +1188,869 @@ async function createExpenseClaim(
     }
   });
   return id;
+}
+
+async function addFallbackParticipant(
+  prisma: PrismaClient,
+  fixture: Awaited<ReturnType<typeof createFixture>>
+) {
+  const company = await createCompany(prisma, fixture.financeUserId, "备用我方公司");
+  await createParticipant(prisma, fixture.projectId, company, fixture.financeUserId, {
+    effectiveFrom: "2026-08-01"
+  });
+  return company;
+}
+
+function participantFactInput(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+  suffix: string,
+  role: keyof OperatingFactSubjects,
+  participantId: string
+): AppendOperatingFactInput {
+  const subjects: OperatingFactSubjects = {
+    costBearingCompany: {
+      kind: "construction_enterprise",
+      id: fixture.partyVersionId
+    }
+  };
+  subjects[role] = { kind: "participating_company", id: participantId };
+  return {
+    projectId: fixture.projectId,
+    sourceType: "pol284_participant_history_test",
+    sourceBusinessId: `pol284-${suffix}-${randomUUID()}`,
+    sourceBusinessCode: `POL284-${suffix}`,
+    sourceVersion: 1,
+    idempotencyKey: `pol284-${suffix}-${randomUUID()}`,
+    occurredAt: date("2026-08-14"),
+    confirmedAt: new Date("2026-08-14T01:00:00.000Z"),
+    confirmedByUserId: fixture.financeUserId,
+    factKind: "expense",
+    operatingLevel: "project",
+    evidenceLevel: "A",
+    amountCents: 100n,
+    currencyCode: "CNY",
+    direction: "outflow",
+    isBeforeOperatingLedgerEffectiveDate: false,
+    affiliateAssignmentId: fixture.assignmentId,
+    affiliateBusinessPartyVersionId: fixture.partyVersionId,
+    affiliateNameSnapshot: fixture.affiliateNameSnapshot,
+    affiliateCreditCodeSnapshot: fixture.affiliateCreditCodeSnapshot ?? undefined,
+    sourceSnapshot: { source: "POL-284 PostgreSQL 16 acceptance", suffix },
+    subjects,
+    impacts: [{
+      idempotencyKey: `pol284-impact-${suffix}-${randomUUID()}`,
+      sourceImpactKey: "confirmed-cost",
+      impactKind: "confirmed_cost",
+      amountCents: 100n,
+      direction: "increase",
+      costCategoryCode: "project_daily_expense",
+      impactSnapshot: { source: "POL-284 PostgreSQL 16 acceptance" }
+    }]
+  };
+}
+
+async function explainIndexPlan(
+  prisma: PrismaClient,
+  sql: string,
+  ...parameters: unknown[]
+) {
+  const rows = await prisma.$queryRawUnsafe<Array<{ "QUERY PLAN": string }>>(
+    `EXPLAIN (ANALYZE, BUFFERS) ${sql}`,
+    ...parameters
+  );
+  return rows.map((row) => row["QUERY PLAN"]).join("\n");
+}
+
+async function seedRepresentativeParticipantIndexData(
+  prisma: PrismaClient,
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+  noiseCompany: Awaited<ReturnType<typeof addFallbackParticipant>>
+) {
+  const roles: Array<keyof OperatingFactSubjects> = [
+    "debtor", "creditor", "approvedPayer", "actualPayer", "payee", "costBearingCompany"
+  ];
+  await prisma.$transaction(async (tx) => {
+    const ledger = new OperatingLedgerService(prisma as never);
+    for (let index = 0; index < 1_200; index += 1) {
+      const role = roles[index % roles.length]!;
+      const input = participantFactInput(
+        fixture,
+        `plan-noise-${index}`,
+        role,
+        noiseCompany.versionId
+      );
+      input.impacts[0] = {
+        ...input.impacts[0]!,
+        subjectRole: "cost_bearing_company",
+        subject: { kind: "participating_company", id: noiseCompany.versionId }
+      };
+      await ledger.appendConfirmedSourceInTransaction(tx, input, fixture.financeUserId);
+    }
+  }, { timeout: 60_000 });
+}
+
+type ParticipantMutationRace = {
+  reference: "fact" | "impact";
+  mutation: "delete" | "end";
+  first: "writer" | "mutation";
+};
+
+async function runParticipantMutationRace(
+  prisma: PrismaClient,
+  databaseUrl: string,
+  scenario: ParticipantMutationRace
+) {
+  const fixture = await createFixture(prisma, {
+    operatingLedgerEffectiveDate: "2026-08-01",
+    participant: true
+  });
+  await addFallbackParticipant(prisma, fixture);
+  const input = participantFactInput(
+    fixture,
+    `${scenario.reference}-${scenario.mutation}-${scenario.first}`,
+    "costBearingCompany",
+    scenario.reference === "fact" ? fixture.company.versionId : fixture.partyVersionId
+  );
+  if (scenario.reference === "impact") {
+    input.subjects.costBearingCompany = {
+      kind: "construction_enterprise",
+      id: fixture.partyVersionId
+    };
+    input.impacts[0] = {
+      ...input.impacts[0]!,
+      subjectRole: "cost_bearing_company",
+      subject: { kind: "participating_company", id: fixture.company.versionId }
+    };
+  }
+  const writerClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const mutationClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const firstStatementDone = deferred<void>();
+  const releaseFirst = deferred<void>();
+  try {
+    if (scenario.first === "writer") {
+      const writer = writerClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        const result = await new OperatingLedgerService(writerClient as never)
+          .appendConfirmedSourceInTransaction(tx, input, fixture.financeUserId);
+        firstStatementDone.resolve();
+        await releaseFirst.promise;
+        return result;
+      });
+      await firstStatementDone.promise;
+      const mutation = mutationClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        return mutateParticipant(tx, fixture.participantId!, scenario.mutation);
+      });
+      await expectBlocked(mutation);
+      releaseFirst.resolve();
+      await writer;
+      const mutationOutcome = await settled(mutation);
+      expect(mutationOutcome.status).toBe("rejected");
+      if (mutationOutcome.status === "rejected") {
+        if (sqlState(mutationOutcome.reason) !== "23514") {
+          throw new Error(
+            `${scenario.reference}/${scenario.mutation}/${scenario.first}: ${describeOutcome(mutationOutcome)}`
+          );
+        }
+        expect(describeOutcome(mutationOutcome)).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+      }
+      await expect(prisma.operatingFact.count({
+        where: { sourceBusinessId: input.sourceBusinessId }
+      })).resolves.toBe(1);
+      await expect(prisma.projectParticipatingCompany.findUnique({
+        where: { id: fixture.participantId! }
+      })).resolves.toMatchObject({ endedAt: null });
+      return;
+    }
+
+    const mutation = mutationClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      const result = await mutateParticipant(tx, fixture.participantId!, scenario.mutation);
+      firstStatementDone.resolve();
+      await releaseFirst.promise;
+      return result;
+    });
+    await firstStatementDone.promise;
+    const writer = writerClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      return new OperatingLedgerService(writerClient as never)
+        .appendConfirmedSourceInTransaction(tx, input, fixture.financeUserId);
+    });
+    await expectBlocked(writer);
+    releaseFirst.resolve();
+    await mutation;
+    const writerOutcome = await settled(writer);
+    expect(writerOutcome.status).toBe("rejected");
+    if (writerOutcome.status === "rejected") {
+      const message = describeOutcome(writerOutcome);
+      const rejectedByResolvedParticipantSnapshot = scenario.reference === "impact"
+        && message.includes("影响分录引用的我方公司未在本项目事实日参与");
+      if (sqlState(writerOutcome.reason) !== "23514" && !rejectedByResolvedParticipantSnapshot) {
+        throw new Error(
+          `${scenario.reference}/${scenario.mutation}/${scenario.first}: ${message}`
+        );
+      }
+      expect(message).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+    }
+    await expect(prisma.operatingFact.count({
+      where: { sourceBusinessId: input.sourceBusinessId }
+    })).resolves.toBe(0);
+    const participant = await prisma.projectParticipatingCompany.findUnique({
+      where: { id: fixture.participantId! }
+    });
+    if (scenario.mutation === "delete") expect(participant).toBeNull();
+    else expect(participant?.endedAt).toEqual(date("2026-08-14"));
+  } finally {
+    releaseFirst.resolve();
+    await Promise.all([writerClient.$disconnect(), mutationClient.$disconnect()]);
+  }
+}
+
+async function runLastParticipantMutationRace(
+  prisma: PrismaClient,
+  databaseUrl: string,
+  isolationLevel: Prisma.TransactionIsolationLevel,
+  firstMutation: "delete" | "end",
+  secondMutation: "delete" | "end"
+) {
+  const fixture = await createFixture(prisma, {
+    operatingLedgerEffectiveDate: "2026-08-01",
+    participant: true
+  });
+  const secondCompany = await addFallbackParticipant(prisma, fixture);
+  const secondParticipant = await prisma.projectParticipatingCompany.findFirstOrThrow({
+    where: {
+      projectId: fixture.projectId,
+      companyEntityId: secondCompany.id
+    },
+    select: { id: true }
+  });
+  const firstClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const secondClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const firstStatementDone = deferred<void>();
+  const releaseFirst = deferred<void>();
+  try {
+    const first = firstClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      const result = await mutateParticipantAtLedgerStart(
+        tx,
+        fixture.participantId!,
+        firstMutation
+      );
+      firstStatementDone.resolve();
+      await releaseFirst.promise;
+      return result;
+    }, { isolationLevel });
+    await waitForFirstStatement(firstStatementDone.promise, first);
+
+    if (
+      isolationLevel === Prisma.TransactionIsolationLevel.ReadCommitted
+      && firstMutation === "delete"
+      && secondMutation === "delete"
+    ) {
+      await expect(prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "Project"
+        WHERE "id" = ${fixture.projectId}
+        FOR UPDATE NOWAIT
+      `)).resolves.toEqual([{ id: fixture.projectId }]);
+    }
+
+    const second = secondClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      return mutateParticipantAtLedgerStart(tx, secondParticipant.id, secondMutation);
+    }, { isolationLevel });
+    await expectBlocked(second);
+    releaseFirst.resolve();
+    await expect(first).resolves.toBe(1);
+
+    const secondOutcome = await settled(second);
+    expect(secondOutcome.status).toBe("rejected");
+    if (secondOutcome.status === "rejected") {
+      expect(sqlState(secondOutcome.reason)).toBe(
+        isolationLevel === Prisma.TransactionIsolationLevel.ReadCommitted
+          ? "23514"
+          : "40001"
+      );
+      expect(describeOutcome(secondOutcome)).not.toMatch(
+        /40P01|55P03|deadlock|lock timeout/iu
+      );
+    }
+
+    const activeAtLedgerStart = await prisma.projectParticipatingCompany.count({
+      where: {
+        projectId: fixture.projectId,
+        effectiveFrom: { lte: date("2026-08-01") },
+        OR: [
+          { endedAt: null },
+          { endedAt: { gt: date("2026-08-01") } }
+        ]
+      }
+    });
+    expect(activeAtLedgerStart).toBe(1);
+  } finally {
+    releaseFirst.resolve();
+    await Promise.all([firstClient.$disconnect(), secondClient.$disconnect()]);
+  }
+}
+
+async function runActivationEndRace(
+  prisma: PrismaClient,
+  databaseUrl: string,
+  first: "activation" | "end"
+) {
+  const fixture = await createFixture(prisma, { participant: true });
+  const activationClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const endClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const firstStatementDone = deferred<void>();
+  const releaseFirst = deferred<void>();
+  try {
+    if (first === "activation") {
+      const activation = activationClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        const result = await tx.$executeRaw(Prisma.sql`
+          UPDATE "Project"
+          SET "operatingLedgerEffectiveDate" = DATE '2026-08-01'
+          WHERE "id" = ${fixture.projectId}
+        `);
+        firstStatementDone.resolve();
+        await releaseFirst.promise;
+        return result;
+      });
+      await firstStatementDone.promise;
+      const end = endClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        return tx.$executeRaw(Prisma.sql`
+          UPDATE "ProjectParticipatingCompany"
+          SET "endedAt" = DATE '2026-08-01'
+          WHERE "id" = ${fixture.participantId!}
+        `);
+      });
+      await expectBlocked(end);
+      releaseFirst.resolve();
+      await activation;
+      const endOutcome = await settled(end);
+      expect(endOutcome.status).toBe("rejected");
+      if (endOutcome.status === "rejected") {
+        if (sqlState(endOutcome.reason) !== "23514") {
+          throw new Error(`activation/${first}: ${describeOutcome(endOutcome)}`);
+        }
+        expect(describeOutcome(endOutcome)).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+      }
+      await expect(prisma.project.findUniqueOrThrow({ where: { id: fixture.projectId } }))
+        .resolves.toMatchObject({ operatingLedgerEffectiveDate: date("2026-08-01") });
+      await expect(prisma.projectParticipatingCompany.findUniqueOrThrow({
+        where: { id: fixture.participantId! }
+      })).resolves.toMatchObject({ endedAt: null });
+      return;
+    }
+
+    const end = endClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      const result = await tx.$executeRaw(Prisma.sql`
+        UPDATE "ProjectParticipatingCompany"
+        SET "endedAt" = DATE '2026-08-01'
+        WHERE "id" = ${fixture.participantId!}
+      `);
+      firstStatementDone.resolve();
+      await releaseFirst.promise;
+      return result;
+    });
+    await firstStatementDone.promise;
+    const activation = activationClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      return tx.$executeRaw(Prisma.sql`
+        UPDATE "Project"
+        SET "operatingLedgerEffectiveDate" = DATE '2026-08-01'
+        WHERE "id" = ${fixture.projectId}
+      `);
+    });
+    await expectBlocked(activation);
+    releaseFirst.resolve();
+    await end;
+    const activationOutcome = await settled(activation);
+    expect(activationOutcome.status).toBe("rejected");
+    if (activationOutcome.status === "rejected") {
+      expect(sqlState(activationOutcome.reason)).toBe("23514");
+      expect(describeOutcome(activationOutcome)).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+    }
+    await expect(prisma.project.findUniqueOrThrow({ where: { id: fixture.projectId } }))
+      .resolves.toMatchObject({ operatingLedgerEffectiveDate: null });
+    await expect(prisma.projectParticipatingCompany.findUniqueOrThrow({
+      where: { id: fixture.participantId! }
+    })).resolves.toMatchObject({ endedAt: date("2026-08-01") });
+  } finally {
+    releaseFirst.resolve();
+    await Promise.all([activationClient.$disconnect(), endClient.$disconnect()]);
+  }
+}
+
+type LegacyFormalFlow =
+  | "contract_version"
+  | "affiliate_company_contract"
+  | "expense_claim"
+  | "spot_payment"
+  | "payment_execution_allocation";
+
+type PreparedLegacyFlow = {
+  write: (tx: Prisma.TransactionClient) => Promise<unknown>;
+  count: (client: PrismaClient) => Promise<number>;
+};
+
+async function runLegacyFlowEndRace(
+  prisma: PrismaClient,
+  databaseUrl: string,
+  flow: LegacyFormalFlow,
+  first: "writer" | "end"
+) {
+  const fixture = await createFixture(prisma, {
+    operatingLedgerEffectiveDate: "2026-08-01",
+    participant: true
+  });
+  await addFallbackParticipant(prisma, fixture);
+  const prepared = await prepareLegacyFlow(prisma, fixture, flow);
+  const writerClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const endClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  const firstStatementDone = deferred<void>();
+  const releaseFirst = deferred<void>();
+  try {
+    if (first === "writer") {
+      const writer = writerClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        const result = await prepared.write(tx);
+        firstStatementDone.resolve();
+        await releaseFirst.promise;
+        return result;
+      });
+      await waitForFirstStatement(firstStatementDone.promise, writer);
+      const end = endClient.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+        return tx.$executeRaw(Prisma.sql`
+          UPDATE "ProjectParticipatingCompany"
+          SET "endedAt" = DATE '2026-08-14'
+          WHERE "id" = ${fixture.participantId!}
+        `);
+      });
+      await expectBlocked(end);
+      releaseFirst.resolve();
+      await writer;
+      const endOutcome = await settled(end);
+      expect(endOutcome.status).toBe("rejected");
+      if (endOutcome.status === "rejected") {
+        if (sqlState(endOutcome.reason) !== "23514") {
+          throw new Error(`${flow}/${first}: ${describeOutcome(endOutcome)}`);
+        }
+        expect(describeOutcome(endOutcome)).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+      }
+      await expect(prepared.count(prisma)).resolves.toBe(1);
+      await expect(prisma.projectParticipatingCompany.findUniqueOrThrow({
+        where: { id: fixture.participantId! }
+      })).resolves.toMatchObject({ endedAt: null });
+      return;
+    }
+
+    const end = endClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      const result = await tx.$executeRaw(Prisma.sql`
+        UPDATE "ProjectParticipatingCompany"
+        SET "endedAt" = DATE '2026-08-14'
+        WHERE "id" = ${fixture.participantId!}
+      `);
+      firstStatementDone.resolve();
+      await releaseFirst.promise;
+      return result;
+    });
+    await waitForFirstStatement(firstStatementDone.promise, end);
+    const writer = writerClient.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      return prepared.write(tx);
+    });
+    await expectBlocked(writer);
+    releaseFirst.resolve();
+    await end;
+    const writerOutcome = await settled(writer);
+    expect(writerOutcome.status).toBe("rejected");
+    if (writerOutcome.status === "rejected") {
+      if (sqlState(writerOutcome.reason) !== "23514") {
+        throw new Error(`${flow}/${first}: ${describeOutcome(writerOutcome)}`);
+      }
+      expect(describeOutcome(writerOutcome)).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+    }
+    await expect(prepared.count(prisma)).resolves.toBe(0);
+    await expect(prisma.projectParticipatingCompany.findUniqueOrThrow({
+      where: { id: fixture.participantId! }
+    })).resolves.toMatchObject({ endedAt: date("2026-08-14") });
+  } finally {
+    releaseFirst.resolve();
+    await Promise.all([writerClient.$disconnect(), endClient.$disconnect()]);
+  }
+}
+
+async function prepareLegacyFlow(
+  prisma: PrismaClient,
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+  flow: LegacyFormalFlow
+): Promise<PreparedLegacyFlow> {
+  const id = `pol284-${flow}-${randomUUID()}`;
+  if (flow === "expense_claim") {
+    return {
+      write: (tx) => createExpenseClaim(tx, fixture, {
+        status: "approved_pending_payment",
+        occurredOn: "2026-08-14"
+      }),
+      count: (client) => client.expenseClaim.count({
+        where: { projectId: fixture.projectId, status: "approved_pending_payment" }
+      })
+    };
+  }
+
+  if (flow === "contract_version") {
+    const contract = await prisma.contract.create({
+      data: {
+        id: `${id}-contract`,
+        projectId: fixture.projectId,
+        code: `${id}-code`,
+        name: "POL-284 合同流程",
+        counterparty: "测试相对方",
+        companyEntityId: fixture.company.id,
+        companyEntityName: fixture.company.name
+      }
+    });
+    return {
+      write: (tx) => tx.contractVersion.create({
+        data: {
+          id,
+          contractId: contract.id,
+          versionNo: 1,
+          changeType: "original",
+          status: "effective",
+          amountCents: 100n,
+          effectiveAt: date("2026-08-14"),
+          companyEntityIdSnapshot: fixture.company.id,
+          companyEntityVersionId: fixture.company.versionId,
+          companyEntityNameSnapshot: fixture.company.name,
+          companyEntityCreditCodeSnapshot: fixture.company.unifiedSocialCreditCode,
+          signingSubjectType: "our_company",
+          draftData: {},
+          templateSnapshot: {},
+          clauseSnapshot: {}
+        }
+      }),
+      count: (client) => client.contractVersion.count({ where: { id } })
+    };
+  }
+
+  if (flow === "affiliate_company_contract") {
+    const documentFile = await createPol284File(prisma, fixture.financeUserId, `${id}-document`, "application/pdf", "a");
+    const signatureFile = await createPol284File(prisma, fixture.financeUserId, `${id}-signature`, "image/png", "c");
+    const signature = await prisma.handwrittenSignatureVersion.create({
+      data: {
+        id: `${id}-signature-version`,
+        userId: fixture.financeUserId,
+        fileId: signatureFile.id,
+        contentSha256: "c".repeat(64),
+        source: "canvas"
+      }
+    });
+    return {
+      write: (tx) => tx.projectAffiliateCompanyContract.create({
+        data: {
+          id,
+          projectId: fixture.projectId,
+          contractReference: `${id}-reference`,
+          contractName: "POL-284 参与公司合同",
+          signedAt: date("2026-08-14"),
+          rightsObligationsSummary: "参与公司合同并发守卫验证",
+          affiliateAssignmentId: fixture.assignmentId,
+          affiliateBusinessPartyVersionId: fixture.partyVersionId,
+          affiliateNameSnapshot: fixture.affiliateNameSnapshot,
+          affiliateCreditCodeSnapshot: fixture.affiliateCreditCodeSnapshot,
+          companyEntityId: fixture.company.id,
+          companyEntityVersionId: fixture.company.versionId,
+          companyEntityNameSnapshot: fixture.company.name,
+          companyEntityCreditCodeSnapshot: fixture.company.unifiedSocialCreditCode!,
+          fileId: documentFile.id,
+          fileContentSha256Snapshot: "a".repeat(64),
+          idempotencyKey: randomUUID(),
+          requestFingerprint: "b".repeat(64),
+          recordedByUserId: fixture.financeUserId,
+          recordedByRoleKey: "contract_staff",
+          status: "confirmed",
+          confirmedByUserId: fixture.financeUserId,
+          confirmedAt: date("2026-08-14"),
+          confirmationActionId: randomUUID(),
+          confirmationSignatureVersionId: signature.id,
+          confirmationSignatureFileId: signatureFile.id,
+          confirmationSignatureSha256: "c".repeat(64)
+        }
+      }),
+      count: (client) => client.projectAffiliateCompanyContract.count({ where: { id } })
+    };
+  }
+
+  if (flow === "spot_payment") {
+    const procurementId = `${id}-procurement`;
+    const versionId = `${id}-version`;
+    await prisma.spotProcurement.create({
+      data: {
+        id: procurementId,
+        projectId: fixture.projectId,
+        code: `${id}-procurement-code`,
+        applicantUserId: fixture.financeUserId,
+        handlerUserId: fixture.financeUserId,
+        status: "approved_in_progress"
+      }
+    });
+    await prisma.spotProcurementVersion.create({
+      data: {
+        id: versionId,
+        procurementId,
+        versionNo: 1,
+        status: "approved",
+        reason: "POL-284 并发验证",
+        handlerUserId: fixture.financeUserId,
+        applicationDepartmentSnapshot: "财务部",
+        applicationNameSnapshot: "零星采购",
+        purchaserNameSnapshot: "项目财务",
+        purchaserDepartmentNameSnapshot: "财务部",
+        requestedArrivalAt: date("2026-08-14"),
+        approvedAt: date("2026-08-14"),
+        createdByUserId: fixture.financeUserId
+      }
+    });
+    await prisma.spotProcurement.update({
+      where: { id: procurementId },
+      data: { currentVersionId: versionId }
+    });
+    return {
+      write: (tx) => tx.spotProcurementPayment.create({
+        data: {
+          id,
+          projectId: fixture.projectId,
+          procurementId,
+          procurementVersionId: versionId,
+          code: `${id}-payment-code`,
+          status: "approved_pending_payment",
+          settlementAmountCents: 100n,
+          companyPaymentAmountCents: 100n,
+          approvalAmountCents: 100n,
+          payerCompanyEntityId: fixture.company.id,
+          payerCompanyNameSnapshot: fixture.company.name,
+          payerUnifiedSocialCreditCodeSnapshot: fixture.company.unifiedSocialCreditCode,
+          handlerUserId: fixture.financeUserId,
+          createdByUserId: fixture.financeUserId,
+          approvedAt: date("2026-08-14")
+        }
+      }),
+      count: (client) => client.spotProcurementPayment.count({ where: { id } })
+    };
+  }
+
+  const contractId = `${id}-contract`;
+  const contractVersionId = `${id}-contract-version`;
+  const termsId = `${id}-terms`;
+  const settlementId = `${id}-settlement`;
+  const requestId = `${id}-request`;
+  const executionId = `${id}-execution`;
+  await prisma.contract.create({
+    data: {
+      id: contractId,
+      projectId: fixture.projectId,
+      code: `${id}-contract-code`,
+      name: "POL-284 付款分配合同",
+      counterparty: "测试相对方",
+      companyEntityId: fixture.company.id,
+      companyEntityName: fixture.company.name
+    }
+  });
+  await prisma.contractVersion.create({
+    data: {
+      id: contractVersionId,
+      contractId,
+      versionNo: 1,
+      changeType: "original",
+      status: "draft",
+      amountCents: 100n,
+      draftData: {},
+      templateSnapshot: {},
+      clauseSnapshot: {}
+    }
+  });
+  await prisma.paymentTermsVersion.create({
+    data: {
+      id: termsId,
+      contractId,
+      contractVersionId,
+      versionNo: 1,
+      status: "effective",
+      originalText: "测试付款条件"
+    }
+  });
+  await prisma.settlement.create({
+    data: {
+      id: settlementId,
+      projectId: fixture.projectId,
+      contractId,
+      contractVersionId,
+      paymentTermsVersionId: termsId,
+      code: `${id}-settlement-code`,
+      periodLabel: "2026-08",
+      status: "effective",
+      amountCents: 100n,
+      payableAmountCents: 100n
+    }
+  });
+  await prisma.paymentRequest.create({
+    data: {
+      id: requestId,
+      projectId: fixture.projectId,
+      settlementId,
+      sourceType: "settlement",
+      contractId,
+      contractVersionId,
+      paymentTermsVersionId: termsId,
+      code: `${id}-request-code`,
+      status: "approved_pending_payment",
+      requestedAmountCents: 100n,
+      approvedAmountCents: 100n,
+      paymentSubjectType: "our_company"
+    }
+  });
+  const voucher = await createPol284File(prisma, fixture.financeUserId, `${id}-voucher`, "application/pdf", "d");
+  await prisma.paymentExecution.create({
+    data: {
+      id: executionId,
+      idempotencyKey: randomUUID(),
+      paymentRequestId: requestId,
+      settlementId,
+      paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: fixture.company.id,
+      companyEntityNameSnapshot: fixture.company.name,
+      companyEntityCreditCodeSnapshot: fixture.company.unifiedSocialCreditCode!,
+      amountCents: 100n,
+      paidAt: date("2026-08-14"),
+      executedByUserId: fixture.financeUserId,
+      voucherFileId: voucher.id
+    }
+  });
+  return {
+    write: (tx) => tx.paymentExecutionAllocation.create({
+      data: {
+        id,
+        paymentExecutionId: executionId,
+        paymentRequestId: requestId,
+        projectId: fixture.projectId,
+        contractId,
+        contractVersionId,
+        settlementId,
+        sourceType: "contract_due",
+        allocationType: "contract_due_payment",
+        sourceRowId: settlementId,
+        paymentTermsVersionId: termsId,
+        stageType: "progress",
+        sourcePayableAmountCents: 100n,
+        amountCents: 100n,
+        allocationOrder: 1,
+        createdByUserId: fixture.financeUserId
+      }
+    }),
+    count: (client) => client.paymentExecutionAllocation.count({ where: { id } })
+  };
+}
+
+async function createPol284File(
+  prisma: PrismaClient,
+  userId: string,
+  id: string,
+  mimeType: string,
+  hashCharacter: string
+) {
+  return prisma.fileObject.create({
+    data: {
+      id,
+      bucket: "private-local",
+      objectKey: `tests/${id}`,
+      originalName: id,
+      mimeType,
+      sizeBytes: 100,
+      uploadedByUserId: userId,
+      contentSha256: hashCharacter.repeat(64),
+      storageStatus: "active"
+    }
+  });
+}
+
+async function waitForFirstStatement<T>(ready: Promise<void>, transaction: Promise<T>) {
+  await Promise.race([
+    ready,
+    transaction.then(
+      () => Promise.reject(new Error("transaction ended before its hold point")),
+      (error) => Promise.reject(error)
+    )
+  ]);
+}
+
+function mutateParticipant(
+  tx: Prisma.TransactionClient,
+  participantId: string,
+  mutation: "delete" | "end"
+) {
+  return mutation === "delete"
+    ? tx.$executeRaw(Prisma.sql`
+      DELETE FROM "ProjectParticipatingCompany" WHERE "id" = ${participantId}
+    `)
+    : tx.$executeRaw(Prisma.sql`
+      UPDATE "ProjectParticipatingCompany"
+      SET "endedAt" = DATE '2026-08-14'
+      WHERE "id" = ${participantId}
+    `);
+}
+
+function mutateParticipantAtLedgerStart(
+  tx: Prisma.TransactionClient,
+  participantId: string,
+  mutation: "delete" | "end"
+) {
+  return mutation === "delete"
+    ? tx.$executeRaw(Prisma.sql`
+      DELETE FROM "ProjectParticipatingCompany" WHERE "id" = ${participantId}
+    `)
+    : tx.$executeRaw(Prisma.sql`
+      UPDATE "ProjectParticipatingCompany"
+      SET "endedAt" = DATE '2026-08-01'
+      WHERE "id" = ${participantId}
+    `);
+}
+
+async function expectBlocked<T>(operation: Promise<T>) {
+  const state = await Promise.race([
+    operation.then(() => "settled" as const, () => "settled" as const),
+    new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 100))
+  ]);
+  expect(state).toBe("blocked");
+}
+
+async function settled<T>(operation: Promise<T>): Promise<
+  { status: "fulfilled"; value: T } | { status: "rejected"; reason: unknown }
+> {
+  try {
+    return { status: "fulfilled", value: await operation };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
+function sqlState(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const value = error as { code?: unknown; meta?: { code?: unknown; sqlstate?: unknown } };
+  if (typeof value.meta?.code === "string") return value.meta.code;
+  if (typeof value.meta?.sqlstate === "string") return value.meta.sqlstate;
+  if (typeof value.code === "string" && /^\d{5}$/u.test(value.code)) return value.code;
+  return String(error).match(/code: ["']?(\d{5})/u)?.[1] ?? null;
+}
+
+function describeOutcome(outcome: PromiseSettledResult<unknown> | Awaited<ReturnType<typeof settled>>) {
+  return outcome.status === "fulfilled"
+    ? "fulfilled"
+    : String((outcome.reason as { message?: unknown })?.message ?? outcome.reason);
 }

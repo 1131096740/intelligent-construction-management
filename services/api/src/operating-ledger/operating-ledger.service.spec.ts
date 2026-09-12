@@ -1,6 +1,10 @@
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 
-import { OperatingLedgerService } from "./operating-ledger.service";
+import {
+  OperatingLedgerService,
+  translateOperatingLedgerWriteConstraint
+} from "./operating-ledger.service";
 
 describe("OperatingLedgerService", () => {
   const previousWriteSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
@@ -15,6 +19,30 @@ describe("OperatingLedgerService", () => {
     } else {
       process.env.OPERATING_LEDGER_DB_WRITE_SECRET = previousWriteSecret;
     }
+  });
+
+  it.each([
+    new Prisma.PrismaClientKnownRequestError("Transaction failed", {
+      code: "P2034",
+      clientVersion: "5.22.0"
+    }),
+    new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010",
+      clientVersion: "5.22.0",
+      meta: { code: "40001", database_error: "SQLSTATE 40001" }
+    }),
+    { code: "40001" }
+  ])("maps an operating-ledger serialization failure to HTTP 409", async (error) => {
+    await expect(
+      translateOperatingLedgerWriteConstraint(Promise.reject(error))
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("does not map operating-ledger deadlocks as serialization failures", async () => {
+    const error = { code: "40P01" };
+    await expect(
+      translateOperatingLedgerWriteConstraint(Promise.reject(error))
+    ).rejects.toBe(error);
   });
 
   it("requires project finance permission before appending a formal fact", async () => {

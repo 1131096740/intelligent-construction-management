@@ -148,7 +148,6 @@ const GROUPS = [
       "src/database/approval-review-concurrency.spec.ts",
       "src/database/contract-change-baseline-concurrency.spec.ts",
       "src/database/project-upstream-fund-fact-db.spec.ts",
-      "src/database/project-operating-profile-db.spec.ts",
       "src/database/business-entry-definition-postgres.spec.ts",
       "src/database/operating-ledger-concurrency.spec.ts",
       "src/database/clearing-concurrency.spec.ts",
@@ -168,7 +167,6 @@ const GROUPS = [
       RUN_APPROVAL_REVIEW_CONCURRENCY: "1",
       RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY: "1",
       RUN_PROJECT_UPSTREAM_FUND_DB_TESTS: "1",
-      RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
       RUN_OPERATING_LEDGER_DATABASE: "1",
       RUN_CLEARING_DATABASE: "1",
       RUN_OPERATING_SOURCE_REPLAY_DATABASE: "1",
@@ -179,7 +177,20 @@ const GROUPS = [
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1",
       RUN_POL215_DATABASE: "1"
     },
-    pendingTests: 47,
+    pendingTests: 30,
+    requiresOperatingLedgerWriteSecret: true
+  },
+  {
+    id: "participant_history_integrity",
+    database: "jiangkong_participant_history_integrity_test",
+    files: ["src/database/project-operating-profile-db.spec.ts"],
+    flags: {
+      DATABASE_URL: "databaseUrl",
+      RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
+      RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE: "1",
+      PARTICIPANT_HISTORY_INTEGRITY_DATABASE_URL: "databaseUrl"
+    },
+    pendingTests: 27,
     requiresOperatingLedgerWriteSecret: true
   },
   {
