@@ -71,11 +71,11 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 14 组 runner。前 13 组保持独立收据；`remaining_dynamic_postgresql16` 由
-`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 17 个子组，覆盖 145 条动态用例。
+`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 17 个子组，覆盖 146 条动态用例。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
 
-排查或票据级验证可以直接对第 9 组 runner 指定一个精确子组，例如
+排查或票据级验证可以直接对第 14 组 runner 指定一个精确子组，例如
 `node services/api/prisma/run-database-dynamic-remaining-local.cjs --group generic_database_constraints`。
 未知、重复或其他参数均失败关闭；不带参数时仍执行全部子组，不能用子组收据冒充全量收据。
 

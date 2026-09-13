@@ -45,6 +45,95 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Evaluate the post-mutation participant timeline, not only the ledger start
+-- date.  A project whose ledger is enabled must retain continuous participant
+-- coverage from that date onward, including after a scheduled stop date.
+CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyCoverage"(
+  target_project_id TEXT,
+  excluded_participant_id TEXT,
+  replacement_effective_from DATE DEFAULT NULL,
+  replacement_ended_at DATE DEFAULT NULL
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  ledger_effective_date DATE;
+  covered_periods DATEMULTIRANGE;
+BEGIN
+  SELECT project."operatingLedgerEffectiveDate"
+    INTO ledger_effective_date
+    FROM "Project" project
+    WHERE project."id" = target_project_id;
+  IF ledger_effective_date IS NULL THEN
+    RETURN TRUE;
+  END IF;
+
+  SELECT range_agg(candidate.coverage)
+    INTO covered_periods
+    FROM (
+      SELECT daterange(
+        participant."effectiveFrom",
+        participant."endedAt",
+        '[)'
+      ) AS coverage
+      FROM "ProjectParticipatingCompany" participant
+      WHERE participant."projectId" = target_project_id
+        AND participant."id" <> excluded_participant_id
+      UNION ALL
+      SELECT daterange(
+        replacement_effective_from,
+        replacement_ended_at,
+        '[)'
+      )
+      WHERE replacement_effective_from IS NOT NULL
+    ) candidate
+    WHERE NOT isempty(candidate.coverage);
+
+  RETURN daterange(ledger_effective_date, NULL, '[)')
+    <@ COALESCE(covered_periods, '{}'::DATEMULTIRANGE);
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Keep the six structured roles and the independent impact subject in one
+-- database-owned predicate so service preflight and mutation triggers cannot
+-- drift.  Impact project scope is derived from its parent OperatingFact.
+CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyOperatingReferences"(
+  target_project_id TEXT,
+  stable_company_id TEXT,
+  frozen_company_version_id TEXT,
+  reference_not_before TIMESTAMP DEFAULT NULL
+)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM "OperatingFact" fact
+    WHERE fact."projectId" = target_project_id
+      AND (
+        (fact."debtorSubjectKind" = 'participating_company'
+          AND fact."debtorSubjectId" IN (stable_company_id, frozen_company_version_id))
+        OR (fact."creditorSubjectKind" = 'participating_company'
+          AND fact."creditorSubjectId" IN (stable_company_id, frozen_company_version_id))
+        OR (fact."approvedPayerSubjectKind" = 'participating_company'
+          AND fact."approvedPayerSubjectId" IN (stable_company_id, frozen_company_version_id))
+        OR (fact."actualPayerSubjectKind" = 'participating_company'
+          AND fact."actualPayerSubjectId" IN (stable_company_id, frozen_company_version_id))
+        OR (fact."payeeSubjectKind" = 'participating_company'
+          AND fact."payeeSubjectId" IN (stable_company_id, frozen_company_version_id))
+        OR (fact."costBearingCompanySubjectKind" = 'participating_company'
+          AND fact."costBearingCompanySubjectId" IN (stable_company_id, frozen_company_version_id))
+      )
+      AND (reference_not_before IS NULL OR fact."occurredAt" >= reference_not_before)
+  ) OR EXISTS (
+    SELECT 1
+    FROM "OperatingImpactEntry" impact
+    INNER JOIN "OperatingFact" fact ON fact."id" = impact."factId"
+    WHERE fact."projectId" = target_project_id
+      AND impact."projectId" = fact."projectId"
+      AND impact."subjectKind" = 'participating_company'
+      AND impact."subjectId" IN (stable_company_id, frozen_company_version_id)
+      AND (reference_not_before IS NULL OR fact."occurredAt" >= reference_not_before)
+  );
+$$ LANGUAGE SQL STABLE;
+
 -- These four functions are redefined below. Refuse the migration unless the
 -- expected terminal behavior is still present; never overwrite unknown drift.
 DO $pol284_terminal_functions$
@@ -58,6 +147,8 @@ BEGIN
      OR strpos(current_definition, 'TG_TABLE_NAME = ''ExpenseClaim''') = 0
      OR strpos(current_definition, 'TG_TABLE_NAME = ''SpotProcurementPayment''') = 0
      OR strpos(current_definition, 'TG_TABLE_NAME = ''PaymentExecutionAllocation''') = 0
+     OR strpos(current_definition, 'PERFORM 1 FROM "ProjectParticipatingCompany"') = 0
+     OR strpos(current_definition, '"projectId" = target_project_id') = 0
      OR strpos(current_definition, 'FOR KEY SHARE') = 0
      OR strpos(current_definition, '该公司未在本项目参与公司名单中，或已停止新增业务') = 0 THEN
     RAISE EXCEPTION 'POL-284 active-participant validator terminal semantics drifted; refusing replacement';
@@ -93,7 +184,9 @@ BEGIN
      OR strpos(current_definition, 'FROM "PaymentExecutionAllocation" allocation') = 0
      OR strpos(current_definition, '项目已有正式经营事实引用的施工企业与当前映射不一致，请先人工修复') = 0
      OR strpos(current_definition, '项目已有正式经营事实引用的公司未覆盖对应参与期间') = 0
-     OR strpos(current_definition, 'FOR KEY SHARE') = 0 THEN
+     OR strpos(current_definition, 'PERFORM 1 FROM "ProjectParticipatingCompany"') = 0
+     OR strpos(current_definition, 'PERFORM 1 FROM "ProjectParticipatingCompany" participant') = 0
+     OR regexp_count(current_definition, 'FOR KEY SHARE') < 3 THEN
     RAISE EXCEPTION 'POL-284 operating-ledger activation terminal semantics drifted; refusing replacement';
   END IF;
 END;
@@ -351,25 +444,11 @@ RETURNS TRIGGER AS $$
 BEGIN
   IF NEW."endedAt" IS NOT NULL AND NEW."endedAt" IS DISTINCT FROM OLD."endedAt" THEN
     PERFORM "serializeProjectParticipatingCompanyMutation"(OLD."projectId");
-    IF EXISTS (
-      SELECT 1
-      FROM "Project" project
-      WHERE project."id" = OLD."projectId"
-        AND project."operatingLedgerEffectiveDate" IS NOT NULL
-        AND OLD."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-        AND (OLD."endedAt" IS NULL OR OLD."endedAt" > project."operatingLedgerEffectiveDate")
-        AND NEW."endedAt" <= project."operatingLedgerEffectiveDate"
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "ProjectParticipatingCompany" other_participant
-          WHERE other_participant."projectId" = OLD."projectId"
-            AND other_participant."id" <> OLD."id"
-            AND other_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-            AND (
-              other_participant."endedAt" IS NULL
-              OR other_participant."endedAt" > project."operatingLedgerEffectiveDate"
-            )
-        )
+    IF NOT "hasProjectParticipatingCompanyCoverage"(
+      OLD."projectId",
+      OLD."id",
+      NEW."effectiveFrom",
+      NEW."endedAt"
     ) THEN
       RAISE EXCEPTION '启用经营账前必须至少设置一家我方参与公司'
         USING ERRCODE = '23514';
@@ -417,33 +496,11 @@ BEGIN
         AND payment."invalidatedAt" IS NULL
         AND payment."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
         AND COALESCE(payment."approvedAt", payment."createdAt")::DATE >= NEW."endedAt"
-    ) OR EXISTS (
-      SELECT 1
-      FROM "OperatingFact" fact
-      WHERE fact."projectId" = OLD."projectId"
-        AND fact."occurredAt" >= NEW."endedAt"::timestamp
-        AND (
-          (fact."debtorSubjectKind" = 'participating_company'
-            AND fact."debtorSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-          OR (fact."creditorSubjectKind" = 'participating_company'
-            AND fact."creditorSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-          OR (fact."approvedPayerSubjectKind" = 'participating_company'
-            AND fact."approvedPayerSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-          OR (fact."actualPayerSubjectKind" = 'participating_company'
-            AND fact."actualPayerSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-          OR (fact."payeeSubjectKind" = 'participating_company'
-            AND fact."payeeSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-          OR (fact."costBearingCompanySubjectKind" = 'participating_company'
-            AND fact."costBearingCompanySubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-        )
-    ) OR EXISTS (
-      SELECT 1
-      FROM "OperatingImpactEntry" impact
-      INNER JOIN "OperatingFact" fact ON fact."id" = impact."factId"
-      WHERE impact."projectId" = OLD."projectId"
-        AND impact."subjectKind" = 'participating_company'
-        AND impact."subjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId")
-        AND fact."occurredAt" >= NEW."endedAt"::timestamp
+    ) OR "hasProjectParticipatingCompanyOperatingReferences"(
+      OLD."projectId",
+      OLD."companyEntityId",
+      OLD."companyEntityVersionId",
+      NEW."endedAt"::timestamp
     ) THEN
       RAISE EXCEPTION '停止日期当日或之后已有正式经营事实，不能截断参与期间'
         USING ERRCODE = '23514';
@@ -457,24 +514,9 @@ CREATE OR REPLACE FUNCTION "protectFactfulProjectParticipatingCompany"()
 RETURNS TRIGGER AS $$
 BEGIN
   PERFORM "serializeProjectParticipatingCompanyMutation"(OLD."projectId");
-  IF EXISTS (
-    SELECT 1
-    FROM "Project" project
-    WHERE project."id" = OLD."projectId"
-      AND project."operatingLedgerEffectiveDate" IS NOT NULL
-      AND OLD."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-      AND (OLD."endedAt" IS NULL OR OLD."endedAt" > project."operatingLedgerEffectiveDate")
-      AND NOT EXISTS (
-        SELECT 1
-        FROM "ProjectParticipatingCompany" other_participant
-        WHERE other_participant."projectId" = OLD."projectId"
-          AND other_participant."id" <> OLD."id"
-          AND other_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-          AND (
-            other_participant."endedAt" IS NULL
-            OR other_participant."endedAt" > project."operatingLedgerEffectiveDate"
-          )
-      )
+  IF NOT "hasProjectParticipatingCompanyCoverage"(
+    OLD."projectId",
+    OLD."id"
   ) THEN
     RAISE EXCEPTION '启用经营账前必须至少设置一家我方参与公司'
       USING ERRCODE = '23514';
@@ -517,30 +559,10 @@ BEGIN
       AND payment."invalidatedAt" IS NULL
       AND payment."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
       AND payment."payerCompanyEntityId" = OLD."companyEntityId"
-  ) OR EXISTS (
-    SELECT 1
-    FROM "OperatingFact" fact
-    WHERE fact."projectId" = OLD."projectId"
-      AND (
-        (fact."debtorSubjectKind" = 'participating_company'
-          AND fact."debtorSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-        OR (fact."creditorSubjectKind" = 'participating_company'
-          AND fact."creditorSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-        OR (fact."approvedPayerSubjectKind" = 'participating_company'
-          AND fact."approvedPayerSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-        OR (fact."actualPayerSubjectKind" = 'participating_company'
-          AND fact."actualPayerSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-        OR (fact."payeeSubjectKind" = 'participating_company'
-          AND fact."payeeSubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-        OR (fact."costBearingCompanySubjectKind" = 'participating_company'
-          AND fact."costBearingCompanySubjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId"))
-      )
-  ) OR EXISTS (
-    SELECT 1
-    FROM "OperatingImpactEntry" impact
-    WHERE impact."projectId" = OLD."projectId"
-      AND impact."subjectKind" = 'participating_company'
-      AND impact."subjectId" IN (OLD."companyEntityId", OLD."companyEntityVersionId")
+  ) OR "hasProjectParticipatingCompanyOperatingReferences"(
+    OLD."projectId",
+    OLD."companyEntityId",
+    OLD."companyEntityVersionId"
   ) THEN
     RAISE EXCEPTION '该公司已有正式经营事实，只能停止新增业务，不能删除'
       USING ERRCODE = '23514';

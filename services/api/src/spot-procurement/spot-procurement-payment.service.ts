@@ -29,6 +29,7 @@ import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
@@ -713,7 +714,7 @@ export class SpotProcurementPaymentService {
           "实际付款唯一事实已变化，请刷新后重试"
         );
       }
-      if (code === "P2034") {
+      if (code === "P2034" || isPostgresSerializationFailure(error)) {
         const concurrentResult =
           await this.resolveConcurrentExecutionResult({
             paymentId,

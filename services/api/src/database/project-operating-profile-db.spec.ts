@@ -838,13 +838,22 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
         ["delete", "end"],
         ["end", "delete"]
       ] as const) {
-        await expect(runLastParticipantMutationRace(
-          prisma,
-          participantHistoryDatabaseUrl!,
-          isolationLevel,
-          firstMutation,
-          secondMutation
-        )).resolves.toBeUndefined();
+        for (const [firstEndedOn, secondEndedOn] of [
+          ["2026-08-01", "2026-08-01"],
+          ["2026-08-14", "2026-08-14"],
+          ["2026-08-10", "2026-08-20"],
+          ["2026-08-20", "2026-08-10"]
+        ] as const) {
+          await expect(runLastParticipantMutationRace(
+            prisma,
+            participantHistoryDatabaseUrl!,
+            isolationLevel,
+            firstMutation,
+            secondMutation,
+            firstEndedOn,
+            secondEndedOn
+          )).resolves.toBeUndefined();
+        }
       }
     }
   });
@@ -1411,7 +1420,9 @@ async function runLastParticipantMutationRace(
   databaseUrl: string,
   isolationLevel: Prisma.TransactionIsolationLevel,
   firstMutation: "delete" | "end",
-  secondMutation: "delete" | "end"
+  secondMutation: "delete" | "end",
+  firstEndedOn: string,
+  secondEndedOn: string
 ) {
   const fixture = await createFixture(prisma, {
     operatingLedgerEffectiveDate: "2026-08-01",
@@ -1432,10 +1443,11 @@ async function runLastParticipantMutationRace(
   try {
     const first = firstClient.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
-      const result = await mutateParticipantAtLedgerStart(
+      const result = await mutateParticipantForExit(
         tx,
         fixture.participantId!,
-        firstMutation
+        firstMutation,
+        firstEndedOn
       );
       firstStatementDone.resolve();
       await releaseFirst.promise;
@@ -1458,7 +1470,12 @@ async function runLastParticipantMutationRace(
 
     const second = secondClient.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
-      return mutateParticipantAtLedgerStart(tx, secondParticipant.id, secondMutation);
+      return mutateParticipantForExit(
+        tx,
+        secondParticipant.id,
+        secondMutation,
+        secondEndedOn
+      );
     }, { isolationLevel });
     await expectBlocked(second);
     releaseFirst.resolve();
@@ -1477,17 +1494,21 @@ async function runLastParticipantMutationRace(
       );
     }
 
-    const activeAtLedgerStart = await prisma.projectParticipatingCompany.count({
+    const unboundedParticipantCount = await prisma.projectParticipatingCompany.count({
       where: {
         projectId: fixture.projectId,
         effectiveFrom: { lte: date("2026-08-01") },
-        OR: [
-          { endedAt: null },
-          { endedAt: { gt: date("2026-08-01") } }
-        ]
+        endedAt: null
       }
     });
-    expect(activeAtLedgerStart).toBe(1);
+    expect(unboundedParticipantCount).toBe(1);
+    const [coverage] = await prisma.$queryRaw<Array<{ covered: boolean }>>(Prisma.sql`
+      SELECT "hasProjectParticipatingCompanyCoverage"(
+        ${fixture.projectId},
+        ${"__no_participant_excluded__"}
+      ) AS covered
+    `);
+    expect(coverage?.covered).toBe(true);
   } finally {
     releaseFirst.resolve();
     await Promise.all([firstClient.$disconnect(), secondClient.$disconnect()]);
@@ -2006,10 +2027,11 @@ function mutateParticipant(
     `);
 }
 
-function mutateParticipantAtLedgerStart(
+function mutateParticipantForExit(
   tx: Prisma.TransactionClient,
   participantId: string,
-  mutation: "delete" | "end"
+  mutation: "delete" | "end",
+  endedOn: string
 ) {
   return mutation === "delete"
     ? tx.$executeRaw(Prisma.sql`
@@ -2017,7 +2039,7 @@ function mutateParticipantAtLedgerStart(
     `)
     : tx.$executeRaw(Prisma.sql`
       UPDATE "ProjectParticipatingCompany"
-      SET "endedAt" = DATE '2026-08-01'
+      SET "endedAt" = ${date(endedOn)}
       WHERE "id" = ${participantId}
     `);
 }

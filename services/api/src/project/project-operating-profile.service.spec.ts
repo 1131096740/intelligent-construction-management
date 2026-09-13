@@ -393,14 +393,7 @@ describe("ProjectOperatingProfileService", () => {
     expect(factQuery).toContain("ExpenseClaim");
     expect(factQuery).toContain("PaymentExecution");
     expect(factQuery).toContain("SpotProcurementPayment");
-    expect(factQuery).toContain("OperatingFact");
-    expect(factQuery).toContain("OperatingImpactEntry");
-    for (const role of [
-      "debtor", "creditor", "approvedPayer", "actualPayer", "payee", "costBearingCompany"
-    ]) {
-      expect(factQuery).toContain(`${role}SubjectKind`);
-      expect(factQuery).toContain(`${role}SubjectId`);
-    }
+    expect(factQuery).toContain("hasProjectParticipatingCompanyOperatingReferences");
     expect(factQuery).toContain("company-version-1");
   });
 
@@ -427,8 +420,8 @@ describe("ProjectOperatingProfileService", () => {
       .rejects.toThrow("启用经营账前必须至少设置一家我方参与公司");
     expect(tx.projectParticipatingCompany.delete).not.toHaveBeenCalled();
     const guardQuery = JSON.stringify(tx.$queryRaw.mock.calls[1][0]);
-    expect(guardQuery).toContain("operatingLedgerEffectiveDate");
-    expect(guardQuery).toContain("other_participant");
+    expect(guardQuery).toContain("hasProjectParticipatingCompanyCoverage");
+    expect(guardQuery).not.toContain("other_participant");
   });
 
   it("schedules the stop date without deleting the participating-company history", async () => {
@@ -490,8 +483,7 @@ describe("ProjectOperatingProfileService", () => {
     });
     expect(tx.projectParticipatingCompany).not.toHaveProperty("delete");
     const laterFactQuery = JSON.stringify(tx.$queryRaw.mock.calls[3][0]);
-    expect(laterFactQuery).toContain("OperatingFact");
-    expect(laterFactQuery).toContain("OperatingImpactEntry");
+    expect(laterFactQuery).toContain("hasProjectParticipatingCompanyOperatingReferences");
     expect(laterFactQuery).toContain("company-version-1");
     expect(laterFactQuery).toContain('fact.\\"occurredAt\\" >=');
     expect(laterFactQuery).not.toContain('fact.\\"occurredAt\\"::DATE');
@@ -526,8 +518,8 @@ describe("ProjectOperatingProfileService", () => {
     )).rejects.toThrow("启用经营账前必须至少设置一家我方参与公司");
     expect(tx.projectParticipatingCompany.update).not.toHaveBeenCalled();
     const guardQuery = JSON.stringify(tx.$queryRaw.mock.calls[2][0]);
-    expect(guardQuery).toContain("operatingLedgerEffectiveDate");
-    expect(guardQuery).toContain("other_participant");
+    expect(guardQuery).toContain("hasProjectParticipatingCompanyCoverage");
+    expect(guardQuery).not.toContain("other_participant");
   });
 
   it("marks a participant inactive from the start of its Shanghai business stop date", async () => {

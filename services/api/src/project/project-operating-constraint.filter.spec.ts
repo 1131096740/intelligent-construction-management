@@ -98,15 +98,12 @@ describe("ProjectOperatingConstraintFilter", () => {
   it.each([
     "serialization-conflict",
     "raw-serialization-conflict"
-  ])("maps %s at the outermost public API boundary to HTTP 409", async (path) => {
+  ])("does not broaden %s mapping through the global exception filter", async (path) => {
     const address = app.getHttpServer().address() as AddressInfo;
     const response = await fetch(
       `http://127.0.0.1:${address.port}/project-operating-constraint-test/${path}`
     );
 
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      message: "数据已被并发更新，请重新读取后重试"
-    });
+    expect(response.status).toBe(500);
   });
 });

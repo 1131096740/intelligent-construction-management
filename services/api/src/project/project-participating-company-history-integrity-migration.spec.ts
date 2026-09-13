@@ -76,6 +76,12 @@ describe("POL-284 participant history integrity migration", () => {
     expect(sql).toContain(
       '"revision" = "ProjectParticipatingCompanyMutationFence"."revision" + 1'
     );
+    expect(sql).toContain(
+      'CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyCoverage"'
+    );
+    expect(sql).toContain(
+      'CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyOperatingReferences"'
+    );
 
     for (const functionName of [
       "requireActiveProjectParticipatingCompany",
@@ -87,6 +93,12 @@ describe("POL-284 participant history integrity migration", () => {
         `pg_get_functiondef('"${functionName}"()'::REGPROCEDURE)`
       );
     }
+    expect(sql).toContain(
+      'PERFORM 1 FROM "ProjectParticipatingCompany"'
+    );
+    expect(sql).toContain(
+      'regexp_count(current_definition, \'FOR KEY SHARE\') < 3'
+    );
     expect(sql).toContain("terminal semantics drifted; refusing replacement");
   });
 
@@ -97,24 +109,49 @@ describe("POL-284 participant history integrity migration", () => {
       sql.indexOf('CREATE OR REPLACE FUNCTION "protectFactfulProjectParticipatingCompany"')
     );
 
-    expect(endDateGuard).toContain('FROM "OperatingFact" fact');
-    expect(endDateGuard).toContain('FROM "OperatingImpactEntry" impact');
-    expect(endDateGuard).toContain('fact."occurredAt" >= NEW."endedAt"::timestamp');
-    expect(endDateGuard).not.toContain('fact."occurredAt"::DATE');
-    expect(endDateGuard).toContain('FROM "Project" project');
-    expect(endDateGuard).toContain('project."operatingLedgerEffectiveDate"');
-    expect(endDateGuard).toContain('other_participant');
+    expect(endDateGuard).toContain('"hasProjectParticipatingCompanyCoverage"');
+    expect(endDateGuard).toContain('NEW."effectiveFrom"');
+    expect(endDateGuard).toContain('NEW."endedAt"');
+    expect(endDateGuard).toContain('"hasProjectParticipatingCompanyOperatingReferences"');
+    expect(endDateGuard).not.toContain('FROM "OperatingFact" fact');
+    expect(endDateGuard).not.toContain('FROM "OperatingImpactEntry" impact');
+    expect(endDateGuard).not.toContain('other_participant');
     expect(endDateGuard).not.toContain("FOR UPDATE");
 
     const deleteGuard = sql.slice(
       sql.indexOf('CREATE OR REPLACE FUNCTION "protectFactfulProjectParticipatingCompany"'),
       sql.indexOf('CREATE OR REPLACE FUNCTION "activateProjectOperatingLedger"')
     );
-    expect(deleteGuard).toContain('FROM "OperatingFact" fact');
-    expect(deleteGuard).toContain('FROM "OperatingImpactEntry" impact');
-    expect(deleteGuard).toContain('FROM "Project" project');
-    expect(deleteGuard).toContain('project."operatingLedgerEffectiveDate"');
-    expect(deleteGuard).toContain('other_participant');
+    expect(deleteGuard).toContain('"hasProjectParticipatingCompanyCoverage"');
+    expect(deleteGuard).toContain('"hasProjectParticipatingCompanyOperatingReferences"');
+    expect(deleteGuard).not.toContain('FROM "OperatingFact" fact');
+    expect(deleteGuard).not.toContain('FROM "OperatingImpactEntry" impact');
+    expect(deleteGuard).not.toContain('other_participant');
     expect(deleteGuard).not.toContain("FOR UPDATE");
+
+    const coverageHelper = sql.slice(
+      sql.indexOf('CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyCoverage"'),
+      sql.indexOf('CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyOperatingReferences"')
+    );
+    expect(coverageHelper).toContain("range_agg(candidate.coverage)");
+    expect(coverageHelper).toContain("daterange(ledger_effective_date, NULL, '[)')");
+    expect(coverageHelper).toContain("'{}'::DATEMULTIRANGE");
+
+    const operatingReferenceHelper = sql.slice(
+      sql.indexOf('CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyOperatingReferences"'),
+      sql.indexOf('-- These four functions are redefined below')
+    );
+    for (const role of [
+      "debtor", "creditor", "approvedPayer", "actualPayer", "payee", "costBearingCompany"
+    ]) {
+      expect(operatingReferenceHelper).toContain(`${role}SubjectKind`);
+      expect(operatingReferenceHelper).toContain(`${role}SubjectId`);
+    }
+    expect(operatingReferenceHelper).toContain(
+      'INNER JOIN "OperatingFact" fact ON fact."id" = impact."factId"'
+    );
+    expect(operatingReferenceHelper).toContain(
+      'impact."projectId" = fact."projectId"'
+    );
   });
 });

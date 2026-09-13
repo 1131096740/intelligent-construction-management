@@ -22,10 +22,6 @@ describe("OperatingLedgerService", () => {
   });
 
   it.each([
-    new Prisma.PrismaClientKnownRequestError("Transaction failed", {
-      code: "P2034",
-      clientVersion: "5.22.0"
-    }),
     new Prisma.PrismaClientKnownRequestError("Raw query failed", {
       code: "P2010",
       clientVersion: "5.22.0",
@@ -40,6 +36,16 @@ describe("OperatingLedgerService", () => {
 
   it("does not map operating-ledger deadlocks as serialization failures", async () => {
     const error = { code: "40P01" };
+    await expect(
+      translateOperatingLedgerWriteConstraint(Promise.reject(error))
+    ).rejects.toBe(error);
+  });
+
+  it("does not map an ambiguous Prisma P2034 as a serialization failure", async () => {
+    const error = new Prisma.PrismaClientKnownRequestError("Transaction failed", {
+      code: "P2034",
+      clientVersion: "5.22.0"
+    });
     await expect(
       translateOperatingLedgerWriteConstraint(Promise.reject(error))
     ).rejects.toBe(error);

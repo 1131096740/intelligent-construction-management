@@ -135,7 +135,8 @@ export class ProjectOperatingProfileService {
     return translateOperatingProfileConstraint(
       this.prisma.$transaction((tx) =>
         this.updateProfileInTransaction(tx, projectId, actorUserId, input)
-      )
+      ),
+      { mapSerializationConflict: true }
     );
   }
 
@@ -146,7 +147,8 @@ export class ProjectOperatingProfileService {
     input: UpdateProjectOperatingProfileInput
   ) {
     return translateOperatingProfileConstraint(
-      this.updateProfileInTransactionRaw(tx, projectId, actorUserId, input)
+      this.updateProfileInTransactionRaw(tx, projectId, actorUserId, input),
+      { mapSerializationConflict: true }
     );
   }
 
@@ -384,54 +386,15 @@ export class ProjectOperatingProfileService {
                 AND payment."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
                 AND payment."payerCompanyEntityId" = ${participant.companyEntityId}
             )
-            OR EXISTS (
-              SELECT 1
-              FROM "OperatingFact" fact
-              WHERE fact."projectId" = ${projectId}
-                AND (
-                  (fact."debtorSubjectKind" = 'participating_company' AND fact."debtorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                  OR (fact."creditorSubjectKind" = 'participating_company' AND fact."creditorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                  OR (fact."approvedPayerSubjectKind" = 'participating_company' AND fact."approvedPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                  OR (fact."actualPayerSubjectKind" = 'participating_company' AND fact."actualPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                  OR (fact."payeeSubjectKind" = 'participating_company' AND fact."payeeSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                  OR (fact."costBearingCompanySubjectKind" = 'participating_company' AND fact."costBearingCompanySubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                )
-            )
-            OR EXISTS (
-              SELECT 1
-              FROM "OperatingImpactEntry" impact
-              WHERE impact."projectId" = ${projectId}
-                AND impact."subjectKind" = 'participating_company'
-                AND impact."subjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId})
+            OR "hasProjectParticipatingCompanyOperatingReferences"(
+              ${projectId},
+              ${participant.companyEntityId},
+              ${participant.companyEntityVersionId}
             )
           ) AS "hasFormalFacts",
-          EXISTS (
-            SELECT 1
-            FROM "Project" project
-            WHERE project."id" = ${projectId}
-              AND project."operatingLedgerEffectiveDate" IS NOT NULL
-              AND EXISTS (
-                SELECT 1
-                FROM "ProjectParticipatingCompany" current_participant
-                WHERE current_participant."id" = ${participantId}
-                  AND current_participant."projectId" = ${projectId}
-                  AND current_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-                  AND (
-                    current_participant."endedAt" IS NULL
-                    OR current_participant."endedAt" > project."operatingLedgerEffectiveDate"
-                  )
-              )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM "ProjectParticipatingCompany" other_participant
-                WHERE other_participant."projectId" = ${projectId}
-                  AND other_participant."id" <> ${participantId}
-                  AND other_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-                  AND (
-                    other_participant."endedAt" IS NULL
-                    OR other_participant."endedAt" > project."operatingLedgerEffectiveDate"
-                  )
-              )
+          NOT "hasProjectParticipatingCompanyCoverage"(
+            ${projectId},
+            ${participantId}
           ) AS "breaksLedgerCoverage"
         `
       );
@@ -497,28 +460,12 @@ export class ProjectOperatingProfileService {
 
       const [ledgerCoverage] = await tx.$queryRaw<Array<{ breaksLedgerCoverage: boolean }>>(
         Prisma.sql`
-          SELECT TRUE AS "breaksLedgerCoverage"
-          FROM "Project" project
-          WHERE project."id" = ${projectId}
-            AND project."operatingLedgerEffectiveDate" IS NOT NULL
-            AND ${endedAt}::date <= project."operatingLedgerEffectiveDate"
-            AND ${participant.effectiveFrom}::date <= project."operatingLedgerEffectiveDate"
-            AND (
-              ${participant.endedAt}::date IS NULL
-              OR ${participant.endedAt}::date > project."operatingLedgerEffectiveDate"
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM "ProjectParticipatingCompany" other_participant
-              WHERE other_participant."projectId" = ${projectId}
-                AND other_participant."id" <> ${participant.id}
-                AND other_participant."effectiveFrom" <= project."operatingLedgerEffectiveDate"
-                AND (
-                  other_participant."endedAt" IS NULL
-                  OR other_participant."endedAt" > project."operatingLedgerEffectiveDate"
-                )
-            )
-          LIMIT 1
+          SELECT NOT "hasProjectParticipatingCompanyCoverage"(
+            ${projectId},
+            ${participant.id},
+            ${participant.effectiveFrom}::date,
+            ${endedAt}::date
+          ) AS "breaksLedgerCoverage"
         `
       );
       if (ledgerCoverage?.breaksLedgerCoverage) {
@@ -543,21 +490,13 @@ export class ProjectOperatingProfileService {
           UNION ALL SELECT COALESCE(payment."approvedAt", payment."createdAt") FROM "SpotProcurementPayment" payment
             WHERE payment."projectId" = ${projectId} AND payment."payerCompanyEntityId" = ${participant.companyEntityId}
               AND payment."invalidatedAt" IS NULL AND payment."status" IN ('approved_pending_payment','partially_paid','paid')
-          UNION ALL SELECT ledger_fact."occurredAt" FROM "OperatingFact" ledger_fact
-            WHERE ledger_fact."projectId" = ${projectId}
-              AND (
-                (ledger_fact."debtorSubjectKind" = 'participating_company' AND ledger_fact."debtorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                OR (ledger_fact."creditorSubjectKind" = 'participating_company' AND ledger_fact."creditorSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                OR (ledger_fact."approvedPayerSubjectKind" = 'participating_company' AND ledger_fact."approvedPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                OR (ledger_fact."actualPayerSubjectKind" = 'participating_company' AND ledger_fact."actualPayerSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                OR (ledger_fact."payeeSubjectKind" = 'participating_company' AND ledger_fact."payeeSubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-                OR (ledger_fact."costBearingCompanySubjectKind" = 'participating_company' AND ledger_fact."costBearingCompanySubjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId}))
-              )
-          UNION ALL SELECT ledger_fact."occurredAt" FROM "OperatingImpactEntry" impact
-            INNER JOIN "OperatingFact" ledger_fact ON ledger_fact."id" = impact."factId"
-            WHERE impact."projectId" = ${projectId}
-              AND impact."subjectKind" = 'participating_company'
-              AND impact."subjectId" IN (${participant.companyEntityId}, ${participant.companyEntityVersionId})
+          UNION ALL SELECT ${endedAt}::timestamp
+            WHERE "hasProjectParticipatingCompanyOperatingReferences"(
+              ${projectId},
+              ${participant.companyEntityId},
+              ${participant.companyEntityVersionId},
+              ${endedAt}::timestamp
+            )
         ) fact
         WHERE fact."occurredAt" >= ${endedAt}::timestamp
         LIMIT 1

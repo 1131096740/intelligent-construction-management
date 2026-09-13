@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -24,19 +23,15 @@ import {
 } from "@jiangkong/shared-domain";
 
 import { PrismaService } from "../database/prisma.service";
-import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
+import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
 
 export async function translateOperatingLedgerWriteConstraint<T>(
   operation: Promise<T>
 ): Promise<T> {
-  try {
-    return await operation;
-  } catch (error) {
-    if (isPostgresSerializationFailure(error)) {
-      throw new ConflictException("经营账写入遇到并发状态变化，请刷新后重试");
-    }
-    throw error;
-  }
+  return translateProjectOperatingSerializationConflict(
+    operation,
+    "经营账写入遇到并发状态变化，请刷新后重试"
+  );
 }
 
 export const OPERATING_LEDGER_LEVELS = [

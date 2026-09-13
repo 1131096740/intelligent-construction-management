@@ -40,6 +40,7 @@ import { PaymentExecutionSharedAllocationService } from "../fund-execution/payme
 import { fundExecutionSelectionRefFingerprint } from "../fund-execution/fund-execution-selection-ref.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
+import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
 import {
   missingOperatingSourceReplayService,
   OperatingSourceReplayService,
@@ -3469,7 +3470,9 @@ export class PaymentRequestService {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = paymentPrismaErrorCode(error);
-      if (code === "P2002" || code === "P2034") {
+      const serializationConflict =
+        code === "P2034" || isPostgresSerializationFailure(error);
+      if (code === "P2002" || serializationConflict) {
         const concurrentExecution = await this.resolveConcurrentPaymentExecution({
           paymentId,
           actorUserId,
@@ -3487,7 +3490,7 @@ export class PaymentRequestService {
             : paymentPostResponseToApi(concurrentExecution);
         }
         throw new ConflictException(
-          code === "P2034"
+          serializationConflict
             ? "实际付款并发冲突，请刷新后重试"
             : "实际付款唯一事实已变化，请刷新后重试"
         );

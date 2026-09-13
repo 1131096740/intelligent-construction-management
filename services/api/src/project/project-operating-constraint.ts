@@ -22,8 +22,6 @@ export const PROJECT_OPERATING_CONSTRAINT_MESSAGES = [
 
 export function isPostgresSerializationFailure(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === "P2034") return true;
-    if (error.code !== "P2010") return false;
     const meta = error.meta as Record<string, unknown> | undefined;
     if (meta?.code === "40001" || meta?.sqlstate === "40001" || meta?.sqlState === "40001") {
       return true;
@@ -35,7 +33,12 @@ export function isPostgresSerializationFailure(error: unknown): boolean {
   const candidate = error as Record<string, unknown>;
   return candidate.code === "40001"
     || candidate.sqlstate === "40001"
-    || candidate.sqlState === "40001";
+    || candidate.sqlState === "40001"
+    || (
+      candidate.meta !== null
+      && typeof candidate.meta === "object"
+      && isPostgresSerializationFailure(candidate.meta)
+    );
 }
 
 export function projectOperatingConstraintMessage(error: unknown) {
@@ -47,6 +50,20 @@ export function projectOperatingConstraintMessage(error: unknown) {
   }
   const detail = JSON.stringify(error);
   return PROJECT_OPERATING_CONSTRAINT_MESSAGES.find((message) => detail.includes(message)) ?? null;
+}
+
+export async function translateProjectOperatingSerializationConflict<T>(
+  operation: Promise<T>,
+  message: string
+): Promise<T> {
+  try {
+    return await operation;
+  } catch (error) {
+    if (isPostgresSerializationFailure(error)) {
+      throw new ConflictException(message);
+    }
+    throw error;
+  }
 }
 
 export async function translateOperatingProfileConstraint<T>(

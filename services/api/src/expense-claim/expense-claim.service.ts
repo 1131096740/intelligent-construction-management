@@ -17,6 +17,7 @@ import {
   OperatingSourceReplayService
 } from "../operating-ledger/operating-source-replay.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
 import {
   EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE,
   EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE,
@@ -807,7 +808,8 @@ export class ExpenseClaimService {
   }
 
   async review(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await translateProjectOperatingSerializationConflict(
+      this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
         id: string; claimType: string; status: string; projectId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
       }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
@@ -905,7 +907,9 @@ export class ExpenseClaimService {
         metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, completed, postedAmountCents: postedAmountCents.toString(), ...selfReview.metadata }
       });
       return { id: updated.id, status: updated.status, completed, approvalInstanceId: completed ? instance.id : null };
-    });
+      }),
+      "费用审批遇到参与公司并发变化，请刷新后重试"
+    );
     if (result.completed && result.approvalInstanceId) {
       await this.approvalForms
         ?.generateForInstance(result.approvalInstanceId, actorUserId)

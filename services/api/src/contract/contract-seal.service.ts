@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
@@ -520,8 +521,9 @@ export class ContractSealService {
       preflightOriginal.contentSha256,
       preflightOriginal.pageCount
     );
-    return this.prisma.$transaction(async (tx) => {
-      const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
+    return translateProjectOperatingSerializationConflict(
+      this.prisma.$transaction(async (tx) => {
+        const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
       this.assertGoverned(version);
       if (version.status !== "pending_archive_confirm" || task.status !== "completed") {
         throw new BadRequestException("当前合同最终版尚不能确认归档");
@@ -636,8 +638,10 @@ export class ContractSealService {
             : {})
         }
       });
-      return result;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        return result;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
+      "合同归档生效遇到参与公司并发变化，请刷新后重试"
+    );
   }
 
   async invalidateForMaterialChange(
