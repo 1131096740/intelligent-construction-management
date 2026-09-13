@@ -1097,7 +1097,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         factKind: "owner_settlement",
         amountCents: 1n,
         direction: "inflow",
-        occurredAt: new Date(`2026-09-02T08:00:0${index}.000Z`),
+        occurredAt: new Date(`2026-09-05T08:00:0${index}.000Z`),
         sourceSnapshot: {
           schema: "pol108_detail_large_snapshot/V1",
           payload
