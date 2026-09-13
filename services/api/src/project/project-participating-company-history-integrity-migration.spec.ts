@@ -175,6 +175,27 @@ describe("POL-284 participant history integrity migration", () => {
     expect(coverageHelper).toContain("range_agg(candidate.coverage)");
     expect(coverageHelper).toContain("daterange(ledger_effective_date, NULL, '[)')");
     expect(coverageHelper).toContain("'{}'::DATEMULTIRANGE");
+    expect(coverageHelper).toContain("ledger_effective_date_override DATE DEFAULT NULL");
+    expect(coverageHelper).toContain(
+      "COALESCE(ledger_effective_date_override, project.\"operatingLedgerEffectiveDate\")"
+    );
+    expect(coverageHelper).toMatch(
+      /excluded_participant_id IS NULL\s+OR participant\."id" <> excluded_participant_id/u
+    );
+
+    const activationGuard = sql.slice(
+      sql.indexOf('CREATE OR REPLACE FUNCTION "activateProjectOperatingLedger"'),
+      sql.indexOf('CREATE OR REPLACE FUNCTION "protectProjectConstructionEnterpriseChange"')
+    );
+    expect(activationGuard).toContain(
+      'WHERE participant."projectId" = OLD."id"\n      ORDER BY participant."id" FOR SHARE'
+    );
+    expect(activationGuard).toContain(
+      '"hasProjectParticipatingCompanyCoverage"(\n      OLD."id",\n      NULL,\n      NULL,\n      NULL,\n      NEW."operatingLedgerEffectiveDate"\n    )'
+    );
+    expect(activationGuard).not.toContain(
+      'participant."effectiveFrom" <= NEW."operatingLedgerEffectiveDate"'
+    );
 
     const operatingReferenceHelper = sql.slice(
       sql.indexOf('CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyOperatingReferences"'),

@@ -42,7 +42,7 @@ test("participant-history group uses its dedicated database and both profile gat
       RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE: "1",
       PARTICIPANT_HISTORY_INTEGRITY_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 28,
+    pendingTests: 30,
     requiresOperatingLedgerWriteSecret: true
   });
 });

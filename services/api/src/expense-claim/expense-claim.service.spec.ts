@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock } }) {
@@ -32,7 +32,32 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never);
-  return { service, tx, numbering, audit, visibility };
+  return { service, tx, prisma, numbering, audit, visibility };
+}
+
+async function expectParticipantSerializationBoundary(
+  makeHarness: () => ReturnType<typeof createHarness>,
+  invoke: (service: ExpenseClaimService) => Promise<unknown>
+) {
+  const cases = [
+    { error: { code: "40001" }, mapped: true },
+    { error: { code: "P2034", meta: { sqlstate: "40001" } }, mapped: true },
+    { error: { code: "40P01" }, mapped: false },
+    { error: { code: "P2034", meta: { sqlstate: "40P01" } }, mapped: false },
+    { error: { code: "P2034" }, mapped: false }
+  ];
+
+  for (const { error, mapped } of cases) {
+    const { service, prisma } = makeHarness();
+    (prisma.$transaction as jest.Mock).mockRejectedValueOnce(error);
+    const operation = invoke(service);
+    if (mapped) {
+      await expect(operation).rejects.toBeInstanceOf(ConflictException);
+    } else {
+      await expect(operation).rejects.toBe(error);
+    }
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  }
 }
 
 const actor = { id: "user-a", name: "经办人", phone: "13800000000", isActive: true };
@@ -322,6 +347,46 @@ describe("ExpenseClaimService", () => {
     });
     await expect(service.adjustPaymentSubject("claim-1", "employee-1", { companyEntityId: "company-pay", reason: "调整" })).rejects.toThrow(ForbiddenException);
     expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+  });
+
+  it("maps only explicit 40001 at the payment-subject adjustment transaction boundary without retry", async () => {
+    await expectParticipantSerializationBoundary(
+      () => createHarness(),
+      (service) => service.adjustPaymentSubject("claim-1", "finance-1", {
+        companyEntityId: "company-pay",
+        reason: "参与公司并发变化"
+      })
+    );
+  });
+
+  it("maps only explicit 40001 at the loan-disbursement transaction boundary without retry", async () => {
+    await expectParticipantSerializationBoundary(
+      () => createHarness({
+        auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) }
+      }),
+      (service) => service.recordLoanDisbursement("claim-1", "finance-1", {
+        amountCents: "100",
+        paidAt: "2026-07-23",
+        paymentMethod: "银行转账",
+        voucherFileId: "voucher-1",
+        confirmationPassword: "current-password"
+      })
+    );
+  });
+
+  it("maps only explicit 40001 at the expense-payment transaction boundary without retry", async () => {
+    await expectParticipantSerializationBoundary(
+      () => createHarness({
+        auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) }
+      }),
+      (service) => service.recordPayment("claim-1", "finance-1", {
+        amountCents: "100",
+        paidAt: "2026-07-23",
+        paymentMethod: "银行转账",
+        voucherFileId: "voucher-1",
+        confirmationPassword: "current-password"
+      })
+    );
   });
 
   it("records a reimbursement company payment only within the frozen payable amount and advances the source status", async () => {

@@ -256,6 +256,10 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
       effectiveFrom: "2026-08-10",
       endedAt: "2026-08-11"
     });
+    const successor = await createCompany(prisma, fixture.financeUserId, "接续我方公司");
+    await createParticipant(prisma, fixture.projectId, successor, fixture.financeUserId, {
+      effectiveFrom: "2026-08-11"
+    });
     await prisma.project.update({
       where: { id: fixture.projectId },
       data: { operatingLedgerEffectiveDate: date("2026-08-10") }
@@ -841,6 +845,44 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
         first
       )).resolves.toBeUndefined();
     }
+  });
+
+  it("rejects activation when the sole participant has a future end and leaves no continuous successor", async () => {
+    const fixture = await createFixture(prisma, { participant: true });
+    await prisma.projectParticipatingCompany.update({
+      where: { id: fixture.participantId! },
+      data: { endedAt: date("2026-09-01") }
+    });
+
+    await expect(prisma.project.update({
+      where: { id: fixture.projectId },
+      data: { operatingLedgerEffectiveDate: date("2026-08-01") }
+    })).rejects.toThrow("参与公司连续覆盖");
+    await expect(prisma.project.findUniqueOrThrow({
+      where: { id: fixture.projectId }
+    })).resolves.toMatchObject({ operatingLedgerEffectiveDate: null });
+  });
+
+  it("allows activation when adjacent half-open participant periods cover through infinity", async () => {
+    const fixture = await createFixture(prisma, { participant: true });
+    await prisma.projectParticipatingCompany.update({
+      where: { id: fixture.participantId! },
+      data: { endedAt: date("2026-09-01") }
+    });
+    const successor = await createCompany(prisma, fixture.financeUserId, "无缝接续我方公司");
+    await createParticipant(prisma, fixture.projectId, successor, fixture.financeUserId, {
+      effectiveFrom: "2026-09-01"
+    });
+
+    const outcome = await settled(prisma.project.update({
+      where: { id: fixture.projectId },
+      data: { operatingLedgerEffectiveDate: date("2026-08-01") }
+    }));
+    expect(outcome.status).toBe("fulfilled");
+    expect(describeOutcome(outcome)).not.toMatch(/40P01|55P03|deadlock|lock timeout/i);
+    await expect(prisma.project.findUniqueOrThrow({
+      where: { id: fixture.projectId }
+    })).resolves.toMatchObject({ operatingLedgerEffectiveDate: date("2026-08-01") });
   });
 
   it("preserves all five legacy formal-flow guards against direct end-date in both commit orders", async () => {

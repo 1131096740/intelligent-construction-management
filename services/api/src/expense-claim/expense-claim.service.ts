@@ -569,7 +569,8 @@ export class ExpenseClaimService {
   async adjustPaymentSubject(claimId: string, actorUserId: string, input: AdjustExpenseClaimPaymentSubjectDto) {
     const companyEntityId = requiredText(input.companyEntityId, "实际付款主体不能为空");
     const reason = requiredText(input.reason, "调整原因不能为空");
-    return this.prisma.$transaction(async (tx) => {
+    return translateProjectOperatingSerializationConflict(
+      this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
         id: string; claimType: string; status: string; projectId: string | null;
         paymentSubjectCompanyEntityId: string | null; paymentSubjectNameSnapshot: string | null;
@@ -621,8 +622,10 @@ export class ExpenseClaimService {
           adjustedByRoleKey
         }
       });
-      return updated;
-    });
+        return updated;
+      }),
+      "费用申请付款主体遇到参与公司并发变化，请刷新后重试"
+    );
   }
 
   async attachAttachment(claimId: string, actorUserId: string, input: AttachExpenseClaimAttachmentDto) {
@@ -937,7 +940,8 @@ export class ExpenseClaimService {
     if (!this.auth) throw new ServiceUnavailableException("放款身份确认服务暂不可用，请稍后重试");
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await translateProjectOperatingSerializationConflict(
+      this.prisma.$transaction(async (tx) => {
       const fundingScope = this.projectFunding
         ? await tx.expenseClaim.findUnique({
             where: { id: claimId },
@@ -1067,8 +1071,10 @@ export class ExpenseClaimService {
         actorUserId
       );
       await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
-      return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus, replayed: false };
-    });
+        return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus, replayed: false };
+      }),
+      "借款放款遇到参与公司并发变化，请刷新后重试"
+    );
     if (result.status === "disbursed" && !result.replayed) {
       await this.ensureLoanFinalDisbursementPdf(claimId, actorUserId).catch(async () => {
         await this.audit.record(this.prisma, { actorUserId, action: "expense_claim.loan.final_pdf.generation_failed", businessType: "expense_claim", businessId: claimId, metadata: {} });
@@ -1098,7 +1104,8 @@ export class ExpenseClaimService {
     if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("补付登记需要当前登录密码确认");
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await translateProjectOperatingSerializationConflict(
+      this.prisma.$transaction(async (tx) => {
       const fundingScope = this.projectFunding
         ? await tx.expenseClaim.findUnique({
             where: { id: claimId },
@@ -1225,8 +1232,10 @@ export class ExpenseClaimService {
         );
       }
       await this.audit.record(tx, { actorUserId, action: claim.claimType === "incidental_expense" ? "incidental_expense.payment.record" : "expense_claim.reimbursement.payment.record", businessType, businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
-      return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false };
-    });
+        return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false };
+      }),
+      "费用付款遇到参与公司并发变化，请刷新后重试"
+    );
     if (result.status === "paid" && !result.replayed && result.claimType === "reimbursement") {
       await this.ensureReimbursementFinalPaymentPdf(claimId, actorUserId).catch(async () => {
         await this.audit.record(this.prisma, { actorUserId, action: "expense_claim.reimbursement.final_pdf.generation_failed", businessType: "expense_claim", businessId: claimId, metadata: {} });

@@ -61,14 +61,15 @@ CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyCoverage"(
   target_project_id TEXT,
   excluded_participant_id TEXT,
   replacement_effective_from DATE DEFAULT NULL,
-  replacement_ended_at DATE DEFAULT NULL
+  replacement_ended_at DATE DEFAULT NULL,
+  ledger_effective_date_override DATE DEFAULT NULL
 )
 RETURNS BOOLEAN AS $$
 DECLARE
   ledger_effective_date DATE;
   covered_periods DATEMULTIRANGE;
 BEGIN
-  SELECT project."operatingLedgerEffectiveDate"
+  SELECT COALESCE(ledger_effective_date_override, project."operatingLedgerEffectiveDate")
     INTO ledger_effective_date
     FROM "Project" project
     WHERE project."id" = target_project_id;
@@ -86,7 +87,10 @@ BEGIN
       ) AS coverage
       FROM "ProjectParticipatingCompany" participant
       WHERE participant."projectId" = target_project_id
-        AND participant."id" <> excluded_participant_id
+        AND (
+          excluded_participant_id IS NULL
+          OR participant."id" <> excluded_participant_id
+        )
       UNION ALL
       SELECT daterange(
         replacement_effective_from,
@@ -615,14 +619,19 @@ BEGIN
     PERFORM participant."id"
       FROM "ProjectParticipatingCompany" participant
       WHERE participant."projectId" = OLD."id"
-        AND participant."effectiveFrom" <= NEW."operatingLedgerEffectiveDate"
-        AND (
-          participant."endedAt" IS NULL
-          OR participant."endedAt" > NEW."operatingLedgerEffectiveDate"
-        )
       ORDER BY participant."id" FOR SHARE;
     IF NOT FOUND THEN
       RAISE EXCEPTION '启用经营账前必须至少设置一家我方参与公司'
+        USING ERRCODE = '23514';
+    END IF;
+    IF NOT "hasProjectParticipatingCompanyCoverage"(
+      OLD."id",
+      NULL,
+      NULL,
+      NULL,
+      NEW."operatingLedgerEffectiveDate"
+    ) THEN
+      RAISE EXCEPTION '启用经营账前必须保证自生效日起参与公司连续覆盖'
         USING ERRCODE = '23514';
     END IF;
     SELECT MIN(fact."occurredAt") INTO first_formal_fact_at FROM (
