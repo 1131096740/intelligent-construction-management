@@ -13,21 +13,35 @@ describe("project operating serialization constraints", () => {
       clientVersion: "5.22.0",
       meta: { code: "40001", database_error: "SQLSTATE 40001" }
     }),
+    new Prisma.PrismaClientKnownRequestError("Transaction failed", {
+      code: "P2034",
+      clientVersion: "5.22.0",
+      meta: { sqlstate: "40001" }
+    }),
     { code: "40001", message: "could not serialize access due to concurrent update" }
   ])("recognizes PostgreSQL serialization failures without retrying", (error) => {
     expect(isPostgresSerializationFailure(error)).toBe(true);
   });
 
-  it("does not classify a deadlock as a serialization failure", () => {
-    expect(isPostgresSerializationFailure({ code: "40P01" })).toBe(false);
-  });
-
-  it("does not guess whether an ambiguous Prisma P2034 was a write conflict or deadlock", () => {
+  it.each([
+    { code: "40P01" },
+    new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010",
+      clientVersion: "5.22.0",
+      meta: { code: "40P01", database_error: "SQLSTATE 40P01" }
+    }),
+    new Prisma.PrismaClientKnownRequestError("Transaction failed", {
+      code: "P2034",
+      clientVersion: "5.22.0"
+    }),
+    new Prisma.PrismaClientKnownRequestError("Transaction failed", {
+      code: "P2034",
+      clientVersion: "5.22.0",
+      meta: { sqlstate: "40P01" }
+    })
+  ])("does not guess that a deadlock or ambiguous Prisma P2034 is a serialization failure", (error) => {
     expect(isPostgresSerializationFailure(
-      new Prisma.PrismaClientKnownRequestError("Transaction failed", {
-        code: "P2034",
-        clientVersion: "5.22.0"
-      })
+      error
     )).toBe(false);
   });
 

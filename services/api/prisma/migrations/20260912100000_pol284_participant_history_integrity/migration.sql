@@ -33,17 +33,26 @@ CREATE TABLE "ProjectParticipatingCompanyMutationFence" (
   CONSTRAINT "ProjectParticipatingCompanyMutationFence_pkey" PRIMARY KEY ("projectId")
 );
 
-CREATE OR REPLACE FUNCTION "serializeProjectParticipatingCompanyMutation"(
+CREATE OR REPLACE FUNCTION public."serializeProjectParticipatingCompanyMutation"(
   target_project_id TEXT
 )
-RETURNS VOID AS $$
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
 BEGIN
-  INSERT INTO "ProjectParticipatingCompanyMutationFence" ("projectId", "revision")
+  INSERT INTO public."ProjectParticipatingCompanyMutationFence" AS fence
+    ("projectId", "revision")
   VALUES (target_project_id, 1)
   ON CONFLICT ("projectId") DO UPDATE
-  SET "revision" = "ProjectParticipatingCompanyMutationFence"."revision" + 1;
+  SET "revision" = fence."revision" + 1;
 END;
-$$ LANGUAGE plpgsql;
+$$;
+
+REVOKE ALL ON FUNCTION
+  public."serializeProjectParticipatingCompanyMutation"(TEXT)
+  FROM PUBLIC;
 
 -- Evaluate the post-mutation participant timeline, not only the ledger start
 -- date.  A project whose ledger is enabled must retain continuous participant
@@ -443,7 +452,7 @@ CREATE OR REPLACE FUNCTION "protectProjectParticipatingCompanyEndDate"()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW."endedAt" IS NOT NULL AND NEW."endedAt" IS DISTINCT FROM OLD."endedAt" THEN
-    PERFORM "serializeProjectParticipatingCompanyMutation"(OLD."projectId");
+    PERFORM public."serializeProjectParticipatingCompanyMutation"(OLD."projectId");
     IF NOT "hasProjectParticipatingCompanyCoverage"(
       OLD."projectId",
       OLD."id",
@@ -513,7 +522,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION "protectFactfulProjectParticipatingCompany"()
 RETURNS TRIGGER AS $$
 BEGIN
-  PERFORM "serializeProjectParticipatingCompanyMutation"(OLD."projectId");
+  PERFORM public."serializeProjectParticipatingCompanyMutation"(OLD."projectId");
   IF NOT "hasProjectParticipatingCompanyCoverage"(
     OLD."projectId",
     OLD."id"

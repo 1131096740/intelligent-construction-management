@@ -688,9 +688,11 @@ make_deploy_fixture() {
     "$fixture/systemd" \
     "$fixture/backups"
   cp "$SCRIPT_DIR/operating-ledger-owner-psql.sh" "$fixture/repo/scripts/ops/operating-ledger-owner-psql.sh"
+  cp "$SCRIPT_DIR/grant-project-participating-company-fence-runtime-role.sh" "$fixture/repo/scripts/ops/grant-project-participating-company-fence-runtime-role.sh"
   cp "$SCRIPT_DIR/verify-operating-ledger-runtime-role.sh" "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
   chmod +x \
     "$fixture/repo/scripts/ops/operating-ledger-owner-psql.sh" \
+    "$fixture/repo/scripts/ops/grant-project-participating-company-fence-runtime-role.sh" \
     "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
   printf 'new-api-release\n' > "$fixture/repo/services/api/dist/release.txt"
   printf 'new-web-release\n' > "$fixture/repo/apps/web-admin/dist/release.txt"

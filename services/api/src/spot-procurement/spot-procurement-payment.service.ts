@@ -4067,7 +4067,7 @@ export class SpotProcurementPaymentService {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = prismaErrorCode(error);
-      if (code === "P2034") {
+      if (code === "P2034" || isPostgresSerializationFailure(error)) {
         throw new ConflictException(
           "付款或供应商余额已变化，请刷新后重试"
         );
@@ -4094,6 +4094,9 @@ export class SpotProcurementPaymentService {
       } catch (error) {
         if (error instanceof HttpException) throw error;
         const code = prismaErrorCode(error);
+        if (isPostgresSerializationFailure(error)) {
+          throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
+        }
         if (code === "P2034") {
           if (attempt === 0) continue;
           throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
@@ -4270,12 +4273,9 @@ function prismaErrorCode(error: unknown) {
           String(postgresCode)
         )
       ) {
-        return "P2034";
+        return String(postgresCode);
       }
     }
-  }
-  if (code === "40P01") {
-    return "P2034";
   }
   return typeof code === "string" ? code : undefined;
 }

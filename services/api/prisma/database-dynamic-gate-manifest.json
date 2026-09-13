@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 169,
     "terminalMigration": "20260912100000_pol284_participant_history_integrity",
-    "terminalMigrationChecksum": "b0adbdf4e14e189acfbe06c5cd872ef05160797b4008ba9d5d1be135cb7ad9ba",
+    "terminalMigrationChecksum": "672cb17c8c63959561ae6cee85ce8b56e954c0a3a13237c40980842e02d7de5e",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 52,
     "fullyPendingSuites": 41,
     "partiallyPendingSuites": 11,
-    "pendingTests": 226,
+    "pendingTests": 227,
     "coveredFiles": 52,
-    "coveredTests": 226,
+    "coveredTests": 227,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -264,7 +264,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 146,
+      "pendingTests": 147,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -383,7 +383,7 @@
         },
         {
           "path": "services/api/src/database/project-operating-profile-db.spec.ts",
-          "pendingTests": 27,
+          "pendingTests": 28,
           "suiteStatus": "partial_pending"
         },
         {

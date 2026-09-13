@@ -190,7 +190,7 @@ const GROUPS = [
       RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE: "1",
       PARTICIPANT_HISTORY_INTEGRITY_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 27,
+    pendingTests: 28,
     requiresOperatingLedgerWriteSecret: true
   },
   {

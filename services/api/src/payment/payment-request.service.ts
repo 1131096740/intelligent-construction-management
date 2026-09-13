@@ -4532,11 +4532,10 @@ function paymentPrismaErrorCode(error: unknown): string | undefined {
     if (meta && typeof meta === "object") {
       const postgresCode = (meta as { code?: unknown }).code;
       if (["40001", "40P01"].includes(String(postgresCode))) {
-        return "P2034";
+        return String(postgresCode);
       }
     }
   }
-  if (code === "40P01") return "P2034";
   return typeof code === "string" ? code : undefined;
 }
 

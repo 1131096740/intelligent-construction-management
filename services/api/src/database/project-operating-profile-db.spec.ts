@@ -13,6 +13,8 @@ const PARTICIPANT_HISTORY_TEST_DATABASE = "jiangkong_participant_history_integri
 const LIVE_TEST_ENABLED = process.env.RUN_PROJECT_OPERATING_PROFILE_DB_TESTS === "1";
 const PARTICIPANT_HISTORY_LIVE_TEST_ENABLED =
   process.env.RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE === "1";
+const PARTICIPANT_HISTORY_RUNTIME_ROLE =
+  `pol284_runtime_${randomUUID().replace(/-/gu, "").slice(0, 16)}`;
 
 export function projectOperatingProfileDatabaseUrl(value: string | undefined) {
   if (!value || process.env.NODE_ENV === "production") {
@@ -544,10 +546,40 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
       VALUES (1, crypt(${secret}, gen_salt('bf')))
       ON CONFLICT ("id") DO UPDATE SET "secretHash" = EXCLUDED."secretHash"
     `);
+    await prisma.$executeRawUnsafe(
+      `CREATE ROLE "${PARTICIPANT_HISTORY_RUNTIME_ROLE}" NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`
+    );
+    await prisma.$executeRawUnsafe(
+      `GRANT "${PARTICIPANT_HISTORY_RUNTIME_ROLE}" TO CURRENT_USER`
+    );
+    await prisma.$executeRawUnsafe(
+      `GRANT USAGE ON SCHEMA public TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+    );
+    await prisma.$executeRawUnsafe(
+      `GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+    );
+    await prisma.$executeRawUnsafe(
+      `GRANT UPDATE, DELETE ON TABLE public."ProjectParticipatingCompany" TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+    );
+    await prisma.$executeRawUnsafe(
+      `GRANT EXECUTE ON FUNCTION public."serializeProjectParticipatingCompanyMutation"(TEXT) TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+    );
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    try {
+      await prisma.$executeRawUnsafe(
+        `DROP OWNED BY "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+      );
+      await prisma.$executeRawUnsafe(
+        `REVOKE "${PARTICIPANT_HISTORY_RUNTIME_ROLE}" FROM CURRENT_USER`
+      );
+      await prisma.$executeRawUnsafe(
+        `DROP ROLE "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+      );
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   it("blocks DELETE and end-date for all six fact roles through stable and frozen identities", async () => {
@@ -860,6 +892,58 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
         }
       }
     }
+  });
+
+  it("lets the least-privileged runtime role use the fixed-schema fence without direct fence writes", async () => {
+    const updateFixture = await createFixture(prisma, { participant: true });
+    const deleteFixture = await createFixture(prisma, { participant: true });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SET LOCAL ROLE "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+      );
+      await tx.$executeRawUnsafe("SET LOCAL search_path = pg_temp, public");
+      await expect(tx.$executeRaw(Prisma.sql`
+        UPDATE public."ProjectParticipatingCompany"
+        SET "endedAt" = DATE '2026-08-14'
+        WHERE "id" = ${updateFixture.participantId!}
+      `)).resolves.toBe(1);
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SET LOCAL ROLE "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+      );
+      await tx.$executeRawUnsafe("SET LOCAL search_path = pg_temp, public");
+      await expect(tx.$executeRaw(Prisma.sql`
+        DELETE FROM public."ProjectParticipatingCompany"
+        WHERE "id" = ${deleteFixture.participantId!}
+      `)).resolves.toBe(1);
+    });
+
+    const directFenceWrite = await settled(prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SET LOCAL ROLE "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+      );
+      return tx.$executeRaw(Prisma.sql`
+        INSERT INTO public."ProjectParticipatingCompanyMutationFence"
+          ("projectId", "revision")
+        VALUES (${`${updateFixture.projectId}-forbidden`}, 1)
+      `);
+    }));
+    expect(directFenceWrite.status).toBe("rejected");
+    if (directFenceWrite.status === "rejected") {
+      expect(sqlState(directFenceWrite.reason)).toBe("42501");
+    }
+
+    const fenceRows = await prisma.projectParticipatingCompanyMutationFence.findMany({
+      where: { projectId: { in: [updateFixture.projectId, deleteFixture.projectId] } },
+      select: { projectId: true, revision: true }
+    });
+    expect(fenceRows).toEqual(expect.arrayContaining([
+      { projectId: updateFixture.projectId, revision: 1n },
+      { projectId: deleteFixture.projectId, revision: 1n }
+    ]));
   });
 
   it("preserves terminal validator semantics and uses all seven directed indexes with the default planner", async () => {

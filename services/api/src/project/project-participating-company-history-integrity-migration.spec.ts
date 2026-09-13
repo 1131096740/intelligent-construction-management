@@ -5,6 +5,14 @@ const migrationPath = resolve(
   __dirname,
   "../../prisma/migrations/20260912100000_pol284_participant_history_integrity/migration.sql"
 );
+const runtimeGrantPath = resolve(
+  __dirname,
+  "../../../../scripts/ops/grant-project-participating-company-fence-runtime-role.sh"
+);
+const runtimeVerifyPath = resolve(
+  __dirname,
+  "../../../../scripts/ops/verify-operating-ledger-runtime-role.sh"
+);
 
 describe("POL-284 participant history integrity migration", () => {
   it("adds all seven stable/version participant history indexes", () => {
@@ -62,7 +70,20 @@ describe("POL-284 participant history integrity migration", () => {
       'CREATE TABLE "ProjectParticipatingCompanyMutationFence"'
     );
     expect(sql).toContain(
-      'CREATE OR REPLACE FUNCTION "serializeProjectParticipatingCompanyMutation"'
+      'CREATE OR REPLACE FUNCTION public."serializeProjectParticipatingCompanyMutation"'
+    );
+    const fenceFunction = sql.slice(
+      sql.indexOf('CREATE OR REPLACE FUNCTION public."serializeProjectParticipatingCompanyMutation"'),
+      sql.indexOf('-- Evaluate the post-mutation participant timeline')
+    );
+    expect(fenceFunction).toContain("SECURITY DEFINER");
+    expect(fenceFunction).toContain("SET search_path = pg_catalog, pg_temp");
+    expect(fenceFunction).toContain(
+      'INSERT INTO public."ProjectParticipatingCompanyMutationFence" AS fence'
+    );
+    expect(fenceFunction).toContain('SET "revision" = fence."revision" + 1');
+    expect(fenceFunction).toMatch(
+      /REVOKE ALL ON FUNCTION\s+public\."serializeProjectParticipatingCompanyMutation"\(TEXT\)\s+FROM PUBLIC/u
     );
     expect(sql).not.toContain(
       'ProjectParticipatingCompanyMutationFence_projectId_fkey'
@@ -71,10 +92,10 @@ describe("POL-284 participant history integrity migration", () => {
       /ProjectParticipatingCompanyMutationFence[\s\S]{0,500}REFERENCES "Project"/u
     );
     expect(sql.match(
-      /PERFORM "serializeProjectParticipatingCompanyMutation"\(OLD\."projectId"\);/gu
+      /PERFORM public\."serializeProjectParticipatingCompanyMutation"\(OLD\."projectId"\);/gu
     )).toHaveLength(2);
     expect(sql).toContain(
-      '"revision" = "ProjectParticipatingCompanyMutationFence"."revision" + 1'
+      '"revision" = fence."revision" + 1'
     );
     expect(sql).toContain(
       'CREATE OR REPLACE FUNCTION "hasProjectParticipatingCompanyCoverage"'
@@ -100,6 +121,24 @@ describe("POL-284 participant history integrity migration", () => {
       'regexp_count(current_definition, \'FOR KEY SHARE\') < 3'
     );
     expect(sql).toContain("terminal semantics drifted; refusing replacement");
+  });
+
+  it("provisions and verifies only EXECUTE access to the internal fence function", () => {
+    const grantScript = readFileSync(runtimeGrantPath, "utf8");
+    const verifyScript = readFileSync(runtimeVerifyPath, "utf8");
+
+    expect(grantScript).toContain(
+      'GRANT EXECUTE ON FUNCTION public."serializeProjectParticipatingCompanyMutation"(TEXT)'
+    );
+    expect(grantScript).toContain(
+      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public."ProjectParticipatingCompanyMutationFence"'
+    );
+    expect(verifyScript).toContain(
+      'public."serializeProjectParticipatingCompanyMutation"(text)'
+    );
+    expect(verifyScript).toContain(
+      "operating-ledger runtime role retains direct participant fence write privilege"
+    );
   });
 
   it("protects facts and enabled-ledger coverage without a reverse Project lock", () => {
