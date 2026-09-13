@@ -623,6 +623,53 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it("maps explicit PostgreSQL 40001 without retrying the payer write", async () => {
+    const { service, tx, prisma } = createHarness();
+    prisma.$transaction.mockRejectedValueOnce({
+      code: "P2010",
+      meta: { code: "40001", message: "could not serialize access" }
+    });
+
+    await expect(
+      service.updatePayer("payment-1", "finance-1", {
+        companyEntityId: "company-1",
+        paymentMethods: ["bank_transfer"]
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: "SPOT_PAYMENT_PAYER_TASK_COMPLETED" }
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("preserves explicit PostgreSQL 40P01 wrappers without retrying the payer write", async () => {
+    for (const deadlock of [
+      {
+        code: "P2010",
+        meta: { code: "40P01", message: "deadlock detected" }
+      },
+      {
+        code: "P2034",
+        meta: { sqlstate: "40P01", message: "deadlock detected" }
+      }
+    ]) {
+      const { service, tx, prisma } = createHarness();
+      prisma.$transaction.mockRejectedValueOnce(deadlock);
+
+      await expect(
+        service.updatePayer("payment-1", "finance-1", {
+          companyEntityId: "company-1",
+          paymentMethods: ["bank_transfer"]
+        })
+      ).rejects.toBe(deadlock);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    }
+  });
+
   it.each([
     ["finance_staff", "finance-1"],
     ["comprehensive_director", "comprehensive-1"],

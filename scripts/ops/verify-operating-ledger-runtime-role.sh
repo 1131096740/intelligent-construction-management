@@ -45,15 +45,23 @@ BEGIN
        AND nspowner = runtime_role_oid
   ) OR EXISTS (
     SELECT 1
-      FROM pg_catalog.pg_class
+     FROM pg_catalog.pg_class
      WHERE relnamespace = 'public'::regnamespace
-       AND relname IN ('OperatingFact', 'OperatingImpactEntry')
+       AND relname IN (
+         'OperatingFact',
+         'OperatingImpactEntry',
+         'ProjectParticipatingCompanyMutationFence'
+       )
        AND relowner = runtime_role_oid
   ) OR EXISTS (
     SELECT 1
       FROM pg_catalog.pg_proc
      WHERE pronamespace = 'public'::regnamespace
-       AND proname IN ('appendOperatingFactThroughService', 'appendOperatingImpactThroughService')
+       AND proname IN (
+         'appendOperatingFactThroughService',
+         'appendOperatingImpactThroughService',
+         'serializeProjectParticipatingCompanyMutation'
+       )
        AND proowner = runtime_role_oid
   ) THEN
     RAISE EXCEPTION 'operating-ledger runtime role owns a protected schema object';
@@ -79,6 +87,22 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'operating-ledger runtime role cannot execute the controlled append functions';
   END IF;
+  IF NOT has_function_privilege(
+    runtime_role,
+    'public."serializeProjectParticipatingCompanyMutation"(text)',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'operating-ledger runtime role cannot execute the participant mutation fence';
+  END IF;
+  FOREACH privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] LOOP
+    IF has_table_privilege(
+      runtime_role,
+      'public."ProjectParticipatingCompanyMutationFence"',
+      privilege
+    ) THEN
+      RAISE EXCEPTION 'operating-ledger runtime role retains direct participant fence write privilege';
+    END IF;
+  END LOOP;
 END;
 $$;
 SQL

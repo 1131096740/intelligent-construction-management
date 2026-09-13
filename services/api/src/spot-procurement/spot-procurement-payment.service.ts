@@ -29,6 +29,10 @@ import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import {
+  isPostgresSerializationFailure,
+  postgresSqlState
+} from "../project/project-operating-constraint";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
@@ -713,7 +717,7 @@ export class SpotProcurementPaymentService {
           "实际付款唯一事实已变化，请刷新后重试"
         );
       }
-      if (code === "P2034") {
+      if (code === "P2034" || isPostgresSerializationFailure(error)) {
         const concurrentResult =
           await this.resolveConcurrentExecutionResult({
             paymentId,
@@ -4066,7 +4070,7 @@ export class SpotProcurementPaymentService {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = prismaErrorCode(error);
-      if (code === "P2034") {
+      if (code === "P2034" || isPostgresSerializationFailure(error)) {
         throw new ConflictException(
           "付款或供应商余额已变化，请刷新后重试"
         );
@@ -4093,6 +4097,9 @@ export class SpotProcurementPaymentService {
       } catch (error) {
         if (error instanceof HttpException) throw error;
         const code = prismaErrorCode(error);
+        if (isPostgresSerializationFailure(error)) {
+          throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
+        }
         if (code === "P2034") {
           if (attempt === 0) continue;
           throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
@@ -4258,23 +4265,9 @@ function nonnegative(value: bigint) {
 }
 
 function prismaErrorCode(error: unknown) {
+  const sqlState = postgresSqlState(error);
+  if (sqlState) return sqlState;
   if (!error || typeof error !== "object") return undefined;
   const code = (error as { code?: unknown }).code;
-  if (code === "P2010") {
-    const meta = (error as { meta?: unknown }).meta;
-    if (meta && typeof meta === "object") {
-      const postgresCode = (meta as { code?: unknown }).code;
-      if (
-        ["40001", "40P01"].includes(
-          String(postgresCode)
-        )
-      ) {
-        return "P2034";
-      }
-    }
-  }
-  if (code === "40P01") {
-    return "P2034";
-  }
   return typeof code === "string" ? code : undefined;
 }

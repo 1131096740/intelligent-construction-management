@@ -357,13 +357,15 @@ describe("PaymentRequestService", () => {
   }
 
   function concurrentPaymentExecutionPrisma<T extends object>(
-    code: string,
+    error: string | Record<string, unknown>,
     tx: T
   ) {
     const guardedTx = paymentExecutionGuardTx(tx);
     const transaction = jest
       .fn()
-      .mockRejectedValueOnce({ code })
+      .mockRejectedValueOnce(
+        typeof error === "string" ? { code: error } : error
+      )
       .mockImplementationOnce(
         async (callback: (client: T) => Promise<unknown>) => callback(guardedTx)
       );
@@ -969,6 +971,66 @@ describe("PaymentRequestService", () => {
       });
     }
   );
+
+  it("maps explicit PostgreSQL 40001 but preserves 40P01 on payment execution", async () => {
+    const serialization = {
+      code: "P2010",
+      meta: { code: "40001", message: "could not serialize access" }
+    };
+    const serializationPrisma = concurrentPaymentExecutionPrisma(serialization, {});
+    const serializationService = paymentExecutionService(
+      new PaymentAmountService(),
+      serializationPrisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+    await expect(
+      serializationService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("实际付款并发冲突，请刷新后重试");
+
+    for (const deadlock of [
+      {
+        code: "P2010",
+        meta: { code: "40P01", message: "deadlock detected" }
+      },
+      {
+        code: "P2034",
+        meta: { sqlstate: "40P01", message: "deadlock detected" }
+      }
+    ]) {
+      const deadlockPrisma = concurrentPaymentExecutionPrisma(deadlock, {});
+      const deadlockService = paymentExecutionService(
+        new PaymentAmountService(),
+        deadlockPrisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+      await expect(
+        deadlockService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "30000",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).rejects.toBe(deadlock);
+      expect(deadlockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    }
+  });
 
   it("rejects payment request before settlement is effective", () => {
     expect(() =>

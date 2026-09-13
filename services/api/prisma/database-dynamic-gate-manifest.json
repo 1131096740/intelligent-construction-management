@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 168,
-    "terminalMigration": "20260911140000_pol280_project_fund_dispute",
-    "terminalMigrationChecksum": "7633c0ce93b29d5709c6983655209236a4f8bc6f502c0d5e0911773cd6390e89",
+    "expectedDirectoryCount": 169,
+    "terminalMigration": "20260912100000_pol284_participant_history_integrity",
+    "terminalMigrationChecksum": "514326323cbf9516067e27f9fec0760320acf5ea2b38f7e543b192e183acb11b",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 52,
     "fullyPendingSuites": 41,
     "partiallyPendingSuites": 11,
-    "pendingTests": 216,
+    "pendingTests": 229,
     "coveredFiles": 52,
-    "coveredTests": 216,
+    "coveredTests": 229,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -264,7 +264,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 136,
+      "pendingTests": 149,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -383,7 +383,7 @@
         },
         {
           "path": "services/api/src/database/project-operating-profile-db.spec.ts",
-          "pendingTests": 17,
+          "pendingTests": 30,
           "suiteStatus": "partial_pending"
         },
         {

@@ -3,9 +3,10 @@ set -euo pipefail
 
 # This is an explicit operator step. It is never called by the application or
 # by Prisma migrations. Run it with a database-owner URL after reviewing the
-# target database and role names. It only grants read access plus the two
-# controlled operating-ledger append functions; non-ledger application DML
-# remains separately managed and is never broadened by this script.
+# target database and role names. It only grants read access, the two
+# controlled operating-ledger append functions, and the internal participant
+# mutation fence function when present; non-ledger application DML remains
+# separately managed and is never broadened by this script.
 : "${DATABASE_OWNER_URL:?DATABASE_OWNER_URL is required}"
 : "${OPERATING_LEDGER_RUNTIME_ROLE:?OPERATING_LEDGER_RUNTIME_ROLE is required}"
 : "${OPERATING_LEDGER_RUNTIME_PASSWORD:?OPERATING_LEDGER_RUNTIME_PASSWORD is required}"
@@ -81,6 +82,10 @@ BEGIN
   EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public."OperatingFact", public."OperatingImpactEntry" FROM %I', runtime_role);
   EXECUTE format('GRANT EXECUTE ON FUNCTION public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayload", TEXT, TEXT) TO %I', runtime_role);
   EXECUTE format('GRANT EXECUTE ON FUNCTION public."appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayload", TEXT, TEXT) TO %I', runtime_role);
+  IF to_regprocedure('public."serializeProjectParticipatingCompanyMutation"(text)') IS NOT NULL THEN
+    EXECUTE format('GRANT EXECUTE ON FUNCTION public."serializeProjectParticipatingCompanyMutation"(TEXT) TO %I', runtime_role);
+    EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public."ProjectParticipatingCompanyMutationFence" FROM %I', runtime_role);
+  END IF;
   EXECUTE format('REVOKE ALL ON FUNCTION public."authorizeOperatingLedgerWrite"(TEXT, TEXT) FROM %I', runtime_role);
   EXECUTE format('REVOKE ALL ON FUNCTION public."assertOperatingLedgerWriteContext"(TEXT) FROM %I', runtime_role);
   EXECUTE format('REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM %I', runtime_role);

@@ -242,6 +242,13 @@ model ProjectParticipatingCompany {
   @@index([companyEntityVersionId])
 }
 
+// 纯技术并发栅栏；仅用于串行化同一项目下不同参与关系的删除/停止。
+// 故意不建 Project 外键，避免首次删除通过外键检查反向锁定 Project。
+model ProjectParticipatingCompanyMutationFence {
+  projectId String @id
+  revision  BigInt @default(0)
+}
+
 // 正式经营事实信封只允许追加；更正和冲销通过新增事实引用原事实。
 model OperatingFact {
   id                                   String   @id @default(uuid())

@@ -221,6 +221,10 @@ fi
 
 cd "$repo_root"
 DATABASE_URL="$database_migration_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
+DATABASE_OWNER_URL="$database_migration_url" \
+  OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
+  ALLOW_PROJECT_PARTICIPANT_FENCE_ROLE_GRANT=true \
+  "$repo_root/scripts/ops/grant-project-participating-company-fence-runtime-role.sh"
 DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
   "$repo_root/scripts/ops/verify-operating-ledger-runtime-role.sh"
 ROOT_MIGRATION

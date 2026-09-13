@@ -4973,8 +4973,8 @@ describe("SpotProcurementPaymentService", () => {
     }
   );
 
-  it.each(["40001", "40P01"])(
-    "normalizes raw PostgreSQL P2010/%s to the same concurrency conflict",
+  it.each(["40001"])(
+    "maps raw PostgreSQL P2010/%s to the fixed concurrency conflict",
     async (postgresCode) => {
       const { service, prisma } = harness();
       prisma.$transaction.mockRejectedValueOnce({
@@ -4993,8 +4993,8 @@ describe("SpotProcurementPaymentService", () => {
     }
   );
 
-  it.each(["40001", "40P01"])(
-    "normalizes actual-payment P2010/%s to the fixed execution concurrency conflict",
+  it.each(["40001"])(
+    "maps actual-payment P2010/%s to the fixed execution concurrency conflict",
     async (postgresCode) => {
       const current = executionHarness();
       current.prisma.$transaction.mockRejectedValueOnce({
@@ -5016,4 +5016,35 @@ describe("SpotProcurementPaymentService", () => {
       );
     }
   );
+
+  it("preserves explicit PostgreSQL deadlocks instead of mapping or retrying them", async () => {
+    for (const deadlock of [
+      {
+        code: "P2010",
+        meta: { code: "40P01", message: "deadlock detected" }
+      },
+      {
+        code: "P2034",
+        meta: { sqlstate: "40P01", message: "deadlock detected" }
+      }
+    ]) {
+      const submit = harness();
+      submit.prisma.$transaction.mockRejectedValueOnce(deadlock);
+      await expect(
+        submit.service.submit("payment-1", "material-1")
+      ).rejects.toBe(deadlock);
+      expect(submit.prisma.$transaction).toHaveBeenCalledTimes(1);
+
+      const execution = executionHarness();
+      execution.prisma.$transaction.mockRejectedValueOnce(deadlock);
+      await expect(
+        execution.service.recordExecution(
+          "payment-1",
+          "finance-1",
+          validExecutionInput()
+        )
+      ).rejects.toBe(deadlock);
+      expect(execution.prisma.$transaction).toHaveBeenCalledTimes(1);
+    }
+  });
 });

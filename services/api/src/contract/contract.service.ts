@@ -78,6 +78,7 @@ import {
   resolveCurrentProjectAffiliate,
   type ContractSigningSubjectType
 } from "../project/project-affiliate-subject";
+import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
 import {
   loadContractOwnerRisk,
   type ContractOwnerRisk
@@ -3296,7 +3297,8 @@ export class ContractService {
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
+    return translateProjectOperatingSerializationConflict(
+      this.prisma.$transaction(async (tx) => {
       const target = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
@@ -3363,8 +3365,10 @@ export class ContractService {
         }
       });
 
-      return effectiveVersion;
-    });
+        return effectiveVersion;
+      }),
+      "合同归档生效遇到参与公司并发变化，请刷新后重试"
+    );
   }
 
   private async assertStructuredSettlementPaymentStage(

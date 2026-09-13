@@ -14,6 +14,7 @@ import { AuditService } from "../audit/audit.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { isPostgresSerializationFailure } from "./project-operating-constraint";
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding
@@ -363,6 +364,11 @@ export class ProjectAffiliateCompanyContractService {
         return toReadModel(confirmed, roles);
       });
     } catch (error) {
+      if (isPostgresSerializationFailure(error)) {
+        throw new ConflictException(
+          "线下合同确认遇到参与公司并发变化，请刷新后重试"
+        );
+      }
       if (!isUniqueConstraintError(error)) throw error;
       const replay =
         await this.prisma.projectAffiliateCompanyContract.findUnique({

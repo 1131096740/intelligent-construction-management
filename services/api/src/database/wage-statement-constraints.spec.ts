@@ -572,6 +572,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       sourceInput,
       "100000"
     );
+    await seedFallbackProjectParticipant(first, fixture);
     await first.projectParticipatingCompany.delete({ where: { id: fixture.participantId } });
 
     await expect(service.confirm(fixture.confirmerUserId, draftResult.statementId, {
@@ -2603,6 +2604,51 @@ async function seedCanonicalWageFixture(client: PrismaClient) {
     data: { id: fixture.evidenceFileId, bucket: "local-test", objectKey: `${prefix}/approved-wage.json`, originalName: "外部批准工资资料.json", mimeType: "application/json", sizeBytes: 1, uploadedByUserId: fixture.preparerUserId, contentSha256: "a".repeat(64), storageStatus: "active" }
   });
   return fixture;
+}
+
+async function seedFallbackProjectParticipant(
+  client: PrismaClient,
+  fixture: Awaited<ReturnType<typeof seedCanonicalWageFixture>>
+) {
+  const companyId = `${fixture.prefix}-fallback-company`;
+  const companyVersionId = `${companyId}-v1`;
+  const creditCode = `91510000${fixture.prefix.slice(-10)}`;
+  await client.companyEntity.create({
+    data: {
+      id: companyId,
+      name: "测试兜底参与公司",
+      unifiedSocialCreditCode: creditCode,
+      dataStatus: "complete",
+      currentVersionNo: 1,
+      isActive: true
+    }
+  });
+  await client.companyEntityVersion.create({
+    data: {
+      id: companyVersionId,
+      companyEntityId: companyId,
+      versionNo: 1,
+      name: "测试兜底参与公司",
+      unifiedSocialCreditCode: creditCode,
+      isActive: true,
+      action: "create",
+      actorUserId: fixture.preparerUserId,
+      actorRoleKey: "finance_staff"
+    }
+  });
+  await client.projectParticipatingCompany.create({
+    data: {
+      id: `${fixture.prefix}-fallback-participant`,
+      projectId: fixture.projectId,
+      companyEntityId: companyId,
+      companyEntityVersionId: companyVersionId,
+      companyNameSnapshot: "测试兜底参与公司",
+      companyCreditCodeSnapshot: creditCode,
+      effectiveFrom: new Date("2026-08-01T00:00:00.000Z"),
+      changeReason: "验证工资项目上下文失败回滚",
+      addedByUserId: fixture.preparerUserId
+    }
+  });
 }
 
 async function seedAdditionalProjectContext(

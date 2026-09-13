@@ -135,7 +135,8 @@ export class ProjectOperatingProfileService {
     return translateOperatingProfileConstraint(
       this.prisma.$transaction((tx) =>
         this.updateProfileInTransaction(tx, projectId, actorUserId, input)
-      )
+      ),
+      { mapSerializationConflict: true }
     );
   }
 
@@ -146,7 +147,8 @@ export class ProjectOperatingProfileService {
     input: UpdateProjectOperatingProfileInput
   ) {
     return translateOperatingProfileConstraint(
-      this.updateProfileInTransactionRaw(tx, projectId, actorUserId, input)
+      this.updateProfileInTransactionRaw(tx, projectId, actorUserId, input),
+      { mapSerializationConflict: true }
     );
   }
 
@@ -316,10 +318,11 @@ export class ProjectOperatingProfileService {
           id: string;
           projectId: string;
           companyEntityId: string;
+          companyEntityVersionId: string;
           endedAt: Date | null;
         }>
       >(Prisma.sql`
-        SELECT "id", "projectId", "companyEntityId", "endedAt"
+        SELECT "id", "projectId", "companyEntityId", "companyEntityVersionId", "endedAt"
         FROM "ProjectParticipatingCompany"
         WHERE "id" = ${participantId} AND "projectId" = ${projectId}
         FOR UPDATE
@@ -328,7 +331,10 @@ export class ProjectOperatingProfileService {
         throw new NotFoundException("项目参与公司不存在，请刷新后重试");
       }
 
-      const [formalFactResult] = await tx.$queryRaw<Array<{ hasFormalFacts: boolean }>>(
+      const [formalFactResult] = await tx.$queryRaw<Array<{
+        hasFormalFacts: boolean;
+        breaksLedgerCoverage: boolean;
+      }>>(
         Prisma.sql`
           SELECT (
             EXISTS (
@@ -380,13 +386,25 @@ export class ProjectOperatingProfileService {
                 AND payment."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
                 AND payment."payerCompanyEntityId" = ${participant.companyEntityId}
             )
-          ) AS "hasFormalFacts"
+            OR "hasProjectParticipatingCompanyOperatingReferences"(
+              ${projectId},
+              ${participant.companyEntityId},
+              ${participant.companyEntityVersionId}
+            )
+          ) AS "hasFormalFacts",
+          NOT "hasProjectParticipatingCompanyCoverage"(
+            ${projectId},
+            ${participantId}
+          ) AS "breaksLedgerCoverage"
         `
       );
       if (formalFactResult?.hasFormalFacts) {
         throw new BadRequestException(
           "该公司已有正式经营事实，只能停止新增业务，不能删除"
         );
+      }
+      if (formalFactResult?.breaksLedgerCoverage) {
+        throw new BadRequestException("启用经营账前必须至少设置一家我方参与公司");
       }
 
       await tx.projectParticipatingCompany.delete({ where: { id: participant.id } });
@@ -398,7 +416,7 @@ export class ProjectOperatingProfileService {
         metadata: { projectId, companyEntityId: participant.companyEntityId }
       });
       return { removed: true, participantId: participant.id };
-    }));
+    }), { mapSerializationConflict: true });
   }
 
   async deactivateParticipatingCompany(
@@ -420,11 +438,12 @@ export class ProjectOperatingProfileService {
           id: string;
           projectId: string;
           companyEntityId: string;
+          companyEntityVersionId: string;
           effectiveFrom: Date;
           endedAt: Date | null;
         }>
       >(Prisma.sql`
-        SELECT "id", "projectId", "companyEntityId", "effectiveFrom", "endedAt"
+        SELECT "id", "projectId", "companyEntityId", "companyEntityVersionId", "effectiveFrom", "endedAt"
         FROM "ProjectParticipatingCompany"
         WHERE "id" = ${participantId} AND "projectId" = ${projectId}
         FOR UPDATE
@@ -437,6 +456,20 @@ export class ProjectOperatingProfileService {
       }
       if (endedAt.getTime() < participant.effectiveFrom.getTime()) {
         throw new BadRequestException("停止新增业务日期不能早于参与公司生效日");
+      }
+
+      const [ledgerCoverage] = await tx.$queryRaw<Array<{ breaksLedgerCoverage: boolean }>>(
+        Prisma.sql`
+          SELECT NOT "hasProjectParticipatingCompanyCoverage"(
+            ${projectId},
+            ${participant.id},
+            ${participant.effectiveFrom}::date,
+            ${endedAt}::date
+          ) AS "breaksLedgerCoverage"
+        `
+      );
+      if (ledgerCoverage?.breaksLedgerCoverage) {
+        throw new BadRequestException("启用经营账前必须至少设置一家我方参与公司");
       }
 
       const [laterFact] = await tx.$queryRaw<Array<{ occurredAt: Date }>>(Prisma.sql`
@@ -457,8 +490,15 @@ export class ProjectOperatingProfileService {
           UNION ALL SELECT COALESCE(payment."approvedAt", payment."createdAt") FROM "SpotProcurementPayment" payment
             WHERE payment."projectId" = ${projectId} AND payment."payerCompanyEntityId" = ${participant.companyEntityId}
               AND payment."invalidatedAt" IS NULL AND payment."status" IN ('approved_pending_payment','partially_paid','paid')
+          UNION ALL SELECT ${endedAt}::timestamp
+            WHERE "hasProjectParticipatingCompanyOperatingReferences"(
+              ${projectId},
+              ${participant.companyEntityId},
+              ${participant.companyEntityVersionId},
+              ${endedAt}::timestamp
+            )
         ) fact
-        WHERE fact."occurredAt"::DATE >= ${endedAt}::DATE
+        WHERE fact."occurredAt" >= ${endedAt}::timestamp
         LIMIT 1
       `);
       if (laterFact) {
@@ -482,7 +522,7 @@ export class ProjectOperatingProfileService {
         }
       });
       return toParticipatingCompanyReadModel(updated);
-    }));
+    }), { mapSerializationConflict: true });
   }
 
   private async assertProjectFinanceManager(

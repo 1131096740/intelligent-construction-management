@@ -354,6 +354,7 @@ describe("ProjectOperatingProfileService", () => {
           id: "participant-1",
           projectId: "project-1",
           companyEntityId: "company-1",
+          companyEntityVersionId: "company-version-1",
           endedAt: null
         }])
         .mockResolvedValueOnce([{ hasFormalFacts: true }]),
@@ -374,7 +375,13 @@ describe("ProjectOperatingProfileService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
       position: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
-        .mockResolvedValueOnce([{ id: "participant-1", projectId: "project-1", companyEntityId: "company-1", endedAt: null }])
+        .mockResolvedValueOnce([{
+          id: "participant-1",
+          projectId: "project-1",
+          companyEntityId: "company-1",
+          companyEntityVersionId: "company-version-1",
+          endedAt: null
+        }])
         .mockResolvedValueOnce([{ hasFormalFacts: true }]),
       projectParticipatingCompany: { delete: jest.fn() }
     };
@@ -386,6 +393,35 @@ describe("ProjectOperatingProfileService", () => {
     expect(factQuery).toContain("ExpenseClaim");
     expect(factQuery).toContain("PaymentExecution");
     expect(factQuery).toContain("SpotProcurementPayment");
+    expect(factQuery).toContain("hasProjectParticipatingCompanyOperatingReferences");
+    expect(factQuery).toContain("company-version-1");
+  });
+
+  it("does not delete the last participant covering an enabled ledger effective date", async () => {
+    const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{
+          id: "participant-1",
+          projectId: "project-1",
+          companyEntityId: "company-1",
+          companyEntityVersionId: "company-version-1",
+          endedAt: null
+        }])
+        .mockResolvedValueOnce([{ hasFormalFacts: false, breaksLedgerCoverage: true }]),
+      projectParticipatingCompany: { delete: jest.fn() }
+    };
+    const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
+
+    await expect(service.removeParticipatingCompany("project-1", "participant-1", "finance-1"))
+      .rejects.toThrow("启用经营账前必须至少设置一家我方参与公司");
+    expect(tx.projectParticipatingCompany.delete).not.toHaveBeenCalled();
+    const guardQuery = JSON.stringify(tx.$queryRaw.mock.calls[1][0]);
+    expect(guardQuery).toContain("hasProjectParticipatingCompanyCoverage");
+    expect(guardQuery).not.toContain("other_participant");
   });
 
   it("schedules the stop date without deleting the participating-company history", async () => {
@@ -404,9 +440,11 @@ describe("ProjectOperatingProfileService", () => {
           id: "participant-1",
           projectId: "project-1",
           companyEntityId: "company-1",
+          companyEntityVersionId: "company-version-1",
           effectiveFrom: new Date("2026-08-12T00:00:00.000Z"),
           endedAt: null
         }])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]),
       projectParticipatingCompany: {
         update: jest.fn().mockResolvedValue({
@@ -444,6 +482,44 @@ describe("ProjectOperatingProfileService", () => {
       }
     });
     expect(tx.projectParticipatingCompany).not.toHaveProperty("delete");
+    const laterFactQuery = JSON.stringify(tx.$queryRaw.mock.calls[3][0]);
+    expect(laterFactQuery).toContain("hasProjectParticipatingCompanyOperatingReferences");
+    expect(laterFactQuery).toContain("company-version-1");
+    expect(laterFactQuery).toContain('fact.\\"occurredAt\\" >=');
+    expect(laterFactQuery).not.toContain('fact.\\"occurredAt\\"::DATE');
+  });
+
+  it("does not end the last participant across an enabled ledger effective date", async () => {
+    const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "project-1" }])
+        .mockResolvedValueOnce([{
+          id: "participant-1",
+          projectId: "project-1",
+          companyEntityId: "company-1",
+          companyEntityVersionId: "company-version-1",
+          effectiveFrom: new Date("2026-08-01T00:00:00.000Z"),
+          endedAt: null
+        }])
+        .mockResolvedValueOnce([{ breaksLedgerCoverage: true }]),
+      projectParticipatingCompany: { update: jest.fn() }
+    };
+    const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
+
+    await expect(service.deactivateParticipatingCompany(
+      "project-1",
+      "participant-1",
+      "finance-1",
+      { endedOn: "2026-08-10", changeReason: "停止" }
+    )).rejects.toThrow("启用经营账前必须至少设置一家我方参与公司");
+    expect(tx.projectParticipatingCompany.update).not.toHaveBeenCalled();
+    const guardQuery = JSON.stringify(tx.$queryRaw.mock.calls[2][0]);
+    expect(guardQuery).toContain("hasProjectParticipatingCompanyCoverage");
+    expect(guardQuery).not.toContain("other_participant");
   });
 
   it("marks a participant inactive from the start of its Shanghai business stop date", async () => {

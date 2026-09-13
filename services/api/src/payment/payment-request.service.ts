@@ -41,6 +41,10 @@ import { fundExecutionSelectionRefFingerprint } from "../fund-execution/fund-exe
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
 import {
+  isPostgresSerializationFailure,
+  postgresSqlState
+} from "../project/project-operating-constraint";
+import {
   missingOperatingSourceReplayService,
   OperatingSourceReplayService,
   type OperatingSourceAppendPort
@@ -3469,7 +3473,9 @@ export class PaymentRequestService {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = paymentPrismaErrorCode(error);
-      if (code === "P2002" || code === "P2034") {
+      const serializationConflict =
+        code === "P2034" || isPostgresSerializationFailure(error);
+      if (code === "P2002" || serializationConflict) {
         const concurrentExecution = await this.resolveConcurrentPaymentExecution({
           paymentId,
           actorUserId,
@@ -3487,7 +3493,7 @@ export class PaymentRequestService {
             : paymentPostResponseToApi(concurrentExecution);
         }
         throw new ConflictException(
-          code === "P2034"
+          serializationConflict
             ? "实际付款并发冲突，请刷新后重试"
             : "实际付款唯一事实已变化，请刷新后重试"
         );
@@ -4522,18 +4528,10 @@ export class PaymentRequestService {
 }
 
 function paymentPrismaErrorCode(error: unknown): string | undefined {
+  const sqlState = postgresSqlState(error);
+  if (sqlState) return sqlState;
   if (!error || typeof error !== "object") return undefined;
   const code = (error as { code?: unknown }).code;
-  if (code === "P2010") {
-    const meta = (error as { meta?: unknown }).meta;
-    if (meta && typeof meta === "object") {
-      const postgresCode = (meta as { code?: unknown }).code;
-      if (["40001", "40P01"].includes(String(postgresCode))) {
-        return "P2034";
-      }
-    }
-  }
-  if (code === "40P01") return "P2034";
   return typeof code === "string" ? code : undefined;
 }
 
