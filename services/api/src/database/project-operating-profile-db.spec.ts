@@ -302,6 +302,7 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
       operatingLedgerEffectiveDate: "2026-08-01",
       participant: true
     });
+    await addFallbackParticipant(prisma, fixture);
     await createExpenseClaim(prisma, fixture, {
       status: "approved_pending_payment",
       occurredOn: "2026-08-12"
@@ -318,6 +319,7 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
       operatingLedgerEffectiveDate: "2026-08-01",
       participant: true
     });
+    await addFallbackParticipant(prisma, fixture);
     await createExpenseClaim(prisma, fixture, {
       status: "approved_pending_payment",
       occurredOn: "2026-08-12"
@@ -390,6 +392,7 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
       operatingLedgerEffectiveDate: "2026-08-01",
       participant: true
     });
+    await addFallbackParticipant(prisma, fixture);
     const factClient = new PrismaClient({ datasources: { db: { url: databaseUrl! } } });
     const stopClient = new PrismaClient({ datasources: { db: { url: databaseUrl! } } });
     const factInserted = deferred<void>();
@@ -635,6 +638,7 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
       operatingLedgerEffectiveDate: "2026-08-01",
       participant: true
     });
+    await addFallbackParticipant(prisma, later);
     await new OperatingLedgerService(prisma as never).appendFromSource(
       participantFactInput(later, "later-end", "costBearingCompany", later.company.versionId),
       later.financeUserId
