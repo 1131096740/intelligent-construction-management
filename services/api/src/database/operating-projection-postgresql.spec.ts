@@ -597,6 +597,65 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     expect(JSON.stringify(items)).not.toContain("sourceSnapshot");
   });
 
+  it("以窄列跨越稀疏筛选的内部批次且保持公开明细响应不变", async () => {
+    const noiseSourceType = `detail_noise_${runId}`;
+    const targetSourceType = `detail_target_${runId}`;
+    await append(noiseSourceType, {
+      factKind: "owner_settlement",
+      amountCents: 200n,
+      direction: "inflow",
+      occurredAt: new Date("2026-09-04T08:00:00.000Z"),
+      subjects: {
+        debtor: { kind: "owner", id: `detail-noise-owner-${runId}` },
+        creditor: enterprise
+      },
+      impacts: Array.from({ length: 200 }, (_value, index) => impact(
+        `detail-noise-${String(index).padStart(3, "0")}`,
+        "confirmed_income",
+        1n,
+        "increase"
+      ))
+    });
+    await append(targetSourceType, {
+      factKind: "owner_settlement",
+      amountCents: 9n,
+      direction: "inflow",
+      occurredAt: new Date("2026-09-03T08:00:00.000Z"),
+      subjects: {
+        debtor: { kind: "owner", id: `detail-target-owner-${runId}` },
+        creditor: enterprise
+      },
+      impacts: [impact("detail-target", "confirmed_income", 9n, "increase")]
+    });
+    const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
+    try {
+      const result = await projection.getProjectDetailPage(READER_ID, {
+        projectId: PROJECT_ID,
+        sourceType: targetSourceType,
+        pageSize: 1
+      });
+
+      expect(result.items).toEqual([expect.objectContaining({
+        sourceTypeLabel: "其他正式来源",
+        signedImpactCents: "9"
+      })]);
+      expect(JSON.stringify(result.items)).not.toContain("sourceSnapshot");
+      expect(JSON.stringify(result.items)).not.toContain("subjectSnapshot");
+      const detailQueries = detailRead.mock.calls
+        .map(([query]) => query)
+        .filter(isDetailFindManyQuery);
+      expect(detailQueries.length).toBeGreaterThanOrEqual(2);
+      expect(detailQueries.every((query) =>
+        !Object.hasOwn(query.select.fact.select, "sourceSnapshot") &&
+        !Object.hasOwn(query.select.fact.select, "subjectSnapshot") &&
+        !Object.hasOwn(query.select, "impactSnapshot") &&
+        !Object.hasOwn(query.select, "description")
+      )).toBe(true);
+    } finally {
+      detailRead.mockRestore();
+    }
+  });
+
   it("以上游资金 V2 指纹稳定分页，并在 20,001 行内验证有界快照", async () => {
     const occurredAt = new Date("2026-09-11T12:00:00.000Z");
     const createdAt = new Date("2026-09-10T12:00:00.000Z");
@@ -1009,65 +1068,6 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       expect(factRead).not.toHaveBeenCalled();
     } finally {
       factRead.mockRestore();
-    }
-  });
-
-  it("以窄列跨越稀疏筛选的内部批次且保持公开明细响应不变", async () => {
-    const noiseSourceType = `detail_noise_${runId}`;
-    const targetSourceType = `detail_target_${runId}`;
-    await append(noiseSourceType, {
-      factKind: "owner_settlement",
-      amountCents: 200n,
-      direction: "inflow",
-      occurredAt: new Date("2026-09-04T08:00:00.000Z"),
-      subjects: {
-        debtor: { kind: "owner", id: `detail-noise-owner-${runId}` },
-        creditor: enterprise
-      },
-      impacts: Array.from({ length: 200 }, (_value, index) => impact(
-        `detail-noise-${String(index).padStart(3, "0")}`,
-        "confirmed_income",
-        1n,
-        "increase"
-      ))
-    });
-    await append(targetSourceType, {
-      factKind: "owner_settlement",
-      amountCents: 9n,
-      direction: "inflow",
-      occurredAt: new Date("2026-09-03T08:00:00.000Z"),
-      subjects: {
-        debtor: { kind: "owner", id: `detail-target-owner-${runId}` },
-        creditor: enterprise
-      },
-      impacts: [impact("detail-target", "confirmed_income", 9n, "increase")]
-    });
-    const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
-    try {
-      const result = await projection.getProjectDetailPage(READER_ID, {
-        projectId: PROJECT_ID,
-        sourceType: targetSourceType,
-        pageSize: 1
-      });
-
-      expect(result.items).toEqual([expect.objectContaining({
-        sourceTypeLabel: "其他正式来源",
-        signedImpactCents: "9"
-      })]);
-      expect(JSON.stringify(result.items)).not.toContain("sourceSnapshot");
-      expect(JSON.stringify(result.items)).not.toContain("subjectSnapshot");
-      const detailQueries = detailRead.mock.calls
-        .map(([query]) => query)
-        .filter(isDetailFindManyQuery);
-      expect(detailQueries.length).toBeGreaterThanOrEqual(2);
-      expect(detailQueries.every((query) =>
-        !Object.hasOwn(query.select.fact.select, "sourceSnapshot") &&
-        !Object.hasOwn(query.select.fact.select, "subjectSnapshot") &&
-        !Object.hasOwn(query.select, "impactSnapshot") &&
-        !Object.hasOwn(query.select, "description")
-      )).toBe(true);
-    } finally {
-      detailRead.mockRestore();
     }
   });
 
