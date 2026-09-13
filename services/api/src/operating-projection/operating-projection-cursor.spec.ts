@@ -118,6 +118,83 @@ describe("OperatingProjectionCursorCodec", () => {
     })).toThrow(BadRequestException);
   });
 
+  it("rejects non-string and overlong cursor input before decoding", () => {
+    const codec = new OperatingProjectionCursorCodec("test-secret", () => now);
+    const binding = { actorUserId: "user-1", scope, pageSize: 50 };
+
+    expect(() => codec.read(["not-a-string"], binding)).toThrow(BadRequestException);
+    expect(() => codec.read("x".repeat(2_049), binding)).toThrow(BadRequestException);
+  });
+
+  it.each([
+    ["overlong actor", { actorUserId: "u".repeat(257) }],
+    ["overlong requested date", { requestedAsOf: "d".repeat(257) }],
+    ["non-ISO read date", { readAt: "2026-09-12" }],
+    ["overlong fact id", {
+      position: {
+        phase: "facts",
+        occurredAt: "2026-09-11T01:00:00.000Z",
+        impactId: "i".repeat(257)
+      }
+    }],
+    ["non-ISO fact date", {
+      position: { phase: "facts", occurredAt: "2026-09-11", impactId: "impact-1" }
+    }],
+    ["invalid risk project id type", {
+      position: { phase: "risks", projectId: 42 }
+    }],
+    ["overlong risk case id", {
+      position: { phase: "risks", clearingCaseId: "c".repeat(257) }
+    }],
+    ["unsafe risk offset", {
+      position: { phase: "risks", itemOffset: Number.MAX_SAFE_INTEGER + 1 }
+    }]
+  ])("rejects invalid claims on issue: %s", (_label, override) => {
+    const codec = new OperatingProjectionCursorCodec("test-secret", () => now);
+    expect(() => codec.issue({
+      actorUserId: "user-1",
+      requestedAsOf: null,
+      requestScope: scope,
+      scope,
+      projectionContextFingerprint: "e".repeat(64),
+      readAt: now.toISOString(),
+      cutoffAt: now.toISOString(),
+      pageSize: 50,
+      position: { phase: "done" },
+      ...override
+    } as never)).toThrow(BadRequestException);
+  });
+
+  it("accepts the frozen fact/risk position boundaries and emits at most 2048 characters", () => {
+    const codec = new OperatingProjectionCursorCodec("test-secret", () => now);
+    for (const position of [
+      {
+        phase: "facts" as const,
+        occurredAt: "2026-09-11T01:00:00.000Z",
+        impactId: "i".repeat(256)
+      },
+      {
+        phase: "risks" as const,
+        projectId: "p".repeat(256),
+        clearingCaseId: "c".repeat(256),
+        itemOffset: Number.MAX_SAFE_INTEGER
+      }
+    ]) {
+      const token = codec.issue({
+        actorUserId: "user-1",
+        requestedAsOf: null,
+        requestScope: scope,
+        scope,
+        projectionContextFingerprint: "f".repeat(64),
+        readAt: now.toISOString(),
+        cutoffAt: now.toISOString(),
+        pageSize: 50,
+        position
+      });
+      expect(token.length).toBeLessThanOrEqual(2_048);
+    }
+  });
+
   it("compares fixed-length projection context fingerprints", () => {
     const left = projectionContextFingerprint({ projects: [{ id: "project-1" }] });
     const same = projectionContextFingerprint({ projects: [{ id: "project-1" }] });

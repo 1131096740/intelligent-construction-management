@@ -48,6 +48,8 @@ const PROJECT_QUERY_BATCH_SIZE = 100;
 const DATABASE_IN_BATCH_SIZE = 1_000;
 const OPERATING_FACT_BATCH_SIZE = 500;
 const OPERATING_IMPACT_BATCH_SIZE = 2_000;
+const DETAIL_IMPACT_SCAN_BATCH_SIZE = 200;
+const MAX_DETAIL_SCAN_SNAPSHOT_BYTES = 8 * 1024 * 1024;
 const CLEARING_CASE_BATCH_SIZE = 25;
 const MAX_RESTRICTION_INTEGRITY_FACTS = 20_000;
 const MAX_RESTRICTION_INTEGRITY_IMPACTS = 40_000;
@@ -84,7 +86,15 @@ export interface AsOfProjectionQuery extends ProjectionFilters {
 
 export interface ProjectionDetailPageQuery {
   cursor?: string;
-  pageSize?: number;
+  pageSize?: number | string;
+}
+
+export interface AsOfProjectionDetailQuery extends ProjectionFilters, ProjectionDetailPageQuery {
+  scopeKind: string;
+  projectId?: string;
+  projectIds?: string | string[];
+  companyEntityId?: string;
+  asOf?: string;
 }
 
 type ProjectionReadContext = {
@@ -186,53 +196,69 @@ export class OperatingProjectionService {
     actorUserId: string,
     input: ProjectProjectionQuery & ProjectionDetailPageQuery
   ) {
-    const projectId = required(input.projectId, "项目标识不能为空");
-    return this.readDetailPage(actorUserId, {
-      scope: { kind: "project", projectId, filters: projectionFilters(input) },
-      asOf: input.asOf,
-      cursor: input.cursor,
-      pageSize: input.pageSize
-    });
+    const releaseReadSlot = this.readLimiter.acquire(actorUserId);
+    try {
+      const projectId = required(input.projectId, "项目标识不能为空");
+      return await this.readDetailPageWithAcquiredSlot(actorUserId, {
+        scope: { kind: "project", projectId, filters: projectionFilters(input) },
+        asOf: input.asOf,
+        cursor: input.cursor,
+        pageSize: input.pageSize
+      });
+    } finally {
+      releaseReadSlot();
+    }
   }
 
   async getCompanyDetailPage(
     actorUserId: string,
     input: CompanyProjectionQuery & ProjectionDetailPageQuery
   ) {
-    const companyEntityId = required(input.companyEntityId, "公司主体标识不能为空");
-    return this.readDetailPage(actorUserId, {
-      scope: {
-        kind: "company",
-        companyEntityId,
-        filters: { ...projectionFilters(input), companyEntityId }
-      },
-      asOf: input.asOf,
-      cursor: input.cursor,
-      pageSize: input.pageSize
-    });
+    const releaseReadSlot = this.readLimiter.acquire(actorUserId);
+    try {
+      const companyEntityId = required(input.companyEntityId, "公司主体标识不能为空");
+      return await this.readDetailPageWithAcquiredSlot(actorUserId, {
+        scope: {
+          kind: "company",
+          companyEntityId,
+          filters: { ...projectionFilters(input), companyEntityId }
+        },
+        asOf: input.asOf,
+        cursor: input.cursor,
+        pageSize: input.pageSize
+      });
+    } finally {
+      releaseReadSlot();
+    }
   }
 
   async getAsOfDetailPage(
     actorUserId: string,
-    input: AsOfProjectionQuery & ProjectionDetailPageQuery
+    input: AsOfProjectionDetailQuery
   ) {
-    return this.readDetailPage(actorUserId, {
-      ...asOfProjectionInput(actorUserId, input),
-      cursor: input.cursor,
-      pageSize: input.pageSize
-    });
+    const releaseReadSlot = this.readLimiter.acquire(actorUserId);
+    try {
+      const normalizedInput = normalizeAsOfProjectionDetailQuery(input);
+      return await this.readDetailPageWithAcquiredSlot(actorUserId, {
+        ...asOfProjectionInput(actorUserId, normalizedInput),
+        cursor: input.cursor,
+        pageSize: input.pageSize
+      });
+    } finally {
+      releaseReadSlot();
+    }
   }
 
-  private async readDetailPage(
+  private async readDetailPageWithAcquiredSlot(
     actorUserId: string,
     input: {
       scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
       asOf?: string;
       cursor?: string;
-      pageSize?: number;
+      pageSize?: number | string;
     }
   ) {
-    const pageSize = input.pageSize ?? 50;
+    const pageSize = projectionDetailPageSize(input.pageSize);
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
       throw new BadRequestException("经营投影明细每页条数必须是 1 到 200 的整数");
     }
@@ -245,7 +271,7 @@ export class OperatingProjectionService {
           asOf: input.asOf
         })
       : null;
-    const bundle = await this.readProjectionBundle({
+    const bundle = await this.readProjectionBundleWithAcquiredSlot({
       actorUserId,
       scope: input.scope,
       asOf: input.asOf,
@@ -562,6 +588,30 @@ export class OperatingProjectionService {
     additional: T;
   }> {
     const releaseReadSlot = this.readLimiter.acquire(input.actorUserId);
+    try {
+      return await this.readProjectionBundleWithAcquiredSlot(input, readAdditional);
+    } finally {
+      releaseReadSlot();
+    }
+  }
+
+  private async readProjectionBundleWithAcquiredSlot<T = undefined>(input: {
+    actorUserId: string;
+    scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
+    asOf?: string;
+    requireDetailPermission?: boolean;
+    requireOverviewPermission?: boolean;
+    collectSourceReferenceTotals?: boolean;
+    fixedReadAt?: Date;
+    fixedCutoffAt?: Date;
+  }, readAdditional?: (
+    tx: Prisma.TransactionClient,
+    projectIds: string[],
+    context: ProjectionReadContext
+  ) => Promise<T>): Promise<{
+    projection: OperatingProjectionReadModel;
+    additional: T;
+  }> {
     try {
       return await this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
@@ -1094,8 +1144,6 @@ export class OperatingProjectionService {
         );
       }
       throw error;
-    } finally {
-      releaseReadSlot();
     }
   }
 
@@ -1229,6 +1277,49 @@ export class OperatingProjectionService {
 
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<Record<string, never>>;
 type StoredOperatingImpact = Prisma.OperatingImpactEntryGetPayload<Record<string, never>>;
+type DetailStoredFact = Pick<StoredOperatingFact,
+  "id" |
+  "projectId" |
+  "sourceType" |
+  "sourceBusinessId" |
+  "sourceVersion" |
+  "sourceBusinessCode" |
+  "occurredAt" |
+  "confirmedAt" |
+  "affiliateBusinessPartyVersionId" |
+  "affiliateNameSnapshot" |
+  "factKind" |
+  "operatingLevel" |
+  "evidenceLevel" |
+  "amountCents" |
+  "direction" |
+  "entryKind" |
+  "adjustsFactId" |
+  "debtorSubjectKind" |
+  "debtorSubjectId" |
+  "creditorSubjectKind" |
+  "creditorSubjectId" |
+  "approvedPayerSubjectKind" |
+  "approvedPayerSubjectId" |
+  "actualPayerSubjectKind" |
+  "actualPayerSubjectId" |
+  "payeeSubjectKind" |
+  "payeeSubjectId" |
+  "costBearingCompanySubjectKind" |
+  "costBearingCompanySubjectId"
+> & Partial<Pick<StoredOperatingFact, "sourceSnapshot" | "subjectSnapshot">>;
+type DetailStoredImpact = Pick<StoredOperatingImpact,
+  "id" |
+  "impactKind" |
+  "amountCents" |
+  "direction" |
+  "subjectKind" |
+  "subjectId" |
+  "costCategoryCode" |
+  "fundPurpose"
+>;
+type ProjectionStoredFact = Omit<DetailStoredFact, "sourceSnapshot" | "subjectSnapshot"> &
+  Pick<StoredOperatingFact, "sourceSnapshot" | "subjectSnapshot">;
 
 type ReplacementCoordinate = {
   operatingImpactEntryId: string;
@@ -1521,6 +1612,42 @@ function restrictionFactSubjectSql(
   )`;
 }
 
+async function preflightDetailSnapshotPageResources(
+  tx: Prisma.TransactionClient,
+  context: ProjectionReadContext,
+  after: Extract<OperatingProjectionCursorPosition, { phase: "facts" }> | null
+): Promise<void> {
+  if (!context.scope.projectIds.length) return;
+  const afterSql = after
+    ? Prisma.sql`AND (
+        fact."occurredAt" < ${new Date(after.occurredAt)} OR
+        (fact."occurredAt" = ${new Date(after.occurredAt)} AND impact.id > ${after.impactId})
+      )`
+    : Prisma.empty;
+  const result = (await tx.$queryRaw<Array<{ snapshotBytes: bigint }>>(Prisma.sql`
+    SELECT COALESCE(SUM(candidate."snapshotBytes"), 0)::bigint AS "snapshotBytes"
+    FROM (
+      SELECT
+        COALESCE(octet_length(fact."sourceSnapshot"::text), 0) +
+        COALESCE(octet_length(fact."subjectSnapshot"::text), 0) AS "snapshotBytes"
+      FROM "OperatingImpactEntry" impact
+      INNER JOIN "OperatingFact" fact ON fact.id = impact."factId"
+      WHERE impact."createdAt" <= ${context.readAt}
+        AND fact."projectId" IN (${Prisma.join(context.scope.projectIds)})
+        AND fact.status = 'confirmed'
+        AND fact."occurredAt" <= ${context.cutoffAt}
+        AND fact."confirmedAt" <= ${context.readAt}
+        AND fact."createdAt" <= ${context.readAt}
+        ${afterSql}
+      ORDER BY fact."occurredAt" DESC, impact.id ASC
+      LIMIT ${DETAIL_IMPACT_SCAN_BATCH_SIZE}
+    ) candidate
+  `))[0];
+  if ((result?.snapshotBytes ?? 0n) > BigInt(MAX_DETAIL_SCAN_SNAPSHOT_BYTES)) {
+    throw new ProjectionResourceBudgetExceededError();
+  }
+}
+
 async function readFactDetailPageInTransaction(
   tx: Prisma.TransactionClient,
   context: ProjectionReadContext,
@@ -1528,8 +1655,16 @@ async function readFactDetailPageInTransaction(
   pageSize: number
 ): Promise<{ items: Array<Record<string, unknown>>; nextPosition: OperatingProjectionCursorPosition | null }> {
   const items: Array<Record<string, unknown>> = [];
+  const needsSubjectSnapshots = Boolean(
+    context.scope.filters?.constructionEnterpriseId ||
+      context.scope.filters?.companyEntityId ||
+      context.scope.filters?.counterpartyId
+  );
   let after = position;
   for (;;) {
+    if (needsSubjectSnapshots) {
+      await preflightDetailSnapshotPageResources(tx, context, after);
+    }
     const rows = await tx.operatingImpactEntry.findMany({
       where: {
         createdAt: { lte: context.readAt },
@@ -1550,18 +1685,62 @@ async function readFactDetailPageInTransaction(
           ]
         } : {})
       },
-      include: { fact: true },
+      select: {
+        id: true,
+        impactKind: true,
+        amountCents: true,
+        direction: true,
+        subjectKind: true,
+        subjectId: true,
+        costCategoryCode: true,
+        fundPurpose: true,
+        fact: {
+          select: {
+            id: true,
+            projectId: true,
+            sourceType: true,
+            sourceBusinessId: true,
+            sourceVersion: true,
+            sourceBusinessCode: true,
+            occurredAt: true,
+            confirmedAt: true,
+            affiliateBusinessPartyVersionId: true,
+            affiliateNameSnapshot: true,
+            factKind: true,
+            operatingLevel: true,
+            evidenceLevel: true,
+            amountCents: true,
+            direction: true,
+            entryKind: true,
+            adjustsFactId: true,
+            debtorSubjectKind: true,
+            debtorSubjectId: true,
+            creditorSubjectKind: true,
+            creditorSubjectId: true,
+            approvedPayerSubjectKind: true,
+            approvedPayerSubjectId: true,
+            actualPayerSubjectKind: true,
+            actualPayerSubjectId: true,
+            payeeSubjectKind: true,
+            payeeSubjectId: true,
+            costBearingCompanySubjectKind: true,
+            costBearingCompanySubjectId: true,
+            ...(needsSubjectSnapshots
+              ? { sourceSnapshot: true, subjectSnapshot: true }
+              : {})
+          }
+        }
+      },
       orderBy: [{ fact: { occurredAt: "desc" } }, { id: "asc" }],
-      take: OPERATING_IMPACT_BATCH_SIZE
+      take: DETAIL_IMPACT_SCAN_BATCH_SIZE
     });
     if (!rows.length) break;
     for (const row of rows) {
-      const fact = projectionFactFromStored(
+      const fact = projectionFactFromDetailStored(
         row.fact,
-        context.projectById,
-        [row]
+        context.projectById
       );
-      const impact = projectionImpactFromStored(row);
+      const impact = projectionImpactFromDetailStored(row);
       after = {
         phase: "facts",
         occurredAt: fact.occurredAt,
@@ -1592,7 +1771,7 @@ async function readFactDetailPageInTransaction(
         _cursor: { occurredAt: fact.occurredAt, impactId: impact.id }
       });
     }
-    if (rows.length < OPERATING_IMPACT_BATCH_SIZE) break;
+    if (rows.length < DETAIL_IMPACT_SCAN_BATCH_SIZE) break;
   }
   for (const item of items) delete item._cursor;
   return {
@@ -1733,7 +1912,7 @@ async function readOperatingFactsInBatches(
 }
 
 function projectionFactFromStored(
-  fact: StoredOperatingFact,
+  fact: ProjectionStoredFact,
   projectById: Map<string, { id: string; code: string; name: string }>,
   impacts: StoredOperatingImpact[] = []
 ): ProjectionFactInput {
@@ -1762,6 +1941,17 @@ function projectionFactFromStored(
     subjectReferences: projectionFactSubjectReferences(fact),
     impacts: impacts.map(projectionImpactFromStored)
   };
+}
+
+function projectionFactFromDetailStored(
+  fact: DetailStoredFact,
+  projectById: Map<string, { id: string; code: string; name: string }>
+): ProjectionFactInput {
+  return projectionFactFromStored({
+    ...fact,
+    sourceSnapshot: fact.sourceSnapshot ?? {},
+    subjectSnapshot: fact.subjectSnapshot ?? {}
+  }, projectById);
 }
 
 function projectionReplacementTargetFromStored(
@@ -1813,6 +2003,21 @@ function projectionImpactFromStored(
     fundPurpose: impact.fundPurpose,
     description: impact.description,
     impactSnapshot: impact.impactSnapshot
+  };
+}
+
+function projectionImpactFromDetailStored(
+  impact: DetailStoredImpact
+): ProjectionFactInput["impacts"][number] {
+  return {
+    id: impact.id,
+    impactKind: impact.impactKind,
+    amountCents: impact.amountCents,
+    direction: impact.direction,
+    subjectKind: impact.subjectKind,
+    subjectId: impact.subjectId,
+    costCategoryCode: impact.costCategoryCode,
+    fundPurpose: impact.fundPurpose
   };
 }
 
@@ -2031,6 +2236,34 @@ function canonicalAffiliateAssignments(assignments: Array<{
 
 function dateFingerprintCoordinate(value: Date | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : null;
+}
+
+function normalizeAsOfProjectionDetailQuery(
+  input: AsOfProjectionDetailQuery
+): AsOfProjectionQuery {
+  if (!["project", "company", "projects"].includes(input.scopeKind)) {
+    throw new BadRequestException("经营投影范围必须是单项目、公司或多项目");
+  }
+  const projectIds = Array.isArray(input.projectIds)
+    ? input.projectIds
+    : input.projectIds
+      ?.split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  return {
+    ...input,
+    scopeKind: input.scopeKind as AsOfProjectionQuery["scopeKind"],
+    projectIds
+  };
+}
+
+function projectionDetailPageSize(value: number | string | undefined): number {
+  const normalized = typeof value === "string" ? value.trim() : value;
+  const pageSize = normalized === undefined || normalized === "" ? 50 : Number(normalized);
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+    throw new BadRequestException("经营投影明细每页条数必须是 1 到 200 的整数");
+  }
+  return pageSize;
 }
 
 function asOfProjectionInput(

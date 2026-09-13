@@ -68,7 +68,7 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 235 pending tests as executable local coverage", () => {
+test("manifest derives all 237 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -77,9 +77,9 @@ test("manifest derives all 235 pending tests as executable local coverage", () =
     pendingFiles: 53,
     fullyPendingSuites: 42,
     partiallyPendingSuites: 11,
-    pendingTests: 235,
+    pendingTests: 237,
     coveredFiles: 53,
-    coveredTests: 235,
+    coveredTests: 237,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -88,7 +88,7 @@ test("manifest derives all 235 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all 6 POL-108 PG16 tests", () => {
+test("canonical manifest executes all 8 POL-108 PG16 tests", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "operating_projection_pol108"
@@ -96,11 +96,11 @@ test("canonical manifest executes all 6 POL-108 PG16 tests", () => {
 
   assert.deepEqual(group, {
     id: "operating_projection_pol108",
-    pendingTests: 6,
+    pendingTests: 8,
     testFiles: [
       {
         path: "services/api/src/database/operating-projection-postgresql.spec.ts",
-        pendingTests: 6,
+        pendingTests: 8,
         suiteStatus: "fully_pending"
       }
     ],
@@ -370,7 +370,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=235/u
+    /inventory\.coveredTests=26，派生值=237/u
   );
 });
 

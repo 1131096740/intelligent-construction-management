@@ -83,7 +83,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 ## 当前覆盖
 
-canonical manifest 当前登记 53 个文件、235 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `operating_projection_pol108` 覆盖 1 个文件、6 条用例，`remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。
+canonical manifest 当前登记 53 个文件、237 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `operating_projection_pol108` 覆盖 1 个文件、8 条用例，`remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。
 
 #284 的 `participant_history_integrity` 子组使用独立数据库 `jiangkong_participant_history_integrity_test`，在同一文件内执行原有经营档案 17 条与参与公司历史完整性 13 条，共登记 30 条；完整 Jest 文件另含 2 条非 pending 的错误映射守卫，因此专组执行时显示 32/32。其中包含激活时拒绝未来覆盖断点、允许半开区间无缝接续，以及以最小运行时角色 `SET ROLE` 执行合法停止/删除、拒绝直接写 fence 表的权限回归：
 

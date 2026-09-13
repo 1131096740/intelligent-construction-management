@@ -39,6 +39,20 @@ const OCCURRED_AT = new Date("2026-09-01T08:00:00.000Z");
 const CONFIRMED_AT = new Date("2026-09-10T08:00:00.000Z");
 const CUTOFF_DATE = "2026-09-05";
 
+function isDetailFindManyQuery(value: unknown): value is {
+  select: Record<string, unknown> & { fact: { select: Record<string, unknown> } };
+} {
+  if (!value || typeof value !== "object") return false;
+  const select = (value as { select?: unknown }).select;
+  if (!select || typeof select !== "object") return false;
+  const fact = (select as { fact?: unknown }).fact;
+  return Boolean(
+    fact && typeof fact === "object" &&
+    (fact as { select?: unknown }).select &&
+    typeof (fact as { select?: unknown }).select === "object"
+  );
+}
+
 describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   jest.setTimeout(15 * 60_000);
   const prisma = new PrismaClient();
@@ -995,6 +1009,101 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       expect(factRead).not.toHaveBeenCalled();
     } finally {
       factRead.mockRestore();
+    }
+  });
+
+  it("以窄列跨越稀疏筛选的内部批次且保持公开明细响应不变", async () => {
+    const noiseSourceType = `detail_noise_${runId}`;
+    const targetSourceType = `detail_target_${runId}`;
+    await append(noiseSourceType, {
+      factKind: "owner_settlement",
+      amountCents: 200n,
+      direction: "inflow",
+      occurredAt: new Date("2026-09-04T08:00:00.000Z"),
+      impacts: Array.from({ length: 200 }, (_value, index) => impact(
+        `detail-noise-${String(index).padStart(3, "0")}`,
+        "confirmed_income",
+        1n,
+        "increase"
+      ))
+    });
+    await append(targetSourceType, {
+      factKind: "owner_settlement",
+      amountCents: 9n,
+      direction: "inflow",
+      occurredAt: new Date("2026-09-03T08:00:00.000Z"),
+      impacts: [impact("detail-target", "confirmed_income", 9n, "increase")]
+    });
+    const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
+    try {
+      const result = await projection.getProjectDetailPage(READER_ID, {
+        projectId: PROJECT_ID,
+        sourceType: targetSourceType,
+        pageSize: 1
+      });
+
+      expect(result.items).toEqual([expect.objectContaining({
+        sourceTypeLabel: "其他正式来源",
+        signedImpactCents: "9"
+      })]);
+      expect(JSON.stringify(result.items)).not.toContain("sourceSnapshot");
+      expect(JSON.stringify(result.items)).not.toContain("subjectSnapshot");
+      const detailQueries = detailRead.mock.calls
+        .map(([query]) => query)
+        .filter(isDetailFindManyQuery);
+      expect(detailQueries.length).toBeGreaterThanOrEqual(2);
+      expect(detailQueries.every((query) =>
+        !Object.hasOwn(query.select.fact.select, "sourceSnapshot") &&
+        !Object.hasOwn(query.select.fact.select, "subjectSnapshot") &&
+        !Object.hasOwn(query.select, "impactSnapshot") &&
+        !Object.hasOwn(query.select, "description")
+      )).toBe(true);
+    } finally {
+      detailRead.mockRestore();
+    }
+  });
+
+  it("在 ORM 明细物化前拒绝普通非限制事实的大快照字节", async () => {
+    const sourceTypes = [
+      `detail_large_snapshot_a_${runId}`,
+      `detail_large_snapshot_b_${runId}`
+    ];
+    const counterpartyId = `detail-large-owner-${runId}`;
+    const payload = "L".repeat(4_300_000);
+    for (const [index, sourceType] of sourceTypes.entries()) {
+      await append(sourceType, {
+        factKind: "owner_settlement",
+        amountCents: 1n,
+        direction: "inflow",
+        occurredAt: new Date(`2026-09-02T08:00:0${index}.000Z`),
+        sourceSnapshot: {
+          schema: "pol108_detail_large_snapshot/V1",
+          payload
+        },
+        subjects: {
+          debtor: { kind: "owner", id: counterpartyId },
+          creditor: enterprise
+        },
+        impacts: [impact(
+          `detail-large-snapshot-${index}`,
+          "confirmed_income",
+          1n,
+          "increase"
+        )]
+      });
+    }
+    const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
+    try {
+      await expect(projection.getProjectDetailPage(READER_ID, {
+        projectId: PROJECT_ID,
+        counterpartyId,
+        pageSize: 1
+      })).rejects.toBeInstanceOf(PayloadTooLargeException);
+      expect(detailRead.mock.calls.some(
+        ([query]) => isDetailFindManyQuery(query)
+      )).toBe(false);
+    } finally {
+      detailRead.mockRestore();
     }
   });
 

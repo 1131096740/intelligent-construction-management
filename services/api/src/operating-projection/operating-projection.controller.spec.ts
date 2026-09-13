@@ -1,10 +1,12 @@
 import { Readable } from "node:stream";
 
-import { BadRequestException, RequestMethod } from "@nestjs/common";
+import { BadRequestException, type INestApplication, RequestMethod } from "@nestjs/common";
 import { METHOD_METADATA } from "@nestjs/common/constants";
+import { Test } from "@nestjs/testing";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { OperatingProjectionExportDto } from "./dto/operating-projection-export.dto";
+import { OperatingProjectionService } from "./operating-projection.service";
 
 import {
   asOfQuery,
@@ -106,7 +108,7 @@ describe("OperatingProjectionController query", () => {
     expect(projections.getProjectDetailPage).toHaveBeenCalledWith("user-1", expect.objectContaining({
       projectId: "project-1",
       asOf: "2026-09-05",
-      pageSize: 25
+      pageSize: "25"
     }));
     expect(projections.getCompanyDetailPage).toHaveBeenCalledWith("user-1", expect.objectContaining({
       companyEntityId: "company-1",
@@ -114,8 +116,8 @@ describe("OperatingProjectionController query", () => {
     }));
     expect(projections.getAsOfDetailPage).toHaveBeenCalledWith("user-1", expect.objectContaining({
       scopeKind: "projects",
-      projectIds: ["project-1", "project-2"],
-      pageSize: 50
+      projectIds: "project-1,project-2",
+      pageSize: "50"
     }));
     expect(projections.exportView).toHaveBeenCalledWith(
       "user-1",
@@ -179,5 +181,105 @@ describe("OperatingProjectionController query", () => {
       scopeKind: "projects",
       projectIds: "project-1,project-2"
     }));
+  });
+});
+
+describe("OperatingProjectionController real HTTP query validation", () => {
+  let app: INestApplication;
+  const projections = {
+    getProjectView: jest.fn().mockResolvedValue({}),
+    getCompanyView: jest.fn().mockResolvedValue({}),
+    getAsOfView: jest.fn().mockResolvedValue({}),
+    getProjectDetailPage: jest.fn().mockResolvedValue({ items: [] }),
+    getCompanyDetailPage: jest.fn().mockResolvedValue({ items: [] }),
+    getAsOfDetailPage: jest.fn().mockResolvedValue({ items: [] }),
+    exportView: jest.fn()
+  };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OperatingProjectionController],
+      providers: [{ provide: OperatingProjectionService, useValue: projections }]
+    }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(createApiValidationPipe());
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
+      request.user = { id: "finance-query-user", name: "财务经办", phone: null };
+      next();
+    });
+    await app.listen(0, "127.0.0.1");
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    for (const method of Object.values(projections)) {
+      if (jest.isMockFunction(method)) method.mockClear();
+    }
+  });
+
+  it.each([
+    ["project aggregate", "/operating-projections/project/project-1?sourceType=a&sourceType=b", "getProjectView"],
+    ["project detail", "/operating-projections/project/project-1/details?sourceType=a&sourceType=b", "getProjectDetailPage"],
+    ["company aggregate", "/operating-projections/company/company-1?sourceType=a&sourceType=b", "getCompanyView"],
+    ["company detail", "/operating-projections/company/company-1/details?sourceType=a&sourceType=b", "getCompanyDetailPage"],
+    ["as-of aggregate", "/operating-projections/as-of?scopeKind=projects&sourceType=a&sourceType=b", "getAsOfView"],
+    ["as-of detail", "/operating-projections/as-of/details?scopeKind=projects&sourceType=a&sourceType=b", "getAsOfDetailPage"]
+  ])("rejects duplicate-key arrays on %s before the service", async (_label, path, method) => {
+    const response = await fetch(`${await app.getUrl()}${path}`);
+
+    expect(response.status).toBe(400);
+    expect(projections[method as keyof typeof projections]).not.toHaveBeenCalled();
+  });
+
+  it("enforces frozen 256/2048 limits and rejects unknown query fields", async () => {
+    const base = `${await app.getUrl()}/operating-projections`;
+    expect((await fetch(`${base}/project/project-1/details?sourceType=${"s".repeat(256)}`)).status)
+      .toBe(200);
+    expect((await fetch(`${base}/project/project-1/details?sourceType=${"s".repeat(257)}`)).status)
+      .toBe(400);
+    expect((await fetch(`${base}/company/company-1/details?cursor=${"c".repeat(2_048)}`)).status)
+      .toBe(200);
+    expect((await fetch(`${base}/company/company-1/details?cursor=${"c".repeat(2_049)}`)).status)
+      .toBe(400);
+    expect((await fetch(`${base}/as-of/details?scopeKind=projects&projectIds=${"p".repeat(2_048)}`)).status)
+      .toBe(200);
+    expect((await fetch(`${base}/as-of/details?scopeKind=projects&projectIds=${"p".repeat(2_049)}`)).status)
+      .toBe(400);
+    expect((await fetch(`${base}/project/project-1?unknownField=blocked`)).status).toBe(400);
+  });
+
+  it("preserves every legal detail query field as a validated string", async () => {
+    const query = new URLSearchParams({
+      asOf: "2026-09-05",
+      constructionEnterpriseId: "affiliate-1",
+      companyEntityId: "company-1",
+      counterpartyId: "owner-1",
+      costCategoryCode: "project_management",
+      sourceType: "owner_settlement",
+      cursor: "cursor-1",
+      pageSize: "25"
+    });
+    const response = await fetch(
+      `${await app.getUrl()}/operating-projections/project/project-1/details?${query}`
+    );
+
+    expect(response.status).toBe(200);
+    expect(projections.getProjectDetailPage).toHaveBeenCalledWith(
+      "finance-query-user",
+      expect.objectContaining({
+        projectId: "project-1",
+        asOf: "2026-09-05",
+        constructionEnterpriseId: "affiliate-1",
+        companyEntityId: "company-1",
+        counterpartyId: "owner-1",
+        costCategoryCode: "project_management",
+        sourceType: "owner_settlement",
+        cursor: "cursor-1",
+        pageSize: "25"
+      })
+    );
   });
 });

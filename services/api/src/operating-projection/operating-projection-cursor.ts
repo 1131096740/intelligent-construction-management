@@ -12,6 +12,8 @@ import type { ProjectionFilters, ProjectionScopeInput } from "./operating-projec
 
 const CURSOR_PURPOSE = "operating-projection-detail-cursor/V2";
 const CURSOR_TTL_MS = 15 * 60 * 1_000;
+const CURSOR_MAX_LENGTH = 2_048;
+const CURSOR_TEXT_MAX_LENGTH = 256;
 
 export type OperatingProjectionCursorPosition =
   | { phase: "facts"; occurredAt: string; impactId: string }
@@ -72,6 +74,11 @@ export class OperatingProjectionCursorCodec {
       scopeFingerprint: projectionScopeFingerprint(scope),
       expiresAt: new Date(this.now().getTime() + CURSOR_TTL_MS).toISOString()
     };
+    try {
+      validateClaims(claims);
+    } catch {
+      throw new BadRequestException("经营投影明细游标签发坐标无效");
+    }
     const iv = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", this.key, iv);
     cipher.setAAD(Buffer.from(CURSOR_PURPOSE, "utf8"));
@@ -79,13 +86,20 @@ export class OperatingProjectionCursorCodec {
       cipher.update(JSON.stringify(claims), "utf8"),
       cipher.final()
     ]);
-    return [iv, encrypted, cipher.getAuthTag()]
+    const token = [iv, encrypted, cipher.getAuthTag()]
       .map((value) => value.toString("base64url"))
       .join(".");
+    if (token.length > CURSOR_MAX_LENGTH) {
+      throw new BadRequestException("经营投影明细游标超出安全长度");
+    }
+    return token;
   }
 
-  read(token: string, binding: OperatingProjectionCursorBinding): OperatingProjectionCursorClaims {
+  read(token: unknown, binding: OperatingProjectionCursorBinding): OperatingProjectionCursorClaims {
     try {
+      if (typeof token !== "string" || !token || token.length > CURSOR_MAX_LENGTH) {
+        throw new Error("游标输入长度错误");
+      }
       const parts = token.split(".");
       if (parts.length !== 3 || parts.some((part) => !part)) throw new Error("游标格式错误");
       const [iv, encrypted, tag] = parts.map((part) => Buffer.from(part, "base64url"));
@@ -98,7 +112,7 @@ export class OperatingProjectionCursorCodec {
       decipher.setAuthTag(tag!);
       const raw = Buffer.concat([decipher.update(encrypted!), decipher.final()])
         .toString("utf8");
-      const claims = JSON.parse(raw) as OperatingProjectionCursorClaims;
+      const claims: unknown = JSON.parse(raw);
       validateClaims(claims);
       if (Date.parse(claims.expiresAt) <= this.now().getTime()) throw new Error("游标已过期");
       if (
@@ -116,31 +130,49 @@ export class OperatingProjectionCursorCodec {
   }
 }
 
-function validateClaims(value: OperatingProjectionCursorClaims): void {
-  if (!value || value.version !== 2 || value.purpose !== CURSOR_PURPOSE ||
-      typeof value.actorUserId !== "string" || !value.actorUserId ||
-      !(value.requestedAsOf === null || typeof value.requestedAsOf === "string") ||
-      !Number.isInteger(value.pageSize) || value.pageSize < 1 || value.pageSize > 200 ||
-      !validDate(value.readAt) || !validDate(value.cutoffAt) || !validDate(value.expiresAt) ||
-      !validFingerprint(value.requestScopeFingerprint) ||
-      !validFingerprint(value.scopeFingerprint) ||
-      !validFingerprint(value.projectionContextFingerprint) || !value.position ||
-      !["facts", "risks", "done"].includes(value.position.phase)) {
+function validateClaims(value: unknown): asserts value is OperatingProjectionCursorClaims {
+  if (!value || typeof value !== "object") throw new Error("游标声明错误");
+  const claims = value as Partial<OperatingProjectionCursorClaims>;
+  if (claims.version !== 2 || claims.purpose !== CURSOR_PURPOSE ||
+      !validBoundedText(claims.actorUserId) ||
+      !(claims.requestedAsOf === null ||
+        (typeof claims.requestedAsOf === "string" &&
+          claims.requestedAsOf.length <= CURSOR_TEXT_MAX_LENGTH)) ||
+      !Number.isInteger(claims.pageSize) || claims.pageSize! < 1 || claims.pageSize! > 200 ||
+      !validDate(claims.readAt) || !validDate(claims.cutoffAt) || !validDate(claims.expiresAt) ||
+      !validFingerprint(claims.requestScopeFingerprint) ||
+      !validFingerprint(claims.scopeFingerprint) ||
+      !validFingerprint(claims.projectionContextFingerprint) || !claims.position ||
+      typeof claims.position !== "object" ||
+      !["facts", "risks", "done"].includes(claims.position.phase)) {
     throw new Error("游标声明错误");
   }
-  if (value.position.phase === "facts" &&
-      (!validDate(value.position.occurredAt) || !value.position.impactId)) {
+  if (claims.position.phase === "facts" &&
+      (!validDate(claims.position.occurredAt) ||
+        !validBoundedText(claims.position.impactId))) {
     throw new Error("游标事实位置错误");
   }
-  if (value.position.phase === "risks" &&
-      (value.position.itemOffset !== undefined &&
-        (!Number.isInteger(value.position.itemOffset) || value.position.itemOffset < 0))) {
+  if (claims.position.phase === "risks" &&
+      ((claims.position.projectId !== undefined &&
+        !validBoundedText(claims.position.projectId)) ||
+        (claims.position.clearingCaseId !== undefined &&
+          !validBoundedText(claims.position.clearingCaseId)) ||
+        (claims.position.itemOffset !== undefined &&
+          (!Number.isSafeInteger(claims.position.itemOffset) ||
+            claims.position.itemOffset < 0)))) {
     throw new Error("游标风险位置错误");
   }
 }
 
+function validBoundedText(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 1 &&
+    value.length <= CURSOR_TEXT_MAX_LENGTH;
+}
+
 function validDate(value: unknown): value is string {
-  return typeof value === "string" && Number.isFinite(Date.parse(value));
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
 function validFingerprint(value: unknown): value is string {

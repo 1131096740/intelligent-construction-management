@@ -87,6 +87,131 @@ describe("OperatingProjectionService", () => {
     expect(() => limiter.acquire("user-1", 120_001)).not.toThrow();
   });
 
+  it.each([
+    ["malformed", "not-an-encrypted-cursor"],
+    ["overlong", "x".repeat(2_049)]
+  ])("acquires and releases one actor slot before rejecting a %s detail cursor", async (
+    _label,
+    cursor
+  ) => {
+    const prisma = { $transaction: jest.fn() };
+    const release = jest.fn();
+    const acquire = jest.fn().mockReturnValue(release);
+    const service = new OperatingProjectionService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+    (service as unknown as { readLimiter: { acquire: typeof acquire } }).readLimiter = { acquire };
+
+    await expect(service.getProjectDetailPage("user-1", {
+      projectId: "project-1",
+      cursor
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("charges exactly one actor slot for both first and continuation detail entry paths", async () => {
+    const service = new OperatingProjectionService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+    const release = jest.fn();
+    const acquire = jest.fn().mockReturnValue(release);
+    const readDetail = jest.spyOn(
+      service as unknown as {
+        readDetailPageWithAcquiredSlot: (
+          actorUserId: string,
+          input: Record<string, unknown>
+        ) => Promise<unknown>;
+      },
+      "readDetailPageWithAcquiredSlot"
+    ).mockResolvedValue({ items: [] });
+    (service as unknown as { readLimiter: { acquire: typeof acquire } }).readLimiter = { acquire };
+
+    await service.getProjectDetailPage("user-1", { projectId: "project-1" });
+    await service.getProjectDetailPage("user-1", {
+      projectId: "project-1",
+      cursor: "continuation-cursor"
+    });
+
+    expect(readDetail).toHaveBeenCalledTimes(2);
+    expect(acquire).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses a narrow detail select and omits fact snapshots when no subject filter needs them", async () => {
+    const readAt = new Date("2026-09-11T01:02:03.000Z");
+    const tx = emptyProjectionTx(readAt, [project]);
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never,
+      {
+        visibleRequestedProjectIdsInTransaction: jest.fn().mockResolvedValue([project.id]),
+        effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+          new Map([[project.id, ["finance_staff"]]])
+        )
+      } as never,
+      zeroRiskReader() as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await service.getProjectDetailPage("user-1", { projectId: project.id });
+
+    const detailQuery = tx.operatingImpactEntry.findMany.mock.calls
+      .map(([query]) => query)
+      .find((query) => query.select?.fact?.select);
+    expect(detailQuery?.select.fact.select).toEqual(expect.objectContaining({
+      sourceBusinessCode: true,
+      occurredAt: true,
+      evidenceLevel: true
+    }));
+    expect(detailQuery?.select.fact.select).not.toHaveProperty("sourceSnapshot");
+    expect(detailQuery?.select.fact.select).not.toHaveProperty("subjectSnapshot");
+    expect(detailQuery?.select).not.toHaveProperty("impactSnapshot");
+    expect(detailQuery?.select).not.toHaveProperty("description");
+  });
+
+  it("fails a subject-filtered detail page on snapshot bytes before ORM materialization", async () => {
+    const readAt = new Date("2026-09-11T01:02:03.000Z");
+    const tx = emptyProjectionTx(readAt, [project]);
+    tx.$queryRaw.mockImplementation(async (query) => {
+      const sql = (query as { strings?: readonly string[] }).strings?.join(" ") ?? "";
+      if (sql.includes("CURRENT_TIMESTAMP")) return [{ readAt }];
+      if (sql.includes('SUM(candidate."snapshotBytes")')) {
+        return [{ snapshotBytes: BigInt(8 * 1024 * 1024 + 1) }];
+      }
+      return [{ replacementCount: 0n, snapshotBytes: 0n, maxSnapshotBytes: 0n }];
+    });
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never,
+      {
+        visibleRequestedProjectIdsInTransaction: jest.fn().mockResolvedValue([project.id]),
+        effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+          new Map([[project.id, ["finance_director"]]])
+        )
+      } as never,
+      zeroRiskReader() as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await expect(service.getProjectDetailPage("user-1", {
+      projectId: project.id,
+      counterpartyId: "owner-1"
+    })).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(tx.operatingImpactEntry.findMany.mock.calls.some(
+      ([query]) => Boolean(query.select?.fact?.select)
+    )).toBe(false);
+  });
+
   it("maps only a confirmed #280 frozen counterparty coordinate into projection subjects", () => {
     expect(projectionFactSubjectReferences({
       sourceType: "project_fund_dispute_entry",
