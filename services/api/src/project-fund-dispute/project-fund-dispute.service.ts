@@ -24,6 +24,7 @@ import { ClearingReconciliationReaderService } from "../clearing/clearing-reconc
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
 import {
   assertProjectFundDisputeDraft,
   assertProjectFundDisputeTransition,
@@ -1326,6 +1327,7 @@ function validateTransitionCommand(command: ProjectFundDisputeTransitionCommand)
 }
 
 function isProjectFundDisputeConcurrencyOrCapacityConflict(error: unknown): boolean {
+  if (isPostgresSerializationFailure(error)) return true;
   if (!error || typeof error !== "object") return false;
   const record = error as {
     code?: unknown;
@@ -1349,6 +1351,7 @@ function isProjectFundDisputeConcurrencyOrCapacityConflict(error: unknown): bool
 }
 
 function isDatabaseSerializationFailure(error: unknown): boolean {
+  if (isPostgresSerializationFailure(error)) return true;
   if (!error || typeof error !== "object") return false;
   const record = error as {
     code?: unknown;

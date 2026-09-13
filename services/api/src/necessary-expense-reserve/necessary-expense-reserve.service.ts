@@ -21,6 +21,7 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
 import {
   assertNecessaryExpenseReserveDraft,
   assertNecessaryExpenseReserveTransition,
@@ -1217,6 +1218,7 @@ export class NecessaryExpenseReserveService {
 }
 
 function isNecessaryExpenseReserveConcurrencyOrCapacityConflict(error: unknown): boolean {
+  if (isPostgresSerializationFailure(error)) return true;
   if (!error || typeof error !== "object") return false;
   const record = error as {
     code?: unknown;
@@ -1256,6 +1258,7 @@ function necessaryExpenseReserveConflictMessage(error: unknown): string {
 }
 
 function isDatabaseSerializationFailure(error: unknown): boolean {
+  if (isPostgresSerializationFailure(error)) return true;
   if (!error || typeof error !== "object") return false;
   const record = error as {
     code?: unknown;

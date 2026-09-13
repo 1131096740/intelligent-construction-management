@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 
 import {
   isPostgresSerializationFailure,
+  postgresSqlState,
+  translateProjectOperatingSerializationConflict,
   translateOperatingProfileConstraint
 } from "./project-operating-constraint";
 
@@ -21,6 +23,52 @@ describe("project operating serialization constraints", () => {
     { code: "40001", message: "could not serialize access due to concurrent update" }
   ])("recognizes PostgreSQL serialization failures without retrying", (error) => {
     expect(isPostgresSerializationFailure(error)).toBe(true);
+  });
+
+  it.each([
+    { code: "40001" },
+    new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010",
+      clientVersion: "5.22.0",
+      meta: { code: "40001", database_error: "SQLSTATE 40001" }
+    })
+  ])("recognizes a structured PostgreSQL serialization failure retained as an HTTP cause", (cause) => {
+    const error = new ConflictException("经营账并发冲突", { cause });
+    expect(isPostgresSerializationFailure(error)).toBe(true);
+  });
+
+  it("bounds structured error traversal and tolerates cycles", () => {
+    const first: { cause?: unknown; meta?: unknown } = {};
+    const second: { cause?: unknown; meta?: unknown } = {};
+    first.cause = second;
+    second.meta = first;
+
+    expect(postgresSqlState(first)).toBeUndefined();
+  });
+
+  it("does not traverse an unbounded cause chain", () => {
+    const root: { cause?: unknown } = {};
+    let current = root;
+    for (let depth = 0; depth < 9; depth += 1) {
+      const next: { cause?: unknown } = {};
+      current.cause = next;
+      current = next;
+    }
+    current.cause = { code: "40001" };
+
+    expect(postgresSqlState(root)).toBeUndefined();
+  });
+
+  it.each([
+    { code: "40P01" },
+    new Prisma.PrismaClientKnownRequestError("Transaction failed", {
+      code: "P2034",
+      clientVersion: "5.22.0"
+    })
+  ])("does not reclassify a retained non-serialization cause", (cause) => {
+    expect(isPostgresSerializationFailure(
+      new ConflictException("其他并发冲突", { cause })
+    )).toBe(false);
   });
 
   it.each([
@@ -46,18 +94,37 @@ describe("project operating serialization constraints", () => {
   });
 
   it("maps an opted-in participant mutation serialization failure to HTTP 409", async () => {
-    const operation = Promise.reject(new Prisma.PrismaClientKnownRequestError(
+    const cause = new Prisma.PrismaClientKnownRequestError(
       "Raw query failed",
       {
         code: "P2010",
         clientVersion: "5.22.0",
         meta: { code: "40001", database_error: "SQLSTATE 40001" }
       }
-    ));
+    );
+    const operation = Promise.reject(cause);
 
-    await expect(translateOperatingProfileConstraint(operation, {
+    const mapped = translateOperatingProfileConstraint(operation, {
       mapSerializationConflict: true
-    })).rejects.toBeInstanceOf(ConflictException);
+    });
+    await expect(mapped).rejects.toBeInstanceOf(ConflictException);
+    await expect(mapped).rejects.toMatchObject({ cause });
+    await expect(mapped).rejects.not.toMatchObject({
+      response: expect.objectContaining({ cause: expect.anything() })
+    });
+  });
+
+  it("retains a structured database cause without exposing it in the HTTP response", async () => {
+    const cause = { code: "40001", secret: "database-internal-detail" };
+    const operation = translateProjectOperatingSerializationConflict(
+      Promise.reject(cause),
+      "经营账并发冲突"
+    );
+
+    const error = await operation.catch((caught: unknown) => caught) as ConflictException;
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(error.cause).toBe(cause);
+    expect(JSON.stringify(error.getResponse())).not.toContain("database-internal-detail");
   });
 
   it("does not broaden serialization mapping to unrelated profile operations", async () => {

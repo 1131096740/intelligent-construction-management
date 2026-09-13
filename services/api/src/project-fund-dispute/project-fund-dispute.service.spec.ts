@@ -3,7 +3,9 @@ import {
   ConflictException,
   ForbiddenException
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 
+import { translateOperatingLedgerWriteConstraint } from "../operating-ledger/operating-ledger.service";
 import { ProjectFundDisputeService } from "./project-fund-dispute.service";
 
 describe("ProjectFundDisputeService public business seam", () => {
@@ -22,7 +24,14 @@ describe("ProjectFundDisputeService public business seam", () => {
     let dispute: Record<string, unknown> | null = null;
     let entry: Record<string, unknown> | null = null;
     const receipts = new Map<string, Record<string, unknown>>();
-    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const persistedAudit: Array<Record<string, unknown>> = [];
+    const transactionalEffects: string[] = [];
+    const transactionStartStatuses: Array<unknown> = [];
+    const audit = {
+      record: jest.fn(async (_tx: unknown, payload: Record<string, unknown>) => {
+        persistedAudit.push(payload);
+      })
+    };
     const replay = {
       appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue({ id: "fact-1" })
     };
@@ -147,7 +156,25 @@ describe("ProjectFundDisputeService public business seam", () => {
     };
     const prisma = {
       projectFundDisputeEntry: tx.projectFundDisputeEntry,
-      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx))
+      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => {
+        const disputeBefore = dispute ? { ...dispute } : null;
+        const entryBefore = entry ? { ...entry } : null;
+        const receiptsBefore = new Map(receipts);
+        const persistedAuditCount = persistedAudit.length;
+        const transactionalEffectCount = transactionalEffects.length;
+        transactionStartStatuses.push(entry?.status ?? null);
+        try {
+          return await work(tx);
+        } catch (error) {
+          dispute = disputeBefore;
+          entry = entryBefore;
+          receipts.clear();
+          for (const [key, value] of receiptsBefore) receipts.set(key, value);
+          persistedAudit.splice(persistedAuditCount);
+          transactionalEffects.splice(transactionalEffectCount);
+          throw error;
+        }
+      })
     };
     return {
       service: new ProjectFundDisputeService(
@@ -163,8 +190,51 @@ describe("ProjectFundDisputeService public business seam", () => {
       files,
       prisma,
       receipts,
+      persistedAudit,
+      transactionalEffects,
+      transactionStartStatuses,
       currentEntry: () => entry
     };
+  }
+
+  async function prepareAttestedEntry(harness: ReturnType<typeof createHarness>) {
+    const created = await harness.service.saveDraft({
+      projectId: "project-1",
+      businessCode: "争议资金-嵌套序列化冲突",
+      affiliateAssignmentId: "assignment-1",
+      fundHolderKind: "construction_enterprise",
+      fundHolderId: "affiliate-version-1",
+      disputeKind: "upstream",
+      counterpartyKind: "owner",
+      counterpartyId: "owner-1",
+      counterpartyNameSnapshot: "项目收尾资料整理",
+      basisKind: "written_evidence",
+      basisBusinessIdOrEvidenceSha256: evidenceSha256,
+      referenceCode: "经确认仍需完成的法定收尾资料",
+      entryKind: "establish",
+      amountCents: "120000",
+      occurredAt: "2026-09-01",
+      evidenceLevel: "B",
+      evidenceFileId: "file-1",
+      evidenceSha256,
+      disputeSummary: "首次建立争议资金",
+      idempotencyKey: draftIdempotencyKey
+    }, { userId: "finance-staff-1" });
+    await harness.service.transition({
+      entryId: String(created.id),
+      action: "submit",
+      expectedRevision: 1,
+      expectedFingerprint: String(created.fingerprint),
+      idempotencyKey: submitIdempotencyKey
+    }, { userId: "finance-staff-1" });
+    await harness.service.transition({
+      entryId: String(created.id),
+      action: "attest",
+      expectedRevision: 1,
+      expectedFingerprint: String(created.fingerprint),
+      idempotencyKey: attestIdempotencyKey
+    }, { userId: "project-manager-1" });
+    return created;
   }
 
   it("creates, reads, submits, independently attests and confirms in one transaction seam", async () => {
@@ -388,6 +458,95 @@ describe("ProjectFundDisputeService public business seam", () => {
     await expect(service.serializable(async () => "retried"))
       .resolves.toBe("retried");
     expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { code: "40001" },
+    new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010",
+      clientVersion: "5.22.0",
+      meta: { code: "40001", database_error: "SQLSTATE 40001" }
+    })
+  ])("retries the public confirmation once and rolls back its first nested 40001", async (databaseError) => {
+    const harness = createHarness();
+    const created = await prepareAttestedEntry(harness);
+    const transactionStartIndex = harness.transactionStartStatuses.length;
+    harness.replay.appendConfirmedSourceIfEnabledInTransaction
+      .mockImplementationOnce(async () => {
+        harness.transactionalEffects.push("rolled-back-ledger-write");
+        await translateOperatingLedgerWriteConstraint(Promise.reject(databaseError));
+      })
+      .mockImplementationOnce(async () => {
+        harness.transactionalEffects.push("committed-ledger-write");
+        return { id: "fact-1" };
+      });
+
+    const command = {
+      entryId: String(created.id),
+      action: "confirm" as const,
+      expectedRevision: 1,
+      expectedFingerprint: String(created.fingerprint),
+      idempotencyKey: confirmIdempotencyKey
+    };
+    const confirmed = await harness.service.transition(
+      command,
+      { userId: "finance-director-1" }
+    );
+
+    expect(confirmed.status).toBe("confirmed");
+    expect(harness.transactionStartStatuses.slice(transactionStartIndex)).toEqual([
+      "attested",
+      "attested"
+    ]);
+    expect(harness.transactionalEffects).toEqual(["committed-ledger-write"]);
+    expect(harness.replay.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledTimes(2);
+    expect(harness.receipts.size).toBe(4);
+    expect(harness.persistedAudit.filter(({ action }) =>
+      action === "project_fund_dispute.confirm")).toHaveLength(1);
+    expect(harness.tx.projectFundDisputeReplacement.create).not.toHaveBeenCalled();
+
+    await expect(harness.service.transition(
+      command,
+      { userId: "finance-director-1" }
+    )).resolves.toEqual(confirmed);
+    expect(harness.replay.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledTimes(2);
+    expect(harness.receipts.size).toBe(4);
+    expect(harness.persistedAudit.filter(({ action }) =>
+      action === "project_fund_dispute.confirm")).toHaveLength(1);
+  });
+
+  it("rolls back both public confirmation attempts after repeated nested 40001 errors", async () => {
+    const harness = createHarness();
+    const created = await prepareAttestedEntry(harness);
+    const transactionStartIndex = harness.transactionStartStatuses.length;
+    harness.replay.appendConfirmedSourceIfEnabledInTransaction.mockImplementation(async () => {
+      harness.transactionalEffects.push("rolled-back-ledger-write");
+      await translateOperatingLedgerWriteConstraint(Promise.reject({ code: "40001" }));
+    });
+
+    const result = harness.service.transition({
+      entryId: String(created.id),
+      action: "confirm",
+      expectedRevision: 1,
+      expectedFingerprint: String(created.fingerprint),
+      idempotencyKey: confirmIdempotencyKey
+    }, { userId: "finance-director-1" });
+
+    await expect(result).rejects.toMatchObject({
+      status: 409,
+      message: "争议资金并发或容量校验冲突，请刷新后重试"
+    });
+    expect(harness.transactionStartStatuses.slice(transactionStartIndex)).toEqual([
+      "attested",
+      "attested"
+    ]);
+    expect(harness.currentEntry()?.status).toBe("attested");
+    expect(harness.transactionalEffects).toEqual([]);
+    expect(harness.replay.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledTimes(2);
+    expect(harness.receipts.size).toBe(3);
+    expect(harness.persistedAudit.filter(({ action }) =>
+      action === "project_fund_dispute.confirm")).toHaveLength(0);
+    expect(harness.tx.projectFundDisputeReplacement.create).not.toHaveBeenCalled();
   });
 
   it("maps a repeated deadlock to HTTP 409 after the single retry", async () => {

@@ -20,22 +20,40 @@ export const PROJECT_OPERATING_CONSTRAINT_MESSAGES = [
   "停止日期当日或之后已有正式经营事实，不能截断参与期间"
 ] as const;
 
+const POSTGRES_ERROR_LINK_MAX_DEPTH = 8;
+
 export function postgresSqlState(error: unknown): "40001" | "40P01" | undefined {
-  if (!error || typeof error !== "object") return undefined;
-  const candidate = error as Record<string, unknown>;
-  for (const key of ["code", "sqlstate", "sqlState"] as const) {
-    const value = candidate[key];
-    if (typeof value !== "string") continue;
-    const normalized = value.toUpperCase();
-    if (normalized === "40001" || normalized === "40P01") return normalized;
+  const pending: Array<{ candidate: object; depth: number }> = [];
+  const visited = new Set<object>();
+  if (error && typeof error === "object") {
+    pending.push({ candidate: error, depth: 0 });
   }
-  if (typeof candidate.database_error === "string") {
-    const match = candidate.database_error.match(/(^|[^0-9A-Z])(40001|40P01)([^0-9A-Z]|$)/iu);
-    const normalized = match?.[2]?.toUpperCase();
-    if (normalized === "40001" || normalized === "40P01") return normalized;
-  }
-  if (candidate.meta !== null && typeof candidate.meta === "object") {
-    return postgresSqlState(candidate.meta);
+
+  while (pending.length > 0) {
+    const current = pending.shift();
+    if (!current || visited.has(current.candidate)) continue;
+    visited.add(current.candidate);
+
+    const candidate = current.candidate as Record<string, unknown>;
+    for (const key of ["code", "sqlstate", "sqlState"] as const) {
+      const value = candidate[key];
+      if (typeof value !== "string") continue;
+      const normalized = value.toUpperCase();
+      if (normalized === "40001" || normalized === "40P01") return normalized;
+    }
+    if (typeof candidate.database_error === "string") {
+      const match = candidate.database_error.match(/(^|[^0-9A-Z])(40001|40P01)([^0-9A-Z]|$)/iu);
+      const normalized = match?.[2]?.toUpperCase();
+      if (normalized === "40001" || normalized === "40P01") return normalized;
+    }
+
+    if (current.depth >= POSTGRES_ERROR_LINK_MAX_DEPTH) continue;
+    for (const key of ["meta", "cause"] as const) {
+      const linked = candidate[key];
+      if (linked && typeof linked === "object" && !visited.has(linked)) {
+        pending.push({ candidate: linked, depth: current.depth + 1 });
+      }
+    }
   }
   return undefined;
 }
@@ -63,7 +81,7 @@ export async function translateProjectOperatingSerializationConflict<T>(
     return await operation;
   } catch (error) {
     if (isPostgresSerializationFailure(error)) {
-      throw new ConflictException(message);
+      throw new ConflictException(message, { cause: error });
     }
     throw error;
   }
@@ -81,7 +99,10 @@ export async function translateOperatingProfileConstraint<T>(
       throw new BadRequestException("相同公司参与期间或施工企业配置已存在，请刷新后重试");
     }
     if (options.mapSerializationConflict && isPostgresSerializationFailure(error)) {
-      throw new ConflictException("项目参与公司状态已被并发业务更新，请刷新后重试");
+      throw new ConflictException(
+        "项目参与公司状态已被并发业务更新，请刷新后重试",
+        { cause: error }
+      );
     }
     const message = projectOperatingConstraintMessage(error);
     if (message) throw new BadRequestException(message);
