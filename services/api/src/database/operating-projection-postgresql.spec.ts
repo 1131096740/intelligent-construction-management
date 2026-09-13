@@ -56,6 +56,17 @@ function isDetailFindManyQuery(value: unknown): value is {
 describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   jest.setTimeout(15 * 60_000);
   const prisma = new PrismaClient();
+  let capturedDetailFindManyQueries: unknown[] | null = null;
+  prisma.$use(async (params, next) => {
+    if (
+      capturedDetailFindManyQueries &&
+      params.model === "OperatingImpactEntry" &&
+      params.action === "findMany"
+    ) {
+      capturedDetailFindManyQueries.push(params.args);
+    }
+    return next(params);
+  });
   const audit = new AuditService();
   const ledger = new OperatingLedgerService(prisma as never);
   const reserveAdapter = new NecessaryExpenseReserveOperatingSourceAdapter();
@@ -627,7 +638,8 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       },
       impacts: [impact("detail-target", "confirmed_income", 9n, "increase")]
     });
-    const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
+    const capturedQueries: unknown[] = [];
+    capturedDetailFindManyQueries = capturedQueries;
     try {
       const result = await projection.getProjectDetailPage(READER_ID, {
         projectId: PROJECT_ID,
@@ -641,9 +653,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       })]);
       expect(JSON.stringify(result.items)).not.toContain("sourceSnapshot");
       expect(JSON.stringify(result.items)).not.toContain("subjectSnapshot");
-      const detailQueries = detailRead.mock.calls
-        .map(([query]) => query)
-        .filter(isDetailFindManyQuery);
+      const detailQueries = capturedQueries.filter(isDetailFindManyQuery);
       expect(detailQueries.length).toBeGreaterThanOrEqual(2);
       expect(detailQueries.every((query) =>
         !Object.hasOwn(query.select.fact.select, "sourceSnapshot") &&
@@ -652,7 +662,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         !Object.hasOwn(query.select, "description")
       )).toBe(true);
     } finally {
-      detailRead.mockRestore();
+      capturedDetailFindManyQueries = null;
     }
   });
 
@@ -710,7 +720,9 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         idempotencyKey: randomUUID(),
         requestFingerprint: createHash("sha256").update(lateId).digest("hex"),
         recordedByUserId: READER_ID,
-        recordedByRoleKey: "finance_director"
+        recordedByRoleKey: "finance_director",
+        createdAt: new Date(new Date(first.page.readAt).getTime() + 1),
+        updatedAt: new Date(new Date(first.page.readAt).getTime() + 1)
       }
     });
     const seen = [...first.items];
@@ -812,7 +824,9 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         idempotencyKey: `pol108-upstream-scale-late-${runId}`,
         requestFingerprint: createHash("sha256").update(scaleLateId).digest("hex"),
         recordedByUserId: READER_ID,
-        recordedByRoleKey: "finance_director"
+        recordedByRoleKey: "finance_director",
+        createdAt: new Date(new Date(scaleFirst.page.readAt).getTime() + 1),
+        updatedAt: new Date(new Date(scaleFirst.page.readAt).getTime() + 1)
       }
     });
     const scaleSecondStartedAt = Date.now();
@@ -1100,18 +1114,17 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         )]
       });
     }
-    const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
+    const capturedQueries: unknown[] = [];
+    capturedDetailFindManyQueries = capturedQueries;
     try {
       await expect(projection.getProjectDetailPage(READER_ID, {
         projectId: PROJECT_ID,
         counterpartyId,
         pageSize: 1
       })).rejects.toBeInstanceOf(PayloadTooLargeException);
-      expect(detailRead.mock.calls.some(
-        ([query]) => isDetailFindManyQuery(query)
-      )).toBe(false);
+      expect(capturedQueries.some(isDetailFindManyQuery)).toBe(false);
     } finally {
-      detailRead.mockRestore();
+      capturedDetailFindManyQueries = null;
     }
   });
 
