@@ -1020,6 +1020,10 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       amountCents: 200n,
       direction: "inflow",
       occurredAt: new Date("2026-09-04T08:00:00.000Z"),
+      subjects: {
+        debtor: { kind: "owner", id: `detail-noise-owner-${runId}` },
+        creditor: enterprise
+      },
       impacts: Array.from({ length: 200 }, (_value, index) => impact(
         `detail-noise-${String(index).padStart(3, "0")}`,
         "confirmed_income",
@@ -1032,6 +1036,10 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       amountCents: 9n,
       direction: "inflow",
       occurredAt: new Date("2026-09-03T08:00:00.000Z"),
+      subjects: {
+        debtor: { kind: "owner", id: `detail-target-owner-${runId}` },
+        creditor: enterprise
+      },
       impacts: [impact("detail-target", "confirmed_income", 9n, "increase")]
     });
     const detailRead = jest.spyOn(prisma.operatingImpactEntry, "findMany");
