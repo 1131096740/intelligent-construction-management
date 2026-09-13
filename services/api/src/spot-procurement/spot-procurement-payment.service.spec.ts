@@ -5017,31 +5017,34 @@ describe("SpotProcurementPaymentService", () => {
     }
   );
 
-  it("preserves a raw PostgreSQL deadlock instead of mapping or retrying it", async () => {
-    const submitDeadlock = {
-      code: "P2010",
-      meta: { code: "40P01", message: "deadlock detected" }
-    };
-    const submit = harness();
-    submit.prisma.$transaction.mockRejectedValueOnce(submitDeadlock);
-    await expect(
-      submit.service.submit("payment-1", "material-1")
-    ).rejects.toBe(submitDeadlock);
-    expect(submit.prisma.$transaction).toHaveBeenCalledTimes(1);
+  it("preserves explicit PostgreSQL deadlocks instead of mapping or retrying them", async () => {
+    for (const deadlock of [
+      {
+        code: "P2010",
+        meta: { code: "40P01", message: "deadlock detected" }
+      },
+      {
+        code: "P2034",
+        meta: { sqlstate: "40P01", message: "deadlock detected" }
+      }
+    ]) {
+      const submit = harness();
+      submit.prisma.$transaction.mockRejectedValueOnce(deadlock);
+      await expect(
+        submit.service.submit("payment-1", "material-1")
+      ).rejects.toBe(deadlock);
+      expect(submit.prisma.$transaction).toHaveBeenCalledTimes(1);
 
-    const executionDeadlock = {
-      code: "P2010",
-      meta: { code: "40P01", message: "deadlock detected" }
-    };
-    const execution = executionHarness();
-    execution.prisma.$transaction.mockRejectedValueOnce(executionDeadlock);
-    await expect(
-      execution.service.recordExecution(
-        "payment-1",
-        "finance-1",
-        validExecutionInput()
-      )
-    ).rejects.toBe(executionDeadlock);
-    expect(execution.prisma.$transaction).toHaveBeenCalledTimes(1);
+      const execution = executionHarness();
+      execution.prisma.$transaction.mockRejectedValueOnce(deadlock);
+      await expect(
+        execution.service.recordExecution(
+          "payment-1",
+          "finance-1",
+          validExecutionInput()
+        )
+      ).rejects.toBe(deadlock);
+      expect(execution.prisma.$transaction).toHaveBeenCalledTimes(1);
+    }
   });
 });

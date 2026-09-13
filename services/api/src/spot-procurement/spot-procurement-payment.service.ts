@@ -29,7 +29,10 @@ import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
-import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
+import {
+  isPostgresSerializationFailure,
+  postgresSqlState
+} from "../project/project-operating-constraint";
 import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { AbandonSpotProcurementPaymentDraftDto } from "./dto/abandon-spot-procurement-payment-draft.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
@@ -4262,20 +4265,9 @@ function nonnegative(value: bigint) {
 }
 
 function prismaErrorCode(error: unknown) {
+  const sqlState = postgresSqlState(error);
+  if (sqlState) return sqlState;
   if (!error || typeof error !== "object") return undefined;
   const code = (error as { code?: unknown }).code;
-  if (code === "P2010") {
-    const meta = (error as { meta?: unknown }).meta;
-    if (meta && typeof meta === "object") {
-      const postgresCode = (meta as { code?: unknown }).code;
-      if (
-        ["40001", "40P01"].includes(
-          String(postgresCode)
-        )
-      ) {
-        return String(postgresCode);
-      }
-    }
-  }
   return typeof code === "string" ? code : undefined;
 }

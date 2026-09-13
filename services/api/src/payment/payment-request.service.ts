@@ -40,7 +40,10 @@ import { PaymentExecutionSharedAllocationService } from "../fund-execution/payme
 import { fundExecutionSelectionRefFingerprint } from "../fund-execution/fund-execution-selection-ref.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
-import { isPostgresSerializationFailure } from "../project/project-operating-constraint";
+import {
+  isPostgresSerializationFailure,
+  postgresSqlState
+} from "../project/project-operating-constraint";
 import {
   missingOperatingSourceReplayService,
   OperatingSourceReplayService,
@@ -4525,17 +4528,10 @@ export class PaymentRequestService {
 }
 
 function paymentPrismaErrorCode(error: unknown): string | undefined {
+  const sqlState = postgresSqlState(error);
+  if (sqlState) return sqlState;
   if (!error || typeof error !== "object") return undefined;
   const code = (error as { code?: unknown }).code;
-  if (code === "P2010") {
-    const meta = (error as { meta?: unknown }).meta;
-    if (meta && typeof meta === "object") {
-      const postgresCode = (meta as { code?: unknown }).code;
-      if (["40001", "40P01"].includes(String(postgresCode))) {
-        return String(postgresCode);
-      }
-    }
-  }
   return typeof code === "string" ? code : undefined;
 }
 

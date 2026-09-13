@@ -20,25 +20,28 @@ export const PROJECT_OPERATING_CONSTRAINT_MESSAGES = [
   "停止日期当日或之后已有正式经营事实，不能截断参与期间"
 ] as const;
 
-export function isPostgresSerializationFailure(error: unknown): boolean {
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    const meta = error.meta as Record<string, unknown> | undefined;
-    if (meta?.code === "40001" || meta?.sqlstate === "40001" || meta?.sqlState === "40001") {
-      return true;
-    }
-    return typeof meta?.database_error === "string"
-      && /(^|\D)40001(\D|$)/.test(meta.database_error);
-  }
-  if (!error || typeof error !== "object") return false;
+export function postgresSqlState(error: unknown): "40001" | "40P01" | undefined {
+  if (!error || typeof error !== "object") return undefined;
   const candidate = error as Record<string, unknown>;
-  return candidate.code === "40001"
-    || candidate.sqlstate === "40001"
-    || candidate.sqlState === "40001"
-    || (
-      candidate.meta !== null
-      && typeof candidate.meta === "object"
-      && isPostgresSerializationFailure(candidate.meta)
-    );
+  for (const key of ["code", "sqlstate", "sqlState"] as const) {
+    const value = candidate[key];
+    if (typeof value !== "string") continue;
+    const normalized = value.toUpperCase();
+    if (normalized === "40001" || normalized === "40P01") return normalized;
+  }
+  if (typeof candidate.database_error === "string") {
+    const match = candidate.database_error.match(/(^|[^0-9A-Z])(40001|40P01)([^0-9A-Z]|$)/iu);
+    const normalized = match?.[2]?.toUpperCase();
+    if (normalized === "40001" || normalized === "40P01") return normalized;
+  }
+  if (candidate.meta !== null && typeof candidate.meta === "object") {
+    return postgresSqlState(candidate.meta);
+  }
+  return undefined;
+}
+
+export function isPostgresSerializationFailure(error: unknown): boolean {
+  return postgresSqlState(error) === "40001";
 }
 
 export function projectOperatingConstraintMessage(error: unknown) {

@@ -644,23 +644,30 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
   });
 
-  it("preserves explicit PostgreSQL 40P01 without retrying the payer write", async () => {
-    const { service, tx, prisma } = createHarness();
-    const deadlock = {
-      code: "P2010",
-      meta: { code: "40P01", message: "deadlock detected" }
-    };
-    prisma.$transaction.mockRejectedValueOnce(deadlock);
+  it("preserves explicit PostgreSQL 40P01 wrappers without retrying the payer write", async () => {
+    for (const deadlock of [
+      {
+        code: "P2010",
+        meta: { code: "40P01", message: "deadlock detected" }
+      },
+      {
+        code: "P2034",
+        meta: { sqlstate: "40P01", message: "deadlock detected" }
+      }
+    ]) {
+      const { service, tx, prisma } = createHarness();
+      prisma.$transaction.mockRejectedValueOnce(deadlock);
 
-    await expect(
-      service.updatePayer("payment-1", "finance-1", {
-        companyEntityId: "company-1",
-        paymentMethods: ["bank_transfer"]
-      })
-    ).rejects.toBe(deadlock);
+      await expect(
+        service.updatePayer("payment-1", "finance-1", {
+          companyEntityId: "company-1",
+          paymentMethods: ["bank_transfer"]
+        })
+      ).rejects.toBe(deadlock);
 
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    }
   });
 
   it.each([
