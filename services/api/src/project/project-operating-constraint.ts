@@ -41,12 +41,6 @@ export function postgresSqlState(error: unknown): "40001" | "40P01" | undefined 
       const normalized = value.toUpperCase();
       if (normalized === "40001" || normalized === "40P01") return normalized;
     }
-    if (typeof candidate.database_error === "string") {
-      const match = candidate.database_error.match(/(^|[^0-9A-Z])(40001|40P01)([^0-9A-Z]|$)/iu);
-      const normalized = match?.[2]?.toUpperCase();
-      if (normalized === "40001" || normalized === "40P01") return normalized;
-    }
-
     if (current.depth >= POSTGRES_ERROR_LINK_MAX_DEPTH) continue;
     for (const key of ["meta", "cause"] as const) {
       const linked = candidate[key];

@@ -39,12 +39,23 @@ async function expectParticipantSerializationBoundary(
   makeHarness: () => ReturnType<typeof createHarness>,
   invoke: (service: ExpenseClaimService) => Promise<unknown>
 ) {
-  const cases = [
+  const cases: Array<{ error: unknown; mapped: boolean }> = [
     { error: { code: "40001" }, mapped: true },
     { error: { code: "P2034", meta: { sqlstate: "40001" } }, mapped: true },
     { error: { code: "40P01" }, mapped: false },
     { error: { code: "P2034", meta: { sqlstate: "40P01" } }, mapped: false },
-    { error: { code: "P2034" }, mapped: false }
+    { error: { code: "P2034" }, mapped: false },
+    {
+      error: { code: "P2010", meta: { database_error: "SQLSTATE 40001" } },
+      mapped: false
+    },
+    { error: { message: "business token 40001" }, mapped: false },
+    {
+      error: new ConflictException("unrelated conflict", {
+        cause: { code: "P2010", meta: { database_error: "SQLSTATE 40001" } }
+      }),
+      mapped: false
+    }
   ];
 
   for (const { error, mapped } of cases) {
@@ -386,6 +397,13 @@ describe("ExpenseClaimService", () => {
         voucherFileId: "voucher-1",
         confirmationPassword: "current-password"
       })
+    );
+  });
+
+  it("maps only explicit 40001 at the approval-review transaction boundary without retry", async () => {
+    await expectParticipantSerializationBoundary(
+      () => createHarness(),
+      (service) => service.review("claim-1", "reviewer-1", { decision: "approve" })
     );
   });
 

@@ -13,14 +13,15 @@ describe("project operating serialization constraints", () => {
     new Prisma.PrismaClientKnownRequestError("Raw query failed", {
       code: "P2010",
       clientVersion: "5.22.0",
-      meta: { code: "40001", database_error: "SQLSTATE 40001" }
+      meta: { code: "40001" }
     }),
     new Prisma.PrismaClientKnownRequestError("Transaction failed", {
       code: "P2034",
       clientVersion: "5.22.0",
       meta: { sqlstate: "40001" }
     }),
-    { code: "40001", message: "could not serialize access due to concurrent update" }
+    { code: "40001", message: "could not serialize access due to concurrent update" },
+    { sqlState: "40001" }
   ])("recognizes PostgreSQL serialization failures without retrying", (error) => {
     expect(isPostgresSerializationFailure(error)).toBe(true);
   });
@@ -30,7 +31,7 @@ describe("project operating serialization constraints", () => {
     new Prisma.PrismaClientKnownRequestError("Raw query failed", {
       code: "P2010",
       clientVersion: "5.22.0",
-      meta: { code: "40001", database_error: "SQLSTATE 40001" }
+      meta: { code: "40001" }
     })
   ])("recognizes a structured PostgreSQL serialization failure retained as an HTTP cause", (cause) => {
     const error = new ConflictException("经营账并发冲突", { cause });
@@ -57,6 +58,23 @@ describe("project operating serialization constraints", () => {
     current.cause = { code: "40001" };
 
     expect(postgresSqlState(root)).toBeUndefined();
+  });
+
+  it("does not infer PostgreSQL SQLSTATE from free-form error text", () => {
+    expect(postgresSqlState({
+      code: "P2010",
+      meta: { database_error: "SQLSTATE 40001" }
+    })).toBeUndefined();
+    expect(postgresSqlState({ message: "business token 40001" })).toBeUndefined();
+    expect(postgresSqlState({ database_error: "deadlock 40P01" })).toBeUndefined();
+    expect(postgresSqlState(
+      new ConflictException("unrelated conflict", {
+        cause: {
+          code: "P2010",
+          meta: { database_error: "SQLSTATE 40001" }
+        }
+      })
+    )).toBeUndefined();
   });
 
   it.each([
