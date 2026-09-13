@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 585,
-    "classificationOverrideCount": 214,
-    "derivedProductionPageCount": 371,
-    "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
-    "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
+    "routeCount": 593,
+    "classificationOverrideCount": 221,
+    "derivedProductionPageCount": 372,
+    "classificationOverrideSha256": "38d2f25bbc3fc2c8311bfd6608ca23936bc99b8ee912bb79df98b2e6c5051c30",
+    "consumerSurfaceOverrideSha256": "f6c511b992fe8cd464216573a001f0b612a65d71b5de3e2ada5ba155d2becf6d",
     "usageCounts": {
-      "page": 373,
+      "page": 375,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 34,
+      "internal_task": 40,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 425,
+      "web_api_wrapper": 427,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 32,
+      "operator_endpoint": 38,
       "none": 120
     }
   },
@@ -30,6 +30,48 @@
       "path": "/clearing-cases/reconciliation-risk",
       "usage": "internal_task",
       "reason": "pol_275_controlled_reconciliation_risk_user_read_no_page_consumer_future_pol_108_uses_internal_seam"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/as-of",
+      "usage": "page",
+      "reason": "pol_108_project_set_overview_uses_single_aggregate_web_request"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/as-of/details",
+      "usage": "internal_task",
+      "reason": "pol_108_finance_only_signed_cursor_detail_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/company/:companyEntityId",
+      "usage": "internal_task",
+      "reason": "pol_108_controlled_company_operating_projection_read_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/company/:companyEntityId/details",
+      "usage": "internal_task",
+      "reason": "pol_108_finance_only_signed_cursor_detail_endpoint"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-projections/export",
+      "usage": "internal_task",
+      "reason": "pol_108_controlled_chinese_operating_projection_export_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/project/:projectId",
+      "usage": "internal_task",
+      "reason": "pol_108_controlled_project_operating_projection_read_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/project/:projectId/details",
+      "usage": "internal_task",
+      "reason": "pol_108_finance_only_signed_cursor_detail_endpoint"
     },
     {
       "method": "DELETE",
@@ -1316,6 +1358,42 @@
       "path": "/clearing-cases/reconciliation-risk",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_275_controlled_user_read_endpoint_no_page_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/as-of/details",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_108_authenticated_finance_detail_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/company/:companyEntityId",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_108_authenticated_controlled_read_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/company/:companyEntityId/details",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_108_authenticated_finance_detail_endpoint"
+    },
+    {
+      "method": "POST",
+      "path": "/operating-projections/export",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_108_authenticated_controlled_export_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/project/:projectId",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_108_authenticated_controlled_read_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/operating-projections/project/:projectId/details",
+      "consumerSurface": "operator_endpoint",
+      "reason": "pol_108_authenticated_finance_detail_endpoint"
     },
     {
       "method": "GET",

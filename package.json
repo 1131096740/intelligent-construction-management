@@ -40,6 +40,7 @@
     "verify:pol275-clearing-reconciliation:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol275-clearing-reconciliation:local",
     "verify:pol279-necessary-expense-reserve:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol279-necessary-expense-reserve:local",
     "verify:pol280-project-fund-dispute:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol280-project-fund-dispute:local",
+    "verify:pol108-operating-projection:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol108-operating-projection:local",
     "verify:contract-template-scenario-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:contract-template-scenario-concurrency:local",
     "check:fast": "node scripts/ops/run-fast-local-check.mjs",
     "release:local": "bash scripts/ops/run-local-release-gate.sh",

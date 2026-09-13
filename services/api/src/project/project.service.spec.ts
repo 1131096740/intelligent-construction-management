@@ -1,3 +1,4 @@
+import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { createHash } from "node:crypto";
@@ -128,79 +129,6 @@ function addAffiliateSubjectTables<T extends Record<string, unknown>>(tx: T): T 
   return tx;
 }
 
-function fundingAllocation(input: {
-  id: string;
-  sourceType: "project_cash" | "financing_quota";
-  sourceId: string | null;
-  direction: "debit" | "credit";
-  amountCents: bigint;
-}) {
-  return {
-    projectId: "project-1",
-    executionType: "payment_execution",
-    executionId: "execution-1",
-    businessType: "payment_request",
-    businessId: "payment-1",
-    sourceKey: input.sourceId
-      ? `financing_quota:${input.sourceId}`
-      : "project_cash",
-    occurredAt: new Date("2026-08-01T00:00:00.000Z"),
-    createdByUserId: "finance-1",
-    reversalOfAllocationId: input.direction === "credit" ? "quota-debit" : null,
-    reversalKey: input.direction === "credit" ? "refund-1" : "original",
-    reason: input.direction === "credit" ? "供应商退款" : null,
-    createdAt: new Date("2026-08-01T00:00:00.000Z"),
-    ...input
-  };
-}
-
-function operatingOverviewPrisma(input: {
-  quotas: Array<{
-    id: string;
-    amountCents: bigint;
-    status: string;
-    validUntil: Date | null;
-  }>;
-  allocations: ReturnType<typeof fundingAllocation>[];
-}) {
-  return {
-    project: {
-      findFirst: jest.fn().mockResolvedValue({
-        id: "project-1",
-        code: "JG-001",
-        name: "总部综合楼"
-      })
-    },
-    contract: { findMany: jest.fn().mockResolvedValue([]) },
-    settlement: { findMany: jest.fn().mockResolvedValue([]) },
-    paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
-    financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-    projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-    projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
-    projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
-    projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
-    projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
-    projectFinancingQuota: {
-      findMany: jest.fn().mockImplementation(({ where }: {
-        where: { status?: string };
-      }) => Promise.resolve(
-        where.status
-          ? input.quotas.filter((quota) =>
-              quota.status === where.status &&
-              (quota.validUntil === null || quota.validUntil.getTime() >= Date.now())
-            )
-          : input.quotas
-      ))
-    },
-    projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-    spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
-    spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
-    spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
-    projectFundingAllocation: {
-      findMany: jest.fn().mockResolvedValue(input.allocations)
-    }
-  };
-}
 
 describe("project money API boundary", () => {
   it("returns large bigint values as exact decimal strings", () => {
@@ -789,7 +717,7 @@ describe("ProjectService", () => {
     });
   });
 
-  it("aggregates operating funds overview with upstream settlements when available", async () => {
+  it("adapts the legacy overview to the unified projection without reading source amount tables", async () => {
     const prisma = {
       project: {
         findFirst: jest.fn().mockResolvedValue({
@@ -798,514 +726,238 @@ describe("ProjectService", () => {
           name: "总部综合楼"
         })
       },
-      contract: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "contract-1" },
-          { id: "contract-2" }
-        ])
+      projectUpstreamFundFact: {
+        count: jest.fn()
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(1)
       },
-      contractVersion: {
-        findMany: jest.fn().mockResolvedValue([
-          { contractId: "contract-1", versionNo: 1, amountCents: BigInt(10000000) },
-          { contractId: "contract-2", versionNo: 1, amountCents: BigInt(25000000) }
-        ])
-      },
-      settlement: {
-        findMany: jest.fn().mockResolvedValue([
-          { status: "effective", amountCents: 8000000n, payableAmountCents: 6400000n },
-          { status: "effective", amountCents: 12000000n, payableAmountCents: 9600000n },
-          { status: "approval_pending", amountCents: 5000000n, payableAmountCents: 4000000n }
-        ])
-      },
-      paymentRequest: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "payment-1",
-            status: "approval_pending",
-            requestedAmountCents: 3000000n,
-            approvedAmountCents: null,
-            paidAmountCents: 0n
-          },
-          {
-            id: "payment-2",
-            status: "approved_pending_payment",
-            requestedAmountCents: 5000000n,
-            approvedAmountCents: 4800000n,
-            paidAmountCents: 0n
-          },
-          {
-            id: "payment-3",
-            status: "paid",
-            requestedAmountCents: 2000000n,
-            approvedAmountCents: 2000000n,
-            paidAmountCents: 2000000n
-          },
-          {
-            id: "payment-4",
-            status: "partially_paid",
-            requestedAmountCents: 3000000n,
-            approvedAmountCents: 3000000n,
-            paidAmountCents: 1000000n
-          }
-        ])
-      },
-      paymentExecution: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: 1000000n },
-          { amountCents: 2000000n },
-          { amountCents: 1000000n }
-        ])
-      },
-      financeRecord: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: 900000n },
-          { amountCents: 1900000n }
-        ])
-      },
-      projectReceipt: {
-        findMany: jest.fn().mockImplementation(({ where }: {
-          where: { sourceType?: { in: string[] } };
-        }) => Promise.resolve([
-          {
-            amountCents: BigInt(10000000),
-            sourceType: "general_contractor_payment"
-          },
-          {
-            amountCents: BigInt(5000000),
-            sourceType: "owner_direct_payment"
-          }
-        ].filter((receipt) =>
-          !where.sourceType || where.sourceType.in.includes(receipt.sourceType)
-        )))
-      },
-      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: BigInt(2000000) },
-          { amountCents: BigInt(500000) }
-        ])
-      },
-      projectAffiliatePaymentFact: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: 1_000_000n, effectDirection: "increase" },
-          { amountCents: 200_000n, effectDirection: "decrease" }
-        ])
-      },
-      projectUpstreamSettlement: {
-        findMany: jest.fn().mockResolvedValue([
-          { approvedAmountCents: BigInt(30000000) }
-        ])
-      },
-      projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([{
-          id: "financing-quota-1",
-          amountCents: BigInt(2000000),
-          status: "approved",
-          validUntil: null
-        }])
-      },
-      projectFundingAllocation: {
-        findMany: jest.fn().mockResolvedValue([
-          fundingAllocation({
-            id: "cash-debit",
-            sourceType: "project_cash",
-            sourceId: null,
-            direction: "debit",
-            amountCents: 5_500_000n
-          })
-        ])
-      },
-      projectExpenseRequest: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      projectExpenseExecution: {
-        findMany: jest.fn()
-      },
-      spotProcurement: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      spotProcurementRefund: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      spotProcurementPayment: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "spot-payment-1",
-            status: "approval_pending",
-            companyPaymentAmountCents: 1_000_000n,
-            canceledCompanyPaymentAmountCents: 0n,
-            paidAmountCents: 0n
-          },
-          {
-            id: "spot-payment-2",
-            status: "partially_paid",
-            companyPaymentAmountCents: 3_000_000n,
-            canceledCompanyPaymentAmountCents: 1_000_000n,
-            paidAmountCents: 500_000n
-          },
-          {
-            id: "spot-payment-3",
-            status: "paid",
-            companyPaymentAmountCents: 1_000_000n,
-            canceledCompanyPaymentAmountCents: 0n,
-            paidAmountCents: 1_000_000n
-          }
-        ])
-      },
-      spotProcurementPaymentExecution: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: 500_000n },
-          { amountCents: 1_000_000n }
-        ])
-      }
+      contract: { count: jest.fn().mockResolvedValue(2) },
+      settlement: { count: jest.fn().mockResolvedValue(3) },
+      paymentRequest: { count: jest.fn().mockResolvedValue(4) }
     };
-    const service = new ProjectService(prisma as never);
+    const aggregate = {
+        scope: { label: "单项目经营口径", projectCount: 1 },
+        asOf: {
+          businessDate: "2026-09-11",
+          readAt: "2026-09-11T00:00:00.000Z",
+          retroactiveFactCount: 0
+        },
+        integrity: { statusLabel: "完整", moneyComplete: true, notices: [] },
+        commitments: { contractCommitmentCents: "35000000" },
+        operating: {
+          confirmedIncomeCents: "30000000",
+          confirmedCostCents: "8800000",
+          receivableCents: "1000000",
+          payableCents: "16000000"
+        },
+        actualFunds: {
+          confirmedProjectInflowsCents: "10000000",
+          confirmedProjectOutflowsCents: "5500000"
+        },
+        restrictions: { openUncoveredReconciliationCents: "5000" },
+        profitAndLoss: { currentOperatingProfitCents: "21200000" },
+        distribution: { cashCeilingCents: "4500000" },
+        evidence: { gapFactCount: 0 },
+        sources: []
+    };
+    const projection = {
+      readProjectCompatibilitySnapshot: jest.fn().mockImplementation(
+        async (_actorUserId, _input, readAdditional) => ({
+          projection: aggregate,
+          additional: await readAdditional(prisma, ["project-1"])
+        })
+      )
+    };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      projection as never
+    );
 
-    await expect(service.getOperatingFundsOverview("project-1")).resolves.toEqual({
-      project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
-      cash: {
-        actualReceiptsCents: "10000000",
-        legacyReceiptsCents: "10000000",
-        affiliateRemittanceCents: "0",
-        supplierRefundsCents: "0",
-        availableFundsCents: "-5800000",
+    const result = await service.getOperatingFundsOverview(
+      "project-1",
+      "finance-1"
+    );
+
+    expect(projection.readProjectCompatibilitySnapshot).toHaveBeenCalledWith(
+      "finance-1",
+      { projectId: "project-1" },
+      expect.any(Function)
+    );
+    expect(result).toEqual(expect.objectContaining({
+      cash: expect.objectContaining({
+        actualReceiptsCents: null,
         actualPaidCents: "5500000",
-        approvalPendingOccupancyCents: "4000000",
-        approvedPendingPaymentCents: "8300000",
-        financeRecordedOutflowCents: "2800000"
-      },
-      business: {
+        availableFundsCents: "4500000",
+        approvalPendingOccupancyCents: null,
+        approvedPendingPaymentCents: null,
+        financeRecordedOutflowCents: null
+      }),
+      business: expect.objectContaining({
         effectiveContractAmountCents: "35000000",
-        effectiveSettlementAmountCents: "20000000",
-        payableSettlementAmountCents: "16000000",
+        effectiveSettlementAmountCents: null,
+        payableSettlementAmountCents: null,
         operatingIncomeCents: "30000000",
-        affiliateDownstreamPaymentCents: "800000",
+        affiliateDownstreamPaymentCents: null,
         operatingCostCents: "8800000",
         grossProfitCents: "21200000"
-      },
-      upstreamFunds: {
-        ownerPaymentCents: "0",
-        affiliateRemittanceCents: "0",
-        affiliateDeductionCents: "0",
-        unreconciledReceiptDifferenceCents: "0",
-        writtenCount: 0,
-        oralCount: 0,
-        rows: []
-      },
+      }),
+      upstreamFunds: expect.objectContaining({
+        unreconciledReceiptDifferenceCents: "5000",
+        writtenCount: 2,
+        oralCount: 1
+      }),
       counts: { contracts: 2, settlements: 3, payments: 4 },
-      dataGaps: []
-    });
-    expect(prisma.projectReceipt.findMany).toHaveBeenCalledWith({
-      where: {
-        projectId: "project-1",
-        voidedAt: null,
-        sourceType: { in: ["general_contractor_payment", "other"] }
-      },
-      select: { amountCents: true }
-    });
-    expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", voidedAt: null },
-      select: { amountCents: true }
-    });
-    expect(prisma.projectAffiliatePaymentFact.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", status: "confirmed" },
-      select: { amountCents: true, effectDirection: true }
-    });
-    expect(prisma.projectUpstreamSettlement.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", status: "confirmed", voidedAt: null },
-      select: { approvedAmountCents: true }
-    });
-    expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1" },
-      select: {
-        id: true,
-        amountCents: true,
-        status: true,
-        validUntil: true
-      }
-    });
-    expect(prisma.spotProcurementPaymentExecution.findMany).toHaveBeenCalledWith({
-      where: {
-        paymentId: {
-          in: ["spot-payment-1", "spot-payment-2", "spot-payment-3"]
-        },
-        voidedAt: null
-      },
-      select: { amountCents: true }
-    });
+      operatingProjection: aggregate
+    }));
+    expect(result).not.toHaveProperty("schema");
+    expect(result.upstreamFunds).not.toHaveProperty("rows");
+    expect(prisma).not.toHaveProperty("projectReceipt");
+    expect(prisma).not.toHaveProperty("financeRecord");
   });
 
-  it("deducts financing usage and restores available cash from supplier refunds without relabeling receipts", async () => {
-    const prisma = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "project-1",
-          code: "JG-001",
-          name: "总部综合楼"
-        })
-      },
-      contract: { findMany: jest.fn().mockResolvedValue([]) },
-      settlement: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurement: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "procurement-1" }
-        ])
-      },
-      spotProcurementRefund: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: 100_000n }
-        ])
-      },
-      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([{
-          id: "financing-quota-1",
-          amountCents: BigInt(2000000),
-          status: "approved",
-          validUntil: null
+  it("reads upstream fund details only through the dedicated service entry", async () => {
+    const readAt = new Date("2026-09-12T01:02:03.000Z");
+    const tx = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ readAt }])
+        .mockResolvedValueOnce([{
+          snapshotRowCount: "0",
+          snapshotStateFingerprint: "ab".repeat(32)
         }])
+        .mockResolvedValueOnce([]),
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
       },
-      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFundingAllocation: {
-        findMany: jest.fn().mockResolvedValue([
-          fundingAllocation({
-            id: "quota-debit",
-            sourceType: "financing_quota",
-            sourceId: "financing-quota-1",
-            direction: "debit",
-            amountCents: 800_000n
-          }),
-          fundingAllocation({
-            id: "quota-credit",
-            sourceType: "financing_quota",
-            sourceId: "financing-quota-1",
-            direction: "credit",
-            amountCents: 100_000n
-          })
-        ])
+      projectUpstreamFundFact: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new ProjectService(prisma as never);
-
-    const overview = await service.getOperatingFundsOverview("project-1");
-
-    expect(overview.cash).toEqual(
-      expect.objectContaining({
-        actualReceiptsCents: "0",
-        supplierRefundsCents: "100000",
-        availableFundsCents: "1300000"
-      })
+    const release = jest.fn();
+    const prisma = {
+      $transaction: jest.fn((work) => work(tx))
+    };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { acquireCompatibilityReadSlot: jest.fn().mockReturnValue(release) } as never
     );
-    expect(prisma.projectFundingAllocation.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1" },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
-    });
-  });
 
-  it("fails the operating overview when a historical financing quota is overdrawn", async () => {
-    const prisma = operatingOverviewPrisma({
-      quotas: [
-        {
-          id: "quota-current",
-          amountCents: 2_000_000n,
-          status: "approved",
-          validUntil: null
-        },
-        {
-          id: "quota-terminated",
-          amountCents: 1_000_000n,
-          status: "terminated",
-          validUntil: new Date("2026-07-01T00:00:00.000Z")
-        }
+    await expect(service.listUpstreamFundFacts(
+      "project-1",
+      "finance-1"
+    )).resolves.toEqual({
+      items: [],
+      page: {
+        pageSize: 50,
+        readAt: readAt.toISOString(),
+        nextCursor: null
+      }
+    });
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith("SET TRANSACTION READ ONLY");
+    expect(tx.projectUpstreamFundFact.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", createdAt: { lte: readAt } },
+      orderBy: [
+        { occurredAt: "desc" },
+        { createdAt: "desc" },
+        { id: "asc" }
       ],
-      allocations: [
-        fundingAllocation({
-          id: "terminated-quota-debit",
-          sourceType: "financing_quota",
-          sourceId: "quota-terminated",
-          direction: "debit",
-          amountCents: 1_000_001n
-        })
-      ]
+      take: 51
     });
-    const service = new ProjectService(prisma as never);
-
-    await expect(service.getOperatingFundsOverview("project-1")).rejects.toThrow(
-      "项目垫资额度占用超过批准金额"
-    );
-    expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1" },
-      select: {
-        id: true,
-        amountCents: true,
-        status: true,
-        validUntil: true
-      }
-    });
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
-  it("fails the operating overview when the funding ledger references a missing financing quota", async () => {
-    const prisma = operatingOverviewPrisma({
-      quotas: [],
-      allocations: [
-        fundingAllocation({
-          id: "missing-quota-debit",
-          sourceType: "financing_quota",
-          sourceId: "quota-missing",
-          direction: "debit",
-          amountCents: 1n
-        })
-      ]
-    });
-    const service = new ProjectService(prisma as never);
-
-    await expect(service.getOperatingFundsOverview("project-1")).rejects.toThrow(
-      "项目垫资额度资金账本引用了不存在的额度"
-    );
-  });
-
-  it("fails closed when the spot-procurement overview delegate is unavailable", async () => {
-    const prisma = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "project-1",
-          code: "JG-001",
-          name: "总部综合楼"
-        })
-      },
-      contract: { findMany: jest.fn().mockResolvedValue([]) },
-      settlement: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamSettlement: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      projectExpenseRequest: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      spotProcurementPayment: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      projectFundingAllocation: {
-        findMany: jest.fn().mockResolvedValue([])
-      }
+  it("rejects an oversized upstream fund page before materializing business rows", async () => {
+    const readAt = new Date("2026-09-12T01:02:03.000Z");
+    const tx = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ readAt }])
+        .mockResolvedValueOnce([{
+          snapshotRowCount: "1",
+          snapshotStateFingerprint: "cd".repeat(32)
+        }])
+        .mockResolvedValueOnce([{ id: "fact-1", logicalBytes: 8_388_609n }]),
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectUpstreamFundFact: { findMany: jest.fn() }
     };
-    const service = new ProjectService(prisma as never);
+    const release = jest.fn();
+    const service = new ProjectService(
+      { $transaction: jest.fn((work) => work(tx)) } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { acquireCompatibilityReadSlot: jest.fn().mockReturnValue(release) } as never
+    );
 
+    await expect(service.listUpstreamFundFacts(
+      "project-1",
+      "finance-1"
+    )).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(tx.projectUpstreamFundFact.findMany).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open an upstream fund transaction when the shared actor limiter rejects", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        acquireCompatibilityReadSlot: jest.fn(() => {
+          throw new Error("RATE_LIMITED");
+        })
+      } as never
+    );
+
+    await expect(service.listUpstreamFundFacts(
+      "project-1",
+      "finance-1"
+    )).rejects.toThrow("RATE_LIMITED");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("charges the shared actor limiter before rejecting an oversized upstream fund cursor", async () => {
+    const release = jest.fn();
+    const acquireCompatibilityReadSlot = jest.fn().mockReturnValue(release);
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { acquireCompatibilityReadSlot } as never
+    );
+
+    await expect(service.listUpstreamFundFacts(
+      "project-1",
+      "finance-1",
+      { cursor: "x".repeat(2_049) }
+    )).rejects.toBeInstanceOf(BadRequestException);
+    expect(acquireCompatibilityReadSlot).toHaveBeenCalledWith("finance-1");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the compatibility projection delegate is unavailable", async () => {
+    const service = new ProjectService({} as never);
     await expect(
-      service.getOperatingFundsOverview("project-1")
-    ).rejects.toBeInstanceOf(TypeError);
+      service.getOperatingFundsOverview("project-1", "finance-1")
+    ).rejects.toThrow("经营投影服务未完成装配");
   });
 
-  it("sums only the latest effective contract version per contract", async () => {
-    const prisma = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "project-1",
-          code: "JG-001",
-          name: "总部综合楼"
-        })
-      },
-      contract: {
-        findMany: jest.fn().mockResolvedValue([{ id: "contract-1" }, { id: "contract-2" }])
-      },
-      contractVersion: {
-        findMany: jest.fn().mockResolvedValue([
-          { contractId: "contract-1", versionNo: 1, amountCents: BigInt(10000000) },
-          { contractId: "contract-1", versionNo: 2, amountCents: BigInt(12000000) },
-          { contractId: "contract-2", versionNo: 1, amountCents: BigInt(25000000) }
-        ])
-      },
-      settlement: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentExecution: { findMany: jest.fn() },
-      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
-      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      projectExpenseExecution: { findMany: jest.fn() },
-      projectFundingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
-    };
-    const service = new ProjectService(prisma as never);
-
-    const overview = await service.getOperatingFundsOverview("project-1");
-
-    expect(overview.business.effectiveContractAmountCents).toBe("37000000");
-  });
-
-  it("returns effective contract totals above the safe integer range without precision loss", async () => {
-    const prisma = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "project-1",
-          code: "JG-001",
-          name: "总部综合楼"
-        })
-      },
-      contract: {
-        findMany: jest.fn().mockResolvedValue([{ id: "contract-1" }, { id: "contract-2" }])
-      },
-      contractVersion: {
-        findMany: jest.fn().mockResolvedValue([
-          { contractId: "contract-1", versionNo: 1, amountCents: BigInt(Number.MAX_SAFE_INTEGER) },
-          { contractId: "contract-2", versionNo: 1, amountCents: BigInt(1) }
-        ])
-      },
-      settlement: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentExecution: { findMany: jest.fn() },
-      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
-      projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
-      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      projectExpenseExecution: { findMany: jest.fn() },
-      projectFundingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
-    };
-    const service = new ProjectService(prisma as never);
-
-    await expect(service.getOperatingFundsOverview("project-1")).resolves.toMatchObject({
-      business: { effectiveContractAmountCents: "9007199254740992" }
-    });
-  });
-
-  it("throws NotFound for missing or inactive project", async () => {
-    const prisma = {
-      project: { findFirst: jest.fn().mockResolvedValue(null) }
-    };
-    const service = new ProjectService(prisma as never);
-
-    await expect(service.getOperatingFundsOverview("missing")).rejects.toThrow(
-      "项目不存在或已停用，请刷新后重试"
-    );
-  });
 
   it("records project proxy payment with voucher, settlement linkage, and audit log", async () => {
     const paidAt = "2026-07-02T00:00:00.000Z";

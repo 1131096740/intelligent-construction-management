@@ -70,6 +70,18 @@ describe("permission policy table", () => {
     expect(canPerform("clearing.reconciliation.reverse", ["super_admin"])).toBe(false);
   });
 
+  it("reserves operating projection detail reads for finance business roles", () => {
+    expect(ACTION_REQUIRED_ROLES["operating_projection.detail.read"]).toEqual([
+      "finance_staff",
+      "finance_director"
+    ]);
+    expect(canPerform("operating_projection.detail.read", ["finance_staff"])).toBe(true);
+    expect(canPerform("operating_projection.detail.read", ["finance_director"])).toBe(true);
+    expect(canPerform("operating_projection.detail.read", ["project_manager"])).toBe(false);
+    expect(canPerform("operating_projection.detail.read", ["chairman"])).toBe(false);
+    expect(canPerform("operating_projection.detail.read", ["super_admin"])).toBe(false);
+  });
+
   it("limits payable settlement reads and writes to the frozen global finance duties", () => {
     for (const action of [
       "payable_settlement.read",

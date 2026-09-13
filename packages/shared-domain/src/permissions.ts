@@ -55,6 +55,7 @@ export const BUSINESS_ACTIONS = [
   "project.financing_quota.approve",
   "project.financing_quota.terminate",
   "project.operating_profile.manage",
+  "operating_projection.detail.read",
   "necessary_expense_reserve.read",
   "necessary_expense_reserve.prepare",
   "necessary_expense_reserve.submit",
@@ -263,6 +264,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "project.financing_quota.terminate": ["finance_director"],
   "project.operating_profile.manage": ["finance_staff", "finance_director"],
+  "operating_projection.detail.read": ["finance_staff", "finance_director"],
   "necessary_expense_reserve.read": [
     "finance_staff",
     "finance_director",

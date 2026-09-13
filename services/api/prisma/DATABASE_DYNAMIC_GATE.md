@@ -56,7 +56,7 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
   --confirm LOCAL_PG16_DYNAMIC_GATE
 ```
 
-不提供 `--group` 时仍按清单执行全部 14 组。CI 可以重复提供 `--group <清单组名称>`，只执行选中的组：
+不提供 `--group` 时仍按清单执行全部 15 组。CI 可以重复提供 `--group <清单组名称>`，只执行选中的组：
 
 ```bash
 node services/api/prisma/run-database-dynamic-gate-local.cjs \
@@ -70,7 +70,7 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 收据中的测试数、文件数和组结果只覆盖本次选中范围。`--list --group <组名>` 可在不调用 Git、Docker、
 PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
-不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 14 组 runner。前 13 组保持独立收据；`remaining_dynamic_postgresql16` 由
+不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 15 组 runner。前 14 组保持独立收据；`remaining_dynamic_postgresql16` 由
 `run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 17 个子组，覆盖 149 条动态用例。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
@@ -83,7 +83,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 ## 当前覆盖
 
-canonical manifest 当前登记 52 个文件、229 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。
+canonical manifest 当前登记 53 个文件、235 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `operating_projection_pol108` 覆盖 1 个文件、6 条用例，`remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。
 
 #284 的 `participant_history_integrity` 子组使用独立数据库 `jiangkong_participant_history_integrity_test`，在同一文件内执行原有经营档案 17 条与参与公司历史完整性 13 条，共登记 30 条；完整 Jest 文件另含 2 条非 pending 的错误映射守卫，因此专组执行时显示 32/32。其中包含激活时拒绝未来覆盖断点、允许半开区间无缝接续，以及以最小运行时角色 `SET ROLE` 执行合法停止/删除、拒绝直接写 fence 表的权限回归：
 

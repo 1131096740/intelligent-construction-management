@@ -103,4 +103,10 @@ describe("operational write freeze classification", () => {
       "finance"
     );
   });
+
+  it("keeps audited operating projection exports in the finance control plane", () => {
+    expect(OPERATIONAL_WRITE_CONTROLLER_MODULES.OperatingProjectionController).toBe(
+      "finance"
+    );
+  });
 });

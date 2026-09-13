@@ -2,7 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Injectable
+  Injectable,
+  PayloadTooLargeException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -16,8 +17,12 @@ import { PrismaService } from "../database/prisma.service";
 type ReaderInput = {
   projectId: string;
   asOf?: Date;
+  readAt?: Date;
   clearingCaseIds?: readonly string[];
 };
+
+const CLEARING_RELATION_QUERY_ROW_BUDGET = 10_000;
+const CLEARING_TOTAL_ROW_BUDGET = 30_000;
 
 export type ProjectFundDisputeClearingDuplicateState =
   | "none"
@@ -89,7 +94,10 @@ export class ClearingReconciliationReaderService {
     };
     const projectFilter = {
       clearingCase: clearingCaseWhere,
-      confirmedAt: { lte: asOf }
+      confirmedAt: { lte: asOf },
+      ...(input.readAt
+        ? { decisionEventVersion: { createdAt: { lte: input.readAt } } }
+        : {})
     };
     const [
       legacyPendingEvents,
@@ -106,13 +114,15 @@ export class ClearingReconciliationReaderService {
             kind: "pending_reconciliation",
             clearingCase: clearingCaseWhere
           },
+          ...(input.readAt ? { createdAt: { lte: input.readAt } } : {}),
           confirmation: { confirmedAt: { lte: asOf } }
         },
         select: {
           id: true,
           confirmation: { select: { confirmedAt: true } }
         },
-        orderBy: { id: "asc" }
+        orderBy: { id: "asc" },
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       }),
       tx.clearingReconciliationRevision.findMany({
         where: projectFilter,
@@ -133,7 +143,8 @@ export class ClearingReconciliationReaderService {
           { confirmedAt: "asc" },
           { effectiveCaseRevision: "asc" },
           { id: "asc" }
-        ]
+        ],
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       }),
       tx.clearingReconciliationCoverage.findMany({
         where: projectFilter,
@@ -149,7 +160,8 @@ export class ClearingReconciliationReaderService {
           { confirmedAt: "asc" },
           { effectiveCaseRevision: "asc" },
           { id: "asc" }
-        ]
+        ],
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       }),
       tx.clearingReconciliationResolution.findMany({
         where: projectFilter,
@@ -168,12 +180,18 @@ export class ClearingReconciliationReaderService {
           { confirmedAt: "asc" },
           { effectiveCaseRevision: "asc" },
           { id: "asc" }
-        ]
+        ],
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       }),
       tx.clearingReconciliationResolutionLine.findMany({
         where: {
           clearingCase: clearingCaseWhere,
-          resolution: { confirmedAt: { lte: asOf } }
+          resolution: {
+            confirmedAt: { lte: asOf },
+            ...(input.readAt
+              ? { decisionEventVersion: { createdAt: { lte: input.readAt } } }
+              : {})
+          }
         },
         select: {
           id: true,
@@ -183,7 +201,8 @@ export class ClearingReconciliationReaderService {
           amountCents: true,
           reversesResolutionLineId: true
         },
-        orderBy: [{ resolutionId: "asc" }, { intentLineNo: "asc" }, { id: "asc" }]
+        orderBy: [{ resolutionId: "asc" }, { intentLineNo: "asc" }, { id: "asc" }],
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       }),
       tx.clearingReconciliationDefinitionReversal.findMany({
         where: projectFilter,
@@ -197,7 +216,8 @@ export class ClearingReconciliationReaderService {
           { confirmedAt: "asc" },
           { effectiveCaseRevision: "asc" },
           { id: "asc" }
-        ]
+        ],
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       }),
       tx.clearingEventVersion.findMany({
         where: {
@@ -207,14 +227,34 @@ export class ClearingReconciliationReaderService {
             },
             clearingCase: clearingCaseWhere
           },
+          ...(input.readAt ? { createdAt: { lte: input.readAt } } : {}),
           confirmation: { confirmedAt: { lte: asOf } }
         },
         select: {
           payloadSnapshot: true,
           reconciliationDecisionSeal: { select: { decisionEventVersionId: true } }
-        }
+        },
+        take: CLEARING_RELATION_QUERY_ROW_BUDGET + 1
       })
     ]);
+
+    const relationRows = [
+      legacyPendingEvents,
+      revisions,
+      coverages,
+      resolutions,
+      resolutionLines,
+      definitionReversals,
+      requiredV1Decisions
+    ];
+    if (
+      relationRows.some((rows) => rows.length > CLEARING_RELATION_QUERY_ROW_BUDGET) ||
+      relationRows.reduce((sum, rows) => sum + rows.length, 0) > CLEARING_TOTAL_ROW_BUDGET
+    ) {
+      throw new PayloadTooLargeException(
+        "清算核对关系超出单次读取安全预算，请收窄项目或施工企业范围"
+      );
+    }
 
     if (requiredV1Decisions.some((version) =>
       !hasV1Intent(version.payloadSnapshot) || !version.reconciliationDecisionSeal
@@ -425,6 +465,12 @@ function assertReaderInput(input: ReaderInput): void {
     (!(input.asOf instanceof Date) || !Number.isFinite(input.asOf.getTime()))
   ) {
     throw new BadRequestException("asOf 时间无效");
+  }
+  if (
+    input.readAt !== undefined &&
+    (!(input.readAt instanceof Date) || !Number.isFinite(input.readAt.getTime()))
+  ) {
+    throw new BadRequestException("readAt 时间无效");
   }
   if (input.clearingCaseIds?.some((id) => !id.trim())) {
     throw new BadRequestException("核对事项 ID 不能为空");

@@ -17,10 +17,23 @@ describe("project operating overview structure", () => {
 
   it("separates overview, expense-ledger and expense-create capabilities", () => {
     expect(source).toContain("canReadProjectOverview.value\n        ? fetchProjectOperatingOverview(projectId)");
+    expect(source).toContain("loadOptionalProjectUpstreamFundFacts(\n        projectId");
+    expect(source).toContain("canRecordUpstreamFunds.value,\n        fetchProjectUpstreamFundFacts");
+    expect(source).toContain("upstreamFundFacts.value = nextUpstreamFundFacts.facts");
+    expect(source).toContain("upstreamFundFactsNextCursor.value = nextUpstreamFundFacts.nextCursor");
+    expect(source).toContain("@click=\"loadMoreUpstreamFundFacts\"");
+    expect(source).toContain("pageSize: 50");
+    expect(source).not.toContain("overview.value?.upstreamFunds.rows");
     expect(source).toContain("canReadProjectExpenseLedger.value\n        ? fetchProjectExpenseRequests(projectId");
     expect(source).toContain("const canCreateProjectExpense = computed");
     expect(source).toContain('v-if="canCreateProjectExpense"');
     expect(source).toContain("auth.user?.globalRoleKeys.some");
+  });
+
+  it("loads the cross-project executive total through one project-set projection", () => {
+    expect(source).toContain("await fetchProjectSetOperatingProjection(");
+    expect(source).toContain("buildExecutiveProjectOverview(projection, projects.value)");
+    expect(source).not.toContain("projects.value.map((project) => fetchProjectOperatingOverview(project.id))");
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {
@@ -36,6 +49,19 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<t-select");
     expect(source).toContain("<t-collapse");
     expect(source).toContain("项目维护");
+  });
+
+  it("renders the unified projection layers without exposing source identifiers", () => {
+    expect(source).toContain("项目应收应付");
+    expect(source).toContain("各主体项目资金");
+    expect(source).toContain("四层盈亏与可分配上限");
+    expect(source).toContain("历史接管与证据完整性");
+    expect(source).toContain("overview.value?.operatingProjection.operating");
+    expect(source).toContain("overview.value?.operatingProjection.actualFunds");
+    expect(source).toContain("overview.value?.operatingProjection.profitAndLoss");
+    expect(source).toContain("projection?.evidence");
+    expect(source).not.toContain("sourceBusinessId");
+    expect(source).not.toContain("impactId");
   });
 
   it("mounts the project operating profile as a dedicated settings entry", () => {

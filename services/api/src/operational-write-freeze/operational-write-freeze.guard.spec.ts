@@ -14,6 +14,10 @@ class ContractController {
   create() {}
 }
 
+class OperatingProjectionController {
+  export() {}
+}
+
 class UnclassifiedController {
   mutate() {}
 }
@@ -131,6 +135,33 @@ describe("OperationalWriteFreezeGuard", () => {
         })
       )
     ).toBe(true);
+  });
+
+  it("keeps audited exports open without a freeze and blocks them in the finance freeze", () => {
+    delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+    delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    expect(
+      guard.canActivate(
+        contextFor({
+          controller: OperatingProjectionController,
+          handler: OperatingProjectionController.prototype.export
+        })
+      )
+    ).toBe(true);
+
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    expectHttpFailure(
+      () =>
+        guard.canActivate(
+          contextFor({
+            controller: OperatingProjectionController,
+            handler: OperatingProjectionController.prototype.export
+          })
+        ),
+      503,
+      "OPERATIONAL_WRITE_FREEZE_ACTIVE"
+    );
   });
 
   it("preserves the explicit authentication lifecycle during every freeze mode", () => {

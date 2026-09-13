@@ -144,15 +144,6 @@
                 <thead>
                   <tr>
                     <th>项目</th>
-                    <th>生效合同额</th>
-                    <th>生效结算额</th>
-                    <th>结算可付额</th>
-                    <th>实际收款</th>
-                    <th>供应商退款</th>
-                    <th>已实付</th>
-                    <th>已批待付</th>
-                    <th>可用资金</th>
-                    <th>数据缺口</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -162,15 +153,6 @@
                     :key="row.id"
                   >
                     <td>{{ row.code }} · {{ row.name }}</td>
-                    <td>{{ formatCents(row.contractAmountCents) }}</td>
-                    <td>{{ formatCents(row.settlementAmountCents) }}</td>
-                    <td>{{ formatCents(row.payableAmountCents) }}</td>
-                    <td>{{ formatCents(row.actualReceiptsCents) }}</td>
-                    <td>{{ formatCents(row.supplierRefundsCents) }}</td>
-                    <td>{{ formatCents(row.actualPaidCents) }}</td>
-                    <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
-                    <td>{{ formatCents(row.availableFundsCents) }}</td>
-                    <td>{{ row.dataGapCount ? `${row.dataGapCount} 项` : "无" }}</td>
                     <td>
                       <button
                         type="button"
@@ -241,6 +223,60 @@
               <dl>
                 <div
                   v-for="item in businessItems"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+
+          <div class="overview-grid projection-grid">
+            <section class="panel">
+              <h2>项目应收应付</h2>
+              <dl>
+                <div
+                  v-for="item in receivablePayableItems"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <h2>各主体项目资金</h2>
+              <dl>
+                <div
+                  v-for="item in subjectFundsItems"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <h2>四层盈亏与可分配上限</h2>
+              <dl>
+                <div
+                  v-for="item in profitAndLossItems"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <h2>历史接管与证据完整性</h2>
+              <dl>
+                <div
+                  v-for="item in evidenceItems"
                   :key="item.label"
                 >
                   <dt>{{ item.label }}</dt>
@@ -429,6 +465,12 @@
               title="业务关联选项读取失败"
               :message="upstreamFundReferenceOptionsError"
             />
+            <t-alert
+              v-if="upstreamFundFactsError"
+              theme="error"
+              title="上游资金明细读取失败"
+              :message="upstreamFundFactsError"
+            />
             <div
               v-if="receiptMessage"
               class="receipt-message"
@@ -486,6 +528,19 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div
+              v-if="upstreamFundFactsNextCursor"
+              class="panel-actions"
+            >
+              <t-button
+                variant="outline"
+                :loading="upstreamFundFactsLoadingMore"
+                :disabled="upstreamFundFactsLoadingMore"
+                @click="loadMoreUpstreamFundFacts"
+              >
+                加载更多上游资金明细
+              </t-button>
             </div>
           </section>
 
@@ -876,6 +931,8 @@ import {
   fetchProjectExpenseCreateCapability,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
+  fetchProjectSetOperatingProjection,
+  fetchProjectUpstreamFundFacts,
   fetchProjectUpstreamFundConfirmationCapability,
   fetchProjectUpstreamFundReferenceOptions,
   fetchProjectUpstreamFundRecordCapability,
@@ -918,6 +975,7 @@ import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPa
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
+import { loadOptionalProjectUpstreamFundFacts } from "./project-operating-overview.loader";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
@@ -930,6 +988,7 @@ import {
 import {
   buildExecutiveProjectOverview,
   buildProjectBusinessEntries,
+  formatExecutiveMoneyCents,
   type ExecutiveProjectOverview
 } from "./project-operating.config";
 import { promptSensitiveActionReason } from "../confirm-sensitive-action";
@@ -1023,6 +1082,10 @@ const receiptForm = ref<ReceiptFormState>(createReceiptForm());
 const participatingCompanyOptions = ref<ProjectParticipatingCompanyOption[]>([]);
 const participatingCompanyError = ref("");
 const upstreamFundReferenceOptions = ref<ProjectUpstreamFundReferenceOptionsReadModel | null>(null);
+const upstreamFundFacts = ref<ProjectUpstreamFundFactReadModel[]>([]);
+const upstreamFundFactsNextCursor = ref<string | null>(null);
+const upstreamFundFactsLoadingMore = ref(false);
+const upstreamFundFactsError = ref("");
 const upstreamFundReferenceOptionsError = ref("");
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
 const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(null);
@@ -1147,7 +1210,7 @@ const projectBusinessEntries = computed(() =>
 
 const projectExpenseRows = computed<ProjectExpenseRow[]>(() => projectExpenses.value?.rows ?? []);
 const upstreamFundRows = computed<ProjectUpstreamFundFactReadModel[]>(
-  () => overview.value?.upstreamFunds.rows ?? []
+  () => upstreamFundFacts.value
 );
 const upstreamFundConfirmationDescription = computed(() => {
   const fact = selectedUpstreamFundFact.value;
@@ -1243,14 +1306,14 @@ const cashItems = computed(() => {
   const cash = overview.value?.cash;
   return [
     { label: "我方实际到账", value: formatCents(cash?.actualReceiptsCents ?? null) },
-    { label: "已确认施工企业拨款", value: formatCents(cash?.affiliateRemittanceCents ?? "0") },
-    { label: "历史收款口径", value: formatCents(cash?.legacyReceiptsCents ?? "0") },
+    { label: "已确认施工企业拨款", value: formatCents(cash?.affiliateRemittanceCents ?? null) },
+    { label: "历史收款口径", value: formatCents(cash?.legacyReceiptsCents ?? null) },
     { label: "供应商退款", value: formatCents(cash?.supplierRefundsCents ?? null) },
     { label: "可用资金", value: formatCents(cash?.availableFundsCents ?? null) },
     { label: "已实付", value: formatCents(cash?.actualPaidCents ?? "0") },
-    { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? "0") },
-    { label: "已批待付款", value: formatCents(cash?.approvedPendingPaymentCents ?? "0") },
-    { label: "财务已记出账", value: formatCents(cash?.financeRecordedOutflowCents ?? "0") }
+    { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? null) },
+    { label: "已批待付款", value: formatCents(cash?.approvedPendingPaymentCents ?? null) },
+    { label: "财务已记出账", value: formatCents(cash?.financeRecordedOutflowCents ?? null) }
   ];
 });
 
@@ -1259,18 +1322,66 @@ const businessItems = computed(() => {
   const upstream = overview.value?.upstreamFunds;
   return [
     { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? "0") },
-    { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? "0") },
-    { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? "0") },
-    { label: "业主向施工企业付款", value: formatCents(upstream?.ownerPaymentCents ?? "0") },
-    { label: "施工企业扣款", value: formatCents(upstream?.affiliateDeductionCents ?? "0") },
-    { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? "0") },
+    { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? null) },
+    { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? null) },
+    { label: "业主向施工企业付款", value: formatCents(upstream?.ownerPaymentCents ?? null) },
+    { label: "施工企业扣款", value: formatCents(upstream?.affiliateDeductionCents ?? null) },
+    { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? null) },
     { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
     {
       label: "施工企业对下付款",
-      value: formatCents(business?.affiliateDownstreamPaymentCents ?? "0")
+      value: formatCents(business?.affiliateDownstreamPaymentCents ?? null)
     },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: formatCents(business?.grossProfitCents ?? null) }
+  ];
+});
+
+const receivablePayableItems = computed(() => {
+  const operating = overview.value?.operatingProjection.operating;
+  return [
+    { label: "已确认收入", value: formatCents(operating?.confirmedIncomeCents ?? null) },
+    { label: "已确认成本", value: formatCents(operating?.confirmedCostCents ?? null) },
+    { label: "业主及其他应收", value: formatCents(operating?.receivableCents ?? null) },
+    { label: "下游及其他应付", value: formatCents(operating?.payableCents ?? null) }
+  ];
+});
+
+const subjectFundsItems = computed(() => {
+  const funds = overview.value?.operatingProjection.actualFunds;
+  const restrictions = overview.value?.operatingProjection.restrictions;
+  return [
+    { label: "施工企业账上项目资金", value: formatCents(funds?.constructionEnterpriseFundsCents ?? null) },
+    { label: "我方公司持有项目资金", value: formatCents(funds?.companyProjectFundsCents ?? null) },
+    { label: "我方公司为项目垫资", value: formatCents(funds?.companyAdvanceForProjectCents ?? null) },
+    { label: "施工企业冻结资金", value: formatCents(restrictions?.constructionEnterpriseFrozenFundsCents ?? null) },
+    { label: "必要费用准备", value: formatCents(restrictions?.necessaryExpenseReserveCents ?? null) },
+    { label: "一般争议资金", value: formatCents(restrictions?.projectDisputedFundsCents ?? null) }
+  ];
+});
+
+const profitAndLossItems = computed(() => {
+  const profit = overview.value?.operatingProjection.profitAndLoss;
+  const distribution = overview.value?.operatingProjection.distribution;
+  return [
+    { label: "当前经营盈亏", value: formatCents(profit?.currentOperatingProfitCents ?? null) },
+    { label: "预计待清算费用", value: formatCents(profit?.estimatedClearingExpenseCents ?? null) },
+    { label: "当前预计盈亏", value: formatCents(profit?.currentEstimatedProfitCents ?? null) },
+    { label: "最终确认盈亏", value: formatCents(profit?.finalConfirmedProfitCents ?? null) },
+    { label: "当前可分配利润", value: formatCents(distribution?.currentDistributableProfitCents ?? null) }
+  ];
+});
+
+const evidenceItems = computed(() => {
+  const projection = overview.value?.operatingProjection;
+  const evidence = projection?.evidence;
+  return [
+    { label: "投影基准日", value: projection?.asOf.businessDate ?? "—" },
+    { label: "完整性", value: projection?.integrity.statusLabel ?? "—" },
+    { label: "对账关系", value: projection?.restrictions.relationshipCompletenessLabel ?? "—" },
+    { label: "A 级事实", value: `${evidence?.A.factCount ?? 0} 笔 · ${formatCents(evidence?.A.amountCents ?? "0")}` },
+    { label: "B 级事实", value: `${evidence?.B.factCount ?? 0} 笔 · ${formatCents(evidence?.B.amountCents ?? "0")}` },
+    { label: "C 级缺口", value: `${evidence?.C.factCount ?? 0} 笔 · ${formatCents(evidence?.C.amountCents ?? "0")}` }
   ];
 });
 
@@ -1278,14 +1389,14 @@ const executiveSummaryItems = computed(() => {
   const summary = executiveOverview.value?.summary;
   return [
     { label: "项目数", value: String(summary?.projectCount ?? 0) },
-    { label: "生效合同额", value: formatCents(summary?.contractAmountCents ?? "0") },
-    { label: "生效结算额", value: formatCents(summary?.settlementAmountCents ?? "0") },
-    { label: "结算可付额", value: formatCents(summary?.payableAmountCents ?? "0") },
-    { label: "实际收款", value: formatCents(summary?.actualReceiptsCents ?? null) },
-    { label: "供应商退款", value: formatCents(summary?.supplierRefundsCents ?? null) },
-    { label: "已实付", value: formatCents(summary?.actualPaidCents ?? "0") },
-    { label: "已批待付", value: formatCents(summary?.approvedPendingPaymentCents ?? "0") },
-    { label: "可用资金", value: formatCents(summary?.availableFundsCents ?? null) },
+    { label: "生效合同额", value: formatExecutiveMoneyCents(summary?.contractAmountCents ?? null) },
+    { label: "生效结算额", value: formatExecutiveMoneyCents(summary?.settlementAmountCents ?? null) },
+    { label: "结算可付额", value: formatExecutiveMoneyCents(summary?.payableAmountCents ?? null) },
+    { label: "实际收款", value: formatExecutiveMoneyCents(summary?.actualReceiptsCents ?? null) },
+    { label: "供应商退款", value: formatExecutiveMoneyCents(summary?.supplierRefundsCents ?? null) },
+    { label: "已实付", value: formatExecutiveMoneyCents(summary?.actualPaidCents ?? null) },
+    { label: "已批待付", value: formatExecutiveMoneyCents(summary?.approvedPendingPaymentCents ?? null) },
+    { label: "可用资金", value: formatExecutiveMoneyCents(summary?.availableFundsCents ?? null) },
     { label: "数据缺口", value: `${summary?.dataGapCount ?? 0} 项` }
   ];
 });
@@ -1475,10 +1586,10 @@ async function loadExecutiveOverview() {
   loadingExecutiveOverview.value = true;
   executiveMessage.value = "";
   try {
-    const overviews = await Promise.all(
-      projects.value.map((project) => fetchProjectOperatingOverview(project.id))
+    const projection = await fetchProjectSetOperatingProjection(
+      projects.value.map((project) => project.id)
     );
-    executiveOverview.value = buildExecutiveProjectOverview(overviews);
+    executiveOverview.value = buildExecutiveProjectOverview(projection, projects.value);
   } catch (error) {
     executiveOverview.value = null;
     executiveMessage.value = formatUnknownApiError(error, "加载跨项目经营总览失败");
@@ -1492,6 +1603,9 @@ async function loadOverview() {
   const projectId = selectedProjectId.value;
   const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
+  upstreamFundFacts.value = [];
+  upstreamFundFactsNextCursor.value = null;
+  upstreamFundFactsLoadingMore.value = false;
   participatingCompanyOptions.value = [];
   upstreamFundReferenceOptions.value = null;
   projectExpenses.value = null;
@@ -1500,6 +1614,7 @@ async function loadOverview() {
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
   participatingCompanyError.value = "";
+  upstreamFundFactsError.value = "";
   upstreamFundReferenceOptionsError.value = "";
   expenseMessage.value = "";
   expenseActionMessage.value = "";
@@ -1515,6 +1630,7 @@ async function loadOverview() {
   try {
     const [
       nextOverview,
+      nextUpstreamFundFacts,
       nextExpenses,
       spotCapability,
       nextFinancingQuota,
@@ -1524,6 +1640,11 @@ async function loadOverview() {
       canReadProjectOverview.value
         ? fetchProjectOperatingOverview(projectId)
         : Promise.resolve(null),
+      loadOptionalProjectUpstreamFundFacts(
+        projectId,
+        canRecordUpstreamFunds.value,
+        fetchProjectUpstreamFundFacts
+      ),
       canReadProjectExpenseLedger.value
         ? fetchProjectExpenseRequests(projectId, {
             view: expenseLedgerView.value,
@@ -1563,6 +1684,9 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       overview.value = nextOverview;
+      upstreamFundFacts.value = nextUpstreamFundFacts.facts;
+      upstreamFundFactsNextCursor.value = nextUpstreamFundFacts.nextCursor;
+      upstreamFundFactsError.value = nextUpstreamFundFacts.error;
       participatingCompanyOptions.value = nextParticipatingCompanies.options;
       participatingCompanyError.value = nextParticipatingCompanies.error;
       upstreamFundReferenceOptions.value = nextUpstreamFundReferenceOptions.options;
@@ -1594,6 +1718,8 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       overview.value = null;
+      upstreamFundFacts.value = [];
+      upstreamFundFactsNextCursor.value = null;
       financingQuotaWorkbench.value = null;
       financingQuotaError.value = "";
       selectedExpenseRow.value = null;
@@ -1605,6 +1731,40 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       loadingOverview.value = false;
+    }
+  }
+}
+
+async function loadMoreUpstreamFundFacts() {
+  const projectId = selectedProjectId.value;
+  const cursor = upstreamFundFactsNextCursor.value;
+  if (!projectId || !cursor || upstreamFundFactsLoadingMore.value) return;
+  upstreamFundFactsLoadingMore.value = true;
+  upstreamFundFactsError.value = "";
+  try {
+    const next = await fetchProjectUpstreamFundFacts(projectId, {
+      cursor,
+      pageSize: 50
+    });
+    if (
+      selectedProjectId.value !== projectId ||
+      upstreamFundFactsNextCursor.value !== cursor
+    ) return;
+    const existingIds = new Set(upstreamFundFacts.value.map((fact) => fact.id));
+    upstreamFundFacts.value.push(
+      ...next.items.filter((fact) => !existingIds.has(fact.id))
+    );
+    upstreamFundFactsNextCursor.value = next.page.nextCursor;
+  } catch (error) {
+    if (selectedProjectId.value === projectId) {
+      upstreamFundFactsError.value = formatUnknownApiError(
+        error,
+        "读取更多上游资金明细失败"
+      );
+    }
+  } finally {
+    if (selectedProjectId.value === projectId) {
+      upstreamFundFactsLoadingMore.value = false;
     }
   }
 }

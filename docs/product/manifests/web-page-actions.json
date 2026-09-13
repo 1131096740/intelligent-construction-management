@@ -16,8 +16,8 @@
     "routeRootCount": 59,
     "totalVueFileCount": 162,
     "parsedVueFileCount": 162,
-    "reachableProductionModuleCount": 254,
-    "templateEventDirectiveCount": 954,
+    "reachableProductionModuleCount": 255,
+    "templateEventDirectiveCount": 955,
     "propCallbackDirectiveCount": 7,
     "coveredProductionMutationConsumerCount": 289,
     "candidateProductionMutationConsumerCount": 289,
@@ -26,8 +26,8 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 287,
-    "reachableProductionModuleCount": 254,
+    "totalProductionModuleCount": 288,
+    "reachableProductionModuleCount": 255,
     "totalVueFileCount": 162,
     "parsedVueFileCount": 162
   },
@@ -3860,7 +3860,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5294,
+              "sourceLine": 5384,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3904,7 +3904,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5294,
+              "sourceLine": 5384,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11858,7 +11858,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2277,
+        "sourceLine": 2437,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11923,7 +11923,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2238,
+        "sourceLine": 2398,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11988,7 +11988,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1697,
+        "sourceLine": 1857,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12053,7 +12053,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 1681,
+        "sourceLine": 1841,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12356,7 +12356,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2197,
+        "sourceLine": 2357,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14775,7 +14775,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1384,
+        "sourceLine": 1495,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14843,7 +14843,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1393,
+        "sourceLine": 1504,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14911,7 +14911,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1976,
+        "sourceLine": 2136,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14976,7 +14976,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 1915,
+        "sourceLine": 2075,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15041,7 +15041,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1899,
+        "sourceLine": 2059,
         "sourceColumn": 0
       },
       "semantic": "business_write",

@@ -26,6 +26,8 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectExpenseApprovalDetail,
   fetchProjectOperatingOverview,
+  fetchProjectSetOperatingProjection,
+  fetchProjectUpstreamFundFacts,
   fetchProjects,
   fetchContractCreateProjects,
   fetchProjectAffiliateMappingReport,
@@ -930,6 +932,12 @@ describe("core flow read API client", () => {
       changeReason: "建立显式挂靠关系"
     });
     await fetchProjectOperatingOverview("project-1");
+    await fetchProjectSetOperatingProjection(["project-1", "project/2"]);
+    await fetchProjectUpstreamFundFacts("project/1");
+    await fetchProjectUpstreamFundFacts("project/1", {
+      cursor: "cursor/value",
+      pageSize: 50
+    });
     await fetchProjectExpenseRequests("project-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -938,6 +946,9 @@ describe("core flow read API client", () => {
       "/api/projects/affiliate-mapping-report",
       "/api/projects/project%2F1/affiliate-assignment",
       "/api/projects/project-1/operating-funds-overview",
+      "/api/operating-projections/as-of?scopeKind=projects&projectIds=project-1%2Cproject%2F2",
+      "/api/projects/project%2F1/upstream-fund-facts",
+      "/api/projects/project%2F1/upstream-fund-facts?cursor=cursor%2Fvalue&pageSize=50",
       "/api/projects/project-1/expense-requests"
     ]);
   });

@@ -16,6 +16,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "auth.login": "登录",
   "auth.logout": "退出登录",
   "permission.change": "权限变更",
+  "operating_projection.export": "导出经营投影",
   "password.change": "密码变更",
   "delegation.create": "创建委托",
   "delegation.revoke": "撤销委托"
@@ -30,6 +31,7 @@ const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
   file: "文件",
   file_object: "文件",
   payment: "付款",
+  operating_projection: "经营投影",
   settlement: "结算",
   settlement_import: "结算导入",
   settlement_draft: "结算草稿"

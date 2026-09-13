@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 27,
-    "exportedFunctionCount": 561,
-    "transportWrapperCount": 541,
+    "exportedFunctionCount": 563,
+    "transportWrapperCount": 543,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 563,
+    "mainRequestBindingCount": 565,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 563,
-    "productionConsumerCount": 435,
+    "requestEdgeCount": 565,
+    "productionConsumerCount": 437,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 287,
-    "reachableProductionModuleCount": 254
+    "productionModuleCount": 288,
+    "reachableProductionModuleCount": 255
   },
   "wrappers": [
     {
@@ -5657,7 +5657,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6990,
+          "sourceLine": 7080,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -5687,7 +5687,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6974,
+          "sourceLine": 7064,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -5717,7 +5717,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6974,
+          "sourceLine": 7064,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -5747,7 +5747,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5403,
+          "sourceLine": 5493,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -5776,7 +5776,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6974,
+          "sourceLine": 7064,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5838,7 +5838,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5294,
+          "sourceLine": 5384,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -5923,7 +5923,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7017,
+          "sourceLine": 7107,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -5952,7 +5952,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7004,
+          "sourceLine": 7094,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5981,7 +5981,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7032,
+          "sourceLine": 7122,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -6010,7 +6010,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6974,
+          "sourceLine": 7064,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7204,6 +7204,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchProjectSetOperatingProjection",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/operating-projections/as-of?:param",
+          "normalizedPath": "/operating-projections/as-of",
+          "normalizedKey": "GET /operating-projections/as-of",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectSetOperatingProjection",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchProjectUpdateCapability",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -7257,6 +7287,36 @@
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectUpstreamFundFacts",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/upstream-fund-facts",
+          "normalizedPath": "/projects/:param/upstream-fund-facts",
+          "normalizedKey": "GET /projects/:param/upstream-fund-facts",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectUpstreamFundFacts",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
       "unreachableConsumers": []
     },
     {
