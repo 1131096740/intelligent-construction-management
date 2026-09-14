@@ -102,23 +102,10 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   const exportConfirmation = {
     confirmPassword: jest.fn().mockResolvedValue(undefined)
   };
-  const projection = new OperatingProjectionService(
-    prisma as never,
-    visibility,
-    clearing,
-    audit,
-    exportConfirmation as never
-  );
-  const projects = new ProjectService(
-    prisma as never,
-    audit,
-    undefined,
-    undefined,
-    undefined,
-    projection
-  );
+  let projection: OperatingProjectionService;
+  let projects: ProjectService;
   const me = new MeService(prisma as never, files, audit);
-  const funds = new FundsWorkbenchService(me, projection);
+  let funds: FundsWorkbenchService;
   const operatingProfile = new ProjectOperatingProfileService(prisma as never, audit);
   const runId = randomUUID();
   let affiliate: {
@@ -131,6 +118,16 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   let enterprise: OperatingSubjectReference;
   let company: OperatingSubjectReference;
   let companyEntityId: string;
+
+  beforeEach(() => {
+    // Independent cases get real service instances and their normal limiter.
+    // No clock mocking, limiter override, or database reset is used.
+    projection = new OperatingProjectionService(
+      prisma as never, visibility, clearing, audit, exportConfirmation as never
+    );
+    projects = new ProjectService(prisma as never, audit, undefined, undefined, undefined, projection);
+    funds = new FundsWorkbenchService(me, projection);
+  });
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL || process.env.NODE_ENV === "production") {
