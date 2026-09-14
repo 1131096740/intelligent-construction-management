@@ -8,6 +8,18 @@ const source = readFileSync(
 );
 
 describe("project operating overview structure", () => {
+  it("composes the four projection groups through one domain metric panel", () => {
+    expect(source.match(/<OperatingMetricPanel\b/g)).toHaveLength(4);
+    for (const items of ["receivablePayableItems", "subjectFundsItems", "profitAndLossItems", "evidenceItems"]) {
+      expect(source).toContain(`:items="${items}"`);
+      expect(source).not.toContain(`v-for="item in ${items}"`);
+    }
+    const panel = readFileSync(fileURLToPath(new URL("./components/OperatingMetricPanel.vue", import.meta.url)), "utf8");
+    expect(panel).toContain("<t-card");
+    expect(panel).toContain("{{ item.label }}");
+    expect(panel).toContain("{{ item.value }}");
+    expect(panel).toContain("var(--jg-space-lg)");
+  });
   it("keeps the default page on a read-only project overview and separates funds handling", () => {
     expect(source).toContain('label="项目概览"');
     expect(source).toContain('label="资金办理"');

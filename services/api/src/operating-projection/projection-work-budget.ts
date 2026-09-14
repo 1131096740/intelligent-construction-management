@@ -22,7 +22,7 @@ export async function preflightProjectionWork(
         AND fact."createdAt" <= ${readAt}
       ORDER BY fact.id LIMIT ${facts + 1}
     ), restriction_sources AS MATERIALIZED (
-      SELECT fact."sourceType", fact."sourceBusinessId"
+      SELECT DISTINCT fact."sourceType", fact."sourceBusinessId"
       FROM ordinary_facts candidate JOIN "OperatingFact" fact ON fact.id = candidate.id
       WHERE fact."sourceType" IN ('project_necessary_expense_reserve_entry', 'project_fund_dispute_entry')
         AND ${restrictionFactPredicate}

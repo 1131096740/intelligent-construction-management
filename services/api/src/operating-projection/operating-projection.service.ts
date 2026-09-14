@@ -18,6 +18,7 @@ import {
   operatingProjectionExportMatches,
   OPERATING_PROJECTION_ROW_STATUSES,
   OPERATING_PROJECTION_ROW_STATUS_LABELS,
+  PRIMARY_COST_CATEGORY_LABELS,
   type OperatingProjectionExportFilters
 } from "@jiangkong/shared-domain";
 
@@ -1478,20 +1479,20 @@ async function preflightRestrictionResources(
     filters?.companyEntityId ||
     filters?.counterpartyId
   );
+  // Bound the complete read set before inspecting restriction snapshots or replacements.
+  await preflightProjectionWork(tx, projectIds, cutoffAt, readAt,
+    hasSubjectFilter ? Prisma.sql`((${factFilterSql}) OR EXISTS (
+      SELECT 1 FROM "OperatingImpactEntry" impact WHERE impact."factId" = fact.id
+        AND impact."createdAt" <= ${readAt} AND ${impactFilterSql}
+    ))` : Prisma.sql`TRUE`);
   const [budget] = await tx.$queryRaw<Array<{
     replacementCount: bigint;
     snapshotBytes: bigint;
     maxSnapshotBytes: number;
   }>>(Prisma.sql`
-    WITH candidate_facts AS (
+    WITH candidate_ids AS MATERIALIZED (
       SELECT
-        fact.id,
-        fact."sourceType",
-        fact."sourceBusinessId",
-        GREATEST(
-          pg_column_size(fact."sourceSnapshot"),
-          octet_length(fact."sourceSnapshot"::text)
-        ) AS "snapshotBytes"
+        fact.id
       FROM "OperatingFact" AS fact
       WHERE fact."projectId" IN (${Prisma.join(projectIds)})
         AND fact.status = 'confirmed'
@@ -1513,21 +1514,29 @@ async function preflightRestrictionResources(
               )
             )`
           : Prisma.sql`TRUE`}
-    ), candidate_sources AS (
+      ORDER BY fact.id LIMIT ${MAX_RESTRICTION_INTEGRITY_FACTS + 1}
+    ), candidate_facts AS MATERIALIZED (
+      SELECT fact.id, fact."sourceType", fact."sourceBusinessId",
+        GREATEST(pg_column_size(fact."sourceSnapshot"),
+          octet_length(fact."sourceSnapshot"::text)) AS "snapshotBytes"
+      FROM candidate_ids candidate JOIN "OperatingFact" fact ON fact.id = candidate.id
+    ), candidate_sources AS MATERIALIZED (
       SELECT DISTINCT "sourceType", "sourceBusinessId"
       FROM candidate_facts
-    ), replacement_rows AS (
-      SELECT replacement.id
+    ), replacement_rows AS MATERIALIZED (
+      (SELECT replacement.id
       FROM "ProjectNecessaryExpenseReserveReplacement" AS replacement
       JOIN candidate_sources AS fact
         ON fact."sourceType" = 'project_necessary_expense_reserve_entry'
        AND fact."sourceBusinessId" = replacement."reserveEntryId"
+      LIMIT ${MAX_RESTRICTION_INTEGRITY_IMPACTS + 1})
       UNION ALL
-      SELECT replacement.id
+      (SELECT replacement.id
       FROM "ProjectFundDisputeReplacement" AS replacement
       JOIN candidate_sources AS fact
         ON fact."sourceType" = 'project_fund_dispute_entry'
        AND fact."sourceBusinessId" = replacement."disputeEntryId"
+      LIMIT ${MAX_RESTRICTION_INTEGRITY_IMPACTS + 1})
     )
     SELECT
       (SELECT COUNT(*) FROM replacement_rows)::bigint AS "replacementCount",
@@ -1544,11 +1553,6 @@ async function preflightRestrictionResources(
   ) {
     throw new ProjectionResourceBudgetExceededError();
   }
-  await preflightProjectionWork(tx, projectIds, cutoffAt, readAt,
-    hasSubjectFilter ? Prisma.sql`((${factFilterSql}) OR EXISTS (
-      SELECT 1 FROM "OperatingImpactEntry" impact WHERE impact."factId" = fact.id
-        AND impact."createdAt" <= ${readAt} AND ${impactFilterSql}
-    ))` : Prisma.sql`TRUE`);
 }
 
 function restrictionPreflightFilterSql(
@@ -2679,7 +2683,7 @@ function projectionExportCsvRow(
     stringValue(item.impactKindLabel),
     stringValue(item.directionLabel),
     amountYuan,
-    nullableStringValue(item.costCategoryCode) ?? "",
+    projectionExportCostLabel(item.costCategoryCode),
     nullableStringValue(item.fundPurpose) ?? "",
     subjectLabels.join("；"),
     nullableStringValue(risk.statusLabel) ?? "",
@@ -2687,6 +2691,14 @@ function projectionExportCsvRow(
       ? "是"
       : "否"
   ];
+}
+
+function projectionExportCostLabel(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value !== "string" || !Object.hasOwn(PRIMARY_COST_CATEGORY_LABELS, value)) {
+    throw new ConflictException("经营投影存在未识别的成本分类，已拒绝导出");
+  }
+  return PRIMARY_COST_CATEGORY_LABELS[value as keyof typeof PRIMARY_COST_CATEGORY_LABELS];
 }
 
 

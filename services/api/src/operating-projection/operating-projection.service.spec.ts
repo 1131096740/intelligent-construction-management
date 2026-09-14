@@ -95,6 +95,9 @@ describe("OperatingProjectionService", () => {
           await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
           expect(tx.operatingFact.findMany).not.toHaveBeenCalled();
           expect(tx.operatingImpactEntry.findMany).not.toHaveBeenCalled();
+          expect(tx.$queryRaw.mock.calls.some(([query]) =>
+            (query as { strings: readonly string[] }).strings.join(" ").includes('AS "maxSnapshotBytes"')
+          )).toBe(false);
         } else await expect(result).resolves.toBeDefined();
       }
     });
@@ -245,7 +248,8 @@ describe("OperatingProjectionService", () => {
     const tx = emptyProjectionTx(readAt, [project]);
     tx.$queryRaw.mockImplementation(async (query) => {
       const sql = (query as { strings?: readonly string[] }).strings?.join(" ") ?? "";
-      if (sql.includes("CURRENT_TIMESTAMP")) return [{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }];
+      if (sql.includes("CURRENT_TIMESTAMP")) return [{ readAt }];
+      if (sql.includes('AS "workFactCount"')) return [{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }];
       if (sql.includes('SUM(candidate."snapshotBytes")')) {
         return [{ snapshotBytes: BigInt(8 * 1024 * 1024 + 1) }];
       }
@@ -267,7 +271,11 @@ describe("OperatingProjectionService", () => {
     await expect(service.getProjectDetailPage("user-1", {
       projectId: project.id,
       counterpartyId: "owner-1"
-    })).rejects.toBeInstanceOf(PayloadTooLargeException);
+    })).rejects.toMatchObject({ status: 413,
+      message: "经营投影完整性数据超出安全预算，请收窄项目或主体筛选" });
+    expect(tx.$queryRaw.mock.calls.some(([query]) =>
+      (query as { strings: readonly string[] }).strings.join(" ").includes('SUM(candidate."snapshotBytes")')
+    )).toBe(true);
     expect(tx.operatingImpactEntry.findMany.mock.calls.some(
       ([query]) => Boolean(query.select?.fact?.select)
     )).toBe(false);
@@ -694,6 +702,7 @@ describe("OperatingProjectionService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
         .mockResolvedValueOnce([{ projectId: "project-1" }])
+        .mockResolvedValueOnce([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
         .mockResolvedValueOnce([{
           replacementCount: 0n,
           snapshotBytes: 0n,
@@ -860,6 +869,7 @@ describe("OperatingProjectionService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
         .mockResolvedValueOnce([{ projectId: "project-1" }])
+        .mockResolvedValueOnce([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
         .mockResolvedValueOnce([{
           replacementCount: 0n,
           snapshotBytes: 0n,
@@ -917,6 +927,7 @@ describe("OperatingProjectionService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce([{ projectId: project.id }])
+      .mockResolvedValueOnce([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce([{
         replacementCount: 0n,
         snapshotBytes: 0n,
@@ -1507,6 +1518,50 @@ describe("OperatingProjectionService", () => {
         }
       })
     }));
+  });
+
+  it.each([
+    ["material", "材料成本"], ["crew_and_labor", "班组及人工成本"],
+    ["professional_subcontract", "专业分包成本"], ["machinery_and_rental", "机械设备及租赁成本"],
+    ["site_construction_and_measures", "现场施工及措施费用"], ["project_daily_expense", "项目日常费用"],
+    ["construction_enterprise_deduction", "施工企业扣费"], ["other_project_cost", "其他项目成本"],
+    [null, ""], ["", ""], ["unknown_cost", null], ["toString", null]
+  ])("exports populated cost %s through the public CSV boundary", async (code, label) => {
+    const readAt = new Date("2026-09-11T01:02:03Z");
+    const tx = emptyProjectionTx(readAt, [project]);
+    let emitted = false;
+    tx.operatingImpactEntry.findMany.mockImplementation(async (query) => {
+      if (!query.select?.fact?.select || emitted) return [];
+      emitted = true;
+      return [{ id: "impact-1", impactKind: "confirmed_cost", amountCents: 100n,
+        direction: "increase", costCategoryCode: code, fundPurpose: "购买 A 型配件",
+        subjectKind: null, subjectId: null,
+        fact: { id: "fact-1", projectId: project.id, sourceType: "expense_claim",
+          sourceBusinessId: "expense-1", sourceBusinessCode: "BX-001", sourceVersion: 1,
+          factKind: "expense", operatingLevel: "project", evidenceLevel: "A",
+          amountCents: 100n, direction: "outflow", occurredAt: readAt, confirmedAt: readAt,
+          entryKind: "original", adjustsFactId: null, sourceSnapshot: {}, subjectSnapshot: {} }
+      }];
+    });
+    const audit = { record: jest.fn() };
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(
+      new Map([[project.id, ["finance_director"]]])
+    );
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never,
+      zeroRiskReader() as never, audit as never, { confirmPassword: jest.fn() } as never
+    );
+    const result = service.exportView("user-1", { scopeKind: "project", projectId: project.id },
+      "password", "project_operating_ledger_detail");
+    if (label === null) {
+      await expect(result).rejects.toMatchObject({ status: 409, message: "经营投影存在未识别的成本分类，已拒绝导出" });
+      expect(audit.record).not.toHaveBeenCalled();
+    } else {
+      const content = await readUtf8Stream((await result).stream);
+      expect(content).toContain(`"1.00","${label}","购买 A 型配件"`);
+      if (code) expect(content).not.toContain(`"${code}"`);
+    }
   });
 
   it("fails closed before reading data when export confirmation is absent", async () => {

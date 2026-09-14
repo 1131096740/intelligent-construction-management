@@ -289,57 +289,25 @@
           </div>
 
           <div class="overview-grid projection-grid">
-            <section class="panel">
-              <h2>项目应收应付</h2>
-              <dl>
-                <div
-                  v-for="item in receivablePayableItems"
-                  :key="item.label"
-                >
-                  <dt>{{ item.label }}</dt>
-                  <dd>{{ item.value }}</dd>
-                </div>
-              </dl>
-            </section>
+            <OperatingMetricPanel
+              title="项目应收应付"
+              :items="receivablePayableItems"
+            />
 
-            <section class="panel">
-              <h2>各主体项目资金</h2>
-              <dl>
-                <div
-                  v-for="item in subjectFundsItems"
-                  :key="item.label"
-                >
-                  <dt>{{ item.label }}</dt>
-                  <dd>{{ item.value }}</dd>
-                </div>
-              </dl>
-            </section>
+            <OperatingMetricPanel
+              title="各主体项目资金"
+              :items="subjectFundsItems"
+            />
 
-            <section class="panel">
-              <h2>四层盈亏与可分配上限</h2>
-              <dl>
-                <div
-                  v-for="item in profitAndLossItems"
-                  :key="item.label"
-                >
-                  <dt>{{ item.label }}</dt>
-                  <dd>{{ item.value }}</dd>
-                </div>
-              </dl>
-            </section>
+            <OperatingMetricPanel
+              title="四层盈亏与可分配上限"
+              :items="profitAndLossItems"
+            />
 
-            <section class="panel">
-              <h2>历史接管与证据完整性</h2>
-              <dl>
-                <div
-                  v-for="item in evidenceItems"
-                  :key="item.label"
-                >
-                  <dt>{{ item.label }}</dt>
-                  <dd>{{ item.value }}</dd>
-                </div>
-              </dl>
-            </section>
+            <OperatingMetricPanel
+              title="历史接管与证据完整性"
+              :items="evidenceItems"
+            />
           </div>
 
           <section class="gap-panel overview-gap-panel">
@@ -1047,6 +1015,7 @@ import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPa
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
+import OperatingMetricPanel from "./components/OperatingMetricPanel.vue";
 import { loadOptionalProjectUpstreamFundFacts } from "./project-operating-overview.loader";
 import {
   expensePaymentMethodLabel,

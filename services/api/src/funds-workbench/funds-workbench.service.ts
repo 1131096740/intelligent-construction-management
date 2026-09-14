@@ -154,7 +154,7 @@ export class FundsWorkbenchService {
                 select: {
                   id: true, code: true, claimType: true, status: true, projectId: true, reason: true,
                   companyEntityNameSnapshot: true, paymentSubjectNameSnapshot: true, payeeNameSnapshot: true, requestedAmountCents: true,
-                  companyPayableAmountCents: true, updatedAt: true
+                  companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true
                 },
                 take: remaining + 1
               }))
@@ -298,7 +298,9 @@ export class FundsWorkbenchService {
       )),
       ...expenses.flatMap((expense) => this.expenseRows(
         expense,
-        projectedPaid(expense.id, expense.projectId),
+        expense.projectId === null && ["reimbursement", "loan"].includes(expense.claimType)
+          ? expense.fundedAmountCents
+          : projectedPaid(expense.id, expense.projectId),
         projectById
       ))
     ];
@@ -679,7 +681,12 @@ async function countFundsViewsInTransaction(
           ELSE 'loan_disbursement'
         END AS source,
         claim.status,
-        CASE WHEN ${moneyComplete} AND claim."projectId" IS NOT NULL
+        CASE WHEN claim."projectId" IS NULL AND claim."claimType" IN ('reimbursement', 'loan')
+          THEN GREATEST(
+            CASE WHEN claim."claimType" = 'loan'
+              THEN claim."requestedAmountCents" ELSE claim."companyPayableAmountCents" END
+              - claim."fundedAmountCents", 0)
+          WHEN ${moneyComplete} AND claim."projectId" IS NOT NULL
           THEN GREATEST(
             CASE WHEN claim."claimType" = 'loan'
               THEN claim."requestedAmountCents" ELSE claim."companyPayableAmountCents" END

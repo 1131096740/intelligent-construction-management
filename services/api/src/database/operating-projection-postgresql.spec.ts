@@ -62,7 +62,12 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   jest.setTimeout(15 * 60_000);
   const prisma = new PrismaClient();
   let capturedDetailFindManyQueries: unknown[] | null = null;
+  let capturedReadSql: string[] | null = null;
+  let capturedWorkBudgets: Array<{ workFactCount: bigint; targetCount: bigint }> | null = null;
   prisma.$use(async (params, next) => {
+    if (capturedReadSql && params.action === "queryRaw" && typeof params.args?.query === "string") {
+      capturedReadSql.push(params.args.query);
+    }
     if (
       capturedDetailFindManyQueries &&
       params.model === "OperatingImpactEntry" &&
@@ -70,7 +75,12 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     ) {
       capturedDetailFindManyQueries.push(params.args);
     }
-    return next(params);
+    const result = await next(params);
+    if (capturedWorkBudgets && params.action === "queryRaw" &&
+      typeof params.args?.query === "string" && params.args.query.includes('AS "workFactCount"')) {
+      capturedWorkBudgets.push(...result);
+    }
+    return result;
   });
   const audit = new AuditService();
   const ledger = new OperatingLedgerService(prisma as never);
@@ -601,6 +611,8 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     const clearingExportContent = await readUtf8Stream(clearingExport.stream);
     expect(clearingExportContent).toContain('"待核对状态"');
     expect(clearingExportContent).toContain('"待核对"');
+    expect(clearingExportContent).toContain('"施工企业扣费"');
+    expect(clearingExportContent).not.toContain("construction_enterprise_deduction");
 
     for (const filters of [
       { occurredFrom: "2026-09-01", occurredTo: "2026-09-01", rowStatus: "retroactive_confirmation" as const },
@@ -780,6 +792,17 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     const reserveEntry = await prisma.projectNecessaryExpenseReserveEntry.findFirstOrThrow({
       where: { reserveId: reserve.id, entryKind: "establish", status: "confirmed" }
     });
+    const replacementInput = budgetFact({ projectId: PROJECT_ID, assignmentId: affiliate.assignmentId }, 1);
+    replacementInput.sourceType = "expense_claim";
+    replacementInput.factKind = "expense";
+    replacementInput.direction = "outflow";
+    replacementInput.occurredAt = new Date("2026-09-12T00:00:00Z");
+    replacementInput.subjects = { costBearingCompany: enterprise };
+    replacementInput.impacts = [impact("a19-replacement-cost", "confirmed_cost", 1n, "increase", {
+      costCategoryCode: "other_project_cost", subjectRole: "cost_bearing_company", subject: enterprise
+    })];
+    const replacementFact = await ledger.appendFromSource(replacementInput, WRITER_ID);
+    const replacementImpact = await prisma.operatingImpactEntry.findFirstOrThrow({ where: { factId: replacementFact.id } });
     const reserveDraft = await reserveService.saveDraft({
       projectId: PROJECT_ID, businessCode: reserve.businessCode, reserveId: reserve.id,
       affiliateAssignmentId: affiliate.assignmentId, fundHolderKind: "construction_enterprise",
@@ -789,11 +812,24 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       basisSummary: reserve.basisSummary, entryKind: "release", adjustsEntryId: reserveEntry.id,
       amountCents: "1", occurredAt: "2026-09-01", evidenceLevel: "B",
       evidenceFileId: reserveEntry.evidenceFileId!, evidenceSha256: reserveEntry.evidenceSha256!,
-      reason: "A18 映射覆盖释放", idempotencyKey: randomUUID()
+      reason: "A18 映射覆盖释放", idempotencyKey: randomUUID(),
+      replacementImpacts: [{ operatingImpactEntryId: replacementImpact.id, amountCents: "1" }]
     }, { userId: WRITER_ID });
     const reserveSubmitted = await reserveTransition(reserveDraft, "submit", WRITER_ID);
     const reserveAttested = await reserveTransition(reserveSubmitted, "attest", PROJECT_MANAGER_ID);
     await reserveTransition(reserveAttested, "confirm", READER_ID);
+    const budgets: Array<{ workFactCount: bigint; targetCount: bigint }> = [];
+    capturedWorkBudgets = budgets;
+    try {
+      const historical = await projection.getProjectView(READER_ID, { projectId: PROJECT_ID, asOf: CUTOFF_DATE });
+      const ordinaryCount = await prisma.operatingFact.count({ where: {
+        projectId: PROJECT_ID, status: "confirmed", occurredAt: { lte: new Date(`${CUTOFF_DATE}T23:59:59.999+08:00`) },
+        confirmedAt: { lte: new Date(historical.asOf.readAt) }, createdAt: { lte: new Date(historical.asOf.readAt) }
+      } });
+      expect(budgets).toEqual([expect.objectContaining({ targetCount: 1n, workFactCount: BigInt(ordinaryCount + 1) })]);
+    } finally {
+      capturedWorkBudgets = null;
+    }
     const dispute = await prisma.projectFundDispute.findFirstOrThrow({
       where: { projectId: PROJECT_ID, businessCode: `POL108-DIS-${runId.slice(0, 8)}` }
     });
@@ -1297,6 +1333,8 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       .toBeGreaterThan(8 * 1024 * 1024);
 
     const factRead = jest.spyOn(prisma.operatingFact, "findMany");
+    const queries: string[] = [];
+    capturedReadSql = queries;
     try {
       await expect(projection.getProjectView(READER_ID, {
         projectId: PROJECT_ID,
@@ -1305,7 +1343,14 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         counterpartyId
       })).rejects.toBeInstanceOf(PayloadTooLargeException);
       expect(factRead).not.toHaveBeenCalled();
+      const workIndex = queries.findIndex((sql) => sql.includes('AS "workFactCount"'));
+      const restrictionIndex = queries.findIndex((sql) => sql.includes('AS "maxSnapshotBytes"'));
+      expect(workIndex).toBeGreaterThanOrEqual(0);
+      expect(restrictionIndex).toBeGreaterThan(workIndex);
+      expect(queries[restrictionIndex]).toContain("candidate_ids AS MATERIALIZED");
+      expect(queries[restrictionIndex]!.match(/LIMIT/g)).toHaveLength(3);
     } finally {
+      capturedReadSql = null;
       factRead.mockRestore();
     }
   });
@@ -1417,8 +1462,16 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       }
     }
     for (const actor of [READER_ID, WRITER_ID]) {
-      await expect(projection.getProjectView(actor, { projectId: context.projectId }))
-        .rejects.toBeInstanceOf(PayloadTooLargeException);
+      const queries: string[] = [];
+      capturedReadSql = queries;
+      try {
+        await expect(projection.getProjectView(actor, { projectId: context.projectId }))
+          .rejects.toBeInstanceOf(PayloadTooLargeException);
+        expect(queries.some((sql) => sql.includes('AS "workFactCount"'))).toBe(true);
+        expect(queries.some((sql) => sql.includes('AS "maxSnapshotBytes"'))).toBe(false);
+      } finally {
+        capturedReadSql = null;
+      }
     }
   }, 30 * 60_000);
 

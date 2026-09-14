@@ -23,6 +23,8 @@
 
 ## 当前正在推进
 
+- [ ] POL-15 / #108 第十九轮方案 A 已获明确批准，按 [读取边界补充](docs/specs/2026-09-14-pol108-a19-read-boundaries.md) 修复 CSV 成本中文标签、非项目报销/借款源金额兼容、先有界后聚合，以及重复指标面板和快照单测两个 Standards Low。父候选 `5a14e0d0fdd98846f3899474e779c8e54ce7f06f` 已通过一次性 PG16 169 migrations 两遍、seed、#108 14/14 与完整 release 16/16（canonical 53 files/243 tests），但新三审 Standards H0/M1/L2、Spec H0/M2/L0、Security H0/M1/L2，去重 H0/M3/L4，不能交付。新 SHA 的 PG16/release/全新独立三审待完成，不继承父 SHA 的绿灯。两个已接受 Security Low 保留。未执行远端交付、部署或生产操作。
+
 - [ ] POL-15 / #108 第十八轮方案 A 已获 Owner 明确批准，当前修复按 [v1.3 冻结契约](docs/specs/2026-09-14-pol108-export-and-work-budget-v1.3.md) 执行：导出期间/状态、shared-domain 穷尽映射、唯一 active project 500/501 预算、20,000 facts / 100,000 impacts / 64 MiB 总工作量预检及 3 个 Standards Low。父候选 `715879e2a602b235493664c2ab1a368a3d4f9f20` 已通过 PG16 169 migrations 两遍、seed、#108 10/10、canonical 53 files/239 tests、release 16/16，但独立后审 H0/M4/L5，不能远端放行。当前 canonical 更新为 53 files/243 tests（#108 14），新增公开写入压力与全影响映射测试；尚未形成新的成功证据。两个 Security Low（续页全项目指纹开销、密码确认先于 limiter）继续明确延期。修复新 SHA 必须从头 PG16、完整 release 与全新独立三审 H0/M0，仓外收据绑定自身 SHA，仓内仅登记父候选避免自引用。未执行 push、PR、merge、关票、部署或任何生产操作。
 
   - 第十八轮首个固定候选 `f4b0d5b8cdf8eb1ca2466f495b93f5424d7b05a8` 完成 169 migrations 两遍、seed，#108 PG16 为 8/14：新增期间/状态、全部 impact 映射和多岗位唯一项目边界通过；其余六项因整个文件共用一个服务实例/账号，在一分钟内累积到原有代码的每分钟限流而得到 429，未完成预期断言。一次性容器已清理，未运行 release 或后审，该 SHA 不作成功证据。现仅将独立测试改为各自构建真实服务实例，保留原 limiter，不 mock 时钟/核心服务或重置数据库；下一 SHA 从头验证。
