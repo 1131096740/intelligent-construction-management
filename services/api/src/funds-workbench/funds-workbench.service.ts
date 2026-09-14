@@ -483,6 +483,10 @@ export class FundsWorkbenchService {
     if (remaining === 0n && ["paid", "settled", "disbursed", "offset_completed"].includes(status)) return "已完成";
     if (["partially_paid", "partially_disbursed"].includes(status)) return "部分支付";
     if (["approved_pending_payment", "approved_pending_disbursement"].includes(status)) return "已批待付";
+    if (status === "paid") return "已付款";
+    if (status === "settled") return "已结清";
+    if (status === "disbursed") return "已放款";
+    if (status === "offset_completed") return "借款冲销完成";
     return status;
   }
 

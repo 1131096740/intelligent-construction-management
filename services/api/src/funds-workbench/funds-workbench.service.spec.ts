@@ -94,12 +94,18 @@ describe("FundsWorkbenchService", () => {
     await expect(service.list("finance-1", { source: "unknown" })).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("retains non-project completed and partial funds when project money is incomplete", async () => {
+  it.each([
+    ["paid", "已付款", "reimbursement"],
+    ["settled", "已结清", "reimbursement"],
+    ["disbursed", "已放款", "loan"],
+    ["offset_completed", "借款冲销完成", "loan"]
+  ])("retains non-project funds and Chinese %s labels when project money is incomplete", async (status, statusLabel, claimType) => {
     for (const model of [prisma.project, prisma.paymentRequest, prisma.spotProcurementPayment,
       prisma.spotProcurementDiscrepancy, prisma.spotProcurementPaymentExecution,
       prisma.spotProcurementPaymentExecutionVoucher, prisma.fileObject]) {
       model.findMany.mockResolvedValue([]);
     }
+    prisma.project.findMany.mockResolvedValue([{ id: "project-1", code: "JG-001", name: "科技园" }]);
     operatingProjection.readFundsCompatibilitySnapshot.mockImplementation(
       async (_actor, _input, readAdditional) => ({
         integrity: { moneyComplete: false }, sourceReferenceTotals: [],
@@ -116,14 +122,14 @@ describe("FundsWorkbenchService", () => {
       { ...claim, id: "expense-done", code: "BX-DONE" },
       { ...claim, id: "loan-done", code: "JK-DONE", claimType: "loan", status: "disbursed" },
       { ...claim, id: "expense-part", code: "BX-PART", status: "partially_paid", fundedAmountCents: 3000n },
-      { ...claim, id: "project-done", code: "BX-PROJECT", projectId: "project-1" }
+      { ...claim, id: "project-done", code: "BX-PROJECT", projectId: "project-1", status, claimType }
     ]);
     const result = await service.list("finance-1", { view: "all" });
     expect(result.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "expense-done", paidAmountCents: "8000", remainingAmountCents: "0", statusLabel: "已完成", project: null }),
       expect.objectContaining({ id: "loan-done", paidAmountCents: "8000", remainingAmountCents: "0", statusLabel: "已完成" }),
       expect.objectContaining({ id: "expense-part", paidAmountCents: "3000", remainingAmountCents: "5000", statusLabel: "部分支付" }),
-      expect.objectContaining({ id: "project-done", paidAmountCents: null, remainingAmountCents: null })
+      expect.objectContaining({ id: "project-done", status, statusLabel, paidAmountCents: null, remainingAmountCents: null, project: { id: "project-1", code: "JG-001", name: "科技园" } })
     ]));
     expect(result.viewCounts).toMatchObject({ all: 4, completed: 2, partial_payment: 1 });
     const countSql = prisma.$queryRaw.mock.calls.map(([query]) =>

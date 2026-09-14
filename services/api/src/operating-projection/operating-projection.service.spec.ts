@@ -1086,13 +1086,25 @@ describe("OperatingProjectionService", () => {
   it("preflights the full subject-only restriction integrity set before loading facts", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
-    tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
-      .mockResolvedValueOnce([{
+    const queryOrder: string[] = [];
+    tx.$queryRaw.mockImplementation(async (query: Prisma.Sql) => {
+      const sql = query.strings.join(" ");
+      if (sql.includes("CURRENT_TIMESTAMP")) {
+        queryOrder.push("clock");
+        return [{ readAt }];
+      }
+      if (sql.includes('AS "workFactCount"')) {
+        queryOrder.push("work");
+        return [{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }];
+      }
+      if (!sql.includes('AS "maxSnapshotBytes"')) throw new Error("Unexpected preflight query");
+      queryOrder.push("restriction");
+      return [{
         replacementCount: 40_001n,
         snapshotBytes: 1n,
         maxSnapshotBytes: 1
-      }]);
+      }];
+    });
     const service = new OperatingProjectionService(
       { $transaction: jest.fn((work) => work(tx)) } as never,
       overviewVisibility([project.id]) as never,
@@ -1106,11 +1118,14 @@ describe("OperatingProjectionService", () => {
       sourceType: "owner_settlement",
       costCategoryCode: "other_project_cost"
     }))
-      .rejects.toBeInstanceOf(PayloadTooLargeException);
+      .rejects.toMatchObject({ status: 413, message: "经营投影完整性数据超出安全预算，请收窄项目或主体筛选" });
+    expect(queryOrder).toEqual(["clock", "work", "restriction"]);
     expect(tx.operatingFact.findMany).not.toHaveBeenCalled();
+    expect(tx.operatingImpactEntry.findMany).not.toHaveBeenCalled();
     const preflightSql = (
-      tx.$queryRaw.mock.calls[1]?.[0] as { strings?: readonly string[] }
+      tx.$queryRaw.mock.calls[2]?.[0] as { strings?: readonly string[] }
     ).strings?.join(" ") ?? "";
+    expect(preflightSql).toContain('AS "maxSnapshotBytes"');
     expect(preflightSql).toContain('"ProjectNecessaryExpenseReserveReplacement"');
     expect(preflightSql).toContain('"ProjectFundDisputeReplacement"');
     expect(preflightSql).toContain("pg_column_size");
@@ -1120,13 +1135,25 @@ describe("OperatingProjectionService", () => {
   it("fails closed when selected restriction snapshots exceed the byte budget", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
-    tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
-      .mockResolvedValueOnce([{
+    const queryOrder: string[] = [];
+    tx.$queryRaw.mockImplementation(async (query: Prisma.Sql) => {
+      const sql = query.strings.join(" ");
+      if (sql.includes("CURRENT_TIMESTAMP")) {
+        queryOrder.push("clock");
+        return [{ readAt }];
+      }
+      if (sql.includes('AS "workFactCount"')) {
+        queryOrder.push("work");
+        return [{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }];
+      }
+      if (!sql.includes('AS "maxSnapshotBytes"')) throw new Error("Unexpected preflight query");
+      queryOrder.push("restriction");
+      return [{
         replacementCount: 1n,
         snapshotBytes: BigInt(8 * 1024 * 1024 + 1),
         maxSnapshotBytes: 1024
-      }]);
+      }];
+    });
     const service = new OperatingProjectionService(
       { $transaction: jest.fn((work) => work(tx)) } as never,
       overviewVisibility([project.id]) as never,
@@ -1139,11 +1166,14 @@ describe("OperatingProjectionService", () => {
       projectId: project.id,
       counterpartyId: "counterparty-1"
     }))
-      .rejects.toBeInstanceOf(PayloadTooLargeException);
+      .rejects.toMatchObject({ status: 413, message: "经营投影完整性数据超出安全预算，请收窄项目或主体筛选" });
+    expect(queryOrder).toEqual(["clock", "work", "restriction"]);
     expect(tx.operatingFact.findMany).not.toHaveBeenCalled();
+    expect(tx.operatingImpactEntry.findMany).not.toHaveBeenCalled();
     const preflightSql = (
-      tx.$queryRaw.mock.calls[1]?.[0] as { strings?: readonly string[] }
+      tx.$queryRaw.mock.calls[2]?.[0] as { strings?: readonly string[] }
     ).strings?.join(" ") ?? "";
+    expect(preflightSql).toContain('AS "maxSnapshotBytes"');
     expect(preflightSql).toContain('fact."debtorSubjectKind"');
     expect(preflightSql).toContain("OR EXISTS");
   });
