@@ -1073,6 +1073,72 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     }
   });
 
+  it("在同一事务内对三类明细终态执行 UTF-8 8 MiB 门禁并覆盖临界值", async () => {
+    const belowLimitCode = "B".repeat(4 * 1024 * 1024);
+    await append("expense_claim", {
+      sourceBusinessCode: belowLimitCode,
+      factKind: "expense",
+      amountCents: 1n,
+      direction: "outflow",
+      occurredAt: new Date("2026-09-02T08:00:00.000Z"),
+      subjects: { costBearingCompany: company },
+      impacts: [impact("detail-response-boundary", "confirmed_cost", 1n, "increase", {
+        costCategoryCode: "other_project_cost"
+      })]
+    });
+    const originalProject = await prisma.project.findUniqueOrThrow({
+      where: { id: PROJECT_ID },
+      select: { name: true }
+    });
+    try {
+      await prisma.project.update({
+        where: { id: PROJECT_ID },
+        data: { name: "L".repeat(3.5 * 1024 * 1024) }
+      });
+      const belowLimit = await projection.getProjectDetailPage(READER_ID, {
+        projectId: PROJECT_ID,
+        sourceType: "expense_claim",
+        pageSize: "1"
+      });
+      const belowLimitBytes = Buffer.byteLength(JSON.stringify(belowLimit), "utf8");
+      expect(belowLimitBytes).toBeLessThanOrEqual(8 * 1024 * 1024);
+      expect(belowLimitBytes).toBeGreaterThan(7.5 * 1024 * 1024);
+
+      await prisma.project.update({
+        where: { id: PROJECT_ID },
+        data: { name: "A".repeat(4.25 * 1024 * 1024) }
+      });
+      await expect(projection.getProjectDetailPage(READER_ID, {
+        projectId: PROJECT_ID,
+        sourceType: "expense_claim",
+        pageSize: "1"
+      })).rejects.toMatchObject({
+        message: expect.stringContaining("经营投影明细响应超出 8 MiB")
+      });
+    } finally {
+      await prisma.project.update({
+        where: { id: PROJECT_ID },
+        data: { name: originalProject.name }
+      });
+    }
+
+    const companyDetail = await projection.getCompanyDetailPage(READER_ID, {
+      companyEntityId,
+      sourceType: "fund_movement",
+      pageSize: "1"
+    });
+    const projectSetDetail = await projection.getAsOfDetailPage(READER_ID, {
+      scopeKind: "projects",
+      projectIds: [PROJECT_ID],
+      sourceType: "owner_settlement",
+      pageSize: "1"
+    });
+    for (const response of [companyDetail, projectSetDetail]) {
+      expect(Buffer.byteLength(JSON.stringify(response), "utf8"))
+        .toBeLessThanOrEqual(8 * 1024 * 1024);
+    }
+  });
+
   it("在读取事实前按主体 fallback 预检两类限制来源与高压缩快照字节", async () => {
     const counterpartyId = `preflight-counterparty-${runId}`;
     const otherCounterpartyId = `preflight-other-${runId}`;
@@ -1191,80 +1257,6 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       expect(capturedQueries.some(isDetailFindManyQuery)).toBe(false);
     } finally {
       capturedDetailFindManyQueries = null;
-    }
-  });
-
-  it("在同一事务内对三类明细终态执行 UTF-8 8 MiB 门禁并覆盖临界值", async () => {
-    const belowLimitCode = "B".repeat(8 * 1024 * 1024 - 64 * 1024);
-    await append("expense_claim", {
-      sourceBusinessCode: belowLimitCode,
-      factKind: "expense",
-      amountCents: 1n,
-      direction: "outflow",
-      occurredAt: new Date("2026-09-02T08:00:00.000Z"),
-      subjects: { costBearingCompany: company },
-      impacts: [impact("detail-response-below-limit", "confirmed_cost", 1n, "increase", {
-        costCategoryCode: "other_project_cost"
-      })]
-    });
-    const belowLimit = await projection.getProjectDetailPage(READER_ID, {
-      projectId: PROJECT_ID,
-      sourceType: "expense_claim",
-      pageSize: "1"
-    });
-    expect(Buffer.byteLength(JSON.stringify(belowLimit), "utf8"))
-      .toBeLessThanOrEqual(8 * 1024 * 1024);
-    expect(Buffer.byteLength(JSON.stringify(belowLimit), "utf8"))
-      .toBeGreaterThan(7.5 * 1024 * 1024);
-
-    await append("wage_statement_version", {
-      sourceBusinessCode: `POL108-DETAIL-ABOVE-${runId}`,
-      factKind: "project_wage",
-      amountCents: 1n,
-      direction: "outflow",
-      occurredAt: new Date("2026-09-02T09:00:00.000Z"),
-      subjects: { debtor: enterprise, costBearingCompany: company },
-      impacts: [impact("detail-response-above-limit", "confirmed_cost", 1n, "increase", {
-        costCategoryCode: "other_project_cost"
-      })]
-    });
-    const originalProject = await prisma.project.findUniqueOrThrow({
-      where: { id: PROJECT_ID },
-      select: { name: true }
-    });
-    try {
-      await prisma.project.update({
-        where: { id: PROJECT_ID },
-        data: { name: "A".repeat(8 * 1024 * 1024) }
-      });
-      await expect(projection.getProjectDetailPage(READER_ID, {
-        projectId: PROJECT_ID,
-        sourceType: "wage_statement_version",
-        pageSize: "1"
-      })).rejects.toMatchObject({
-        message: expect.stringContaining("经营投影明细响应超出 8 MiB")
-      });
-    } finally {
-      await prisma.project.update({
-        where: { id: PROJECT_ID },
-        data: { name: originalProject.name }
-      });
-    }
-
-    const companyDetail = await projection.getCompanyDetailPage(READER_ID, {
-      companyEntityId,
-      sourceType: "fund_movement",
-      pageSize: "1"
-    });
-    const projectSetDetail = await projection.getAsOfDetailPage(READER_ID, {
-      scopeKind: "projects",
-      projectIds: [PROJECT_ID],
-      sourceType: "owner_settlement",
-      pageSize: "1"
-    });
-    for (const response of [companyDetail, projectSetDetail]) {
-      expect(Buffer.byteLength(JSON.stringify(response), "utf8"))
-        .toBeLessThanOrEqual(8 * 1024 * 1024);
     }
   });
 
