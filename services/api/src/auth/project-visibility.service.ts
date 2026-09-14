@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
   resolveEffectiveRoleKeys,
@@ -39,22 +39,9 @@ export class ProjectVisibilityService {
     userId: string,
     maxProjectCount: number
   ): Promise<string[]> {
-    const [globalPositions, projectPositions, projectMembers, rosterMembers] =
-      await Promise.all([
-        tx.userPosition.findMany({ where: { userId, projectId: null } }),
-        tx.userPosition.findMany({
-          where: { userId, projectId: { not: null } },
-          take: maxProjectCount + 1
-        }),
-        tx.projectMember.findMany({ where: { userId }, take: maxProjectCount + 1 }),
-        tx.projectRosterMember.findMany({ where: { userId }, take: maxProjectCount + 1 })
-      ]);
-    if ([projectPositions, projectMembers, rosterMembers]
-      .some((rows) => rows.length > maxProjectCount)) {
-      throw new ProjectVisibilityBudgetExceededError();
-    }
+    const globalPositions = await tx.userPosition.findMany({ where: { userId, projectId: null } });
     const positionIds = Array.from(new Set(
-      [...globalPositions, ...projectPositions].map((position) => position.positionId)
+      globalPositions.map((position) => position.positionId)
     ));
     const positions = positionIds.length
       ? await tx.position.findMany({ where: { id: { in: positionIds } } })
@@ -68,23 +55,24 @@ export class ProjectVisibilityService {
     if (globalRoleKeys.some((role) => GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(role))) {
       return this.activeProjectIdsWithClient(tx, maxProjectCount);
     }
-    const scopedProjectIds = Array.from(new Set<string>([
-      ...projectPositions
-        .map((position) => position.projectId)
-        .filter((projectId): projectId is string => typeof projectId === "string"),
-      ...projectMembers.map((member) => member.projectId),
-      ...rosterMembers.map((member) => member.projectId)
-    ]));
-    if (scopedProjectIds.length > maxProjectCount) {
-      throw new ProjectVisibilityBudgetExceededError();
-    }
-    const activeProjects = scopedProjectIds.length
-      ? await tx.project.findMany({
-          where: { id: { in: scopedProjectIds }, isActive: true },
-          select: { id: true },
-          take: maxProjectCount + 1
-        })
-      : [];
+    const activeProjects = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT visible."projectId" AS id FROM (
+        (SELECT DISTINCT relation."projectId" FROM "UserPosition" relation
+          JOIN "Project" project ON project.id = relation."projectId" AND project."isActive" = TRUE
+          WHERE relation."userId" = ${userId}
+          ORDER BY relation."projectId" LIMIT ${maxProjectCount + 1})
+        UNION
+        (SELECT DISTINCT relation."projectId" FROM "ProjectMember" relation
+          JOIN "Project" project ON project.id = relation."projectId" AND project."isActive" = TRUE
+          WHERE relation."userId" = ${userId}
+          ORDER BY relation."projectId" LIMIT ${maxProjectCount + 1})
+        UNION
+        (SELECT DISTINCT relation."projectId" FROM "ProjectRosterMember" relation
+          JOIN "Project" project ON project.id = relation."projectId" AND project."isActive" = TRUE
+          WHERE relation."userId" = ${userId}
+          ORDER BY relation."projectId" LIMIT ${maxProjectCount + 1})
+      ) visible ORDER BY visible."projectId" LIMIT ${maxProjectCount + 1}
+    `);
     if (activeProjects.length > maxProjectCount) {
       throw new ProjectVisibilityBudgetExceededError();
     }

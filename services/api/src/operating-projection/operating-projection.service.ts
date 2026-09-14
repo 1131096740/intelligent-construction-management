@@ -15,12 +15,15 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canPerform,
-  OPERATING_FACT_KINDS,
-  OPERATING_IMPACT_KINDS
+  operatingProjectionExportMatches,
+  OPERATING_PROJECTION_ROW_STATUSES,
+  OPERATING_PROJECTION_ROW_STATUS_LABELS,
+  type OperatingProjectionExportFilters
 } from "@jiangkong/shared-domain";
 
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { preflightProjectionWork } from "./projection-work-budget";
 import {
   type OperatingProjectionExportKind
 } from "./dto/operating-projection-export.dto";
@@ -444,7 +447,7 @@ export class OperatingProjectionService {
 
   async exportView(
     actorUserId: string,
-    input: AsOfProjectionQuery,
+    input: AsOfProjectionQuery & OperatingProjectionExportFilters,
     confirmationPassword: string,
     exportKind: OperatingProjectionExportKind
   ) {
@@ -492,7 +495,7 @@ export class OperatingProjectionService {
           : {})
       };
       const auditFilters = Object.fromEntries(
-        Object.entries(projectionFilters(input))
+        Object.entries({ ...projectionFilters(input), ...auditContext.exportFilters })
       ) as Prisma.InputJsonObject;
       await this.audit.record(this.prisma, {
         actorUserId,
@@ -522,13 +525,15 @@ export class OperatingProjectionService {
 
   private async readExportProjection(
     actorUserId: string,
-    input: AsOfProjectionQuery,
+    input: AsOfProjectionQuery & OperatingProjectionExportFilters,
     exportKind: OperatingProjectionExportKind,
     output: BoundedProjectionCsvFile
   ) {
     const bundle = await this.readProjectionBundle(
       { ...asOfProjectionInput(actorUserId, input), requireDetailPermission: true },
       async (tx, projectIds, context, projection) => {
+        const exportFilters = normalizeProjectionExportFilters(input,
+          projection.asOf.businessDate);
         const effectiveRoleKeysByProject =
           await this.projectVisibility.effectiveRoleKeysByProjectInTransaction(
             tx,
@@ -556,7 +561,7 @@ export class OperatingProjectionService {
                   true
                 );
           for (const item of detailPage.items) {
-            const csvRow = projectionExportCsvRow(item, exportKind);
+            const csvRow = projectionExportCsvRow(item, exportKind, exportFilters);
             if (!csvRow) continue;
             await output.writeRow(csvRow);
             rowCount += 1;
@@ -570,6 +575,7 @@ export class OperatingProjectionService {
             Array.from(effectiveRoleKeysByProject.entries())
           ),
           businessDate: projection.asOf.businessDate,
+          exportFilters,
           readAt: projection.asOf.readAt,
           rowCount
         };
@@ -1538,6 +1544,11 @@ async function preflightRestrictionResources(
   ) {
     throw new ProjectionResourceBudgetExceededError();
   }
+  await preflightProjectionWork(tx, projectIds, cutoffAt, readAt,
+    hasSubjectFilter ? Prisma.sql`((${factFilterSql}) OR EXISTS (
+      SELECT 1 FROM "OperatingImpactEntry" impact WHERE impact."factId" = fact.id
+        AND impact."createdAt" <= ${readAt} AND ${impactFilterSql}
+    ))` : Prisma.sql`TRUE`);
 }
 
 function restrictionPreflightFilterSql(
@@ -2478,6 +2489,36 @@ function projectionFilters(input: ProjectionFilters): ProjectionFilters {
   }).filter(([, value]) => Boolean(value)));
 }
 
+export function normalizeProjectionExportFilters(
+  input: OperatingProjectionExportFilters,
+  businessDate: string
+): OperatingProjectionExportFilters {
+  const result: OperatingProjectionExportFilters = {};
+  for (const key of ["occurredFrom", "occurredTo"] as const) {
+    const value = input[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new BadRequestException("导出期间必须是 YYYY-MM-DD 日期");
+    }
+    // Validate the calendar independently of the query cutoff (from-only may yield no rows).
+    projectionCutoff(value, new Date("9999-12-31T23:59:59.999Z"));
+    result[key] = value;
+  }
+  if (result.occurredFrom && result.occurredTo && result.occurredFrom > result.occurredTo) {
+    throw new BadRequestException("导出期间起日不得晚于止日");
+  }
+  if (result.occurredTo && result.occurredTo > businessDate) {
+    throw new BadRequestException("导出期间止日不得晚于查询基准日");
+  }
+  if (input.rowStatus !== undefined) {
+    if (typeof input.rowStatus !== "string" || !OPERATING_PROJECTION_ROW_STATUSES.includes(input.rowStatus)) {
+      throw new BadRequestException("导出业务状态无效");
+    }
+    result.rowStatus = input.rowStatus;
+  }
+  return result;
+}
+
 function projectionCutoff(value: string | undefined, readAt: Date): Date {
   if (value === undefined) return readAt;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -2583,100 +2624,35 @@ const EXPORT_KIND_FILE_NAMES: Record<OperatingProjectionExportKind, string> = {
   takeover_coverage_evidence_gap: "历史接管覆盖与证据缺口"
 };
 
-const KNOWN_EXPORT_SOURCE_TYPES = new Set([
-  "owner_settlement",
-  "project_upstream_settlement",
-  "project_upstream_fund_fact",
-  "project_affiliate_contract_fact",
-  "project_affiliate_settlement_fact",
-  "project_affiliate_payment_fact",
-  "project_proxy_payment",
-  "contract_version",
-  "settlement",
-  "payment_execution",
-  "expense_claim_approval",
-  "expense_claim_payment_execution",
-  "employee_project_loan_entry",
-  "spot_procurement_receipt_review",
-  "spot_procurement_payment_execution",
-  "spot_procurement_refund",
-  "spot_procurement_invoice_record",
-  "contract_takeover_historical_payment",
-  "project_expense_execution",
-  "expense_claim",
-  "expense_claim_execution",
-  "wage_statement_version",
-  "fund_movement",
-  "clearing_event_version",
-  "project_necessary_expense_reserve_entry",
-  "project_fund_dispute_entry",
-  "operating_takeover"
-]);
-const KNOWN_EXPORT_FACT_KINDS = new Set<string>(OPERATING_FACT_KINDS);
-const KNOWN_EXPORT_IMPACT_KINDS = new Set<string>(OPERATING_IMPACT_KINDS);
-const EXPORT_RISK_IMPACT_KINDS = new Set([
-  "clearing_open_reconciliation_risk",
-  "clearing_continued_withheld_risk"
-]);
-const CONSTRUCTION_ENTERPRISE_EXPORT_IMPACTS = new Set([
-  "construction_enterprise_funds_increase",
-  "construction_enterprise_funds_decrease",
-  "construction_enterprise_funds_freeze",
-  "construction_enterprise_funds_release",
-  "estimated_clearing_expense",
-  "necessary_expense_reserve_increase",
-  "necessary_expense_reserve_decrease",
-  "project_disputed_funds_increase",
-  "project_disputed_funds_decrease",
-  ...EXPORT_RISK_IMPACT_KINDS
-]);
-const COMPANY_SUBLEDGER_EXPORT_IMPACTS = new Set([
-  "company_project_funds_increase",
-  "company_project_funds_decrease",
-  "company_advance_for_project_increase",
-  "company_advance_for_project_decrease",
-  "company_returnable_to_project_increase",
-  "company_returnable_to_project_decrease",
-  "inter_subject_balance_increase",
-  "inter_subject_balance_decrease",
-  "temporary_profit_distribution",
-  "final_profit_distribution",
-  "profit_distribution_adjustment"
-]);
-const RECEIVABLE_PAYABLE_CASHFLOW_EXPORT_IMPACTS = new Set([
-  "receivable_increase",
-  "receivable_decrease",
-  "payable_increase",
-  "payable_decrease",
-  "construction_enterprise_funds_increase",
-  "construction_enterprise_funds_decrease",
-  "company_project_funds_increase",
-  "company_project_funds_decrease"
-]);
 
 function projectionExportCsvRow(
   item: Record<string, unknown>,
-  exportKind: OperatingProjectionExportKind
+  exportKind: OperatingProjectionExportKind,
+  filters: OperatingProjectionExportFilters
 ): string[] | null {
   const metadata = jsonRecord(item._export) as Partial<ProjectionExportMetadata>;
   const sourceType = stringValue(metadata.sourceType);
   const factKind = stringValue(metadata.factKind);
   const impactKind = stringValue(metadata.impactKind);
-  if (
-    !sourceType ||
-    !factKind ||
-    !impactKind ||
-    !KNOWN_EXPORT_SOURCE_TYPES.has(sourceType) ||
-    (!KNOWN_EXPORT_FACT_KINDS.has(factKind) && factKind !== "clearing_reconciliation_risk") ||
-    (!KNOWN_EXPORT_IMPACT_KINDS.has(impactKind) && !EXPORT_RISK_IMPACT_KINDS.has(impactKind))
-  ) {
+  const evidenceLevel = stringValue(item.evidenceLevel);
+  const matches = operatingProjectionExportMatches(exportKind, sourceType, factKind,
+    impactKind, evidenceLevel);
+  if (matches === null) {
     throw new ConflictException("经营投影存在未识别的来源或经营影响，已拒绝导出");
   }
-  const evidenceLevel = stringValue(item.evidenceLevel);
-  if (!projectionExportKindMatches(exportKind, sourceType, factKind, impactKind, evidenceLevel)) {
-    return null;
-  }
+  if (!matches) return null;
   const risk = jsonRecord(item.reconciliationRisk);
+  const rowStatus = item.confirmedAfterAsOf === true ? "retroactive_confirmation"
+    : risk.statusLabel ? "pending_reconciliation" : "confirmed";
+  if (filters.rowStatus && filters.rowStatus !== rowStatus) return null;
+  if (filters.occurredFrom || filters.occurredTo) {
+    const occurredAt = nullableStringValue(item.occurredAt);
+    if (!occurredAt) return null;
+    const time = new Date(occurredAt).getTime();
+    if (!Number.isFinite(time)) throw new ConflictException("经营事实日期无效，已拒绝导出");
+    if (filters.occurredFrom && time < new Date(`${filters.occurredFrom}T00:00:00.000+08:00`).getTime()) return null;
+    if (filters.occurredTo && time > new Date(`${filters.occurredTo}T23:59:59.999+08:00`).getTime()) return null;
+  }
   const signedImpactCents = nullableStringValue(item.signedImpactCents);
   const factAmountCents = stringValue(metadata.factAmountCents);
   const amountCents = signedImpactCents ?? (evidenceLevel === "C" ? factAmountCents : null);
@@ -2697,7 +2673,7 @@ function projectionExportCsvRow(
     stringValue(item.factKindLabel),
     evidenceLevel ?? "待核对",
     amountBasis,
-    item.confirmedAfterAsOf === true ? "追溯确认" : risk.statusLabel ? "待核对" : "已确认",
+    OPERATING_PROJECTION_ROW_STATUS_LABELS[rowStatus],
     nullableStringValue(item.occurredAt) ?? "",
     nullableStringValue(item.confirmedAt) ?? "",
     stringValue(item.impactKindLabel),
@@ -2713,29 +2689,6 @@ function projectionExportCsvRow(
   ];
 }
 
-function projectionExportKindMatches(
-  exportKind: OperatingProjectionExportKind,
-  sourceType: string,
-  factKind: string,
-  impactKind: string,
-  evidenceLevel: string | null
-): boolean {
-  if (exportKind === "project_operating_ledger_detail") return true;
-  if (exportKind === "construction_enterprise_funds_reconciliation") {
-    return factKind === "construction_enterprise_deduction" ||
-      CONSTRUCTION_ENTERPRISE_EXPORT_IMPACTS.has(impactKind);
-  }
-  if (exportKind === "company_project_funds_subledger") {
-    return COMPANY_SUBLEDGER_EXPORT_IMPACTS.has(impactKind);
-  }
-  if (exportKind === "receivable_payable_cashflow_detail") {
-    return RECEIVABLE_PAYABLE_CASHFLOW_EXPORT_IMPACTS.has(impactKind);
-  }
-  return evidenceLevel === "C" ||
-    impactKind === "evidence_gap_notice" ||
-    sourceType === "operating_takeover" ||
-    sourceType === "contract_takeover_historical_payment";
-}
 
 function exportSubjectDisplayLabels(value: unknown): string[] {
   const roleLabels: Record<string, string> = {

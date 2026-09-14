@@ -1,4 +1,6 @@
 :root {
+  --jg-export-control-width: 240px;
+  --jg-export-panel-width: 520px;
   --jg-color-bg-page: #ffffff;
   --jg-color-bg-panel: #ffffff;
   --jg-color-bg-surface: #ffffff;

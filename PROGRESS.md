@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-09-13）
+## 当前结论（更新至 2026-09-14）
 
   - 候选 `8976617d21dec0cba2e1578f05f6474dcb07f12f` 的 `release:local` 已通过静态、全仓测试、构建、清单及前 13 个 PostgreSQL 16 主组，随后在 #284 专库 29 条测试中为 25/29；扩展的未来停止日期并发矩阵通过，4 个旧用例因只设置一家参与公司却仍期待其未来停止后项目可无人覆盖而失败。该失败证明新连续覆盖守卫已生效；本轮仅为这 4 个分别验证事实截断、提前停止和合法接续覆盖的用例补建另一家持续有效参与公司。该 SHA 不作成功证据，动态门已清理并停止，未生成成功收据。
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
@@ -23,7 +23,9 @@
 
 ## 当前正在推进
 
-- [~] POL-15（Issue #108，本地重建）：#284 前置已经精确 SHA 交付并解除；当前隔离候选基于 live `origin/main@92d3a72fad501010e89319a4296a3aae0171cb4b`，按 Owner 批准的第十七轮方案 A 闭合最终五项 Medium：五类 finance-only 中文业务明细 CSV、三个 detail 同事务最终响应 8 MiB 门禁、严格 `YYYY-MM-DD` 与 1..200 十进制分页及导出 DTO 长度、Web 全可见项目省略 `projectIds` 并由后端执行 500/501 预算、进度双层证据。`operating_projection.detail.read` 与导出仍仅限 `finance_staff`、`finance_director`；Schema、migration、参与关系写侧及 #279/#280 写语义未改。canonical 动态清单同步为 53 files / 239 tests / remaining 0，其中 #108 为 10 条。固定候选 `7bf20c03fcb02b25d134b0a3e71e7bf20fe34571` 已通过 169 migrations 两遍、seed、#108 10/10 与 canonical 全动态 239/239，但完整 `release:local` 在新增 Web 导出包装器未同步 release manifests 时失败，故该 SHA 已废止且没有发布放行资格。当前修复把导出按钮改为由同一项目总览事务返回的服务端 finance-only 布尔能力支配，登记敏感页面动作，并把该路由从历史内部操作端分类更新为 Web 页面消费者；所有生成清单均已恢复 ready/0 blockers。新的固定 SHA、从头 PG16、完整 `release:local` 与第三轮独立 Standards/Spec/Security 三审仍待执行；全部通过后才可恢复已授权的非生产 GitHub 交付链。未执行远端或生产操作。
+- [ ] POL-15 / #108 第十八轮方案 A 已获 Owner 明确批准，当前修复按 [v1.3 冻结契约](docs/specs/2026-09-14-pol108-export-and-work-budget-v1.3.md) 执行：导出期间/状态、shared-domain 穷尽映射、唯一 active project 500/501 预算、20,000 facts / 100,000 impacts / 64 MiB 总工作量预检及 3 个 Standards Low。父候选 `715879e2a602b235493664c2ab1a368a3d4f9f20` 已通过 PG16 169 migrations 两遍、seed、#108 10/10、canonical 53 files/239 tests、release 16/16，但独立后审 H0/M4/L5，不能远端放行。当前 canonical 更新为 53 files/243 tests（#108 14），新增公开写入压力与全影响映射测试；尚未形成新的成功证据。两个 Security Low（续页全项目指纹开销、密码确认先于 limiter）继续明确延期。修复新 SHA 必须从头 PG16、完整 release 与全新独立三审 H0/M0，仓外收据绑定自身 SHA，仓内仅登记父候选避免自引用。未执行 push、PR、merge、关票、部署或任何生产操作。
+
+- [~] POL-15（Issue #108，第十七轮历史记录；当前状态以上方第十八轮登记为准）：#284 前置已经精确 SHA 交付并解除；当前隔离候选基于 live `origin/main@92d3a72fad501010e89319a4296a3aae0171cb4b`，按 Owner 批准的第十七轮方案 A 闭合最终五项 Medium：五类 finance-only 中文业务明细 CSV、三个 detail 同事务最终响应 8 MiB 门禁、严格 `YYYY-MM-DD` 与 1..200 十进制分页及导出 DTO 长度、Web 全可见项目省略 `projectIds` 并由后端执行 500/501 预算、进度双层证据。`operating_projection.detail.read` 与导出仍仅限 `finance_staff`、`finance_director`；Schema、migration、参与关系写侧及 #279/#280 写语义未改。canonical 动态清单同步为 53 files / 239 tests / remaining 0，其中 #108 为 10 条。固定候选 `7bf20c03fcb02b25d134b0a3e71e7bf20fe34571` 已通过 169 migrations 两遍、seed、#108 10/10 与 canonical 全动态 239/239，但完整 `release:local` 在新增 Web 导出包装器未同步 release manifests 时失败，故该 SHA 已废止且没有发布放行资格。当前修复把导出按钮改为由同一项目总览事务返回的服务端 finance-only 布尔能力支配，登记敏感页面动作，并把该路由从历史内部操作端分类更新为 Web 页面消费者；所有生成清单均已恢复 ready/0 blockers。新的固定 SHA、从头 PG16、完整 `release:local` 与第三轮独立 Standards/Spec/Security 三审仍待执行；全部通过后才可恢复已授权的非生产 GitHub 交付链。未执行远端或生产操作。
   - 固定候选 `c283fcc6501b61007608ada82e6e8484f3e8cf98` 已完整应用 169 migrations、第二遍 no pending 且 seed 成功，#108 专组为 8/10 后停止并清理一次性 PostgreSQL 16 容器。两个失败均来自本轮新增夹具：8 MiB 用例漏填既有 `expense`/工资主体契约；500 项目用例错误复用了全局财务用户，连带扫描前序 20,001 行规模数据并先触发既有完整性总预算。现仅补齐合法主体，并改用只对 500 个空项目具备 `finance_director` 项目成员关系的隔离用户，在第 501 个项目成员加入后验证 413；不放宽任何生产预算、权限或业务实现。
   - 固定候选 `e3559afae65fcddd56cf9254a4c33f016b8d2c94` 再次完成 169 migrations 两遍与 seed；500 项目成功/501 项目 413 已通过，#108 为 9/10 后停止并清理容器。唯一剩余失败是同一大字段夹具的 `confirmed_cost` 影响漏填既有一级成本分类，尚未进入 8 MiB 响应断言；现仅为两条成本影响补齐合法 `other_project_cost`，不改生产路径。
   - 固定候选 `1b8134776daeed64c9c825425d9448607e4badac` 再次完成 169 migrations 两遍与 seed，#108 为 9/10；合法大业务编号已写入，但接近 8 MiB 的编号先命中既有投影完整性预算，未到达本用例要证明的最终 HTTP JSON 门。现把下边界编号保留为 7.5 MiB 以上且低于 8 MiB，把上边界改为小业务编号加 8 MiB 项目展示名，并精确断言最终响应门的错误消息；不修改任何生产预算或实现。

@@ -7,16 +7,12 @@ import {
   ValidateIf
 } from "class-validator";
 
+import {
+  OPERATING_PROJECTION_EXPORT_KINDS, OPERATING_PROJECTION_ROW_STATUSES,
+  type OperatingProjectionExportKind, type OperatingProjectionRowStatus
+} from "@jiangkong/shared-domain";
+export { OPERATING_PROJECTION_EXPORT_KINDS, type OperatingProjectionExportKind } from "@jiangkong/shared-domain";
 const SCOPE_KINDS = ["project", "company", "projects"] as const;
-export const OPERATING_PROJECTION_EXPORT_KINDS = [
-  "project_operating_ledger_detail",
-  "construction_enterprise_funds_reconciliation",
-  "company_project_funds_subledger",
-  "receivable_payable_cashflow_detail",
-  "takeover_coverage_evidence_gap"
-] as const;
-export type OperatingProjectionExportKind =
-  (typeof OPERATING_PROJECTION_EXPORT_KINDS)[number];
 const VALUE_MAX_LENGTH = 256;
 const LIST_MAX_LENGTH = 2_048;
 
@@ -49,6 +45,25 @@ export class OperatingProjectionExportDto {
     message: "经营投影日期必须是真实日历日期"
   })
   asOf?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "期间起日必须是日期" })
+  @MaxLength(10, { message: "期间起日必须是日期" })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "期间起日必须是 YYYY-MM-DD" })
+  @IsDateString({ strict: true, strictSeparator: true }, { message: "期间起日不是有效日历日期" })
+  occurredFrom?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "期间止日必须是日期" })
+  @MaxLength(10, { message: "期间止日必须是日期" })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "期间止日必须是 YYYY-MM-DD" })
+  @IsDateString({ strict: true, strictSeparator: true }, { message: "期间止日不是有效日历日期" })
+  occurredTo?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "业务状态筛选无效" })
+  @IsIn(OPERATING_PROJECTION_ROW_STATUSES, { message: "业务状态筛选无效" })
+  rowStatus?: OperatingProjectionRowStatus;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "施工企业筛选必须是字符串" })

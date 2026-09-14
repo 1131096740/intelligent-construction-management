@@ -226,6 +226,30 @@
                 >
                   导出明细
                 </t-button>
+                <t-date-picker
+                  v-model="operatingExportFrom"
+                  clearable
+                  format="YYYY-MM-DD"
+                  aria-label="业务期间起日"
+                  placeholder="业务期间起日（可选）"
+                  :disabled="operatingProjectionExportBusy"
+                />
+                <t-date-picker
+                  v-model="operatingExportTo"
+                  clearable
+                  format="YYYY-MM-DD"
+                  aria-label="业务期间止日"
+                  placeholder="业务期间止日（可选）"
+                  :disabled="operatingProjectionExportBusy"
+                />
+                <t-select
+                  v-model="operatingExportStatus"
+                  clearable
+                  aria-label="导出业务状态"
+                  placeholder="全部业务状态"
+                  :options="operatingExportStatusOptions"
+                  :disabled="operatingProjectionExportBusy"
+                />
               </div>
             </div>
             <t-alert
@@ -1001,7 +1025,8 @@ import {
   type ProjectOptionReadModel,
   type OperatingProjectionExportKind
 } from "../../api/core-flow-read.api";
-import type { DraftLedgerView, RoleKey } from "@jiangkong/shared-domain";
+import { OPERATING_PROJECTION_ROW_STATUSES, OPERATING_PROJECTION_ROW_STATUS_LABELS,
+  type OperatingProjectionRowStatus, type DraftLedgerView, type RoleKey } from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -1159,6 +1184,17 @@ const operatingProjectionExportKind = ref<OperatingProjectionExportKind>(
   "project_operating_ledger_detail"
 );
 const operatingProjectionExportVisible = ref(false);
+const operatingExportFrom = ref("");
+const operatingExportTo = ref("");
+const operatingExportStatus = ref<OperatingProjectionRowStatus | "">("");
+const operatingExportFilters = computed(() => ({
+  occurredFrom: operatingExportFrom.value || undefined,
+  occurredTo: operatingExportTo.value || undefined,
+  rowStatus: operatingExportStatus.value || undefined
+}));
+const operatingExportStatusOptions = OPERATING_PROJECTION_ROW_STATUSES.map((value) => ({
+  value, label: OPERATING_PROJECTION_ROW_STATUS_LABELS[value]
+}));
 const operatingProjectionExportBusy = ref(false);
 const operatingProjectionExportError = ref("");
 const operatingProjectionExportMessage = ref("");
@@ -1688,6 +1724,9 @@ function submitOperatingProjectionExport(values: { reason: string; password: str
       scopeKind: "project",
       projectId,
       exportKind: operatingProjectionExportKind.value,
+      occurredFrom: operatingExportFilters.value.occurredFrom,
+      occurredTo: operatingExportFilters.value.occurredTo,
+      rowStatus: operatingExportFilters.value.rowStatus,
       confirmationPassword: values.password
     })
     .then(() => {
@@ -2830,8 +2869,8 @@ button:disabled {
 }
 
 .operating-projection-export-actions {
-  grid-template-columns: minmax(240px, 1fr) auto;
-  min-width: min(100%, 520px);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--jg-export-control-width)), 1fr));
+  width: min(100%, var(--jg-export-panel-width));
 }
 
 .project-entry-grid {

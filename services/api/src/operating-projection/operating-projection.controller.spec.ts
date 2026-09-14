@@ -6,6 +6,7 @@ import { Test } from "@nestjs/testing";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { OperatingProjectionExportDto } from "./dto/operating-projection-export.dto";
+import { configureProjectionExportJson } from "./projection-export-json";
 import { OperatingProjectionService } from "./operating-projection.service";
 
 import {
@@ -229,6 +230,7 @@ describe("OperatingProjectionController real HTTP query validation", () => {
       providers: [{ provide: OperatingProjectionService, useValue: projections }]
     }).compile();
     app = moduleRef.createNestApplication();
+    configureProjectionExportJson(app);
     app.useGlobalPipes(createApiValidationPipe());
     app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
       request.user = { id: "finance-query-user", name: "财务经办", phone: null };
@@ -282,6 +284,47 @@ describe("OperatingProjectionController real HTTP query validation", () => {
       `${base}/as-of?scopeKind=projects&projectIds=${encodeURIComponent(fiftySixProjectIds)}`
     )).status).toBe(400);
     expect((await fetch(`${base}/project/project-1?unknownField=blocked`)).status).toBe(400);
+  });
+
+  it.each(["occurredFrom", "occurredTo", "rowStatus"])("rejects duplicate JSON %s before export", async (key) => {
+    const response = await fetch(`${await app.getUrl()}/operating-projections/export`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: `{"scopeKind":"project","projectId":"project-1","exportKind":"project_operating_ledger_detail","confirmationPassword":"pw","${key}":"a","${key}":"b"}`
+    });
+    expect(response.status).toBe(400);
+    expect(projections.exportView).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { occurredFrom: ["2026-09-01", "2026-09-02"] },
+    { occurredTo: "2026-02-30" }, { occurredFrom: "2026/09/01" },
+    { occurredTo: "2026-09-01T00:00:00Z" }, { rowStatus: "unknown" },
+    { rowStatus: ["confirmed"] }, { occurredFrom: "x".repeat(257) }
+  ])("rejects invalid export filter %j before export", async (filters) => {
+    const response = await fetch(`${await app.getUrl()}/operating-projections/export`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeKind: "project", projectId: "project-1",
+        exportKind: "project_operating_ledger_detail", confirmationPassword: "pw", ...filters })
+    });
+    expect(response.status).toBe(400);
+    expect(projections.exportView).not.toHaveBeenCalled();
+  });
+
+  it("passes all export filters through the HTTP boundary without changing GET contracts", async () => {
+    projections.exportView.mockResolvedValueOnce({ fileName: "明细.csv", contentType: "text/csv",
+      stream: Readable.from(["完成"]) });
+    const response = await fetch(`${await app.getUrl()}/operating-projections/export`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeKind: "project", projectId: "project-1",
+        exportKind: "project_operating_ledger_detail", confirmationPassword: "pw",
+        occurredFrom: "2026-09-01", occurredTo: "2026-09-05", rowStatus: "retroactive_confirmation" })
+    });
+    expect(response.status).toBe(201);
+    await response.text();
+    expect(projections.exportView).toHaveBeenCalledWith("finance-query-user", expect.objectContaining({
+      occurredFrom: "2026-09-01", occurredTo: "2026-09-05", rowStatus: "retroactive_confirmation"
+    }), "pw", "project_operating_ledger_detail");
+    expect((await fetch(`${await app.getUrl()}/operating-projections/project/project-1?occurredFrom=2026-09-01`)).status).toBe(400);
   });
 
   it("preserves every legal detail query field as a validated string", async () => {

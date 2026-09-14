@@ -75,7 +75,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
 
-排查或票据级验证可以直接对第 14 组 runner 指定一个精确子组，例如
+排查或票据级验证可以直接对第 15 组 runner 指定一个精确子组，例如
 `node services/api/prisma/run-database-dynamic-remaining-local.cjs --group generic_database_constraints`。
 未知、重复或其他参数均失败关闭；不带参数时仍执行全部子组，不能用子组收据冒充全量收据。
 
@@ -83,7 +83,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 ## 当前覆盖
 
-canonical manifest 当前登记 53 个文件、239 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `operating_projection_pol108` 覆盖 1 个文件、10 条用例，`remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。
+canonical manifest 当前登记 53 个文件、243 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `operating_projection_pol108` 覆盖 1 个文件、14 条用例，`remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。#108 专组含公开写入 20,001 facts / 100,001 impacts 的压力夹具，runner 的 90 分钟上限仅用于本机测试，不改变 API 15/30 秒限制。
 
 #284 的 `participant_history_integrity` 子组使用独立数据库 `jiangkong_participant_history_integrity_test`，在同一文件内执行原有经营档案 17 条与参与公司历史完整性 13 条，共登记 30 条；完整 Jest 文件另含 2 条非 pending 的错误映射守卫，因此专组执行时显示 32/32。其中包含激活时拒绝未来覆盖断点、允许半开区间无缝接续，以及以最小运行时角色 `SET ROLE` 执行合法停止/删除、拒绝直接写 fence 表的权限回归：
 

@@ -186,7 +186,9 @@ async function main() {
       cwd: path.join(root, "services/api"),
       env: runtimeEnvironment,
       forwardOutput: true,
-      timeoutMs: 15 * 60 * 1000
+      // Includes 20,001 facts and 100,001 impacts through the guarded public writer.
+      // This runner-only allowance does not alter API transaction/read timeouts.
+      timeoutMs: 90 * 60 * 1000
     });
     console.log(JSON.stringify({
       result: "PASS",

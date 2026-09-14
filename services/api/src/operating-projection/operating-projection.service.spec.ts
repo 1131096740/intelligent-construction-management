@@ -20,7 +20,7 @@ function emptyProjectionTx(
 ) {
   return {
     $executeRawUnsafe: jest.fn().mockResolvedValue(0),
-    $queryRaw: jest.fn().mockResolvedValue([{ readAt }]),
+    $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
     project: { findMany: jest.fn().mockResolvedValue(projects) },
     projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
@@ -73,6 +73,31 @@ function overviewVisibility(projectIds: string[]) {
 
 describe("OperatingProjectionService", () => {
   const project = { id: "project-1", code: "XM-001", name: "一号项目" };
+
+  it.each([
+    [20_000n, 100_000n, 67_108_864n, false],
+    [20_001n, 1n, 1n, true],
+    [1n, 100_001n, 1n, true],
+    [1n, 1n, 67_108_865n, true]
+  ])("enforces request work boundaries through the public service for both accounts %s/%s/%s",
+    async (workFactCount, workImpactCount, workBytes, rejected) => {
+      for (const actor of ["finance-one", "finance-two"]) {
+        const readAt = new Date("2026-09-11T01:02:03Z");
+        const tx = emptyProjectionTx(readAt, [project]);
+        tx.$queryRaw.mockResolvedValue([{ readAt, workFactCount, workImpactCount, workBytes, targetCount: 0n }]);
+        const service = new OperatingProjectionService(
+          { $transaction: jest.fn((work) => work(tx)) } as never,
+          overviewVisibility([project.id]) as never, zeroRiskReader() as never,
+          { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+        );
+        const result = service.getProjectView(actor, { projectId: project.id });
+        if (rejected) {
+          await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
+          expect(tx.operatingFact.findMany).not.toHaveBeenCalled();
+          expect(tx.operatingImpactEntry.findMany).not.toHaveBeenCalled();
+        } else await expect(result).resolves.toBeDefined();
+      }
+    });
 
   it.each([
     ["finance_staff", true],
@@ -220,7 +245,7 @@ describe("OperatingProjectionService", () => {
     const tx = emptyProjectionTx(readAt, [project]);
     tx.$queryRaw.mockImplementation(async (query) => {
       const sql = (query as { strings?: readonly string[] }).strings?.join(" ") ?? "";
-      if (sql.includes("CURRENT_TIMESTAMP")) return [{ readAt }];
+      if (sql.includes("CURRENT_TIMESTAMP")) return [{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }];
       if (sql.includes('SUM(candidate."snapshotBytes")')) {
         return [{ snapshotBytes: BigInt(8 * 1024 * 1024 + 1) }];
       }
@@ -304,7 +329,7 @@ describe("OperatingProjectionService", () => {
     const historicalCutoff = new Date("2026-09-05T15:59:59.999Z");
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
-      $queryRaw: jest.fn().mockResolvedValue([{ readAt }]),
+      $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: { findMany: jest.fn().mockResolvedValue([project]) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
       projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
@@ -667,13 +692,13 @@ describe("OperatingProjectionService", () => {
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
       $queryRaw: jest.fn()
-        .mockResolvedValueOnce([{ readAt }])
+        .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
         .mockResolvedValueOnce([{ projectId: "project-1" }])
         .mockResolvedValueOnce([{
           replacementCount: 0n,
           snapshotBytes: 0n,
           maxSnapshotBytes: 0n
-        }]),
+        }]).mockResolvedValue([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       projectParticipatingCompany: {
         findMany: jest.fn().mockResolvedValue([{
           projectId: "project-1",
@@ -770,7 +795,7 @@ describe("OperatingProjectionService", () => {
     const projectIds = Array.from({ length: 101 }, (_, index) => `project-${index + 1}`);
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
-      $queryRaw: jest.fn().mockResolvedValue([{ readAt }]),
+      $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: {
         findMany: jest.fn().mockImplementation(async ({ where }) =>
           (where.id.in as string[]).map((id) => ({ id, code: id, name: id }))
@@ -833,13 +858,13 @@ describe("OperatingProjectionService", () => {
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
       $queryRaw: jest.fn()
-        .mockResolvedValueOnce([{ readAt }])
+        .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
         .mockResolvedValueOnce([{ projectId: "project-1" }])
         .mockResolvedValueOnce([{
           replacementCount: 0n,
           snapshotBytes: 0n,
           maxSnapshotBytes: 0n
-        }]),
+        }]).mockResolvedValue([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       projectParticipatingCompany,
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
       companyEntityVersion: { findMany: jest.fn().mockResolvedValue([{ id: "company-v1" }]) },
@@ -890,7 +915,7 @@ describe("OperatingProjectionService", () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
     tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt }])
+      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce([{ projectId: project.id }])
       .mockResolvedValueOnce([{
         replacementCount: 0n,
@@ -925,7 +950,7 @@ describe("OperatingProjectionService", () => {
       "user-1",
       [project.id]
     );
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
   });
 
   it("keeps company scope resolution constant-time with 500 active and many inactive projects", async () => {
@@ -935,7 +960,7 @@ describe("OperatingProjectionService", () => {
     }));
     const tx = emptyProjectionTx(readAt, []);
     tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt }])
+      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce(activeProjects);
     const visibility = overviewVisibility([]);
     const service = new OperatingProjectionService(
@@ -968,7 +993,7 @@ describe("OperatingProjectionService", () => {
     }));
     const tx = emptyProjectionTx(readAt, []);
     tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt }])
+      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce(companyProjects.map(({ projectId }) => ({ projectId })));
     const visibility = overviewVisibility([]);
     const service = new OperatingProjectionService(
@@ -996,7 +1021,7 @@ describe("OperatingProjectionService", () => {
     }));
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
-      $queryRaw: jest.fn().mockResolvedValue([{ readAt }]),
+      $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: {
         findMany: jest.fn().mockImplementation(async ({ where }) =>
           visibleProjects.filter((item) => (where.id.in as string[]).includes(item.id))
@@ -1051,7 +1076,7 @@ describe("OperatingProjectionService", () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
     tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt }])
+      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce([{
         replacementCount: 40_001n,
         snapshotBytes: 1n,
@@ -1085,7 +1110,7 @@ describe("OperatingProjectionService", () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
     tx.$queryRaw
-      .mockResolvedValueOnce([{ readAt }])
+      .mockResolvedValueOnce([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }])
       .mockResolvedValueOnce([{
         replacementCount: 1n,
         snapshotBytes: BigInt(8 * 1024 * 1024 + 1),
@@ -1112,7 +1137,7 @@ describe("OperatingProjectionService", () => {
     expect(preflightSql).toContain("OR EXISTS");
   });
 
-  it("reads every fact across internal pages without a permanent fact-count cap", async () => {
+  it("reads 10,001 facts across internal pages below the request work cap", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const storedFact = (index: number) => ({
       id: `fact-${String(index).padStart(5, "0")}`,
@@ -1154,7 +1179,7 @@ describe("OperatingProjectionService", () => {
       .mockResolvedValueOnce(finalPage);
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
-      $queryRaw: jest.fn().mockResolvedValue([{ readAt }]),
+      $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: { findMany: jest.fn().mockResolvedValue([project]) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
       projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1197,75 +1222,11 @@ describe("OperatingProjectionService", () => {
     expect(findMany).toHaveBeenCalledTimes(2);
   });
 
-  it("does not charge another holder's restriction facts against a narrowed holder budget", async () => {
+  it("does not let a narrowed holder filter bypass the total aggregate work budget", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
-    const storedRestriction = (index: number) => ({
-      id: `restriction-fact-${String(index).padStart(5, "0")}`,
-      projectId: "project-1",
-      sourceType: "project_necessary_expense_reserve_entry",
-      sourceBusinessId: `restriction-entry-${index}`,
-      sourceVersion: 1,
-      sourceBusinessCode: `BZ-${index}`,
-      occurredAt: new Date("2026-09-10T01:00:00.000Z"),
-      confirmedAt: new Date("2026-09-10T02:00:00.000Z"),
-      createdAt: new Date("2026-09-10T02:00:00.000Z"),
-      status: "confirmed",
-      affiliateBusinessPartyVersionId: "enterprise-other-v1",
-      affiliateNameSnapshot: "其他施工企业",
-      factKind: "project_cash_restriction",
-      operatingLevel: "project",
-      evidenceLevel: "B",
-      amountCents: 1n,
-      direction: "neutral",
-      sourceSnapshot: {},
-      entryKind: "original",
-      adjustsFactId: null,
-      subjectSnapshot: {},
-      debtorSubjectKind: null,
-      debtorSubjectId: null,
-      creditorSubjectKind: null,
-      creditorSubjectId: null,
-      approvedPayerSubjectKind: null,
-      approvedPayerSubjectId: null,
-      actualPayerSubjectKind: null,
-      actualPayerSubjectId: null,
-      payeeSubjectKind: null,
-      payeeSubjectId: null,
-      costBearingCompanySubjectKind: null,
-      costBearingCompanySubjectId: null
-    });
-    const operatingFactFindMany = jest.fn()
-      .mockResolvedValueOnce(Array.from({ length: 10_000 }, (_, index) => storedRestriction(index)))
-      .mockResolvedValueOnce(Array.from({ length: 10_000 }, (_, index) => storedRestriction(index + 10_000)))
-      .mockResolvedValueOnce([storedRestriction(20_000)]);
-    const reserveSourceFindMany = jest.fn().mockResolvedValue([]);
-    const tx = {
-      ...emptyProjectionTx(readAt, [project]),
-      projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([
-        {
-          id: "assignment-selected",
-          projectId: "project-1",
-          businessPartyId: "enterprise-selected",
-          businessPartyVersionId: "enterprise-selected-v1"
-        },
-        {
-          id: "assignment-other",
-          projectId: "project-1",
-          businessPartyId: "enterprise-other",
-          businessPartyVersionId: "enterprise-other-v1"
-        }
-      ]) },
-      operatingFact: {
-        count: jest.fn(),
-        findMany: operatingFactFindMany
-      },
-      operatingImpactEntry: {
-        count: jest.fn(),
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      projectNecessaryExpenseReserveEntry: { findMany: reserveSourceFindMany },
-      projectFundDisputeEntry: { findMany: jest.fn().mockResolvedValue([]) }
-    };
+    const tx = emptyProjectionTx(readAt, [project]);
+    tx.$queryRaw.mockResolvedValue([{ readAt, workFactCount: 20_001n,
+      workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]);
     const service = new OperatingProjectionService(
       { $transaction: jest.fn((work) => work(tx)) } as never,
       overviewVisibility(["project-1"]) as never,
@@ -1273,18 +1234,14 @@ describe("OperatingProjectionService", () => {
       { record: jest.fn() } as never,
       { confirmPassword: jest.fn() } as never
     );
-
     await expect(service.getProjectView("user-1", {
-      projectId: "project-1",
-      constructionEnterpriseId: "enterprise-selected"
-    })).resolves.toEqual(expect.objectContaining({
-      restrictions: expect.objectContaining({ necessaryExpenseReserveCents: "0" })
-    }));
-    expect(operatingFactFindMany).toHaveBeenCalledTimes(3);
-    expect(reserveSourceFindMany).not.toHaveBeenCalled();
+      projectId: "project-1", constructionEnterpriseId: "enterprise-selected"
+    })).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(tx.operatingFact.findMany).not.toHaveBeenCalled();
+    expect(tx.operatingImpactEntry.findMany).not.toHaveBeenCalled();
   });
 
-  it("reads every impact across internal pages without a permanent impact-count cap", async () => {
+  it("reads 50,001 impacts across internal pages below the request work cap", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const fact = {
       id: "fact-impact-pages",

@@ -18,6 +18,7 @@ import type {
   SettlementApprovalWithdrawalContextReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
+import type { OperatingProjectionExportKind, OperatingProjectionExportFilters } from "@jiangkong/shared-domain";
 import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
 import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
 import {
@@ -2659,15 +2660,7 @@ export function fetchProjectSetOperatingProjection(projectIds?: string[]) {
   );
 }
 
-export const OPERATING_PROJECTION_EXPORT_KINDS = [
-  "project_operating_ledger_detail",
-  "construction_enterprise_funds_reconciliation",
-  "company_project_funds_subledger",
-  "receivable_payable_cashflow_detail",
-  "takeover_coverage_evidence_gap"
-] as const;
-export type OperatingProjectionExportKind =
-  (typeof OPERATING_PROJECTION_EXPORT_KINDS)[number];
+export { OPERATING_PROJECTION_EXPORT_KINDS, type OperatingProjectionExportKind } from "@jiangkong/shared-domain";
 
 export async function downloadOperatingProjectionExport(body: {
   scopeKind: "project" | "company" | "projects";
@@ -2681,7 +2674,7 @@ export async function downloadOperatingProjectionExport(body: {
   sourceType?: string;
   exportKind: OperatingProjectionExportKind;
   confirmationPassword: string;
-}): Promise<void> {
+} & OperatingProjectionExportFilters): Promise<void> {
   const response = await apiFetch("/operating-projections/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

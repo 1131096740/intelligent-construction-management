@@ -105,7 +105,8 @@ export class OperatingProjectionController {
   ) {
     const exported = await this.projections.exportView(
       user.id,
-      asOfQuery({ ...body }),
+      { ...asOfQuery({ ...body }), occurredFrom: body.occurredFrom,
+        occurredTo: body.occurredTo, rowStatus: body.rowStatus },
       body.confirmationPassword,
       body.exportKind
     );

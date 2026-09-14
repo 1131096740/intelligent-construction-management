@@ -4,6 +4,7 @@ import {
   PayloadTooLargeException
 } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { OPERATING_IMPACT_KINDS, OPERATING_IMPACT_KIND_LABELS } from "@jiangkong/shared-domain";
 import { createHash, randomUUID } from "node:crypto";
 
 import { AuditService } from "../audit/audit.service";
@@ -604,6 +605,35 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     expect(clearingExportContent).toContain('"待核对状态"');
     expect(clearingExportContent).toContain('"待核对"');
 
+    for (const filters of [
+      { occurredFrom: "2026-09-01", occurredTo: "2026-09-01", rowStatus: "retroactive_confirmation" as const },
+      { occurredFrom: "2026-09-02" },
+      { rowStatus: "confirmed" as const }
+    ]) {
+      const result = await projection.exportView(READER_ID, {
+        scopeKind: "project", projectId: PROJECT_ID, asOf: CUTOFF_DATE,
+        sourceType: "owner_settlement", ...filters
+      }, "pg16-confirmation-password", "project_operating_ledger_detail");
+      const content = await readUtf8Stream(result.stream);
+      expect(content.includes(`POL108-owner_settlement-${runId}`))
+        .toBe(filters.rowStatus === "retroactive_confirmation");
+      const filterAudit = await prisma.auditLog.findFirstOrThrow({
+        where: { actorUserId: READER_ID, action: "operating_projection.export" },
+        orderBy: { createdAt: "desc" }
+      });
+      expect(filterAudit.metadata).toEqual(expect.objectContaining({
+        filters: expect.objectContaining(filters)
+      }));
+    }
+    for (const period of [{}, { occurredFrom: "2026-08-01" }]) {
+      const result = await projection.exportView(READER_ID, {
+        scopeKind: "project", projectId: PROJECT_ID, sourceType: "clearing_event_version",
+        rowStatus: "pending_reconciliation", ...period
+      }, "pg16-confirmation-password", "construction_enterprise_funds_reconciliation");
+      const content = await readUtf8Stream(result.stream);
+      expect(content.includes('"待核对"')).toBe(!("occurredFrom" in period));
+    }
+
     const historicalClearingView = await projection.getProjectView(READER_ID, {
       projectId: PROJECT_ID,
       asOf: CUTOFF_DATE,
@@ -730,6 +760,72 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     } finally {
       capturedDetailFindManyQueries = null;
     }
+  });
+
+  it("通过公开经营账与限制资金释放流程覆盖全部已知影响的导出映射", async () => {
+    const governed = new Set(["necessary_expense_reserve_increase", "necessary_expense_reserve_decrease",
+      "project_disputed_funds_increase", "project_disputed_funds_decrease"]);
+    const ordinaryKinds = OPERATING_IMPACT_KINDS.filter((kind) => !governed.has(kind));
+    await append("fund_movement", {
+      sourceBusinessId: `a18-mapping-${runId}`, sourceBusinessCode: "A18-MAPPING",
+      idempotencyKey: `a18-mapping-${runId}`,
+      impacts: ordinaryKinds.map((kind) => impact(`a18-${kind}`, kind, 1n,
+        ["invoice_reference", "contract_commitment_reference", "evidence_gap_notice"].includes(kind)
+          ? "notice" : kind.endsWith("_decrease") || kind.endsWith("_release") ? "decrease" : "increase", {
+          subjectRole: "fund_holder",
+          subject: kind.startsWith("construction_enterprise_") ? enterprise : company,
+          costCategoryCode: "other_project_cost"
+        }))
+    });
+    const reserve = await prisma.projectNecessaryExpenseReserve.findFirstOrThrow({
+      where: { projectId: PROJECT_ID, businessCode: `POL108-RES-${runId.slice(0, 8)}` }
+    });
+    const reserveEntry = await prisma.projectNecessaryExpenseReserveEntry.findFirstOrThrow({
+      where: { reserveId: reserve.id, entryKind: "establish", status: "confirmed" }
+    });
+    const reserveDraft = await reserveService.saveDraft({
+      projectId: PROJECT_ID, businessCode: reserve.businessCode, reserveId: reserve.id,
+      affiliateAssignmentId: affiliate.assignmentId, fundHolderKind: "construction_enterprise",
+      fundHolderId: affiliate.businessPartyVersionId, reasonKind: "mandatory_closeout",
+      title: reserve.title, basisKind: reserve.basisKind,
+      basisBusinessIdOrEvidenceSha256: reserve.basisBusinessIdOrEvidenceSha256,
+      basisSummary: reserve.basisSummary, entryKind: "release", adjustsEntryId: reserveEntry.id,
+      amountCents: "1", occurredAt: "2026-09-01", evidenceLevel: "B",
+      evidenceFileId: reserveEntry.evidenceFileId!, evidenceSha256: reserveEntry.evidenceSha256!,
+      reason: "A18 映射覆盖释放", idempotencyKey: randomUUID()
+    }, { userId: WRITER_ID });
+    const reserveSubmitted = await reserveTransition(reserveDraft, "submit", WRITER_ID);
+    const reserveAttested = await reserveTransition(reserveSubmitted, "attest", PROJECT_MANAGER_ID);
+    await reserveTransition(reserveAttested, "confirm", READER_ID);
+    const dispute = await prisma.projectFundDispute.findFirstOrThrow({
+      where: { projectId: PROJECT_ID, businessCode: `POL108-DIS-${runId.slice(0, 8)}` }
+    });
+    const disputeEntry = await prisma.projectFundDisputeEntry.findFirstOrThrow({
+      where: { disputeId: dispute.id, entryKind: "establish", status: "confirmed" }
+    });
+    const disputeDraft = await disputeService.saveDraft({
+      projectId: PROJECT_ID, businessCode: dispute.businessCode, disputeId: dispute.id,
+      affiliateAssignmentId: affiliate.assignmentId, fundHolderKind: "construction_enterprise",
+      fundHolderId: affiliate.businessPartyVersionId, disputeKind: "upstream",
+      counterpartyKind: "owner", counterpartyId: dispute.counterpartyId,
+      counterpartyNameSnapshot: dispute.counterpartyNameSnapshot, referenceCode: dispute.referenceCode,
+      basisKind: dispute.basisKind, basisBusinessIdOrEvidenceSha256: dispute.basisBusinessIdOrEvidenceSha256,
+      entryKind: "release", adjustsEntryId: disputeEntry.id, amountCents: "1", occurredAt: "2026-09-01",
+      evidenceLevel: "B", evidenceFileId: disputeEntry.evidenceFileId!, evidenceSha256: disputeEntry.evidenceSha256!,
+      disputeSummary: "A18 映射覆盖", resolutionBasisSummary: "有书面依据的部分释放",
+      idempotencyKey: randomUUID()
+    }, { userId: WRITER_ID });
+    const disputeSubmitted = await disputeTransition(disputeDraft, "submit", WRITER_ID);
+    const disputeAttested = await disputeTransition(disputeSubmitted, "attest", PROJECT_MANAGER_ID);
+    await disputeTransition(disputeAttested, "confirm", READER_ID);
+    let content = "";
+    for (const sourceType of ["fund_movement", "project_necessary_expense_reserve_entry", "project_fund_dispute_entry"]) {
+      const result = await projection.exportView(READER_ID, {
+        scopeKind: "project", projectId: PROJECT_ID, sourceType
+      }, "pg16-confirmation-password", "project_operating_ledger_detail");
+      content += await readUtf8Stream(result.stream);
+    }
+    for (const kind of OPERATING_IMPACT_KINDS) expect(content).toContain(`"${OPERATING_IMPACT_KIND_LABELS[kind]}"`);
   });
 
   it("以上游资金 V2 指纹稳定分页，并在 20,001 行内验证有界快照", async () => {
@@ -1269,12 +1365,25 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       isActive: true
     }));
     await prisma.project.createMany({ data: boundaryProjects });
+    const inactiveProjects = boundaryProjects.map((project) => ({
+      ...project, id: `${project.id}-inactive`, code: `${project.code}-inactive`, isActive: false
+    }));
+    await prisma.project.createMany({ data: inactiveProjects });
+    const allRelations = [...boundaryProjects, ...inactiveProjects];
     await prisma.projectMember.createMany({
-      data: boundaryProjects.map((project) => ({
+      data: allRelations.flatMap((project) => ["finance_director", "project_manager"].map((positionKey) => ({
         projectId: project.id,
         userId: boundaryReaderId,
-        positionKey: "finance_director"
-      }))
+        positionKey
+      })))
+    });
+    const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_director" } });
+    await prisma.userPosition.createMany({
+      data: allRelations.map((project) => ({ projectId: project.id,
+        userId: boundaryReaderId, positionId: financePosition.id }))
+    });
+    await prisma.projectRosterMember.createMany({
+      data: allRelations.map((project) => ({ projectId: project.id, userId: boundaryReaderId }))
     });
     const boundary = await projection.getAsOfView(boundaryReaderId, {
       scopeKind: "projects"
@@ -1300,6 +1409,106 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     await expect(projection.getAsOfView(boundaryReaderId, { scopeKind: "projects" }))
       .rejects.toBeInstanceOf(PayloadTooLargeException);
   });
+
+  it("以公开写入缝验证普通事实 10,001 和 20,000/20,001 的真实数据库预算", async () => {
+    const context = await createBudgetProject("facts");
+    for (let count = 1; count <= 20_001; count += 1) {
+      await ledger.appendFromSource(budgetFact(context, 1), WRITER_ID);
+      if (count === 10_001 || count === 20_000) {
+        const result = await projection.getProjectView(READER_ID, { projectId: context.projectId });
+        expect(result.evidence.A.factCount).toBe(count);
+      }
+    }
+    for (const actor of [READER_ID, WRITER_ID]) {
+      await expect(projection.getProjectView(actor, { projectId: context.projectId }))
+        .rejects.toBeInstanceOf(PayloadTooLargeException);
+    }
+  }, 30 * 60_000);
+
+  it("以公开写入缝验证 50,001 和 100,000/100,001 分录及独立逻辑字节上限", async () => {
+    const context = await createBudgetProject("impacts");
+    const first = budgetFact(context, 50_001);
+    await prisma.$transaction((tx) => ledger.appendFromSourceInTransaction(tx, first, WRITER_ID),
+      { timeout: 20 * 60_000 });
+    await expect(projection.getProjectView(READER_ID, { projectId: context.projectId }))
+      .resolves.toBeDefined();
+    const rest = budgetFact(context, 49_999);
+    await prisma.$transaction((tx) => ledger.appendFromSourceInTransaction(tx, rest, WRITER_ID),
+      { timeout: 20 * 60_000 });
+    const [size] = await prisma.$queryRaw<Array<{ count: bigint; bytes: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS count,
+        (SUM(GREATEST(pg_column_size(impact), octet_length(to_jsonb(impact)::text))) +
+          (SELECT SUM(GREATEST(pg_column_size(fact), octet_length(to_jsonb(fact)::text)))
+            FROM "OperatingFact" fact WHERE "projectId" = ${context.projectId}))::bigint AS bytes
+      FROM "OperatingImpactEntry" impact WHERE "projectId" = ${context.projectId}
+    `);
+    expect(size!.count).toBe(100_000n);
+    // A real row set may hit the stricter 64 MiB budget first; do not claim a false success.
+    const boundary = projection.getProjectView(READER_ID, { projectId: context.projectId });
+    if (size!.bytes > 64n * 1024n * 1024n) await expect(boundary).rejects.toBeInstanceOf(PayloadTooLargeException);
+    else await expect(boundary).resolves.toBeDefined();
+    await ledger.appendFromSource(budgetFact(context, 1), WRITER_ID);
+    for (const actor of [READER_ID, WRITER_ID]) {
+      await expect(projection.getProjectView(actor, { projectId: context.projectId }))
+        .rejects.toBeInstanceOf(PayloadTooLargeException);
+    }
+  }, 45 * 60_000);
+
+  it("在真实高压缩普通事实上执行 64 MiB 逻辑字节下上界且不受账号影响", async () => {
+    const context = await createBudgetProject("bytes");
+    const first = budgetFact(context, 1);
+    first.sourceSnapshot = { payload: "x".repeat(64 * 1024 * 1024 - 16 * 1024) };
+    await prisma.$transaction((tx) => ledger.appendFromSourceInTransaction(tx, first, WRITER_ID),
+      { timeout: 60_000 });
+    await expect(projection.getProjectView(READER_ID, { projectId: context.projectId }))
+      .resolves.toBeDefined();
+    const overflow = budgetFact(context, 1);
+    overflow.sourceSnapshot = { payload: "x".repeat(32 * 1024) };
+    await ledger.appendFromSource(overflow, WRITER_ID);
+    for (const actor of [READER_ID, WRITER_ID]) {
+      await expect(projection.getProjectView(actor, { projectId: context.projectId }))
+        .rejects.toBeInstanceOf(PayloadTooLargeException);
+    }
+  });
+
+  async function createBudgetProject(label: string) {
+    const projectId = randomUUID();
+    await prisma.project.create({ data: { id: projectId, code: projectId, name: `A18-${label}` } });
+    await prisma.projectMember.createMany({ data: [
+      { projectId, userId: WRITER_ID, positionKey: "finance_staff" },
+      { projectId, userId: READER_ID, positionKey: "finance_director" }
+    ] });
+    await projects.assignAffiliate(projectId, WRITER_ID, {
+      businessPartyVersionId: affiliate.businessPartyVersionId,
+      effectiveFrom: "2026-08-01", changeReason: "A18 隔离预算验收项目"
+    });
+    await operatingProfile.addParticipatingCompany(projectId, WRITER_ID, {
+      companyEntityId, effectiveFrom: "2026-08-01", changeReason: "A18 隔离预算验收公司"
+    });
+    await operatingProfile.updateProfile(projectId, WRITER_ID, { operatingLedgerEffectiveDate: "2026-08-01" });
+    const assignment = await prisma.projectAffiliateAssignment.findFirstOrThrow({ where: { projectId } });
+    await projection.getProjectView(READER_ID, { projectId });
+    return { projectId, assignmentId: assignment.id };
+  }
+
+  function budgetFact(context: { projectId: string; assignmentId: string }, impactCount: number): AppendOperatingFactInput {
+    const id = randomUUID();
+    return {
+      projectId: context.projectId, sourceType: "owner_settlement", sourceBusinessId: id,
+      sourceBusinessCode: "A18", sourceVersion: 1, idempotencyKey: id,
+      occurredAt: OCCURRED_AT, confirmedAt: CONFIRMED_AT, confirmedByUserId: WRITER_ID,
+      factKind: "owner_settlement", operatingLevel: "project", evidenceLevel: "A", amountCents: BigInt(impactCount),
+      currencyCode: "CNY", direction: "inflow", isBeforeOperatingLedgerEffectiveDate: false,
+      affiliateAssignmentId: context.assignmentId,
+      affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId, affiliateNameSnapshot: affiliate.name,
+      ...(affiliate.creditCode ? { affiliateCreditCodeSnapshot: affiliate.creditCode } : {}),
+      sourceSnapshot: {}, subjects: { debtor: { kind: "owner", id: "a18-owner" }, creditor: enterprise },
+      impacts: Array.from({ length: impactCount }, (_, index) => ({
+        idempotencyKey: `${id}:${index}`, sourceImpactKey: String(index), impactKind: "confirmed_income",
+        amountCents: 1n, direction: "increase"
+      }))
+    };
+  }
 
   async function createCurrentClearingRiskFixture() {
     const preparerUserId = `pol108-clearing-preparer-${runId}`;

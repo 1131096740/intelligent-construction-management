@@ -615,6 +615,7 @@ const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   expense_claim_execution: "费用付款执行",
   wage_statement_version: "工资承担事实",
   fund_movement: "项目资金调度",
+  fund_execution: "资金执行",
   clearing_event_version: "施工企业清分",
   [NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE]: "必要费用准备",
   [PROJECT_FUND_DISPUTE_SOURCE_TYPE]: "一般争议资金",
@@ -752,35 +753,9 @@ function validateRestrictionIntegrity(
     conflict = true;
     notices.add(notice);
   };
-  const canonicalHolder = (
-    fact: ProjectionFactInput,
-    impact: ProjectionImpactInput,
-    expectedKind: "construction_enterprise" | "participating_company"
-  ): string | null => {
-    const explicit = impact.subjectKind || impact.subjectId;
-    if (explicit) {
-      if (impact.subjectKind !== expectedKind || !impact.subjectId) return null;
-      const raw = holderAliasKey(fact.projectId, expectedKind, impact.subjectId);
-      return holderAliasByKey.get(raw) ?? (validateActiveHolder ? null : raw);
-    }
-    const candidates = new Set<string>();
-    for (const subject of fact.subjectReferences ?? []) {
-      if (subject.kind !== expectedKind) continue;
-      const raw = holderAliasKey(fact.projectId, expectedKind, subject.id);
-      const canonical = holderAliasByKey.get(raw) ?? (validateActiveHolder ? null : raw);
-      if (canonical) candidates.add(canonical);
-    }
-    if (expectedKind === "construction_enterprise") {
-      const raw = holderAliasKey(
-        fact.projectId,
-        expectedKind,
-        fact.affiliateBusinessPartyVersionId
-      );
-      const canonical = holderAliasByKey.get(raw) ?? (validateActiveHolder ? null : raw);
-      if (canonical) candidates.add(canonical);
-    }
-    return candidates.size === 1 ? [...candidates][0]! : null;
-  };
+  const canonicalHolder = (fact: ProjectionFactInput, impact: ProjectionImpactInput,
+    expectedKind: "construction_enterprise" | "participating_company") =>
+    resolveCanonicalHolder(fact, impact, expectedKind, holderAliasByKey, validateActiveHolder);
 
   if (!input.restrictionCashContext) for (const fact of facts) {
     for (const impact of fact.impacts) {
@@ -1001,6 +976,33 @@ function validateRestrictionIntegrity(
 
 function holderAliasKey(projectId: string, kind: string, id: string): string {
   return `${projectId}\u0000${kind}\u0000${id}`;
+}
+
+function resolveCanonicalHolder(
+  fact: ProjectionFactInput,
+  impact: ProjectionImpactInput,
+  expectedKind: "construction_enterprise" | "participating_company",
+  aliases: ReadonlyMap<string, string>,
+  validateHolder: boolean
+): string | null {
+  const resolve = (id: string) => {
+    const raw = holderAliasKey(fact.projectId, expectedKind, id);
+    return aliases.get(raw) ?? (validateHolder ? null : raw);
+  };
+  if (impact.subjectKind || impact.subjectId) {
+    return impact.subjectKind === expectedKind && impact.subjectId ? resolve(impact.subjectId) : null;
+  }
+  const candidates = new Set<string>();
+  for (const subject of fact.subjectReferences ?? []) {
+    if (subject.kind !== expectedKind || !subject.id) continue;
+    const holder = resolve(subject.id);
+    if (holder) candidates.add(holder);
+  }
+  if (expectedKind === "construction_enterprise" && fact.affiliateBusinessPartyVersionId) {
+    const holder = resolve(fact.affiliateBusinessPartyVersionId);
+    if (holder) candidates.add(holder);
+  }
+  return candidates.size === 1 ? [...candidates][0]! : null;
 }
 
 function canonicalHolderAliasMap(
@@ -1503,35 +1505,11 @@ export class OperatingProjectionStreamAccumulator {
   }
 
   private canonicalHolder(
-    fact: ProjectionFactInput,
-    impact: ProjectionImpactInput,
+    fact: ProjectionFactInput, impact: ProjectionImpactInput,
     expectedKind: "construction_enterprise" | "participating_company"
   ): string | null {
-    const explicit = impact.subjectKind || impact.subjectId;
-    if (explicit) {
-      if (impact.subjectKind !== expectedKind || !impact.subjectId) return null;
-      return this.resolveHolder(fact.projectId, expectedKind, impact.subjectId);
-    }
-    const candidates = new Set<string>();
-    for (const subject of fact.subjectReferences ?? []) {
-      if (subject.kind !== expectedKind) continue;
-      const holder = this.resolveHolder(fact.projectId, expectedKind, subject.id);
-      if (holder) candidates.add(holder);
-    }
-    if (expectedKind === "construction_enterprise" && fact.affiliateBusinessPartyVersionId) {
-      const holder = this.resolveHolder(
-        fact.projectId,
-        expectedKind,
-        fact.affiliateBusinessPartyVersionId
-      );
-      if (holder) candidates.add(holder);
-    }
-    return candidates.size === 1 ? [...candidates][0]! : null;
-  }
-
-  private resolveHolder(projectId: string, kind: string, id: string): string | null {
-    const raw = holderAliasKey(projectId, kind, id);
-    return this.holderAliasByKey.get(raw) ?? (this.context.holderAliases ? null : raw);
+    return resolveCanonicalHolder(fact, impact, expectedKind, this.holderAliasByKey,
+      Boolean(this.context.holderAliases));
   }
 
   private markMoneyIncomplete(notice: string): void {

@@ -170,7 +170,8 @@ jobs:
   postgresql16-dynamic-gates:
     name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
+    timeout-minutes: ${{ matrix.group == 'operating_projection_pol108' && 90 || 20 }}
     strategy:
       fail-fast: false
       matrix:

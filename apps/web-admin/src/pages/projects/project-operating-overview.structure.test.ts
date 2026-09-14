@@ -45,6 +45,15 @@ describe("project operating overview structure", () => {
     expect(source).toContain("receivable_payable_cashflow_detail");
     expect(source).toContain("takeover_coverage_evidence_gap");
     expect(source).toContain("downloadOperatingProjectionExport({");
+    expect(source).toContain('v-model="operatingExportFrom"');
+    expect(source).toContain('v-model="operatingExportTo"');
+    expect(source).toContain('v-model="operatingExportStatus"');
+    expect(source).toContain("OPERATING_PROJECTION_ROW_STATUS_LABELS");
+    expect(source).toContain("occurredFrom: operatingExportFrom.value || undefined");
+    expect(source).toContain("occurredTo: operatingExportTo.value || undefined");
+    expect(source).toContain("rowStatus: operatingExportStatus.value || undefined");
+    expect(source).toContain("var(--jg-export-control-width)");
+    expect(source).toContain("var(--jg-export-panel-width)");
     expect(source).toContain(':require-password="true"');
     expect(source).toContain(
       "overview.value?.canExportOperatingProjection === true"
