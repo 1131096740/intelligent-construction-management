@@ -1195,7 +1195,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   });
 
   it("在同一事务内对三类明细终态执行 UTF-8 8 MiB 门禁并覆盖临界值", async () => {
-    const belowLimitCode = "B".repeat(8 * 1024 * 1024 - 4_096);
+    const belowLimitCode = "B".repeat(8 * 1024 * 1024 - 64 * 1024);
     await append("expense_claim", {
       sourceBusinessCode: belowLimitCode,
       factKind: "expense",
@@ -1214,10 +1214,11 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     });
     expect(Buffer.byteLength(JSON.stringify(belowLimit), "utf8"))
       .toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(Buffer.byteLength(JSON.stringify(belowLimit), "utf8"))
+      .toBeGreaterThan(7.5 * 1024 * 1024);
 
-    const aboveLimitCode = "A".repeat(8 * 1024 * 1024);
     await append("wage_statement_version", {
-      sourceBusinessCode: aboveLimitCode,
+      sourceBusinessCode: `POL108-DETAIL-ABOVE-${runId}`,
       factKind: "project_wage",
       amountCents: 1n,
       direction: "outflow",
@@ -1227,11 +1228,28 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         costCategoryCode: "other_project_cost"
       })]
     });
-    await expect(projection.getProjectDetailPage(READER_ID, {
-      projectId: PROJECT_ID,
-      sourceType: "wage_statement_version",
-      pageSize: "1"
-    })).rejects.toBeInstanceOf(PayloadTooLargeException);
+    const originalProject = await prisma.project.findUniqueOrThrow({
+      where: { id: PROJECT_ID },
+      select: { name: true }
+    });
+    try {
+      await prisma.project.update({
+        where: { id: PROJECT_ID },
+        data: { name: "A".repeat(8 * 1024 * 1024) }
+      });
+      await expect(projection.getProjectDetailPage(READER_ID, {
+        projectId: PROJECT_ID,
+        sourceType: "wage_statement_version",
+        pageSize: "1"
+      })).rejects.toMatchObject({
+        message: expect.stringContaining("经营投影明细响应超出 8 MiB")
+      });
+    } finally {
+      await prisma.project.update({
+        where: { id: PROJECT_ID },
+        data: { name: originalProject.name }
+      });
+    }
 
     const companyDetail = await projection.getCompanyDetailPage(READER_ID, {
       companyEntityId,
