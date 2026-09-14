@@ -4,6 +4,7 @@ import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.dec
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { ListProjectUpstreamFundFactsDto } from "./dto/list-project-upstream-fund-facts.dto";
 import { ProjectController } from "./project.controller";
 
 type ProjectMoneyBodyMethod =
@@ -1310,6 +1311,16 @@ describe("ProjectController authorization wiring", () => {
       "project-1"
     );
   });
+
+  it.each(["0", "01", "1.0", " 1", "201", "1".repeat(257)])(
+    "rejects non-canonical upstream-fund pageSize %s",
+    async (pageSize) => {
+      await expect(createApiValidationPipe().transform(
+        { pageSize },
+        { type: "query", metatype: ListProjectUpstreamFundFactsDto }
+      )).rejects.toBeInstanceOf(BadRequestException);
+    }
+  );
 
   it("retires the legacy one-step proxy payment writer", async () => {
     const projects = { recordProxyPayment: jest.fn() };

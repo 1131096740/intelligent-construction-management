@@ -2650,14 +2650,50 @@ export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
 }
 
-export function fetchProjectSetOperatingProjection(projectIds: string[]) {
-  const query = new URLSearchParams({
-    scopeKind: "projects",
-    projectIds: projectIds.join(",")
-  });
+export function fetchProjectSetOperatingProjection(projectIds?: string[]) {
+  const query = new URLSearchParams({ scopeKind: "projects" });
+  if (projectIds) query.set("projectIds", projectIds.join(","));
   return readJson<OperatingProjectionAggregateReadModel>(
     `/operating-projections/as-of?${query.toString()}`
   );
+}
+
+export const OPERATING_PROJECTION_EXPORT_KINDS = [
+  "project_operating_ledger_detail",
+  "construction_enterprise_funds_reconciliation",
+  "company_project_funds_subledger",
+  "receivable_payable_cashflow_detail",
+  "takeover_coverage_evidence_gap"
+] as const;
+export type OperatingProjectionExportKind =
+  (typeof OPERATING_PROJECTION_EXPORT_KINDS)[number];
+
+export async function downloadOperatingProjectionExport(body: {
+  scopeKind: "project" | "company" | "projects";
+  projectId?: string;
+  projectIds?: string;
+  companyEntityId?: string;
+  asOf?: string;
+  constructionEnterpriseId?: string;
+  counterpartyId?: string;
+  costCategoryCode?: string;
+  sourceType?: string;
+  exportKind: OperatingProjectionExportKind;
+  confirmationPassword: string;
+}): Promise<void> {
+  const response = await apiFetch("/operating-projections/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, "导出经营投影失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match
+    ? decodeURIComponent(match[1])
+    : `经营投影-${body.exportKind}.csv`;
+  saveBlob(blob, fileName);
 }
 
 export function fetchProjectUpstreamFundFacts(

@@ -27,6 +27,7 @@ import {
   fetchProjectExpenseApprovalDetail,
   fetchProjectOperatingOverview,
   fetchProjectSetOperatingProjection,
+  downloadOperatingProjectionExport,
   fetchProjectUpstreamFundFacts,
   fetchProjects,
   fetchContractCreateProjects,
@@ -932,6 +933,7 @@ describe("core flow read API client", () => {
       changeReason: "建立显式挂靠关系"
     });
     await fetchProjectOperatingOverview("project-1");
+    await fetchProjectSetOperatingProjection();
     await fetchProjectSetOperatingProjection(["project-1", "project/2"]);
     await fetchProjectUpstreamFundFacts("project/1");
     await fetchProjectUpstreamFundFacts("project/1", {
@@ -946,11 +948,59 @@ describe("core flow read API client", () => {
       "/api/projects/affiliate-mapping-report",
       "/api/projects/project%2F1/affiliate-assignment",
       "/api/projects/project-1/operating-funds-overview",
+      "/api/operating-projections/as-of?scopeKind=projects",
       "/api/operating-projections/as-of?scopeKind=projects&projectIds=project-1%2Cproject%2F2",
       "/api/projects/project%2F1/upstream-fund-facts",
       "/api/projects/project%2F1/upstream-fund-facts?cursor=cursor%2Fvalue&pageSize=50",
       "/api/projects/project-1/expense-requests"
     ]);
+  });
+
+  it("posts the frozen operating-projection export kind and downloads the returned CSV", async () => {
+    const click = vi.fn();
+    const anchor = {
+      href: "",
+      download: "",
+      click,
+      remove: vi.fn()
+    } as unknown as HTMLAnchorElement;
+    vi.stubGlobal("document", {
+      createElement: vi.fn().mockReturnValue(anchor),
+      body: { appendChild: vi.fn() }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn().mockReturnValue("blob:projection-export"),
+      revokeObjectURL: vi.fn()
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["csv"]),
+      headers: new Headers({
+        "Content-Disposition":
+          "attachment; filename*=UTF-8''%E9%A1%B9%E7%9B%AE%E7%BB%8F%E8%90%A5%E5%8F%B0%E8%B4%A6%E6%98%8E%E7%BB%86.csv"
+      })
+    } as Response);
+
+    await downloadOperatingProjectionExport({
+      scopeKind: "project",
+      projectId: "project-1",
+      exportKind: "project_operating_ledger_detail",
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/operating-projections/export");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        scopeKind: "project",
+        projectId: "project-1",
+        exportKind: "project_operating_ledger_detail",
+        confirmationPassword: "current-password"
+      })
+    }));
+    expect(anchor.download).toBe("项目经营台账明细.csv");
+    expect(click).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it("loads project expense lifecycle views without widening the resource route", async () => {

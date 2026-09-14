@@ -204,6 +204,38 @@
             </div>
           </section>
 
+          <section
+            v-if="canExportOperatingProjection && selectedProjectId"
+            class="panel operating-projection-export-panel"
+          >
+            <div class="panel-head">
+              <div>
+                <h2>经营投影明细导出</h2>
+                <p>按当前项目和当前可见经营事实生成财务明细 CSV</p>
+              </div>
+              <div class="operating-projection-export-actions">
+                <t-select
+                  v-model="operatingProjectionExportKind"
+                  aria-label="经营投影导出类型"
+                  :options="operatingProjectionExportOptions"
+                  :disabled="operatingProjectionExportBusy"
+                />
+                <t-button
+                  :disabled="operatingProjectionExportBusy"
+                  @click="openOperatingProjectionExport"
+                >
+                  导出明细
+                </t-button>
+              </div>
+            </div>
+            <t-alert
+              v-if="operatingProjectionExportMessage"
+              theme="success"
+              title="导出已完成"
+              :message="operatingProjectionExportMessage"
+            />
+          </section>
+
           <div class="overview-grid">
             <section class="panel">
               <h2>现金口径</h2>
@@ -894,6 +926,18 @@
     </t-tabs>
 
     <SensitiveActionDialog
+      v-model="operatingProjectionExportVisible"
+      title="确认导出经营投影明细"
+      description="导出文件包含当前项目的财务经营明细。请输入当前登录密码确认本人操作。"
+      confirm-text="确认并导出"
+      :require-password="true"
+      :loading="operatingProjectionExportBusy"
+      :error="operatingProjectionExportError"
+      @confirm="submitOperatingProjectionExport"
+      @cancel="closeOperatingProjectionExport"
+    />
+
+    <SensitiveActionDialog
       v-model="upstreamFundConfirmationVisible"
       title="确认上游资金事实"
       :description="upstreamFundConfirmationDescription"
@@ -924,6 +968,7 @@ import {
   confirmProjectUpstreamFundFact,
   createProject,
   createProjectExpenseRequest,
+  downloadOperatingProjectionExport,
   downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
   fetchProjectCreateCapability,
@@ -952,7 +997,8 @@ import {
   type ProjectUpstreamFundFactReadModel,
   type ProjectUpstreamFundReferenceOptionsReadModel,
   type ProjectUpstreamFundFactType,
-  type ProjectOptionReadModel
+  type ProjectOptionReadModel,
+  type OperatingProjectionExportKind
 } from "../../api/core-flow-read.api";
 import type { DraftLedgerView, RoleKey } from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
@@ -1108,7 +1154,26 @@ const expenseLedgerPage = ref(1);
 const expenseLedgerPageSize = 20;
 const expenseFormBaseline = ref(projectExpenseFormSnapshot(expenseForm.value));
 const expenseLeaveDialogVisible = ref(false);
+const operatingProjectionExportKind = ref<OperatingProjectionExportKind>(
+  "project_operating_ledger_detail"
+);
+const operatingProjectionExportVisible = ref(false);
+const operatingProjectionExportBusy = ref(false);
+const operatingProjectionExportError = ref("");
+const operatingProjectionExportMessage = ref("");
+const operatingProjectionExportProjectId = ref("");
 let resolvePendingExpenseLeave: ((decision: boolean) => void) | null = null;
+
+const operatingProjectionExportOptions: Array<{
+  label: string;
+  value: OperatingProjectionExportKind;
+}> = [
+  { label: "项目经营台账明细", value: "project_operating_ledger_detail" },
+  { label: "施工企业资金核对", value: "construction_enterprise_funds_reconciliation" },
+  { label: "公司项目资金分户账", value: "company_project_funds_subledger" },
+  { label: "应收应付现金流明细", value: "receivable_payable_cashflow_detail" },
+  { label: "历史接管覆盖与证据缺口", value: "takeover_coverage_evidence_gap" }
+];
 
 const expenseFormDirty = computed(
   () => projectExpenseFormSnapshot(expenseForm.value) !== expenseFormBaseline.value
@@ -1261,6 +1326,12 @@ const canViewExecutiveOverview = computed(
 );
 
 const canRecordUpstreamFunds = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["finance_director", "finance_staff"].includes(role)
+    ) ?? false
+);
+const canExportOperatingProjection = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
       ["finance_director", "finance_staff"].includes(role)
@@ -1586,15 +1657,56 @@ async function loadExecutiveOverview() {
   loadingExecutiveOverview.value = true;
   executiveMessage.value = "";
   try {
-    const projection = await fetchProjectSetOperatingProjection(
-      projects.value.map((project) => project.id)
-    );
+    const projection = await fetchProjectSetOperatingProjection();
     executiveOverview.value = buildExecutiveProjectOverview(projection, projects.value);
   } catch (error) {
     executiveOverview.value = null;
     executiveMessage.value = formatUnknownApiError(error, "加载跨项目经营总览失败");
   } finally {
     loadingExecutiveOverview.value = false;
+  }
+}
+
+function openOperatingProjectionExport() {
+  if (!canExportOperatingProjection.value || !selectedProjectId.value) return;
+  operatingProjectionExportProjectId.value = selectedProjectId.value;
+  operatingProjectionExportError.value = "";
+  operatingProjectionExportMessage.value = "";
+  operatingProjectionExportVisible.value = true;
+}
+
+function closeOperatingProjectionExport() {
+  if (operatingProjectionExportBusy.value) return;
+  operatingProjectionExportVisible.value = false;
+  operatingProjectionExportProjectId.value = "";
+  operatingProjectionExportError.value = "";
+}
+
+async function submitOperatingProjectionExport(values: { reason: string; password: string }) {
+  const projectId = operatingProjectionExportProjectId.value;
+  if (!projectId || projectId !== selectedProjectId.value) {
+    operatingProjectionExportError.value = "当前项目已变化，请关闭后重新发起导出";
+    return;
+  }
+  operatingProjectionExportBusy.value = true;
+  operatingProjectionExportError.value = "";
+  try {
+    await downloadOperatingProjectionExport({
+      scopeKind: "project",
+      projectId,
+      exportKind: operatingProjectionExportKind.value,
+      confirmationPassword: values.password
+    });
+    operatingProjectionExportVisible.value = false;
+    operatingProjectionExportProjectId.value = "";
+    operatingProjectionExportMessage.value = "CSV 已生成并开始下载。";
+  } catch (error) {
+    operatingProjectionExportError.value = formatUnknownApiError(
+      error,
+      "导出经营投影失败"
+    );
+  } finally {
+    operatingProjectionExportBusy.value = false;
   }
 }
 
@@ -2714,6 +2826,17 @@ button:disabled {
   align-items: flex-start;
 }
 
+.operating-projection-export-panel,
+.operating-projection-export-actions {
+  display: grid;
+  gap: var(--jg-space-md);
+}
+
+.operating-projection-export-actions {
+  grid-template-columns: minmax(240px, 1fr) auto;
+  min-width: min(100%, 520px);
+}
+
 .project-entry-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2964,12 +3087,18 @@ dd {
   }
 
   .project-tools,
+  .operating-projection-export-actions,
   .project-create-form,
   .project-name-form {
     min-width: 0;
   }
 
   .project-tools {
+    width: 100%;
+  }
+
+  .operating-projection-export-actions {
+    grid-template-columns: 1fr;
     width: 100%;
   }
 

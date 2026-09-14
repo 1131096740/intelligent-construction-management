@@ -31,9 +31,22 @@ describe("project operating overview structure", () => {
   });
 
   it("loads the cross-project executive total through one project-set projection", () => {
-    expect(source).toContain("await fetchProjectSetOperatingProjection(");
+    expect(source).toContain("await fetchProjectSetOperatingProjection()");
+    expect(source).not.toContain("fetchProjectSetOperatingProjection(\n      projects.value.map");
     expect(source).toContain("buildExecutiveProjectOverview(projection, projects.value)");
     expect(source).not.toContain("projects.value.map((project) => fetchProjectOperatingOverview(project.id))");
+  });
+
+  it("offers all five finance-only detailed exports with password confirmation", () => {
+    expect(source).toContain("canExportOperatingProjection && selectedProjectId");
+    expect(source).toContain("project_operating_ledger_detail");
+    expect(source).toContain("construction_enterprise_funds_reconciliation");
+    expect(source).toContain("company_project_funds_subledger");
+    expect(source).toContain("receivable_payable_cashflow_detail");
+    expect(source).toContain("takeover_coverage_evidence_gap");
+    expect(source).toContain("downloadOperatingProjectionExport({");
+    expect(source).toContain(':require-password="true"');
+    expect(source).toContain('["finance_director", "finance_staff"].includes(role)');
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {

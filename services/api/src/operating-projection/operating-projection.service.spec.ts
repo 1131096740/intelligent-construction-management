@@ -5,6 +5,8 @@ import {
   PayloadTooLargeException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 import {
   OperatingProjectionReadLimiter,
@@ -576,7 +578,8 @@ describe("OperatingProjectionService", () => {
     await expect(service.exportView("user-1", {
       scopeKind: "project",
       projectId: project.id
-    }, "current-password")).rejects.toBeInstanceOf(ForbiddenException);
+    }, "current-password", "project_operating_ledger_detail"))
+      .rejects.toBeInstanceOf(ForbiddenException);
     expect(auth.confirmPassword).toHaveBeenCalled();
   });
 
@@ -1369,6 +1372,28 @@ describe("OperatingProjectionService", () => {
       });
   });
 
+  it.each([
+    "",
+    "2026/09/05",
+    "2026-09-05T00:00:00.000Z",
+    "2026-02-30"
+  ])("rejects non-canonical or nonexistent service-level asOf %s", async (asOf) => {
+    const readAt = new Date("2026-09-11T01:02:03.000Z");
+    const tx = emptyProjectionTx(readAt, [project]);
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never,
+      overviewVisibility([project.id]) as never,
+      zeroRiskReader() as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await expect(service.getProjectView("user-1", {
+      projectId: project.id,
+      asOf
+    })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it("scopes #275 risk by construction enterprise and suppresses unrelated sources", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
@@ -1427,7 +1452,7 @@ describe("OperatingProjectionService", () => {
     );
   });
 
-  it("exports only the sanitized aggregate, protects CSV cells, and records the audit event", async () => {
+  it("exports a completed detailed CSV from a controlled file, protects cells, and records audit", async () => {
     const prisma = {};
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
@@ -1439,93 +1464,40 @@ describe("OperatingProjectionService", () => {
       auth as never
     );
     (service as unknown as { readExportProjection: jest.Mock }).readExportProjection =
-      jest.fn().mockResolvedValue({
-      projection: {
-      scope: { label: "=2+2", projectCount: 1 },
-      asOf: {
-        businessDate: "2026-09-11",
-        readAt: "2026-09-11T01:02:03.000Z",
-        retroactiveFactCount: 0
-      },
-      integrity: {
-        statusLabel: "金额完整",
-        moneyComplete: true,
-        notices: []
-      },
-      commitments: { contractCommitmentCents: "0" },
-      operating: {
-        confirmedIncomeCents: "1000",
-        confirmedCostCents: "300",
-        receivableCents: "200",
-        payableCents: "100"
-      },
-      actualFunds: {
-        constructionEnterpriseFundsCents: "800",
-        companyProjectFundsCents: "0",
-        netProjectCashPositionCents: "800",
-        nonNegativeUsableCashStartCents: "800",
-        confirmedProjectInflowsCents: "800",
-        confirmedProjectOutflowsCents: "0",
-        companyAdvanceForProjectCents: "0",
-        companyReturnableToProjectCents: "0",
-        interSubjectBalanceCents: "0"
-      },
-      restrictions: {
-        estimatedClearingExpenseCents: "0",
-        necessaryExpenseReserveCents: "0",
-        projectDisputedFundsCents: "0",
-        constructionEnterpriseFrozenFundsCents: "0",
-        openPendingReconciliationGrossCents: "0",
-        openCoveredReconciliationCents: "0",
-        openUncoveredReconciliationCents: "0",
-        continuedWithheldRetainedCents: "0",
-        temporaryProfitDistributionCents: "0",
-        relationshipCompletenessLabel: "完整"
-      },
-      profitAndLoss: {
-        currentOperatingProfitCents: "700",
-        estimatedClearingExpenseCents: "0",
-        currentEstimatedProfitCents: "700",
-        finalConfirmedProfitCents: "700",
-        finalConfirmable: true
-      },
-      distribution: {
-        cashCeilingCents: "800",
-        projectedProfitCeilingCents: "700",
-        currentDistributableProfitCents: "700"
-      },
-      evidence: {
-        A: { factCount: 1, amountCents: "1000" },
-        B: { factCount: 0, amountCents: "0" },
-        C: { factCount: 0, amountCents: "0" },
-        gapFactCount: 0,
-        gapAmountCents: "0"
-      },
-      sources: [{
-        sourceTypeLabel: "业主结算",
-        factCount: 1,
-        impactCount: 2,
-        signedImpactCents: "1200"
-      }]
-      },
-      auditContext: {
+      jest.fn().mockImplementation(async (
+        _actorUserId: string,
+        _input: unknown,
+        _exportKind: string,
+        output: { writeRow: (row: string[]) => Promise<void> }
+      ) => {
+        await output.writeRow([
+          "=2+2", "一号项目", "业主结算", "YS-001", "业主结算", "A",
+          "正式事实", "已确认", "2026-09-10T00:00:00.000Z",
+          "2026-09-11T00:00:00.000Z", "已确认收入", "增加", "10.00",
+          "", "", "债务主体：业主", "", "否"
+        ]);
+        return {
         projectIds: ["project-1"],
         effectiveRoleKeysByProject: {
           "project-1": ["finance_director"]
-        }
-      }
+        },
+        businessDate: "2026-09-11",
+        readAt: "2026-09-11T01:02:03.000Z",
+        rowCount: 1
+        };
       });
 
     const exported = await service.exportView("user-1", {
       scopeKind: "project",
       projectId: "project-1"
-    }, "current-password");
+    }, "current-password", "project_operating_ledger_detail");
 
     expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "current-password");
     expect(exported).not.toHaveProperty("projection");
     const content = await readUtf8Stream(exported.stream);
     expect(content).toContain("\"'=2+2\"");
-    expect(content).not.toContain("sourceBusinessId");
+    expect(content).toContain("\"金额（元）\"");
+    expect(content).toContain("\"YS-001\"");
     expect(audit.record).toHaveBeenCalledWith(prisma, expect.objectContaining({
       actorUserId: "user-1",
       action: "operating_projection.export",
@@ -1537,6 +1509,8 @@ describe("OperatingProjectionService", () => {
           projectIds: ["project-1"]
         },
         filters: {},
+        exportKind: "project_operating_ledger_detail",
+        rowCount: 1,
         effectiveRoleKeysByProject: {
           "project-1": ["finance_director"]
         }
@@ -1557,8 +1531,41 @@ describe("OperatingProjectionService", () => {
     await expect(service.exportView("user-1", {
       scopeKind: "project",
       projectId: "project-1"
-    }, " ")).rejects.toBeInstanceOf(BadRequestException);
+    }, " ", "project_operating_ledger_detail")).rejects.toBeInstanceOf(BadRequestException);
     expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("rejects an export above 8 MiB before streaming or audit and removes its temp file", async () => {
+    const audit = { record: jest.fn() };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new OperatingProjectionService(
+      {} as never,
+      {} as never,
+      {} as never,
+      audit as never,
+      auth as never
+    );
+    const tempEntries = async () => new Set(
+      (await readdir(tmpdir())).filter((name) => name.startsWith("jiangkong-pol108-export-"))
+    );
+    const before = await tempEntries();
+    (service as unknown as { readExportProjection: jest.Mock }).readExportProjection =
+      jest.fn().mockImplementation(async (
+        _actorUserId: string,
+        _input: unknown,
+        _exportKind: string,
+        output: { writeRow: (row: string[]) => Promise<void> }
+      ) => output.writeRow(["X".repeat(8 * 1024 * 1024)]));
+
+    await expect(service.exportView("user-1", {
+      scopeKind: "project",
+      projectId: "project-1"
+    }, "current-password", "project_operating_ledger_detail"))
+      .rejects.toBeInstanceOf(PayloadTooLargeException);
+
+    expect(audit.record).not.toHaveBeenCalled();
+    const after = await tempEntries();
+    expect([...after].filter((name) => !before.has(name))).toEqual([]);
   });
 });
 

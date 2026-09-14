@@ -29,9 +29,9 @@
     "pendingFiles": 53,
     "fullyPendingSuites": 42,
     "partiallyPendingSuites": 11,
-    "pendingTests": 237,
+    "pendingTests": 239,
     "coveredFiles": 53,
-    "coveredTests": 237,
+    "coveredTests": 239,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -264,11 +264,11 @@
     },
     {
       "id": "operating_projection_pol108",
-      "pendingTests": 8,
+      "pendingTests": 10,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-projection-postgresql.spec.ts",
-          "pendingTests": 8,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         }
       ],

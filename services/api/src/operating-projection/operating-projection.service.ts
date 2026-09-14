@@ -1,7 +1,11 @@
-import { Readable } from "node:stream";
+import { createReadStream } from "node:fs";
+import { mkdtemp, open, rm, type FileHandle } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -9,10 +13,17 @@ import {
   PayloadTooLargeException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { canPerform } from "@jiangkong/shared-domain";
+import {
+  canPerform,
+  OPERATING_FACT_KINDS,
+  OPERATING_IMPACT_KINDS
+} from "@jiangkong/shared-domain";
 
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import {
+  type OperatingProjectionExportKind
+} from "./dto/operating-projection-export.dto";
 import {
   ProjectVisibilityBudgetExceededError,
   ProjectVisibilityService
@@ -50,6 +61,8 @@ const OPERATING_FACT_BATCH_SIZE = 500;
 const OPERATING_IMPACT_BATCH_SIZE = 2_000;
 const DETAIL_IMPACT_SCAN_BATCH_SIZE = 200;
 const MAX_DETAIL_SCAN_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+const MAX_DETAIL_RESPONSE_BYTES = 8 * 1024 * 1024;
+const MAX_EXPORT_BYTES = 8 * 1024 * 1024;
 const CLEARING_CASE_BATCH_SIZE = 25;
 const MAX_RESTRICTION_INTEGRITY_FACTS = 20_000;
 const MAX_RESTRICTION_INTEGRITY_IMPACTS = 40_000;
@@ -278,7 +291,7 @@ export class OperatingProjectionService {
       requireDetailPermission: true,
       fixedReadAt: cursor ? new Date(cursor.readAt) : undefined,
       fixedCutoffAt: cursor ? new Date(cursor.cutoffAt) : undefined
-    }, async (tx, _projectIds, context) => {
+    }, async (tx, _projectIds, context, projection) => {
       if (cursor && cursor.scopeFingerprint !== projectionScopeFingerprint(context.scope)) {
         throw new BadRequestException("经营投影明细游标范围与当前可见项目不一致");
       }
@@ -321,24 +334,27 @@ export class OperatingProjectionService {
             position: detailPage.nextPosition
           })
         : null;
-      return { items: detailPage.items, nextCursor };
+      const response = {
+        projection: toOperatingProjectionAggregate(projection),
+        items: detailPage.items,
+        page: {
+          pageSize,
+          readAt: projection.asOf.readAt,
+          nextCursor
+        }
+      };
+      assertDetailResponseWithinBudget(response);
+      return response;
     });
-    return {
-      projection: toOperatingProjectionAggregate(bundle.projection),
-      items: bundle.additional.items,
-      page: {
-        pageSize,
-        readAt: bundle.projection.asOf.readAt,
-        nextCursor: bundle.additional.nextCursor
-      }
-    };
+    return bundle.additional;
   }
 
   private async readRiskDetailPageInTransaction(
     tx: Prisma.TransactionClient,
     context: ProjectionReadContext,
     position: Extract<OperatingProjectionCursorPosition, { phase: "risks" }>,
-    pageSize: number
+    pageSize: number,
+    includeExportMetadata = false
   ): Promise<{ items: Array<Record<string, unknown>>; nextPosition: OperatingProjectionCursorPosition | null }> {
     if (!context.riskDetailsAllowed) return { items: [], nextPosition: null };
     const filters = context.scope.filters;
@@ -397,7 +413,8 @@ export class OperatingProjectionService {
           const rows = publicRiskDetailRows(
             projectId,
             context.projectById.get(projectId),
-            risk
+            risk,
+            includeExportMetadata
           );
           const offset = projectId === position.projectId &&
             clearingCase.id === position.clearingCaseId
@@ -428,84 +445,137 @@ export class OperatingProjectionService {
   async exportView(
     actorUserId: string,
     input: AsOfProjectionQuery,
-    confirmationPassword: string
+    confirmationPassword: string,
+    exportKind: OperatingProjectionExportKind
   ) {
     await this.auth.confirmPassword(
       actorUserId,
       required(confirmationPassword, "导出经营投影前必须输入当前登录密码")
     );
-    const { projection, auditContext } = await this.readExportProjection(
-      actorUserId,
-      input
-    );
     const headers = [
-      "分类",
-      "业务项目",
-      "金额（元）或数量",
-      "口径说明"
+      "项目编号",
+      "项目名称",
+      "来源类型",
+      "来源业务编号",
+      "事实类型",
+      "证据等级",
+      "金额口径",
+      "业务状态",
+      "业务发生时间",
+      "确认时间",
+      "经营影响",
+      "方向",
+      "金额（元）",
+      "成本分类",
+      "资金用途",
+      "主体/往来方",
+      "待核对状态",
+      "历史接管来源"
     ];
-    const rows = aggregateExportRows(projection);
-    const fileName = `经营投影_${projection.asOf.businessDate}.csv`;
-    const auditScope: Prisma.InputJsonObject = {
-      kind: input.scopeKind,
-      projectIds: auditContext.projectIds,
-      ...(input.scopeKind === "project" && auditContext.projectIds[0]
-        ? { projectId: auditContext.projectIds[0] }
-        : {}),
-      ...(input.scopeKind === "company" && input.companyEntityId
-        ? { companyEntityId: input.companyEntityId.trim() }
-        : {})
-    };
-    const auditFilters = Object.fromEntries(
-      Object.entries(projectionFilters(input))
-    ) as Prisma.InputJsonObject;
-    await this.audit.record(this.prisma, {
-      actorUserId,
-      action: "operating_projection.export",
-      businessType: "operating_projection",
-      metadata: {
-        scope: auditScope,
-        filters: auditFilters,
-        effectiveRoleKeysByProject:
-          auditContext.effectiveRoleKeysByProject,
-        businessDate: projection.asOf.businessDate,
-        readAt: projection.asOf.readAt,
-        rowCount: rows.length,
-        fileName
-      }
-    });
-    return {
-      fileName,
-      contentType: "text/csv; charset=utf-8",
-      stream: Readable.from(csvChunks(headers, rows))
-    };
+    const output = await BoundedProjectionCsvFile.create(headers);
+    try {
+      const auditContext = await this.readExportProjection(
+        actorUserId,
+        input,
+        exportKind,
+        output
+      );
+      const fileName = `${EXPORT_KIND_FILE_NAMES[exportKind]}_${auditContext.businessDate}.csv`;
+      const auditScope: Prisma.InputJsonObject = {
+        kind: input.scopeKind,
+        projectIds: auditContext.projectIds,
+        ...(input.scopeKind === "project" && auditContext.projectIds[0]
+          ? { projectId: auditContext.projectIds[0] }
+          : {}),
+        ...(input.scopeKind === "company" && input.companyEntityId
+          ? { companyEntityId: input.companyEntityId.trim() }
+          : {})
+      };
+      const auditFilters = Object.fromEntries(
+        Object.entries(projectionFilters(input))
+      ) as Prisma.InputJsonObject;
+      await this.audit.record(this.prisma, {
+        actorUserId,
+        action: "operating_projection.export",
+        businessType: "operating_projection",
+        metadata: {
+          exportKind,
+          scope: auditScope,
+          filters: auditFilters,
+          effectiveRoleKeysByProject: auditContext.effectiveRoleKeysByProject,
+          businessDate: auditContext.businessDate,
+          readAt: auditContext.readAt,
+          rowCount: auditContext.rowCount,
+          fileName
+        }
+      });
+      return {
+        fileName,
+        contentType: "text/csv; charset=utf-8",
+        stream: await output.openReadStream()
+      };
+    } catch (error) {
+      await output.dispose();
+      throw error;
+    }
   }
 
   private async readExportProjection(
     actorUserId: string,
-    input: AsOfProjectionQuery
+    input: AsOfProjectionQuery,
+    exportKind: OperatingProjectionExportKind,
+    output: BoundedProjectionCsvFile
   ) {
     const bundle = await this.readProjectionBundle(
       { ...asOfProjectionInput(actorUserId, input), requireDetailPermission: true },
-      async (tx, projectIds) => {
+      async (tx, projectIds, context, projection) => {
         const effectiveRoleKeysByProject =
           await this.projectVisibility.effectiveRoleKeysByProjectInTransaction(
             tx,
             actorUserId,
             projectIds
           );
+        let rowCount = 0;
+        let position: OperatingProjectionCursorPosition | null = null;
+        for (;;) {
+          const detailPage: ProjectionDetailPageResult = position?.phase === "risks"
+            ? await this.readRiskDetailPageInTransaction(
+                tx,
+                context,
+                position,
+                DETAIL_IMPACT_SCAN_BATCH_SIZE,
+                true
+              )
+            : position?.phase === "done"
+              ? { items: [], nextPosition: null }
+              : await readFactDetailPageInTransaction(
+                  tx,
+                  context,
+                  position,
+                  DETAIL_IMPACT_SCAN_BATCH_SIZE,
+                  true
+                );
+          for (const item of detailPage.items) {
+            const csvRow = projectionExportCsvRow(item, exportKind);
+            if (!csvRow) continue;
+            await output.writeRow(csvRow);
+            rowCount += 1;
+          }
+          if (!detailPage.nextPosition) break;
+          position = detailPage.nextPosition;
+        }
         return {
           projectIds,
           effectiveRoleKeysByProject: Object.fromEntries(
             Array.from(effectiveRoleKeysByProject.entries())
-          )
+          ),
+          businessDate: projection.asOf.businessDate,
+          readAt: projection.asOf.readAt,
+          rowCount
         };
       }
     );
-    return {
-      projection: toOperatingProjectionAggregate(bundle.projection),
-      auditContext: bundle.additional
-    };
+    return bundle.additional;
   }
 
   async readProjectCompatibilitySnapshot<T>(
@@ -582,7 +652,8 @@ export class OperatingProjectionService {
   }, readAdditional?: (
     tx: Prisma.TransactionClient,
     projectIds: string[],
-    context: ProjectionReadContext
+    context: ProjectionReadContext,
+    projection: OperatingProjectionReadModel
   ) => Promise<T>): Promise<{
     projection: OperatingProjectionReadModel;
     additional: T;
@@ -607,7 +678,8 @@ export class OperatingProjectionService {
   }, readAdditional?: (
     tx: Prisma.TransactionClient,
     projectIds: string[],
-    context: ProjectionReadContext
+    context: ProjectionReadContext,
+    projection: OperatingProjectionReadModel
   ) => Promise<T>): Promise<{
     projection: OperatingProjectionReadModel;
     additional: T;
@@ -1126,7 +1198,7 @@ export class OperatingProjectionService {
             moneyComplete: projection.integrity.moneyComplete,
             sourceReferenceTotals: projection.sourceReferenceTotals,
             projectionContextFingerprint: contextFingerprint
-          })
+          }, projection)
         : undefined as T;
       return { projection, additional };
     }, {
@@ -1318,6 +1390,17 @@ type DetailStoredImpact = Pick<StoredOperatingImpact,
   "costCategoryCode" |
   "fundPurpose"
 >;
+type ProjectionExportMetadata = {
+  sourceType: string;
+  factKind: string;
+  impactKind: string;
+  factAmountCents: string;
+  subjectLabels: string[];
+};
+type ProjectionDetailPageResult = {
+  items: Array<Record<string, unknown>>;
+  nextPosition: OperatingProjectionCursorPosition | null;
+};
 type ProjectionStoredFact = Omit<DetailStoredFact, "sourceSnapshot" | "subjectSnapshot"> &
   Pick<StoredOperatingFact, "sourceSnapshot" | "subjectSnapshot">;
 
@@ -1652,10 +1735,11 @@ async function readFactDetailPageInTransaction(
   tx: Prisma.TransactionClient,
   context: ProjectionReadContext,
   position: Extract<OperatingProjectionCursorPosition, { phase: "facts" }> | null,
-  pageSize: number
+  pageSize: number,
+  includeExportMetadata = false
 ): Promise<{ items: Array<Record<string, unknown>>; nextPosition: OperatingProjectionCursorPosition | null }> {
   const items: Array<Record<string, unknown>> = [];
-  const needsSubjectSnapshots = Boolean(
+  const needsSubjectSnapshots = includeExportMetadata || Boolean(
     context.scope.filters?.constructionEnterpriseId ||
       context.scope.filters?.companyEntityId ||
       context.scope.filters?.counterpartyId
@@ -1766,8 +1850,22 @@ async function readFactDetailPageInTransaction(
             : { phase: "risks" }
         };
       }
+      const publicDetail = toOperatingProjectionPublicDetail(
+        fact,
+        impact,
+        context.cutoffAt.toISOString()
+      );
       items.push({
-        ...toOperatingProjectionPublicDetail(fact, impact, context.cutoffAt.toISOString()),
+        ...publicDetail,
+        ...(includeExportMetadata ? {
+          _export: {
+            sourceType: fact.sourceType,
+            factKind: fact.factKind,
+            impactKind: impact.impactKind,
+            factAmountCents: fact.amountCents.toString(),
+            subjectLabels: exportSubjectDisplayLabels(row.fact.subjectSnapshot)
+          } satisfies ProjectionExportMetadata
+        } : {}),
         _cursor: { occurredAt: fact.occurredAt, impactId: impact.id }
       });
     }
@@ -1801,7 +1899,8 @@ function publicRiskDetailRows(
     "openUncoveredCents" |
     "continuedWithheldRetainedCents" |
     "coveredWithheldSources" |
-    "items">
+    "items">,
+  includeExportMetadata = false
 ): Array<Record<string, unknown>> {
   const summary = summarizeRisk(projectId, risk);
   const moneyKnown = summary.breakdownConsistent &&
@@ -1836,7 +1935,16 @@ function publicRiskDetailRows(
         openUncoveredCents: item.openUncoveredCents.toString(),
         continuedWithheldRetainedCents: "0",
         statusLabel: riskStatusLabel(item.status)
-      }
+      },
+      ...(includeExportMetadata ? {
+        _export: {
+          sourceType: CLEARING_SOURCE_TYPE,
+          factKind: "clearing_reconciliation_risk",
+          impactKind: "clearing_open_reconciliation_risk",
+          factAmountCents: item.openAmountCents.toString(),
+          subjectLabels: []
+        } satisfies ProjectionExportMetadata
+      } : {})
     })),
     ...risk.coveredWithheldSources
       .filter((source) => source.continuedRetainedCents > 0n)
@@ -1851,7 +1959,16 @@ function publicRiskDetailRows(
           openUncoveredCents: null,
           continuedWithheldRetainedCents: source.continuedRetainedCents.toString(),
           statusLabel: "继续暂扣"
-        }
+        },
+        ...(includeExportMetadata ? {
+          _export: {
+            sourceType: CLEARING_SOURCE_TYPE,
+            factKind: "clearing_reconciliation_risk",
+            impactKind: "clearing_continued_withheld_risk",
+            factAmountCents: source.continuedRetainedCents.toString(),
+            subjectLabels: []
+          } satisfies ProjectionExportMetadata
+        } : {})
       }))
   ];
 }
@@ -2258,8 +2375,10 @@ function normalizeAsOfProjectionDetailQuery(
 }
 
 function projectionDetailPageSize(value: number | string | undefined): number {
-  const normalized = typeof value === "string" ? value.trim() : value;
-  const pageSize = normalized === undefined || normalized === "" ? 50 : Number(normalized);
+  if (typeof value === "string" && !/^(?:[1-9]|[1-9]\d|1\d\d|200)$/.test(value)) {
+    throw new BadRequestException("经营投影明细每页条数必须是 1 到 200 的十进制整数");
+  }
+  const pageSize = value === undefined ? 50 : Number(value);
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
     throw new BadRequestException("经营投影明细每页条数必须是 1 到 200 的整数");
   }
@@ -2338,23 +2457,34 @@ function projectionFilters(input: ProjectionFilters): ProjectionFilters {
 }
 
 function projectionCutoff(value: string | undefined, readAt: Date): Date {
-  if (!value) return readAt;
-  const trimmed = value.trim();
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
-  const parsed = dateOnly
-    ? new Date(`${trimmed}T23:59:59.999+08:00`)
-    : new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException("经营投影日期格式无效");
+  if (value === undefined) return readAt;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new BadRequestException("经营投影日期必须是 YYYY-MM-DD");
   }
+  const [year, month, day] = value.split("-").map(Number);
+  const validation = new Date(Date.UTC(year!, month! - 1, day!));
+  if (
+    validation.getUTCFullYear() !== year ||
+    validation.getUTCMonth() !== month! - 1 ||
+    validation.getUTCDate() !== day
+  ) {
+    throw new BadRequestException("经营投影日期不是有效日历日期");
+  }
+  const parsed = new Date(`${value}T23:59:59.999+08:00`);
   if (parsed.getTime() > readAt.getTime()) {
     const readBusinessDate = new Date(readAt.getTime() + 8 * 60 * 60 * 1_000)
       .toISOString()
       .slice(0, 10);
-    if (dateOnly && trimmed === readBusinessDate) return readAt;
+    if (value === readBusinessDate) return readAt;
     throw new BadRequestException("经营投影日期不得晚于数据库读取时点");
   }
   return parsed;
+}
+
+function assertDetailResponseWithinBudget(response: unknown): void {
+  if (Buffer.byteLength(JSON.stringify(response), "utf8") > MAX_DETAIL_RESPONSE_BYTES) {
+    throw new PayloadTooLargeException("经营投影明细响应超出 8 MiB 安全预算，请缩小每页条数或筛选范围");
+  }
 }
 
 export function projectionFactSubjectReferences(fact: {
@@ -2423,73 +2553,268 @@ function csvCell(value: string): string {
   return `"${formulaSafe.replaceAll('"', '""')}"`;
 }
 
-function* csvChunks(headers: string[], rows: string[][]): Generator<string> {
-  yield `\uFEFF${headers.map(csvCell).join(",")}\n`;
-  for (let index = 0; index < rows.length; index += 1) {
-    yield `${rows[index]!.map(csvCell).join(",")}${index + 1 < rows.length ? "\n" : ""}`;
+const EXPORT_KIND_FILE_NAMES: Record<OperatingProjectionExportKind, string> = {
+  project_operating_ledger_detail: "项目经营台账明细",
+  construction_enterprise_funds_reconciliation: "施工企业资金核对",
+  company_project_funds_subledger: "公司项目资金分户账",
+  receivable_payable_cashflow_detail: "应收应付现金流明细",
+  takeover_coverage_evidence_gap: "历史接管覆盖与证据缺口"
+};
+
+const KNOWN_EXPORT_SOURCE_TYPES = new Set([
+  "owner_settlement",
+  "project_upstream_settlement",
+  "project_upstream_fund_fact",
+  "project_affiliate_contract_fact",
+  "project_affiliate_settlement_fact",
+  "project_affiliate_payment_fact",
+  "project_proxy_payment",
+  "contract_version",
+  "settlement",
+  "payment_execution",
+  "expense_claim_approval",
+  "expense_claim_payment_execution",
+  "employee_project_loan_entry",
+  "spot_procurement_receipt_review",
+  "spot_procurement_payment_execution",
+  "spot_procurement_refund",
+  "spot_procurement_invoice_record",
+  "contract_takeover_historical_payment",
+  "project_expense_execution",
+  "expense_claim",
+  "expense_claim_execution",
+  "wage_statement_version",
+  "fund_movement",
+  "clearing_event_version",
+  "project_necessary_expense_reserve_entry",
+  "project_fund_dispute_entry",
+  "operating_takeover"
+]);
+const KNOWN_EXPORT_FACT_KINDS = new Set<string>(OPERATING_FACT_KINDS);
+const KNOWN_EXPORT_IMPACT_KINDS = new Set<string>(OPERATING_IMPACT_KINDS);
+const EXPORT_RISK_IMPACT_KINDS = new Set([
+  "clearing_open_reconciliation_risk",
+  "clearing_continued_withheld_risk"
+]);
+const CONSTRUCTION_ENTERPRISE_EXPORT_IMPACTS = new Set([
+  "construction_enterprise_funds_increase",
+  "construction_enterprise_funds_decrease",
+  "construction_enterprise_funds_freeze",
+  "construction_enterprise_funds_release",
+  "estimated_clearing_expense",
+  "necessary_expense_reserve_increase",
+  "necessary_expense_reserve_decrease",
+  "project_disputed_funds_increase",
+  "project_disputed_funds_decrease",
+  ...EXPORT_RISK_IMPACT_KINDS
+]);
+const COMPANY_SUBLEDGER_EXPORT_IMPACTS = new Set([
+  "company_project_funds_increase",
+  "company_project_funds_decrease",
+  "company_advance_for_project_increase",
+  "company_advance_for_project_decrease",
+  "company_returnable_to_project_increase",
+  "company_returnable_to_project_decrease",
+  "inter_subject_balance_increase",
+  "inter_subject_balance_decrease",
+  "temporary_profit_distribution",
+  "final_profit_distribution",
+  "profit_distribution_adjustment"
+]);
+const RECEIVABLE_PAYABLE_CASHFLOW_EXPORT_IMPACTS = new Set([
+  "receivable_increase",
+  "receivable_decrease",
+  "payable_increase",
+  "payable_decrease",
+  "construction_enterprise_funds_increase",
+  "construction_enterprise_funds_decrease",
+  "company_project_funds_increase",
+  "company_project_funds_decrease"
+]);
+
+function projectionExportCsvRow(
+  item: Record<string, unknown>,
+  exportKind: OperatingProjectionExportKind
+): string[] | null {
+  const metadata = jsonRecord(item._export) as Partial<ProjectionExportMetadata>;
+  const sourceType = stringValue(metadata.sourceType);
+  const factKind = stringValue(metadata.factKind);
+  const impactKind = stringValue(metadata.impactKind);
+  if (
+    !sourceType ||
+    !factKind ||
+    !impactKind ||
+    !KNOWN_EXPORT_SOURCE_TYPES.has(sourceType) ||
+    (!KNOWN_EXPORT_FACT_KINDS.has(factKind) && factKind !== "clearing_reconciliation_risk") ||
+    (!KNOWN_EXPORT_IMPACT_KINDS.has(impactKind) && !EXPORT_RISK_IMPACT_KINDS.has(impactKind))
+  ) {
+    throw new ConflictException("经营投影存在未识别的来源或经营影响，已拒绝导出");
   }
+  const evidenceLevel = stringValue(item.evidenceLevel);
+  if (!projectionExportKindMatches(exportKind, sourceType, factKind, impactKind, evidenceLevel)) {
+    return null;
+  }
+  const risk = jsonRecord(item.reconciliationRisk);
+  const signedImpactCents = nullableStringValue(item.signedImpactCents);
+  const factAmountCents = stringValue(metadata.factAmountCents);
+  const amountCents = signedImpactCents ?? (evidenceLevel === "C" ? factAmountCents : null);
+  const amountYuan = amountCents === null ? "不适用" : centsAsYuan(amountCents);
+  const amountBasis = evidenceLevel === "C"
+    ? "C级证据缺口"
+    : impactKind === "estimated_clearing_expense"
+      ? "预计金额"
+      : "正式事实";
+  const subjectLabels = Array.isArray(metadata.subjectLabels)
+    ? metadata.subjectLabels.filter((value): value is string => typeof value === "string")
+    : [];
+  return [
+    stringValue(item.projectCode),
+    stringValue(item.projectName),
+    stringValue(item.sourceTypeLabel),
+    stringValue(item.sourceBusinessCode),
+    stringValue(item.factKindLabel),
+    evidenceLevel ?? "待核对",
+    amountBasis,
+    item.confirmedAfterAsOf === true ? "追溯确认" : risk.statusLabel ? "待核对" : "已确认",
+    nullableStringValue(item.occurredAt) ?? "",
+    nullableStringValue(item.confirmedAt) ?? "",
+    stringValue(item.impactKindLabel),
+    stringValue(item.directionLabel),
+    amountYuan,
+    nullableStringValue(item.costCategoryCode) ?? "",
+    nullableStringValue(item.fundPurpose) ?? "",
+    subjectLabels.join("；"),
+    nullableStringValue(risk.statusLabel) ?? "",
+    ["operating_takeover", "contract_takeover_historical_payment"].includes(sourceType)
+      ? "是"
+      : "否"
+  ];
 }
 
-function aggregateExportRows(
-  projection: OperatingProjectionAggregateView
-): string[][] {
-  const money = (
-    category: string,
-    label: string,
-    cents: string | null,
-    note: string
-  ) => [category, label, cents === null ? "金额不可确定" : centsAsYuan(cents), note];
-  const rows: string[][] = [
-    ["查询口径", "口径", projection.scope.label, `覆盖 ${projection.scope.projectCount} 个项目`],
-    ["查询口径", "业务基准日", projection.asOf.businessDate, `追溯确认事实 ${projection.asOf.retroactiveFactCount} 笔`],
-    ["完整性", "金额完整性", projection.integrity.statusLabel, projection.integrity.notices.join("；") || "无完整性提示"],
-    money("合同与承诺", "合同承诺", projection.commitments.contractCommitmentCents, "正式事实聚合"),
-    money("已确认经营", "已确认收入", projection.operating.confirmedIncomeCents, "正式事实聚合"),
-    money("已确认经营", "已确认成本", projection.operating.confirmedCostCents, "正式事实聚合"),
-    money("已确认经营", "应收余额", projection.operating.receivableCents, "正式事实聚合"),
-    money("已确认经营", "应付余额", projection.operating.payableCents, "正式事实聚合"),
-    money("实际资金", "施工企业项目资金", projection.actualFunds.constructionEnterpriseFundsCents, "持有主体聚合"),
-    money("实际资金", "我方公司项目资金", projection.actualFunds.companyProjectFundsCents, "持有主体聚合"),
-    money("实际资金", "非负可用现金起点", projection.actualFunds.nonNegativeUsableCashStartCents, "逐持有主体截取非负余额后汇总"),
-    money("实际资金", "已确认项目流入", projection.actualFunds.confirmedProjectInflowsCents, "正式事实聚合"),
-    money("实际资金", "已确认项目流出", projection.actualFunds.confirmedProjectOutflowsCents, "正式事实聚合"),
-    money("主体往来", "公司为项目垫资", projection.actualFunds.companyAdvanceForProjectCents, "与公司负数资金余额不重复扣减"),
-    money("主体往来", "公司应归还项目资金", projection.actualFunds.companyReturnableToProjectCents, "正式事实聚合"),
-    money("主体往来", "主体间往来", projection.actualFunds.interSubjectBalanceCents, "正式事实聚合"),
-    money("资金限制", "预计待清算费用", projection.restrictions.estimatedClearingExpenseCents, "预计金额"),
-    money("资金限制", "必要费用准备", projection.restrictions.necessaryExpenseReserveCents, "正式限制金额"),
-    money("资金限制", "一般争议资金", projection.restrictions.projectDisputedFundsCents, "正式限制金额"),
-    money("资金限制", "冻结资金", projection.restrictions.constructionEnterpriseFrozenFundsCents, "正式限制金额"),
-    money("资金限制", "未覆盖待核对金额", projection.restrictions.openUncoveredReconciliationCents, projection.restrictions.relationshipCompletenessLabel),
-    money("资金限制", "已暂分利润", projection.restrictions.temporaryProfitDistributionCents, "正式事实聚合"),
-    money("四层盈亏", "当前经营盈亏", projection.profitAndLoss.currentOperatingProfitCents, "已确认收入减已确认成本"),
-    money("四层盈亏", "预计待清算费用", projection.profitAndLoss.estimatedClearingExpenseCents, "预计金额"),
-    money("四层盈亏", "当前预计盈亏", projection.profitAndLoss.currentEstimatedProfitCents, "当前经营盈亏减预计待清算费用"),
-    money("四层盈亏", "最终确认盈亏", projection.profitAndLoss.finalConfirmedProfitCents, projection.profitAndLoss.finalConfirmable ? "已具备最终确认条件" : "尚未具备最终确认条件"),
-    money("可分配利润", "资金上限", projection.distribution.cashCeilingCents, "仅单项目完整口径可用"),
-    money("可分配利润", "预计利润上限", projection.distribution.projectedProfitCeilingCents, "当前预计盈亏扣除已暂分利润"),
-    money("可分配利润", "当前可分配利润", projection.distribution.currentDistributableProfitCents, "资金上限与预计利润上限取较低值")
-  ];
-  for (const level of ["A", "B", "C"] as const) {
-    rows.push([
-      "证据等级",
-      `${level} 级事实`,
-      `${projection.evidence[level].factCount} 笔 / ${centsAsYuan(projection.evidence[level].amountCents)} 元`,
-      level === "C" ? "缺口金额不进入正式金额汇总" : "正式汇总证据"
-    ]);
+function projectionExportKindMatches(
+  exportKind: OperatingProjectionExportKind,
+  sourceType: string,
+  factKind: string,
+  impactKind: string,
+  evidenceLevel: string | null
+): boolean {
+  if (exportKind === "project_operating_ledger_detail") return true;
+  if (exportKind === "construction_enterprise_funds_reconciliation") {
+    return factKind === "construction_enterprise_deduction" ||
+      CONSTRUCTION_ENTERPRISE_EXPORT_IMPACTS.has(impactKind);
   }
-  for (const source of projection.sources) {
-    rows.push([
-      "来源聚合",
-      source.sourceTypeLabel,
-      centsAsYuan(source.signedImpactCents),
-      `${source.factCount} 笔事实 / ${source.impactCount} 条经营影响`
-    ]);
+  if (exportKind === "company_project_funds_subledger") {
+    return COMPANY_SUBLEDGER_EXPORT_IMPACTS.has(impactKind);
   }
-  return rows;
+  if (exportKind === "receivable_payable_cashflow_detail") {
+    return RECEIVABLE_PAYABLE_CASHFLOW_EXPORT_IMPACTS.has(impactKind);
+  }
+  return evidenceLevel === "C" ||
+    impactKind === "evidence_gap_notice" ||
+    sourceType === "operating_takeover" ||
+    sourceType === "contract_takeover_historical_payment";
+}
+
+function exportSubjectDisplayLabels(value: unknown): string[] {
+  const roleLabels: Record<string, string> = {
+    debtor: "债务主体",
+    creditor: "债权主体",
+    approvedPayer: "批准付款主体",
+    actualPayer: "实际付款主体",
+    payee: "收款主体",
+    costBearingCompany: "成本承担公司",
+    fundHolder: "资金持有主体"
+  };
+  const labels = Object.entries(jsonRecord(value)).flatMap(([role, snapshotValue]) => {
+    const snapshot = jsonRecord(snapshotValue);
+    const name = nullableStringValue(snapshot.name);
+    return name ? [`${roleLabels[role] ?? "业务主体"}：${name}`] : [];
+  });
+  return Array.from(new Set(labels));
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function nullableStringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+class BoundedProjectionCsvFile {
+  private byteLength = 0;
+  private handle: FileHandle | null;
+  private disposed = false;
+
+  private constructor(
+    private readonly directory: string,
+    private readonly path: string,
+    handle: FileHandle
+  ) {
+    this.handle = handle;
+  }
+
+  static async create(headers: string[]): Promise<BoundedProjectionCsvFile> {
+    const directory = await mkdtemp(join(tmpdir(), "jiangkong-pol108-export-"));
+    const path = join(directory, "projection.csv");
+    try {
+      const handle = await open(path, "wx", 0o600);
+      const file = new BoundedProjectionCsvFile(directory, path, handle);
+      await file.writeChunk(`\uFEFF${headers.map(csvCell).join(",")}\n`);
+      return file;
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async writeRow(row: string[]): Promise<void> {
+    await this.writeChunk(`${row.map(csvCell).join(",")}\n`);
+  }
+
+  async openReadStream() {
+    if (!this.handle || this.disposed) throw new Error("经营投影导出临时文件不可用");
+    await this.handle.sync();
+    await this.handle.close();
+    this.handle = null;
+    const stream = createReadStream(this.path);
+    let cleaned = false;
+    const cleanup = async () => {
+      if (cleaned) return;
+      cleaned = true;
+      this.disposed = true;
+      await rm(this.directory, { recursive: true, force: true });
+    };
+    stream.once("close", () => void cleanup());
+    stream.once("error", () => void cleanup());
+    return stream;
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.handle) {
+      await this.handle.close();
+      this.handle = null;
+    }
+    await rm(this.directory, { recursive: true, force: true });
+  }
+
+  private async writeChunk(chunk: string): Promise<void> {
+    if (!this.handle || this.disposed) throw new Error("经营投影导出临时文件不可用");
+    const nextBytes = Buffer.byteLength(chunk, "utf8");
+    if (this.byteLength + nextBytes > MAX_EXPORT_BYTES) {
+      throw new PayloadTooLargeException("经营投影导出文件超出 8 MiB 安全预算，请收窄项目或筛选范围");
+    }
+    await this.handle.write(chunk);
+    this.byteLength += nextBytes;
+  }
 }
 
 function centsAsYuan(cents: string): string {
+  if (!/^-?(?:0|[1-9]\d*)$/.test(cents)) {
+    throw new ConflictException("经营投影存在无效金额，已拒绝导出");
+  }
   const amount = BigInt(cents);
   const negative = amount < 0n;
   const absolute = negative ? -amount : amount;

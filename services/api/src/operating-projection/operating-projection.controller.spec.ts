@@ -80,6 +80,7 @@ describe("OperatingProjectionController query", () => {
       scopeKind: "project",
       projectId: "project-1",
       asOf: "2026-09-05",
+      exportKind: "project_operating_ledger_detail",
       confirmationPassword: "current-password"
     });
 
@@ -126,7 +127,8 @@ describe("OperatingProjectionController query", () => {
         projectId: "project-1",
         asOf: "2026-09-05"
       }),
-      "current-password"
+      "current-password",
+      "project_operating_ledger_detail"
     );
   });
 
@@ -155,11 +157,13 @@ describe("OperatingProjectionController query", () => {
     ["constructionEnterpriseId", []],
     ["counterpartyId", null],
     ["costCategoryCode", 1],
-    ["sourceType", {}]
+    ["sourceType", {}],
+    ["exportKind", {}]
   ])("rejects a non-string export %s before calling the service", async (field, value) => {
     await expect(createApiValidationPipe().transform({
       scopeKind: "project",
       projectId: "project-1",
+      exportKind: "project_operating_ledger_detail",
       confirmationPassword: "current-password",
       [field]: value
     }, {
@@ -168,19 +172,42 @@ describe("OperatingProjectionController query", () => {
     })).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("accepts the unchanged valid export JSON contract", async () => {
+  it("accepts the frozen export JSON contract with an explicit export kind", async () => {
     await expect(createApiValidationPipe().transform({
       scopeKind: "projects",
       projectIds: "project-1,project-2",
       sourceType: "owner_settlement",
+      exportKind: "takeover_coverage_evidence_gap",
       confirmationPassword: "current-password"
     }, {
       type: "body",
       metatype: OperatingProjectionExportDto
     })).resolves.toEqual(expect.objectContaining({
       scopeKind: "projects",
-      projectIds: "project-1,project-2"
+      projectIds: "project-1,project-2",
+      exportKind: "takeover_coverage_evidence_gap"
     }));
+  });
+
+  it("rejects absent, unknown, and overlong export inputs", async () => {
+    const transform = (body: Record<string, unknown>) => createApiValidationPipe().transform(
+      body,
+      { type: "body", metatype: OperatingProjectionExportDto }
+    );
+    const valid = {
+      scopeKind: "project",
+      projectId: "project-1",
+      exportKind: "project_operating_ledger_detail",
+      confirmationPassword: "current-password"
+    };
+    await expect(transform({ ...valid, exportKind: undefined }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(transform({ ...valid, exportKind: "unknown" }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(transform({ ...valid, projectIds: "p".repeat(2_049) }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(transform({ ...valid, confirmationPassword: "p".repeat(257) }))
+      .rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -236,6 +263,9 @@ describe("OperatingProjectionController real HTTP query validation", () => {
 
   it("enforces frozen 256/2048 limits and rejects unknown query fields", async () => {
     const base = `${await app.getUrl()}/operating-projections`;
+    const fiftySixProjectIds = Array.from({ length: 56 }, (_value, index) =>
+      `${String(index).padStart(8, "0")}-0000-4000-8000-000000000000`
+    ).join(",");
     expect((await fetch(`${base}/project/project-1/details?sourceType=${"s".repeat(256)}`)).status)
       .toBe(200);
     expect((await fetch(`${base}/project/project-1/details?sourceType=${"s".repeat(257)}`)).status)
@@ -248,6 +278,9 @@ describe("OperatingProjectionController real HTTP query validation", () => {
       .toBe(200);
     expect((await fetch(`${base}/as-of/details?scopeKind=projects&projectIds=${"p".repeat(2_049)}`)).status)
       .toBe(400);
+    expect((await fetch(
+      `${base}/as-of?scopeKind=projects&projectIds=${encodeURIComponent(fiftySixProjectIds)}`
+    )).status).toBe(400);
     expect((await fetch(`${base}/project/project-1?unknownField=blocked`)).status).toBe(400);
   });
 
@@ -282,4 +315,25 @@ describe("OperatingProjectionController real HTTP query validation", () => {
       })
     );
   });
+
+  it.each([
+    "2026/09/05",
+    "2026-09-05T00:00:00.000Z",
+    "2026-02-30"
+  ])("rejects non-canonical or nonexistent asOf %s", async (asOf) => {
+    const response = await fetch(
+      `${await app.getUrl()}/operating-projections/project/project-1/details?asOf=${encodeURIComponent(asOf)}`
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it.each(["0", "01", "1.0", " 1", "201"])(
+    "rejects non-canonical pageSize %s",
+    async (pageSize) => {
+      const response = await fetch(
+        `${await app.getUrl()}/operating-projections/project/project-1/details?pageSize=${encodeURIComponent(pageSize)}`
+      );
+      expect(response.status).toBe(400);
+    }
+  );
 });

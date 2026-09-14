@@ -106,7 +106,8 @@ export class OperatingProjectionController {
     const exported = await this.projections.exportView(
       user.id,
       asOfQuery({ ...body }),
-      body.confirmationPassword
+      body.confirmationPassword,
+      body.exportKind
     );
     return new StreamableFile(exported.stream, {
       type: exported.contentType,

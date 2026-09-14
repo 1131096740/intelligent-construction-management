@@ -1,4 +1,11 @@
-import { IsIn, IsString, MaxLength, ValidateIf } from "class-validator";
+import {
+  IsDateString,
+  IsIn,
+  IsString,
+  Matches,
+  MaxLength,
+  ValidateIf
+} from "class-validator";
 
 const SCOPE_KINDS = ["project", "company", "projects"] as const;
 const QUERY_VALUE_MAX_LENGTH = 256;
@@ -8,6 +15,10 @@ export class OperatingProjectionScopedQueryDto {
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "经营投影截止日期必须是字符串" })
   @MaxLength(QUERY_VALUE_MAX_LENGTH, { message: "经营投影截止日期不能超过 256 个字符" })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "经营投影截止日期必须是 YYYY-MM-DD" })
+  @IsDateString({ strict: true, strictSeparator: true }, {
+    message: "经营投影截止日期必须是真实日历日期"
+  })
   asOf?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
@@ -66,6 +77,9 @@ class OperatingProjectionDetailQueryDto extends OperatingProjectionScopedQueryDt
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "经营投影明细每页条数必须是字符串" })
   @MaxLength(QUERY_VALUE_MAX_LENGTH, { message: "经营投影明细每页条数不能超过 256 个字符" })
+  @Matches(/^(?:[1-9]|[1-9]\d|1\d\d|200)$/, {
+    message: "经营投影明细每页条数必须是 1 到 200 的十进制整数"
+  })
   pageSize?: string;
 }
 
@@ -84,5 +98,8 @@ export class OperatingProjectionAsOfDetailQueryDto extends OperatingProjectionAs
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "经营投影明细每页条数必须是字符串" })
   @MaxLength(QUERY_VALUE_MAX_LENGTH, { message: "经营投影明细每页条数不能超过 256 个字符" })
+  @Matches(/^(?:[1-9]|[1-9]\d|1\d\d|200)$/, {
+    message: "经营投影明细每页条数必须是 1 到 200 的十进制整数"
+  })
   pageSize?: string;
 }

@@ -1,4 +1,8 @@
-import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  PayloadTooLargeException
+} from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -493,13 +497,17 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       projectId: PROJECT_ID,
       asOf: CUTOFF_DATE,
       sourceType: "owner_settlement"
-    }, "pg16-confirmation-password");
-    expect(exported.fileName).toBe(`经营投影_${CUTOFF_DATE}.csv`);
+    }, "pg16-confirmation-password", "project_operating_ledger_detail");
+    expect(exported.fileName).toBe(`项目经营台账明细_${CUTOFF_DATE}.csv`);
     const exportedContent = await readUtf8Stream(exported.stream);
     expect(exportedContent).toContain(
-      '"分类","业务项目","金额（元）或数量","口径说明"'
+      '"项目编号","项目名称","来源类型","来源业务编号"'
     );
-    expect(exportedContent).toContain('"已确认收入","10.00"');
+    expect(exportedContent).toContain('"业主结算"');
+    expect(exportedContent).toContain('"10.00"');
+    expect(exportedContent).toContain(`"POL108-owner_settlement-${runId}"`);
+    expect(exportedContent).not.toContain("sourceBusinessId");
+    expect(exportedContent).not.toContain("creditCode");
     expect(exported).not.toHaveProperty("projection");
     const auditLog = await prisma.auditLog.findFirst({
       where: { actorUserId: READER_ID, action: "operating_projection.export" },
@@ -517,10 +525,52 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         projectIds: [PROJECT_ID]
       }),
       filters: expect.objectContaining({ sourceType: "owner_settlement" }),
+      exportKind: "project_operating_ledger_detail",
+      rowCount: 2,
       effectiveRoleKeysByProject: expect.objectContaining({
         [PROJECT_ID]: expect.arrayContaining(["finance_director"])
       })
     }));
+
+    const exportCases = [
+      {
+        exportKind: "construction_enterprise_funds_reconciliation" as const,
+        sourceType: "fund_movement",
+        expectedFile: "施工企业资金核对",
+        expectedLabel: "施工企业项目资金减少"
+      },
+      {
+        exportKind: "company_project_funds_subledger" as const,
+        sourceType: "fund_movement",
+        expectedFile: "公司项目资金分户账",
+        expectedLabel: "我方公司项目资金增加"
+      },
+      {
+        exportKind: "receivable_payable_cashflow_detail" as const,
+        sourceType: "owner_settlement",
+        expectedFile: "应收应付现金流明细",
+        expectedLabel: "应收增加"
+      },
+      {
+        exportKind: "takeover_coverage_evidence_gap" as const,
+        sourceType: "operating_takeover",
+        expectedFile: "历史接管覆盖与证据缺口",
+        expectedLabel: "历史资料缺口提示"
+      }
+    ];
+    for (const exportCase of exportCases) {
+      const result = await projection.exportView(READER_ID, {
+        scopeKind: "project",
+        projectId: PROJECT_ID,
+        asOf: CUTOFF_DATE,
+        sourceType: exportCase.sourceType
+      }, "pg16-confirmation-password", exportCase.exportKind);
+      expect(result.fileName).toBe(`${exportCase.expectedFile}_${CUTOFF_DATE}.csv`);
+      const content = await readUtf8Stream(result.stream);
+      expect(content).toContain(`"${exportCase.expectedLabel}"`);
+      expect(content).not.toContain("sourceBusinessId");
+      expect(content).not.toContain("subjectId");
+    }
 
     const currentClearingView = await projection.getProjectView(READER_ID, {
       projectId: PROJECT_ID,
@@ -543,6 +593,16 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     expect(currentClearingDetails.items[0]).not.toHaveProperty("impactId");
     expect(currentClearingDetails.items[0]).not.toHaveProperty("subjectId");
     expect(currentClearingDetails.items[0]).not.toHaveProperty("description");
+    const clearingExport = await projection.exportView(READER_ID, {
+      scopeKind: "project",
+      projectId: PROJECT_ID,
+      sourceType: "clearing_event_version",
+      costCategoryCode: "construction_enterprise_deduction",
+      constructionEnterpriseId: affiliate.businessPartyId
+    }, "pg16-confirmation-password", "construction_enterprise_funds_reconciliation");
+    const clearingExportContent = await readUtf8Stream(clearingExport.stream);
+    expect(clearingExportContent).toContain('"待核对状态"');
+    expect(clearingExportContent).toContain('"待核对"');
 
     const historicalClearingView = await projection.getProjectView(READER_ID, {
       projectId: PROJECT_ID,
@@ -661,6 +721,12 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
         !Object.hasOwn(query.select, "impactSnapshot") &&
         !Object.hasOwn(query.select, "description")
       )).toBe(true);
+      await expect(projection.exportView(READER_ID, {
+        scopeKind: "project",
+        projectId: PROJECT_ID,
+        sourceType: targetSourceType
+      }, "pg16-confirmation-password", "project_operating_ledger_detail"))
+        .rejects.toBeInstanceOf(ConflictException);
     } finally {
       capturedDetailFindManyQueries = null;
     }
@@ -1126,6 +1192,87 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
     } finally {
       capturedDetailFindManyQueries = null;
     }
+  });
+
+  it("在同一事务内对三类明细终态执行 UTF-8 8 MiB 门禁并覆盖临界值", async () => {
+    const belowLimitCode = "B".repeat(8 * 1024 * 1024 - 4_096);
+    await append("expense_claim", {
+      sourceBusinessCode: belowLimitCode,
+      factKind: "expense",
+      amountCents: 1n,
+      direction: "outflow",
+      occurredAt: new Date("2026-09-02T08:00:00.000Z"),
+      impacts: [impact("detail-response-below-limit", "confirmed_cost", 1n, "increase")]
+    });
+    const belowLimit = await projection.getProjectDetailPage(READER_ID, {
+      projectId: PROJECT_ID,
+      sourceType: "expense_claim",
+      pageSize: "1"
+    });
+    expect(Buffer.byteLength(JSON.stringify(belowLimit), "utf8"))
+      .toBeLessThanOrEqual(8 * 1024 * 1024);
+
+    const aboveLimitCode = "A".repeat(8 * 1024 * 1024);
+    await append("wage_statement_version", {
+      sourceBusinessCode: aboveLimitCode,
+      factKind: "project_wage",
+      amountCents: 1n,
+      direction: "outflow",
+      occurredAt: new Date("2026-09-02T09:00:00.000Z"),
+      impacts: [impact("detail-response-above-limit", "confirmed_cost", 1n, "increase")]
+    });
+    await expect(projection.getProjectDetailPage(READER_ID, {
+      projectId: PROJECT_ID,
+      sourceType: "wage_statement_version",
+      pageSize: "1"
+    })).rejects.toBeInstanceOf(PayloadTooLargeException);
+
+    const companyDetail = await projection.getCompanyDetailPage(READER_ID, {
+      companyEntityId,
+      sourceType: "fund_movement",
+      pageSize: "1"
+    });
+    const projectSetDetail = await projection.getAsOfDetailPage(READER_ID, {
+      scopeKind: "projects",
+      projectIds: [PROJECT_ID],
+      sourceType: "owner_settlement",
+      pageSize: "1"
+    });
+    for (const response of [companyDetail, projectSetDetail]) {
+      expect(Buffer.byteLength(JSON.stringify(response), "utf8"))
+        .toBeLessThanOrEqual(8 * 1024 * 1024);
+    }
+  });
+
+  it("省略 projectIds 时由后端在 500 个可见项目内取全集并在 501 个时返回 413", async () => {
+    const activeCount = await prisma.project.count({ where: { isActive: true } });
+    expect(activeCount).toBeLessThanOrEqual(500);
+    const required = 500 - activeCount;
+    if (required > 0) {
+      await prisma.project.createMany({
+        data: Array.from({ length: required }, (_value, index) => ({
+          id: `pol108-visible-${runId}-${index}`,
+          code: `POL108-VISIBLE-${runId}-${index}`,
+          name: `POL-108 可见项目 ${index}`,
+          isActive: true
+        }))
+      });
+    }
+    const boundary = await projection.getAsOfView(READER_ID, {
+      scopeKind: "projects"
+    });
+    expect(boundary.scope).toEqual({ label: "多项目汇总口径", projectCount: 500 });
+
+    await prisma.project.create({
+      data: {
+        id: `pol108-visible-${runId}-overflow`,
+        code: `POL108-VISIBLE-${runId}-OVERFLOW`,
+        name: "POL-108 第 501 个可见项目",
+        isActive: true
+      }
+    });
+    await expect(projection.getAsOfView(READER_ID, { scopeKind: "projects" }))
+      .rejects.toBeInstanceOf(PayloadTooLargeException);
   });
 
   async function createCurrentClearingRiskFixture() {
