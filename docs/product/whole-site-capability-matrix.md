@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `f8880f950aa24bb1495a6898f8c27f92d1189fb19ad76ec66530296e34acc762` |
-| webApiWrappers | ready | `682b622a34e784c8e9e314a976a598ed765490f83790c3f8bcff5052be3dd7db` |
-| webPageActions | ready | `3db2795d1b582db25c67f3e70f1e09af833d6b619e717d3570e1ef26d80fe717` |
-| routeUsage | ready | `b695f256295f0b0dd81c43fc759d4371cc2d267cd61db78ba262fae22dc4f86b` |
+| webApiWrappers | ready | `efdc7b7c78f47559ca48c2c022789fed4c972963d20d361df40523cc0f9dfd2b` |
+| webPageActions | ready | `ee0c19e5597e035fd4cf3b50c25abab8a5465ea7c4a5c3ba91943077cc1e990b` |
+| routeUsage | ready | `50391d47f68343f0964137b7959d2a42ec2be9b9944c2d104f2a94e77a278955` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 593 |
-| pageRouteCount | 375 |
+| pageRouteCount | 376 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 40 |
+| internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 565 |
+| mainRequestBindingCount | 566 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 301 |
-| actionBindingCount | 336 |
-| acceptedActionBindingCount | 316 |
+| registeredActionCount | 302 |
+| actionBindingCount | 337 |
+| acceptedActionBindingCount | 317 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 289 |
-| coveredProductionMutationConsumerPairCount | 289 |
+| productionMutationConsumerPairCount | 290 |
+| coveredProductionMutationConsumerPairCount | 290 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -409,7 +409,7 @@
 | POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
 | POST | /necessary-expense-reserves/drafts | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#saveNecessaryExpenseReserveDraft | necessary-expense-reserve.draft.save | covered | — |
 | POST | /necessary-expense-reserves/entries/:entryId/transition | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#transitionNecessaryExpenseReserve | necessary-expense-reserve.attest<br>necessary-expense-reserve.confirm<br>necessary-expense-reserve.return<br>necessary-expense-reserve.submit | covered | — |
-| POST | /operating-projections/export | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /operating-projections/export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadOperatingProjectionExport | project-operating-projection.export | covered | — |
 | POST | /operating-takeovers/historical-wage/scopes/activate | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/apply | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/attest | internal_task | operator_endpoint | — | — | not_applicable | — |

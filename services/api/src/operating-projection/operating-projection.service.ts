@@ -582,7 +582,11 @@ export class OperatingProjectionService {
     actorUserId: string,
     input: ProjectProjectionQuery,
     readAdditional: (tx: Prisma.TransactionClient, projectIds: string[]) => Promise<T>
-  ): Promise<{ projection: OperatingProjectionAggregateView; additional: T }> {
+  ): Promise<{
+    projection: OperatingProjectionAggregateView;
+    additional: T;
+    canExportDetail: boolean;
+  }> {
     const projectId = required(input.projectId, "项目标识不能为空");
     const bundle = await this.readProjectionBundle({
       actorUserId,
@@ -592,10 +596,28 @@ export class OperatingProjectionService {
         filters: projectionFilters(input)
       },
       asOf: input.asOf
-    }, readAdditional);
+    }, async (tx, projectIds) => {
+      const effectiveRoleKeysByProject =
+        await this.projectVisibility.effectiveRoleKeysByProjectInTransaction(
+          tx,
+          actorUserId,
+          projectIds
+        );
+      const additional = await readAdditional(tx, projectIds);
+      return {
+        additional,
+        canExportDetail: projectIds.every((currentProjectId) =>
+          canPerform(
+            "operating_projection.detail.read",
+            effectiveRoleKeysByProject.get(currentProjectId) ?? []
+          )
+        )
+      };
+    });
     return {
       projection: toOperatingProjectionAggregate(bundle.projection),
-      additional: bundle.additional
+      additional: bundle.additional.additional,
+      canExportDetail: bundle.additional.canExportDetail
     };
   }
 

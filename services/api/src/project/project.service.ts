@@ -774,7 +774,7 @@ export class ProjectService {
     if (!this.operatingProjection) {
       throw new Error("经营投影服务未完成装配");
     }
-    const { projection, additional } =
+    const { projection, additional, canExportDetail } =
       await this.operatingProjection.readProjectCompatibilitySnapshot(
         actorUserId,
         { projectId },
@@ -847,7 +847,8 @@ export class ProjectService {
           ? [`存在 ${projection.evidence.gapFactCount} 条 C 级历史资料缺口，未进入正式金额。`]
           : [])
       ],
-      operatingProjection: projection
+      operatingProjection: projection,
+      canExportOperatingProjection: canExportDetail
     };
   }
 

@@ -6,21 +6,21 @@
     "routeCount": 593,
     "classificationOverrideCount": 221,
     "derivedProductionPageCount": 372,
-    "classificationOverrideSha256": "38d2f25bbc3fc2c8311bfd6608ca23936bc99b8ee912bb79df98b2e6c5051c30",
-    "consumerSurfaceOverrideSha256": "f6c511b992fe8cd464216573a001f0b612a65d71b5de3e2ada5ba155d2becf6d",
+    "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
+    "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
     "usageCounts": {
-      "page": 375,
+      "page": 376,
       "external_takeover": 70,
       "exit_candidate": 108,
-      "internal_task": 40,
+      "internal_task": 39,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 427,
+      "web_api_wrapper": 428,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 38,
+      "operator_endpoint": 37,
       "none": 120
     }
   },
@@ -58,8 +58,8 @@
     {
       "method": "POST",
       "path": "/operating-projections/export",
-      "usage": "internal_task",
-      "reason": "pol_108_controlled_chinese_operating_projection_export_endpoint"
+      "usage": "page",
+      "reason": "pol_108_finance_only_project_operating_projection_export_page_action"
     },
     {
       "method": "GET",
@@ -1376,12 +1376,6 @@
       "path": "/operating-projections/company/:companyEntityId/details",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_108_authenticated_finance_detail_endpoint"
-    },
-    {
-      "method": "POST",
-      "path": "/operating-projections/export",
-      "consumerSurface": "operator_endpoint",
-      "reason": "pol_108_authenticated_controlled_export_endpoint"
     },
     {
       "method": "GET",

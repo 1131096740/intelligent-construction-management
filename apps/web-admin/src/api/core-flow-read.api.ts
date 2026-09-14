@@ -1787,6 +1787,7 @@ export interface ProjectOperatingOverviewReadModel {
   };
   dataGaps: string[];
   operatingProjection: OperatingProjectionAggregateReadModel;
+  canExportOperatingProjection: boolean;
 }
 
 export type ProjectUpstreamFundFactType =

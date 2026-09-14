@@ -74,6 +74,40 @@ function overviewVisibility(projectIds: string[]) {
 describe("OperatingProjectionService", () => {
   const project = { id: "project-1", code: "XM-001", name: "一号项目" };
 
+  it.each([
+    ["finance_staff", true],
+    ["finance_director", true],
+    ["project_manager", false]
+  ])("returns a server-derived detail export capability for %s", async (
+    roleKey,
+    expected
+  ) => {
+    const readAt = new Date("2026-09-11T01:02:03.000Z");
+    const tx = emptyProjectionTx(readAt, [project]);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(
+      new Map([[project.id, [roleKey]]])
+    );
+    const additional = jest.fn().mockResolvedValue({ marker: "same-snapshot" });
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never,
+      visibility as never,
+      zeroRiskReader() as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await expect(service.readProjectCompatibilitySnapshot(
+      "user-1",
+      { projectId: project.id },
+      additional
+    )).resolves.toEqual(expect.objectContaining({
+      additional: { marker: "same-snapshot" },
+      canExportDetail: expected
+    }));
+    expect(additional).toHaveBeenCalledWith(tx, [project.id]);
+  });
+
   it("limits per-actor concurrent and minute-rate projection reads", () => {
     const limiter = new OperatingProjectionReadLimiter(2, 3);
     const releaseFirst = limiter.acquire("user-1", 60_000);

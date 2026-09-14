@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "682b622a34e784c8e9e314a976a598ed765490f83790c3f8bcff5052be3dd7db",
+      "sha256": "efdc7b7c78f47559ca48c2c022789fed4c972963d20d361df40523cc0f9dfd2b",
       "status": "ready",
       "summary": {
         "apiModuleCount": 27,
-        "exportedFunctionCount": 563,
-        "transportWrapperCount": 543,
+        "exportedFunctionCount": 564,
+        "transportWrapperCount": 544,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 565,
+        "mainRequestBindingCount": 566,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 565,
-        "productionConsumerCount": 437,
+        "requestEdgeCount": 566,
+        "productionConsumerCount": 438,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,50 +42,50 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "3db2795d1b582db25c67f3e70f1e09af833d6b619e717d3570e1ef26d80fe717",
+      "sha256": "ee0c19e5597e035fd4cf3b50c25abab8a5465ea7c4a5c3ba91943077cc1e990b",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 301,
-        "pageActionCount": 53,
+        "registeredActionCount": 302,
+        "pageActionCount": 54,
         "backgroundActionCount": 248,
         "reachableVueFileCount": 138,
         "routeRootCount": 59,
         "totalVueFileCount": 162,
         "parsedVueFileCount": 162,
         "reachableProductionModuleCount": 255,
-        "templateEventDirectiveCount": 955,
+        "templateEventDirectiveCount": 958,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 289,
-        "candidateProductionMutationConsumerCount": 289,
-        "acceptedProductionMutationConsumerCount": 289,
-        "productionMutationConsumerPairCount": 289,
+        "coveredProductionMutationConsumerCount": 290,
+        "candidateProductionMutationConsumerCount": 290,
+        "acceptedProductionMutationConsumerCount": 290,
+        "productionMutationConsumerPairCount": 290,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "b695f256295f0b0dd81c43fc759d4371cc2d267cd61db78ba262fae22dc4f86b",
+      "sha256": "50391d47f68343f0964137b7959d2a42ec2be9b9944c2d104f2a94e77a278955",
       "status": "ready",
       "summary": {
         "routeCount": 593,
         "exactRouteCount": 593,
         "normalizedRouteCount": 593,
         "classificationOverrideCount": 221,
-        "consumerSurfaceOverrideCount": 41,
-        "classificationOverrideSha256": "38d2f25bbc3fc2c8311bfd6608ca23936bc99b8ee912bb79df98b2e6c5051c30",
-        "consumerSurfaceOverrideSha256": "f6c511b992fe8cd464216573a001f0b612a65d71b5de3e2ada5ba155d2becf6d",
+        "consumerSurfaceOverrideCount": 40,
+        "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
+        "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
         "derivedProductionPageCount": 372,
-        "pageRouteCount": 375,
+        "pageRouteCount": 376,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
-        "internalTaskCount": 40,
+        "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 427,
+          "web_api_wrapper": 428,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 38,
+          "operator_endpoint": 37,
           "none": 120
         },
         "blockerCount": 0
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 593,
-    "pageRouteCount": 375,
+    "pageRouteCount": 376,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
-    "internalTaskRouteCount": 40,
+    "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 565,
+    "mainRequestBindingCount": 566,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 301,
-    "actionBindingCount": 336,
-    "acceptedActionBindingCount": 316,
+    "registeredActionCount": 302,
+    "actionBindingCount": 337,
+    "acceptedActionBindingCount": 317,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 289,
-    "coveredProductionMutationConsumerPairCount": 289,
+    "productionMutationConsumerPairCount": 290,
+    "coveredProductionMutationConsumerPairCount": 290,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -20161,12 +20161,53 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "internal_task",
-      "consumerSurface": "operator_endpoint",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadOperatingProjectionExport",
+          "method": "POST",
+          "path": "/operating-projections/export",
+          "normalizedKey": "POST /operating-projections/export",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "project-operating-projection.export",
+          "bindingIndex": 0,
+          "identity": "project-operating-projection.export\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadOperatingProjectionExport\u0000POST\u0000POST /operating-projections/export\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "overview.canExportOperatingProjection",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadOperatingProjectionExport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

@@ -764,7 +764,8 @@ describe("ProjectService", () => {
       readProjectCompatibilitySnapshot: jest.fn().mockImplementation(
         async (_actorUserId, _input, readAdditional) => ({
           projection: aggregate,
-          additional: await readAdditional(prisma, ["project-1"])
+          additional: await readAdditional(prisma, ["project-1"]),
+          canExportDetail: true
         })
       )
     };
@@ -811,7 +812,8 @@ describe("ProjectService", () => {
         oralCount: 1
       }),
       counts: { contracts: 2, settlements: 3, payments: 4 },
-      operatingProjection: aggregate
+      operatingProjection: aggregate,
+      canExportOperatingProjection: true
     }));
     expect(result).not.toHaveProperty("schema");
     expect(result.upstreamFunds).not.toHaveProperty("rows");

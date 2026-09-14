@@ -16,7 +16,7 @@ describe("project operating overview structure", () => {
   });
 
   it("separates overview, expense-ledger and expense-create capabilities", () => {
-    expect(source).toContain("canReadProjectOverview.value\n        ? fetchProjectOperatingOverview(projectId)");
+    expect(source).toContain("if (canReadProjectOverview.value) {\n      nextOverview = await fetchProjectOperatingOverview(projectId);");
     expect(source).toContain("loadOptionalProjectUpstreamFundFacts(\n        projectId");
     expect(source).toContain("canRecordUpstreamFunds.value,\n        fetchProjectUpstreamFundFacts");
     expect(source).toContain("upstreamFundFacts.value = nextUpstreamFundFacts.facts");
@@ -46,7 +46,12 @@ describe("project operating overview structure", () => {
     expect(source).toContain("takeover_coverage_evidence_gap");
     expect(source).toContain("downloadOperatingProjectionExport({");
     expect(source).toContain(':require-password="true"');
-    expect(source).toContain('["finance_director", "finance_staff"].includes(role)');
+    expect(source).toContain(
+      "overview.value?.canExportOperatingProjection === true"
+    );
+    expect(source).not.toContain(
+      'const canExportOperatingProjection = computed(\n  () =>\n    auth.user?.roleKeys'
+    );
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {

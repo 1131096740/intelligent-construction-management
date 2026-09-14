@@ -14,28 +14,28 @@
     "exactRouteCount": 593,
     "normalizedRouteCount": 593,
     "classificationOverrideCount": 221,
-    "consumerSurfaceOverrideCount": 41,
-    "classificationOverrideSha256": "38d2f25bbc3fc2c8311bfd6608ca23936bc99b8ee912bb79df98b2e6c5051c30",
-    "consumerSurfaceOverrideSha256": "f6c511b992fe8cd464216573a001f0b612a65d71b5de3e2ada5ba155d2becf6d",
+    "consumerSurfaceOverrideCount": 40,
+    "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
+    "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
     "derivedProductionPageCount": 372,
-    "pageRouteCount": 375,
+    "pageRouteCount": 376,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
-    "internalTaskCount": 40,
+    "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 427,
+      "web_api_wrapper": 428,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 38,
+      "operator_endpoint": 37,
       "none": 120
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 427,
+    "productionWrapperRouteCount": 428,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -2832,7 +2832,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5384,
+            "sourceLine": 5421,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
@@ -15083,15 +15083,26 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "internal_task",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "pol_108_controlled_chinese_operating_projection_export_endpoint",
-      "consumerSurface": "operator_endpoint",
+      "classificationReason": "pol_108_finance_only_project_operating_projection_export_page_action",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "downloadOperatingProjectionExport",
+            "method": "POST",
+            "normalizedPath": "/operating-projections/export",
+            "normalizedKey": "POST /operating-projections/export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": "pol_108_authenticated_controlled_export_endpoint"
+        "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null

@@ -926,6 +926,7 @@
     </t-tabs>
 
     <SensitiveActionDialog
+      v-if="overview?.canExportOperatingProjection"
       v-model="operatingProjectionExportVisible"
       title="确认导出经营投影明细"
       description="导出文件包含当前项目的财务经营明细。请输入当前登录密码确认本人操作。"
@@ -1332,10 +1333,7 @@ const canRecordUpstreamFunds = computed(
     ) ?? false
 );
 const canExportOperatingProjection = computed(
-  () =>
-    auth.user?.roleKeys.some((role) =>
-      ["finance_director", "finance_staff"].includes(role)
-    ) ?? false
+  () => overview.value?.canExportOperatingProjection === true
 );
 const canReadProjectOverview = computed(
   () =>
@@ -1682,32 +1680,30 @@ function closeOperatingProjectionExport() {
   operatingProjectionExportError.value = "";
 }
 
-async function submitOperatingProjectionExport(values: { reason: string; password: string }) {
+function submitOperatingProjectionExport(values: { reason: string; password: string }) {
   const projectId = operatingProjectionExportProjectId.value;
-  if (!projectId || projectId !== selectedProjectId.value) {
-    operatingProjectionExportError.value = "当前项目已变化，请关闭后重新发起导出";
-    return;
-  }
   operatingProjectionExportBusy.value = true;
   operatingProjectionExportError.value = "";
-  try {
-    await downloadOperatingProjectionExport({
+  return downloadOperatingProjectionExport({
       scopeKind: "project",
       projectId,
       exportKind: operatingProjectionExportKind.value,
       confirmationPassword: values.password
+    })
+    .then(() => {
+      operatingProjectionExportVisible.value = false;
+      operatingProjectionExportProjectId.value = "";
+      operatingProjectionExportMessage.value = "CSV 已生成并开始下载。";
+    })
+    .catch((error: unknown) => {
+      operatingProjectionExportError.value = formatUnknownApiError(
+        error,
+        "导出经营投影失败"
+      );
+    })
+    .finally(() => {
+      operatingProjectionExportBusy.value = false;
     });
-    operatingProjectionExportVisible.value = false;
-    operatingProjectionExportProjectId.value = "";
-    operatingProjectionExportMessage.value = "CSV 已生成并开始下载。";
-  } catch (error) {
-    operatingProjectionExportError.value = formatUnknownApiError(
-      error,
-      "导出经营投影失败"
-    );
-  } finally {
-    operatingProjectionExportBusy.value = false;
-  }
 }
 
 async function loadOverview() {
@@ -1740,18 +1736,7 @@ async function loadOverview() {
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [
-      nextOverview,
-      nextUpstreamFundFacts,
-      nextExpenses,
-      spotCapability,
-      nextFinancingQuota,
-      nextParticipatingCompanies,
-      nextUpstreamFundReferenceOptions
-    ] = await Promise.all([
-      canReadProjectOverview.value
-        ? fetchProjectOperatingOverview(projectId)
-        : Promise.resolve(null),
+    const companionRequests = Promise.all([
       loadOptionalProjectUpstreamFundFacts(
         projectId,
         canRecordUpstreamFunds.value,
@@ -1791,6 +1776,18 @@ async function loadOverview() {
             }))
         : Promise.resolve({ options: null, error: "" })
     ]);
+    let nextOverview: ProjectOperatingOverviewReadModel | null = null;
+    if (canReadProjectOverview.value) {
+      nextOverview = await fetchProjectOperatingOverview(projectId);
+    }
+    const [
+      nextUpstreamFundFacts,
+      nextExpenses,
+      spotCapability,
+      nextFinancingQuota,
+      nextParticipatingCompanies,
+      nextUpstreamFundReferenceOptions
+    ] = await companionRequests;
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
       selectedProjectId.value === projectId
