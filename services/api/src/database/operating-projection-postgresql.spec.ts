@@ -65,9 +65,13 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   let capturedReadSql: string[] | null = null;
   let capturedWorkBudgets: Array<{ workFactCount: bigint; targetCount: bigint }> | null = null;
   prisma.$use(async (params, next) => {
-    if (capturedReadSql && params.action === "queryRaw" && typeof params.args?.query === "string") {
-      capturedReadSql.push(params.args.query);
-    }
+    // Prisma middleware runs before raw-query serialization: tagged templates
+    // arrive as [strings, ...values], Prisma.sql as [Sql], not { query }.
+    const rawArgument: unknown = params.action === "queryRaw" ? params.args?.[0] : undefined;
+    const sql = Array.isArray(rawArgument) ? rawArgument.join("?")
+      : rawArgument && typeof rawArgument === "object" && "sql" in rawArgument && typeof rawArgument.sql === "string"
+        ? rawArgument.sql : typeof rawArgument === "string" ? rawArgument : "";
+    if (capturedReadSql && sql) capturedReadSql.push(sql);
     if (
       capturedDetailFindManyQueries &&
       params.model === "OperatingImpactEntry" &&
@@ -76,8 +80,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       capturedDetailFindManyQueries.push(params.args);
     }
     const result = await next(params);
-    if (capturedWorkBudgets && params.action === "queryRaw" &&
-      typeof params.args?.query === "string" && params.args.query.includes('AS "workFactCount"')) {
+    if (capturedWorkBudgets && sql.includes('AS "workFactCount"')) {
       capturedWorkBudgets.push(...result);
     }
     return result;
@@ -1227,8 +1230,10 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       const belowLimit = await projection.getProjectDetailPage(READER_ID, {
         projectId: PROJECT_ID,
         sourceType: "expense_claim",
+        asOf: CUTOFF_DATE,
         pageSize: "1"
       });
+      expect(JSON.stringify(belowLimit)).toContain(belowLimitCode);
       const belowLimitBytes = Buffer.byteLength(JSON.stringify(belowLimit), "utf8");
       expect(belowLimitBytes).toBeLessThanOrEqual(8 * 1024 * 1024);
       expect(belowLimitBytes).toBeGreaterThan(7.5 * 1024 * 1024);
@@ -1240,6 +1245,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       await expect(projection.getProjectDetailPage(READER_ID, {
         projectId: PROJECT_ID,
         sourceType: "expense_claim",
+        asOf: CUTOFF_DATE,
         pageSize: "1"
       })).rejects.toMatchObject({
         message: expect.stringContaining("经营投影明细响应超出 8 MiB")
