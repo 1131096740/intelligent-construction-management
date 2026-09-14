@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 52,
-    "fullyPendingSuites": 41,
+    "pendingFiles": 53,
+    "fullyPendingSuites": 42,
     "partiallyPendingSuites": 11,
-    "pendingTests": 229,
-    "coveredFiles": 52,
-    "coveredTests": 229,
+    "pendingTests": 243,
+    "coveredFiles": 53,
+    "coveredTests": 243,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -259,6 +259,23 @@
         "kind": "workspaceScript",
         "script": "verify:pol280-project-fund-dispute:local",
         "path": "services/api/prisma/run-pol280-project-fund-dispute-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "operating_projection_pol108",
+      "pendingTests": 14,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/operating-projection-postgresql.spec.ts",
+          "pendingTests": 14,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol108-operating-projection:local",
+        "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
       },
       "state": "executable_local_runner"
     },

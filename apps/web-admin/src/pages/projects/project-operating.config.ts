@@ -1,5 +1,9 @@
 import type { ContractBusinessOptionReadModel, MoneyCents } from "@jiangkong/shared-domain";
-import type { ProjectOperatingOverviewReadModel } from "../../api/core-flow-read.api";
+import type {
+  OperatingProjectionAggregateReadModel,
+  ProjectOptionReadModel
+} from "../../api/core-flow-read.api";
+import { centsTextToYuanText } from "../../lib/money";
 
 export type ProjectProxySettlementOption = ContractBusinessOptionReadModel["settlements"][number];
 
@@ -20,26 +24,17 @@ export interface ExecutiveProjectOverviewRow {
   id: string;
   code: string;
   name: string;
-  contractAmountCents: MoneyCents;
-  settlementAmountCents: MoneyCents;
-  payableAmountCents: MoneyCents;
-  actualReceiptsCents: MoneyCents | null;
-  supplierRefundsCents: MoneyCents | null;
-  actualPaidCents: MoneyCents;
-  approvedPendingPaymentCents: MoneyCents;
-  availableFundsCents: MoneyCents | null;
-  dataGapCount: number;
 }
 
 export interface ExecutiveProjectOverviewSummary {
   projectCount: number;
   contractAmountCents: MoneyCents;
-  settlementAmountCents: MoneyCents;
-  payableAmountCents: MoneyCents;
+  settlementAmountCents: MoneyCents | null;
+  payableAmountCents: MoneyCents | null;
   actualReceiptsCents: MoneyCents | null;
   supplierRefundsCents: MoneyCents | null;
   actualPaidCents: MoneyCents;
-  approvedPendingPaymentCents: MoneyCents;
+  approvedPendingPaymentCents: MoneyCents | null;
   availableFundsCents: MoneyCents | null;
   dataGapCount: number;
 }
@@ -47,6 +42,10 @@ export interface ExecutiveProjectOverviewSummary {
 export interface ExecutiveProjectOverview {
   summary: ExecutiveProjectOverviewSummary;
   rows: ExecutiveProjectOverviewRow[];
+}
+
+export function formatExecutiveMoneyCents(value: MoneyCents | null): string {
+  return value === null ? "—" : `¥${centsTextToYuanText(value)}`;
 }
 
 export function findProjectProxyContract(
@@ -116,60 +115,29 @@ export function buildProjectBusinessEntries(
 }
 
 export function buildExecutiveProjectOverview(
-  overviews: ProjectOperatingOverviewReadModel[]
+  projection: OperatingProjectionAggregateReadModel,
+  projects: ProjectOptionReadModel[]
 ): ExecutiveProjectOverview {
-  const rows = overviews
-    .map((overview) => ({
-      id: overview.project.id,
-      code: overview.project.code,
-      name: overview.project.name,
-      contractAmountCents: overview.business.effectiveContractAmountCents,
-      settlementAmountCents: overview.business.effectiveSettlementAmountCents,
-      payableAmountCents: overview.business.payableSettlementAmountCents,
-      actualReceiptsCents: overview.cash.actualReceiptsCents,
-      supplierRefundsCents:
-        overview.cash.supplierRefundsCents,
-      actualPaidCents: overview.cash.actualPaidCents,
-      approvedPendingPaymentCents: overview.cash.approvedPendingPaymentCents,
-      availableFundsCents: overview.cash.availableFundsCents,
-      dataGapCount: overview.dataGaps.length
-    }))
-    .sort((left, right) => {
-      const leftAmount = BigInt(left.payableAmountCents);
-      const rightAmount = BigInt(right.payableAmountCents);
-      return leftAmount === rightAmount ? 0 : leftAmount > rightAmount ? -1 : 1;
-    });
+  const rows = projects
+    .map(({ id, code, name }) => ({ id, code, name }))
+    .sort((left, right) =>
+      left.code.localeCompare(right.code, "zh-CN") ||
+      left.name.localeCompare(right.name, "zh-CN")
+    );
 
   return {
     rows,
     summary: {
-      projectCount: rows.length,
-      contractAmountCents: sumMoneyCents(rows.map((row) => row.contractAmountCents)),
-      settlementAmountCents: sumMoneyCents(rows.map((row) => row.settlementAmountCents)),
-      payableAmountCents: sumMoneyCents(rows.map((row) => row.payableAmountCents)),
-      actualReceiptsCents: sumNullableCents(rows.map((row) => row.actualReceiptsCents)),
-      supplierRefundsCents: sumNullableCents(
-        rows.map((row) => row.supplierRefundsCents)
-      ),
-      actualPaidCents: sumMoneyCents(rows.map((row) => row.actualPaidCents)),
-      approvedPendingPaymentCents: sumMoneyCents(
-        rows.map((row) => row.approvedPendingPaymentCents)
-      ),
-      availableFundsCents: sumNullableCents(rows.map((row) => row.availableFundsCents)),
-      dataGapCount: sumNumbers(rows.map((row) => row.dataGapCount))
+      projectCount: projection.scope.projectCount,
+      contractAmountCents: projection.commitments.contractCommitmentCents,
+      settlementAmountCents: null,
+      payableAmountCents: null,
+      actualReceiptsCents: null,
+      supplierRefundsCents: null,
+      actualPaidCents: projection.actualFunds.confirmedProjectOutflowsCents,
+      approvedPendingPaymentCents: null,
+      availableFundsCents: projection.distribution.cashCeilingCents,
+      dataGapCount: projection.evidence.gapFactCount + projection.integrity.notices.length
     }
   };
-}
-
-function sumNumbers(values: number[]): number {
-  return values.reduce((sum, value) => sum + value, 0);
-}
-
-function sumMoneyCents(values: MoneyCents[]): MoneyCents {
-  return values.reduce((sum, value) => sum + BigInt(value), 0n).toString();
-}
-
-function sumNullableCents(values: Array<MoneyCents | null>): MoneyCents | null {
-  const knownValues = values.filter((value): value is MoneyCents => value !== null);
-  return knownValues.length ? sumMoneyCents(knownValues) : null;
 }

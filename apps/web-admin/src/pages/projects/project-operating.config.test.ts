@@ -1,14 +1,22 @@
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { describe, expect, it } from "vitest";
+import type { OperatingProjectionAggregateReadModel } from "../../api/core-flow-read.api";
 import {
   buildExecutiveProjectOverview,
   buildProjectBusinessEntries,
   buildProxyPaymentLinkPayload,
   findProjectProxyContract,
-  findProjectProxySettlement
+  findProjectProxySettlement,
+  formatExecutiveMoneyCents
 } from "./project-operating.config";
 
 describe("project-operating proxy payment helpers", () => {
+  it("keeps unknown executive money distinct from a proven zero", () => {
+    expect(formatExecutiveMoneyCents(null)).toBe("—");
+    expect(formatExecutiveMoneyCents("0")).toBe("¥0.00");
+    expect(formatExecutiveMoneyCents("12345")).toBe("¥123.45");
+  });
+
   it("builds proxy payment links from selected business options instead of typed ids", () => {
     const contract = contractOption();
 
@@ -43,50 +51,42 @@ describe("project-operating proxy payment helpers", () => {
     ]);
   });
 
-  it("aggregates visible projects into an executive overview", () => {
-    const overview = buildExecutiveProjectOverview([
-      projectOverview({
-        id: "project-a",
-        code: "P-A",
-        name: "一号项目",
-        contractAmountCents: "10000000",
-        settlementAmountCents: "6000000",
-        payableAmountCents: "4000000",
-        actualReceiptsCents: "5000000",
-        supplierRefundsCents: "100000",
-        actualPaidCents: "2000000",
-        approvedPendingPaymentCents: "1000000",
-        availableFundsCents: "3000000",
-        dataGaps: ["缺收款依据"]
-      }),
-      projectOverview({
-        id: "project-b",
-        code: "P-B",
-        name: "二号项目",
-        contractAmountCents: "20000000",
-        settlementAmountCents: "8000000",
-        payableAmountCents: "5000000",
-        actualReceiptsCents: null,
-        supplierRefundsCents: null,
-        actualPaidCents: "3000000",
-        approvedPendingPaymentCents: "2000000",
-        availableFundsCents: null,
-        dataGaps: []
-      })
+  it("uses one server-side project-set projection for the executive overview", () => {
+    const projection = projectOverview({
+      id: "project-a",
+      code: "P-A",
+      name: "一号项目",
+      contractAmountCents: "30000000",
+      settlementAmountCents: "0",
+      payableAmountCents: "0",
+      actualReceiptsCents: "0",
+      supplierRefundsCents: "0",
+      actualPaidCents: "5000000",
+      approvedPendingPaymentCents: "0",
+      availableFundsCents: null,
+      dataGaps: []
+    }).operatingProjection as OperatingProjectionAggregateReadModel;
+    projection.scope.projectCount = 2;
+    projection.integrity.notices = ["存在待核验关系"];
+    projection.evidence.gapFactCount = 1;
+
+    const overview = buildExecutiveProjectOverview(projection, [
+      { id: "project-b", code: "P-B", name: "二号项目" },
+      { id: "project-a", code: "P-A", name: "一号项目" }
     ]);
 
-    expect(overview.rows.map((row) => row.id)).toEqual(["project-b", "project-a"]);
+    expect(overview.rows.map((row) => row.id)).toEqual(["project-a", "project-b"]);
     expect(overview.summary).toEqual({
       projectCount: 2,
       contractAmountCents: "30000000",
-      settlementAmountCents: "14000000",
-      payableAmountCents: "9000000",
-      actualReceiptsCents: "5000000",
-      supplierRefundsCents: "100000",
+      settlementAmountCents: null,
+      payableAmountCents: null,
+      actualReceiptsCents: null,
+      supplierRefundsCents: null,
       actualPaidCents: "5000000",
-      approvedPendingPaymentCents: "3000000",
-      availableFundsCents: "3000000",
-      dataGapCount: 1
+      approvedPendingPaymentCents: null,
+      availableFundsCents: null,
+      dataGapCount: 2
     });
   });
 });
@@ -176,14 +176,76 @@ function projectOverview(overrides: {
       affiliateDeductionCents: "0",
       unreconciledReceiptDifferenceCents: "0",
       writtenCount: 0,
-      oralCount: 0,
-      rows: []
+      oralCount: 0
     },
     counts: {
       contracts: 0,
       settlements: 0,
       payments: 0
     },
-    dataGaps: overrides.dataGaps
+    dataGaps: overrides.dataGaps,
+    operatingProjection: {
+      scope: { label: "单项目口径", projectCount: 1 },
+      asOf: {
+        businessDate: "2026-09-11",
+        readAt: "2026-09-11T00:00:00.000Z",
+        retroactiveFactCount: 0
+      },
+      integrity: {
+        statusLabel: "金额完整",
+        moneyComplete: true,
+        notices: []
+      },
+      commitments: { contractCommitmentCents: overrides.contractAmountCents },
+      operating: {
+        confirmedIncomeCents: "0",
+        confirmedCostCents: "0",
+        receivableCents: "0",
+        payableCents: overrides.payableAmountCents
+      },
+      actualFunds: {
+        constructionEnterpriseFundsCents: overrides.availableFundsCents ?? "0",
+        companyProjectFundsCents: "0",
+        netProjectCashPositionCents: overrides.availableFundsCents ?? "0",
+        nonNegativeUsableCashStartCents: overrides.availableFundsCents ?? "0",
+        confirmedProjectInflowsCents: overrides.actualReceiptsCents ?? "0",
+        confirmedProjectOutflowsCents: overrides.actualPaidCents,
+        companyAdvanceForProjectCents: "0",
+        companyReturnableToProjectCents: "0",
+        interSubjectBalanceCents: "0"
+      },
+      restrictions: {
+        estimatedClearingExpenseCents: "0",
+        necessaryExpenseReserveCents: "0",
+        projectDisputedFundsCents: "0",
+        constructionEnterpriseFrozenFundsCents: "0",
+        openPendingReconciliationGrossCents: "0",
+        openCoveredReconciliationCents: "0",
+        openUncoveredReconciliationCents: "0",
+        continuedWithheldRetainedCents: "0",
+        temporaryProfitDistributionCents: "0",
+        relationshipCompletenessLabel: "完整"
+      },
+      profitAndLoss: {
+        currentOperatingProfitCents: "0",
+        estimatedClearingExpenseCents: "0",
+        currentEstimatedProfitCents: "0",
+        finalConfirmedProfitCents: "0",
+        finalConfirmable: true
+      },
+      distribution: {
+        cashCeilingCents: overrides.availableFundsCents,
+        projectedProfitCeilingCents: "0",
+        currentDistributableProfitCents: "0"
+      },
+      evidence: {
+        A: { factCount: 0, amountCents: "0" },
+        B: { factCount: 0, amountCents: "0" },
+        C: { factCount: 0, amountCents: "0" },
+        gapFactCount: 0,
+        gapAmountCents: "0"
+      },
+      sources: []
+    }
   };
 }

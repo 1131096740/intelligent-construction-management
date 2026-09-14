@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 301,
-    "pageActionCount": 53,
+    "registeredActionCount": 302,
+    "pageActionCount": 54,
     "backgroundActionCount": 248,
-    "reachableVueFileCount": 138,
+    "reachableVueFileCount": 139,
     "routeRootCount": 59,
-    "totalVueFileCount": 162,
-    "parsedVueFileCount": 162,
-    "reachableProductionModuleCount": 254,
-    "templateEventDirectiveCount": 954,
+    "totalVueFileCount": 163,
+    "parsedVueFileCount": 163,
+    "reachableProductionModuleCount": 256,
+    "templateEventDirectiveCount": 958,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 289,
-    "candidateProductionMutationConsumerCount": 289,
-    "acceptedProductionMutationConsumerCount": 289,
-    "productionMutationConsumerPairCount": 289,
+    "coveredProductionMutationConsumerCount": 290,
+    "candidateProductionMutationConsumerCount": 290,
+    "acceptedProductionMutationConsumerCount": 290,
+    "productionMutationConsumerPairCount": 290,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 287,
-    "reachableProductionModuleCount": 254,
-    "totalVueFileCount": 162,
-    "parsedVueFileCount": 162
+    "totalProductionModuleCount": 289,
+    "reachableProductionModuleCount": 256,
+    "totalVueFileCount": 163,
+    "parsedVueFileCount": 163
   },
   "actions": [
     {
@@ -3860,7 +3860,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5294,
+              "sourceLine": 5414,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3904,7 +3904,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5294,
+              "sourceLine": 5414,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11858,7 +11858,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2277,
+        "sourceLine": 2554,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11923,7 +11923,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2238,
+        "sourceLine": 2515,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11988,7 +11988,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1697,
+        "sourceLine": 1974,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12053,7 +12053,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 1681,
+        "sourceLine": 1958,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12356,7 +12356,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2197,
+        "sourceLine": 2474,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14075,6 +14075,73 @@
       ]
     },
     {
+      "id": "project-operating-projection.export",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submitOperatingProjectionExport",
+        "kind": "event",
+        "sourceLine": 929,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "overview.canExportOperatingProjection",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadOperatingProjectionExport",
+          "method": "POST",
+          "path": "/operating-projections/export",
+          "normalizedKey": "POST /operating-projections/export",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/operating-projections/export",
+            "normalizedKey": "POST /operating-projections/export",
+            "controller": "OperatingProjectionController",
+            "handler": "export",
+            "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitOperatingProjectionExport",
+              "downloadOperatingProjectionExport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "project.affiliate-contract.confirm",
       "usage": "background",
       "routePaths": [
@@ -14775,7 +14842,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1384,
+        "sourceLine": 1569,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14843,7 +14910,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1393,
+        "sourceLine": 1578,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14911,7 +14978,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1976,
+        "sourceLine": 2253,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14976,7 +15043,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 1915,
+        "sourceLine": 2192,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15041,7 +15108,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1899,
+        "sourceLine": 2176,
         "sourceColumn": 0
       },
       "semantic": "business_write",

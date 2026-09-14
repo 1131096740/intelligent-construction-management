@@ -28,6 +28,7 @@ import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
 import { OperatingLedgerModule } from "./operating-ledger/operating-ledger.module";
+import { OperatingProjectionModule } from "./operating-projection/operating-projection.module";
 import { OperatingTakeoverModule } from "./operating-takeover/operating-takeover.module";
 import { PayableRegistryModule } from "./payable-registry/payable-registry.module";
 import { PaymentModule } from "./payment/payment.module";
@@ -57,6 +58,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ClearingModule,
     CompanyEntityModule,
     OperatingLedgerModule,
+    OperatingProjectionModule,
     OperatingTakeoverModule,
     PayableRegistryModule,
     SettlementModule,

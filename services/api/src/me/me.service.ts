@@ -9,6 +9,8 @@ import {
 } from "@jiangkong/shared-domain";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
+  frozenCandidateUserIds,
+  isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
   type FrozenApprovalNode
 } from "../approval/approval-review-identity";
@@ -85,6 +87,70 @@ export interface WorkItem {
   tone: WorkbenchCardTone;
   ageDays?: number;
   agingStatus?: "current" | "long_running" | "stale";
+}
+
+export interface FundsPendingReadBudget {
+  remaining(): number;
+  consume(rowCount: number): void;
+}
+
+export interface FundsPendingBusinessIds {
+  contractPaymentIds: string[];
+  spotPaymentIds: string[];
+}
+
+interface FundsDelegatorRoleIndex {
+  globalKeysByUserId: Map<string, RoleKey[]>;
+  localKeysByUserProject: Map<string, RoleKey[]>;
+  globalUserIdsByRole: Map<RoleKey, Set<string>>;
+  localUserIdsByProjectRole: Map<string, Set<string>>;
+}
+
+function emptyFundsDelegatorRoleIndex(): FundsDelegatorRoleIndex {
+  return {
+    globalKeysByUserId: new Map(),
+    localKeysByUserProject: new Map(),
+    globalUserIdsByRole: new Map(),
+    localUserIdsByProjectRole: new Map()
+  };
+}
+
+function appendMapValue<K>(map: Map<K, Set<string>>, key: K, value: string): void {
+  const values = map.get(key) ?? new Set<string>();
+  values.add(value);
+  map.set(key, values);
+}
+
+function fundsDelegatorCandidates(
+  node: ApprovalNode,
+  projectId: string,
+  activeDelegatorIds: ReadonlySet<string>,
+  roleIndex: FundsDelegatorRoleIndex
+): string[] {
+  const governed = isGovernedFrozenApprovalNode(node as unknown);
+  if (governed) {
+    return frozenCandidateUserIds(node).filter((userId) => activeDelegatorIds.has(userId));
+  }
+  const approvedRoleKeys = new Set(
+    Array.isArray(node.approvedRoleKeys)
+      ? node.approvedRoleKeys.filter((value: unknown): value is string => typeof value === "string")
+      : []
+  );
+  const pendingRoleKeys = Array.isArray(node.roleKeys)
+    ? node.roleKeys
+        .filter((value: unknown): value is string => typeof value === "string")
+        .filter((role: string) => !approvedRoleKeys.has(role)) as RoleKey[]
+    : [];
+  const candidates = new Set<string>();
+  for (const role of pendingRoleKeys) {
+    const globalCandidate = roleIndex.globalUserIdsByRole.get(role)?.values().next().value;
+    const localCandidate = roleIndex.localUserIdsByProjectRole.get(
+      `${projectId}\u0000${role}`
+    )?.values().next().value;
+    if (globalCandidate) candidates.add(globalCandidate);
+    if (localCandidate) candidates.add(localCandidate);
+  }
+  return [...candidates];
 }
 
 export interface WorkItemsReadModel {
@@ -702,6 +768,242 @@ export class MeService {
       item.businessType === "spot_procurement_payment" ||
       item.businessType === "spot_payment"
     );
+  }
+
+  async getFundsPendingBusinessIdsInTransaction(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    visibleProjectIds: string[],
+    evaluatedAt: Date,
+    budget: FundsPendingReadBudget
+  ): Promise<FundsPendingBusinessIds> {
+    if (!visibleProjectIds.length) {
+      return { contractPaymentIds: [], spotPaymentIds: [] };
+    }
+    const read = async <T>(reader: (take: number) => Promise<T[]>): Promise<T[]> => {
+      const rows = await reader(budget.remaining() + 1);
+      budget.consume(rows.length);
+      return rows;
+    };
+    const globalPositions = await read((take) => tx.userPosition.findMany({
+        where: { userId, projectId: null },
+        select: { positionId: true, projectId: true },
+        take
+      }));
+    const projectPositions = await read((take) => tx.userPosition.findMany({
+        where: { userId, projectId: { in: visibleProjectIds } },
+        select: { positionId: true, projectId: true },
+        take
+      }));
+    const projectMembers = await read((take) => tx.projectMember.findMany({
+        where: { userId, projectId: { in: visibleProjectIds } },
+        select: { projectId: true, positionKey: true },
+        take
+      }));
+    const positionIds = Array.from(new Set(
+      [...globalPositions, ...projectPositions].map((position) => position.positionId)
+    ));
+    const positions = positionIds.length
+      ? await read((take) => tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true },
+          take
+        }))
+      : [];
+    const positionKeyById = new Map(
+      positions.map((position) => [position.id, position.key as RoleKey])
+    );
+    const globalRoleKeys = globalPositions
+      .map((position) => positionKeyById.get(position.positionId))
+      .filter((role): role is RoleKey => Boolean(role));
+    const localPositionKeysByProject = new Map<string, RoleKey[]>();
+    for (const position of projectPositions) {
+      if (!position.projectId) continue;
+      const role = positionKeyById.get(position.positionId);
+      if (!role) continue;
+      localPositionKeysByProject.set(position.projectId, [
+        ...(localPositionKeysByProject.get(position.projectId) ?? []),
+        role
+      ]);
+    }
+    for (const member of projectMembers) {
+      localPositionKeysByProject.set(member.projectId, [
+        ...(localPositionKeysByProject.get(member.projectId) ?? []),
+        member.positionKey as RoleKey
+      ]);
+    }
+    const roleKeysByProject = new Map(visibleProjectIds.map((projectId) => [
+      projectId,
+      resolveEffectiveRoleKeys(
+        globalRoleKeys,
+        localPositionKeysByProject.get(projectId) ?? []
+      )
+    ]));
+    const projectIdsFor = (action: BusinessAction) => visibleProjectIds.filter((projectId) =>
+      canPerform(action, roleKeysByProject.get(projectId) ?? [])
+    );
+    const executablePaymentProjectIds = projectIdsFor("payment.execution");
+    const executableSpotProjectIds = projectIdsFor("spot_procurement.payment.execute");
+    const contractExecutionRows = executablePaymentProjectIds.length
+      ? await read((take) => tx.paymentRequest.findMany({
+          where: {
+            projectId: { in: executablePaymentProjectIds },
+            status: { in: ["approved_pending_payment", "partially_paid"] }
+          },
+          select: { id: true },
+          orderBy: { id: "asc" },
+          take
+        }))
+      : [];
+    const spotExecutionRows = executableSpotProjectIds.length
+      ? await read((take) => tx.spotProcurementPayment.findMany({
+          where: {
+            projectId: { in: executableSpotProjectIds },
+            status: { in: ["approved_pending_payment", "partially_paid"] }
+          },
+          select: { id: true },
+          orderBy: { id: "asc" },
+          take
+        }))
+      : [];
+    const approvalPayments = await read((take) => tx.paymentRequest.findMany({
+        where: {
+          projectId: { in: visibleProjectIds },
+          status: "approval_pending"
+        },
+        select: { id: true, projectId: true },
+        orderBy: { id: "asc" },
+        take
+      }));
+    const approvalSpotPayments = await read((take) => tx.spotProcurementPayment.findMany({
+        where: {
+          projectId: { in: visibleProjectIds },
+          status: "approval_pending"
+        },
+        select: { id: true, projectId: true },
+        orderBy: { id: "asc" },
+        take
+      }));
+    const approvalInstances = approvalPayments.length || approvalSpotPayments.length
+      ? await read((take) => tx.approvalInstance.findMany({
+          where: {
+            ...this.activeApprovalWhere(),
+            OR: [
+              ...(approvalPayments.length ? [{
+                businessType: "payment_request",
+                businessId: { in: approvalPayments.map((payment) => payment.id) }
+              }] : []),
+              ...(approvalSpotPayments.length ? [{
+                businessType: "spot_procurement_payment",
+                businessId: { in: approvalSpotPayments.map((payment) => payment.id) }
+              }] : [])
+            ]
+          },
+          select: {
+            id: true,
+            businessType: true,
+            businessId: true,
+            status: true,
+            currentNodeIndex: true,
+            frozenNodes: true,
+            applicantUserId: true,
+            createdAt: true,
+            updatedAt: true
+          },
+          orderBy: { id: "asc" },
+          take
+        })) as ApprovalInstanceForWorkItem[]
+      : [];
+    const paymentProjectById = new Map(
+      approvalPayments.map((payment) => [payment.id, payment.projectId])
+    );
+    const spotProjectById = new Map(
+      approvalSpotPayments.map((payment) => [payment.id, payment.projectId])
+    );
+    const delegationRows = approvalInstances.some((instance) =>
+      this.supportsIndirectApproval(instance.businessType)
+    )
+      ? await read((take) => tx.approvalDelegation.findMany({
+          where: {
+            toUserId: userId,
+            actionKey: null,
+            resourceType: null,
+            resourceId: null,
+            enabled: true,
+            startsAt: { lte: evaluatedAt },
+            endsAt: { gt: evaluatedAt }
+          },
+          select: { fromUserId: true },
+          orderBy: { id: "asc" },
+          take
+        }))
+      : [];
+    const rawDelegatorIds = Array.from(new Set(
+      delegationRows.map((delegation) => delegation.fromUserId)
+    ));
+    const activeDelegatorIds = rawDelegatorIds.length
+      ? await this.activeFundsDelegatorIds(tx, userId, rawDelegatorIds, read)
+      : [];
+    const activeDelegatorIdSet = new Set(activeDelegatorIds);
+    const delegatorRoleIndex = activeDelegatorIds.length
+      ? await this.fundsDelegatorRoles(
+          tx,
+          activeDelegatorIds,
+          visibleProjectIds,
+          read
+        )
+      : emptyFundsDelegatorRoleIndex();
+    const contractPaymentIds = new Set(contractExecutionRows.map((row) => row.id));
+    const spotPaymentIds = new Set(spotExecutionRows.map((row) => row.id));
+    for (const instance of approvalInstances) {
+      const projectId = instance.businessType === "payment_request"
+        ? paymentProjectById.get(instance.businessId)
+        : spotProjectById.get(instance.businessId);
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex);
+      if (!projectId || !node) continue;
+      const roleKeys = roleKeysByProject.get(projectId) ?? [];
+      const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
+      const hasRoleTodo = supportsIndirect
+        ? this.canActOnApprovalNode(node, roleKeys, userId)
+        : this.hasDirectRoleTodo(node, roleKeys);
+      const hasDirectTodo = hasRoleTodo &&
+        this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
+      const relevantDelegatorIds = supportsIndirect && !hasDirectTodo
+        ? fundsDelegatorCandidates(
+            node,
+            projectId,
+            activeDelegatorIdSet,
+            delegatorRoleIndex
+          )
+        : [];
+      const activeDelegators = relevantDelegatorIds.map((delegatorId) => ({
+            userId: delegatorId,
+            roleKeys: resolveEffectiveRoleKeys(
+              delegatorRoleIndex.globalKeysByUserId.get(delegatorId) ?? [],
+              delegatorRoleIndex.localKeysByUserProject.get(
+                `${delegatorId}\u0000${projectId}`
+              ) ?? []
+            )
+          }));
+      const hasDelegatedTodo = supportsIndirect && !hasDirectTodo && Boolean(
+        resolveApprovalReviewIdentity({
+          node,
+          actorUserId: userId,
+          actorRoleKeys: [],
+          activeDelegators
+        })
+      );
+      if (!hasDirectTodo && !hasDelegatedTodo) continue;
+      if (instance.businessType === "payment_request") {
+        contractPaymentIds.add(instance.businessId);
+      } else {
+        spotPaymentIds.add(instance.businessId);
+      }
+    }
+    return {
+      contractPaymentIds: [...contractPaymentIds],
+      spotPaymentIds: [...spotPaymentIds]
+    };
   }
 
   async getContractPendingWorkItems(userId: string): Promise<WorkItem[]> {
@@ -2434,6 +2736,120 @@ export class MeService {
       actorRoleKeys: [],
       activeDelegators
     }));
+  }
+
+  private async activeFundsDelegatorIds(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    delegatorIds: string[],
+    read: <T>(reader: (take: number) => Promise<T[]>) => Promise<T[]>
+  ): Promise<string[]> {
+    const users = await read((take) => tx.user.findMany({
+      where: { id: { in: [userId, ...delegatorIds] } },
+      select: { id: true, isActive: true },
+      orderBy: { id: "asc" },
+      take
+    }));
+    const activeUserIds = new Set(
+      users.filter((user) => user.isActive).map((user) => user.id)
+    );
+    if (!activeUserIds.has(userId)) return [];
+    return delegatorIds.filter((delegatorId) => activeUserIds.has(delegatorId));
+  }
+
+  private async fundsDelegatorRoles(
+    tx: Prisma.TransactionClient,
+    delegatorIds: string[],
+    projectIds: string[],
+    read: <T>(reader: (take: number) => Promise<T[]>) => Promise<T[]>
+  ): Promise<FundsDelegatorRoleIndex> {
+    const globalPositions = await read((take) => tx.userPosition.findMany({
+      where: { userId: { in: delegatorIds }, projectId: null },
+      select: { userId: true, positionId: true, projectId: true },
+      orderBy: { id: "asc" },
+      take
+    }));
+    const projectPositions = await read((take) => tx.userPosition.findMany({
+      where: {
+        userId: { in: delegatorIds },
+        projectId: { in: projectIds }
+      },
+      select: { userId: true, positionId: true, projectId: true },
+      orderBy: { id: "asc" },
+      take
+    }));
+    const projectMembers = await read((take) => tx.projectMember.findMany({
+      where: { userId: { in: delegatorIds }, projectId: { in: projectIds } },
+      select: { userId: true, projectId: true, positionKey: true },
+      orderBy: { id: "asc" },
+      take
+    }));
+    const positionIds = Array.from(new Set(
+      [...globalPositions, ...projectPositions].map((position) => position.positionId)
+    ));
+    const positions = positionIds.length
+      ? await read((take) => tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true },
+          orderBy: { id: "asc" },
+          take
+        }))
+      : [];
+    const positionKeyById = new Map(
+      positions.map((position) => [position.id, position.key as RoleKey])
+    );
+    const globalKeysByUserId = new Map<string, RoleKey[]>();
+    for (const position of globalPositions) {
+      const role = positionKeyById.get(position.positionId);
+      if (!role) continue;
+      globalKeysByUserId.set(position.userId, [
+        ...(globalKeysByUserId.get(position.userId) ?? []),
+        role
+      ]);
+    }
+    const localKeysByUserProject = new Map<string, RoleKey[]>();
+    for (const position of projectPositions) {
+      if (!position.projectId) continue;
+      const role = positionKeyById.get(position.positionId);
+      if (!role) continue;
+      const key = `${position.userId}\u0000${position.projectId}`;
+      localKeysByUserProject.set(key, [
+        ...(localKeysByUserProject.get(key) ?? []),
+        role
+      ]);
+    }
+    for (const member of projectMembers) {
+      const key = `${member.userId}\u0000${member.projectId}`;
+      localKeysByUserProject.set(key, [
+        ...(localKeysByUserProject.get(key) ?? []),
+        member.positionKey as RoleKey
+      ]);
+    }
+    const globalUserIdsByRole = new Map<RoleKey, Set<string>>();
+    for (const [delegatorId, roleKeys] of globalKeysByUserId) {
+      for (const role of resolveEffectiveRoleKeys(roleKeys)) {
+        appendMapValue(globalUserIdsByRole, role, delegatorId);
+      }
+    }
+    const localUserIdsByProjectRole = new Map<string, Set<string>>();
+    for (const [userProjectKey, roleKeys] of localKeysByUserProject) {
+      const separator = userProjectKey.indexOf("\u0000");
+      const delegatorId = userProjectKey.slice(0, separator);
+      const projectId = userProjectKey.slice(separator + 1);
+      for (const role of roleKeys) {
+        appendMapValue(
+          localUserIdsByProjectRole,
+          `${projectId}\u0000${role}`,
+          delegatorId
+        );
+      }
+    }
+    return {
+      globalKeysByUserId,
+      localKeysByUserProject,
+      globalUserIdsByRole,
+      localUserIdsByProjectRole
+    };
   }
 
   private async roleKeysForUserProject(userId: string, projectId: string): Promise<RoleKey[]> {

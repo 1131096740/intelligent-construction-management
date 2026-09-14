@@ -13,7 +13,7 @@ on:
         type: string
 
 env:
-  CI_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+  CI_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
   CI_REQUIRE_MAIN_ANCESTOR: ${{ github.event_name == 'workflow_dispatch' }}
 
 permissions:
@@ -170,7 +170,8 @@ jobs:
   postgresql16-dynamic-gates:
     name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
+    timeout-minutes: ${{ matrix.group == 'operating_projection_pol108' && 90 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -188,6 +189,7 @@ jobs:
           - clearing_reconciliation_pol275
           - necessary_expense_reserve_pol279
           - project_fund_dispute_pol280
+          - operating_projection_pol108
           - remaining_dynamic_postgresql16
     steps:
       - name: Checkout

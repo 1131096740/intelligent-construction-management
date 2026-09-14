@@ -32,6 +32,7 @@ import { ConfirmProjectAffiliateBusinessFactDto } from "./dto/confirm-project-af
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
+import { ListProjectUpstreamFundFactsDto } from "./dto/list-project-upstream-fund-facts.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import { RecordProjectAffiliateCompanyContractDto } from "./dto/record-project-affiliate-company-contract.dto";
@@ -141,8 +142,11 @@ export class ProjectController {
 
   @Get(":projectId/operating-funds-overview")
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
-  operatingFundsOverview(@Param("projectId") projectId: string) {
-    return this.projects.getOperatingFundsOverview(projectId);
+  operatingFundsOverview(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.projects.getOperatingFundsOverview(projectId, user.id);
   }
 
   @Get(":projectId/operating-profile")
@@ -378,6 +382,27 @@ export class ProjectController {
     @Body() body: RecordProjectReceiptDto
   ) {
     return this.projects.recordReceipt(projectId, user.id, body);
+  }
+
+  @Get(":projectId/upstream-fund-facts")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  upstreamFundFacts(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListProjectUpstreamFundFactsDto
+  ) {
+    const rawPageSize = query.pageSize?.trim();
+    const pageSize = rawPageSize ? Number(rawPageSize) : undefined;
+    if (
+      pageSize !== undefined &&
+      (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200)
+    ) {
+      throw new BadRequestException("上游资金明细每页条数必须是 1 到 200 的整数");
+    }
+    return this.projects.listUpstreamFundFacts(projectId, user.id, {
+      cursor: query.cursor?.trim() || undefined,
+      pageSize
+    });
   }
 
   @Post(":projectId/upstream-fund-facts")

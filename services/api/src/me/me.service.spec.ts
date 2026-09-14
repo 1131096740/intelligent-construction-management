@@ -1839,6 +1839,62 @@ describe("MeService", () => {
     );
   });
 
+  it("reads funds pending ids only from the supplied transaction and shared budget", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockImplementation(async ({ where }) =>
+          where.projectId === null
+            ? [{ positionId: "position-finance", projectId: null }]
+            : [])
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-finance", key: "finance_staff" }
+        ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockImplementation(async ({ where }) =>
+          where.status?.in
+            ? [{ id: "payment-1" }]
+            : [])
+      },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { findMany: jest.fn() },
+      user: { findMany: jest.fn() }
+    };
+    let used = 0;
+    const budget = {
+      remaining: () => 100 - used,
+      consume: (rowCount: number) => {
+        if (rowCount > 100 - used) throw new Error("budget exceeded");
+        used += rowCount;
+      }
+    };
+    const service = new MeService({} as never, {} as never);
+
+    await expect(service.getFundsPendingBusinessIdsInTransaction(
+      tx as never,
+      "finance-1",
+      ["project-1"],
+      new Date("2026-09-12T00:00:00.000Z"),
+      budget
+    )).resolves.toEqual({
+      contractPaymentIds: ["payment-1"],
+      spotPaymentIds: []
+    });
+    expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        projectId: { in: ["project-1"] },
+        status: { in: ["approved_pending_payment", "partially_paid"] }
+      }),
+      take: expect.any(Number)
+    }));
+    expect(tx.approvalDelegation.findMany).not.toHaveBeenCalled();
+    expect(used).toBeGreaterThan(0);
+  });
+
   it("derives the untruncated contract queue only from canonical contract pending sources", async () => {
     const service = new MeService({} as never, {} as never) as unknown as {
       getContractPendingWorkItems(userId: string): Promise<WorkItem[]>;

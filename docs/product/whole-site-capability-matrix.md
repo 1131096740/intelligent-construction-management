@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `3f630d3c21b5f7f018b9e2ce6618389a27aa3649618461021285d093fbef4326` |
-| webApiWrappers | ready | `adf3496a2bb194f99d796b556d8d6dcac9c928ac7fb5ebc1b7907e682d5d54f3` |
-| webPageActions | ready | `4477b8a81a7d8784910d078ad065dd1da0df13b767d4506c32b8be445e930a7d` |
-| routeUsage | ready | `cbb37375aa95f1ad3ef0d076b652731973061f4fc0c359edff8081b0ce17517f` |
+| nestRoutes | ready | `f8880f950aa24bb1495a6898f8c27f92d1189fb19ad76ec66530296e34acc762` |
+| webApiWrappers | ready | `3d92b10568954064bf587b4751c0d3aac052726930678217505d76e74f0e841b` |
+| webPageActions | ready | `73af9f4211c46c5415eccd93da9cc70b2519bbb690ba8790e0c04a1301a806ff` |
+| routeUsage | ready | `f38aa41e1b4dc90c2df7afbe0171e05d02124ade470ac81c71abf1f05ac979e0` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 585 |
-| pageRouteCount | 373 |
+| routeCount | 593 |
+| pageRouteCount | 376 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
-| internalTaskRouteCount | 34 |
+| internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 563 |
+| mainRequestBindingCount | 566 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 301 |
-| actionBindingCount | 336 |
-| acceptedActionBindingCount | 316 |
+| registeredActionCount | 302 |
+| actionBindingCount | 337 |
+| acceptedActionBindingCount | 317 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 289 |
-| coveredProductionMutationConsumerPairCount | 289 |
+| productionMutationConsumerPairCount | 290 |
+| coveredProductionMutationConsumerPairCount | 290 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -128,6 +128,12 @@
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | — |
 | GET | /necessary-expense-reserves/capabilities | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#fetchNecessaryExpenseReserveCapabilities | — | not_applicable | — |
 | GET | /necessary-expense-reserves/workbench | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#fetchNecessaryExpenseReserveWorkbench | — | not_applicable | — |
+| GET | /operating-projections/as-of/details | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /operating-projections/as-of | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectSetOperatingProjection | — | not_applicable | — |
+| GET | /operating-projections/company/:companyEntityId/details | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /operating-projections/company/:companyEntityId | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /operating-projections/project/:projectId/details | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /operating-projections/project/:projectId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /operating-takeovers/historical-wage/options | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
@@ -181,6 +187,7 @@
 | GET | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftRecords | — | not_applicable | — |
 | GET | /projects/:projectId/update-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpdateCapability | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundConfirmationCapability | — | not_applicable | — |
+| GET | /projects/:projectId/upstream-fund-facts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundFacts | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundRecordCapability | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts/reference-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundReferenceOptions | — | not_applicable | — |
 | GET | /projects/affiliate-mapping-report | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateMappingReport | — | not_applicable | — |
@@ -402,6 +409,7 @@
 | POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
 | POST | /necessary-expense-reserves/drafts | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#saveNecessaryExpenseReserveDraft | necessary-expense-reserve.draft.save | covered | — |
 | POST | /necessary-expense-reserves/entries/:entryId/transition | page | web_api_wrapper | apps/web-admin/src/api/necessary-expense-reserve.api.ts#transitionNecessaryExpenseReserve | necessary-expense-reserve.attest<br>necessary-expense-reserve.confirm<br>necessary-expense-reserve.return<br>necessary-expense-reserve.submit | covered | — |
+| POST | /operating-projections/export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadOperatingProjectionExport | project-operating-projection.export | covered | — |
 | POST | /operating-takeovers/historical-wage/scopes/activate | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/apply | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/attest | internal_task | operator_endpoint | — | — | not_applicable | — |

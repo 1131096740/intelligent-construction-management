@@ -7,7 +7,8 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
-  Optional
+  Optional,
+  PayloadTooLargeException
 } from "@nestjs/common";
 import {
   Prisma,
@@ -15,7 +16,7 @@ import {
   type ProjectFinancingQuota
 } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -27,12 +28,9 @@ import {
 } from "../file/file-business-binding";
 import {
   dbMoneyToBigInt,
-  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
-  outstandingMoneyRequestCentsBigInt,
   parseMoneyCentsInput,
-  spotProcurementPaymentToMoneyRequestValue,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import {
@@ -48,6 +46,7 @@ import {
 } from "../payment/settlement-payment-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
 import {
   missingOperatingSourceReplayService,
   OperatingSourceReplayService,
@@ -90,6 +89,10 @@ import type { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { resolveCurrentProjectAffiliate } from "./project-affiliate-subject";
 import {
+  ProjectUpstreamFundFactCursorCodec,
+  type ProjectUpstreamFundFactCursorPosition
+} from "./project-upstream-fund-fact-cursor";
+import {
   assertSettlementEffectiveAmountCoversExistingPayments,
   lockSettlementLedger
 } from "./project-affiliate-business.service";
@@ -101,9 +104,6 @@ import {
   type FinancingQuotaApprovalInstanceSnapshot
 } from "./project-financing-quota-approval";
 
-const UPSTREAM_SETTLEMENT_GAP =
-  "缺少已确认上游结算，当前经营收入仅按已确认业主付款事实展示，不把施工企业拨款误作收入。";
-const FINANCING_LIMIT_GAP = "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。";
 const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
   ...PROJECT_OVERVIEW_READ_POSITION_KEYS,
   "contract_staff",
@@ -157,6 +157,17 @@ const PROXY_PAYMENT_TYPE_LABELS: Record<ProjectProxyPaymentType, string> = {
   other: "其他"
 };
 const EFFECTIVE_SETTLEMENT_STATUSES = new Set(["effective", "partially_paid", "paid"]);
+const DEFAULT_UPSTREAM_FUND_FACT_PAGE_SIZE = 50;
+const MAX_UPSTREAM_FUND_FACT_PAGE_SIZE = 200;
+const MAX_UPSTREAM_FUND_FACT_RESPONSE_BYTES = 8 * 1024 * 1024;
+const PROJECT_READ_TRANSACTION_TIMEOUT_MS = 30_000;
+const PROJECT_READ_TRANSACTION_MAX_WAIT_MS = 5_000;
+const PROJECT_READ_STATEMENT_TIMEOUT_MS = 15_000;
+const UPSTREAM_FUND_FACT_SNAPSHOT_DOMAIN = "project-upstream-fund-fact-snapshot/V2";
+type UpstreamFundFactSnapshot = {
+  snapshotRowCount: string;
+  snapshotStateFingerprint: string;
+};
 type RemittanceLineage = {
   companyEntityId: string | undefined;
   affiliateCompanyContractId: string | undefined;
@@ -171,6 +182,108 @@ interface SettlementExceptionQuotaApprovalNode {
   approvedRoleKeys?: RoleKey[];
 }
 
+export function upstreamFundFactSnapshotQuery(projectId: string, readAt: Date): Prisma.Sql {
+  return Prisma.sql`
+    WITH row_digests AS NOT MATERIALIZED (
+      SELECT encode(
+        digest(convert_to(to_jsonb(fact)::text, 'UTF8'), 'sha256'),
+        'hex'
+      ) AS "rowDigest"
+      FROM "ProjectUpstreamFundFact" AS fact
+      WHERE fact."projectId" = ${projectId}
+        AND fact."createdAt" <= ${readAt}
+    ), snapshot AS (
+      SELECT
+        COUNT(*)::bigint AS "rowCount",
+        COALESCE(
+          bit_xor(('x' || substring("rowDigest" FROM 1 FOR 16))::bit(64)),
+          B'0'::bit(64)
+        ) AS "lane0",
+        COALESCE(
+          bit_xor(('x' || substring("rowDigest" FROM 17 FOR 16))::bit(64)),
+          B'0'::bit(64)
+        ) AS "lane1",
+        COALESCE(
+          bit_xor(('x' || substring("rowDigest" FROM 33 FOR 16))::bit(64)),
+          B'0'::bit(64)
+        ) AS "lane2",
+        COALESCE(
+          bit_xor(('x' || substring("rowDigest" FROM 49 FOR 16))::bit(64)),
+          B'0'::bit(64)
+        ) AS "lane3"
+      FROM row_digests
+    )
+    SELECT
+      snapshot."rowCount"::text AS "snapshotRowCount",
+      encode(digest(
+        convert_to(${UPSTREAM_FUND_FACT_SNAPSHOT_DOMAIN}, 'UTF8') || decode('00', 'hex') ||
+        convert_to(snapshot."rowCount"::text, 'UTF8') || decode('00', 'hex') ||
+        convert_to(snapshot."lane0"::text, 'UTF8') || decode('00', 'hex') ||
+        convert_to(snapshot."lane1"::text, 'UTF8') || decode('00', 'hex') ||
+        convert_to(snapshot."lane2"::text, 'UTF8') || decode('00', 'hex') ||
+        convert_to(snapshot."lane3"::text, 'UTF8'),
+        'sha256'
+      ), 'hex') AS "snapshotStateFingerprint"
+    FROM snapshot
+  `;
+}
+
+async function readUpstreamFundFactSnapshot(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  readAt: Date
+): Promise<UpstreamFundFactSnapshot> {
+  const snapshot = (await tx.$queryRaw<UpstreamFundFactSnapshot[]>(
+    upstreamFundFactSnapshotQuery(projectId, readAt)
+  ))[0];
+  if (
+    !snapshot ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(snapshot.snapshotRowCount) ||
+    !/^[0-9a-f]{64}$/u.test(snapshot.snapshotStateFingerprint)
+  ) {
+    throw new BadRequestException("数据库未返回有效的上游资金明细快照");
+  }
+  return snapshot;
+}
+
+function sameUpstreamFundFactFingerprint(left: string, right: string): boolean {
+  const leftBytes = Buffer.from(left, "hex");
+  const rightBytes = Buffer.from(right, "hex");
+  return leftBytes.length === 32 &&
+    rightBytes.length === 32 &&
+    timingSafeEqual(leftBytes, rightBytes);
+}
+
+function upstreamFundFactCursorWhere(
+  position: ProjectUpstreamFundFactCursorPosition
+): Prisma.ProjectUpstreamFundFactWhereInput {
+  const occurredAt = new Date(position.occurredAt);
+  const createdAt = new Date(position.createdAt);
+  return {
+    OR: [
+      { occurredAt: { lt: occurredAt } },
+      { occurredAt, createdAt: { lt: createdAt } },
+      { occurredAt, createdAt, id: { gt: position.id } }
+    ]
+  };
+}
+
+function upstreamFundFactCursorPredicate(
+  position: ProjectUpstreamFundFactCursorPosition
+): Prisma.Sql {
+  const occurredAt = new Date(position.occurredAt);
+  const createdAt = new Date(position.createdAt);
+  return Prisma.sql`(
+    fact."occurredAt" < ${occurredAt}
+    OR (fact."occurredAt" = ${occurredAt} AND fact."createdAt" < ${createdAt})
+    OR (
+      fact."occurredAt" = ${occurredAt}
+      AND fact."createdAt" = ${createdAt}
+      AND fact.id > ${position.id}
+    )
+  )`;
+}
+
 const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprovalNode[] = [
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
@@ -178,6 +291,8 @@ const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprova
 ];
 @Injectable()
 export class ProjectService {
+  private readonly upstreamFundFactCursor = new ProjectUpstreamFundFactCursorCodec();
+
   constructor(
     private readonly prisma: PrismaService,
     @Optional()
@@ -189,7 +304,9 @@ export class ProjectService {
       new ProjectFundingAvailabilityService(),
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional()
+    private readonly operatingProjection?: OperatingProjectionService
   ) {}
 
   async createProject(actorUserId: string, input: CreateProjectDto) {
@@ -645,395 +762,235 @@ export class ProjectService {
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
-      .sort((left, right) => `${left.projectCode}-${left.name}`.localeCompare(`${right.projectCode}-${right.name}`, "zh-CN"));
+      .sort((left, right) =>
+        `${left.projectCode}-${left.name}`.localeCompare(
+          `${right.projectCode}-${right.name}`,
+          "zh-CN"
+        )
+      );
   }
 
-  async getOperatingFundsOverview(projectId: string) {
-    const project = await this.prisma.project.findFirst({
-      where: { id: projectId, isActive: true },
-      select: { id: true, code: true, name: true }
-    });
-
+  async getOperatingFundsOverview(projectId: string, actorUserId: string) {
+    if (!this.operatingProjection) {
+      throw new Error("经营投影服务未完成装配");
+    }
+    const { projection, additional, canExportDetail } =
+      await this.operatingProjection.readProjectCompatibilitySnapshot(
+        actorUserId,
+        { projectId },
+        async (tx) => {
+          const [project, writtenCount, oralCount, contracts, settlements, payments] =
+            await Promise.all([
+              tx.project.findFirst({
+                where: { id: projectId, isActive: true },
+                select: { id: true, code: true, name: true }
+              }),
+              tx.projectUpstreamFundFact.count({
+                where: { projectId, basisType: "written" }
+              }),
+              tx.projectUpstreamFundFact.count({
+                where: { projectId, basisType: "oral" }
+              }),
+              tx.contract.count({ where: { projectId, voidedAt: null } }),
+              tx.settlement.count({ where: { projectId } }),
+              tx.paymentRequest.count({ where: { projectId } })
+            ]);
+          return { project, writtenCount, oralCount, contracts, settlements, payments };
+        }
+      );
+    const { project, writtenCount, oralCount, contracts, settlements, payments } = additional;
     if (!project) {
       throw new NotFoundException("项目不存在或已停用，请刷新后重试");
     }
-
-    const [
-      contracts,
-      settlements,
-      payments,
-      financeRecords,
-      projectReceipts,
-      upstreamFundFacts,
-      supplierRefundAmountCents,
-      projectProxyPayments,
-      projectAffiliatePayments,
-      projectUpstreamSettlements,
-      projectFinancingQuotas,
-      projectExpenseRequests,
-      spotProcurementPayments,
-      projectFundingAllocations
-    ] = await Promise.all([
-      this.prisma.contract.findMany({
-        where: { projectId, voidedAt: null },
-        select: { id: true }
-      }),
-      this.prisma.settlement.findMany({
-        where: { projectId },
-        select: { status: true, amountCents: true, payableAmountCents: true }
-      }),
-      this.prisma.paymentRequest.findMany({
-        where: { projectId },
-        select: {
-          id: true,
-          status: true,
-          requestedAmountCents: true,
-          approvedAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      this.prisma.financeRecord.findMany({
-        where: { projectId, direction: "outflow" },
-        select: { amountCents: true }
-      }),
-      this.prisma.projectReceipt.findMany({
-        where: {
-          projectId,
-          voidedAt: null,
-          sourceType: { in: ["general_contractor_payment", "other"] }
-        },
-        select: { amountCents: true }
-      }),
-      this.prisma.projectUpstreamFundFact.findMany({
-        where: { projectId },
-        orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }]
-      }),
-      findProjectSpotProcurementRefundAmounts(
-        this.prisma,
-        projectId
-      ),
-      this.prisma.projectProxyPayment.findMany({
-        where: { projectId, voidedAt: null },
-        select: { amountCents: true }
-      }),
-      this.prisma.projectAffiliatePaymentFact.findMany({
-        where: { projectId, status: "confirmed" },
-        select: { amountCents: true, effectDirection: true }
-      }),
-      this.prisma.projectUpstreamSettlement.findMany({
-        where: { projectId, status: "confirmed", voidedAt: null },
-        select: { approvedAmountCents: true }
-      }),
-      this.prisma.projectFinancingQuota.findMany({
-        where: { projectId },
-        select: {
-          id: true,
-          amountCents: true,
-          status: true,
-          validUntil: true
-        }
-      }),
-      this.prisma.projectExpenseRequest.findMany({
-        where: { projectId, voidedAt: null },
-        select: {
-          id: true,
-          status: true,
-          requestedAmountCents: true,
-          approvedAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      this.prisma.spotProcurementPayment.findMany({
-        where: { projectId },
-        select: {
-          id: true,
-          status: true,
-          companyPaymentAmountCents: true,
-          canceledCompanyPaymentAmountCents: true,
-          paidAmountCents: true
-        }
-      }),
-      this.prisma.projectFundingAllocation.findMany({
-        where: { projectId },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
-      })
-    ]);
-    const remittanceSettlementFactIds = upstreamFundFacts
-      .map((fact) => fact.affiliateSettlementFactId)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
-    const remittanceSettlementFacts = remittanceSettlementFactIds.length
-      ? await this.prisma.projectAffiliateSettlementFact.findMany({
-          where: {
-            projectId,
-            id: { in: remittanceSettlementFactIds },
-            status: "confirmed"
-          },
-          select: { id: true, ledgerId: true }
-        })
-      : [];
-    const remittanceSettlementLedgerIds = Array.from(
-      new Set(remittanceSettlementFacts.map((fact) => fact.ledgerId))
-    );
-    const remittanceSettlementLedgerFacts = remittanceSettlementLedgerIds.length
-      ? await this.prisma.projectAffiliateSettlementFact.findMany({
-          where: {
-            projectId,
-            ledgerId: { in: remittanceSettlementLedgerIds },
-            status: "confirmed"
-          },
-          select: { id: true, ledgerId: true, effectDirection: true, amountCents: true }
-        })
-      : [];
-    const remittancePayableByLedgerId = new Map<string, bigint>();
-    for (const fact of remittanceSettlementLedgerFacts) {
-      const current = remittancePayableByLedgerId.get(fact.ledgerId) ?? 0n;
-      remittancePayableByLedgerId.set(
-        fact.ledgerId,
-        current + affiliateSettlementFactSignedAmount(fact)
-      );
-    }
-    const remittancePayableBySettlementId = new Map(
-      remittanceSettlementFacts.map((fact) => [
-        fact.id,
-        remittancePayableByLedgerId.get(fact.ledgerId) ?? 0n
-      ])
-    );
-    const remittancePaidBySettlementId = new Map<string, bigint>();
-    for (const fact of upstreamFundFacts) {
-      if (
-        fact.factType !== "affiliate_remittance_to_company" ||
-        fact.status !== "confirmed" ||
-        !fact.affiliateSettlementFactId
-      ) {
-        continue;
-      }
-      const current = remittancePaidBySettlementId.get(fact.affiliateSettlementFactId) ?? 0n;
-      remittancePaidBySettlementId.set(
-        fact.affiliateSettlementFactId,
-        current + upstreamFundFactSignedAmount(fact)
-      );
-    }
-    const contractIds = contracts.map((contract) => contract.id);
-    const paymentIds = payments.map((payment) => payment.id);
-    const expenseRequestIds = projectExpenseRequests.map((request) => request.id);
-    const spotPaymentIds = spotProcurementPayments.map((payment) => payment.id);
-    const contractVersions = contractIds.length
-      ? await this.prisma.contractVersion.findMany({
-          where: { contractId: { in: contractIds }, status: "effective" },
-          select: { contractId: true, versionNo: true, amountCents: true }
-        })
-      : [];
-    const latestEffectiveContractVersions = latestByContract(contractVersions);
-    const effectiveSettlements = settlements.filter((settlement) => settlement.status === "effective");
-    const executions = paymentIds.length
-      ? await this.prisma.paymentExecution.findMany({
-          where: { paymentRequestId: { in: paymentIds } },
-          select: { amountCents: true }
-        })
-      : [];
-    const expenseExecutions = expenseRequestIds.length
-      ? await this.prisma.projectExpenseExecution.findMany({
-          where: { projectExpenseRequestId: { in: expenseRequestIds } },
-          select: { amountCents: true }
-        })
-      : [];
-    const spotExecutions =
-      spotPaymentIds.length
-        ? await this.prisma.spotProcurementPaymentExecution.findMany({
-            where: {
-              paymentId: { in: spotPaymentIds },
-              voidedAt: null
-            },
-            select: { amountCents: true }
-          })
-        : [];
-    const { allocationSummary: fundingAllocationSummary } =
-      this.funding.assertFundingLedgerCoverage({
-        receipts: projectReceipts,
-        affiliateRemittances: upstreamFundFacts
-          .filter((fact) =>
-            fact.factType === "affiliate_remittance_to_company" &&
-            fact.status === "confirmed"
-          )
-          .map((fact) => ({
-            amountCents: fact.amountCents,
-            effectDirection: fact.effectDirection
-          })),
-        quotas: projectFinancingQuotas,
-        allocations: projectFundingAllocations
-      });
-    const legacyReceiptsCents = sumDbMoneyToBigInt(
-      projectReceipts.map((receipt) => receipt.amountCents),
-      "历史项目实收金额"
-    );
-    const ownerPaymentCents = upstreamFundFactNetAmount(
-      upstreamFundFacts,
-      "owner_payment_to_affiliate"
-    );
-    const affiliateRemittanceCents = upstreamFundFactNetAmount(
-      upstreamFundFacts,
-      "affiliate_remittance_to_company"
-    );
-    const affiliateDeductionCents = upstreamFundFactNetAmount(
-      upstreamFundFacts,
-      "affiliate_deduction"
-    );
-    const unreconciledReceiptDifferenceCents =
-      upstreamFundUnreconciledDifference(upstreamFundFacts);
-    const actualReceiptsCents = legacyReceiptsCents + affiliateRemittanceCents;
-    const supplierRefundsCents = sumDbMoneyToBigInt(
-      supplierRefundAmountCents,
-      "供应商退款到账金额"
-    );
-    const proxyPaymentCents = sumDbMoneyToBigInt(
-      projectProxyPayments.map((payment) => payment.amountCents),
-      "项目代付金额"
-    );
-    const affiliateDownstreamPaymentCents = projectAffiliatePayments.reduce(
-      (total, payment) =>
-        total +
-        (payment.effectDirection === "decrease" ? -1n : 1n) *
-          dbMoneyToBigInt(payment.amountCents, "施工企业对下付款金额"),
-      0n
-    );
-    const upstreamSettlementCents = sumDbMoneyToBigInt(
-      projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents),
-      "对上结算金额"
-    );
-    const financingReadAt = new Date();
-    const availableFinancingQuotas = projectFinancingQuotas.filter(
-      (quota) =>
-        quota.status === "approved" &&
-        (quota.validUntil === null || quota.validUntil.getTime() >= financingReadAt.getTime())
-    );
-    const availableFinancingCents = sumDbMoneyToBigInt(
-      availableFinancingQuotas.map((quota) => {
-        const sourceKey = `financing_quota:${quota.id}`;
-        const netUsed = fundingAllocationSummary.netUsedBySource.get(sourceKey) ?? 0n;
-        return dbMoneyToBigInt(quota.amountCents, "项目垫资额度") - netUsed;
-      }),
-      "项目可用垫资额度"
-    );
-    const actualPaidCents = sumDbMoneyToBigInt(
-      [
-        ...executions.map((execution) => execution.amountCents),
-        ...expenseExecutions.map((execution) => execution.amountCents),
-        ...spotExecutions.map((execution) => execution.amountCents)
-      ],
-      "项目实付金额"
-    );
-    const operatingIncomeCents = projectUpstreamSettlements.length
-      ? upstreamSettlementCents
-      : ownerPaymentCents;
-    const operatingCostCents =
-      actualPaidCents +
-      proxyPaymentCents +
-      affiliateDownstreamPaymentCents +
-      affiliateDeductionCents;
-    const spotCashRequests = spotProcurementPayments.map(
-      spotProcurementPaymentToMoneyRequestValue
-    );
-    const projectRequests = [
-      ...payments,
-      ...projectExpenseRequests,
-      ...spotCashRequests
-    ];
-    const approvalPendingOccupancyCents = sumDbMoneyToBigInt(
-      projectRequests
-        .filter((request) => request.status === "approval_pending")
-        .map((request) => request.requestedAmountCents),
-      "审批中资金占用"
-    );
-    const approvedPendingPaymentCents = projectRequests
-      .filter((request) =>
-        ["approved_pending_payment", "partially_paid"].includes(request.status)
-      )
-      .reduce<bigint>(
-        (total, request) => total + outstandingMoneyRequestCentsBigInt(request),
-        0n
-      );
-    const availableFundsCents =
-      actualReceiptsCents +
-      availableFinancingCents -
-      (fundingAllocationSummary.netUsedBySource.get("project_cash") ?? 0n) -
-      approvalPendingOccupancyCents -
-      approvedPendingPaymentCents;
-    const dataGaps = [
-      ...(projectUpstreamSettlements.length ? [] : [UPSTREAM_SETTLEMENT_GAP]),
-      ...(availableFinancingQuotas.length ? [] : [FINANCING_LIMIT_GAP])
-    ];
-
+    const compatibilityGap =
+      "旧经营总览仅保留导航兼容；正式金额统一取自经营投影，待审批金额不再用业务表二次拼装。";
     return {
+      projectionAsOf: projection.asOf,
+      projectionIntegrity: projection.integrity,
       project,
       cash: {
-        actualReceiptsCents: projectMoneyToApi(actualReceiptsCents),
-        legacyReceiptsCents: projectMoneyToApi(legacyReceiptsCents),
-        affiliateRemittanceCents: projectMoneyToApi(affiliateRemittanceCents),
-        supplierRefundsCents:
-          projectMoneyToApi(supplierRefundsCents),
-        availableFundsCents: projectMoneyToApi(availableFundsCents),
-        actualPaidCents: projectMoneyToApi(actualPaidCents),
-        approvalPendingOccupancyCents: projectMoneyToApi(approvalPendingOccupancyCents),
-        approvedPendingPaymentCents: projectMoneyToApi(approvedPendingPaymentCents),
-        financeRecordedOutflowCents: projectMoneyToApi(
-          sumDbMoneyToBigInt(
-            financeRecords.map((record) => record.amountCents),
-            "财务入账流出金额"
-          )
-        )
+        actualReceiptsCents: null,
+        legacyReceiptsCents: null,
+        affiliateRemittanceCents: null,
+        supplierRefundsCents: null,
+        availableFundsCents: projection.distribution.cashCeilingCents,
+        actualPaidCents: projection.actualFunds.confirmedProjectOutflowsCents,
+        approvalPendingOccupancyCents: null,
+        approvedPendingPaymentCents: null,
+        financeRecordedOutflowCents: null
       },
       business: {
-        effectiveContractAmountCents: projectMoneyToApi(
-          sumDbMoneyToBigInt(
-            latestEffectiveContractVersions.map((version) => version.amountCents),
-            "生效合同金额"
-          )
-        ),
-        effectiveSettlementAmountCents: projectMoneyToApi(
-          sumDbMoneyToBigInt(
-            effectiveSettlements.map((settlement) => settlement.amountCents),
-            "生效结算金额"
-          )
-        ),
-        payableSettlementAmountCents: projectMoneyToApi(
-          sumDbMoneyToBigInt(
-            effectiveSettlements.map((settlement) => settlement.payableAmountCents),
-            "结算应付金额"
-          )
-        ),
-        operatingIncomeCents: projectMoneyToApi(operatingIncomeCents),
-        affiliateDownstreamPaymentCents: projectMoneyToApi(
-          affiliateDownstreamPaymentCents
-        ),
-        operatingCostCents: projectMoneyToApi(operatingCostCents),
-        grossProfitCents: projectMoneyToApi(operatingIncomeCents - operatingCostCents)
+        effectiveContractAmountCents:
+          projection.commitments.contractCommitmentCents,
+        effectiveSettlementAmountCents: null,
+        payableSettlementAmountCents: null,
+        operatingIncomeCents: projection.operating.confirmedIncomeCents,
+        affiliateDownstreamPaymentCents: null,
+        operatingCostCents: projection.operating.confirmedCostCents,
+        grossProfitCents:
+          projection.profitAndLoss.currentOperatingProfitCents
       },
       upstreamFunds: {
-        ownerPaymentCents: projectMoneyToApi(ownerPaymentCents),
-        affiliateRemittanceCents: projectMoneyToApi(affiliateRemittanceCents),
-        affiliateDeductionCents: projectMoneyToApi(affiliateDeductionCents),
+        ownerPaymentCents: null,
+        affiliateRemittanceCents: null,
+        affiliateDeductionCents: null,
         unreconciledReceiptDifferenceCents:
-          projectMoneyToApi(unreconciledReceiptDifferenceCents),
-        writtenCount: upstreamFundFacts.filter((fact) => fact.basisType === "written").length,
-        oralCount: upstreamFundFacts.filter((fact) => fact.basisType === "oral").length,
-        rows: upstreamFundFacts.map((fact) =>
-          toUpstreamFundFactReadModel(fact, {
-            payableAmountCents: fact.affiliateSettlementFactId
-              ? remittancePayableBySettlementId.get(fact.affiliateSettlementFactId) ?? null
-              : null,
-            actualPaymentAmountCents: fact.affiliateSettlementFactId
-              ? remittancePaidBySettlementId.get(fact.affiliateSettlementFactId) ?? 0n
-              : null
-          })
-        )
+          projection.restrictions.openUncoveredReconciliationCents,
+        writtenCount,
+        oralCount
       },
-      counts: {
-        contracts: contracts.length,
-        settlements: settlements.length,
-        payments: payments.length
-      },
-      dataGaps
+      counts: { contracts, settlements, payments },
+      dataGaps: [
+        compatibilityGap,
+        ...projection.integrity.notices,
+        ...(projection.evidence.gapFactCount > 0
+          ? [`存在 ${projection.evidence.gapFactCount} 条 C 级历史资料缺口，未进入正式金额。`]
+          : [])
+      ],
+      operatingProjection: projection,
+      canExportOperatingProjection: canExportDetail
     };
+  }
+
+  async listUpstreamFundFacts(
+    projectId: string,
+    actorUserId: string,
+    input: { cursor?: string; pageSize?: number } = {}
+  ) {
+    const pageSize = input.pageSize ?? DEFAULT_UPSTREAM_FUND_FACT_PAGE_SIZE;
+    if (
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > MAX_UPSTREAM_FUND_FACT_PAGE_SIZE
+    ) {
+      throw new BadRequestException("上游资金明细每页条数必须是 1 到 200 的整数");
+    }
+    if (!this.operatingProjection) {
+      throw new Error("经营投影服务未完成装配");
+    }
+    const releaseReadSlot = this.operatingProjection.acquireCompatibilityReadSlot(actorUserId);
+    try {
+      const cursor = input.cursor
+        ? this.upstreamFundFactCursor.read(input.cursor, {
+            actorUserId,
+            projectId,
+            pageSize
+          })
+        : null;
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+        const databaseReadAt = (await tx.$queryRaw<Array<{ readAt: Date }>>(Prisma.sql`
+          SELECT CURRENT_TIMESTAMP AS "readAt",
+            set_config('statement_timeout', ${String(PROJECT_READ_STATEMENT_TIMEOUT_MS)}, true)
+        `))[0]?.readAt;
+        if (!databaseReadAt) {
+          throw new BadRequestException("数据库未返回上游资金明细读取时点");
+        }
+        const readAt = cursor ? new Date(cursor.readAt) : databaseReadAt;
+        if (readAt.getTime() > databaseReadAt.getTime()) {
+          throw new BadRequestException("上游资金明细游标读取时点晚于当前数据库时点");
+        }
+        const project = await tx.project.findFirst({
+          where: { id: projectId, isActive: true },
+          select: { id: true }
+        });
+        if (!project) {
+          throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+        }
+        const snapshot = await readUpstreamFundFactSnapshot(tx, projectId, readAt);
+        if (
+          cursor &&
+          (
+            cursor.snapshotRowCount !== snapshot.snapshotRowCount ||
+            !sameUpstreamFundFactFingerprint(
+              cursor.snapshotStateFingerprint,
+              snapshot.snapshotStateFingerprint
+            )
+          )
+        ) {
+          throw new BadRequestException("上游资金明细快照已变化，请刷新后重新读取");
+        }
+        const position = cursor?.position;
+        const cursorWhere = position ? upstreamFundFactCursorWhere(position) : undefined;
+        const cursorPredicate = position
+          ? upstreamFundFactCursorPredicate(position)
+          : Prisma.sql`TRUE`;
+        const preflightRows = await tx.$queryRaw<Array<{
+          id: string;
+          logicalBytes: bigint;
+        }>>(Prisma.sql`
+          SELECT fact.id,
+            GREATEST(
+              pg_column_size(fact),
+              octet_length(to_jsonb(fact)::text)
+            )::bigint AS "logicalBytes"
+          FROM "ProjectUpstreamFundFact" AS fact
+          WHERE fact."projectId" = ${projectId}
+            AND fact."createdAt" <= ${readAt}
+            AND ${cursorPredicate}
+          ORDER BY fact."occurredAt" DESC, fact."createdAt" DESC, fact.id ASC
+          LIMIT ${pageSize + 1}
+        `);
+        const preflightBytes = preflightRows.reduce(
+          (total, row) => total + row.logicalBytes,
+          0n
+        );
+        if (preflightBytes > BigInt(MAX_UPSTREAM_FUND_FACT_RESPONSE_BYTES)) {
+          throw new PayloadTooLargeException(
+            "上游资金明细单页超出安全预算，请联系管理员处理异常大字段"
+          );
+        }
+        const rows = await tx.projectUpstreamFundFact.findMany({
+          where: {
+            projectId,
+            createdAt: { lte: readAt },
+            ...(cursorWhere ? { AND: [cursorWhere] } : {})
+          },
+          orderBy: [
+            { occurredAt: "desc" },
+            { createdAt: "desc" },
+            { id: "asc" }
+          ],
+          take: pageSize + 1
+        });
+        const pageRows = rows.slice(0, pageSize);
+        const last = pageRows.at(-1);
+        const nextCursor = rows.length > pageSize && last
+          ? this.upstreamFundFactCursor.issue({
+              actorUserId,
+              projectId,
+              pageSize,
+              readAt: readAt.toISOString(),
+              snapshotRowCount: snapshot.snapshotRowCount,
+              snapshotStateFingerprint: snapshot.snapshotStateFingerprint,
+              position: {
+                occurredAt: last.occurredAt.toISOString(),
+                createdAt: last.createdAt.toISOString(),
+                id: last.id
+              }
+            })
+          : null;
+        const response = {
+          items: pageRows.map((fact) => toUpstreamFundFactReadModel(fact)),
+          page: { pageSize, readAt: readAt.toISOString(), nextCursor }
+        };
+        if (
+          Buffer.byteLength(JSON.stringify(response), "utf8") >
+          MAX_UPSTREAM_FUND_FACT_RESPONSE_BYTES
+        ) {
+          throw new PayloadTooLargeException(
+            "上游资金明细单页响应超出安全预算，请联系管理员处理异常大字段"
+          );
+        }
+        return response;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        maxWait: PROJECT_READ_TRANSACTION_MAX_WAIT_MS,
+        timeout: PROJECT_READ_TRANSACTION_TIMEOUT_MS
+      });
+    } finally {
+      releaseReadSlot();
+    }
   }
 
   async recordReceipt(projectId: string, actorUserId: string, input: RecordProjectReceiptDto) {
@@ -4169,18 +4126,6 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values));
 }
 
-function latestByContract<T extends { contractId: string; versionNo?: number | null }>(versions: T[]): T[] {
-  return Array.from(
-    versions.reduce((latestById, version) => {
-      const current = latestById.get(version.contractId);
-      if (!current || (version.versionNo ?? 0) > (current.versionNo ?? 0)) {
-        latestById.set(version.contractId, version);
-      }
-      return latestById;
-    }, new Map<string, T>()).values()
-  );
-}
-
 export function projectMoneyToApi(value: bigint): string {
   return moneyCentsToApi(dbMoneyToBigInt(value, "项目金额"));
 }
@@ -4977,20 +4922,6 @@ function upstreamFundRequestFingerprint(value: Record<string, unknown>) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-function upstreamFundFactNetAmount(
-  facts: Array<{
-    factType: string;
-    status: string;
-    effectDirection: string;
-    amountCents: bigint;
-  }>,
-  factType: ProjectUpstreamFundFactType
-) {
-  return facts
-    .filter((fact) => fact.factType === factType && fact.status === "confirmed")
-    .reduce((total, fact) => total + upstreamFundFactSignedAmount(fact), 0n);
-}
-
 function upstreamFundFactSignedAmount(fact: {
   effectDirection: string;
   amountCents: bigint;
@@ -5005,39 +4936,6 @@ function affiliateSettlementFactSignedAmount(fact: {
 }) {
   const amountCents = dbMoneyToBigInt(fact.amountCents, "施工企业结算金额");
   return fact.effectDirection === "decrease" ? -amountCents : amountCents;
-}
-
-function upstreamFundUnreconciledDifference(
-  facts: Array<{
-    factType: string;
-    entryKind: string;
-    status: string;
-    effectDirection: string;
-    amountCents: bigint;
-  }>
-) {
-  const pending = facts
-    .filter(
-      (fact) =>
-        fact.factType === "unreconciled_receipt_difference" &&
-        fact.status === "pending_reconciliation"
-    )
-    .reduce(
-      (total, fact) => total + dbMoneyToBigInt(fact.amountCents, "待核对到账差额"),
-      0n
-    );
-  const reclassified = facts
-    .filter(
-      (fact) =>
-        fact.factType === "affiliate_deduction" &&
-        fact.entryKind === "reclassification" &&
-        fact.status === "confirmed"
-    )
-    .reduce(
-      (total, fact) => total + dbMoneyToBigInt(fact.amountCents, "已重分类到账差额"),
-      0n
-    );
-  return pending > reclassified ? pending - reclassified : 0n;
 }
 
 function toUpstreamFundFactReadModel(

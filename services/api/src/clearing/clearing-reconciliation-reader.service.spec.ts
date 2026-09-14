@@ -1,3 +1,4 @@
+import { PayloadTooLargeException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
 import { ClearingReconciliationReaderService } from "./clearing-reconciliation-reader.service";
@@ -201,5 +202,29 @@ describe("ClearingReconciliationReaderService", () => {
         projectId: "project-1",
         clearingCaseIds: ["case-1"]
       });
+  });
+
+  it("fails closed when one canonical relation query exceeds its hard row budget", async () => {
+    const tx = {
+      clearingEventVersion: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce(Array.from({ length: 10_001 }, (_, index) => ({
+            id: `legacy-${index}`,
+            confirmation: { confirmedAt: new Date("2026-09-01T00:00:00.000Z") }
+          })))
+          .mockResolvedValueOnce([])
+      },
+      clearingReconciliationRevision: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationCoverage: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationResolution: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationResolutionLine: { findMany: jest.fn().mockResolvedValue([]) },
+      clearingReconciliationDefinitionReversal: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ClearingReconciliationReaderService({} as never, {} as never);
+
+    await expect(service.readClearingReconciliationRiskInTransaction(
+      tx as never,
+      { projectId: "project-1", asOf: new Date("2026-09-02T00:00:00.000Z") }
+    )).rejects.toBeInstanceOf(PayloadTooLargeException);
   });
 });

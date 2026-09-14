@@ -18,6 +18,7 @@ import type {
   SettlementApprovalWithdrawalContextReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
+import type { OperatingProjectionExportKind, OperatingProjectionExportFilters } from "@jiangkong/shared-domain";
 import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
 import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
 import {
@@ -1692,36 +1693,93 @@ export interface AssignProjectAffiliatePayload {
   changeReason: string;
 }
 
+export interface OperatingProjectionAggregateReadModel {
+  scope: { label: string; projectCount: number };
+  asOf: { businessDate: string; readAt: string; retroactiveFactCount: number };
+  integrity: { statusLabel: string; moneyComplete: boolean; notices: string[] };
+  commitments: { contractCommitmentCents: string };
+  operating: {
+    confirmedIncomeCents: string;
+    confirmedCostCents: string;
+    receivableCents: string;
+    payableCents: string;
+  };
+  actualFunds: {
+    constructionEnterpriseFundsCents: string;
+    companyProjectFundsCents: string;
+    netProjectCashPositionCents: string;
+    nonNegativeUsableCashStartCents: string;
+    confirmedProjectInflowsCents: string;
+    confirmedProjectOutflowsCents: string;
+    companyAdvanceForProjectCents: string;
+    companyReturnableToProjectCents: string;
+    interSubjectBalanceCents: string;
+  };
+  restrictions: {
+    estimatedClearingExpenseCents: string;
+    necessaryExpenseReserveCents: string;
+    projectDisputedFundsCents: string;
+    constructionEnterpriseFrozenFundsCents: string;
+    openPendingReconciliationGrossCents: string | null;
+    openCoveredReconciliationCents: string | null;
+    openUncoveredReconciliationCents: string | null;
+    continuedWithheldRetainedCents: string | null;
+    temporaryProfitDistributionCents: string;
+    relationshipCompletenessLabel: string;
+  };
+  profitAndLoss: {
+    currentOperatingProfitCents: string;
+    estimatedClearingExpenseCents: string;
+    currentEstimatedProfitCents: string;
+    finalConfirmedProfitCents: string | null;
+    finalConfirmable: boolean;
+  };
+  distribution: {
+    cashCeilingCents: string | null;
+    projectedProfitCeilingCents: string;
+    currentDistributableProfitCents: string | null;
+  };
+  evidence: Record<"A" | "B" | "C", { factCount: number; amountCents: string }> & {
+    gapFactCount: number;
+    gapAmountCents: string;
+  };
+  sources: Array<{
+    sourceTypeLabel: string;
+    factCount: number;
+    impactCount: number;
+    signedImpactCents: string;
+  }>;
+}
+
 export interface ProjectOperatingOverviewReadModel {
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;
-    legacyReceiptsCents: string;
-    affiliateRemittanceCents: string;
+    legacyReceiptsCents: string | null;
+    affiliateRemittanceCents: string | null;
     supplierRefundsCents: string | null;
     availableFundsCents: string | null;
     actualPaidCents: string;
-    approvalPendingOccupancyCents: string;
-    approvedPendingPaymentCents: string;
-    financeRecordedOutflowCents: string;
+    approvalPendingOccupancyCents: string | null;
+    approvedPendingPaymentCents: string | null;
+    financeRecordedOutflowCents: string | null;
   };
   business: {
     effectiveContractAmountCents: string;
-    effectiveSettlementAmountCents: string;
-    payableSettlementAmountCents: string;
+    effectiveSettlementAmountCents: string | null;
+    payableSettlementAmountCents: string | null;
     operatingIncomeCents: string | null;
-    affiliateDownstreamPaymentCents: string;
+    affiliateDownstreamPaymentCents: string | null;
     operatingCostCents: string | null;
     grossProfitCents: string | null;
   };
   upstreamFunds: {
-    ownerPaymentCents: string;
-    affiliateRemittanceCents: string;
-    affiliateDeductionCents: string;
-    unreconciledReceiptDifferenceCents: string;
+    ownerPaymentCents: string | null;
+    affiliateRemittanceCents: string | null;
+    affiliateDeductionCents: string | null;
+    unreconciledReceiptDifferenceCents: string | null;
     writtenCount: number;
     oralCount: number;
-    rows: ProjectUpstreamFundFactReadModel[];
   };
   counts: {
     contracts: number;
@@ -1729,6 +1787,8 @@ export interface ProjectOperatingOverviewReadModel {
     payments: number;
   };
   dataGaps: string[];
+  operatingProjection: OperatingProjectionAggregateReadModel;
+  canExportOperatingProjection: boolean;
 }
 
 export type ProjectUpstreamFundFactType =
@@ -1772,6 +1832,15 @@ export interface ProjectUpstreamFundFactReadModel {
   confirmedAt: string | null;
   confirmationSignatureVersionId: string | null;
   createdAt: string;
+}
+
+export interface ProjectUpstreamFundFactPageReadModel {
+  items: ProjectUpstreamFundFactReadModel[];
+  page: {
+    pageSize: number;
+    readAt: string;
+    nextCursor: string | null;
+  };
 }
 
 export interface RecordProjectUpstreamFundFactPayload {
@@ -2581,6 +2650,57 @@ export function fetchProjectUpdateCapability(projectId: string) {
 
 export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
+}
+
+export function fetchProjectSetOperatingProjection(projectIds?: string[]) {
+  const query = new URLSearchParams({ scopeKind: "projects" });
+  if (projectIds) query.set("projectIds", projectIds.join(","));
+  return readJson<OperatingProjectionAggregateReadModel>(
+    `/operating-projections/as-of?${query.toString()}`
+  );
+}
+
+export { OPERATING_PROJECTION_EXPORT_KINDS, type OperatingProjectionExportKind } from "@jiangkong/shared-domain";
+
+export async function downloadOperatingProjectionExport(body: {
+  scopeKind: "project" | "company" | "projects";
+  projectId?: string;
+  projectIds?: string;
+  companyEntityId?: string;
+  asOf?: string;
+  constructionEnterpriseId?: string;
+  counterpartyId?: string;
+  costCategoryCode?: string;
+  sourceType?: string;
+  exportKind: OperatingProjectionExportKind;
+  confirmationPassword: string;
+} & OperatingProjectionExportFilters): Promise<void> {
+  const response = await apiFetch("/operating-projections/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, "导出经营投影失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match
+    ? decodeURIComponent(match[1])
+    : `经营投影-${body.exportKind}.csv`;
+  saveBlob(blob, fileName);
+}
+
+export function fetchProjectUpstreamFundFacts(
+  projectId: string,
+  query?: { cursor?: string; pageSize?: number }
+) {
+  const search = new URLSearchParams();
+  if (query?.cursor) search.set("cursor", query.cursor);
+  if (query?.pageSize !== undefined) search.set("pageSize", String(query.pageSize));
+  const suffix = search.size ? `?${search.toString()}` : "";
+  return readJson<ProjectUpstreamFundFactPageReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts${suffix}`
+  );
 }
 
 export function fetchProjectExpenseRequests(

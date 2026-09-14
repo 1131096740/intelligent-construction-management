@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "3f630d3c21b5f7f018b9e2ce6618389a27aa3649618461021285d093fbef4326",
+      "sha256": "f8880f950aa24bb1495a6898f8c27f92d1189fb19ad76ec66530296e34acc762",
       "status": "ready",
       "summary": {
-        "routeCount": 585
+        "routeCount": 593
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "adf3496a2bb194f99d796b556d8d6dcac9c928ac7fb5ebc1b7907e682d5d54f3",
+      "sha256": "3d92b10568954064bf587b4751c0d3aac052726930678217505d76e74f0e841b",
       "status": "ready",
       "summary": {
         "apiModuleCount": 27,
-        "exportedFunctionCount": 561,
-        "transportWrapperCount": 541,
+        "exportedFunctionCount": 564,
+        "transportWrapperCount": 544,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 563,
+        "mainRequestBindingCount": 566,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 563,
-        "productionConsumerCount": 435,
+        "requestEdgeCount": 566,
+        "productionConsumerCount": 438,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,50 +42,50 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "4477b8a81a7d8784910d078ad065dd1da0df13b767d4506c32b8be445e930a7d",
+      "sha256": "73af9f4211c46c5415eccd93da9cc70b2519bbb690ba8790e0c04a1301a806ff",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 301,
-        "pageActionCount": 53,
+        "registeredActionCount": 302,
+        "pageActionCount": 54,
         "backgroundActionCount": 248,
-        "reachableVueFileCount": 138,
+        "reachableVueFileCount": 139,
         "routeRootCount": 59,
-        "totalVueFileCount": 162,
-        "parsedVueFileCount": 162,
-        "reachableProductionModuleCount": 254,
-        "templateEventDirectiveCount": 954,
+        "totalVueFileCount": 163,
+        "parsedVueFileCount": 163,
+        "reachableProductionModuleCount": 256,
+        "templateEventDirectiveCount": 958,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 289,
-        "candidateProductionMutationConsumerCount": 289,
-        "acceptedProductionMutationConsumerCount": 289,
-        "productionMutationConsumerPairCount": 289,
+        "coveredProductionMutationConsumerCount": 290,
+        "candidateProductionMutationConsumerCount": 290,
+        "acceptedProductionMutationConsumerCount": 290,
+        "productionMutationConsumerPairCount": 290,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "cbb37375aa95f1ad3ef0d076b652731973061f4fc0c359edff8081b0ce17517f",
+      "sha256": "f38aa41e1b4dc90c2df7afbe0171e05d02124ade470ac81c71abf1f05ac979e0",
       "status": "ready",
       "summary": {
-        "routeCount": 585,
-        "exactRouteCount": 585,
-        "normalizedRouteCount": 585,
-        "classificationOverrideCount": 214,
-        "consumerSurfaceOverrideCount": 35,
-        "classificationOverrideSha256": "6b5402ff45e1ac4dea72071533f0867528dfa329bac21a1911c545fe3f56a7a0",
-        "consumerSurfaceOverrideSha256": "9a8bc9cdd767de5548d1f8d28ed30fbd8ebb1557a005502595d11189540c4ca7",
-        "derivedProductionPageCount": 371,
-        "pageRouteCount": 373,
+        "routeCount": 593,
+        "exactRouteCount": 593,
+        "normalizedRouteCount": 593,
+        "classificationOverrideCount": 221,
+        "consumerSurfaceOverrideCount": 40,
+        "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
+        "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
+        "derivedProductionPageCount": 372,
+        "pageRouteCount": 376,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
-        "internalTaskCount": 34,
+        "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 425,
+          "web_api_wrapper": 428,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 32,
+          "operator_endpoint": 37,
           "none": 120
         },
         "blockerCount": 0
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 585,
-    "pageRouteCount": 373,
+    "routeCount": 593,
+    "pageRouteCount": 376,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
-    "internalTaskRouteCount": 34,
+    "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 563,
+    "mainRequestBindingCount": 566,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 301,
-    "actionBindingCount": 336,
-    "acceptedActionBindingCount": 316,
+    "registeredActionCount": 302,
+    "actionBindingCount": 337,
+    "acceptedActionBindingCount": 317,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 289,
-    "coveredProductionMutationConsumerPairCount": 289,
+    "productionMutationConsumerPairCount": 290,
+    "coveredProductionMutationConsumerPairCount": 290,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -4280,6 +4280,228 @@
     {
       "route": {
         "method": "GET",
+        "path": "/operating-projections/as-of/details",
+        "normalizedKey": "GET /operating-projections/as-of/details",
+        "controller": "OperatingProjectionController",
+        "handler": "asOfDetails",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/operating-projections/as-of",
+        "normalizedKey": "GET /operating-projections/as-of",
+        "controller": "OperatingProjectionController",
+        "handler": "asOf",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectSetOperatingProjection",
+          "method": "GET",
+          "path": "/operating-projections/as-of?:param",
+          "normalizedKey": "GET /operating-projections/as-of",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/operating-projections/company/:companyEntityId/details",
+        "normalizedKey": "GET /operating-projections/company/:param/details",
+        "controller": "OperatingProjectionController",
+        "handler": "companyDetails",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/operating-projections/company/:companyEntityId",
+        "normalizedKey": "GET /operating-projections/company/:param",
+        "controller": "OperatingProjectionController",
+        "handler": "company",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/operating-projections/project/:projectId/details",
+        "normalizedKey": "GET /operating-projections/project/:param/details",
+        "controller": "OperatingProjectionController",
+        "handler": "projectDetails",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/operating-projections/project/:projectId",
+        "normalizedKey": "GET /operating-projections/project/:param",
+        "controller": "OperatingProjectionController",
+        "handler": "project",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/operating-takeovers/historical-wage/options",
         "normalizedKey": "GET /operating-takeovers/historical-wage/options",
         "controller": "HistoricalWageTakeoverController",
@@ -7130,6 +7352,48 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/upstream-fund-facts",
+        "normalizedKey": "GET /projects/:param/upstream-fund-facts",
+        "controller": "ProjectController",
+        "handler": "upstreamFundFacts",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.upstream_fund_fact.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectUpstreamFundFacts",
+          "method": "GET",
+          "path": "/projects/:param/upstream-fund-facts",
+          "normalizedKey": "GET /projects/:param/upstream-fund-facts",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -19866,6 +20130,77 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/operating-projections/export",
+        "normalizedKey": "POST /operating-projections/export",
+        "controller": "OperatingProjectionController",
+        "handler": "export",
+        "sourceFile": "services/api/src/operating-projection/operating-projection.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadOperatingProjectionExport",
+          "method": "POST",
+          "path": "/operating-projections/export",
+          "normalizedKey": "POST /operating-projections/export",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-operating-projection.export",
+          "bindingIndex": 0,
+          "identity": "project-operating-projection.export\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadOperatingProjectionExport\u0000POST\u0000POST /operating-projections/export\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "overview.canExportOperatingProjection",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadOperatingProjectionExport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

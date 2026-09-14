@@ -7,6 +7,7 @@ import {
   type FundsWorkbenchSource,
   type FundsWorkbenchView
 } from "../../api/funds-workbench.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import JgFilterBar from "../../components/JgFilterBar.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import JgStatusTag from "../../components/JgStatusTag.vue";
@@ -60,7 +61,9 @@ function statusTone(row: FundsWorkbenchItem) {
   if (row.statusLabel === "审批中" || row.statusLabel === "已批待付" || row.statusLabel === "部分支付" || row.statusLabel === "待退款处理" || row.statusLabel === "待补票据") return "warning" as const;
   return "default" as const;
 }
-function amount(value: string) { return `¥${centsTextToYuanText(value)}`; }
+function amount(value: string | null) {
+  return value === null ? "—" : `¥${centsTextToYuanText(value)}`;
+}
 function projectText(row: FundsWorkbenchItem) { return row.project ? `${row.project.code} · ${row.project.name} · ${row.sourceDocument}` : row.sourceDocument; }
 function dateTime(value: string) { return value.replace("T", " ").slice(0, 16); }
 function openSource(row: FundsWorkbenchItem) {
@@ -79,7 +82,7 @@ async function loadWorkbench() {
     rows.value = result.items;
     counts.value = result.viewCounts;
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "统一资金工作台读取失败";
+    loadError.value = formatUnknownApiError(error, "统一资金工作台读取失败");
   } finally {
     loading.value = false;
   }

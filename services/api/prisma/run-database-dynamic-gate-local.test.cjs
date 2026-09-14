@@ -68,23 +68,48 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 229 pending tests as executable local coverage", () => {
+test("manifest derives all 243 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 52,
-    fullyPendingSuites: 41,
+    pendingFiles: 53,
+    fullyPendingSuites: 42,
     partiallyPendingSuites: 11,
-    pendingTests: 229,
-    coveredFiles: 52,
-    coveredTests: 229,
+    pendingTests: 243,
+    coveredFiles: 53,
+    coveredTests: 243,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
+  });
+});
+
+test("canonical manifest executes all 14 POL-108 PG16 tests", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "operating_projection_pol108"
+  );
+
+  assert.deepEqual(group, {
+    id: "operating_projection_pol108",
+    pendingTests: 14,
+    testFiles: [
+      {
+        path: "services/api/src/database/operating-projection-postgresql.spec.ts",
+        pendingTests: 14,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "workspaceScript",
+      script: "verify:pol108-operating-projection:local",
+      path: "services/api/prisma/run-pol108-operating-projection-local.cjs"
+    },
+    state: "executable_local_runner"
   });
 });
 
@@ -345,7 +370,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=229/u
+    /inventory\.coveredTests=26，派生值=243/u
   );
 });
 

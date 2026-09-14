@@ -29,6 +29,8 @@
     "verify:pol279-necessary-expense-reserve:local": "node prisma/run-pol279-necessary-expense-reserve-local.cjs",
     "preverify:pol280-project-fund-dispute:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
     "verify:pol280-project-fund-dispute:local": "node prisma/run-pol280-project-fund-dispute-local.cjs",
+    "preverify:pol108-operating-projection:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
+    "verify:pol108-operating-projection:local": "node prisma/run-pol108-operating-projection-local.cjs",
     "preverify:contract-template-scenario-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:contract-template-scenario-concurrency:local": "node prisma/run-contract-template-scenario-concurrency-local.cjs",
     "preverify:draft-lifecycle:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",

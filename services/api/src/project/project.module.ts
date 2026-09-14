@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
+import { OperatingProjectionModule } from "../operating-projection/operating-projection.module";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectController } from "./project.controller";
@@ -16,6 +17,7 @@ import { ProjectOperatingProfileService } from "./project-operating-profile.serv
     AuthModule,
     FileModule,
     OperatingLedgerModule,
+    OperatingProjectionModule,
     ProjectFundingModule
   ],
   controllers: [ProjectController],

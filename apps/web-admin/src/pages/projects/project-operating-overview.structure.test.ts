@@ -8,6 +8,18 @@ const source = readFileSync(
 );
 
 describe("project operating overview structure", () => {
+  it("composes the four projection groups through one domain metric panel", () => {
+    expect(source.match(/<OperatingMetricPanel\b/g)).toHaveLength(4);
+    for (const items of ["receivablePayableItems", "subjectFundsItems", "profitAndLossItems", "evidenceItems"]) {
+      expect(source).toContain(`:items="${items}"`);
+      expect(source).not.toContain(`v-for="item in ${items}"`);
+    }
+    const panel = readFileSync(fileURLToPath(new URL("./components/OperatingMetricPanel.vue", import.meta.url)), "utf8");
+    expect(panel).toContain("<t-card");
+    expect(panel).toContain("{{ item.label }}");
+    expect(panel).toContain("{{ item.value }}");
+    expect(panel).toContain("var(--jg-space-lg)");
+  });
   it("keeps the default page on a read-only project overview and separates funds handling", () => {
     expect(source).toContain('label="项目概览"');
     expect(source).toContain('label="资金办理"');
@@ -16,11 +28,51 @@ describe("project operating overview structure", () => {
   });
 
   it("separates overview, expense-ledger and expense-create capabilities", () => {
-    expect(source).toContain("canReadProjectOverview.value\n        ? fetchProjectOperatingOverview(projectId)");
+    expect(source).toContain("if (canReadProjectOverview.value) {\n      nextOverview = await fetchProjectOperatingOverview(projectId);");
+    expect(source).toContain("loadOptionalProjectUpstreamFundFacts(\n        projectId");
+    expect(source).toContain("canRecordUpstreamFunds.value,\n        fetchProjectUpstreamFundFacts");
+    expect(source).toContain("upstreamFundFacts.value = nextUpstreamFundFacts.facts");
+    expect(source).toContain("upstreamFundFactsNextCursor.value = nextUpstreamFundFacts.nextCursor");
+    expect(source).toContain("@click=\"loadMoreUpstreamFundFacts\"");
+    expect(source).toContain("pageSize: 50");
+    expect(source).not.toContain("overview.value?.upstreamFunds.rows");
     expect(source).toContain("canReadProjectExpenseLedger.value\n        ? fetchProjectExpenseRequests(projectId");
     expect(source).toContain("const canCreateProjectExpense = computed");
     expect(source).toContain('v-if="canCreateProjectExpense"');
     expect(source).toContain("auth.user?.globalRoleKeys.some");
+  });
+
+  it("loads the cross-project executive total through one project-set projection", () => {
+    expect(source).toContain("await fetchProjectSetOperatingProjection()");
+    expect(source).not.toContain("fetchProjectSetOperatingProjection(\n      projects.value.map");
+    expect(source).toContain("buildExecutiveProjectOverview(projection, projects.value)");
+    expect(source).not.toContain("projects.value.map((project) => fetchProjectOperatingOverview(project.id))");
+  });
+
+  it("offers all five finance-only detailed exports with password confirmation", () => {
+    expect(source).toContain("canExportOperatingProjection && selectedProjectId");
+    expect(source).toContain("project_operating_ledger_detail");
+    expect(source).toContain("construction_enterprise_funds_reconciliation");
+    expect(source).toContain("company_project_funds_subledger");
+    expect(source).toContain("receivable_payable_cashflow_detail");
+    expect(source).toContain("takeover_coverage_evidence_gap");
+    expect(source).toContain("downloadOperatingProjectionExport({");
+    expect(source).toContain('v-model="operatingExportFrom"');
+    expect(source).toContain('v-model="operatingExportTo"');
+    expect(source).toContain('v-model="operatingExportStatus"');
+    expect(source).toContain("OPERATING_PROJECTION_ROW_STATUS_LABELS");
+    expect(source).toContain("occurredFrom: operatingExportFrom.value || undefined");
+    expect(source).toContain("occurredTo: operatingExportTo.value || undefined");
+    expect(source).toContain("rowStatus: operatingExportStatus.value || undefined");
+    expect(source).toContain("var(--jg-export-control-width)");
+    expect(source).toContain("var(--jg-export-panel-width)");
+    expect(source).toContain(':require-password="true"');
+    expect(source).toContain(
+      "overview.value?.canExportOperatingProjection === true"
+    );
+    expect(source).not.toContain(
+      'const canExportOperatingProjection = computed(\n  () =>\n    auth.user?.roleKeys'
+    );
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {
@@ -36,6 +88,19 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<t-select");
     expect(source).toContain("<t-collapse");
     expect(source).toContain("项目维护");
+  });
+
+  it("renders the unified projection layers without exposing source identifiers", () => {
+    expect(source).toContain("项目应收应付");
+    expect(source).toContain("各主体项目资金");
+    expect(source).toContain("四层盈亏与可分配上限");
+    expect(source).toContain("历史接管与证据完整性");
+    expect(source).toContain("overview.value?.operatingProjection.operating");
+    expect(source).toContain("overview.value?.operatingProjection.actualFunds");
+    expect(source).toContain("overview.value?.operatingProjection.profitAndLoss");
+    expect(source).toContain("projection?.evidence");
+    expect(source).not.toContain("sourceBusinessId");
+    expect(source).not.toContain("impactId");
   });
 
   it("mounts the project operating profile as a dedicated settings entry", () => {

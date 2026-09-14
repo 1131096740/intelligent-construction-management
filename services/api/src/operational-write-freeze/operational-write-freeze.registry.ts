@@ -57,6 +57,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   NecessaryExpenseReserveController: "finance",
   ProjectFundDisputeController: "finance",
   OrganizationController: "organization",
+  OperatingProjectionController: "finance",
   OperatingTakeoverController: "project",
   PayableRegistryController: "payment",
   PaymentController: "payment",

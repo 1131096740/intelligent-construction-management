@@ -14,8 +14,8 @@ export interface FundsWorkbenchItem {
   payeeName: string | null;
   payerName: string | null;
   requestedAmountCents: string;
-  paidAmountCents: string;
-  remainingAmountCents: string;
+  paidAmountCents: string | null;
+  remainingAmountCents: string | null;
   status: string;
   statusLabel: string;
   pendingRefund: boolean;

@@ -96,7 +96,7 @@ test("CI fans out independent static and database gates behind one stable summar
   );
   assert.match(
     workflow,
-    /CI_SOURCE_SHA: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.target_sha \|\| github\.sha \}\}/u
+    /CI_SOURCE_SHA: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.event_name == 'workflow_dispatch' && inputs\.target_sha \|\| github\.sha \}\}/u
   );
   assert.match(workflow, /cancel-in-progress: true/u);
   assert.match(workflow, /permissions:\s*\n\s+contents: read/u);
@@ -105,6 +105,7 @@ test("CI fans out independent static and database gates behind one stable summar
   const tests = jobBlock(workflow, "unit-test-gates");
   const build = jobBlock(workflow, "build-manifest-gates");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
+  assert.ok(dynamic.includes("timeout-minutes: ${{ matrix.group == 'operating_projection_pol108' && 90 || 20 }}"));
   const summary = jobBlock(workflow, "release-gates");
 
   for (const independentJob of [quality, tests, build, dynamic]) {
@@ -153,5 +154,26 @@ test("CI fans out independent static and database gates behind one stable summar
       summary,
       new RegExp(`needs\\['${dependency}'\\]\\.result`, "u")
     );
+  }
+});
+
+test("CI binds PR head, main push and manual target to verified checkouts", async () => {
+  const workflow = await readFile(join(root, ".github", "workflows", "ci.yml"), "utf8");
+  const source = /^  CI_SOURCE_SHA: (.+)$/mu.exec(workflow)?.[1];
+  assert.equal(
+    source,
+    "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}",
+    "PR must select its head before the push fallback; dispatch must select its explicit target"
+  );
+  assert.match(workflow, /^  CI_REQUIRE_MAIN_ANCESTOR: \$\{\{ github\.event_name == 'workflow_dispatch' \}\}$/mu);
+  for (const name of ["quality-gates", "unit-test-gates", "build-manifest-gates", "postgresql16-dynamic-gates"]) {
+    const block = jobBlock(workflow, name);
+    assert.equal((block.match(/uses: actions\/checkout@/gu) ?? []).length, 1);
+    assert.match(block, /ref: \$\{\{ env\.CI_SOURCE_SHA \}\}\n\s+fetch-depth: 0/u);
+    const verify = 'test "$(git rev-parse HEAD)" = "$CI_SOURCE_SHA"';
+    assert.ok(block.includes(verify), `${name} must verify the actual checkout`);
+    assert.ok(block.indexOf(verify) < block.indexOf("CI=true pnpm install"));
+    assert.match(block, /if \[ "\$CI_REQUIRE_MAIN_ANCESTOR" = true \]; then\s+git merge-base --is-ancestor "\$CI_SOURCE_SHA" origin\/main\s+fi/u);
+    assert.doesNotMatch(block, /(?:git checkout|git switch|git reset)/u);
   }
 });

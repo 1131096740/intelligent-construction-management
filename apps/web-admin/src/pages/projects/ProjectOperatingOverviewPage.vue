@@ -144,15 +144,6 @@
                 <thead>
                   <tr>
                     <th>项目</th>
-                    <th>生效合同额</th>
-                    <th>生效结算额</th>
-                    <th>结算可付额</th>
-                    <th>实际收款</th>
-                    <th>供应商退款</th>
-                    <th>已实付</th>
-                    <th>已批待付</th>
-                    <th>可用资金</th>
-                    <th>数据缺口</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -162,15 +153,6 @@
                     :key="row.id"
                   >
                     <td>{{ row.code }} · {{ row.name }}</td>
-                    <td>{{ formatCents(row.contractAmountCents) }}</td>
-                    <td>{{ formatCents(row.settlementAmountCents) }}</td>
-                    <td>{{ formatCents(row.payableAmountCents) }}</td>
-                    <td>{{ formatCents(row.actualReceiptsCents) }}</td>
-                    <td>{{ formatCents(row.supplierRefundsCents) }}</td>
-                    <td>{{ formatCents(row.actualPaidCents) }}</td>
-                    <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
-                    <td>{{ formatCents(row.availableFundsCents) }}</td>
-                    <td>{{ row.dataGapCount ? `${row.dataGapCount} 项` : "无" }}</td>
                     <td>
                       <button
                         type="button"
@@ -222,6 +204,62 @@
             </div>
           </section>
 
+          <section
+            v-if="canExportOperatingProjection && selectedProjectId"
+            class="panel operating-projection-export-panel"
+          >
+            <div class="panel-head">
+              <div>
+                <h2>经营投影明细导出</h2>
+                <p>按当前项目和当前可见经营事实生成财务明细 CSV</p>
+              </div>
+              <div class="operating-projection-export-actions">
+                <t-select
+                  v-model="operatingProjectionExportKind"
+                  aria-label="经营投影导出类型"
+                  :options="operatingProjectionExportOptions"
+                  :disabled="operatingProjectionExportBusy"
+                />
+                <t-button
+                  :disabled="operatingProjectionExportBusy"
+                  @click="openOperatingProjectionExport"
+                >
+                  导出明细
+                </t-button>
+                <t-date-picker
+                  v-model="operatingExportFrom"
+                  clearable
+                  format="YYYY-MM-DD"
+                  aria-label="业务期间起日"
+                  placeholder="业务期间起日（可选）"
+                  :disabled="operatingProjectionExportBusy"
+                />
+                <t-date-picker
+                  v-model="operatingExportTo"
+                  clearable
+                  format="YYYY-MM-DD"
+                  aria-label="业务期间止日"
+                  placeholder="业务期间止日（可选）"
+                  :disabled="operatingProjectionExportBusy"
+                />
+                <t-select
+                  v-model="operatingExportStatus"
+                  clearable
+                  aria-label="导出业务状态"
+                  placeholder="全部业务状态"
+                  :options="operatingExportStatusOptions"
+                  :disabled="operatingProjectionExportBusy"
+                />
+              </div>
+            </div>
+            <t-alert
+              v-if="operatingProjectionExportMessage"
+              theme="success"
+              title="导出已完成"
+              :message="operatingProjectionExportMessage"
+            />
+          </section>
+
           <div class="overview-grid">
             <section class="panel">
               <h2>现金口径</h2>
@@ -248,6 +286,28 @@
                 </div>
               </dl>
             </section>
+          </div>
+
+          <div class="overview-grid projection-grid">
+            <OperatingMetricPanel
+              title="项目应收应付"
+              :items="receivablePayableItems"
+            />
+
+            <OperatingMetricPanel
+              title="各主体项目资金"
+              :items="subjectFundsItems"
+            />
+
+            <OperatingMetricPanel
+              title="四层盈亏与可分配上限"
+              :items="profitAndLossItems"
+            />
+
+            <OperatingMetricPanel
+              title="历史接管与证据完整性"
+              :items="evidenceItems"
+            />
           </div>
 
           <section class="gap-panel overview-gap-panel">
@@ -429,6 +489,12 @@
               title="业务关联选项读取失败"
               :message="upstreamFundReferenceOptionsError"
             />
+            <t-alert
+              v-if="upstreamFundFactsError"
+              theme="error"
+              title="上游资金明细读取失败"
+              :message="upstreamFundFactsError"
+            />
             <div
               v-if="receiptMessage"
               class="receipt-message"
@@ -486,6 +552,19 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div
+              v-if="upstreamFundFactsNextCursor"
+              class="panel-actions"
+            >
+              <t-button
+                variant="outline"
+                :loading="upstreamFundFactsLoadingMore"
+                :disabled="upstreamFundFactsLoadingMore"
+                @click="loadMoreUpstreamFundFacts"
+              >
+                加载更多上游资金明细
+              </t-button>
             </div>
           </section>
 
@@ -839,6 +918,19 @@
     </t-tabs>
 
     <SensitiveActionDialog
+      v-if="overview?.canExportOperatingProjection"
+      v-model="operatingProjectionExportVisible"
+      title="确认导出经营投影明细"
+      description="导出文件包含当前项目的财务经营明细。请输入当前登录密码确认本人操作。"
+      confirm-text="确认并导出"
+      :require-password="true"
+      :loading="operatingProjectionExportBusy"
+      :error="operatingProjectionExportError"
+      @confirm="submitOperatingProjectionExport"
+      @cancel="closeOperatingProjectionExport"
+    />
+
+    <SensitiveActionDialog
       v-model="upstreamFundConfirmationVisible"
       title="确认上游资金事实"
       :description="upstreamFundConfirmationDescription"
@@ -869,6 +961,7 @@ import {
   confirmProjectUpstreamFundFact,
   createProject,
   createProjectExpenseRequest,
+  downloadOperatingProjectionExport,
   downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
   fetchProjectCreateCapability,
@@ -876,6 +969,8 @@ import {
   fetchProjectExpenseCreateCapability,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
+  fetchProjectSetOperatingProjection,
+  fetchProjectUpstreamFundFacts,
   fetchProjectUpstreamFundConfirmationCapability,
   fetchProjectUpstreamFundReferenceOptions,
   fetchProjectUpstreamFundRecordCapability,
@@ -895,9 +990,11 @@ import {
   type ProjectUpstreamFundFactReadModel,
   type ProjectUpstreamFundReferenceOptionsReadModel,
   type ProjectUpstreamFundFactType,
-  type ProjectOptionReadModel
+  type ProjectOptionReadModel,
+  type OperatingProjectionExportKind
 } from "../../api/core-flow-read.api";
-import type { DraftLedgerView, RoleKey } from "@jiangkong/shared-domain";
+import { OPERATING_PROJECTION_ROW_STATUSES, OPERATING_PROJECTION_ROW_STATUS_LABELS,
+  type OperatingProjectionRowStatus, type DraftLedgerView, type RoleKey } from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -918,6 +1015,8 @@ import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPa
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
+import OperatingMetricPanel from "./components/OperatingMetricPanel.vue";
+import { loadOptionalProjectUpstreamFundFacts } from "./project-operating-overview.loader";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
@@ -930,6 +1029,7 @@ import {
 import {
   buildExecutiveProjectOverview,
   buildProjectBusinessEntries,
+  formatExecutiveMoneyCents,
   type ExecutiveProjectOverview
 } from "./project-operating.config";
 import { promptSensitiveActionReason } from "../confirm-sensitive-action";
@@ -1023,6 +1123,10 @@ const receiptForm = ref<ReceiptFormState>(createReceiptForm());
 const participatingCompanyOptions = ref<ProjectParticipatingCompanyOption[]>([]);
 const participatingCompanyError = ref("");
 const upstreamFundReferenceOptions = ref<ProjectUpstreamFundReferenceOptionsReadModel | null>(null);
+const upstreamFundFacts = ref<ProjectUpstreamFundFactReadModel[]>([]);
+const upstreamFundFactsNextCursor = ref<string | null>(null);
+const upstreamFundFactsLoadingMore = ref(false);
+const upstreamFundFactsError = ref("");
 const upstreamFundReferenceOptionsError = ref("");
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
 const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(null);
@@ -1045,7 +1149,37 @@ const expenseLedgerPage = ref(1);
 const expenseLedgerPageSize = 20;
 const expenseFormBaseline = ref(projectExpenseFormSnapshot(expenseForm.value));
 const expenseLeaveDialogVisible = ref(false);
+const operatingProjectionExportKind = ref<OperatingProjectionExportKind>(
+  "project_operating_ledger_detail"
+);
+const operatingProjectionExportVisible = ref(false);
+const operatingExportFrom = ref("");
+const operatingExportTo = ref("");
+const operatingExportStatus = ref<OperatingProjectionRowStatus | "">("");
+const operatingExportFilters = computed(() => ({
+  occurredFrom: operatingExportFrom.value || undefined,
+  occurredTo: operatingExportTo.value || undefined,
+  rowStatus: operatingExportStatus.value || undefined
+}));
+const operatingExportStatusOptions = OPERATING_PROJECTION_ROW_STATUSES.map((value) => ({
+  value, label: OPERATING_PROJECTION_ROW_STATUS_LABELS[value]
+}));
+const operatingProjectionExportBusy = ref(false);
+const operatingProjectionExportError = ref("");
+const operatingProjectionExportMessage = ref("");
+const operatingProjectionExportProjectId = ref("");
 let resolvePendingExpenseLeave: ((decision: boolean) => void) | null = null;
+
+const operatingProjectionExportOptions: Array<{
+  label: string;
+  value: OperatingProjectionExportKind;
+}> = [
+  { label: "项目经营台账明细", value: "project_operating_ledger_detail" },
+  { label: "施工企业资金核对", value: "construction_enterprise_funds_reconciliation" },
+  { label: "公司项目资金分户账", value: "company_project_funds_subledger" },
+  { label: "应收应付现金流明细", value: "receivable_payable_cashflow_detail" },
+  { label: "历史接管覆盖与证据缺口", value: "takeover_coverage_evidence_gap" }
+];
 
 const expenseFormDirty = computed(
   () => projectExpenseFormSnapshot(expenseForm.value) !== expenseFormBaseline.value
@@ -1147,7 +1281,7 @@ const projectBusinessEntries = computed(() =>
 
 const projectExpenseRows = computed<ProjectExpenseRow[]>(() => projectExpenses.value?.rows ?? []);
 const upstreamFundRows = computed<ProjectUpstreamFundFactReadModel[]>(
-  () => overview.value?.upstreamFunds.rows ?? []
+  () => upstreamFundFacts.value
 );
 const upstreamFundConfirmationDescription = computed(() => {
   const fact = selectedUpstreamFundFact.value;
@@ -1203,6 +1337,9 @@ const canRecordUpstreamFunds = computed(
       ["finance_director", "finance_staff"].includes(role)
     ) ?? false
 );
+const canExportOperatingProjection = computed(
+  () => overview.value?.canExportOperatingProjection === true
+);
 const canReadProjectOverview = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
@@ -1243,14 +1380,14 @@ const cashItems = computed(() => {
   const cash = overview.value?.cash;
   return [
     { label: "我方实际到账", value: formatCents(cash?.actualReceiptsCents ?? null) },
-    { label: "已确认施工企业拨款", value: formatCents(cash?.affiliateRemittanceCents ?? "0") },
-    { label: "历史收款口径", value: formatCents(cash?.legacyReceiptsCents ?? "0") },
+    { label: "已确认施工企业拨款", value: formatCents(cash?.affiliateRemittanceCents ?? null) },
+    { label: "历史收款口径", value: formatCents(cash?.legacyReceiptsCents ?? null) },
     { label: "供应商退款", value: formatCents(cash?.supplierRefundsCents ?? null) },
     { label: "可用资金", value: formatCents(cash?.availableFundsCents ?? null) },
     { label: "已实付", value: formatCents(cash?.actualPaidCents ?? "0") },
-    { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? "0") },
-    { label: "已批待付款", value: formatCents(cash?.approvedPendingPaymentCents ?? "0") },
-    { label: "财务已记出账", value: formatCents(cash?.financeRecordedOutflowCents ?? "0") }
+    { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? null) },
+    { label: "已批待付款", value: formatCents(cash?.approvedPendingPaymentCents ?? null) },
+    { label: "财务已记出账", value: formatCents(cash?.financeRecordedOutflowCents ?? null) }
   ];
 });
 
@@ -1259,18 +1396,66 @@ const businessItems = computed(() => {
   const upstream = overview.value?.upstreamFunds;
   return [
     { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? "0") },
-    { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? "0") },
-    { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? "0") },
-    { label: "业主向施工企业付款", value: formatCents(upstream?.ownerPaymentCents ?? "0") },
-    { label: "施工企业扣款", value: formatCents(upstream?.affiliateDeductionCents ?? "0") },
-    { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? "0") },
+    { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? null) },
+    { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? null) },
+    { label: "业主向施工企业付款", value: formatCents(upstream?.ownerPaymentCents ?? null) },
+    { label: "施工企业扣款", value: formatCents(upstream?.affiliateDeductionCents ?? null) },
+    { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? null) },
     { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
     {
       label: "施工企业对下付款",
-      value: formatCents(business?.affiliateDownstreamPaymentCents ?? "0")
+      value: formatCents(business?.affiliateDownstreamPaymentCents ?? null)
     },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: formatCents(business?.grossProfitCents ?? null) }
+  ];
+});
+
+const receivablePayableItems = computed(() => {
+  const operating = overview.value?.operatingProjection.operating;
+  return [
+    { label: "已确认收入", value: formatCents(operating?.confirmedIncomeCents ?? null) },
+    { label: "已确认成本", value: formatCents(operating?.confirmedCostCents ?? null) },
+    { label: "业主及其他应收", value: formatCents(operating?.receivableCents ?? null) },
+    { label: "下游及其他应付", value: formatCents(operating?.payableCents ?? null) }
+  ];
+});
+
+const subjectFundsItems = computed(() => {
+  const funds = overview.value?.operatingProjection.actualFunds;
+  const restrictions = overview.value?.operatingProjection.restrictions;
+  return [
+    { label: "施工企业账上项目资金", value: formatCents(funds?.constructionEnterpriseFundsCents ?? null) },
+    { label: "我方公司持有项目资金", value: formatCents(funds?.companyProjectFundsCents ?? null) },
+    { label: "我方公司为项目垫资", value: formatCents(funds?.companyAdvanceForProjectCents ?? null) },
+    { label: "施工企业冻结资金", value: formatCents(restrictions?.constructionEnterpriseFrozenFundsCents ?? null) },
+    { label: "必要费用准备", value: formatCents(restrictions?.necessaryExpenseReserveCents ?? null) },
+    { label: "一般争议资金", value: formatCents(restrictions?.projectDisputedFundsCents ?? null) }
+  ];
+});
+
+const profitAndLossItems = computed(() => {
+  const profit = overview.value?.operatingProjection.profitAndLoss;
+  const distribution = overview.value?.operatingProjection.distribution;
+  return [
+    { label: "当前经营盈亏", value: formatCents(profit?.currentOperatingProfitCents ?? null) },
+    { label: "预计待清算费用", value: formatCents(profit?.estimatedClearingExpenseCents ?? null) },
+    { label: "当前预计盈亏", value: formatCents(profit?.currentEstimatedProfitCents ?? null) },
+    { label: "最终确认盈亏", value: formatCents(profit?.finalConfirmedProfitCents ?? null) },
+    { label: "当前可分配利润", value: formatCents(distribution?.currentDistributableProfitCents ?? null) }
+  ];
+});
+
+const evidenceItems = computed(() => {
+  const projection = overview.value?.operatingProjection;
+  const evidence = projection?.evidence;
+  return [
+    { label: "投影基准日", value: projection?.asOf.businessDate ?? "—" },
+    { label: "完整性", value: projection?.integrity.statusLabel ?? "—" },
+    { label: "对账关系", value: projection?.restrictions.relationshipCompletenessLabel ?? "—" },
+    { label: "A 级事实", value: `${evidence?.A.factCount ?? 0} 笔 · ${formatCents(evidence?.A.amountCents ?? "0")}` },
+    { label: "B 级事实", value: `${evidence?.B.factCount ?? 0} 笔 · ${formatCents(evidence?.B.amountCents ?? "0")}` },
+    { label: "C 级缺口", value: `${evidence?.C.factCount ?? 0} 笔 · ${formatCents(evidence?.C.amountCents ?? "0")}` }
   ];
 });
 
@@ -1278,14 +1463,14 @@ const executiveSummaryItems = computed(() => {
   const summary = executiveOverview.value?.summary;
   return [
     { label: "项目数", value: String(summary?.projectCount ?? 0) },
-    { label: "生效合同额", value: formatCents(summary?.contractAmountCents ?? "0") },
-    { label: "生效结算额", value: formatCents(summary?.settlementAmountCents ?? "0") },
-    { label: "结算可付额", value: formatCents(summary?.payableAmountCents ?? "0") },
-    { label: "实际收款", value: formatCents(summary?.actualReceiptsCents ?? null) },
-    { label: "供应商退款", value: formatCents(summary?.supplierRefundsCents ?? null) },
-    { label: "已实付", value: formatCents(summary?.actualPaidCents ?? "0") },
-    { label: "已批待付", value: formatCents(summary?.approvedPendingPaymentCents ?? "0") },
-    { label: "可用资金", value: formatCents(summary?.availableFundsCents ?? null) },
+    { label: "生效合同额", value: formatExecutiveMoneyCents(summary?.contractAmountCents ?? null) },
+    { label: "生效结算额", value: formatExecutiveMoneyCents(summary?.settlementAmountCents ?? null) },
+    { label: "结算可付额", value: formatExecutiveMoneyCents(summary?.payableAmountCents ?? null) },
+    { label: "实际收款", value: formatExecutiveMoneyCents(summary?.actualReceiptsCents ?? null) },
+    { label: "供应商退款", value: formatExecutiveMoneyCents(summary?.supplierRefundsCents ?? null) },
+    { label: "已实付", value: formatExecutiveMoneyCents(summary?.actualPaidCents ?? null) },
+    { label: "已批待付", value: formatExecutiveMoneyCents(summary?.approvedPendingPaymentCents ?? null) },
+    { label: "可用资金", value: formatExecutiveMoneyCents(summary?.availableFundsCents ?? null) },
     { label: "数据缺口", value: `${summary?.dataGapCount ?? 0} 项` }
   ];
 });
@@ -1475,10 +1660,8 @@ async function loadExecutiveOverview() {
   loadingExecutiveOverview.value = true;
   executiveMessage.value = "";
   try {
-    const overviews = await Promise.all(
-      projects.value.map((project) => fetchProjectOperatingOverview(project.id))
-    );
-    executiveOverview.value = buildExecutiveProjectOverview(overviews);
+    const projection = await fetchProjectSetOperatingProjection();
+    executiveOverview.value = buildExecutiveProjectOverview(projection, projects.value);
   } catch (error) {
     executiveOverview.value = null;
     executiveMessage.value = formatUnknownApiError(error, "加载跨项目经营总览失败");
@@ -1487,11 +1670,58 @@ async function loadExecutiveOverview() {
   }
 }
 
+function openOperatingProjectionExport() {
+  if (!canExportOperatingProjection.value || !selectedProjectId.value) return;
+  operatingProjectionExportProjectId.value = selectedProjectId.value;
+  operatingProjectionExportError.value = "";
+  operatingProjectionExportMessage.value = "";
+  operatingProjectionExportVisible.value = true;
+}
+
+function closeOperatingProjectionExport() {
+  if (operatingProjectionExportBusy.value) return;
+  operatingProjectionExportVisible.value = false;
+  operatingProjectionExportProjectId.value = "";
+  operatingProjectionExportError.value = "";
+}
+
+function submitOperatingProjectionExport(values: { reason: string; password: string }) {
+  const projectId = operatingProjectionExportProjectId.value;
+  operatingProjectionExportBusy.value = true;
+  operatingProjectionExportError.value = "";
+  return downloadOperatingProjectionExport({
+      scopeKind: "project",
+      projectId,
+      exportKind: operatingProjectionExportKind.value,
+      occurredFrom: operatingExportFilters.value.occurredFrom,
+      occurredTo: operatingExportFilters.value.occurredTo,
+      rowStatus: operatingExportFilters.value.rowStatus,
+      confirmationPassword: values.password
+    })
+    .then(() => {
+      operatingProjectionExportVisible.value = false;
+      operatingProjectionExportProjectId.value = "";
+      operatingProjectionExportMessage.value = "CSV 已生成并开始下载。";
+    })
+    .catch((error: unknown) => {
+      operatingProjectionExportError.value = formatUnknownApiError(
+        error,
+        "导出经营投影失败"
+      );
+    })
+    .finally(() => {
+      operatingProjectionExportBusy.value = false;
+    });
+}
+
 async function loadOverview() {
   const requestOwner = overviewRequestOwner.begin();
   const projectId = selectedProjectId.value;
   const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
+  upstreamFundFacts.value = [];
+  upstreamFundFactsNextCursor.value = null;
+  upstreamFundFactsLoadingMore.value = false;
   participatingCompanyOptions.value = [];
   upstreamFundReferenceOptions.value = null;
   projectExpenses.value = null;
@@ -1500,6 +1730,7 @@ async function loadOverview() {
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
   participatingCompanyError.value = "";
+  upstreamFundFactsError.value = "";
   upstreamFundReferenceOptionsError.value = "";
   expenseMessage.value = "";
   expenseActionMessage.value = "";
@@ -1513,17 +1744,12 @@ async function loadOverview() {
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [
-      nextOverview,
-      nextExpenses,
-      spotCapability,
-      nextFinancingQuota,
-      nextParticipatingCompanies,
-      nextUpstreamFundReferenceOptions
-    ] = await Promise.all([
-      canReadProjectOverview.value
-        ? fetchProjectOperatingOverview(projectId)
-        : Promise.resolve(null),
+    const companionRequests = Promise.all([
+      loadOptionalProjectUpstreamFundFacts(
+        projectId,
+        canRecordUpstreamFunds.value,
+        fetchProjectUpstreamFundFacts
+      ),
       canReadProjectExpenseLedger.value
         ? fetchProjectExpenseRequests(projectId, {
             view: expenseLedgerView.value,
@@ -1558,11 +1784,26 @@ async function loadOverview() {
             }))
         : Promise.resolve({ options: null, error: "" })
     ]);
+    let nextOverview: ProjectOperatingOverviewReadModel | null = null;
+    if (canReadProjectOverview.value) {
+      nextOverview = await fetchProjectOperatingOverview(projectId);
+    }
+    const [
+      nextUpstreamFundFacts,
+      nextExpenses,
+      spotCapability,
+      nextFinancingQuota,
+      nextParticipatingCompanies,
+      nextUpstreamFundReferenceOptions
+    ] = await companionRequests;
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
       selectedProjectId.value === projectId
     ) {
       overview.value = nextOverview;
+      upstreamFundFacts.value = nextUpstreamFundFacts.facts;
+      upstreamFundFactsNextCursor.value = nextUpstreamFundFacts.nextCursor;
+      upstreamFundFactsError.value = nextUpstreamFundFacts.error;
       participatingCompanyOptions.value = nextParticipatingCompanies.options;
       participatingCompanyError.value = nextParticipatingCompanies.error;
       upstreamFundReferenceOptions.value = nextUpstreamFundReferenceOptions.options;
@@ -1594,6 +1835,8 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       overview.value = null;
+      upstreamFundFacts.value = [];
+      upstreamFundFactsNextCursor.value = null;
       financingQuotaWorkbench.value = null;
       financingQuotaError.value = "";
       selectedExpenseRow.value = null;
@@ -1605,6 +1848,40 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       loadingOverview.value = false;
+    }
+  }
+}
+
+async function loadMoreUpstreamFundFacts() {
+  const projectId = selectedProjectId.value;
+  const cursor = upstreamFundFactsNextCursor.value;
+  if (!projectId || !cursor || upstreamFundFactsLoadingMore.value) return;
+  upstreamFundFactsLoadingMore.value = true;
+  upstreamFundFactsError.value = "";
+  try {
+    const next = await fetchProjectUpstreamFundFacts(projectId, {
+      cursor,
+      pageSize: 50
+    });
+    if (
+      selectedProjectId.value !== projectId ||
+      upstreamFundFactsNextCursor.value !== cursor
+    ) return;
+    const existingIds = new Set(upstreamFundFacts.value.map((fact) => fact.id));
+    upstreamFundFacts.value.push(
+      ...next.items.filter((fact) => !existingIds.has(fact.id))
+    );
+    upstreamFundFactsNextCursor.value = next.page.nextCursor;
+  } catch (error) {
+    if (selectedProjectId.value === projectId) {
+      upstreamFundFactsError.value = formatUnknownApiError(
+        error,
+        "读取更多上游资金明细失败"
+      );
+    }
+  } finally {
+    if (selectedProjectId.value === projectId) {
+      upstreamFundFactsLoadingMore.value = false;
     }
   }
 }
@@ -2554,6 +2831,17 @@ button:disabled {
   align-items: flex-start;
 }
 
+.operating-projection-export-panel,
+.operating-projection-export-actions {
+  display: grid;
+  gap: var(--jg-space-md);
+}
+
+.operating-projection-export-actions {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--jg-export-control-width)), 1fr));
+  width: min(100%, var(--jg-export-panel-width));
+}
+
 .project-entry-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2804,12 +3092,18 @@ dd {
   }
 
   .project-tools,
+  .operating-projection-export-actions,
   .project-create-form,
   .project-name-form {
     min-width: 0;
   }
 
   .project-tools {
+    width: 100%;
+  }
+
+  .operating-projection-export-actions {
+    grid-template-columns: 1fr;
     width: 100%;
   }
 

@@ -57,7 +57,8 @@ import {
 } from "../necessary-expense-reserve/necessary-expense-reserve-operating-source.adapter";
 import {
   NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE,
-  PROJECT_FUND_DISPUTE_SOURCE_TYPE
+  PROJECT_FUND_DISPUTE_SOURCE_TYPE,
+  type OperatingSourceType
 } from "@jiangkong/shared-domain";
 import {
   ProjectFundDisputeOperatingSourceAdapter
@@ -84,7 +85,7 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   WAGE_STATEMENT_OPERATING_SOURCE_TYPE,
   NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE,
   PROJECT_FUND_DISPUTE_SOURCE_TYPE
-] as const);
+] as const satisfies readonly OperatingSourceType[]);
 
 export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry {
   return new OperatingSourceAdapterRegistry(

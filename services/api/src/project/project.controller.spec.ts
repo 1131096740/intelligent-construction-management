@@ -4,6 +4,7 @@ import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.dec
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { ListProjectUpstreamFundFactsDto } from "./dto/list-project-upstream-fund-facts.dto";
 import { ProjectController } from "./project.controller";
 
 type ProjectMoneyBodyMethod =
@@ -908,6 +909,12 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
+        ProjectController.prototype.upstreamFundFacts
+      )
+    ).toBe("project.upstream_fund_fact.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
         ProjectController.prototype.recordUpstreamFundFact
       )
     ).toBe("project.upstream_fund_fact.record");
@@ -1159,9 +1166,15 @@ describe("ProjectController authorization wiring", () => {
     const projects = { getOperatingFundsOverview: jest.fn() };
     const controller = new ProjectController(projects as never);
 
-    await controller.operatingFundsOverview("project-1");
+    await controller.operatingFundsOverview(
+      "project-1",
+      { id: "finance-1" } as never
+    );
 
-    expect(projects.getOperatingFundsOverview).toHaveBeenCalledWith("project-1");
+    expect(projects.getOperatingFundsOverview).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1"
+    );
   });
 
   it("forwards financing quota workbench project and authenticated user coordinates", async () => {
@@ -1240,6 +1253,7 @@ describe("ProjectController authorization wiring", () => {
 
   it("forwards upstream fund fact recording and confirmation with authenticated user id", async () => {
     const projects = {
+      listUpstreamFundFacts: jest.fn().mockResolvedValue([]),
       recordUpstreamFundFact: jest.fn(),
       confirmUpstreamFundFact: jest.fn(),
       getUpstreamFundReferenceOptions: jest.fn()
@@ -1259,6 +1273,11 @@ describe("ProjectController authorization wiring", () => {
       confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
     };
 
+    await controller.upstreamFundFacts(
+      "project-1",
+      { id: "finance-1" } as never,
+      { pageSize: "25", cursor: " cursor-1 " }
+    );
     await controller.recordUpstreamFundFact(
       "project-1",
       { id: "finance-1" } as never,
@@ -1272,6 +1291,11 @@ describe("ProjectController authorization wiring", () => {
     );
     await controller.upstreamFundReferenceOptions("project-1");
 
+    expect(projects.listUpstreamFundFacts).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1",
+      { pageSize: 25, cursor: "cursor-1" }
+    );
     expect(projects.recordUpstreamFundFact).toHaveBeenCalledWith(
       "project-1",
       "finance-1",
@@ -1287,6 +1311,16 @@ describe("ProjectController authorization wiring", () => {
       "project-1"
     );
   });
+
+  it.each(["0", "01", "1.0", " 1", "201", "1".repeat(257)])(
+    "rejects non-canonical upstream-fund pageSize %s",
+    async (pageSize) => {
+      await expect(createApiValidationPipe().transform(
+        { pageSize },
+        { type: "query", metatype: ListProjectUpstreamFundFactsDto }
+      )).rejects.toBeInstanceOf(BadRequestException);
+    }
+  );
 
   it("retires the legacy one-step proxy payment writer", async () => {
     const projects = { recordProxyPayment: jest.fn() };
