@@ -23,6 +23,8 @@
 
 ## 当前正在推进
 
+- [ ] POL-15 / #108 第二十一轮方案 A 已获 Owner 明确批准：仅将 PR CI 的源 SHA 改为 pull_request.head.sha，main push 保留 github.sha，manual dispatch 保留输入 SHA 及 main-ancestor 校验；四类作业继续在安装前核对实际 checkout HEAD。新增回归先 RED 2/4，修复后 GREEN 4/4。父候选 `92c850842d5e4a5277933cd30d3d58c2616a0ac1` 的 API 167/167、静态/清单门、一次性 PG16 169 migrations 两遍/seed/#108 14/14 PASS；Standards H0/M0/L3、Spec H0/M0/L0，但安全 scan `38aeffac-d262-4808-b8df-e893cba0e6d9` 虽封存 H0/M0/L2，canonical coverage 回读为 partial，不能作为完整安全门通过；父 SHA 的 release:local 未启动，CI 精确 head 与安全覆盖两项 HOLD 未解除。三项 Standards LOW 与两项既有 Security LOW 已获延期，未修复。新固定 SHA 必须重新完成定向/静态/PG16/release、独立双审和全新完整覆盖安全扫描，封存前后均核对；全部通过才恢复非生产 GitHub 链。未改业务、Schema、迁移、权限或生产部署工作流，未执行远端交付或生产操作。此条覆盖下方历史轮次状态。
+
 - [ ] POL-15 / #108 第二十轮方案 A 已获 Owner 明确批准：仅为资金工作台四个既有终态补中文兜底（paid 已付款、settled 已结清、disbursed 已放款、offset_completed 借款冲销完成），保留退款/票据优先级、金额 null 与完成分类；两项限制预算单测按查询区分数据库时钟、成功普通工作量预检和超限 restriction 结果，断言目标查询顺序、413 中文错误及后续 ORM 未执行。新增四终态断言先 RED 4/4，修复后两个 API 定向文件 70/70 PASS。父候选 `77f232b07d905122c35a8a5d1eb51ad15d1f90dc` 已通过一次性 PG16 169 migrations 两遍、seed、#108 14/14、完整 release 16/16（canonical 53 files/243 tests），但独立 Standards H0/M1/L1 HOLD、Spec H0/M0/L0 PASS；Security scan `d50dd68a-ffb3-47ce-aca0-583a511006ac` 已封存 H0/M0/L2，两项既有 LOW 继续延期。新固定 SHA 的定向/静态/PG16/release 与全新独立后审待完成；不继承父 SHA 绿灯。不改 Schema、迁移、权限、SQL/count、金额和 #279/#280 写语义，未执行远端交付、部署或生产操作。第二十轮状态覆盖下方历史轮次登记。
 
   - 第十九轮首个固定候选 `34685a1ac3ae4428956c0c9003cedd73b1eb3367` 完成 169 migrations 两遍及 seed，#108 PG16 为 10/14；三项新增观测断言误把 Prisma 中间件原始参数数组当作序列化 query，另一项旧响应字节边界夹具被新增未来 replacement 事实挤出第一页。现仅修正 SQL 观测器，并为字节夹具指定历史截止日和精确业务编号断言，不改变预算或生产逻辑。失败 SHA 不作成功证据；一次性容器已清理，release 和后审未执行，下一固定 SHA 从头验证。

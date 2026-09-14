@@ -13,7 +13,7 @@ on:
         type: string
 
 env:
-  CI_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+  CI_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
   CI_REQUIRE_MAIN_ANCESTOR: ${{ github.event_name == 'workflow_dispatch' }}
 
 permissions:
