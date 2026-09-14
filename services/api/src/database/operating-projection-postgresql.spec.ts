@@ -1202,6 +1202,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       amountCents: 1n,
       direction: "outflow",
       occurredAt: new Date("2026-09-02T08:00:00.000Z"),
+      subjects: { costBearingCompany: company },
       impacts: [impact("detail-response-below-limit", "confirmed_cost", 1n, "increase")]
     });
     const belowLimit = await projection.getProjectDetailPage(READER_ID, {
@@ -1219,6 +1220,7 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       amountCents: 1n,
       direction: "outflow",
       occurredAt: new Date("2026-09-02T09:00:00.000Z"),
+      subjects: { debtor: enterprise, costBearingCompany: company },
       impacts: [impact("detail-response-above-limit", "confirmed_cost", 1n, "increase")]
     });
     await expect(projection.getProjectDetailPage(READER_ID, {
@@ -1245,33 +1247,43 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
   });
 
   it("省略 projectIds 时由后端在 500 个可见项目内取全集并在 501 个时返回 413", async () => {
-    const activeCount = await prisma.project.count({ where: { isActive: true } });
-    expect(activeCount).toBeLessThanOrEqual(500);
-    const required = 500 - activeCount;
-    if (required > 0) {
-      await prisma.project.createMany({
-        data: Array.from({ length: required }, (_value, index) => ({
-          id: `pol108-visible-${runId}-${index}`,
-          code: `POL108-VISIBLE-${runId}-${index}`,
-          name: `POL-108 可见项目 ${index}`,
-          isActive: true
-        }))
-      });
-    }
-    const boundary = await projection.getAsOfView(READER_ID, {
+    const boundaryReaderId = `pol108-boundary-reader-${runId}`;
+    const boundaryProjects = Array.from({ length: 500 }, (_value, index) => ({
+      id: `pol108-visible-${runId}-${index}`,
+      code: `POL108-VISIBLE-${runId}-${index}`,
+      name: `POL-108 可见项目 ${index}`,
+      isActive: true
+    }));
+    await prisma.project.createMany({ data: boundaryProjects });
+    await prisma.projectMember.createMany({
+      data: boundaryProjects.map((project) => ({
+        projectId: project.id,
+        userId: boundaryReaderId,
+        positionKey: "finance_director"
+      }))
+    });
+    const boundary = await projection.getAsOfView(boundaryReaderId, {
       scopeKind: "projects"
     });
     expect(boundary.scope).toEqual({ label: "多项目汇总口径", projectCount: 500 });
 
+    const overflowProjectId = `pol108-visible-${runId}-overflow`;
     await prisma.project.create({
       data: {
-        id: `pol108-visible-${runId}-overflow`,
+        id: overflowProjectId,
         code: `POL108-VISIBLE-${runId}-OVERFLOW`,
         name: "POL-108 第 501 个可见项目",
         isActive: true
       }
     });
-    await expect(projection.getAsOfView(READER_ID, { scopeKind: "projects" }))
+    await prisma.projectMember.create({
+      data: {
+        projectId: overflowProjectId,
+        userId: boundaryReaderId,
+        positionKey: "finance_director"
+      }
+    });
+    await expect(projection.getAsOfView(boundaryReaderId, { scopeKind: "projects" }))
       .rejects.toBeInstanceOf(PayloadTooLargeException);
   });
 
