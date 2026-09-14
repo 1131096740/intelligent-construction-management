@@ -1203,7 +1203,9 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       direction: "outflow",
       occurredAt: new Date("2026-09-02T08:00:00.000Z"),
       subjects: { costBearingCompany: company },
-      impacts: [impact("detail-response-below-limit", "confirmed_cost", 1n, "increase")]
+      impacts: [impact("detail-response-below-limit", "confirmed_cost", 1n, "increase", {
+        costCategoryCode: "other_project_cost"
+      })]
     });
     const belowLimit = await projection.getProjectDetailPage(READER_ID, {
       projectId: PROJECT_ID,
@@ -1221,7 +1223,9 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       direction: "outflow",
       occurredAt: new Date("2026-09-02T09:00:00.000Z"),
       subjects: { debtor: enterprise, costBearingCompany: company },
-      impacts: [impact("detail-response-above-limit", "confirmed_cost", 1n, "increase")]
+      impacts: [impact("detail-response-above-limit", "confirmed_cost", 1n, "increase", {
+        costCategoryCode: "other_project_cost"
+      })]
     });
     await expect(projection.getProjectDetailPage(READER_ID, {
       projectId: PROJECT_ID,
