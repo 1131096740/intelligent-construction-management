@@ -213,8 +213,8 @@ test("项目财务统一填写施工企业版本日期原因，预检失败保�
   await expect(form).toBeVisible();
   await form.locator('[data-field="businessPartyVersionId"]').click();
   await page.getByText("浏览器施工企业验收 · 第 1 版", { exact: true }).last().click();
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const effectiveFrom = new Intl.DateTimeFormat("en-CA").format(yesterday);
+  const effectiveFrom = await page.evaluate(() =>
+    new Intl.DateTimeFormat("en-CA").format(new Date(Date.now() - 24 * 60 * 60 * 1000)));
   await form.locator('[data-field="effectiveFrom"] input').click();
   await page.locator(".t-date-picker__panel:visible .t-date-picker__cell--now")
     .locator("xpath=preceding-sibling::*[1]")
