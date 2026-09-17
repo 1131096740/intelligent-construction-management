@@ -31,6 +31,7 @@ import { buildApprovalSelfReviewPayload } from "../../components/approval-self-r
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
+import ExpenseClaimSubmissionHistory from "./components/ExpenseClaimSubmissionHistory.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 
@@ -68,7 +69,7 @@ const attachmentExpenseCategory = ref("");
 const reviewForm = ref({ decision: "approve" as "approve" | "reject", comment: "", selfReviewReason: "", confirmationPassword: "" });
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
 const tab = ref("business");
-const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "attachments", label: "附件与证据" }, { value: "funds", label: "资金结果" }];
+const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "attachments", label: "附件与证据" }, { value: "history", label: "提交记录" }, { value: "funds", label: "资金结果" }];
 const columns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
   { colKey: "expenseCategory", title: "费用类别", width: 120 },
@@ -1016,6 +1017,10 @@ onMounted(() => void loadDetail());
             </section>
           </div>
         </t-card>
+        <ExpenseClaimSubmissionHistory
+          v-else-if="tab === 'history'"
+          :snapshots="detail.entrySnapshots ?? []"
+        />
         <t-card
           v-else
           :bordered="true"

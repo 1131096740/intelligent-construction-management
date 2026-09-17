@@ -29,6 +29,7 @@ export interface ExpenseClaimListItemReadModel {
 }
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  entrySnapshots: ExpenseClaimEntrySnapshotReadModel[];
   applicantPhoneSnapshot: string | null;
   handledByNameSnapshot: string;
   proxyReason: string | null;
@@ -92,6 +93,13 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   loanRepayments: Array<{ id: string; amountCents: string; repaidAt: string; paymentMethod: string; voucherFileId: string | null; status: string; confirmationNote: string | null; reversalReason: string | null; createdAt: string }>;
   finalPaymentPdf: { id: string; fileId: string; createdAt: string } | null;
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
+}
+
+export interface ExpenseClaimEntrySnapshotReadModel {
+  id: string;
+  frozenAt: string;
+  definitionSnapshot: BusinessEntrySceneDefinition;
+  valuesSnapshot: Record<string, unknown>;
 }
 
 export interface ExpenseClaimCreateOptions {

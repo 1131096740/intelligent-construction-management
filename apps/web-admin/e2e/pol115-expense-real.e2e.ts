@@ -146,4 +146,14 @@ test("借款先保存草稿及附件，仅明确提交后冻结审批内容", as
   expect(frozenDetail).toMatchObject({ status: "approval_pending", requestedAmountCents: "1", attachments: [{ fileName: "合成费用凭证.png", stage: "approval_frozen" }] });
   expect(frozenDetail.entrySnapshots).toHaveLength(1);
   expect(frozenDetail.entrySnapshots[0]).toMatchObject({ valuesSnapshot: { reason: "真实浏览器项目借款", requestedAmountCents: "1", payeeBankAccount: "000012340001" } });
+  await page.getByText("提交记录", { exact: true }).click();
+  const history = page.getByRole("region", { name: "费用申请提交记录" });
+  await expect(history.getByText("真实浏览器项目借款", { exact: true })).toBeVisible();
+  await expect(history.getByText("000012340001", { exact: true })).toBeVisible();
+  await expect(history.getByText("0.01 元", { exact: true })).toBeVisible();
+  await expect(history).not.toContainText(frozenDetail.projectId);
+  expect(await history.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.reload();
+  await page.getByText("提交记录", { exact: true }).click();
+  await expect(history.getByText("000012340001", { exact: true })).toBeVisible();
 });
