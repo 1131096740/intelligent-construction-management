@@ -104,14 +104,14 @@ export class SpotProcurementPaymentController {
     @Param("paymentId") paymentId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body?: { idempotencyKey?: string }
   ) {
     return this.uploadPrivateFile(
       paymentId,
       user.id,
       "record_execution",
       file,
-      idempotencyKey,
+      body?.idempotencyKey,
       "实际付款凭证"
     );
   }

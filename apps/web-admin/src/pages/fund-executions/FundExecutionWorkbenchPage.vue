@@ -8,6 +8,7 @@ import {
   createFundExecutionReversal,
   fetchFundExecutionCapabilities,
   fetchFundExecutionCaseActions,
+  fetchFundExecutionCaseDetail,
   fetchFundExecutionCaseOptions,
   fetchFundExecutionCases,
   fetchFundExecutionObservationOptions,
@@ -19,6 +20,7 @@ import {
   updateFundExecutionReversalReason,
   type FundExecutionCaseActionKey,
   type FundExecutionCaseListItem,
+  type FundExecutionEntrySnapshot,
   type FundExecutionClassificationPlan,
   type FundExecutionObservationOption,
   type FundExecutionReversalOption
@@ -28,6 +30,7 @@ import JgResultState from "../../components/JgResultState.vue";
 import JgStatusTag from "../../components/JgStatusTag.vue";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import FundExecutionSubmissionHistory from "./components/FundExecutionSubmissionHistory.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import {
   FUND_EXECUTION_AXIS_LABELS,
@@ -49,6 +52,7 @@ const cases = ref<FundExecutionCaseListItem[]>([]);
 const observationOptions = ref<FundExecutionObservationOption[]>([]);
 const reversalOptions = ref<FundExecutionReversalOption[]>([]);
 const selectedCase = ref<FundExecutionCaseListItem | null>(null);
+const selectedEntrySnapshots = ref<FundExecutionEntrySnapshot[]>([]);
 const caseDrawerVisible = ref(false);
 const classificationPlans = ref<FundExecutionClassificationPlan[]>([]);
 const selectedPlanIndex = ref("");
@@ -278,6 +282,11 @@ async function openCase(row: FundExecutionCaseListItem) {
   classificationPlans.value = [];
   selectedPlanIndex.value = "";
   caseDrawerVisible.value = true;
+  try {
+    selectedEntrySnapshots.value = (await fetchFundExecutionCaseDetail(row.caseRef)).entrySnapshots;
+  } catch (error) {
+    errorMessage.value = formatUnknownApiError(error, "加载资金执行提交记录失败");
+  }
   if (!caseAllowsClassification(row)) return;
   optionLoading.value = true;
   try {
@@ -292,6 +301,7 @@ async function openCase(row: FundExecutionCaseListItem) {
 function closeCaseDrawer() {
   caseDrawerVisible.value = false;
   selectedCase.value = null;
+  selectedEntrySnapshots.value = [];
   classificationPlans.value = [];
   selectedPlanIndex.value = "";
   draftReason.value = "";
@@ -925,6 +935,8 @@ function statusTone(row: FundExecutionCaseListItem) {
             </t-button>
           </t-space>
         </t-card>
+
+        <FundExecutionSubmissionHistory :snapshots="selectedEntrySnapshots" />
       </div>
     </t-drawer>
 

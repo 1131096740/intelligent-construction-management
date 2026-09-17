@@ -1,5 +1,6 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
+import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 
 export type FundExecutionObservationPurpose = "fund_execution_case";
 export type FundExecutionKind = "quarantine" | "reversal";
@@ -80,6 +81,18 @@ export interface FundExecutionCaseListItem {
   actions: FundExecutionCaseAction[];
 }
 
+export interface FundExecutionEntrySnapshot {
+  id: string;
+  frozenAt: string;
+  definitionVersion: number;
+  definitionSnapshot: BusinessEntrySceneDefinition;
+  valuesSnapshot: Record<string, unknown>;
+}
+
+export interface FundExecutionCaseDetail {
+  entrySnapshots: FundExecutionEntrySnapshot[];
+}
+
 export interface FundExecutionCapabilities {
   createCase: boolean;
   createReversal: boolean;
@@ -139,6 +152,13 @@ export function fetchFundExecutionCaseActions(caseRef: string) {
   return read<Pick<FundExecutionCaseListItem, "actions">>(
     `/fund-executions/cases/${encodeURIComponent(caseRef)}`,
     "加载资金执行案件操作失败"
+  );
+}
+
+export function fetchFundExecutionCaseDetail(caseRef: string) {
+  return read<FundExecutionCaseDetail>(
+    `/fund-executions/cases/${encodeURIComponent(caseRef)}`,
+    "加载资金执行提交记录失败"
   );
 }
 

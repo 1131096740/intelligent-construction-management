@@ -60,6 +60,12 @@ function replaceLines(value: Record<string, string>[]) {
   })));
 }
 
+function updateLine(index: number, key: keyof ProcurementLineDraft, value: unknown) {
+  emit("update:modelValue", props.modelValue.map((line, lineIndex) =>
+    lineIndex === index ? { ...line, [key]: typeof value === "string" ? value : "" } : line
+  ));
+}
+
 </script>
 
 <template>
@@ -80,12 +86,24 @@ function replaceLines(value: Record<string, string>[]) {
     </header>
 
     <JgBusinessGrid
+      class="procurement-line-editor__grid"
       :source="modelValue"
       :columns="columns"
       :readonly="readonly"
       :min-height="260"
+      expand-paste-rows
       @update:source="replaceLines"
     />
+    <div class="procurement-line-editor__cards" aria-label="材料明细卡片填写">
+      <article v-for="(line, index) in modelValue" :key="index">
+        <h4>材料明细第 {{ index + 1 }} 行</h4>
+        <label><span>材料名称</span><t-input :model-value="line.materialName" :readonly="readonly" @update:model-value="updateLine(index, 'materialName', $event)" /></label>
+        <label><span>规格型号</span><t-input :model-value="line.specification" :readonly="readonly" @update:model-value="updateLine(index, 'specification', $event)" /></label>
+        <label><span>单位</span><t-input :model-value="line.unit" :readonly="readonly" @update:model-value="updateLine(index, 'unit', $event)" /></label>
+        <label><span>数量（最多 2 位小数）</span><t-input :model-value="line.quantity" :readonly="readonly" @update:model-value="updateLine(index, 'quantity', $event)" /></label>
+        <label><span>备注</span><t-input :model-value="line.note" :readonly="readonly" @update:model-value="updateLine(index, 'note', $event)" /></label>
+      </article>
+    </div>
     <div
       v-if="!readonly && modelValue.length > 1"
       class="procurement-line-editor__row-actions"
@@ -144,5 +162,13 @@ function replaceLines(value: Record<string, string>[]) {
   display: flex;
   flex-wrap: wrap;
   gap: var(--jg-space-sm);
+}
+.procurement-line-editor__cards { display: none; }
+@media (max-width: 767px) {
+  .procurement-line-editor__grid { display: none; }
+  .procurement-line-editor__cards { display: grid; gap: var(--jg-space-md); }
+  .procurement-line-editor__cards article { display: grid; gap: var(--jg-space-sm); padding: var(--jg-space-md); border: 1px solid var(--jg-color-border); border-radius: var(--jg-radius-panel); min-width: 0; }
+  .procurement-line-editor__cards h4 { margin: 0; }
+  .procurement-line-editor__cards label { display: grid; gap: var(--jg-space-xs); min-width: 0; }
 }
 </style>

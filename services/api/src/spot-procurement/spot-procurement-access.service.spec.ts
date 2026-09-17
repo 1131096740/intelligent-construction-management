@@ -116,6 +116,7 @@ type AccessFixture = {
     discrepancyId: string;
     procurementId: string;
     recordedByUserId: string;
+    paymentId?: string | null;
     voucherFileId: string;
   }>;
   balanceReservations?: Array<{
@@ -442,10 +443,12 @@ function buildPrisma(fixture: AccessFixture = {}) {
     },
     spotProcurementRefund: {
       findMany: jest.fn(
-        ({ where }: { where: { voucherFileId: string } }) =>
+        ({ where }: { where: { voucherFileId?: string; paymentId?: { in: string[] }; recordedByUserId?: string } }) =>
           Promise.resolve(
-            (fixture.refunds ?? []).filter(
-              (row) => row.voucherFileId === where.voucherFileId
+            (fixture.refunds ?? []).filter((row) =>
+              (!where.voucherFileId || row.voucherFileId === where.voucherFileId) &&
+              (!where.paymentId || (row.paymentId != null && where.paymentId.in.includes(row.paymentId))) &&
+              (!where.recordedByUserId || row.recordedByUserId === where.recordedByUserId)
             )
           )
       )
@@ -1775,6 +1778,22 @@ describe("SpotProcurementAccessService", () => {
         }) as never
       ).accessiblePaymentIds(["payment-owner"], "finance-a")
     ).resolves.toEqual(new Set());
+  });
+
+  it("keeps only the exact refunded payment visible to its refund recorder", async () => {
+    const service = new SpotProcurementAccessService(buildPrisma({
+      procurements: [{ id: "procurement-1", projectId: "project-1", applicantUserId: "applicant-1", handlerUserId: "handler-1" }],
+      payments: [
+        { id: "payment-refunded", procurementId: "procurement-1", procurementVersionId: "version-1", projectId: "project-1", handlerUserId: "handler-1", status: "settled", createdAt: new Date("2026-07-20T08:00:00.000Z") },
+        { id: "payment-other", procurementId: "procurement-1", procurementVersionId: "version-1", projectId: "project-1", handlerUserId: "handler-1", status: "settled", createdAt: new Date("2026-07-19T08:00:00.000Z") }
+      ],
+      refunds: [{ id: "refund-1", discrepancyId: "discrepancy-1", procurementId: "procurement-1", paymentId: "payment-refunded", recordedByUserId: "refund-recorder", voucherFileId: "refund-voucher" }]
+    }) as never);
+
+    await expect(service.accessiblePaymentIds(["payment-refunded", "payment-other"], "refund-recorder"))
+      .resolves.toEqual(new Set(["payment-refunded"]));
+    await expect(service.accessiblePaymentIds(["payment-refunded"], "other-finance"))
+      .resolves.toEqual(new Set());
   });
 
   it("maps payment execution, void, reservation, balance and approval facts to their own business", async () => {

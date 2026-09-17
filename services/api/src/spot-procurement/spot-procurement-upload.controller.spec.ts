@@ -1,9 +1,17 @@
 import "reflect-metadata";
+import type { INestApplication } from "@nestjs/common";
 import { PATH_METADATA } from "@nestjs/common/constants";
+import { Test } from "@nestjs/testing";
+import sharpModule = require("sharp");
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
+import { FileService } from "../file/file.service";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
 import { SpotProcurementReceiptController } from "./spot-procurement-receipt.controller";
+import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
 import { SpotProcurementController } from "./spot-procurement.controller";
+
+const sharp = sharpModule as unknown as typeof import("sharp").default;
 
 const file = {
   originalname: "付款凭证.png",
@@ -34,12 +42,17 @@ describe("spot procurement business file upload controllers", () => {
     );
 
     await expect(
-      controller.uploadCreateDraftFile("project-1", file, actor, "key-1")
+      controller.uploadCreateDraftFile("project-1", file, actor, {
+        idempotencyKey: "key-1"
+      })
     ).resolves.toEqual({ id: "file-1" });
     expect(order).toEqual(["capability", "storage"]);
     expect(reads.assertCreateActionAvailable).toHaveBeenCalledWith(
       "user-1",
       "project-1"
+    );
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "key-1" })
     );
   });
 
@@ -64,12 +77,17 @@ describe("spot procurement business file upload controllers", () => {
       files as never
     );
 
-    await controller.uploadDraftFile("procurement-1", file, actor);
+    await controller.uploadDraftFile("procurement-1", file, actor, {
+      idempotencyKey: "key-2"
+    });
     expect(order).toEqual(["capability", "storage"]);
     expect(reads.assertProcurementActionAvailable).toHaveBeenCalledWith(
       "procurement-1",
       "user-1",
       "edit_draft"
+    );
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "key-2" })
     );
   });
 
@@ -100,6 +118,25 @@ describe("spot procurement business file upload controllers", () => {
       "payment-1",
       "user-1",
       action
+    );
+  });
+
+  it("reads execution voucher idempotency from the complete multipart body", async () => {
+    const reads = { assertPaymentActionAvailable: jest.fn() };
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-payment" }) };
+    const controller = new SpotProcurementPaymentController(
+      {} as never,
+      reads as never,
+      {} as never,
+      files as never
+    );
+
+    await controller.uploadExecutionVoucherFile("payment-1", file, actor, {
+      idempotencyKey: "execution-key-1"
+    });
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "execution-key-1" })
     );
   });
 
@@ -149,5 +186,52 @@ describe("spot procurement business file upload controllers", () => {
         permission
       );
     }
+  });
+});
+
+describe("spot procurement receipt multipart upload HTTP validation", () => {
+  let app: INestApplication;
+  const receipts = { assertActionAvailable: jest.fn().mockResolvedValue(undefined) };
+  const files = { uploadPrivateFile: jest.fn(async (input: { idempotencyKey?: string }) => ({ id: `file-${input.idempotencyKey}` })) };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [SpotProcurementReceiptController],
+      providers: [
+        { provide: SpotProcurementReceiptService, useValue: receipts },
+        { provide: FileService, useValue: files }
+      ]
+    }).compile();
+    app = moduleRef.createNestApplication({ logger: false });
+    app.useGlobalPipes(createApiValidationPipe());
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
+      request.user = actor;
+      next();
+    });
+    await app.listen(0, "127.0.0.1");
+  });
+
+  afterAll(async () => app.close());
+
+  it("generates the receipt fixture at an accepted visible size", async () => {
+    const buffer = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
+    const metadata = await sharp(buffer).metadata();
+    expect(metadata).toMatchObject({ format: "png", width: 320, height: 240 });
+    expect(metadata.pages === undefined || metadata.pages === 1).toBe(true);
+  });
+
+  it.each([
+    ["receipt photo", "receipt-photo-file-uploads", "receipt-key"],
+    ["refund voucher", "refund-voucher-file-uploads", "refund-key"]
+  ])("accepts complete multipart body for %s", async (_label, route, idempotencyKey) => {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("png")], { type: "image/png" }), "voucher.png");
+    form.append("idempotencyKey", idempotencyKey);
+
+    const response = await fetch(`${await app.getUrl()}/spot-procurements/procurement-1/${route}`, { method: "POST", body: form });
+    const body = await response.json() as unknown;
+
+    expect({ status: response.status, body }).toEqual({ status: 201, body: { id: `file-${idempotencyKey}` } });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey }));
   });
 });

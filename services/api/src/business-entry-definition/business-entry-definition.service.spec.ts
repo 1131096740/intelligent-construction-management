@@ -840,6 +840,51 @@ describe("BusinessEntryDefinitionService", () => {
     expect(snapshots.saveStandalone).not.toHaveBeenCalled();
   });
 
+  it("allows a non-project-id target only when an explicit project resolver proves its scope", async () => {
+    const versionDefinition: BusinessEntrySceneDefinition = {
+      ...definition,
+      key: "resolved_project_version",
+      entityType: "project_version"
+    };
+    const resolve = jest.fn().mockResolvedValue(true);
+    const access = createBusinessEntrySceneAccessRegistry(
+      [versionDefinition],
+      [{
+        sceneKey: versionDefinition.key,
+        target: { scope: "project", entityType: "project_version", resolve },
+        permission: {
+          kind: "business_action",
+          action: "project.operating_profile.manage",
+          roleScope: "project"
+        }
+      }]
+    );
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([versionDefinition]),
+      access,
+      projectVisibility(["finance_staff"]),
+      snapshotStoreMock(),
+      projectPrisma() as never,
+      authorizationMock()
+    );
+    const target = { entityType: "project_version", entityId: "version-1" } as const;
+
+    await expect(service.getSceneDefinitionForOperation(
+      versionDefinition.key,
+      "project-1",
+      "user-1",
+      "edit",
+      target
+    )).resolves.toMatchObject({ key: versionDefinition.key });
+    expect(resolve).toHaveBeenCalledWith(expect.objectContaining({
+      target,
+      actorUserId: "user-1",
+      operation: "edit",
+      scene: versionDefinition.key,
+      scope: "project"
+    }));
+  });
+
   it("does not expose a definition to a project role without any visible fields", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
     const visibility = projectVisibility(["project_manager"]);

@@ -173,19 +173,29 @@ function context(roleKey = "material_staff") {
   const pilot = { assertEnabled: jest.fn() };
   const approvalForms = { tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined) };
   const balances = { releaseForShortage: jest.fn().mockResolvedValue({}) };
+  const entryTransactions = {
+    freezeSubmissionSnapshotInTransaction: jest.fn().mockResolvedValue({ revision: 1 })
+  };
+  const entryDefinitions = {
+    validateDraftInTransaction: jest.fn().mockResolvedValue({ valid: true, errors: [] })
+  };
   return {
     tx,
     audit,
     balances,
     pilot,
     approvalForms,
+    entryTransactions,
+    entryDefinitions,
     service: new SpotProcurementApplicationService(
       prisma as never,
       audit as never,
       pilot as never,
       approvalForms as never,
       undefined,
-      balances as never
+      balances as never,
+      entryTransactions as never,
+      entryDefinitions as never
     )
   };
 }
@@ -359,6 +369,44 @@ describe("SpotProcurementApplicationService real-form application", () => {
     });
   });
 
+  it("validates a created draft against real server-created version and line coordinates", async () => {
+    const { service, tx, entryDefinitions } = context();
+
+    await service.createDraft("material-1", {
+      ...realFormDraft,
+      entryDefinitionVersions: { application: 1, line: 1 }
+    });
+
+    expect(entryDefinitions.validateDraftInTransaction.mock.calls).toEqual([
+      [tx, "spot_procurement.application", "project-1", "material-1", expect.objectContaining({
+        definitionVersion: 1,
+        target: { entityType: "spot_procurement_version", entityId: "version-1" }
+      })],
+      [tx, "spot_procurement.application_line", "project-1", "material-1", expect.objectContaining({
+        definitionVersion: 1,
+        target: { entityType: "spot_procurement_line", entityId: "line-1" }
+      })]
+    ]);
+  });
+
+  it("rejects a mixed or stale definition envelope before publishing the created draft", async () => {
+    const { service, tx, audit, entryDefinitions } = context();
+
+    await expect(service.createDraft("material-1", {
+      ...realFormDraft,
+      entryDefinitionVersions: { application: 2, line: 1 }
+    })).rejects.toThrow("零采填写定义已更新");
+
+    expect(entryDefinitions.validateDraftInTransaction).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: { currentVersionId: "version-1" }
+    });
+    expect(tx.spotProcurement.update.mock.invocationCallOrder[0])
+      .toBeLessThan(entryDefinitions.validateDraftInTransaction.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("generates a Shanghai-date application number after locking the daily sequence", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-07-19T00:30:00.000Z"));
     try {
@@ -401,6 +449,85 @@ describe("SpotProcurementApplicationService real-form application", () => {
         comment: "申请人具备物资主管岗位，自动跳过物资主管审批"
       })
     });
+  });
+
+  it("freezes the locked current version and each real line before creating approval facts", async () => {
+    const { service, tx, entryTransactions } = context();
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement()])
+      .mockResolvedValueOnce([version()]);
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      frozenRealFormLine(),
+      frozenRealFormLine({
+        id: "line-2",
+        sortOrder: 2,
+        materialName: "水泥",
+        specification: null,
+        unit: "袋",
+        quantity: { toString: () => "2.50" },
+        note: null
+      })
+    ]);
+
+    await service.submit("procurement-1", "material-1");
+
+    expect(entryTransactions.freezeSubmissionSnapshotInTransaction.mock.calls).toEqual([
+      [tx, "material-1", {
+        sceneKey: "spot_procurement.application",
+        definitionVersion: 1,
+        expectedRevision: 0,
+        operation: "edit",
+        target: { projectId: "project-1", entityType: "spot_procurement_version", entityId: "version-1" },
+        values: {
+          applicationDepartment: "工程部",
+          applicationName: "杨帅",
+          requestedArrivalAt: "2026-07-20",
+          reason: realFormDraft.reason,
+          note: realFormDraft.note
+        }
+      }],
+      [tx, "material-1", {
+        sceneKey: "spot_procurement.application_line",
+        definitionVersion: 1,
+        expectedRevision: 0,
+        operation: "edit",
+        target: { projectId: "project-1", entityType: "spot_procurement_line", entityId: "line-1" },
+        values: {
+          materialName: "免烧砖", specification: "240×115×53", unit: "块", quantity: "1200", note: "二次结构"
+        }
+      }],
+      [tx, "material-1", {
+        sceneKey: "spot_procurement.application_line",
+        definitionVersion: 1,
+        expectedRevision: 0,
+        operation: "edit",
+        target: { projectId: "project-1", entityType: "spot_procurement_line", entityId: "line-2" },
+        values: {
+          materialName: "水泥", specification: null, unit: "袋", quantity: "2.50", note: null
+        }
+      }]
+    ]);
+    expect(entryTransactions.freezeSubmissionSnapshotInTransaction.mock.invocationCallOrder.at(-1))
+      .toBeLessThan(tx.approvalInstance.create.mock.invocationCallOrder[0]!);
+  });
+
+  it("keeps approval and status writes empty when any entry snapshot freeze fails", async () => {
+    const { service, tx, audit, entryTransactions } = context();
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement()])
+      .mockResolvedValueOnce([version()]);
+    entryTransactions.freezeSubmissionSnapshotInTransaction
+      .mockResolvedValueOnce({ revision: 1 })
+      .mockRejectedValueOnce(new Error("line freeze failed"));
+
+    await expect(service.submit("procurement-1", "material-1"))
+      .rejects.toThrow("line freeze failed");
+
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("creates the only payment draft and a receipt kept closed until actual payment", async () => {

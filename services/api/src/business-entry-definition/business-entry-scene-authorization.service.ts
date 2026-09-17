@@ -16,8 +16,13 @@ import { OrganizationService } from "../organization/organization.service";
 import { ProjectOperatingProfileService } from "../project/project-operating-profile.service";
 import { ProjectService } from "../project/project.service";
 import { SettlementTemplateService } from "../settlement/settlement-template.service";
+import { PrismaService } from "../database/prisma.service";
 import type { BusinessEntryTargetScope } from "./business-entry-scene-access";
-import { BUSINESS_ENTRY_SCENE_DEFINITIONS } from "./business-entry-definition.scene-registry";
+import {
+  BUSINESS_ENTRY_SCENE_DEFINITIONS,
+  resolveSpotProcurementLine,
+  resolveSpotProcurementVersion
+} from "./business-entry-definition.scene-registry";
 
 export interface BusinessEntrySceneAuthorizationContext {
   sceneKey: string;
@@ -90,7 +95,8 @@ export class BusinessEntrySceneAuthorizationService {
     layouts: LayoutTemplateService,
     settlementTemplates: SettlementTemplateService,
     projectOperatingProfiles: ProjectOperatingProfileService,
-    projects: ProjectService
+    projects: ProjectService,
+    prisma: PrismaService
   ) {
     // These project-scoped legacy scenes previously reached the switch default.
     // Keep that fail-closed behavior explicit until their owning domains register
@@ -152,6 +158,34 @@ export class BusinessEntrySceneAuthorizationService {
               throw new BadRequestException("项目经营档案目标与当前项目不一致");
             }
             return projectOperatingProfiles.assertCanMaintainBusinessEntry(context.projectId, context.actorUserId, context.tx);
+          }
+        },
+        {
+          sceneKey: "spot_procurement.application",
+          resolve: async (context) => {
+            if (!await resolveSpotProcurementVersion({
+              target: context.target,
+              projectId: context.projectId,
+              actorUserId: context.actorUserId,
+              operation: context.operation,
+              scene: context.sceneKey,
+              scope: context.scope,
+              prisma: context.tx ?? prisma
+            })) throw new ForbiddenException("当前零采申请不允许执行该操作");
+          }
+        },
+        {
+          sceneKey: "spot_procurement.application_line",
+          resolve: async (context) => {
+            if (!await resolveSpotProcurementLine({
+              target: context.target,
+              projectId: context.projectId,
+              actorUserId: context.actorUserId,
+              operation: context.operation,
+              scene: context.sceneKey,
+              scope: context.scope,
+              prisma: context.tx ?? prisma
+            })) throw new ForbiddenException("当前零采明细不允许执行该操作");
           }
         },
         ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({

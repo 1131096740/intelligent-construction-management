@@ -8,6 +8,7 @@ import {
   createSpotProcurementDraft,
   fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurementApplicationTextSuggestions,
+  fetchSpotProcurementApplicationDefinitions,
   createSpotProcurementVersion,
   executeSpotProcurementInvoiceAppend,
   executeSpotProcurementPaymentReviewAction,
@@ -22,6 +23,8 @@ import {
   fetchSpotProcurements,
   recordSpotProcurementPaymentExecution,
   recordSpotProcurementRefund,
+  recordSpotProcurementRefundForPayment,
+  uploadSpotProcurementRefundVoucherForPayment,
   recreateSpotProcurementPaymentDraft,
   refreshSpotProcurementReceiptPdf,
   requestSpotProcurementAbnormalTermination,
@@ -61,6 +64,16 @@ describe("spot procurement API client", () => {
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/capabilities?projectId=project%2F1"
+    ]);
+  });
+
+  it("reads static application definitions from the project-scoped create capability", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse({ application: {}, line: {} }));
+
+    await fetchSpotProcurementApplicationDefinitions("project/1");
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/projects/project%2F1/application-definitions"
     ]);
   });
 
@@ -186,6 +199,52 @@ describe("spot procurement API client", () => {
       }),
       JSON.stringify(refund)
     ]);
+  });
+
+  it("uses the exact payment capability for refund upload and completed idempotent replay", async () => {
+    const pending = {
+      payment: { id: "payment-1", procurement: { id: "procurement-1" } },
+      currentTask: { key: "record_refund", enabled: true },
+      discrepancy: { status: "awaiting_refund", refundExpectedAmountCents: "20000" }
+    };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(pending))
+      .mockResolvedValueOnce(jsonResponse({ id: "voucher-1" }))
+      .mockResolvedValueOnce(jsonResponse({
+        ...pending,
+        currentTask: { key: "view_only", enabled: false },
+        discrepancy: { status: "resolved", refund: { amountCents: "20000", receivedAt: "2026-09-17T00:00:00.000Z" } }
+      }))
+      .mockResolvedValueOnce(jsonResponse({ refund: { amountCents: "20000" } }));
+    await uploadSpotProcurementRefundVoucherForPayment("payment-1", "procurement-1", new Blob(["proof"]), "proof.png", "upload-key");
+    await recordSpotProcurementRefundForPayment("payment-1", "procurement-1", {
+      amountCents: "20000", receivedAt: "2026-09-17", refundMethod: "bank_transfer",
+      voucherFileId: "voucher-1", idempotencyKey: "refund-key"
+    });
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurement-payments/payment-1",
+      "/spot-procurements/procurement-1/refund-voucher-file-uploads",
+      "/spot-procurement-payments/payment-1",
+      "/spot-procurements/procurement-1/refunds"
+    ]);
+  });
+
+  it("does not mutate a refund after its frozen payment operation becomes stale", async () => {
+    let release!: (value: Response) => void;
+    const capability = new Promise<Response>((resolve) => { release = resolve; });
+    mockApiFetch.mockImplementationOnce(() => capability);
+    let current = true;
+    const operation = uploadSpotProcurementRefundVoucherForPayment(
+      "payment-1", "procurement-1", new Blob(["proof"]), "proof.png", "upload-key", () => current
+    );
+    current = false;
+    release(jsonResponse({
+      payment: { id: "payment-1", procurement: { id: "procurement-1" } },
+      currentTask: { key: "record_refund", enabled: true },
+      discrepancy: { status: "awaiting_refund" }
+    }));
+    await expect(operation).rejects.toThrow("页面已切换");
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
   });
 
   it("preflights the current append capability before uploading and appends only to the captured payment", async () => {

@@ -458,7 +458,8 @@ describe("spot procurement web pages", () => {
     expect(detail).not.toContain("colKey:'archiveTrigger'");
     expect(detail).toContain("查看当前采购单、审批与 PDF 可用性");
     expect(detail).toContain("spotPaymentApprovalStatusSemantic(detail.approval.status)");
-    expect(detail).toContain("router.push(`/零星采购收货/${procurementId}`)");
+    expect(detail).not.toContain("router.push(`/零星采购收货/${procurementId}`)");
+    expect(detail).toContain("payment-refund-form");
 
     expect(panel).toContain("currentTask: SpotPaymentCurrentTask");
     expect(panel).toContain("availableActions: DetailActionReadModel[]");
@@ -1051,6 +1052,7 @@ describe("spot procurement web pages", () => {
   it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {
     const workbench = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
     const receipt = pageSource("SpotProcurementReceiptPage.vue");
+    const payment = pageSource("SpotProcurementPaymentDetailPage.vue");
     const uploader = pageSource("components/ReceiptPhotoUploader.vue");
     const invoiceAppendRegistration = pageActionRegistry.actions.find(
       (action) => action.id === "spot-procurement.invoice-append"
@@ -1092,7 +1094,12 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("revokeSpotProcurementReceiptReview");
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
-    expect(receipt).toContain("prepareSpotRefundWithUpload(");
+    expect(payment).toContain("prepareSpotRefundWithUpload(");
+    expect(payment).toContain("recordSpotProcurementRefundForPayment(");
+    expect(payment).toContain("uploadSpotProcurementRefundVoucherForPayment(");
+    expect(payment).toContain("payment-refund-form");
+    expect(payment).toContain("payment-refund-receipt");
+    expect(payment).not.toContain("router.push(`/零星采购收货/");
     expect(receipt).toContain("executeSpotProcurementInvoiceAppend");
     expect(receipt).toContain("const appendInvoiceAction = computed(() =>");
     expect(receipt).toContain(

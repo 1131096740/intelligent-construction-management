@@ -31,6 +31,7 @@ import { buildApprovalSelfReviewPayload } from "../../components/approval-self-r
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
+import ExpenseClaimSubmissionHistory from "./components/ExpenseClaimSubmissionHistory.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 
@@ -68,7 +69,7 @@ const attachmentExpenseCategory = ref("");
 const reviewForm = ref({ decision: "approve" as "approve" | "reject", comment: "", selfReviewReason: "", confirmationPassword: "" });
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
 const tab = ref("business");
-const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "attachments", label: "附件与证据" }, { value: "funds", label: "资金结果" }];
+const tabs = [{ value: "business", label: "业务信息" }, { value: "lines", label: "费用明细" }, { value: "attachments", label: "附件与证据" }, { value: "history", label: "提交记录" }, { value: "funds", label: "资金结果" }];
 const columns = [
   { colKey: "sortOrder", title: "序号", width: 70 },
   { colKey: "expenseCategory", title: "费用类别", width: 120 },
@@ -79,7 +80,10 @@ const columns = [
   { colKey: "evidenceType", title: "证据类型", width: 130 },
   { colKey: "remark", title: "备注", minWidth: 160 }
 ];
-const title = computed(() => detail.value?.claimType === "loan" ? "借款申请" : "费用报销");
+const title = computed(() => detail.value ? ({ reimbursement: "费用报销", loan: "借款申请", incidental_expense: "零星费用" } as const)[detail.value.claimType] : "费用申请");
+function incidentalExpenseCategoryLabel(value: ExpenseClaimDetailReadModel["incidentalExpenseCategory"]) {
+  return value ? ({ temporary_service: "非材料临时服务", temporary_machinery_shift: "临时机械台班", sporadic_labor: "零星用工", other_incidental: "其他非材料临时费用" } as const)[value] : "未填写";
+}
 function amount(value: string) { return `¥${centsTextToYuanText(value)}`; }
 function statusLabel(value: string) { return ({ draft: "草稿", approval_pending: "审批中", approved_pending_payment: "待公司付款", partially_paid: "部分公司付款", paid: "公司补付完成", approved_pending_disbursement: "待放款", partially_disbursed: "部分放款", disbursed: "已放款", offset_completed: "借款冲销完成", rejected: "已驳回" } as Record<string, string>)[value] ?? value; }
 function tone(value: string) { return ["offset_completed", "disbursed", "paid"].includes(value) ? "success" as const : value === "rejected" ? "danger" as const : value === "draft" ? "default" as const : "warning" as const; }
@@ -847,6 +851,12 @@ onMounted(() => void loadDetail());
             <t-descriptions-item label="项目">
               {{ detail.project ? `${detail.project.code} · ${detail.project.name}` : '非项目费用' }}
             </t-descriptions-item>
+            <t-descriptions-item
+              v-if="detail.claimType === 'incidental_expense'"
+              label="零星费用分类"
+            >
+              {{ incidentalExpenseCategoryLabel(detail.incidentalExpenseCategory) }}
+            </t-descriptions-item>
             <t-descriptions-item label="报销人 / 借款人">
               {{ detail.applicantNameSnapshot }}
             </t-descriptions-item>
@@ -890,6 +900,7 @@ onMounted(() => void loadDetail());
         </t-card>
         <t-card
           v-else-if="tab === 'attachments'"
+          class="expense-claim-detail__attachment-panel jg-table-region jg-table-region--wide"
           :bordered="true"
         >
           <div class="expense-claim-detail__attachments">
@@ -929,10 +940,11 @@ onMounted(() => void loadDetail());
               </t-button>
             </template>
             <t-table
+              class="expense-claim-detail__attachment-table"
               row-key="id"
               size="small"
               :columns="[
-                { colKey: 'fileName', title: '文件' },
+                { colKey: 'fileName', title: '文件', minWidth: 200 },
                 { colKey: 'category', title: '类别', width: 150 },
                 { colKey: 'expenseCategory', title: '关联费用类别', width: 150 },
                 { colKey: 'stage', title: '状态', width: 130 },
@@ -970,8 +982,54 @@ onMounted(() => void loadDetail());
                 <span v-else>已留痕</span>
               </template>
             </t-table>
+            <section
+              class="expense-claim-detail__attachment-cards"
+              aria-label="费用附件列表"
+            >
+              <p v-if="!detail.attachments.length">
+                暂无附件
+              </p>
+              <t-card
+                v-for="attachment in detail.attachments"
+                :key="attachment.id"
+                size="small"
+                :bordered="true"
+              >
+                <strong>{{ attachment.fileName }}</strong>
+                <dl>
+                  <dt>类别</dt>
+                  <dd>{{ attachment.category === 'invoice' ? '发票' : attachment.category === 'receipt_or_other' ? '收据或其他凭证' : '其他说明' }}</dd>
+                  <dt>关联费用类别</dt>
+                  <dd>{{ attachment.expenseCategory || '未填写' }}</dd>
+                  <dt>状态</dt>
+                  <dd>{{ attachment.removedAt ? '已从草稿移除' : attachment.stage === 'approval_frozen' ? '审批快照已冻结' : attachment.stage === 'post_submit_append' ? '后续追加资料' : '草稿附件' }}</dd>
+                  <dt>上传人</dt>
+                  <dd>{{ attachment.attachedByName }}</dd>
+                  <dt>上传时间</dt>
+                  <dd>{{ date(attachment.createdAt) }}</dd>
+                </dl>
+                <t-popconfirm
+                  v-if="detail.status === 'draft' && !attachment.removedAt"
+                  content="仅移除本次草稿中的附件绑定，原文件和审计记录仍会保留。"
+                  confirm-btn="确认移除"
+                  @confirm="removeAttachment(attachment.id)"
+                >
+                  <t-button
+                    theme="danger"
+                    variant="text"
+                    :loading="attachmentUploading"
+                  >
+                    移除
+                  </t-button>
+                </t-popconfirm>
+              </t-card>
+            </section>
           </div>
         </t-card>
+        <ExpenseClaimSubmissionHistory
+          v-else-if="tab === 'history'"
+          :snapshots="detail.entrySnapshots ?? []"
+        />
         <t-card
           v-else
           :bordered="true"
@@ -1078,7 +1136,14 @@ onMounted(() => void loadDetail());
 
 <style scoped>
 .expense-claim-detail { display: grid; gap: var(--jg-space-lg); min-width: 0; }
-.expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); }
+.expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); min-width: 0; }
+.expense-claim-detail__attachment-cards { display: none; }
+@media (max-width: 767px) {
+  .expense-claim-detail__attachment-table { display: none; }
+  .expense-claim-detail__attachment-cards { display: grid; gap: var(--jg-space-md); min-width: 0; overflow-wrap: anywhere; }
+  .expense-claim-detail__attachment-cards dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--jg-space-sm); }
+  .expense-claim-detail__attachment-cards dd { margin: 0; }
+}
 .expense-claim-detail__review-form { display: grid; gap: var(--jg-space-md); }
 .expense-claim-detail__payment-subject { display: flex; align-items: center; gap: var(--jg-space-xs); }
 .expense-claim-detail__payment-list { display: grid; gap: var(--jg-space-xs); }

@@ -123,7 +123,7 @@ function updateRows(nextRows: JgBusinessGridRow[]) {
   assertBusinessEntryBulkRowCount(props.definition, nextRows.length);
   emit("update:modelValue", nextRows.flatMap((row, index) => {
     const current = props.modelValue[index];
-    if (!current?.target) return [];
+    if (!current) return [];
     const rawValues = Object.fromEntries(Object.entries(row).map(([key, value]) => {
       const field = fieldByKey.value.get(key);
       const currentValue = current.values[key];
@@ -146,6 +146,9 @@ function updateRows(nextRows: JgBusinessGridRow[]) {
       props.optionsByField
     );
     const visibleValues = visibleBusinessEntryValues(props.definition, normalizedValues);
+    // Unsaved domain forms have no persisted target yet. Keep their local rows;
+    // this does not issue a target or bypass the domain's create/submit command.
+    if (!current.target) return [{ ...current, values: visibleValues }];
     return [businessEntryDraftFromForm(
       props.definition,
       current.target,

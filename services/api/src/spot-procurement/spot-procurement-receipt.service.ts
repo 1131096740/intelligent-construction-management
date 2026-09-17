@@ -61,6 +61,7 @@ import {
 } from "./spot-procurement-receipt-pdf-facts";
 import { SpotProcurementReceiptPdfService } from "./spot-procurement-receipt-pdf.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
+import { spotPaymentRefundOwnerId } from "./spot-payment-refund-owner";
 import {
   SPOT_PROCUREMENT_BUSINESS_TYPES,
   SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT,
@@ -825,6 +826,9 @@ export class SpotProcurementReceiptService {
     actorUserId: string,
     actionKey: string
   ) {
+    if (actionKey === "record_refund") {
+      return this.assertRefundActionAvailable(procurementId, actorUserId);
+    }
     const detail = await this.getReceipt(procurementId, actorUserId);
     if (
       detail.receipt.procurementId !== procurementId ||
@@ -835,6 +839,82 @@ export class SpotProcurementReceiptService {
       throw new ForbiddenException("当前账号不能执行该零星采购收货操作");
     }
     return detail;
+  }
+
+  private async assertRefundActionAvailable(
+    procurementId: string,
+    actorUserId: string
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const receipt = await tx.spotProcurementReceipt.findUnique({
+        where: { procurementId },
+        select: { id: true, projectId: true, procurementId: true, procurementVersionId: true, currentRevisionNo: true, status: true }
+      });
+      const procurement = await tx.spotProcurement.findUnique({
+        where: { id: procurementId },
+        select: { id: true, projectId: true, currentVersionId: true, status: true }
+      });
+      if (
+        !receipt || !procurement || procurement.projectId !== receipt.projectId ||
+        procurement.currentVersionId !== receipt.procurementVersionId ||
+        procurement.status !== "approved_in_progress" ||
+        !["reviewed", "locked"].includes(receipt.status)
+      ) {
+        throw new ForbiddenException("当前账号不能执行该零星采购退款操作");
+      }
+      this.pilot.assertEnabled(receipt.projectId);
+      const scope = await this.loadReceiptActionScope(tx, actorUserId, receipt.projectId);
+      if (!scope.active || !scope.projectRoleKeys.includes("finance_staff")) {
+        throw new ForbiddenException("当前账号不能执行该零星采购退款操作");
+      }
+      const version = await tx.spotProcurementVersion.findUnique({
+        where: { id: receipt.procurementVersionId },
+        select: { id: true, procurementId: true, status: true }
+      });
+      const latestReview = await tx.spotProcurementReceiptReview.findFirst({
+        where: { receiptId: receipt.id },
+        orderBy: [{ sequenceNo: "desc" }, { createdAt: "desc" }],
+        select: { id: true, receiptRevisionNo: true, procurementId: true, procurementVersionId: true, decision: true }
+      });
+      if (
+        !version || version.procurementId !== procurementId || version.status !== "approved" ||
+        !latestReview || latestReview.decision !== "approved" ||
+        latestReview.receiptRevisionNo !== receipt.currentRevisionNo ||
+        latestReview.procurementId !== procurementId ||
+        latestReview.procurementVersionId !== receipt.procurementVersionId
+      ) {
+        throw new ForbiddenException("当前账号不能执行该零星采购退款操作");
+      }
+      const discrepancies = await tx.spotProcurementDiscrepancy.findMany({
+        where: {
+          receiptId: receipt.id,
+          procurementId,
+          procurementVersionId: receipt.procurementVersionId,
+          projectId: receipt.projectId,
+          status: "awaiting_refund",
+          resolutionType: "full_refund",
+          invalidatedAt: null
+        },
+        select: { procurementId: true, procurementVersionId: true, receiptRevisionNo: true, receiptReviewId: true }
+      });
+      if (
+        discrepancies.length !== 1 ||
+        discrepancies[0]!.receiptRevisionNo !== receipt.currentRevisionNo ||
+        discrepancies[0]!.receiptReviewId !== latestReview.id
+      ) {
+        throw new ForbiddenException("当前账号不能执行该零星采购退款操作");
+      }
+      const discrepancy = discrepancies[0]!;
+      const payments = await tx.spotProcurementPayment.findMany({
+        where: { procurementId, invalidatedAt: null },
+        select: { id: true, procurementId: true, procurementVersionId: true, status: true, createdAt: true }
+      });
+      const ownerPaymentId = spotPaymentRefundOwnerId(discrepancy, payments);
+      if (!ownerPaymentId || (await this.access.resolvePaymentViewAccess(ownerPaymentId, actorUserId, tx)) !== "allowed") {
+        throw new ForbiddenException("当前账号不能执行该零星采购退款操作");
+      }
+      return { receipt: { procurementId }, availableActions: [{ key: "record_refund", enabled: true }] };
+    });
   }
 
   private receiptActions(input: {

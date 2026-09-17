@@ -285,7 +285,8 @@ export class SpotProcurementAccessService {
       reservations,
       balanceEntries,
       paymentMethods,
-      refundDiscrepancies
+      refundDiscrepancies,
+      refunds
     ] = await Promise.all([
       client.approvalInstance.findMany({
         where: {
@@ -345,6 +346,10 @@ export class SpotProcurementAccessService {
           procurementId: true,
           procurementVersionId: true
         }
+      }),
+      client.spotProcurementRefund.findMany({
+        where: { paymentId: { in: validPaymentIds }, recordedByUserId: actorUserId },
+        select: { paymentId: true, recordedByUserId: true }
       })
     ]);
     const validRefundDiscrepancies = refundDiscrepancies.filter(
@@ -416,6 +421,11 @@ export class SpotProcurementAccessService {
     for (const entry of balanceEntries) {
       if (entry.paymentId && entry.actorUserId === actorUserId) {
         allowedIds.add(entry.paymentId);
+      }
+    }
+    for (const refund of refunds) {
+      if (refund.paymentId && refund.recordedByUserId === actorUserId) {
+        allowedIds.add(refund.paymentId);
       }
     }
 

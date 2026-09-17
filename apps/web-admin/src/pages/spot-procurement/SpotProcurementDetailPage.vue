@@ -17,6 +17,7 @@ import {
   executeSpotProcurementReviewAction,
   executeSpotProcurementWithdrawalAction,
   fetchSpotProcurementDetail,
+  fetchSpotProcurementApplicationDefinitions,
   prepareSpotProcurementReviewAction,
   prepareSpotProcurementWithdrawalAction,
   requestSpotProcurementAbnormalTermination,
@@ -49,6 +50,7 @@ import {
 } from "../../components/file-upload-policy.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import ProcurementLineEditor, { type ProcurementLineDraft } from "./components/ProcurementLineEditor.vue";
+import SpotProcurementSubmissionHistory from "./components/SpotProcurementSubmissionHistory.vue";
 import {
   activeSpotProcurementAttachmentIds,
   retainedSpotProcurementAttachments
@@ -504,7 +506,14 @@ async function saveDraft() {
       );
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
+    const definitions = await fetchSpotProcurementApplicationDefinitions(
+      current.procurement.project.id
+    );
     const draft = {
+      entryDefinitionVersions: {
+        application: definitions.application.version,
+        line: definitions.line.version
+      },
       applicationDepartment,
       applicationName,
       requestedArrivalAt: editForm.requestedArrivalAt,
@@ -1750,6 +1759,7 @@ onBeforeUnmount(() => {
             }))"
           />
         </section>
+        <SpotProcurementSubmissionHistory :snapshots="detail.entrySnapshots ?? []" />
       </section>
 
       <section

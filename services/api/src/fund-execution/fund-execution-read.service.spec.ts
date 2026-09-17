@@ -43,6 +43,9 @@ describe("FundExecutionService read model", () => {
       },
       fundExecutionCaseAxisSelection: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      fundExecutionEntrySnapshot: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const prisma = {
