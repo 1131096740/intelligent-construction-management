@@ -957,6 +957,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               invoiceType: "vat_special",
               taxMode: "single_rate",
               defaultTaxRatePercent: 13,
+              taxFactSource: "contract_document",
               contractGovernanceVersion: 1,
               documentContentRevision: 1,
               documentContentFingerprint: canonicalDocumentContentFingerprint,
@@ -1263,11 +1264,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             formalCode: string;
             status: string;
           };
-          if (submitted.status !== 201) {
-            throw new Error(
-              `合同提交失败：${submitted.status} ${JSON.stringify(submittedBody)}`
-            );
-          }
+          expect({ status: submitted.status, body: submittedBody }).toMatchObject({
+            status: 201
+          });
           expect(submittedBody).toMatchObject({
             approvalInstanceId: expect.any(String),
             contractVersionId: submittedVersionId,
