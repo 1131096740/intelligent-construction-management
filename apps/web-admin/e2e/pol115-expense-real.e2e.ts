@@ -82,6 +82,17 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
   const detail = await request.get(`${process.env.POL115_API_URL}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect(detail.ok()).toBe(true);
   expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器报销明细", lines: [{ expenseCategory: "办公费", purpose: "购买文具", amountCents: "1" }], entrySnapshots: [] });
+  await page.goto(`/费用与报销/${claim.id}`);
+  const submitted = page.waitForResponse((result) => result.url().endsWith(`/expense-claims/${claim.id}/submission`) && result.request().method() === "POST");
+  await page.getByRole("button", { name: "提交审批", exact: true }).click();
+  await page.getByRole("button", { name: "确认提交", exact: true }).click();
+  expect((await submitted).status()).toBe(201);
+  await page.getByText("提交记录", { exact: true }).click();
+  const history = page.getByRole("region", { name: "费用申请提交记录" });
+  await expect(history.getByRole("region", { name: "费用明细第 1 项" }).getByText("办公费", { exact: true })).toBeVisible();
+  await expect(history.getByRole("region", { name: "费用明细第 1 项" }).getByText("购买文具", { exact: true })).toBeVisible();
+  await expect(history.getByRole("region", { name: "费用明细第 1 项" }).getByText("0.01 元", { exact: true })).toBeVisible();
+  expect(await history.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
 test("借款先保存草稿及附件，仅明确提交后冻结审批内容", async ({ page, request }) => {
