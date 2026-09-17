@@ -119,8 +119,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       );
       const deletionFormalCode = `HT-DELETE-${suffix}`;
       const tombstoneRaceFormalCode = `HT-RACE-${suffix}`;
-      const tombstoneRaceSourceVersionId =
-        `lifecycle-route-tombstone-race-source-${suffix}-submission-v1`;
+      const tombstoneRaceSourceContractId =
+        `lifecycle-route-tombstone-race-source-${suffix}-submission`;
+      const tombstoneRaceSourceVersionId = `${tombstoneRaceSourceContractId}-v1`;
       const deletionExclusiveFileId = `lifecycle-route-delete-exclusive-file-${suffix}`;
       const deletionSharedFileId = `lifecycle-route-delete-shared-file-${suffix}`;
       const deletionExclusiveObjectKey = `uploads/${deletionExclusiveFileId}.pdf`;
@@ -870,7 +871,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const conflictedContractId = `lifecycle-route-conflict-${submissionSuffix}`;
         const rollbackContractId = `lifecycle-route-rollback-${submissionSuffix}`;
         const tombstonedContractId = `lifecycle-route-tombstoned-${submissionSuffix}`;
-        const tombstoneRaceSourceContractId = `lifecycle-route-tombstone-race-source-${submissionSuffix}`;
         const tombstoneRaceTargetContractId = `lifecycle-route-tombstone-race-target-${submissionSuffix}`;
         const submittedVersionId = `${submittedContractId}-v1`;
         const conflictedVersionId = `${conflictedContractId}-v1`;
@@ -1614,10 +1614,26 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           where: { id: deletionSharedFileId }
         });
         await prisma.contractVersion.deleteMany({
-          where: { contractId: { in: [...contractIds, formalDraftContractId] } }
+          where: {
+            contractId: {
+              in: [
+                ...contractIds,
+                formalDraftContractId,
+                tombstoneRaceSourceContractId
+              ]
+            }
+          }
         });
         await prisma.contract.deleteMany({
-          where: { id: { in: [...contractIds, formalDraftContractId] } }
+          where: {
+            id: {
+              in: [
+                ...contractIds,
+                formalDraftContractId,
+                tombstoneRaceSourceContractId
+              ]
+            }
+          }
         });
         await prisma.project.deleteMany({ where: { id: projectId } });
         await prisma.position.deleteMany({
