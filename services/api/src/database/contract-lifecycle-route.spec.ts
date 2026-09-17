@@ -1638,6 +1638,18 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             }
           }
         });
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(
+            "SET LOCAL session_replication_role = replica"
+          );
+          await tx.businessEntrySubmissionSnapshot.deleteMany({
+            where: { projectId }
+          });
+          await tx.$executeRawUnsafe(
+            "SET LOCAL session_replication_role = origin"
+          );
+        });
+        await prisma.project.deleteMany({ where: { id: projectId } });
         await prisma.position.deleteMany({
           where: {
             id: {
@@ -1651,6 +1663,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               ]
             }
           }
+        });
+        await prisma.user.deleteMany({
+          where: { id: { in: submissionUserIds } }
         });
         await prisma.$disconnect();
       }
