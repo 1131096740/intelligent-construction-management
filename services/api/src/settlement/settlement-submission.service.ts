@@ -3,10 +3,13 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Inject,
   Optional,
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { SETTLEMENT_BASIC_ENTRY_DEFINITION } from "./settlement-business-entry-definition";
 import { PrismaService } from "../database/prisma.service";
 import type {
   CreateSettlementDto,
@@ -25,6 +28,9 @@ import {
 
 @Injectable()
 export class SettlementSubmissionService {
+  @Inject(BusinessEntryTransactionService)
+  private readonly businessEntry!: BusinessEntryTransactionService;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementService,
@@ -151,6 +157,13 @@ export class SettlementSubmissionService {
               }
             }
           );
+          const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+            sceneKey: SETTLEMENT_BASIC_ENTRY_DEFINITION.key,
+            definitionVersion: SETTLEMENT_BASIC_ENTRY_DEFINITION.version,
+            target: { projectId, entityType: "settlement", entityId: created.id },
+            expectedRevision: 0,
+            values: { code: draft.code, periodLabel: draft.periodLabel }
+          });
           if (this.lineAttachments) {
             await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
               tx,
@@ -177,7 +190,7 @@ export class SettlementSubmissionService {
           if (draft.processId) {
             await this.processes?.linkSettlement(tx, draft.processId, draft.id, created.id);
           }
-          return created;
+          return { ...created, businessEntrySnapshot };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );

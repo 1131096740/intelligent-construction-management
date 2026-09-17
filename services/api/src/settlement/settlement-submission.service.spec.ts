@@ -117,24 +117,40 @@ describe("SettlementSubmissionService", () => {
       }),
       ...coreOverrides
     };
+    const businessEntrySnapshot = {
+      sceneKey: "settlement_basic",
+      definitionVersion: 1,
+      target: { projectId: "project-1", entityType: "settlement", entityId: settlement.id },
+      revision: 1,
+      definition: {},
+      values: { code: draft.code, periodLabel: draft.periodLabel },
+      frozenAt: "2026-07-08T00:00:00.000Z"
+    };
+    const businessEntry = {
+      freezeSubmissionSnapshotInTransaction: jest.fn().mockResolvedValue(businessEntrySnapshot)
+    };
+    const service = new SettlementSubmissionService(
+      prisma as never,
+      settlements as never,
+      counterpartyDocuments as never,
+      frozenDocuments as never
+    );
+    Reflect.set(service, "businessEntry", businessEntry);
     return {
       draft,
       tx,
       prisma,
       settlements,
-      service: new SettlementSubmissionService(
-        prisma as never,
-        settlements as never,
-        counterpartyDocuments as never,
-        frozenDocuments as never
-      ),
+      service,
+      businessEntry,
+      businessEntrySnapshot,
       counterpartyDocuments,
       frozenDocuments
     };
   }
 
   it("claims the expected revision and atomically marks a successful draft submitted", async () => {
-    const { tx, settlements, service, counterpartyDocuments, frozenDocuments } = context();
+    const { tx, settlements, service, counterpartyDocuments, frozenDocuments, businessEntry } = context();
 
     await expect(
       service.submitDraft("project-1", "draft-1", "owner-1", 3)
@@ -176,6 +192,15 @@ describe("SettlementSubmissionService", () => {
     });
     expect(frozenDocuments.assertCurrentFacts.mock.invocationCallOrder[0]).toBeLessThan(
       counterpartyDocuments.assertReadyForSubmission.mock.invocationCallOrder[0]!
+    );
+    expect(businessEntry.freezeSubmissionSnapshotInTransaction).toHaveBeenCalledWith(
+      tx,
+      "owner-1",
+      expect.objectContaining({
+        sceneKey: "settlement_basic",
+        target: { projectId: "project-1", entityType: "settlement", entityId: "settlement-1" },
+        values: { code: "JS-DRAFT-001", periodLabel: "2026-07" }
+      })
     );
   });
 

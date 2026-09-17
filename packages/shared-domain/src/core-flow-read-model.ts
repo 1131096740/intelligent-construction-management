@@ -367,6 +367,7 @@ export interface SettlementLineReadModel {
 }
 
 export interface SettlementDetailReadModel {
+  businessEntryHistory?: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
   id: string;
   settlementId: string;
   title: string;

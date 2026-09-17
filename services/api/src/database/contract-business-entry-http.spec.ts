@@ -546,6 +546,12 @@ if (enabled) {
           settlementLines: [{ sourceType: "manual_adjustment", name: "合成现场签认金额", amountCents: "10000", reason: "本期合成现场签认" }]
         });
         const draftPath = `${settlementDraftPath}/${settlementDraft.id}`;
+        const settlementDraftDetail = await request<{ businessEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> } }>("GET", draftPath);
+        expect(settlementDraftDetail.businessEntry?.definition).toMatchObject({
+          key: "settlement_basic", entityType: "settlement", version: 1,
+          fields: [{ key: "code", label: "结算编号", type: "text" }, { key: "periodLabel", label: "结算期间", type: "text" }]
+        });
+        expect(settlementDraftDetail.businessEntry?.values.periodLabel).toBe("2026-09");
         const frozen = await request<Identified & { fileId: string }>("POST", `${draftPath}/frozen-document`, { expectedRevision: settlementDraft.revision });
         const download = await request<{ downloadUrl: string }>("POST", `/files/${frozen.fileId}/download-ticket`, {
           confirmationPassword: settlementApplicant.password, downloadReason: "合成签署扫描件", accessMode: "download"
@@ -557,7 +563,12 @@ if (enabled) {
           expectedRevision: settlementDraft.revision, frozenDocumentId: frozen.id, uploadedFileId: signed.id,
           declaration: { pageOrderMatchesFrozenDocument: true, counterpartySignedAndDated: true, everyPageStamped: true, crossPageSealCompleted: true }
         });
-        const settlement = await request<Identified>("POST", `${draftPath}/approval-submission`, { expectedRevision: settlementDraft.revision });
+        const settlement = await request<Identified & { businessEntrySnapshot?: { sceneKey: string; values: Record<string, unknown> } }>("POST", `${draftPath}/approval-submission`, { expectedRevision: settlementDraft.revision });
+        expect(settlement.businessEntrySnapshot).toMatchObject({
+          sceneKey: "settlement_basic", values: { periodLabel: "2026-09" }
+        });
+        const settlementDetail = await request<{ businessEntryHistory?: unknown[] }>("GET", `/settlements/${settlement.id}`);
+        expect(settlementDetail.businessEntryHistory).toEqual([settlement.businessEntrySnapshot]);
         for (const role of ["material_staff", "material_director", "contract_director", "project_manager", "finance_director"]) {
           const identity = await loginAs(roleUsers.get(role)!);
           const signature = new FormData();

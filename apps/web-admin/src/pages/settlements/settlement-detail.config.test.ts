@@ -32,6 +32,14 @@ describe("settlement detail page configuration", () => {
     expect(source).not.toContain("promptSensitiveActionReason");
   });
 
+  it("shows the frozen settlement entry history through the responsive shared grid", () => {
+    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("<BusinessEntryGrid");
+    expect(source).toContain("settlementDetail.businessEntryHistory");
+    expect(source).toContain("提交记录");
+    expect(source).toContain(":readonly=\"true\"");
+  });
+
   it("shows frozen unlimited-framework overage reasons to the current approver", () => {
     const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
     expect(source).toContain("框架合同超量复核");
