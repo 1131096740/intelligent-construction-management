@@ -37,8 +37,10 @@ describe("SettlementSubmissionService", () => {
       settlementTemplateVersionId: "template-1",
       code: "JS-DRAFT-001",
       periodLabel: "2026-07",
+      periodEnd: new Date("2026-07-31T00:00:00.000Z"),
       isFinal: false,
       finalCumulativeAmountCents: null,
+      finalDeclarationSnapshot: null,
       lines: [
         {
           sourceType: "contract_bill_row",
@@ -199,7 +201,38 @@ describe("SettlementSubmissionService", () => {
       expect.objectContaining({
         sceneKey: "settlement_basic",
         target: { projectId: "project-1", entityType: "settlement", entityId: "settlement-1" },
-        values: { code: "JS-DRAFT-001", periodLabel: "2026-07" }
+        values: {
+          contractVersionId: "version-1",
+          settlementTemplateVersionId: "template-1",
+          code: "JS-DRAFT-001",
+          periodLabel: "2026-07",
+          periodEnd: "2026-07-31",
+          isFinal: false,
+          fieldReviewerUserId: "reviewer-1",
+          fieldReviewerRoleKey: "material_staff"
+        }
+      })
+    );
+  });
+
+  it("freezes the existing final-settlement declaration and cumulative amount from the draft", async () => {
+    const current = context({
+      isFinal: true,
+      finalDeclarationSnapshot: { accepted: true },
+      finalCumulativeAmountCents: 12345n
+    });
+
+    await current.service.submitDraft("project-1", "draft-1", "owner-1", 3);
+
+    expect(current.businessEntry.freezeSubmissionSnapshotInTransaction).toHaveBeenCalledWith(
+      current.tx,
+      "owner-1",
+      expect.objectContaining({
+        values: expect.objectContaining({
+          isFinal: true,
+          finalDeclarationAccepted: true,
+          finalCumulativeAmountYuan: "123.45"
+        })
       })
     );
   });

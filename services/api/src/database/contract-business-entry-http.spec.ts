@@ -541,17 +541,36 @@ if (enabled) {
         const settlementDraftPath = `/projects/${project.id}/settlement-drafts`;
         const settlementDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
           contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: `POL114-ST-${randomUUID()}`, periodLabel: "2026-09",
+          code: `POL114-ST-${randomUUID()}`, periodLabel: "2026-09", periodEnd: "2026-09-30",
           fieldReviewerUserId: roleUsers.get("material_staff"), fieldReviewerRoleKey: "material_staff",
           settlementLines: [{ sourceType: "manual_adjustment", name: "合成现场签认金额", amountCents: "10000", reason: "本期合成现场签认" }]
         });
         const draftPath = `${settlementDraftPath}/${settlementDraft.id}`;
         const settlementDraftDetail = await request<{ businessEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> } }>("GET", draftPath);
         expect(settlementDraftDetail.businessEntry?.definition).toMatchObject({
-          key: "settlement_basic", entityType: "settlement", version: 1,
-          fields: [{ key: "code", label: "结算编号", type: "text" }, { key: "periodLabel", label: "结算期间", type: "text" }]
+          key: "settlement_basic", entityType: "settlement", version: 2,
+          fields: [
+            { key: "contractVersionId", label: "关联合同", type: "single_select" },
+            { key: "settlementTemplateVersionId", label: "结算模板", type: "single_select" },
+            { key: "code", label: "结算编号", type: "text" },
+            { key: "periodLabel", label: "结算期间", type: "text" },
+            { key: "periodEnd", label: "结算截止日", type: "date" },
+            { key: "isFinal", label: "最终结算", type: "boolean" },
+            { key: "finalDeclarationAccepted", label: "最终结算总体声明", type: "boolean" },
+            { key: "finalCumulativeAmountYuan", label: "审定累计结算金额", type: "money" },
+            { key: "fieldReviewerUserId", label: "现场复核人", type: "single_select" },
+            { key: "fieldReviewerRoleKey", label: "现场复核岗位", type: "single_select" }
+          ]
         });
-        expect(settlementDraftDetail.businessEntry?.values.periodLabel).toBe("2026-09");
+        expect(settlementDraftDetail.businessEntry?.values).toMatchObject({
+          contractVersionId: draft.version.id,
+          settlementTemplateVersionId: settlementTemplate.version.id,
+          periodLabel: "2026-09",
+          periodEnd: "2026-09-30",
+          isFinal: false,
+          fieldReviewerUserId: roleUsers.get("material_staff"),
+          fieldReviewerRoleKey: "material_staff"
+        });
         const frozen = await request<Identified & { fileId: string }>("POST", `${draftPath}/frozen-document`, { expectedRevision: settlementDraft.revision });
         const download = await request<{ downloadUrl: string }>("POST", `/files/${frozen.fileId}/download-ticket`, {
           confirmationPassword: settlementApplicant.password, downloadReason: "合成签署扫描件", accessMode: "download"
@@ -565,7 +584,16 @@ if (enabled) {
         });
         const settlement = await request<Identified & { businessEntrySnapshot?: { sceneKey: string; values: Record<string, unknown> } }>("POST", `${draftPath}/approval-submission`, { expectedRevision: settlementDraft.revision });
         expect(settlement.businessEntrySnapshot).toMatchObject({
-          sceneKey: "settlement_basic", values: { periodLabel: "2026-09" }
+          sceneKey: "settlement_basic", definitionVersion: 2,
+          values: {
+            contractVersionId: draft.version.id,
+            settlementTemplateVersionId: settlementTemplate.version.id,
+            periodLabel: "2026-09",
+            periodEnd: "2026-09-30",
+            isFinal: false,
+            fieldReviewerUserId: roleUsers.get("material_staff"),
+            fieldReviewerRoleKey: "material_staff"
+          }
         });
         const settlementDetail = await request<{ businessEntryHistory?: unknown[] }>("GET", `/settlements/${settlement.id}`);
         expect(settlementDetail.businessEntryHistory).toEqual([settlement.businessEntrySnapshot]);

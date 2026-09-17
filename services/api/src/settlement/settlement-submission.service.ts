@@ -9,7 +9,10 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
-import { SETTLEMENT_BASIC_ENTRY_DEFINITION } from "./settlement-business-entry-definition";
+import {
+  SETTLEMENT_BASIC_ENTRY_DEFINITION,
+  settlementBasicEntryValues
+} from "./settlement-business-entry-definition";
 import { PrismaService } from "../database/prisma.service";
 import type {
   CreateSettlementDto,
@@ -162,7 +165,7 @@ export class SettlementSubmissionService {
             definitionVersion: SETTLEMENT_BASIC_ENTRY_DEFINITION.version,
             target: { projectId, entityType: "settlement", entityId: created.id },
             expectedRevision: 0,
-            values: { code: draft.code, periodLabel: draft.periodLabel }
+            values: settlementBasicEntryValues(draft)
           });
           if (this.lineAttachments) {
             await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(

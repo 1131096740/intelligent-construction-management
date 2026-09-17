@@ -28,7 +28,10 @@ import {
 } from "./contract-settlement-capacity";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 import { settlementSourceSnapshotToken } from "./settlement-line-occupancy";
-import { SETTLEMENT_BASIC_ENTRY_DEFINITION } from "./settlement-business-entry-definition";
+import {
+  settlementBasicEntryDefinition,
+  settlementBasicEntryValues
+} from "./settlement-business-entry-definition";
 import {
   isSettlementDraftSerializationConflict,
   loadSettlementDraftLifecycle,
@@ -253,8 +256,8 @@ export class SettlementDraftService {
       ),
       documents,
       businessEntry: {
-        definition: SETTLEMENT_BASIC_ENTRY_DEFINITION,
-        values: { code: draft!.code, periodLabel: draft!.periodLabel }
+        definition: settlementBasicEntryDefinition(draft!),
+        values: settlementBasicEntryValues(draft!)
       }
     };
   }
