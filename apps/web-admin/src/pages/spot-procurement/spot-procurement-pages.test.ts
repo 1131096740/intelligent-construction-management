@@ -1096,7 +1096,8 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("recordSpotProcurementRefund");
     expect(payment).toContain("prepareSpotRefundWithUpload(");
     expect(payment).toContain("const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate)");
-    expect(payment).toContain('action.key === "record_refund" && action.enabled === true');
+    expect(payment).toContain('fresh.currentTask.key === "record_refund"');
+    expect(payment).toContain("fresh.currentTask.enabled === true");
     expect(payment.indexOf("const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate)")).toBeLessThan(
       payment.indexOf("prepareSpotRefundWithUpload(")
     );
