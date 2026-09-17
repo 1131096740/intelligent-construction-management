@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
@@ -14,6 +15,7 @@ import { PaymentRequestService } from "./payment-request.service";
 
 @Module({
   imports: [
+    BusinessEntryTransactionModule,
     ApprovalModule,
     AuditModule,
     AuthModule,

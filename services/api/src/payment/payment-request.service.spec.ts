@@ -4,6 +4,13 @@ import {
   ForbiddenException
 } from "@nestjs/common";
 import { validate } from "class-validator";
+import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
+import { AuditService } from "../audit/audit.service";
+import type { PrismaService } from "../database/prisma.service";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
+import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/business-entry-definition.snapshot-store";
+import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
 import { PaymentAmountService } from "./payment-amount.service";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { PaymentRequestService } from "./payment-request.service";
@@ -8404,7 +8411,18 @@ describe("PaymentRequestService", () => {
   });
 
   it("records finance outflow after actual payment execution", async () => {
+    const createdRecord = {
+      id: "finance-record-1", projectId: "project-1", createdByUserId: "finance-1",
+      direction: "outflow", amountCents: 30_000n, occurredAt: new Date("2026-06-22T00:00:00.000Z")
+    };
     const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "finance-position", projectId: "project-1" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "finance-position", key: "finance_staff" }]) },
+      businessEntrySubmissionSnapshot: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: "snapshot-1", ...data }))
+      },
       $queryRaw: jest.fn().mockResolvedValue([
         {
           id: "payment-1",
@@ -8416,13 +8434,10 @@ describe("PaymentRequestService", () => {
       ]),
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 20_000n }
+          { amountCents: 20_000n, projectId: "project-1" }
         ]),
-        create: jest.fn().mockResolvedValue({
-          id: "finance-record-1",
-          direction: "outflow",
-          amountCents: 30_000n
-        })
+        findUnique: jest.fn().mockResolvedValue(createdRecord),
+        create: jest.fn().mockResolvedValue(createdRecord)
       },
       auditLog: {
         create: jest.fn()
@@ -8439,6 +8454,11 @@ describe("PaymentRequestService", () => {
       auth as never
     );
 
+    Reflect.set(paymentService, "businessEntry", new BusinessEntryTransactionService(
+      createBusinessEntryDefinitionRegistry([PAYMENT_FINANCE_ENTRY_DEFINITION]),
+      BUSINESS_ENTRY_TRANSACTION_REGISTRY,
+      new PrismaBusinessEntrySnapshotStore({} as PrismaService, new AuditService())
+    ));
     const record = await paymentService.recordFinance("FK-2026-012", "finance-1", {
       amountCents: "30000",
       occurredAt: "2026-06-22T00:00:00.000Z",

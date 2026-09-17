@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
 import {
   BadRequestException,
   ConflictException,
@@ -350,6 +352,8 @@ const PROJECT_CASH_POOL_PAYMENT_STATUSES = [
 
 @Injectable()
 export class PaymentRequestService {
+  @Inject(BusinessEntryTransactionService)
+  private readonly businessEntry!: BusinessEntryTransactionService;
   constructor(
     private readonly amount: PaymentAmountService,
     @Optional()
@@ -4173,6 +4177,16 @@ export class PaymentRequestService {
           createdByUserId: actorUserId
         }
       });
+      const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, actorUserId, {
+        sceneKey: PAYMENT_FINANCE_ENTRY_DEFINITION.key,
+        definitionVersion: PAYMENT_FINANCE_ENTRY_DEFINITION.version,
+        target: { projectId: payment.projectId, entityType: "finance_record", entityId: financeRecord.id },
+        expectedRevision: 0,
+        values: {
+          amountYuan: `${amountCents / 100n}.${(amountCents % 100n).toString().padStart(2, "0")}`,
+          occurredAt: financeRecord.occurredAt.toISOString()
+        }
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: "payment.finance.record",
@@ -4184,7 +4198,7 @@ export class PaymentRequestService {
           direction: "outflow"
         }
       });
-      return financeRecord;
+      return { ...financeRecord, businessEntrySnapshot };
     });
 
     return paymentPostResponseToApi(financeRecord);

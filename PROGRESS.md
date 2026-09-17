@@ -23,6 +23,8 @@
 
 ## 当前正在推进
 
+- [ ] #114 新增整票阻塞：真实 HTTP 直接合同阶段付款在实付时触发既有 `PaymentExecutionAllocation_settlement_required_check`（代码写 settlementId=null，169 个完整迁移的实库仍要求非空）；失败事务已只读核验零实付/分摊/资金分摊/入账/实付审计写入。未更改 Schema 或付款语义。另行真实结算付款链已验证财务定义、同事务冻结、完整 ISO 历史回读及原权限/重复上限，页面接入同一元数据并保留原日期时间控件；定向 HTTP 1/1、API 272/272、Web 25/25、typecheck/触及文件 lint/check:ui 通过，非整票或冻结 SHA 证据。原重复入账余额拒绝仍映射 500；预算前置使用合法复合岗位，不证明预算员单岗上传。决策包见 `docs/progress/2026-09-17-pol114-direct-payment-allocation-blocker.md`，不得用另一路通过覆盖直接付款阻塞。
+
 - [ ] #114 统一录入仍为本地分片实施中，尚未整票验收：恢复检查点 `d5829a9e` 与 fixture 检查点 `6195793a` 已保存；合同基础/模板/清单冻结恢复回归已验证，新增结算方式确认切片已通过真实 AppModule + 本机一次性 PG16 三路径、相关 API 152 tests、Web 3 tests、typecheck/lint/check:ui。证据针对当前未提交工作树，不是冻结 SHA 或发布收据；完整入口矩阵仍有合同其他入口、结算、付款结果和归档待迁移，整票冻结后才执行完整门。见 `docs/specs/2026-09-17-pol114-entry-scene-matrix.md`。本轮未 push、部署、迁移生产或写生产数据。
 
 - [ ] POL-15 / #108 第二十一轮方案 A 已获 Owner 明确批准：仅将 PR CI 的源 SHA 改为 pull_request.head.sha，main push 保留 github.sha，manual dispatch 保留输入 SHA 及 main-ancestor 校验；四类作业继续在安装前核对实际 checkout HEAD。新增回归先 RED 2/4，修复后 GREEN 4/4。父候选 `92c850842d5e4a5277933cd30d3d58c2616a0ac1` 的 API 167/167、静态/清单门、一次性 PG16 169 migrations 两遍/seed/#108 14/14 PASS；Standards H0/M0/L3、Spec H0/M0/L0，但安全 scan `38aeffac-d262-4808-b8df-e893cba0e6d9` 虽封存 H0/M0/L2，canonical coverage 回读为 partial，不能作为完整安全门通过；父 SHA 的 release:local 未启动，CI 精确 head 与安全覆盖两项 HOLD 未解除。三项 Standards LOW 与两项既有 Security LOW 已获延期，未修复。新固定 SHA 必须重新完成定向/静态/PG16/release、独立双审和全新完整覆盖安全扫描，封存前后均核对；全部通过才恢复非生产 GitHub 链。未改业务、Schema、迁移、权限或生产部署工作流，未执行远端交付或生产操作。此条覆盖下方历史轮次状态。

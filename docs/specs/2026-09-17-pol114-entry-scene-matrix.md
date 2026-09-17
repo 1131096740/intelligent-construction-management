@@ -83,3 +83,13 @@
 - 本片 TDD：真实 HTTP 首次 RED 为缺少场景定义，Web 首次 RED 为未消费服务端中文字段。原 stale revision 返回 400，测试按既有行为校正，未修改状态码。一个旧成功确认单测缺少 snapshot DB fixture，补齐 DB 边界后保留真实授权/冻结服务。
 - 当前验证：HTTP 三路径 3/3，workbench/aggregate/transaction registry/module 152/152，Web 3/3，workspace typecheck、lint（0 errors；原 531 warnings 中新增 6 个测试 stub 警告随后已消除，定向 lint 保留原文件 15 个警告）、Web check:ui 与 diff --check 通过。根目录无 check:ui 命令，随后按 Web package 脚本成功执行。无整票完整门、push、部署或生产操作。
 - 待办仍包括矩阵内合同其他结构化入口、结算、付款结果、归档及历史展示/退场逐项证明；不得以本片通过宣称 #114 完成。
+
+### 付款财务登记切片（局部接通，整票未完成）
+
+- 保留原 `RecordFinanceRecordDto`、`payment.finance_record`、二次密码确认、金额上限和 `recordFinance` 锁内事务。`confirmationPassword` 不进入字段定义或快照。
+- 原 `occurredAt` 是完整 ISO 日期时间，不能使用仅支持 YYYY-MM-DD 的统一 `date` 类型。最小适配以既有 `text` 字段记录完整 ISO 值，Web 消费同一字段中文元数据，保留原 TDesign 日期时间控件及 `toIsoDatetime` 时区转换；不扩展共享日期引擎、不截断秒。§20.8 的敏感确认仍为专用交互；日期时间控件只是同一元数据的有限展示适配，不豁免其结构化录入。
+- `PaymentFinanceEntryForm` 组件 RED→GREEN 1/1，保留时间选择与秒值；付款详情返回 `payment_finance_record` 定义，原 `recordFinance` 同事务冻结真实 `finance_record` ID、金额及完整 ISO，原详情回读冻结历史。页面已接统一表单和只读历史，原 password/capability/金额及时间转换保持不变。历史仅向原财务动作岗位返回，不对非财务岗位新增字段值可见性。
+- 本候选真实 HTTP 已走完受控合作单位、施工企业/参与公司、合同审批/签章归档生效、付款创建/审批、垫资额度两级审批。既有 core-flow/payment-execution 测试直接写入合同/收款/付款事实，未复用为本票公开 HTTP 证明，未制造 confirmed 数据。
+- 直接付款延伸实付仍遇既有分摊约束冲突（23514）；该路径未到达财务断言。完整迁移和零写证据见 `docs/progress/2026-09-17-pol114-direct-payment-allocation-blocker.md`；该缺陷保留为整票交付阻塞，未改 Schema。
+- 另行真实结算付款 HTTP 链经公开结算模板检查/预览/发布、上游结算录入/确认、下游草稿/冻结件/对方签署件/逐岗审批/归档、付款审批/额度/实付到达财务冻结及历史回读，两项分别取得 RED→GREEN。未手工 published/confirmed；预算前置采用预算员+合同经办复合岗位本人上传，不证明预算员单岗上传可用，保留整体角色 UAT 边界。
+- 当前工作树定向：结算财务 HTTP 1/1、原合同 aggregate/legacy/legacy-ownerless HTTP 3/3、API 272/272、Web 25/25、workspace typecheck、触及文件 lint（0 warnings）、check:ui 通过；不是冻结 SHA 全门收据。重复入账仍按原余额规则拒绝且历史不增加，但原普通 Error 映射 HTTP 500，未改此既有错误状态；非财务写 403、历史为空。此片不消除直接付款阻塞，也不表示矩阵其他结算/付款结果/归档入口已完成。
