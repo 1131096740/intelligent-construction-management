@@ -10,6 +10,13 @@ import {
   PrismaClient,
   type PrismaClient as PrismaClientType
 } from "@prisma/client";
+import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
+import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/business-entry-definition.snapshot-store";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { createBusinessEntryTransactionSceneRegistry } from "../business-entry-definition/business-entry-transaction-scene-registry";
+import { PrismaService } from "./prisma.service";
+import { SETTLEMENT_BASIC_ENTRY_DEFINITION } from "../settlement/settlement-business-entry-definition";
+import { SETTLEMENT_BASIC_ENTRY_POLICY } from "../settlement/settlement-business-entry-policy";
 import { SettlementDraftService } from "../settlement/settlement-draft.service";
 import { SettlementSubmissionService } from "../settlement/settlement-submission.service";
 
@@ -120,6 +127,10 @@ describe("settlement draft lifecycle database concurrency", () => {
           "ApprovalInstance",
           fixture.submitSettlementId
         )).toBe(1n);
+        expect(await businessEntrySnapshotCount(
+          clients[0]!,
+          fixture.submitSettlementId
+        )).toBe(1n);
         expect(await lifecycleAuditCount(
           clients[0]!,
           fixture.submitDraftId
@@ -206,6 +217,10 @@ describe("settlement draft lifecycle database concurrency", () => {
           "ApprovalInstance",
           fixture.abandonSettlementId
         )).toBe(0n);
+        expect(await businessEntrySnapshotCount(
+          clients[0]!,
+          fixture.abandonSettlementId
+        )).toBe(0n);
         expect(await lifecycleAuditCount(
           clients[0]!,
           fixture.abandonDraftId
@@ -260,6 +275,9 @@ function fixtureIds() {
     contractId: `${prefix}_contract`,
     contractVersionId: `${prefix}_version`,
     paymentTermsVersionId: `${prefix}_terms`,
+    settlementTemplateId: `${prefix}_settlement_template`,
+    settlementTemplateVersionId: `${prefix}_settlement_template_version`,
+    settlementTemplateFileId: `${prefix}_file_settlement_template`,
     submitDraftId: `${prefix}_draft_submit`,
     submitProcessId: `${prefix}_process_submit`,
     submitSettlementId: `${prefix}_settlement_submit`,
@@ -319,6 +337,16 @@ async function seedCore(client: PrismaClientType, fixture: Fixture) {
       '结算生命周期并发验收项目',
       TRUE,
       NOW()
+    )
+  `);
+  await client.$executeRaw(Prisma.sql`
+    INSERT INTO "ProjectMember" (
+      "id", "projectId", "userId", "positionKey"
+    ) VALUES (
+      ${`${fixture.prefix}_contract_staff`},
+      ${fixture.projectId},
+      ${fixture.ownerUserId},
+      'contract_staff'
     )
   `);
   await client.$executeRaw(Prisma.sql`
@@ -386,6 +414,51 @@ async function seedCore(client: PrismaClientType, fixture: Fixture) {
       NOW()
     )
   `);
+  await client.$executeRaw(Prisma.sql`
+    INSERT INTO "FileObject" (
+      "id", "bucket", "objectKey", "originalName", "mimeType",
+      "sizeBytes", "uploadedByUserId", "contentSha256", "storageStatus"
+    ) VALUES (
+      ${fixture.settlementTemplateFileId},
+      'local-test',
+      ${`${fixture.prefix}/settlement-template.xlsx`},
+      'settlement-template.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      100,
+      ${fixture.ownerUserId},
+      ${"c".repeat(64)},
+      'active'
+    )
+  `);
+  await client.$executeRaw(Prisma.sql`
+    INSERT INTO "SettlementTemplate" (
+      "id", "name", "code", "createdByUserId", "updatedAt"
+    ) VALUES (
+      ${fixture.settlementTemplateId},
+      '结算生命周期并发验收模板',
+      ${`${fixture.prefix}_settlement_template_code`},
+      ${fixture.ownerUserId},
+      NOW()
+    )
+  `);
+  await client.$executeRaw(Prisma.sql`
+    INSERT INTO "SettlementTemplateVersion" (
+      "id", "settlementTemplateId", "versionNo", "status",
+      "xlsxFileId", "columnSchema", "printRules", "evidenceRules",
+      "anomalyRules", "updatedAt"
+    ) VALUES (
+      ${fixture.settlementTemplateVersionId},
+      ${fixture.settlementTemplateId},
+      1,
+      'published',
+      ${fixture.settlementTemplateFileId},
+      '[]'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb,
+      NOW()
+    )
+  `);
 }
 
 async function seedDraft(
@@ -412,7 +485,8 @@ async function seedDraft(
   await client.$executeRaw(Prisma.sql`
     INSERT INTO "SettlementDraft" (
       "id", "projectId", "contractId", "contractVersionId",
-      "paymentTermsVersionId", "code", "periodLabel", "isFinal",
+      "paymentTermsVersionId", "settlementTemplateVersionId",
+      "code", "periodLabel", "isFinal",
       "processId", "lines", "calculationVersion", "revision", "status",
       "ownerUserId", "governanceVersion", "updatedAt"
     ) VALUES (
@@ -421,6 +495,7 @@ async function seedDraft(
       ${fixture.contractId},
       ${fixture.contractVersionId},
       ${fixture.paymentTermsVersionId},
+      ${fixture.settlementTemplateVersionId},
       ${draftCode(fixture, draftId)},
       '2026-07',
       FALSE,
@@ -636,6 +711,26 @@ function services(
   const frozen = {
     assertCurrentFacts: async () => ({ id: "frozen" })
   };
+  const businessEntry = new BusinessEntryTransactionService(
+    createBusinessEntryDefinitionRegistry([
+      SETTLEMENT_BASIC_ENTRY_DEFINITION
+    ]),
+    createBusinessEntryTransactionSceneRegistry([
+      SETTLEMENT_BASIC_ENTRY_POLICY
+    ]),
+    new PrismaBusinessEntrySnapshotStore(
+      clients[0]! as unknown as PrismaService,
+      audit as never
+    )
+  );
+  const submission = new SettlementSubmissionService(
+    submissionClient as never,
+    settlementCore as never,
+    documents as never,
+    frozen as never,
+    processes as never
+  );
+  Reflect.set(submission, "businessEntry", businessEntry);
 
   return {
     draft: new SettlementDraftService(
@@ -643,13 +738,7 @@ function services(
       audit as never,
       processes as never
     ),
-    submission: new SettlementSubmissionService(
-      submissionClient as never,
-      settlementCore as never,
-      documents as never,
-      frozen as never,
-      processes as never
-    )
+    submission
   };
 }
 
@@ -670,7 +759,8 @@ async function insertSettlement(
       "id", "projectId", "contractId", "contractVersionId",
       "paymentTermsVersionId", "code", "periodLabel", "status",
       "amountCents", "payableAmountCents", "paidAmountCents",
-      "processId", "updatedAt"
+      "processId", "settlementTemplateVersionId", "preparedByUserId",
+      "updatedAt"
     ) VALUES (
       ${settlementId},
       ${fixture.projectId},
@@ -684,6 +774,8 @@ async function insertSettlement(
       100,
       0,
       ${processId},
+      ${fixture.settlementTemplateVersionId},
+      ${fixture.ownerUserId},
       NOW()
     )
   `);
@@ -806,6 +898,22 @@ async function lifecycleAuditCount(
   return result!.count;
 }
 
+async function businessEntrySnapshotCount(
+  client: PrismaClientType,
+  entityId: string
+) {
+  const [result] = await client.$queryRaw<Array<{ count: bigint }>>(
+    Prisma.sql`
+      SELECT COUNT(*)::bigint AS count
+      FROM "BusinessEntrySubmissionSnapshot"
+      WHERE "sceneKey" = 'settlement_basic'
+        AND "entityType" = 'settlement'
+        AND "entityId" = ${entityId}
+    `
+  );
+  return result!.count;
+}
+
 async function statusById(
   client: PrismaClientType,
   table:
@@ -831,6 +939,9 @@ async function statusById(
 
 async function cleanupFixture(client: PrismaClientType, fixture: Fixture) {
   const prefix = `${fixture.prefix}%`;
+  await client.$executeRaw(Prisma.sql`
+    DELETE FROM "BusinessEntrySubmissionSnapshot" WHERE "entityId" LIKE ${prefix}
+  `);
   await client.$executeRaw(Prisma.sql`
     DELETE FROM "SettlementLineAttachment" WHERE "id" LIKE ${prefix}
   `);
@@ -864,10 +975,20 @@ async function cleanupFixture(client: PrismaClientType, fixture: Fixture) {
     DELETE FROM "PaymentTermsVersion" WHERE "id" = ${fixture.paymentTermsVersionId}
   `);
   await client.$executeRaw(Prisma.sql`
+    DELETE FROM "SettlementTemplateVersion"
+    WHERE "id" = ${fixture.settlementTemplateVersionId}
+  `);
+  await client.$executeRaw(Prisma.sql`
+    DELETE FROM "SettlementTemplate" WHERE "id" = ${fixture.settlementTemplateId}
+  `);
+  await client.$executeRaw(Prisma.sql`
     DELETE FROM "ContractVersion" WHERE "id" = ${fixture.contractVersionId}
   `);
   await client.$executeRaw(Prisma.sql`
     DELETE FROM "Contract" WHERE "id" = ${fixture.contractId}
+  `);
+  await client.$executeRaw(Prisma.sql`
+    DELETE FROM "ProjectMember" WHERE "id" LIKE ${prefix}
   `);
   await client.$executeRaw(Prisma.sql`
     DELETE FROM "Project" WHERE "id" = ${fixture.projectId}
