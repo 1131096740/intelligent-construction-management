@@ -18,38 +18,18 @@
         label-align="top"
         @submit="saveProfile"
       >
-        <t-row :gutter="16">
-          <t-col :span="4">
-            <t-form-item label="经营账生效日">
-              <t-date-picker
-                v-model="form.operatingLedgerEffectiveDate"
-                clearable
-                @change="(value: string | number | Date | Array<string | number | Date>) => form.operatingLedgerEffectiveDate = typeof value === 'string' ? value : null"
-              />
-            </t-form-item>
-          </t-col>
-          <t-col :span="4">
-            <t-form-item label="经营接管完成日">
-              <t-date-picker
-                v-model="form.takeoverCompletedDate"
-                clearable
-                @change="(value: string | number | Date | Array<string | number | Date>) => form.takeoverCompletedDate = typeof value === 'string' ? value : null"
-              />
-            </t-form-item>
-          </t-col>
-          <t-col :span="4">
-            <t-form-item label="接管状态">
-              <t-select
-                v-model="form.takeoverStatus"
-                :options="statusOptions"
-              />
-            </t-form-item>
-          </t-col>
-        </t-row>
+        <BusinessEntryForm
+          v-if="profileDefinition?.key === 'project_operating_profile'"
+          v-model="profileDraft"
+          :definition="profileDefinition"
+          :errors="profileErrors"
+          :readonly="saving"
+        />
         <t-button
           v-if="profile.canManage"
           type="submit"
           :loading="saving"
+          :disabled="profileDefinition?.key !== 'project_operating_profile'"
         >
           保存经营档案
         </t-button>
@@ -185,8 +165,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
-import { PROJECT_OPERATING_TAKEOVER_STATUS_LABELS, PROJECT_OPERATING_TAKEOVER_STATUSES, type ProjectOperatingTakeoverStatus } from "@jiangkong/shared-domain";
+import { onMounted, reactive, ref, shallowRef, watch } from "vue";
+import { PROJECT_OPERATING_TAKEOVER_STATUSES, type BusinessEntryDraftPayload, type BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
+import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../../api/business-entry.api";
+import { formatUnknownApiError } from "../../../api/error-message";
 import { addProjectParticipatingCompany, assignProjectConstructionEnterprise, deactivateProjectParticipatingCompany, fetchProjectConstructionEnterpriseOptions, fetchProjectOperatingProfile, fetchProjectParticipatingCompanyOptions, removeProjectParticipatingCompany, updateProjectOperatingProfile, type ProjectOperatingProfileReadModel } from "../../../api/project-operating-profile.api";
 
 const props = defineProps<{ projectId: string }>();
@@ -195,23 +178,78 @@ const loading = ref(false); const saving = ref(false); const adding = ref(false)
 const message = ref(""); const tone = ref<"success" | "error">("success");
 const deactivationVisible = ref(false); const deactivationSaving = ref(false); const deactivationParticipantId = ref("");
 const deactivationForm = reactive({ endedOn: "", changeReason: "" });
-const form = reactive<{ operatingLedgerEffectiveDate: string | null; takeoverCompletedDate: string | null; takeoverStatus: ProjectOperatingTakeoverStatus }>({ operatingLedgerEffectiveDate: null, takeoverCompletedDate: null, takeoverStatus: "preparing" });
+const profileDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const profileErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
+const profileDraft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_operating_profile", values: {} });
 let loadRequestId = 0;
 let projectGeneration = 0;
 const participantForm = reactive({ companyEntityId: "", effectiveFrom: "", changeReason: "" });
 const constructionForm = reactive({ businessPartyVersionId: "", effectiveFromDate: "", changeReason: "" });
 const companyOptions = ref<Array<{ label: string; value: string }>>([]);
 const constructionOptions = ref<Array<{ label: string; value: string }>>([]);
-const statusOptions = PROJECT_OPERATING_TAKEOVER_STATUSES.map(value => ({ value, label: PROJECT_OPERATING_TAKEOVER_STATUS_LABELS[value] }));
 const columns = [{ colKey: "companyName", title: "公司" }, { colKey: "effectiveFrom", title: "生效日" }, { colKey: "endedAt", title: "停止日" }, { colKey: "status", title: "状态" }, { colKey: "operation", title: "操作" }];
 
 function ownsLoad(requestId: number, expectedProjectId: string) { return requestId === loadRequestId && props.projectId === expectedProjectId; }
 function ownsProject(expectedProjectId: string, expectedGeneration: number) { return props.projectId === expectedProjectId && projectGeneration === expectedGeneration; }
-function resetProjectForms() { profile.value = null; companyOptions.value = []; constructionOptions.value = []; message.value = ""; Object.assign(participantForm, { companyEntityId: "", effectiveFrom: "", changeReason: "" }); Object.assign(constructionForm, { businessPartyVersionId: "", effectiveFromDate: "", changeReason: "" }); Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationParticipantId.value = ""; deactivationVisible.value = false; saving.value = false; adding.value = false; savingConstruction.value = false; deactivationSaving.value = false; }
-async function load() { const expectedProjectId = props.projectId; const requestId = ++loadRequestId; loading.value = true; try { const value = await fetchProjectOperatingProfile(expectedProjectId); if (!ownsLoad(requestId, expectedProjectId)) return; const formValues = structuredClone(value); profile.value = value; Object.assign(form, { operatingLedgerEffectiveDate: formValues.operatingLedgerEffectiveDate ?? null, takeoverCompletedDate: formValues.takeoverCompletedDate ?? null, takeoverStatus: formValues.takeoverStatus }); if (value.canManage) { try { const [companies, enterprises] = await Promise.all([fetchProjectParticipatingCompanyOptions(expectedProjectId), fetchProjectConstructionEnterpriseOptions(expectedProjectId)]); if (!ownsLoad(requestId, expectedProjectId)) return; companyOptions.value = companies.map(company => ({ label: company.name, value: company.id })); constructionOptions.value = enterprises.map(enterprise => ({ label: `${enterprise.name}${enterprise.creditCode ? ` · ${enterprise.creditCode}` : ""} · 第 ${enterprise.versionNo} 版`, value: enterprise.id })); } catch (error) { if (ownsLoad(requestId, expectedProjectId)) fail(error); } } else { companyOptions.value = []; constructionOptions.value = []; } } catch (error) { if (ownsLoad(requestId, expectedProjectId)) fail(error); } finally { if (ownsLoad(requestId, expectedProjectId)) loading.value = false; } }
-function fail(error: unknown) { tone.value = "error"; message.value = error instanceof Error ? error.message : "项目经营档案操作失败"; }
+function resetProjectForms() { profile.value = null; profileDefinition.value = null; profileErrors.value = []; profileDraft.value = { sceneKey: "project_operating_profile", values: {} }; companyOptions.value = []; constructionOptions.value = []; message.value = ""; Object.assign(participantForm, { companyEntityId: "", effectiveFrom: "", changeReason: "" }); Object.assign(constructionForm, { businessPartyVersionId: "", effectiveFromDate: "", changeReason: "" }); Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationParticipantId.value = ""; deactivationVisible.value = false; saving.value = false; adding.value = false; savingConstruction.value = false; deactivationSaving.value = false; }
+async function loadProfileDefinition(projectId: string) {
+  const definition = await fetchBusinessEntryDefinition("project_operating_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
+  if (definition.key !== "project_operating_profile") throw new Error("项目经营档案字段暂不可用，请刷新后重试");
+  return definition;
+}
+async function load() {
+  const expectedProjectId = props.projectId;
+  const requestId = ++loadRequestId;
+  loading.value = true;
+  try {
+    const value = await fetchProjectOperatingProfile(expectedProjectId);
+    if (!ownsLoad(requestId, expectedProjectId)) return;
+    profile.value = value;
+    profileDefinition.value = null;
+    profileErrors.value = [];
+    profileDraft.value = { sceneKey: "project_operating_profile", target: { entityType: "project", entityId: expectedProjectId }, values: { operatingLedgerEffectiveDate: value.operatingLedgerEffectiveDate, takeoverCompletedDate: value.takeoverCompletedDate, takeoverStatus: value.takeoverStatus } };
+    if (value.canManage) {
+      const [definition, companies, enterprises] = await Promise.all([loadProfileDefinition(expectedProjectId), fetchProjectParticipatingCompanyOptions(expectedProjectId), fetchProjectConstructionEnterpriseOptions(expectedProjectId)]);
+      if (!ownsLoad(requestId, expectedProjectId)) return;
+      profileDefinition.value = definition;
+      profileDraft.value.definitionVersion = definition.version;
+      companyOptions.value = companies.map(company => ({ label: company.name, value: company.id }));
+      constructionOptions.value = enterprises.map(enterprise => ({ label: `${enterprise.name}${enterprise.creditCode ? ` · ${enterprise.creditCode}` : ""} · 第 ${enterprise.versionNo} 版`, value: enterprise.id }));
+    } else { companyOptions.value = []; constructionOptions.value = []; }
+  } catch (error) { if (ownsLoad(requestId, expectedProjectId)) fail(error); }
+  finally { if (ownsLoad(requestId, expectedProjectId)) loading.value = false; }
+}
+function fail(error: unknown) { tone.value = "error"; message.value = formatUnknownApiError(error, "项目经营档案操作失败，请稍后重试"); }
 function ok(text: string) { tone.value = "success"; message.value = text; }
-async function saveProfile() { const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; const payload = { operatingLedgerEffectiveDate: form.operatingLedgerEffectiveDate, takeoverCompletedDate: form.takeoverCompletedDate, takeoverStatus: form.takeoverStatus }; saving.value = true; await updateProjectOperatingProfile(expectedProjectId, payload).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("项目经营档案已保存"); if (ownsProject(expectedProjectId, expectedGeneration)) saving.value = false; }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) { fail(error); saving.value = false; } }); }
+async function saveProfile() {
+  if (saving.value || !profile.value?.canManage || profileDefinition.value?.key !== "project_operating_profile") return;
+  const expectedProjectId = props.projectId;
+  const expectedGeneration = projectGeneration;
+  const values = { ...profileDraft.value.values };
+  saving.value = true;
+  profileErrors.value = [];
+  message.value = "";
+  try {
+    const definition = await loadProfileDefinition(expectedProjectId);
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    profileDefinition.value = definition;
+    const validation = await validateBusinessEntryDraft({ scope: "project", projectId: expectedProjectId }, {
+      sceneKey: definition.key, definitionVersion: definition.version,
+      target: { entityType: "project", entityId: expectedProjectId }, values
+    }, "edit");
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    profileErrors.value = validation.errors;
+    if (!validation.valid) return;
+    const takeoverStatus = PROJECT_OPERATING_TAKEOVER_STATUSES.find(value => value === validation.values.takeoverStatus);
+    if (!takeoverStatus) throw new Error("经营接管状态不受支持，请重新选择");
+    const dateValue = (value: unknown) => typeof value === "string" && value !== "" ? value : null;
+    const payload = { operatingLedgerEffectiveDate: dateValue(validation.values.operatingLedgerEffectiveDate), takeoverCompletedDate: dateValue(validation.values.takeoverCompletedDate), takeoverStatus };
+    await updateProjectOperatingProfile(expectedProjectId, payload);
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("项目经营档案已保存");
+  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(expectedProjectId, expectedGeneration)) saving.value = false; }
+}
 async function addParticipant() { const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; const payload = { ...participantForm }; adding.value = true; await addProjectParticipatingCompany(expectedProjectId, payload).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; await load(); if (!ownsProject(expectedProjectId, expectedGeneration)) return; Object.assign(participantForm, { companyEntityId: "", effectiveFrom: "", changeReason: "" }); ok("参与公司已加入"); adding.value = false; }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) { fail(error); adding.value = false; } }); }
 function deactivate(id: string) { deactivationParticipantId.value = id; Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationVisible.value = true; }
 async function confirmDeactivate(endedOn: string, changeReason: string) { if (!endedOn || !changeReason) { tone.value = "error"; message.value = "请填写停止日期和原因"; return; } const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; const participantId = deactivationParticipantId.value; const payload = { endedOn, changeReason }; deactivationSaving.value = true; await deactivateProjectParticipatingCompany(expectedProjectId, participantId, payload).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; deactivationVisible.value = false; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("已停止该公司新增业务"); if (ownsProject(expectedProjectId, expectedGeneration)) deactivationSaving.value = false; }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) { fail(error); deactivationSaving.value = false; } }); }

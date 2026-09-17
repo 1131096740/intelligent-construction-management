@@ -13,6 +13,7 @@ import { ContractTemplateService } from "../contract-template/contract-template.
 import { LayoutTemplateService } from "../contract-template/layout-template.service";
 import { OrganizationRoleService } from "../organization/organization-role.service";
 import { OrganizationService } from "../organization/organization.service";
+import { ProjectOperatingProfileService } from "../project/project-operating-profile.service";
 import { SettlementTemplateService } from "../settlement/settlement-template.service";
 import type { BusinessEntryTargetScope } from "./business-entry-scene-access";
 import { BUSINESS_ENTRY_SCENE_DEFINITIONS } from "./business-entry-definition.scene-registry";
@@ -86,7 +87,8 @@ export class BusinessEntrySceneAuthorizationService {
     businessParties: BusinessPartyService,
     contractTemplates: ContractTemplateService,
     layouts: LayoutTemplateService,
-    settlementTemplates: SettlementTemplateService
+    settlementTemplates: SettlementTemplateService,
+    projectOperatingProfiles: ProjectOperatingProfileService
   ) {
     // These project-scoped legacy scenes previously reached the switch default.
     // Keep that fail-closed behavior explicit until their owning domains register
@@ -97,7 +99,15 @@ export class BusinessEntrySceneAuthorizationService {
     this.registry = new BusinessEntryDomainAuthorizationRegistry(
       BUSINESS_ENTRY_SCENE_DEFINITIONS,
       [
-        { sceneKey: "project_operating_profile", resolve: legacyUnresolved },
+        {
+          sceneKey: "project_operating_profile",
+          resolve: (context) => {
+            if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
+              throw new BadRequestException("项目经营档案目标与当前项目不一致");
+            }
+            return projectOperatingProfiles.assertCanMaintainBusinessEntry(context.projectId, context.actorUserId, context.tx);
+          }
+        },
         ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({
           sceneKey: definition.key,
           resolve: legacyUnresolved

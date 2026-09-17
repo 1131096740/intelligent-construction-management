@@ -1,6 +1,8 @@
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import * as bcrypt from "bcryptjs";
 import { AppModule } from "../app.module";
 import { PrismaService } from "./prisma.service";
@@ -15,6 +17,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   let base: string;
   let userId: string;
   let token: string;
+  const sessions = new Map<string, unknown>();
   const password = `Local-${randomUUID()}`;
   const phone = `139${String(Date.now()).slice(-8)}`;
 
@@ -51,7 +54,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
 
   afterAll(async () => { await app?.close(); });
 
-  async function actor(role: string) {
+  async function actor(role: string, projectId?: string) {
     const prisma = app.get(PrismaService);
     const actorPhone = `137${String(Date.now()).slice(-8)}`;
     const user = await prisma.user.create({ data: {
@@ -61,9 +64,10 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const position = await prisma.position.upsert({
       where: { key: role }, create: { key: role, name: "合成岗位" }, update: {}
     });
-    await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id } });
+    await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId } });
     const login = await request("/auth/login", "POST", { phone: actorPhone, password });
     expect(login.status).toBe(201);
+    sessions.set(login.body.tokens.accessToken, login.body);
     return login.body.tokens.accessToken as string;
   }
 
@@ -84,6 +88,54 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       definitionVersion: definition.body.version, idempotencyKey, values: { name }
     } };
   }
+
+  it("当前项目财务可预检并保存同一经营档案字段，其他项目及全局财务不可借用权限", async () => {
+    const chairman = await actor("chairman");
+    const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "统一档案合成项目" }, chairman);
+    expect(created.status).toBe(201);
+    const projectId = created.body.id as string;
+    const finance = await actor("finance_staff", projectId);
+    const globalFinance = await actor("finance_staff");
+    const otherProject = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "其他合成项目" }, chairman);
+    expect(otherProject.status).toBe(201);
+    const otherFinance = await actor("finance_director", otherProject.body.id);
+    const target = { entityType: "project", entityId: projectId };
+    const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId });
+    const definition = await request(`/business-entry-definitions/project_operating_profile?${query}`, "GET", undefined, finance);
+    expect(definition.status).toBe(200);
+    expect(definition.body.fields.map((field: { key: string }) => field.key)).toEqual([
+      "operatingLedgerEffectiveDate", "takeoverCompletedDate", "takeoverStatus"
+    ]);
+    const values = { operatingLedgerEffectiveDate: null, takeoverCompletedDate: null, takeoverStatus: "balance_review" };
+    const payload = { definitionVersion: definition.body.version, target, values, operation: "edit" };
+    const validationPath = `/business-entry-definitions/project_operating_profile/validate?projectId=${projectId}`;
+    const validation = await request(validationPath, "POST", payload, finance);
+    expect(validation.status).toBe(201);
+    expect(validation.body.valid).toBe(true);
+    for (const deniedActor of [globalFinance, otherFinance, chairman]) {
+      expect((await request(validationPath, "POST", payload, deniedActor)).status).toBe(403);
+      expect((await request(`/projects/${projectId}/operating-profile`, "PATCH", values, deniedActor)).status).toBe(403);
+    }
+    const invalid = await request(validationPath, "POST", { ...payload, values: { ...values, takeoverStatus: "takeover_completed" } }, finance);
+    expect(invalid.body.valid).toBe(false);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.takeoverStatus).toBe("preparing");
+    const saved = await request(`/projects/${projectId}/operating-profile`, "PATCH", validation.body.values, finance);
+    expect(saved.status).toBe(200);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body).toMatchObject(values);
+    if (process.env.RUN_POL113_PROJECT_BROWSER === "1") {
+      await new Promise<void>((done, reject) => {
+        const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)) };
+        delete browserEnv.JEST_WORKER_ID;
+        const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
+          cwd: resolve(__dirname, "../../../../apps/web-admin"),
+          env: browserEnv,
+          stdio: "inherit"
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => code === 0 ? done() : reject(new Error("项目档案真实浏览器验证失败")));
+      });
+    }
+  }, 150_000);
 
   it("本人字段定义和服务端预检拒绝原账号规则不接受的手机号", async () => {
     const target = { entityType: "user_self_profile", entityId: userId };

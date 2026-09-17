@@ -43,6 +43,16 @@ export class ProjectOperatingProfileService {
     private readonly audit: AuditService = new AuditService()
   ) {}
 
+  async assertCanMaintainBusinessEntry(
+    projectId: string,
+    actorUserId: string,
+    tx: Prisma.TransactionClient = this.prisma
+  ) {
+    await this.assertProjectFinanceManager(tx, actorUserId, projectId);
+    const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { id: true } });
+    if (!project) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+  }
+
   async listParticipatingCompanyOptions(projectId: string, actorUserId: string) {
     await this.assertProjectFinanceManager(this.prisma, actorUserId, projectId);
     return this.prisma.companyEntity.findMany({
