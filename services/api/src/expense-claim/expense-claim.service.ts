@@ -24,6 +24,8 @@ import {
   EXPENSE_CLAIM_PAYMENT_EXECUTION_SOURCE_TYPE
 } from "./expense-claim-operating-source.adapter";
 import { renderExpenseClaimFinalPaymentPdf } from "./expense-claim-final-payment-pdf";
+import { freezeExpenseClaimEntryInTransaction } from "./expense-claim-entry.adapter";
+import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
@@ -104,6 +106,7 @@ export class ExpenseClaimService {
       companyEntities,
       projects,
       canProxy,
+      entryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
       availableActions: ["create_expense_claim"],
       applicantUsers: canProxy ? activeUsers : actor ? [actor] : [],
       factWitnessUsers: activeUsers,
@@ -402,6 +405,7 @@ export class ExpenseClaimService {
     return {
       ...claim,
       project,
+      entrySnapshots: await this.prisma.expenseClaimEntrySnapshot.findMany({ where: { expenseClaimId: claim.id }, orderBy: [{ frozenAt: "asc" }, { id: "asc" }] }),
       requestedAmountCents: moneyCentsToApi(claim.requestedAmountCents),
       loanOffsetAmountCents: moneyCentsToApi(claim.loanOffsetAmountCents),
       companyPayableAmountCents: moneyCentsToApi(claim.companyPayableAmountCents),
@@ -800,6 +804,7 @@ export class ExpenseClaimService {
         businessId: claim.id,
         metadata: { claimType: claim.claimType, approvalInstanceId: instance.id }
       });
+      await freezeExpenseClaimEntryInTransaction(tx, claim.id, actorUserId, instance.id);
       const companyPayableAmountCents =
         claim.claimType === "reimbursement"
           ? claim.requestedAmountCents - offset.amountCents

@@ -6,6 +6,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { freezeFundExecutionEntryInTransaction } from "./fund-execution-entry.adapter";
 import { randomUUID } from "node:crypto";
 
 import type { RoleKey } from "@jiangkong/shared-domain";
@@ -578,6 +579,7 @@ export class FundExecutionService {
         createdAt: row.createdAt,
         summary: executionSummary(row),
         classificationLines: publicClassificationLines(selections),
+        entrySnapshots: await tx.fundExecutionEntrySnapshot.findMany({ where: { fundExecutionCase: { caseKey: row.caseId } }, orderBy: [{ frozenAt: "asc" }, { id: "asc" }] }),
         actions: fundExecutionCaseActions({
           status: row.status,
           isReversal,
@@ -1297,6 +1299,9 @@ export class FundExecutionService {
               fundExecutionCaseId: caseRow.id,
               auditRequestId: idempotencyKey
             });
+          }
+          if (action === "submit_case") {
+            await freezeFundExecutionEntryInTransaction(tx, caseRow.id, actorUserId, publicClassificationLines(predecessorSelections));
           }
           const response = this.response(caseRow);
           await this.recordAudit(tx, actorUserId, action, response, {

@@ -22,6 +22,8 @@ model User {
   handwrittenSignatureVersions       HandwrittenSignatureVersion[]
   handwrittenSignatureHandoffs       HandwrittenSignatureHandoff[]
   businessEntrySubmissionSnapshots   BusinessEntrySubmissionSnapshot[]
+  expenseClaimEntrySnapshots         ExpenseClaimEntrySnapshot[]
+  fundExecutionEntrySnapshots        FundExecutionEntrySnapshot[]
   wageCreditorBreakdowns             WageCreditorBreakdown[]           @relation("WageCreditorUser")
   fundMovementsCreated               FundMovement[]                    @relation("FundMovementCreatedBy")
   fundMovementsSubmitted             FundMovement[]                    @relation("FundMovementSubmittedBy")
@@ -3067,11 +3069,27 @@ model FundExecutionCase {
   createdTransactionId           BigInt
   createdBackendPid              Int
   createdAt                      DateTime  @default(now())
+  entrySnapshot                  FundExecutionEntrySnapshot?
 
   @@unique([fundExecutionId, revision], map: "FundExecutionCase_execution_revision_key")
   @@unique([caseKey, revision], map: "FundExecutionCase_key_revision_key")
   @@index([fundExecutionId, status, createdAt])
   @@index([approvalInstanceId])
+}
+
+// 每个已提交案件修订一份字段快照，不改写既有四轴后果快照或命令回执。
+model FundExecutionEntrySnapshot {
+  id                   String   @id @default(uuid())
+  fundExecutionCaseId  String   @unique
+  sceneKey             String
+  businessAction       String
+  definitionVersion    Int
+  definitionSnapshot   Json
+  valuesSnapshot       Json
+  frozenByUserId       String
+  frozenAt             DateTime @default(now())
+  fundExecutionCase    FundExecutionCase @relation(fields: [fundExecutionCaseId], references: [id], onDelete: Restrict)
+  frozenByUser         User @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
 }
 
 model FundExecutionCaseAxisSelection {
@@ -4438,12 +4456,34 @@ model ExpenseClaim {
   voidReason                      String?
   createdAt                       DateTime  @default(now())
   updatedAt                       DateTime  @updatedAt
+  entrySnapshots                  ExpenseClaimEntrySnapshot[]
 
   @@index([claimType, status, updatedAt])
   @@index([projectId, status])
   @@index([applicantUserId, status])
   @@index([companyEntityId, status])
   @@index([paymentSubjectCompanyEntityId, status])
+}
+
+// 费用领域提交快照：项目和非项目费用共用，审批实例标识提交修订。
+model ExpenseClaimEntrySnapshot {
+  id                  String   @id @default(uuid())
+  expenseClaimId      String
+  sceneKey            String
+  businessAction      String
+  operationObjectType String
+  operationObjectId   String
+  submissionRevision String
+  definitionVersion   Int
+  definitionSnapshot  Json
+  valuesSnapshot      Json
+  frozenByUserId      String
+  frozenAt            DateTime @default(now())
+  expenseClaim        ExpenseClaim @relation(fields: [expenseClaimId], references: [id], onDelete: Restrict)
+  frozenByUser        User @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([expenseClaimId, sceneKey, operationObjectType, operationObjectId, submissionRevision], map: "ExpenseClaimEntrySnapshot_operation_revision_key")
+  @@index([expenseClaimId, frozenAt])
 }
 
 model ExpenseClaimLine {
