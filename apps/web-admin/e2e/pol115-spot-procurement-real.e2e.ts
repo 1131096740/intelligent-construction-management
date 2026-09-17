@@ -100,3 +100,69 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
   await expect(page.locator("body")).not.toContainText(id);
   expect(await page.locator(".spot-procurement-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
+
+test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async ({ page, request }, testInfo) => {
+  const finance = JSON.parse(process.env.POL115_SPOT_REFUND_SESSION!) as Session;
+  const coordinates = (JSON.parse(process.env.POL115_SPOT_REFUND_COORDINATES!) as Record<string, { procurementId: string; paymentId: string }>)[testInfo.project.name]!;
+  await page.goto("/login");
+  await useSession(page, finance);
+  await page.goto(`/零星材料付款/${coordinates.paymentId}`);
+  const form = page.locator(".payment-refund-form");
+  await expect(form.getByText("待退款整笔差额", { exact: true })).toBeVisible();
+  await expect(form.getByText("¥200.00", { exact: true })).toBeVisible();
+  let releaseCapability!: () => void;
+  const capabilityReleased = new Promise<void>((resolve) => { releaseCapability = resolve; });
+  let delayCapability = true;
+  let refundMutations = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && (request.url().includes("refund-voucher-file-uploads") || request.url().endsWith(`/spot-procurements/${coordinates.procurementId}/refunds`))) {
+      refundMutations += 1;
+    }
+  });
+  await page.route(`**/spot-procurement-payments/${coordinates.paymentId}`, async (route) => {
+    if (delayCapability && route.request().method() === "GET") {
+      delayCapability = false;
+      await capabilityReleased;
+    }
+    await route.continue();
+  });
+  await form.locator('input[type="file"]').setInputFiles({ name: `${testInfo.project.name}-退款.png`, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64") });
+  await form.getByRole("button", { name: "确认登记退款", exact: true }).click();
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  await expect.poll(() => delayCapability, { timeout: 10_000, message: "退款提交未发起精确付款能力读取" }).toBe(false);
+  const leavePayment = page.waitForURL((url) => decodeURIComponent(url.pathname) === "/零星材料付款工作台");
+  await page.getByRole("button", { name: "返回工作台", exact: true }).click();
+  await leavePayment;
+  await expect(page.getByRole("heading", { name: "零星材料付款工作台", exact: true })).toBeVisible();
+  const capabilityResponse = page.waitForResponse((response) =>
+    response.request().method() === "GET" &&
+    response.url().endsWith(`/spot-procurement-payments/${coordinates.paymentId}`)
+  );
+  releaseCapability();
+  expect((await capabilityResponse).status()).toBe(200);
+  await page.waitForLoadState("networkidle");
+  await expect(page.locator(".payment-refund-receipt")).toHaveCount(0);
+  await expect(page.getByText("退款到账事实和凭证已登记", { exact: true })).toHaveCount(0);
+  expect(refundMutations).toBe(0);
+  await page.unroute(`**/spot-procurement-payments/${coordinates.paymentId}`);
+  await page.goto(`/零星材料付款/${coordinates.paymentId}`);
+  const retryForm = page.locator(".payment-refund-form");
+  await expect(retryForm.getByText("待退款整笔差额", { exact: true })).toBeVisible();
+  await retryForm.locator('input[type="file"]').setInputFiles({ name: `${testInfo.project.name}-退款.png`, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64") });
+  const refundResponse = page.waitForResponse((response) => response.url().endsWith(`/spot-procurements/${coordinates.procurementId}/refunds`) && response.request().method() === "POST");
+  await retryForm.getByRole("button", { name: "确认登记退款", exact: true }).click();
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  expect((await refundResponse).status()).toBe(201);
+  const receipt = page.locator(".payment-refund-receipt");
+  await expect(receipt.getByText("¥200.00", { exact: true })).toBeVisible();
+  await expect(receipt.getByText("已办结", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".payment-refund-receipt").getByText("¥200.00", { exact: true })).toBeVisible();
+  await page.goto("/零星材料付款工作台");
+  await page.goto(`/零星材料付款/${coordinates.paymentId}`);
+  await expect(page.locator(".payment-refund-receipt").getByText("¥200.00", { exact: true })).toBeVisible();
+  const receiptRead = await request.get(`${process.env.POL115_API_URL}/spot-procurements/${coordinates.procurementId}/receipt`, { headers: { authorization: `Bearer ${finance.tokens.accessToken}` } });
+  expect(receiptRead.status()).toBe(403);
+  await expect(page.locator("body")).not.toContainText(coordinates.paymentId);
+  expect(await page.locator(".spot-payment-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});

@@ -64,14 +64,14 @@ export class SpotProcurementReceiptController {
     @Param("procurementId") procurementId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body?: { idempotencyKey?: string }
   ) {
     return this.uploadPrivateFile(
       procurementId,
       user.id,
       "append_receipt_photo",
       file,
-      idempotencyKey,
+      body?.idempotencyKey,
       "收货照片"
     );
   }
@@ -87,14 +87,14 @@ export class SpotProcurementReceiptController {
     @Param("procurementId") procurementId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body?: { idempotencyKey?: string }
   ) {
     return this.uploadPrivateFile(
       procurementId,
       user.id,
       "record_refund",
       file,
-      idempotencyKey,
+      body?.idempotencyKey,
       "退款凭证"
     );
   }

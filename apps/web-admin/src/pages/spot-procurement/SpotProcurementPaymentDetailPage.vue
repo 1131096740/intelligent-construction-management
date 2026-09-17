@@ -10,6 +10,8 @@ import {
   prepareSpotProcurementPaymentReviewAction,
   recordSpotProcurementPaymentExecution,
   submitSpotProcurementPayment,
+  recordSpotProcurementRefundForPayment,
+  uploadSpotProcurementRefundVoucherForPayment,
   uploadSpotProcurementExecutionVoucherFile,
   uploadSpotProcurementPaymentDraftFile,
   updateSpotProcurementPaymentDraft,
@@ -58,6 +60,7 @@ import {
 import { spotPaymentStatusSemantic } from "./spot-payment-workbench.config";
 import {
   prepareSpotPaymentDraft,
+  prepareSpotRefundWithUpload,
   prepareSpotExecutionWithUploads,
   prepareSpotPaymentDraftWithUploads
 } from "./spot-procurement-write-validation";
@@ -106,6 +109,19 @@ const companies = ref<CompanyEntityModel[]>([]);
 const historicalMerchants = ref<string[]>([]);
 const attachmentFiles = ref<UploadFile[]>([]);
 const executionAttempt = ref<ExecutionAttempt | null>(null);
+const refundFiles = ref<UploadFile[]>([]);
+const refundAttempt = ref<{
+  paymentId: string;
+  procurementId: string;
+  payload: Parameters<typeof recordSpotProcurementRefundForPayment>[2];
+} | null>(null);
+const refundCompletedReceipt = ref<{ amountCents: string; receivedAt: string; status: string } | null>(null);
+const refundDetailRefreshed = ref(false);
+let refundOperationSequence = 0;
+const refundForm = reactive({
+  receivedAt: new Date().toISOString().slice(0, 10),
+  refundMethod: "bank_transfer" as "bank_transfer" | "cash"
+});
 const retainedAttachmentIds = ref<string[]>([]);
 const editForm = reactive<PaymentApplicationDraft>({
   paymentType: "company_direct" as "company_direct" | "handler_reimbursement",
@@ -247,6 +263,14 @@ watch(
   },
   { immediate: true }
 );
+
+watch(paymentId, () => {
+  refundOperationSequence += 1;
+  refundAttempt.value = null;
+  refundCompletedReceipt.value = null;
+  refundDetailRefreshed.value = false;
+  refundFiles.value = [];
+});
 
 watch(() => editForm.paymentType, (type) => {
   if (type === "handler_reimbursement") {
@@ -1446,6 +1470,9 @@ onBeforeUnmount(() => {
   paymentReviewComponentActive = false;
   paymentReviewBusyOwnerId = 0;
   invalidatePaymentReviewSelection(true);
+  refundOperationSequence += 1;
+  refundAttempt.value = null;
+  actionBusy.value = false;
 });
 
 function handleCurrentTaskAction(
@@ -1459,13 +1486,77 @@ function handleCurrentTaskAction(
   }
   else if (key === "complete_payer") openPayer(trigger);
   else if (key === "record_execution") openExecution(trigger);
-  else if (
-    key === "record_refund" &&
-    detail.value?.currentTask.key === "record_refund" &&
-    detail.value.currentTask.enabled
-  ) {
-    const procurementId = payment.value?.procurement.id;
-    if (procurementId) void router.push(`/零星采购收货/${procurementId}`);
+  else if (key === "record_refund") {
+    document.querySelector(".payment-refund-form")?.scrollIntoView({ block: "center" });
+  }
+}
+
+async function submitRefund() {
+  const current = detail.value;
+  const operationId = ++refundOperationSequence;
+  const file = selectedUploadFiles(refundFiles.value)[0];
+  const expected = current?.discrepancy?.refundExpectedAmountCents;
+  if (!current || !file || !expected) {
+    actionState.value = "error";
+    actionMessage.value = file ? "待退款金额尚未读取，请刷新后重试" : "请选择退款到账凭证";
+    return;
+  }
+  actionBusy.value = true;
+  actionMessage.value = "";
+  try {
+    const procurementId = current.payment.procurement.id;
+    const operationCurrent = () =>
+      operationId === refundOperationSequence &&
+      paymentId.value === current.payment.id &&
+      detail.value?.payment.procurement.id === procurementId;
+    const retained = refundAttempt.value;
+    if (retained && (retained.paymentId !== current.payment.id || retained.procurementId !== current.payment.procurement.id)) {
+      refundAttempt.value = null;
+      throw new Error("退款办理对象已变化，请重新选择凭证");
+    }
+    const payload = retained?.payload ?? await prepareSpotRefundWithUpload(
+      {
+        amountYuan: centsTextToYuanText(expected),
+        receivedAt: refundForm.receivedAt,
+        refundMethod: refundForm.refundMethod,
+        randomUUID: globalThis.crypto?.randomUUID ? () => globalThis.crypto.randomUUID() : null
+      },
+      file,
+      (uploadFile, fileName) =>
+        uploadSpotProcurementRefundVoucherForPayment(
+          current.payment.id, procurementId, uploadFile, fileName, undefined, operationCurrent
+        )
+    );
+    if (!operationCurrent()) return;
+    refundAttempt.value = { paymentId: current.payment.id, procurementId, payload };
+    const result = await recordSpotProcurementRefundForPayment(current.payment.id, procurementId, payload, operationCurrent) as {
+      refund: { amountCents: string; receivedAt: string };
+      discrepancy: { status: string };
+    };
+    if (!operationCurrent()) return;
+    refundCompletedReceipt.value = {
+      ...result.refund,
+      status: result.discrepancy.status
+    };
+    refundDetailRefreshed.value = false;
+    refundAttempt.value = null;
+    actionState.value = "success";
+    actionMessage.value = "退款到账事实和凭证已登记";
+    refundFiles.value = [];
+    try {
+      const refreshed = await fetchSpotProcurementPaymentDetail(current.payment.id);
+      if (operationCurrent() && refreshed.payment.id === current.payment.id && refreshed.payment.procurement.id === procurementId) {
+        detail.value = structuredClone(refreshed);
+        spotProcurementPaymentCapability.value = refreshed;
+        refundDetailRefreshed.value = true;
+      }
+    } catch { /* keep the exact 201 business receipt without presenting stale payment totals */ }
+  } catch (error) {
+    if (operationId !== refundOperationSequence || paymentId.value !== current?.payment.id) return;
+    actionState.value = "error";
+    actionMessage.value = error instanceof Error ? error.message : "退款登记失败";
+  } finally {
+    if (operationId === refundOperationSequence && paymentId.value === current?.payment.id) actionBusy.value = false;
   }
 }
 function cancelConfirmation() {
@@ -1731,6 +1822,38 @@ watch(
           :busy="actionBusy"
           @action="handleCurrentTaskAction"
         />
+        <t-card
+          v-if="!refundCompletedReceipt && detail.currentTask.key === 'record_refund' && detail.currentTask.enabled && detail.discrepancy?.status === 'awaiting_refund'"
+          class="payment-refund-form"
+          title="登记退款"
+        >
+          <t-alert
+            theme="info"
+            title="待退款整笔差额"
+            :message="money(detail.discrepancy.refundExpectedAmountCents)"
+          />
+          <div class="form-grid">
+            <label><span>退款到账金额</span><t-input :value="money(detail.discrepancy.refundExpectedAmountCents)" readonly /></label>
+            <label><span>到账日期</span><t-date-picker v-model="refundForm.receivedAt" value-type="YYYY-MM-DD" /></label>
+            <label><span>到账方式</span><t-radio-group v-model="refundForm.refundMethod"><t-radio value="bank_transfer">银行转账</t-radio><t-radio value="cash">现金</t-radio></t-radio-group></label>
+            <label><span>退款到账凭证</span><t-upload v-model="refundFiles" theme="file-flow" :auto-upload="false" :multiple="false" /></label>
+          </div>
+          <t-popconfirm content="退款金额必须等于待退款差额，确认后写入到账事实。" @confirm="submitRefund">
+            <t-button theme="primary" :loading="actionBusy">确认登记退款</t-button>
+          </t-popconfirm>
+        </t-card>
+        <t-card
+          v-else-if="refundCompletedReceipt || (detail.discrepancy?.status === 'resolved' && detail.discrepancy.refund)"
+          class="payment-refund-receipt"
+          title="退款回执"
+        >
+          <dl class="fact-list">
+            <div><dt>退款金额</dt><dd>{{ money(refundCompletedReceipt?.amountCents ?? detail.discrepancy?.refund?.amountCents) }}</dd></div>
+            <div><dt>到账日期</dt><dd>{{ (refundCompletedReceipt?.receivedAt ?? detail.discrepancy?.refund?.receivedAt ?? '').slice(0, 10) }}</dd></div>
+            <div><dt>当前状态</dt><dd>{{ refundCompletedReceipt?.status === 'resolved' ? '已办结' : (detail.discrepancy?.statusLabel ?? '已办结') }}</dd></div>
+            <div><dt>净实付</dt><dd>{{ refundCompletedReceipt && !refundDetailRefreshed ? '刷新后读取' : money(detail.payment.netPaidAmountCents) }}</dd></div>
+          </dl>
+        </t-card>
         <PaymentApplicationStepper
           v-if="applicationVisible"
           :key="detail.payment.id"

@@ -738,6 +738,7 @@ export interface SpotProcurementPaymentDetailReadModel {
   discrepancy?: {
     status: string;
     statusLabel?: string;
+    refundExpectedAmountCents?: string;
     nextStep: string | null;
     refund?: { amountCents: string; receivedAt: string } | null;
   };
@@ -1516,6 +1517,59 @@ export function recordSpotProcurementRefund(
     `/spot-procurements/${encodeURIComponent(procurementId)}/refunds`,
     body
   );
+}
+
+export async function uploadSpotProcurementRefundVoucherForPayment(
+  paymentId: string,
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string,
+  current: () => boolean = () => true
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentId);
+  if (
+    capability.payment.id !== paymentId ||
+    capability.payment.procurement.id !== procurementId ||
+    capability.currentTask.key !== "record_refund" ||
+    capability.currentTask.enabled !== true ||
+    capability.discrepancy?.status !== "awaiting_refund"
+  ) {
+    throw new Error("当前付款的退款办理坐标已变化，请刷新后重试");
+  }
+  if (!current()) throw new Error("页面已切换，原退款操作已停止");
+  return uploadSpotProcurementRefundVoucherFile(
+    procurementId,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export async function recordSpotProcurementRefundForPayment(
+  paymentId: string,
+  procurementId: string,
+  body: Parameters<typeof recordSpotProcurementRefund>[1],
+  current: () => boolean = () => true
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentId);
+  const pending =
+    capability.currentTask.key === "record_refund" &&
+    capability.currentTask.enabled === true &&
+    capability.discrepancy?.status === "awaiting_refund";
+  const completedReplay =
+    capability.discrepancy?.status === "resolved" &&
+    capability.discrepancy.refund?.amountCents === body.amountCents &&
+    capability.discrepancy.refund.receivedAt.slice(0, 10) === body.receivedAt;
+  if (
+    capability.payment.id !== paymentId ||
+    capability.payment.procurement.id !== procurementId ||
+    (!pending && !completedReplay)
+  ) {
+    throw new Error("当前付款的退款办理坐标已变化，请刷新后重试");
+  }
+  if (!current()) throw new Error("页面已切换，原退款操作已停止");
+  return recordSpotProcurementRefund(procurementId, body);
 }
 
 function postSpotProcurementPaymentInvoice(
