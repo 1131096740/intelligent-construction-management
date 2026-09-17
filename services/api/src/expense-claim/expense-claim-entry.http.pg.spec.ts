@@ -161,6 +161,34 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
   }, 60_000);
 
+  (enabled ? it : it.skip)("已完成真实审批的待放款借款可上传单字段幂等放款凭证", async () => {
+    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "放款凭证上传验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    expect((await request(`${path}/submission`, {})).status).toBe(201);
+    for (const [approvalIndex, approvalToken] of approvalTokens.entries()) {
+      const approval = await request(`${path}/approval`, { decision: "approve" }, approvalToken);
+      if (approval.status !== 201) throw new Error(`借款真实审批${approvalIndex + 1}失败：${approval.status} ${JSON.stringify(approval.body)}`);
+    }
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_disbursement", requestedAmountCents: "1" } });
+
+    const idempotencyKey = randomUUID();
+    const upload = async () => {
+      const uploadBody = new FormData();
+      uploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成放款凭证.png");
+      uploadBody.append("idempotencyKey", idempotencyKey);
+      return fetch(`${baseUrl}${path}/disbursement-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: uploadBody });
+    };
+    const first = await upload();
+    const firstText = await first.text();
+    if (first.status !== 201) throw new Error(`放款凭证上传失败：${first.status} ${firstText}`);
+    const firstBody = JSON.parse(firstText) as { id: string };
+    expect(firstBody.id).toEqual(expect.any(String));
+    const replay = await upload();
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
+  }, 60_000);
+
   (enabled ? it : it.skip)("项目借款明确提交后按原授权回读当时字段与金额，重复提交不增加快照", async () => {
     const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" });
     if (created.status !== 201) throw new Error(JSON.stringify(created));

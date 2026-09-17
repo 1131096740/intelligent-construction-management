@@ -53,7 +53,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
 
       if (method === "uploadDraftAttachmentFile" || method === "uploadAppendAttachmentFile") {
         await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, { idempotencyKey: "idempotency-1" });
-      } else if (method === "uploadPaymentVoucherFile") {
+      } else if (method === "uploadPaymentVoucherFile" || method === "uploadDisbursementVoucherFile") {
         await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, { idempotencyKey: "idempotency-1" });
       } else {
         await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, "idempotency-1");
