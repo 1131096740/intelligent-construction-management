@@ -47,6 +47,23 @@ export function contractBasicEntryValues(draftData: unknown) {
   };
 }
 
+export const CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "contract_settlement_mode", entityType: "contract_version", version: 1,
+  name: "合同结算方式", description: "由合同部主管确认本合同的结算方式。", rules: [],
+  fields: [{
+    ...headerField("settlementMode", "结算方式", "single_select", 1),
+    permissions: { view: contractEditors, edit: ["contract_director"] },
+    options: [
+      { value: "settlement_required", label: "需要结算" },
+      { value: "direct_payment", label: "按合同直接付款" }
+    ],
+    display: {
+      formHint: "由合同部主管确认后才能提交审批、开结算或按合同发起应付款。",
+      gridColumn: "结算方式", mobilePriority: 1, readonlyText: "以本次确认的结算方式为准"
+    }
+  }]
+};
+
 export async function resolveContractTemplateEntry(
   tx: Prisma.TransactionClient,
   version: ContractVersion

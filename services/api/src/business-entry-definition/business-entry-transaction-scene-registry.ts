@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY } from "../contract-workbench/contract-business-entry-policy";
+import { CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY, CONTRACT_SETTLEMENT_MODE_ENTRY_POLICY } from "../contract-workbench/contract-business-entry-policy";
 import {
   BUSINESS_ACTIONS,
   type BusinessAction,
@@ -97,7 +97,7 @@ export function createBusinessEntryTransactionSceneRegistry(
 }
 
 export const BUSINESS_ENTRY_TRANSACTION_SCENE_POLICIES = Object.freeze(
-  [CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY] as readonly BusinessEntryTransactionScenePolicy[]
+  [CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY, CONTRACT_SETTLEMENT_MODE_ENTRY_POLICY] as readonly BusinessEntryTransactionScenePolicy[]
 );
 
 export const BUSINESS_ENTRY_TRANSACTION_REGISTRY =

@@ -60,6 +60,8 @@
 
 ## 首切片的三个权威证据
 
+> 以下三条保留初始设计时态；当前实际进展见下方“本地切片验证”，不能把初始待实现文字或局部 PASS 当作整票完成。
+
 1. 定义拟由原 `GET contract-drafts/:contractVersionId/workbench` 返回，当前未接入。该路由与保存路由继续使用 `contract.create`；提交路由继续使用 `contract.submit`。表单只用原服务端可编辑能力，冻结器的 submit 权限不用于表单读取。
 2. 公司更换继续走 `ContractDraftAggregateService` → `ContractWorkbenchService.saveDraftInTransaction` 的 `lockAndLoadCompanyEntitySelection`，并在提交沿原 `lockCompanyEntityForSubmission` 复验；选择项不跳过领域检查。
 3. #255 `PrismaBusinessEntrySnapshotStore.persistInTransaction` 的主键坐标为 project/scene/entityType/entityId/revision。同内容返回原不可变快照；变化必须传当前 snapshot revision，追加 current+1。拟在合同原锁、修订及租约检查后同事务冻结，不能把 draftRevision 当 snapshot revision；原提交幂等 receipt 先返回，同请求复用原结果，退回后新提交不覆盖旧快照。精确审批引用拟存入既有 `ContractDraftSubmissionRequest.responseSnapshot`，按唯一 `approvalInstanceId` 取得该次 snapshot revision，而非回显最新版；合法位置见 `services/api/prisma/schema.prisma:2052–2065`，原同事务 receipt 写入见 `services/api/src/contract/contract.service.ts:2144–2167`。该引用与冻结接线当前均未实现，不增加 Schema，也不改审批节点 JSON。
@@ -72,3 +74,12 @@
 - 审批精确引用使用既有 `ContractDraftSubmissionRequest.responseSnapshot` 与 `approvalInstanceId` 绑定该次 snapshot revision，不查最新版，不改 `ApprovalInstance.frozenNodes`；snapshot revision 与 draftRevision 分开处理。
 
 最小首切片先实现 `contract_basic` 两字段的同事务冻结和原详情读取，不作为上述全清单通过证据。保留本候选；完整矩阵已按 #255 要求登记至 #114，开始 RED。最终收据须逐条附实际场景、文件、测试、旧入口退场状态及同一候选 SHA。
+
+## 本地切片验证（2026-09-17，未冻结工作树）
+
+- 恢复代码检查点 `d5829a9e`，旧测试 fixture/ownerless 岗位拒绝覆盖检查点 `6195793a`；非最终交付 SHA。
+- 合同基础、精确模板标量及清单字段已接入原提交事务与回读；aggregate、legacy、legacy-ownerless 真实 HTTP + PG16 测试通过。旧 owner 为空的兼容仍要求 `contract.submit` 岗位及原领域检查；原重复提交规则不变。
+- 结算方式确认：`contract_settlement_mode` 单选定义由原工作台 GET 返回，原 POST confirmation 在原全局合同主管、draft 与 expectedRevision 校验之后同事务冻结；snapshot revision 与 draftRevision 分离。原版本工作台按真实 version/project 回读历史。Web `ContractBasicSection` 使用该定义与原确认事件，硬编码选择器已替换；无新增用户动作、权限或 Schema。
+- 本片 TDD：真实 HTTP 首次 RED 为缺少场景定义，Web 首次 RED 为未消费服务端中文字段。原 stale revision 返回 400，测试按既有行为校正，未修改状态码。一个旧成功确认单测缺少 snapshot DB fixture，补齐 DB 边界后保留真实授权/冻结服务。
+- 当前验证：HTTP 三路径 3/3，workbench/aggregate/transaction registry/module 152/152，Web 3/3，workspace typecheck、lint（0 errors；原 531 warnings 中新增 6 个测试 stub 警告随后已消除，定向 lint 保留原文件 15 个警告）、Web check:ui 与 diff --check 通过。根目录无 check:ui 命令，随后按 Web package 脚本成功执行。无整票完整门、push、部署或生产操作。
+- 待办仍包括矩阵内合同其他结构化入口、结算、付款结果、归档及历史展示/退场逐项证明；不得以本片通过宣称 #114 完成。

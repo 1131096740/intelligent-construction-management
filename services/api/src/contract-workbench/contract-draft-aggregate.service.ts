@@ -6,6 +6,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
@@ -15,7 +16,7 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { calculateContractDocumentContentFingerprint } from "./contract-document-content";
 import { ContractWorkbenchService } from "./contract-workbench.service";
-import { CONTRACT_BASIC_ENTRY_DEFINITION, contractBasicEntryValues, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
+import { CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION, contractBasicEntryValues, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
 import { projectContractDraftOperationCapabilities } from "./contract-mutation-authority";
 import type {
   SaveContractDraftAggregateDto,
@@ -56,6 +57,12 @@ export class ContractDraftAggregateService {
       version,
       actorUserId
     );
+    const settlementModeHistory = version.settlementModeConfirmedAt
+      ? await this.prisma.businessEntrySubmissionSnapshot.findMany({
+          where: { projectId: legacyReadModel.contract.projectId, sceneKey: "contract_settlement_mode", entityType: "contract_version", entityId: version.id },
+          orderBy: { revision: "asc" }
+        })
+      : [];
     const [attachments, lease] = await Promise.all([
       this.prisma.contractDraftAttachment.findMany({
         where: { contractVersionId },
@@ -100,6 +107,19 @@ export class ContractDraftAggregateService {
       draft: version.draftData,
       templateEntry,
       billEntries,
+      settlementModeEntry: {
+        definition: CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION,
+        values: { settlementMode: version.settlementMode },
+        history: settlementModeHistory.map((record) => ({
+          sceneKey: record.sceneKey,
+          target: { projectId: record.projectId, entityType: record.entityType, entityId: record.entityId },
+          revision: record.revision,
+          definitionVersion: record.definitionVersion,
+          definition: record.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
+          values: record.valuesSnapshot,
+          frozenAt: record.frozenAt.toISOString()
+        }))
+      },
       bills: legacyReadModel.bills.map((bill) => ({
         ...bill,
         businessEntryDefinition: billEntries.find((entry) => entry.billId === bill.id)?.definition

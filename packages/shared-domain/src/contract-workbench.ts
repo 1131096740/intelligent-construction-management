@@ -224,6 +224,11 @@ export function contractPricingPolicy(input: {
 }
 
 export interface ContractWorkbenchReadModel {
+  settlementModeEntry?: {
+    definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
+    values: { settlementMode: ContractSettlementMode | null };
+    history: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
+  };
   templateEntry?: {
     definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
     values: Record<string, unknown>;

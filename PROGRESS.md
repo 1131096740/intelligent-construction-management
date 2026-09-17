@@ -23,6 +23,8 @@
 
 ## 当前正在推进
 
+- [ ] #114 统一录入仍为本地分片实施中，尚未整票验收：恢复检查点 `d5829a9e` 与 fixture 检查点 `6195793a` 已保存；合同基础/模板/清单冻结恢复回归已验证，新增结算方式确认切片已通过真实 AppModule + 本机一次性 PG16 三路径、相关 API 152 tests、Web 3 tests、typecheck/lint/check:ui。证据针对当前未提交工作树，不是冻结 SHA 或发布收据；完整入口矩阵仍有合同其他入口、结算、付款结果和归档待迁移，整票冻结后才执行完整门。见 `docs/specs/2026-09-17-pol114-entry-scene-matrix.md`。本轮未 push、部署、迁移生产或写生产数据。
+
 - [ ] POL-15 / #108 第二十一轮方案 A 已获 Owner 明确批准：仅将 PR CI 的源 SHA 改为 pull_request.head.sha，main push 保留 github.sha，manual dispatch 保留输入 SHA 及 main-ancestor 校验；四类作业继续在安装前核对实际 checkout HEAD。新增回归先 RED 2/4，修复后 GREEN 4/4。父候选 `92c850842d5e4a5277933cd30d3d58c2616a0ac1` 的 API 167/167、静态/清单门、一次性 PG16 169 migrations 两遍/seed/#108 14/14 PASS；Standards H0/M0/L3、Spec H0/M0/L0，但安全 scan `38aeffac-d262-4808-b8df-e893cba0e6d9` 虽封存 H0/M0/L2，canonical coverage 回读为 partial，不能作为完整安全门通过；父 SHA 的 release:local 未启动，CI 精确 head 与安全覆盖两项 HOLD 未解除。三项 Standards LOW 与两项既有 Security LOW 已获延期，未修复。新固定 SHA 必须重新完成定向/静态/PG16/release、独立双审和全新完整覆盖安全扫描，封存前后均核对；全部通过才恢复非生产 GitHub 链。未改业务、Schema、迁移、权限或生产部署工作流，未执行远端交付或生产操作。此条覆盖下方历史轮次状态。
 
 - [ ] POL-15 / #108 第二十轮方案 A 已获 Owner 明确批准：仅为资金工作台四个既有终态补中文兜底（paid 已付款、settled 已结清、disbursed 已放款、offset_completed 借款冲销完成），保留退款/票据优先级、金额 null 与完成分类；两项限制预算单测按查询区分数据库时钟、成功普通工作量预检和超限 restriction 结果，断言目标查询顺序、413 中文错误及后续 ORM 未执行。新增四终态断言先 RED 4/4，修复后两个 API 定向文件 70/70 PASS。父候选 `77f232b07d905122c35a8a5d1eb51ad15d1f90dc` 已通过一次性 PG16 169 migrations 两遍、seed、#108 14/14、完整 release 16/16（canonical 53 files/243 tests），但独立 Standards H0/M1/L1 HOLD、Spec H0/M0/L0 PASS；Security scan `d50dd68a-ffb3-47ce-aca0-583a511006ac` 已封存 H0/M0/L2，两项既有 LOW 继续延期。新固定 SHA 的定向/静态/PG16/release 与全新独立后审待完成；不继承父 SHA 绿灯。不改 Schema、迁移、权限、SQL/count、金额和 #279/#280 写语义，未执行远端交付、部署或生产操作。第二十轮状态覆盖下方历史轮次登记。

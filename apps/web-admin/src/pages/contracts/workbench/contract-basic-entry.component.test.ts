@@ -1,4 +1,4 @@
-import { createSSRApp } from "vue";
+import { createSSRApp, h } from "vue";
 import { renderToString } from "vue/server-renderer";
 import { describe, expect, it } from "vitest";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
@@ -6,6 +6,35 @@ import ContractBasicSection from "./ContractBasicSection.vue";
 import ContractProfessionalFieldsSection from "./ContractProfessionalFieldsSection.vue";
 
 describe("合同基础信息统一字段展示", () => {
+  it("结算方式消费后台定义的标签、提示与选项", async () => {
+    const definition: BusinessEntrySceneDefinition = {
+      key: "contract_settlement_mode", entityType: "contract_version", version: 1,
+      name: "合同结算方式", description: "确认方式", rules: [],
+      fields: [{ key: "settlementMode", label: "本合同结算路径", type: "single_select", scope: "header",
+        description: "确认方式", example: "需要结算", unit: "", precision: 0, required: true,
+        permissions: { view: ["contract_director"], edit: ["contract_director"] },
+        bulk: { enabled: false, strategy: "replace" },
+        excel: { column: "结算方式", paste: "single", errorLocation: "cell" },
+        options: [{ value: "direct_payment", label: "后台直接付款选项" }],
+        display: { formHint: "后台结算方式填写提示", gridColumn: "结算方式", mobilePriority: 1, readonlyText: "已确认方式" }
+      }]
+    };
+    const app = createSSRApp(ContractBasicSection, {
+      mode: "settlement", model: {}, disabled: false, settlementDefinition: definition,
+      settlementMode: { value: "direct_payment", confirmationRequired: true, canConfirm: true }
+    });
+    app.component("TSelect", (props: { options: Array<{ label: string }>; placeholder?: string }) =>
+      h("select", { placeholder: props.placeholder }, props.options.map((option) => h("option", option.label))));
+    app.component("TAlert", () => h("aside"));
+    for (const name of ["t-button", "t-input", "t-textarea", "t-date-picker"]) {
+      app.component(name, () => h("span"));
+    }
+    const html = await renderToString(app);
+    expect(html).toContain("本合同结算路径");
+    expect(html).toContain("后台结算方式填写提示");
+    expect(html).toContain("后台直接付款选项");
+  });
+
   it("使用后台字段的中文名称和填写提示渲染基础表单", async () => {
     const definition: BusinessEntrySceneDefinition = {
       key: "contract_basic", entityType: "contract_version", version: 1,

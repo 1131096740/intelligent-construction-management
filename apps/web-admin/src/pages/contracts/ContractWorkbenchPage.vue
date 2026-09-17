@@ -668,6 +668,7 @@
               >
                 <ContractBasicSection
                   mode="settlement"
+                  :settlement-definition="workbench?.settlementModeEntry?.definition"
                   :model="model"
                   :disabled="editorDisabled"
                   :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"

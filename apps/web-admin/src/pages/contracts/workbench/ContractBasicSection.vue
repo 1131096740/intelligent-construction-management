@@ -78,13 +78,17 @@
         v-if="mode !== 'basic'"
         class="field"
       >
-        <span class="field-label">结算方式</span>
-        <t-select
-          :value="settlementMode.value ?? undefined"
-          :options="settlementModeOptions"
-          :disabled="disabled || !settlementMode.canConfirm || settlementModeBusy"
-          placeholder="等待系统建议"
-          @change="onSettlementModeChange"
+        <BusinessEntryForm
+          v-if="settlementDefinition"
+          :definition="settlementDefinition"
+          :model-value="settlementEntry"
+          :readonly="disabled || !settlementMode.canConfirm || settlementModeBusy"
+          @update:model-value="updateSettlementEntry"
+        />
+        <t-alert
+          v-else
+          theme="warning"
+          message="结算方式填写规则尚未加载，请刷新后再确认。"
         />
         <span class="field-help">
           <template v-if="settlementMode.confirmationRequired">
@@ -126,6 +130,7 @@ const emit = defineEmits<{
 const props = withDefaults(defineProps<{
   model: ContractDraftModel;
   definition?: BusinessEntrySceneDefinition;
+  settlementDefinition?: BusinessEntrySceneDefinition;
   disabled: boolean;
   mode?: "all" | "basic" | "settlement";
   nameDisabled?: boolean;
@@ -138,6 +143,7 @@ const props = withDefaults(defineProps<{
   settlementModeBusy?: boolean;
 }>(), {
   definition: undefined,
+  settlementDefinition: undefined,
   mode: "all"
 });
 const candidates = ref<CompanyEntityModel[]>([]);
@@ -175,10 +181,11 @@ const companyOptions = computed(() => candidates.value.map((candidate) => ({
   value: candidate.id,
   label: `${candidate.name}（${candidate.unifiedSocialCreditCode ?? "信用代码待补全"}）`
 })));
-const settlementModeOptions = [
-  { value: "settlement_required", label: "需要结算" },
-  { value: "direct_payment", label: "按合同直接付款" }
-] satisfies Array<{ value: ContractSettlementMode; label: string }>;
+const settlementEntry = computed<BusinessEntryDraftPayload>(() => ({
+  sceneKey: props.settlementDefinition?.key ?? "contract_settlement_mode",
+  definitionVersion: props.settlementDefinition?.version,
+  values: { settlementMode: props.settlementMode.value }
+}));
 const selectedCandidate = computed(() =>
   candidates.value.find((candidate) => candidate.id === props.model.companyEntityId) ?? null
 );
@@ -202,7 +209,9 @@ function syncCompany() {
   if (selectedCandidate.value) selectCompany(selectedCandidate.value.id);
 }
 
-function onSettlementModeChange(value: string) {
+function updateSettlementEntry(entry: BusinessEntryDraftPayload) {
+  if (props.disabled || !props.settlementMode.canConfirm || props.settlementModeBusy) return;
+  const value = entry.values.settlementMode;
   if (value === "settlement_required" || value === "direct_payment") {
     emit("confirm-settlement-mode", value);
   }

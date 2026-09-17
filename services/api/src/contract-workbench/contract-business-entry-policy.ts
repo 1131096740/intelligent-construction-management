@@ -2,6 +2,7 @@ import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/s
 import type { BusinessEntryTransactionResolverContext, BusinessEntryTransactionScenePolicy } from "../business-entry-definition/business-entry-transaction-scene-registry";
 import { BadRequestException } from "@nestjs/common";
 import { resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
+import { hasGlobalContractDirector } from "./contract-workbench-authority";
 
 export const CONTRACT_BASIC_ENTRY_POLICY: BusinessEntryTransactionScenePolicy = {
   sceneKey: "contract_basic", targetKind: "project_owned_entity",
@@ -47,6 +48,17 @@ export const CONTRACT_TEMPLATE_ENTRY_POLICY: BusinessEntryTransactionScenePolicy
     const entry = version ? await resolveContractTemplateEntry(tx, version) : null;
     if (!entry) throw new BadRequestException("合同模板版本不存在，请刷新后重试");
     return entry.definition;
+  }
+};
+
+export const CONTRACT_SETTLEMENT_MODE_ENTRY_POLICY: BusinessEntryTransactionScenePolicy = {
+  sceneKey: "contract_settlement_mode", targetKind: "project_owned_entity",
+  entityType: "contract_version", action: "contract.create",
+  resolveOwnership: CONTRACT_BASIC_ENTRY_POLICY.resolveOwnership,
+  resolveAuthorization: async ({ tx, target, actorUserId }) => {
+    const version = await tx.contractVersion.findUnique({ where: { id: target.entityId } });
+    if (version?.status !== "draft" || !(await hasGlobalContractDirector(tx, actorUserId))) return [];
+    return ["contract_director"];
   }
 };
 

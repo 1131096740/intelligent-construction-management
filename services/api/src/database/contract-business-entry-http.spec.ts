@@ -21,6 +21,11 @@ type Workbench = {
   businessEntry: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> };
   templateEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> };
   billEntries?: Array<{ billKey: string; definition: BusinessEntrySceneDefinition }>;
+  settlementModeEntry?: {
+    definition: BusinessEntrySceneDefinition;
+    values: { settlementMode: string | null };
+    history: BusinessEntryFrozenSnapshot[];
+  };
   bills: Array<{ id: string; billKey: string; revision: number }>;
 };
 type Submission = { approvalInstanceId: string; draftRevision: number; businessEntrySnapshot: BusinessEntryFrozenSnapshot; templateEntrySnapshot: BusinessEntryFrozenSnapshot; billEntrySnapshots: BusinessEntryFrozenSnapshot[] };
@@ -126,6 +131,14 @@ if (enabled) {
       businessTemplateVersionId: template.version.id, signingSubjectType: "our_company"
     });
     const workbench = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
+    expect(workbench.settlementModeEntry?.definition).toMatchObject({
+      key: "contract_settlement_mode", entityType: "contract_version", version: 1,
+      fields: [{ key: "settlementMode", label: "结算方式", type: "single_select", options: [
+        { value: "settlement_required", label: "需要结算" },
+        { value: "direct_payment", label: "按合同直接付款" }
+      ] }]
+    });
+    expect(workbench.settlementModeEntry?.history).toEqual([]);
     expect(workbench.businessEntry?.definition).toMatchObject({
       key: "contract_basic", entityType: "contract_version",
       fields: [
@@ -213,9 +226,20 @@ if (enabled) {
       negotiationDocuments: { referencedGeneratedDocumentIds: [] }
     }, lease.token);
     let current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
-    await request("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
+    const modeConfirmation = await request<{ settlementModeSnapshot: BusinessEntryFrozenSnapshot }>("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
       expectedRevision: current.version.draftRevision, settlementMode: "direct_payment"
     });
+    expect(modeConfirmation.settlementModeSnapshot).toMatchObject({
+      sceneKey: "contract_settlement_mode", revision: 1,
+      target: { projectId: project.id, entityType: "contract_version", entityId: draft.version.id },
+      values: { settlementMode: "direct_payment" }
+    });
+    await expect(request("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
+      expectedRevision: current.version.draftRevision, settlementMode: "settlement_required"
+    })).rejects.toThrow("400");
+    const confirmedMode = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
+    expect(confirmedMode.settlementModeEntry?.history).toEqual([modeConfirmation.settlementModeSnapshot]);
+    expect(confirmedMode.settlementModeEntry?.values).toEqual({ settlementMode: "direct_payment" });
     for (const side of ["first_party", "counterparty"]) {
       current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
       await request("POST", `/contracts/${draft.version.id}/authorizations`, {
