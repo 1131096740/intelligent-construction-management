@@ -41,6 +41,12 @@ export interface BusinessEntryFormatRule {
   maxLength?: number;
 }
 
+export interface BusinessEntryExactDecimalStringRule {
+  sign: "nonnegative" | "signed";
+  minimumExclusive?: string;
+  maximumExclusive?: string;
+}
+
 export interface BusinessEntryBulkRule {
   enabled: boolean;
   maxRows?: number;
@@ -75,6 +81,7 @@ export interface BusinessEntryFieldDefinition {
   permissions: BusinessEntryPermissionPolicy;
   visibleWhen?: BusinessEntryVisibilityCondition;
   format?: BusinessEntryFormatRule;
+  exactDecimalString?: BusinessEntryExactDecimalStringRule;
   bulk: BusinessEntryBulkRule;
   excel: BusinessEntryExcelRule;
   group?: string;
@@ -340,6 +347,38 @@ function matchesNumericStringPrecision(value: string, precision: number): boolea
   return match !== null && (match[1]?.length ?? 0) <= precision;
 }
 
+function validateExactDecimalString(
+  value: unknown,
+  precision: number,
+  rule: BusinessEntryExactDecimalStringRule
+): "valid" | "invalid_type" | "invalid_format" {
+  if (typeof value !== "string") return "invalid_type";
+  const match = (rule.sign === "signed" ? /^-?(\d+)(?:\.(\d+))?$/ : /^(\d+)(?:\.(\d+))?$/).exec(value);
+  if (!match) return "invalid_type";
+  if ((match[2]?.length ?? 0) > precision) return "invalid_format";
+  const compareUnsigned = (boundary: string): number | null => {
+    const boundaryMatch = /^(\d+)(?:\.(\d+))?$/.exec(boundary);
+    if (!boundaryMatch || value.startsWith("-")) return null;
+    const leftInteger = match[1].replace(/^0+(?=\d)/, "");
+    const rightInteger = boundaryMatch[1].replace(/^0+(?=\d)/, "");
+    if (leftInteger.length !== rightInteger.length) return leftInteger.length < rightInteger.length ? -1 : 1;
+    if (leftInteger !== rightInteger) return leftInteger < rightInteger ? -1 : 1;
+    const scale = Math.max(match[2]?.length ?? 0, boundaryMatch[2]?.length ?? 0);
+    const leftFraction = (match[2] ?? "").padEnd(scale, "0");
+    const rightFraction = (boundaryMatch[2] ?? "").padEnd(scale, "0");
+    return leftFraction === rightFraction ? 0 : leftFraction < rightFraction ? -1 : 1;
+  };
+  if (rule.minimumExclusive) {
+    const comparison = compareUnsigned(rule.minimumExclusive);
+    if (comparison === null || comparison <= 0) return "invalid_format";
+  }
+  if (rule.maximumExclusive) {
+    const comparison = compareUnsigned(rule.maximumExclusive);
+    if (comparison === null || comparison >= 0) return "invalid_format";
+  }
+  return "valid";
+}
+
 function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown, contractTemplateScalar = false): BusinessEntryValidationError | null {
   const invalid = (
     code: "invalid_type" | "invalid_option" | "invalid_format",
@@ -378,6 +417,16 @@ function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown,
     return null;
   }
   if (field.type === "number" || field.type === "money") {
+    if (field.exactDecimalString) {
+      const exactResult = validateExactDecimalString(value, field.precision, field.exactDecimalString);
+      if (exactResult === "valid") return null;
+      return invalid(
+        exactResult,
+        exactResult === "invalid_format"
+          ? `${field.label}超出精度或取值范围`
+          : `${field.label}必须填写普通十进制数字文本`
+      );
+    }
     if (field.type === "money" && typeof value === "string") {
       const trimmed = value.trim();
       const numeric = /^\d+(?:\.\d+)?$/.test(trimmed);
