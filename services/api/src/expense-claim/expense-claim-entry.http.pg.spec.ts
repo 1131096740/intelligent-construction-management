@@ -301,7 +301,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         POL115_ACCOUNT_PASSWORD: accountPassword
       };
       delete env.JEST_WORKER_ID;
-      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts", "--grep", "财务员登记还款后由财务主管确认并更正"], {
+      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts", "--grep", "零星费用选择既有分类后保存并明确提交"], {
         cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit"
       });
       child.on("error", reject);

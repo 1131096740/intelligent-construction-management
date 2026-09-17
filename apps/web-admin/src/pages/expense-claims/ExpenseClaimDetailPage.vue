@@ -80,7 +80,10 @@ const columns = [
   { colKey: "evidenceType", title: "证据类型", width: 130 },
   { colKey: "remark", title: "备注", minWidth: 160 }
 ];
-const title = computed(() => detail.value?.claimType === "loan" ? "借款申请" : "费用报销");
+const title = computed(() => detail.value ? ({ reimbursement: "费用报销", loan: "借款申请", incidental_expense: "零星费用" } as const)[detail.value.claimType] : "费用申请");
+function incidentalExpenseCategoryLabel(value: ExpenseClaimDetailReadModel["incidentalExpenseCategory"]) {
+  return value ? ({ temporary_service: "非材料临时服务", temporary_machinery_shift: "临时机械台班", sporadic_labor: "零星用工", other_incidental: "其他非材料临时费用" } as const)[value] : "未填写";
+}
 function amount(value: string) { return `¥${centsTextToYuanText(value)}`; }
 function statusLabel(value: string) { return ({ draft: "草稿", approval_pending: "审批中", approved_pending_payment: "待公司付款", partially_paid: "部分公司付款", paid: "公司补付完成", approved_pending_disbursement: "待放款", partially_disbursed: "部分放款", disbursed: "已放款", offset_completed: "借款冲销完成", rejected: "已驳回" } as Record<string, string>)[value] ?? value; }
 function tone(value: string) { return ["offset_completed", "disbursed", "paid"].includes(value) ? "success" as const : value === "rejected" ? "danger" as const : value === "draft" ? "default" as const : "warning" as const; }
@@ -847,6 +850,12 @@ onMounted(() => void loadDetail());
             </t-descriptions-item>
             <t-descriptions-item label="项目">
               {{ detail.project ? `${detail.project.code} · ${detail.project.name}` : '非项目费用' }}
+            </t-descriptions-item>
+            <t-descriptions-item
+              v-if="detail.claimType === 'incidental_expense'"
+              label="零星费用分类"
+            >
+              {{ incidentalExpenseCategoryLabel(detail.incidentalExpenseCategory) }}
             </t-descriptions-item>
             <t-descriptions-item label="报销人 / 借款人">
               {{ detail.applicantNameSnapshot }}

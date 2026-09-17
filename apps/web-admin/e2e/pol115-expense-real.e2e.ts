@@ -237,3 +237,61 @@ test("借款先保存草稿及附件，仅明确提交后冻结审批内容", as
   await page.getByText("提交记录", { exact: true }).click();
   await expect(history.getByText("000012340001", { exact: true })).toBeVisible();
 });
+
+test("零星费用选择既有分类后保存并明确提交，桌面和手机回读冻结内容", async ({ page, request }) => {
+  const session = JSON.parse(process.env.POL115_BROWSER_SESSION!) as BrowserSession;
+  const api = process.env.POL115_API_URL!;
+  await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  await page.goto("/费用与报销工作台");
+  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  const drawer = page.locator(".t-drawer");
+  await drawer.getByText("零星费用", { exact: true }).click();
+  const categoryField = drawer.locator(".t-form__item").filter({ hasText: "零星费用分类" });
+  await categoryField.locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible").getByText("非材料临时服务", { exact: true }).click();
+  const projectField = drawer.locator(".t-form__item").filter({ hasText: "项目" });
+  await projectField.locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "入口合成项目" }).click();
+  expect(await drawer.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+  await drawer.getByRole("button", { name: "下一步", exact: true }).click();
+  const form = page.getByRole("region", { name: "费用申请单条业务表单" });
+  await form.locator('[data-field="reason"] textarea').fill("真实浏览器零星服务费");
+  await form.locator('[data-field="requestedAmountYuan"] input').fill("0.01");
+  await drawer.getByRole("button", { name: "下一步", exact: true }).click();
+  const payeeForm = page.getByRole("region", { name: "费用收款单条业务表单" });
+  await payeeForm.locator('[data-field="payeeName"] input').fill("合成零星服务收款人");
+  await drawer.getByRole("button", { name: "下一步", exact: true }).click();
+  const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
+  await drawer.getByRole("button", { name: "保存草稿", exact: true }).click();
+  const saveResponse = await saved;
+  expect(saveResponse.status(), await saveResponse.text()).toBe(201);
+  const claim = await saveResponse.json() as { id: string };
+  const draftResponse = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
+  expect(draftResponse.ok(), await draftResponse.text()).toBe(true);
+  expect(await draftResponse.json()).toMatchObject({
+    claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", status: "draft",
+    reason: "真实浏览器零星服务费", requestedAmountCents: "1", payeeNameSnapshot: "合成零星服务收款人", entrySnapshots: []
+  });
+
+  await page.goto(`/费用与报销/${claim.id}`);
+  await expect(page.getByRole("heading", { name: "零星费用", exact: true })).toBeVisible();
+  await expect(page.getByText("零星费用分类", { exact: true }).locator("..")).toContainText("非材料临时服务");
+  const submitted = page.waitForResponse((response) => response.url().endsWith(`/expense-claims/${claim.id}/submission`) && response.request().method() === "POST");
+  await page.getByRole("button", { name: "提交审批", exact: true }).click();
+  await page.getByRole("button", { name: "确认提交", exact: true }).click();
+  const submitResponse = await submitted;
+  expect(submitResponse.status(), await submitResponse.text()).toBe(201);
+  await page.getByText("提交记录", { exact: true }).click();
+  const history = page.getByRole("region", { name: "费用申请提交记录" });
+  await expect(history.getByText("零星费用", { exact: true })).toBeVisible();
+  await expect(history.getByText("非材料临时服务", { exact: true })).toBeVisible();
+  await expect(history.getByText("真实浏览器零星服务费", { exact: true })).toBeVisible();
+  await expect(history.getByText("0.01 元", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("incidental_expense");
+  await expect(page.locator("body")).not.toContainText("temporary_service");
+  await expect(page.locator("body")).not.toContainText(claim.id);
+  expect(await history.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});

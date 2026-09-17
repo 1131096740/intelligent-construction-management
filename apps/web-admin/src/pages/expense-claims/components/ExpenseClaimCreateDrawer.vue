@@ -16,6 +16,8 @@ const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: boolean]; saved: [claim: CreatedExpenseClaim] }>();
 
 type ApplicantMode = "self" | "system_user" | "no_account";
+type ClaimType = CreateExpenseClaimPayload["claimType"];
+type IncidentalExpenseCategory = NonNullable<CreateExpenseClaimPayload["incidentalExpenseCategory"]>;
 
 const visible = computed({ get: () => props.modelValue, set: (value: boolean) => emit("update:modelValue", value) });
 const options = ref<ExpenseClaimCreateOptions | null>(null);
@@ -24,7 +26,8 @@ const saving = ref(false);
 const error = ref("");
 const step = ref(0);
 const form = reactive({
-  claimType: "reimbursement" as "reimbursement" | "loan",
+  claimType: "reimbursement" as ClaimType,
+  incidentalExpenseCategory: "" as IncidentalExpenseCategory | "",
   companyEntityId: "",
   projectId: "",
   applicantMode: "self" as ApplicantMode,
@@ -52,6 +55,7 @@ const applicationFields = computed({
   }
 });
 const companyOptions = computed(() => options.value?.companyEntities.map((item) => ({ label: item.name, value: item.id })) ?? []);
+const incidentalExpenseCategoryOptions = computed(() => options.value?.entryDefinition.fields.find((field) => field.key === "incidentalExpenseCategory")?.options ?? []);
 const payeeFields = computed({
   get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount, loanExpectedClearanceOn: form.loanExpectedClearanceOn }),
   set: (value) => {
@@ -81,6 +85,7 @@ function resetForm() {
   step.value = 0;
   error.value = "";
   form.claimType = "reimbursement";
+  form.incidentalExpenseCategory = "";
   form.companyEntityId = options.value?.companyEntities[0]?.id ?? "";
   form.projectId = "";
   form.applicantMode = "self";
@@ -118,6 +123,7 @@ function validateCurrentStep(): string {
   if (step.value === 0) {
     if (!form.companyEntityId) return "请选择使用单位";
     if (form.claimType === "loan" && !form.projectId) return "借款申请必须选择项目";
+    if (form.claimType === "incidental_expense" && !form.incidentalExpenseCategory) return "请选择零星费用分类";
     if (needsWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
     if (form.applicantMode === "no_account" && (!form.applicantName.trim() || !form.applicantPhone.trim())) return "请填写无账号人员的姓名和电话";
     if (form.applicantMode !== "no_account" && !form.applicantUserId) return "请选择报销人或借款人";
@@ -151,6 +157,7 @@ function previous() { error.value = ""; step.value -= 1; }
 function payload(): CreateExpenseClaimPayload {
   const base: CreateExpenseClaimPayload = {
     claimType: form.claimType,
+    incidentalExpenseCategory: form.claimType === "incidental_expense" && form.incidentalExpenseCategory ? form.incidentalExpenseCategory : undefined,
     companyEntityId: form.companyEntityId,
     projectId: form.projectId || undefined,
     factWitnessUserId: needsWitness.value ? form.factWitnessUserId : undefined,
@@ -209,7 +216,7 @@ async function createExpenseClaimWithCapability(
   >
     <template #header>
       <div class="expense-claim-create__title">
-        <span>新建费用报销 / 借款</span><small>首次成功保存后分配正式日流水编号；历史项目支出不在此迁移或改写。</small>
+        <span>新建费用报销 / 借款 / 零星费用</span><small>首次成功保存后分配正式日流水编号；历史项目支出不在此迁移或改写。</small>
       </div>
     </template>
     <div class="expense-claim-create">
@@ -246,8 +253,21 @@ async function createExpenseClaimWithCapability(
                     费用报销
                   </t-radio><t-radio value="loan">
                     借款申请
+                  </t-radio><t-radio value="incidental_expense">
+                    零星费用
                   </t-radio>
                 </t-radio-group>
+              </t-form-item>
+              <t-form-item
+                v-if="form.claimType === 'incidental_expense'"
+                label="零星费用分类"
+                required-mark
+              >
+                <t-select
+                  v-model="form.incidentalExpenseCategory"
+                  :options="incidentalExpenseCategoryOptions"
+                  placeholder="选择零星费用分类"
+                />
               </t-form-item>
               <t-form-item
                 label="使用单位"
@@ -340,7 +360,7 @@ async function createExpenseClaimWithCapability(
             <t-alert
               v-else
               theme="info"
-              message="借款不填写费用明细；实际放款、凭证和台账将在审批后的资金环节登记。"
+              :message="form.claimType === 'loan' ? '借款不填写费用明细；实际放款、凭证和台账将在审批后的资金环节登记。' : '零星费用不填写报销明细；按已选零星费用分类提交审批。'"
             />
           </section>
           <section
@@ -370,13 +390,18 @@ async function createExpenseClaimWithCapability(
               bordered
             >
               <t-descriptions-item label="业务类型">
-                {{ form.claimType === 'loan' ? '借款申请' : '费用报销' }}
+                {{ form.claimType === 'loan' ? '借款申请' : form.claimType === 'incidental_expense' ? '零星费用' : '费用报销' }}
               </t-descriptions-item><t-descriptions-item label="事由">
                 {{ form.reason || '未填写' }}
               </t-descriptions-item><t-descriptions-item label="申请金额">
                 ¥{{ form.requestedAmountYuan || '0.00' }}
               </t-descriptions-item><t-descriptions-item label="费用明细">
                 {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalYuan ?? '金额待核对'} 分` : '不适用' }}
+              </t-descriptions-item><t-descriptions-item
+                v-if="form.claimType === 'incidental_expense'"
+                label="零星费用分类"
+              >
+                {{ incidentalExpenseCategoryOptions.find((option) => option.value === form.incidentalExpenseCategory)?.label ?? '未选择' }}
               </t-descriptions-item>
             </t-descriptions><t-alert
               theme="info"
