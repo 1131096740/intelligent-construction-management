@@ -123,6 +123,9 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect(saved.status).toBe(200);
     expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body).toMatchObject(values);
     if (process.env.RUN_POL113_PROJECT_BROWSER === "1") {
+      const contract = await actor("contract_staff");
+      const enterpriseIntent = await partyIntent(contract, "浏览器施工企业验收");
+      expect((await request("/business-parties", "POST", enterpriseIntent.body, contract)).status).toBe(201);
       await new Promise<void>((done, reject) => {
         const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)) };
         delete browserEnv.JEST_WORKER_ID;
@@ -167,6 +170,40 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       expect((await request(`/projects/${projectId}`, "PATCH", valid.body.values, allowed)).status).toBe(200);
     }
     expect((await request("/projects", "GET", undefined, chairman)).body.find((entry: { id: string }) => entry.id === projectId).name).toBe("新项目名称");
+  });
+
+  it("项目财务按统一字段绑定施工企业，空白原因零写入且保存沿原事务回读", async () => {
+    const chairman = await actor("chairman");
+    const project = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "施工企业绑定合成项目" }, chairman);
+    expect(project.status).toBe(201);
+    const projectId = project.body.id as string;
+    const finance = await actor("finance_director", projectId);
+    const contract = await actor("contract_staff");
+    const intent = await partyIntent(contract, `施工企业合成${randomUUID()}`);
+    const party = await request("/business-parties", "POST", intent.body, contract);
+    expect(party.status).toBe(201);
+    const options = await request(`/projects/${projectId}/construction-enterprise-options`, "GET", undefined, finance);
+    expect(options.body.some((entry: { id: string }) => entry.id === party.body.version.id)).toBe(true);
+    const target = { entityType: "project", entityId: projectId };
+    const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId });
+    const definition = await request(`/business-entry-definitions/project_construction_enterprise?${query}`, "GET", undefined, finance);
+    expect(definition.status).toBe(200);
+    expect(definition.body.fields.map((field: { key: string }) => field.key)).toEqual(["businessPartyVersionId", "effectiveFrom", "changeReason"]);
+    const values = { businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", changeReason: "首次绑定验收" };
+    const payload = { definitionVersion: definition.body.version, target, operation: "edit", values };
+    const validatePath = `/business-entry-definitions/project_construction_enterprise/validate?projectId=${projectId}`;
+    const globalFinance = await actor("finance_director");
+    for (const denied of [chairman, globalFinance]) {
+      expect((await request(validatePath, "POST", payload, denied)).status).toBe(403);
+      expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", values, denied)).status).toBe(403);
+    }
+    const invalid = await request(validatePath, "POST", { ...payload, values: { ...values, changeReason: " " } }, finance);
+    expect(invalid.body.valid).toBe(false);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.constructionEnterprise).toBeNull();
+    const valid = await request(validatePath, "POST", payload, finance);
+    expect(valid.body.valid).toBe(true);
+    expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", { ...valid.body.values, effectiveFrom: `${values.effectiveFrom}T00:00:00.000Z` }, finance)).status).toBe(201);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: false });
   });
 
   it("本人字段定义和服务端预检拒绝原账号规则不接受的手机号", async () => {

@@ -58,25 +58,21 @@
       <t-form
         v-if="profile?.canManage && !profile.constructionEnterprise?.isLocked"
         label-align="top"
-        class="inline-form"
+        class="construction-form"
         @submit="saveConstructionEnterprise"
       >
-        <t-form-item label="施工企业">
-          <t-select
-            v-model="constructionForm.businessPartyVersionId"
-            filterable
-            :options="constructionOptions"
-          />
-        </t-form-item>
-        <t-form-item label="生效时间">
-          <t-date-picker v-model="constructionForm.effectiveFromDate" />
-        </t-form-item>
-        <t-form-item label="设置/变更原因">
-          <t-input v-model="constructionForm.changeReason" />
-        </t-form-item>
+        <BusinessEntryForm
+          v-if="constructionDefinition?.key === 'project_construction_enterprise'"
+          v-model="constructionDraft"
+          :definition="constructionDefinition"
+          :errors="constructionErrors"
+          :readonly="savingConstruction"
+          :options-by-field="{ businessPartyVersionId: constructionOptions }"
+        />
         <t-button
           type="submit"
           :loading="savingConstruction"
+          :disabled="constructionDefinition?.key !== 'project_construction_enterprise'"
         >
           {{ profile.constructionEnterprise ? "变更施工企业" : "设置施工企业" }}
         </t-button>
@@ -181,20 +177,27 @@ const deactivationForm = reactive({ endedOn: "", changeReason: "" });
 const profileDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
 const profileErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const profileDraft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_operating_profile", values: {} });
+const constructionDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const constructionErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
+const constructionDraft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_construction_enterprise", values: {} });
 let loadRequestId = 0;
 let projectGeneration = 0;
 const participantForm = reactive({ companyEntityId: "", effectiveFrom: "", changeReason: "" });
-const constructionForm = reactive({ businessPartyVersionId: "", effectiveFromDate: "", changeReason: "" });
 const companyOptions = ref<Array<{ label: string; value: string }>>([]);
 const constructionOptions = ref<Array<{ label: string; value: string }>>([]);
 const columns = [{ colKey: "companyName", title: "公司" }, { colKey: "effectiveFrom", title: "生效日" }, { colKey: "endedAt", title: "停止日" }, { colKey: "status", title: "状态" }, { colKey: "operation", title: "操作" }];
 
 function ownsLoad(requestId: number, expectedProjectId: string) { return requestId === loadRequestId && props.projectId === expectedProjectId; }
 function ownsProject(expectedProjectId: string, expectedGeneration: number) { return props.projectId === expectedProjectId && projectGeneration === expectedGeneration; }
-function resetProjectForms() { profile.value = null; profileDefinition.value = null; profileErrors.value = []; profileDraft.value = { sceneKey: "project_operating_profile", values: {} }; companyOptions.value = []; constructionOptions.value = []; message.value = ""; Object.assign(participantForm, { companyEntityId: "", effectiveFrom: "", changeReason: "" }); Object.assign(constructionForm, { businessPartyVersionId: "", effectiveFromDate: "", changeReason: "" }); Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationParticipantId.value = ""; deactivationVisible.value = false; saving.value = false; adding.value = false; savingConstruction.value = false; deactivationSaving.value = false; }
+function resetProjectForms() { profile.value = null; profileDefinition.value = null; profileErrors.value = []; profileDraft.value = { sceneKey: "project_operating_profile", values: {} }; constructionDefinition.value = null; constructionErrors.value = []; constructionDraft.value = { sceneKey: "project_construction_enterprise", values: {} }; companyOptions.value = []; constructionOptions.value = []; message.value = ""; Object.assign(participantForm, { companyEntityId: "", effectiveFrom: "", changeReason: "" }); Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationParticipantId.value = ""; deactivationVisible.value = false; saving.value = false; adding.value = false; savingConstruction.value = false; deactivationSaving.value = false; }
 async function loadProfileDefinition(projectId: string) {
   const definition = await fetchBusinessEntryDefinition("project_operating_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
   if (definition.key !== "project_operating_profile") throw new Error("项目经营档案字段暂不可用，请刷新后重试");
+  return definition;
+}
+async function loadConstructionDefinition(projectId: string) {
+  const definition = await fetchBusinessEntryDefinition("project_construction_enterprise", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
+  if (definition.key !== "project_construction_enterprise") throw new Error("施工企业填写规则暂不可用，请刷新后重试");
   return definition;
 }
 async function load() {
@@ -209,10 +212,11 @@ async function load() {
     profileErrors.value = [];
     profileDraft.value = { sceneKey: "project_operating_profile", target: { entityType: "project", entityId: expectedProjectId }, values: { operatingLedgerEffectiveDate: value.operatingLedgerEffectiveDate, takeoverCompletedDate: value.takeoverCompletedDate, takeoverStatus: value.takeoverStatus } };
     if (value.canManage) {
-      const [definition, companies, enterprises] = await Promise.all([loadProfileDefinition(expectedProjectId), fetchProjectParticipatingCompanyOptions(expectedProjectId), fetchProjectConstructionEnterpriseOptions(expectedProjectId)]);
+      const [definition, companies, enterprises, enterpriseDefinition] = await Promise.all([loadProfileDefinition(expectedProjectId), fetchProjectParticipatingCompanyOptions(expectedProjectId), fetchProjectConstructionEnterpriseOptions(expectedProjectId), loadConstructionDefinition(expectedProjectId)]);
       if (!ownsLoad(requestId, expectedProjectId)) return;
       profileDefinition.value = definition;
       profileDraft.value.definitionVersion = definition.version;
+      constructionDefinition.value = enterpriseDefinition;
       companyOptions.value = companies.map(company => ({ label: company.name, value: company.id }));
       constructionOptions.value = enterprises.map(enterprise => ({ label: `${enterprise.name}${enterprise.creditCode ? ` · ${enterprise.creditCode}` : ""} · 第 ${enterprise.versionNo} 版`, value: enterprise.id }));
     } else { companyOptions.value = []; constructionOptions.value = []; }
@@ -254,8 +258,35 @@ async function addParticipant() { const expectedProjectId = props.projectId; con
 function deactivate(id: string) { deactivationParticipantId.value = id; Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationVisible.value = true; }
 async function confirmDeactivate(endedOn: string, changeReason: string) { if (!endedOn || !changeReason) { tone.value = "error"; message.value = "请填写停止日期和原因"; return; } const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; const participantId = deactivationParticipantId.value; const payload = { endedOn, changeReason }; deactivationSaving.value = true; await deactivateProjectParticipatingCompany(expectedProjectId, participantId, payload).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; deactivationVisible.value = false; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("已停止该公司新增业务"); if (ownsProject(expectedProjectId, expectedGeneration)) deactivationSaving.value = false; }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) { fail(error); deactivationSaving.value = false; } }); }
 async function remove(id: string) { const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; await removeProjectParticipatingCompany(expectedProjectId, id).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("参与公司已删除"); }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }); }
-async function saveConstructionEnterprise() { const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; const payload = { businessPartyVersionId: constructionForm.businessPartyVersionId, effectiveFrom: `${constructionForm.effectiveFromDate}T00:00:00.000Z`, changeReason: constructionForm.changeReason }; savingConstruction.value = true; await assignProjectConstructionEnterprise(expectedProjectId, payload).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("施工企业已保存"); if (ownsProject(expectedProjectId, expectedGeneration)) savingConstruction.value = false; }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) { fail(error); savingConstruction.value = false; } }); }
+async function saveConstructionEnterprise() {
+  if (savingConstruction.value || !profile.value?.canManage || profile.value.constructionEnterprise?.isLocked || !constructionDefinition.value) return;
+  const expectedProjectId = props.projectId;
+  const expectedGeneration = projectGeneration;
+  const values = { ...constructionDraft.value.values };
+  savingConstruction.value = true;
+  constructionErrors.value = [];
+  message.value = "";
+  try {
+    const definition = await loadConstructionDefinition(expectedProjectId);
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    constructionDefinition.value = definition;
+    const validation = await validateBusinessEntryDraft({ scope: "project", projectId: expectedProjectId }, {
+      sceneKey: definition.key, definitionVersion: definition.version,
+      target: { entityType: "project", entityId: expectedProjectId }, values
+    }, "edit");
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    constructionErrors.value = validation.errors;
+    if (!validation.valid) return;
+    const { businessPartyVersionId, effectiveFrom, changeReason } = validation.values;
+    if (typeof businessPartyVersionId !== "string" || typeof effectiveFrom !== "string" || typeof changeReason !== "string") throw new Error("请检查施工企业填写内容");
+    await assignProjectConstructionEnterprise(expectedProjectId, { businessPartyVersionId, effectiveFrom: `${effectiveFrom}T00:00:00.000Z`, changeReason });
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    await load();
+    if (ownsProject(expectedProjectId, expectedGeneration)) ok("施工企业已保存");
+  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(expectedProjectId, expectedGeneration)) savingConstruction.value = false; }
+}
 watch(() => props.projectId, () => { projectGeneration += 1; resetProjectForms(); load(); }); onMounted(load);
 </script>
 
-<style scoped>.profile-panel{display:flex;width:100%;padding-top:var(--jg-space-md)}.inline-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:var(--jg-space-sm);margin-top:var(--jg-space-md)}@container jg-page (max-width:840px){.inline-form{grid-template-columns:1fr}}</style>
+<style scoped>.profile-panel{display:flex;width:100%;padding-top:var(--jg-space-md)}.construction-form{display:grid;gap:var(--jg-space-sm);margin-top:var(--jg-space-md)}.inline-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:var(--jg-space-sm);margin-top:var(--jg-space-md)}@container jg-page (max-width:840px){.inline-form{grid-template-columns:1fr}}</style>

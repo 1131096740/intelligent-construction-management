@@ -166,6 +166,11 @@ const resolveSettlementVersion = async ({ target, operation, prisma }: Parameter
 };
 
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
+  globalDefinition("project_construction_enterprise", "project", "项目施工企业", [
+    textField("businessPartyVersionId", "施工企业", projectFinanceRoles, { type: "counterparty", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("effectiveFrom", "生效日", projectFinanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("changeReason", "设置/变更原因", projectFinanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
+  ]),
   globalDefinition("project_rename", "project", "项目名称", [
     textField("name", "项目名称", projectMaintenanceRoles, {
       required: true,
@@ -326,6 +331,11 @@ export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionR
 
 export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAccessPolicy[] =
   Object.freeze([
+    {
+      sceneKey: "project_construction_enterprise",
+      target: { scope: "project", entityType: "project" },
+      permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
+    },
     {
       sceneKey: "project_rename",
       target: { scope: "project", entityType: "project" },

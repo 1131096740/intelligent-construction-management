@@ -4,10 +4,10 @@
 
 | 活动填写入口 | 现有用户链与领域权威 | 统一接线现状 | 剩余工作及边界 |
 | --- | --- | --- | --- |
-| 项目创建：编号、名称 | `ProjectOperatingOverviewPage.vue` → fresh create-capability → `POST /projects`；controller 限董事长/总经理，原服务事务创建并审计 | 有领域 capability，没有该动作的场景定义/统一预检 | 需要共享 owner 明确登记现有创建 target 与字段适配；不拿经营档案项目 target 冒充新建目标，不改创建权限 |
+| 项目创建：编号、名称 | `ProjectOperatingOverviewPage.vue` → fresh create-capability → `POST /projects`；controller 限董事长/总经理，原服务事务创建并审计 | 有领域 capability，没有该动作的场景定义/统一预检；原 guard 无项目上下文时合并任意项目岗位，不能直接换成只查全局岗位的 legacy global 场景 | 等待用户确认兼容模式：原 capability 附定义及短期创建目标、同原 guard 的只读领域预检、原 POST 不变。不得擅自 global-only 缩权，不拿经营档案 target 冒充新建目标 |
 | 项目重命名：名称 | 同页面 → fresh update-capability → `PATCH /projects/:projectId`；原事务更新并审计 | 第二片已接 `project_rename` 单名称定义、统一表单和 fresh validate，再沿原 capability/PATCH 写入 | 原董事长/总经理 global + 当前项目岗位范围不变，技术管理员及异项目岗位不能借用；当前项目桌面/手机用户链通过，未声明项目切换交互覆盖或冻结写链完成 |
 | 经营档案：经营账生效日、接管完成日、接管状态 | `ProjectOperatingProfilePanel.vue` → `PATCH /projects/:projectId/operating-profile`；`ProjectOperatingProfileService.updateProfileInTransaction` 原事务校验、更新、审计 | 首片已接入共享表单、fresh 三字段定义和 validate；专属 resolver 复用原领域权限入口，项目 scope/target 严格匹配 | 本地真实 HTTP/PG16 与桌面/手机浏览器已验证失败保留输入且零 PATCH、成功原领域写入；未新增冻结写链，不能据此声明整票快照冻结或全门通过。其余入口仍按下列缺口推进 |
-| 唯一施工企业：候选版本、生效日、变更原因 | 同 panel → options → `POST /projects/:projectId/construction-enterprise`；原 `ProjectService.assignAffiliate` 处理版本、锁定及原审计 | 领域可写入口存在，无独立统一场景定义/校验接线 | 需共享登记支持原版本候选、日期和原因；保留首笔事实锁定，不开放任意主体或扩权 |
+| 唯一施工企业：候选版本、生效日、变更原因 | 同 panel → options → `POST /projects/:projectId/construction-enterprise`；原 `ProjectService.assignAffiliate` 处理版本、锁定及原审计 | 第三片已接 `project_construction_enterprise` 定义、统一表单、fresh validate，候选仍来自原 options | HTTP 和桌面/手机用户链通过；原事务继续裁决当前候选、锁定、生效期和审计，不把字段预检当业务状态最终授权。未扩权或新增冻结写链 |
 | 新增参与公司：公司、生效日、加入原因 | 同 panel → options → `POST /projects/:projectId/participating-companies`；原领域事务维护版本与有效区间 | 无独立统一场景定义/校验接线 | 需共享登记现有候选及字段，保留 #284 时间和连续覆盖规则 |
 | 停止参与：停止日、原因 | 同 panel 的确认弹窗 → `PATCH /projects/:projectId/participating-companies/:participantId/deactivation` | 无独立统一场景定义/校验接线 | 需明确原参与关系 target/项目归属解析；保留领域停止规则，不能仅按项目 ID 代替参与关系身份 |
 | 删除无正式事实的参与关系 | 同 panel 的专用确认 → `DELETE /projects/:projectId/participating-companies/:participantId` | 非字段录入动作；既有领域守卫 | 保留原条件及确认交互，作为邻接回归，不造新字段表单 |
@@ -42,3 +42,14 @@
 - 本片两个 Web src 文件 ESLint 均 0 errors / 0 warnings，新增表单的四条格式警告已修复。未执行整票全门、CI、push 或生产操作。
 
 剩余范围为项目创建、施工企业绑定、参与主体新增/停止及整票派生验收与冻结策略核对；不能以本片替代这些入口。
+
+## 第三片：施工企业绑定
+
+第二片已由主控保存为 `0bd5914970af1bcd343b4dd575d9487316b3a8ee`。第三片为此后的本地差异：
+
+- HTTP 场景未登记 404 RED → 17/17 GREEN；公开合作单位创建生成合成版本，原 options 读取，原施工企业 POST 写入并由经营档案 GET 回读；项目财务允许、全局财务/董事长拒绝，空白原因预检失败且经营档案仍无绑定。
+- 浏览器旧表单缺统一 region RED → 桌面 Chrome / 手机 WebKit 6/6 GREEN（包含档案、名称回归）。日期测试按 TDesign 默认只读输入规则真实点击日历，不绕过控件；验证空白原因保留、零 POST、成功原写入、版本/日期回读及表单无横向溢出。
+- 共享接线窄回归 41/41、原领域窄回归 22/22、Web 结构 37/37；API typecheck/lint、Web typecheck/E2E typecheck、修改页面 ESLint 0 errors / 0 warnings、UI rules 和 diff check 通过。
+- 原 controller、领域事务、Schema 均未改。最终状态约束仍在 `assignAffiliate` 内，字段预检不能替代锁定/版本/日期约束。运行器最终自身容器已清理。
+
+当前仍未完成：项目创建（兼容权限模式待确认）、参与主体新增/停止、整票冻结策略与全门；未推送、未执行 CI 或生产操作。

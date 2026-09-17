@@ -102,6 +102,15 @@ export class BusinessEntrySceneAuthorizationService {
       BUSINESS_ENTRY_SCENE_DEFINITIONS,
       [
         {
+          sceneKey: "project_construction_enterprise",
+          resolve: (context) => {
+            if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
+              throw new BadRequestException("施工企业设置目标与当前项目不一致");
+            }
+            return projectOperatingProfiles.assertCanMaintainBusinessEntry(context.projectId, context.actorUserId, context.tx);
+          }
+        },
+        {
           sceneKey: "project_rename",
           resolve: (context) => {
             if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
