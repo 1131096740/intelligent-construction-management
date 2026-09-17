@@ -2100,6 +2100,7 @@ describe("ContractService", () => {
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
       draftData: {
+        contractName: "",
         companyEntitySelection: {
           id: "entity-1",
           versionId: "entity-version-3",
@@ -2263,6 +2264,34 @@ describe("ContractService", () => {
       authorizations as never
     );
     connectBusinessEntryFixture(service, tx, version, "user-contract-staff");
+
+    const blankNameFailure = await service.submitApproval(
+      "contract-version-1",
+      "user-contract-staff",
+      {
+        expectedRevision: 4,
+        idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457100"
+      },
+      "opaque-lease-token"
+    ).catch((error: unknown) => error);
+    expect(blankNameFailure).toBeInstanceOf(BadRequestException);
+    expect((blankNameFailure as BadRequestException).getResponse()).toMatchObject({
+      valid: false,
+      sceneKey: "contract_basic",
+      errors: [expect.objectContaining({
+        code: "required_field",
+        fieldKey: "contractName"
+      })]
+    });
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect((tx as unknown as {
+      businessEntrySubmissionSnapshot: { create: jest.Mock };
+    }).businessEntrySubmissionSnapshot.create).not.toHaveBeenCalled();
+    expect(tx.contractDraftSubmissionRequest.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    Reflect.deleteProperty(version.draftData, "contractName");
 
     const result = await service.submitApproval(
       "contract-version-1",
