@@ -1,5 +1,5 @@
 import type { BusinessEntryFieldDefinition, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
-import { formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
 type PaymentRequestFacts = {
   code: string; sourceType: string; paymentSubjectType: string;
@@ -45,7 +45,7 @@ export function paymentRequestEntryValues(facts: PaymentRequestFacts): Record<st
     settlementId: facts.settlementId, contractId: facts.contractId, contractVersionId: facts.contractVersionId,
     paymentTermsVersionId: facts.paymentTermsVersionId, paymentTermsStageId: facts.paymentTermsStageId,
     paymentMatter: facts.paymentMatter, amountCalculationExplanation: facts.amountCalculationExplanation,
-    requestedAmountYuan: formatMoneyCentsAsYuan(typeof facts.requestedAmountCents === "bigint" ? facts.requestedAmountCents : BigInt(facts.requestedAmountCents))
+    requestedAmountYuan: formatMoneyCentsAsPlainYuan(typeof facts.requestedAmountCents === "bigint" ? facts.requestedAmountCents : BigInt(facts.requestedAmountCents))
   };
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null && value !== undefined && value !== ""));
 }

@@ -1,5 +1,5 @@
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
-import { formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
 const approvalRoles = ["chairman", "general_manager", "finance_director"] as const;
 
@@ -34,5 +34,5 @@ export const PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINITION: BusinessEntrySceneDefinit
 };
 
 export function paymentApprovalAmountEntryValues(approvedAmountCents: bigint) {
-  return { approvedAmountYuan: formatMoneyCentsAsYuan(approvedAmountCents) };
+  return { approvedAmountYuan: formatMoneyCentsAsPlainYuan(approvedAmountCents) };
 }

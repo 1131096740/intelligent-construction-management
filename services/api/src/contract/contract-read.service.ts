@@ -1575,7 +1575,10 @@ export class ContractReadService {
       const response = receipt.responseSnapshot;
       if (!response || typeof response !== "object" || Array.isArray(response)) return [];
       const billSnapshots = Array.isArray(response.billEntrySnapshots) ? response.billEntrySnapshots : [];
-      return [response.businessEntrySnapshot, response.templateEntrySnapshot, ...billSnapshots].flatMap((snapshot) => {
+      const partySnapshots = Array.isArray(response.partyEntrySnapshots) ? response.partyEntrySnapshots : [];
+      const paymentStageSnapshots = Array.isArray(response.paymentStageEntrySnapshots) ? response.paymentStageEntrySnapshots : [];
+      return [response.businessEntrySnapshot, response.templateEntrySnapshot, ...billSnapshots,
+        response.commercialEntrySnapshot, ...partySnapshots, response.paymentTermsEntrySnapshot, ...paymentStageSnapshots].flatMap((snapshot) => {
         if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return [];
         return [{
         approvalInstanceId: receipt.approvalInstanceId,

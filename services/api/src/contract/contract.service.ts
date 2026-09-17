@@ -11,7 +11,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
-import { contractBasicEntryValues, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
+import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
 import {
   approvalElapsedHours,
   canRemindApproval,
@@ -42,6 +42,7 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
   dbMoneyToBigInt,
+  formatMoneyCentsAsPlainYuan,
   formatMoneyCentsAsYuan,
   parseMoneyCentsInput
 } from "../money/decimal-money";
@@ -2125,6 +2126,70 @@ export class ContractService {
             }, submittedAt.toISOString()));
           }
         }
+        const freezeEntry = async (sceneKey: string, definitionVersion: number, entityType: string, entityId: string, values: Record<string, unknown>) => {
+          const previous = await tx.businessEntrySubmissionSnapshot.findFirst({
+            where: { projectId: contract.projectId, sceneKey, entityType, entityId },
+            orderBy: { revision: "desc" }, select: { revision: true }
+          });
+          return this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, actorUserId, {
+            sceneKey, definitionVersion,
+            target: { projectId: contract.projectId, entityType, entityId },
+            expectedRevision: previous?.revision ?? 0, values
+          }, submittedAt.toISOString());
+        };
+        const commercialEntrySnapshot = await freezeEntry(
+          CONTRACT_COMMERCIAL_ENTRY_DEFINITION.key, CONTRACT_COMMERCIAL_ENTRY_DEFINITION.version,
+          "contract_version", version.id, contractCommercialEntryValues(version)
+        );
+        const parties = await tx.contractPartySnapshot.findMany({
+          where: { contractVersionId: version.id }, orderBy: [{ displayOrder: "asc" }, { id: "asc" }]
+        });
+        const partyEntrySnapshots: BusinessEntryFrozenSnapshot[] = [];
+        for (const party of parties) {
+          const snapshot = this.jsonObject(party.snapshot);
+          partyEntrySnapshots.push(await freezeEntry(
+            CONTRACT_PARTY_ENTRY_DEFINITION.key, CONTRACT_PARTY_ENTRY_DEFINITION.version,
+            "contract_party_snapshot", party.id,
+            Object.fromEntries(Object.entries({
+              roleName: contractPartyRoleName(party.roleKey), displayOrder: party.displayOrder,
+              name: snapshot.name, unifiedSocialCreditCode: snapshot.unifiedSocialCreditCode,
+              legalRepresentative: snapshot.legalRepresentative, address: snapshot.address,
+              contactName: snapshot.contactName, contactPhone: snapshot.contactPhone
+            }).filter(([, value]) => value !== null && value !== undefined && value !== ""))
+          ));
+        }
+        const paymentTerms = await tx.paymentTermsVersion.findFirst({
+          where: { contractVersionId: version.id }, orderBy: { versionNo: "desc" }
+        });
+        const paymentTermsEntrySnapshot = paymentTerms ? await freezeEntry(
+          CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION.key, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION.version,
+          "payment_terms_version", paymentTerms.id, { originalText: paymentTerms.originalText }
+        ) : null;
+        const paymentStageEntrySnapshots: BusinessEntryFrozenSnapshot[] = [];
+        if (paymentTerms) {
+          const stages = await tx.paymentTermsStage.findMany({
+            where: { paymentTermsVersionId: paymentTerms.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+          });
+          for (const stage of stages) {
+            paymentStageEntrySnapshots.push(await freezeEntry(
+              CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION.key, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION.version,
+              "payment_terms_stage", stage.id,
+              Object.fromEntries(Object.entries({
+                name: stage.name, stageType: stage.stageType, basis: stage.basis,
+                ratioBps: stage.ratioBps,
+                fixedAmountYuan: stage.fixedAmountCents === null ? null : formatMoneyCentsAsPlainYuan(stage.fixedAmountCents),
+                triggerAnchor: stage.triggerAnchor, triggerEvent: stage.triggerEvent,
+                dueDays: stage.dueDays, advanceDeductionMode: stage.advanceDeductionMode,
+                advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+                advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps,
+                requiresInvoice: stage.requiresInvoice, allowsEarlyPayment: stage.allowsEarlyPayment,
+                allowsInstallments: stage.allowsInstallments,
+                retentionBps: stage.retentionBps,
+                originalText: stage.originalText
+              }).filter(([, value]) => value !== null && value !== undefined && value !== ""))
+            ));
+          }
+        }
         const submitted = await tx.contractVersion.updateMany({
           where: {
             id: version.id,
@@ -2210,7 +2275,11 @@ export class ContractService {
             ).toISOString(),
             businessEntrySnapshot,
             templateEntrySnapshot,
-            billEntrySnapshots
+            billEntrySnapshots,
+            commercialEntrySnapshot,
+            partyEntrySnapshots,
+            paymentTermsEntrySnapshot,
+            paymentStageEntrySnapshots
           };
           await tx.contractDraftSubmissionRequest.create({
             data: {

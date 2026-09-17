@@ -1,6 +1,7 @@
 import { contractFieldsForBusinessUse, isContractBillCustomColumn, type ContractBillDefinition, type ContractFieldDefinition, type BusinessEntryFieldDefinition, type BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import { BadRequestException } from "@nestjs/common";
 import type { ContractVersion, Prisma } from "@prisma/client";
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
 const contractEditors = ["contract_staff", "contract_director"] as const;
 
@@ -33,6 +34,91 @@ export const CONTRACT_BASIC_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
     headerField("companyEntityId", "我方签约主体", "company", 2)
   ],
   rules: []
+};
+
+const selectField = (key: string, label: string, order: number, options: Array<{ value: string; label: string }>) => ({
+  ...headerField(key, label, "single_select", order), options
+});
+
+export const CONTRACT_COMMERCIAL_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "contract_commercial_terms", entityType: "contract_version", version: 1,
+  name: "合同计价与税务", description: "合同提交时的计价、金额与税务事实。", rules: [],
+  fields: [
+    selectField("pricingNature", "计价性质", 1, [{ value: "fixed_total", label: "固定总价" }, { value: "provisional_total", label: "暂定总价" }, { value: "unit_price", label: "固定单价" }, { value: "framework", label: "框架合同" }]),
+    selectField("amountSource", "金额来源", 2, [{ value: "bill_sum", label: "清单汇总" }, { value: "manual", label: "手工填写" }]),
+    { ...headerField("contractAmountYuan", "合同金额", "money", 3), unit: "元", precision: 2 },
+    { ...headerField("estimatedAmountYuan", "预计发生金额", "money", 4), required: false, unit: "元", precision: 2 },
+    { ...headerField("amountAdjustmentReason", "金额调整原因", "long_text", 5), required: false },
+    { ...selectField("invoiceType", "发票类型", 6, [{ value: "vat_general", label: "增值税普通发票" }, { value: "vat_special", label: "增值税专用发票" }]), required: false },
+    selectField("taxMode", "税率模式", 7, [{ value: "single_rate", label: "单一税率" }, { value: "multiple_rate", label: "特殊多税率" }]),
+    { ...headerField("defaultTaxRatePercent", "默认税率", "number", 8), required: false, unit: "%", precision: 6 },
+    selectField("taxFactSource", "税务事实来源", 9, [{ value: "contract_document", label: "合同文件" }])
+  ]
+};
+
+export function contractCommercialEntryValues(version: ContractVersion) {
+  return Object.fromEntries(Object.entries({
+    pricingNature: version.pricingNature, amountSource: version.amountSource,
+    contractAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(version.amountCents.toString())),
+    estimatedAmountYuan: version.estimatedAmountCents == null ? null : formatMoneyCentsAsPlainYuan(BigInt(version.estimatedAmountCents.toString())),
+    amountAdjustmentReason: version.amountAdjustmentReason,
+    invoiceType: version.invoiceType, taxMode: version.taxMode,
+    defaultTaxRatePercent: version.defaultTaxRatePercent == null ? null : Number(version.defaultTaxRatePercent.toString()),
+    taxFactSource: version.taxFactSource
+  }).filter(([, value]) => value !== null && value !== undefined && value !== ""));
+}
+
+export const CONTRACT_PARTY_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "contract_party", entityType: "contract_party_snapshot", version: 1,
+  name: "合同主体", description: "合同提交时的主体快照。", rules: [],
+  fields: [
+    headerField("roleName", "主体位置", "text", 1),
+    { ...headerField("displayOrder", "主体顺序", "number", 2), precision: 0 },
+    headerField("name", "主体名称", "text", 3),
+    { ...headerField("unifiedSocialCreditCode", "统一社会信用代码", "text", 4), required: false },
+    { ...headerField("legalRepresentative", "法定代表人", "text", 5), required: false },
+    { ...headerField("address", "地址", "text", 6), required: false },
+    { ...headerField("contactName", "联系人", "text", 7), required: false },
+    { ...headerField("contactPhone", "联系电话", "text", 8), required: false }
+  ]
+};
+
+const CONTRACT_PARTY_ROLE_NAMES: Readonly<Record<string, string>> = {
+  party_a: "甲方", party_b: "乙方", party_c: "丙方", guarantor: "担保单位",
+  consortium_member: "联合体成员", other: "其他"
+};
+
+export function contractPartyRoleName(roleKey: string) {
+  return CONTRACT_PARTY_ROLE_NAMES[roleKey] ?? "主体位置待确认";
+}
+
+export const CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "contract_payment_terms", entityType: "payment_terms_version", version: 1,
+  name: "付款条款", description: "合同提交时的付款条款原文。", rules: [],
+  fields: [{ ...headerField("originalText", "付款条款原文", "long_text", 1) }]
+};
+
+export const CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "contract_payment_stage", entityType: "payment_terms_stage", version: 1,
+  name: "付款阶段", description: "合同提交时的付款阶段。", rules: [],
+  fields: [
+    headerField("name", "阶段名称", "text", 1),
+    selectField("stageType", "阶段类型", 2, Object.entries({ advance: "预付款", progress: "进度款", final: "结算款", retention: "质保金", other: "其他" }).map(([value, label]) => ({ value, label }))),
+    selectField("basis", "付款依据", 3, Object.entries({ contract_amount: "合同金额", current_settlement: "当期结算", cumulative_settlement: "累计结算", fixed_amount: "固定金额", manual_amount: "手工金额" }).map(([value, label]) => ({ value, label }))),
+    { ...headerField("ratioBps", "付款比例", "number", 4), required: false, unit: "万分比", precision: 0 },
+    { ...headerField("fixedAmountYuan", "固定金额", "money", 5), required: false, unit: "元", precision: 2 },
+    selectField("triggerAnchor", "触发节点", 6, Object.entries({ contract_effective: "合同生效", settlement_effective: "结算生效", final_settlement_effective: "最终结算生效" }).map(([value, label]) => ({ value, label }))),
+    headerField("triggerEvent", "触发说明", "text", 7),
+    { ...headerField("dueDays", "付款期限", "number", 8), unit: "天", precision: 0 },
+    selectField("advanceDeductionMode", "预付款扣回方式", 9, Object.entries({ none: "不扣回", per_settlement_ratio: "每期结算按比例扣回", after_cumulative_settlement_ratio: "累计结算达标后扣回" }).map(([value, label]) => ({ value, label }))),
+    { ...headerField("advanceDeductionRatioBps", "预付款扣回比例", "number", 10), required: false, precision: 0 },
+    { ...headerField("advanceDeductionStartRatioBps", "预付款起扣比例", "number", 11), required: false, precision: 0 },
+    headerField("requiresInvoice", "要求发票", "boolean", 12),
+    headerField("allowsEarlyPayment", "允许提前付款", "boolean", 13),
+    headerField("allowsInstallments", "允许分次付款", "boolean", 14),
+    { ...headerField("retentionBps", "质保金比例", "number", 15), required: false, precision: 0 },
+    { ...headerField("originalText", "阶段原文", "long_text", 16) }
+  ]
 };
 
 export function contractBasicEntryValues(draftData: unknown) {

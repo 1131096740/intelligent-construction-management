@@ -137,6 +137,43 @@ const archiveDetailBody = contractDetail({
   disabledReasons: []
 });
 
+test("renders frozen contract entry history on desktop and 390px", async ({ page }) => {
+  await page.route("**/api/auth/login", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    user: { id: "ui-p1-contract-user", name: "合同验收用户", phone: "13900000000", mustChangePassword: false,
+      roleKeys: ["contract_director", "contract_staff", "project_manager"], globalRoleKeys: ["contract_director"] },
+    tokens: { accessToken: "ui-p1-access", refreshToken: "ui-p1-refresh", expiresIn: 900 }
+  }) }));
+  await page.route("**/api/approval-delegations/user-options", (route) => route.fulfill({ contentType: "application/json", body: "[]" }));
+  await page.route("**/api/contracts/version-ui-approval/change-eligibility", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ eligible: false, reason: "当前版本尚未生效", currentEffective: null, activeChange: null }) }));
+  await page.route("**/api/contracts/HT-UI-001", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(approvalDetailBody) }));
+  await login(page);
+  await page.goto("/contracts/HT-UI-001");
+  await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "合同主体业务台账表格" })).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "付款阶段业务台账表格" })).toHaveCount(2);
+  await expect(page.getByText("主体版本", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("business-party-version-uuid", { exact: true })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("region", { name: "合同主体业务台账表格" })).toHaveCount(2);
+  const roleInputs = page.locator('[data-field="roleName"] input');
+  await expect(roleInputs).toHaveCount(2);
+  await expect(roleInputs.nth(0)).toBeVisible();
+  await expect(roleInputs.nth(0)).toHaveValue("乙方");
+  await expect(roleInputs.nth(0)).toBeDisabled();
+  await expect(roleInputs.nth(1)).toHaveValue("担保单位");
+  const nameInputs = page.locator('[data-field="name"] input');
+  await expect(nameInputs).toHaveCount(4);
+  for (const [index, value] of ["昆明建材供应有限公司", "建设担保有限公司", "当期结算款", "质保金"].entries()) {
+    await expect(nameInputs.nth(index)).toBeVisible();
+    await expect(nameInputs.nth(index)).toHaveValue(value);
+    await expect(nameInputs.nth(index)).toBeDisabled();
+  }
+  await expect(page.getByText("business-party-version-uuid", { exact: true })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+});
+
 test("captures the contract P1.2 ledger and detail states", async ({ page }) => {
   test.setTimeout(90_000);
   mkdirSync(screenshotDir, { recursive: true });
@@ -289,7 +326,18 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await expect(page.locator(".business-detail-header")).toContainText("合同金额");
   await expect(page.locator(".business-detail-header")).toContainText("¥1,200,000.00");
   await expect(page.locator(".overview-section").first()).not.toContainText("合同金额");
+  await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "合同主体业务台账表格" }).first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "合同主体业务台账表格" })).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "付款阶段业务台账表格" })).toHaveCount(2);
+  await expect(page.getByText("主体版本", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("business-party-version-uuid", { exact: true })).toHaveCount(0);
   await captureRequiredViewports(page, "contract-detail", "contract-detail-overview");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("region", { name: "合同主体业务台账表格" }).first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "合同主体业务台账表格" })).toHaveCount(2);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
 
   await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "正式 PDF 预览" })).toBeVisible();
@@ -359,6 +407,7 @@ function contractDetail(input: {
   disabledReasons: string[];
 }) {
   return {
+    businessEntrySubmissions: contractBusinessEntrySubmissions(input.versionId),
     id: input.id,
     contractVersionId: input.versionId,
     title: input.title,
@@ -536,6 +585,36 @@ function contractDetail(input: {
       { label: "审计日志", to: "/audit" }
     ]
   };
+}
+
+function contractBusinessEntrySubmissions(contractVersionId: string) {
+  const snapshot = (sceneKey: string, entityType: string, entityId: string, name: string, fields: Array<[string, string, "text" | "money"]>, values: Record<string, unknown>) => ({
+    approvalInstanceId: "approval-ui-contract",
+    snapshot: {
+      sceneKey, definitionVersion: 1,
+      target: { projectId: "project-ui", entityType, entityId },
+      revision: 1, frozenAt: "2026-07-12T08:30:00.000Z",
+      definition: {
+        key: sceneKey, entityType, name, description: `${name}提交快照`, version: 1, rules: [],
+        fields: fields.map(([key, label, type], index) => ({
+          key, label, type, order: index + 1, description: label, example: label, scope: "header",
+          unit: type === "money" ? "元" : "", precision: type === "money" ? 2 : 0, required: true,
+          permissions: { view: ["contract_staff"], edit: ["contract_staff"] },
+          bulk: { enabled: false, strategy: "replace" }, excel: { column: label, paste: "single", errorLocation: "cell" },
+          display: { formHint: label, gridColumn: label, mobilePriority: index + 1, readonlyText: label }
+        }))
+      },
+      values
+    }
+  });
+  return [
+    snapshot("contract_commercial_terms", "contract_version", contractVersionId, "合同计价与税务", [["contractAmountYuan", "合同金额", "money"]], { contractAmountYuan: "1200000.00" }),
+    snapshot("contract_party", "contract_party_snapshot", "party-snapshot-ui", "合同主体", [["roleName", "主体位置", "text"], ["name", "主体名称", "text"]], { roleName: "乙方", name: "昆明建材供应有限公司" }),
+    snapshot("contract_party", "contract_party_snapshot", "party-snapshot-ui-2", "合同主体", [["roleName", "主体位置", "text"], ["name", "主体名称", "text"]], { roleName: "担保单位", name: "建设担保有限公司" }),
+    snapshot("contract_payment_terms", "payment_terms_version", "terms-version-ui", "付款条款", [["originalText", "付款条款原文", "text"]], { originalText: "结算归档后30天内支付" }),
+    snapshot("contract_payment_stage", "payment_terms_stage", "terms-stage-ui", "付款阶段", [["name", "阶段名称", "text"]], { name: "当期结算款" }),
+    snapshot("contract_payment_stage", "payment_terms_stage", "terms-stage-ui-2", "付款阶段", [["name", "阶段名称", "text"]], { name: "质保金" })
+  ];
 }
 
 function action(

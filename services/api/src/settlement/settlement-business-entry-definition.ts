@@ -1,5 +1,5 @@
 import type { BusinessEntryFieldDefinition, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
-import { formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
 type SettlementBasicFacts = {
   contractVersionId: string;
@@ -78,7 +78,7 @@ export function settlementBasicEntryValues(facts: SettlementBasicFacts): Record<
     isFinal: facts.isFinal,
     ...(typeof declaration?.accepted === "boolean" ? { finalDeclarationAccepted: declaration.accepted } : {}),
     ...(facts.finalCumulativeAmountCents != null
-      ? { finalCumulativeAmountYuan: formatMoneyCentsAsYuan(
+      ? { finalCumulativeAmountYuan: formatMoneyCentsAsPlainYuan(
           typeof facts.finalCumulativeAmountCents === "bigint"
             ? facts.finalCumulativeAmountCents
             : BigInt(facts.finalCumulativeAmountCents)

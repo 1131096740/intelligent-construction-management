@@ -28,7 +28,7 @@ type Workbench = {
   };
   bills: Array<{ id: string; billKey: string; revision: number }>;
 };
-type Submission = { approvalInstanceId: string; draftRevision: number; businessEntrySnapshot: BusinessEntryFrozenSnapshot; templateEntrySnapshot: BusinessEntryFrozenSnapshot; billEntrySnapshots: BusinessEntryFrozenSnapshot[] };
+type Submission = { approvalInstanceId: string; draftRevision: number; businessEntrySnapshot: BusinessEntryFrozenSnapshot; templateEntrySnapshot: BusinessEntryFrozenSnapshot; billEntrySnapshots: BusinessEntryFrozenSnapshot[]; partyEntrySnapshots: BusinessEntryFrozenSnapshot[]; commercialEntrySnapshot: BusinessEntryFrozenSnapshot; paymentTermsEntrySnapshot: BusinessEntryFrozenSnapshot; paymentStageEntrySnapshots: BusinessEntryFrozenSnapshot[] };
 if (enabled) {
   const url = new URL(process.env.DATABASE_URL ?? "");
   if (process.env.NODE_ENV === "production" ||
@@ -240,7 +240,7 @@ if (enabled) {
       expectedRevision: workbench.version.draftRevision, changedSections: ["draft"],
       draft: {
         companyEntityId: company.id, draftData: { contractName: "合成材料采购合同", fieldValues: { deliveryLocation: "合成仓库", adjustment: "-1.234e-7" } },
-        clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "10000",
+        clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "500000",
         taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" }
       },
       parties: [], bills: workbench.bills.map((bill) => ({ billKey: bill.billKey, expectedRevision: bill.revision, rows: [] })), paymentTerms: null, attachments: [],
@@ -282,7 +282,7 @@ if (enabled) {
       expectedRevision: saved.version.draftRevision, changedSections: ["draft", "parties", "payment_terms", "bills"],
       draft: {
         companyEntityId: company.id, draftData: { contractName: "合成材料采购合同", fieldValues: { deliveryLocation: "合成仓库", adjustment: "-1.234e-7" } },
-        clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "10000",
+        clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "500000",
         layoutTemplateVersionId: layout.version.id,
         taxFacts: { invoiceType: "vat_general", taxMode: "single_rate", defaultTaxRatePercent: "13", source: "contract_document" }
       },
@@ -403,9 +403,10 @@ if (enabled) {
       expect(approvals[0]).toMatchObject({ id: receipt.approvalInstanceId, applicantUserId: actorUserId, status: "in_progress" });
       expect(receipt.responseSnapshot).toMatchObject({ contractVersionId: draft.version.id, approvalInstanceId: receipt.approvalInstanceId });
       expect(before.businessEntrySubmissions?.every((entry) => entry.approvalInstanceId === receipt.approvalInstanceId)).toBe(true);
-      expect(before.businessEntrySubmissions).toHaveLength(3);
+      expect(before.businessEntrySubmissions).toHaveLength(7);
       expect(before.businessEntrySubmissions?.map((entry) => entry.snapshot.sceneKey)).toEqual([
-        "contract_basic", "contract_template_fields", "contract_bill_row"
+        "contract_basic", "contract_template_fields", "contract_bill_row", "contract_commercial_terms",
+        "contract_party", "contract_payment_terms", "contract_payment_stage"
       ]);
       expect(before.businessEntrySubmissions?.[1]?.snapshot.definition.source?.id).toBe(template.version.id);
       await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {})).rejects.toThrow("不能重复提交审批");
@@ -431,6 +432,17 @@ if (enabled) {
       definition: expect.objectContaining({ source: expect.objectContaining({ id: template.version.id, billKey: "reference" }) }),
       values: expect.objectContaining({ itemName: "合成材料", quantity: "2", unitPrice: "10", brand: "合成品牌" })
     })]);
+    expect(submitted.partyEntrySnapshots).toEqual([expect.objectContaining({
+      sceneKey: "contract_party", values: expect.objectContaining({ roleName: "乙方", displayOrder: 0, name: "合成材料供应商" })
+    })]);
+    expect(submitted.commercialEntrySnapshot).toMatchObject({
+      sceneKey: "contract_commercial_terms",
+      values: expect.objectContaining({ pricingNature: "fixed_total", amountSource: "manual", contractAmountYuan: "5000.00", invoiceType: "vat_general", taxMode: "single_rate", defaultTaxRatePercent: 13, taxFactSource: "contract_document" })
+    });
+    expect(submitted.paymentTermsEntrySnapshot).toMatchObject({ sceneKey: "contract_payment_terms", values: { originalText: "验收后付款" } });
+    expect(submitted.paymentStageEntrySnapshots).toEqual([expect.objectContaining({
+      sceneKey: "contract_payment_stage", values: expect.objectContaining({ name: "合同款", basis: "current_settlement", ratioBps: 10000, dueDays: 0, requiresInvoice: false, allowsEarlyPayment: false, allowsInstallments: true })
+    })]);
     const laterTemplate = await request<Identified>("POST", `/contract-template-versions/${template.version.id}/clone`);
     await request("PATCH", `/contract-template-versions/${laterTemplate.id}`, {
       schema: {
@@ -455,6 +467,10 @@ if (enabled) {
       approvalInstanceId: submitted.approvalInstanceId,
       snapshot: submitted.billEntrySnapshots[0]
     });
+    for (const snapshot of [submitted.commercialEntrySnapshot, ...submitted.partyEntrySnapshots,
+      submitted.paymentTermsEntrySnapshot, ...submitted.paymentStageEntrySnapshots]) {
+      expect(detail.businessEntrySubmissions).toContainEqual({ approvalInstanceId: submitted.approvalInstanceId, snapshot });
+    }
     if (entryMode === "aggregate" && paymentFinance) {
       const loginAs = async (userId: string) => {
         const identity = identities.get(userId);

@@ -1,5 +1,5 @@
 import type { BusinessEntryFieldDefinition, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
-import { formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 
 type SettlementLineFacts = {
   sourceType: string;
@@ -62,7 +62,7 @@ export function settlementLineEntryDefinition(facts?: SettlementLineFacts): Busi
 }
 
 function yuan(value: bigint | string | null | undefined) {
-  return value == null ? undefined : formatMoneyCentsAsYuan(typeof value === "bigint" ? value : BigInt(value));
+  return value == null ? undefined : formatMoneyCentsAsPlainYuan(typeof value === "bigint" ? value : BigInt(value));
 }
 
 export function settlementLineEntryValues(facts: SettlementLineFacts): Record<string, unknown> {
