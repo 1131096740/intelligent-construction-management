@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 53,
-    "fullyPendingSuites": 42,
+    "pendingFiles": 58,
+    "fullyPendingSuites": 47,
     "partiallyPendingSuites": 11,
-    "pendingTests": 243,
-    "coveredFiles": 53,
-    "coveredTests": 243,
+    "pendingTests": 290,
+    "coveredFiles": 58,
+    "coveredTests": 290,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -276,6 +276,42 @@
         "kind": "workspaceScript",
         "script": "verify:pol108-operating-projection:local",
         "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "pol113_pol115_business_entries",
+      "pendingTests": 47,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
+          "pendingTests": 23,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-business-entry-http.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+          "pendingTests": 15,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-pol113-pol115-entry-local.cjs"
       },
       "state": "executable_local_runner"
     },
