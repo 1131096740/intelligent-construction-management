@@ -1,4 +1,6 @@
 import type {
+  BusinessEntrySceneDefinition,
+  BusinessEntryValidationResult,
   ContractBusinessOptionReadModel,
   ContractApprovalWithdrawalContextReadModel,
   ContractWorkbenchLedgerPage,
@@ -1665,6 +1667,7 @@ export interface ProjectRosterRowReadModel {
 export interface CreateProjectPayload {
   code: string;
   name: string;
+  definitionVersion?: number;
 }
 
 export interface UpdateProjectPayload {
@@ -2632,6 +2635,11 @@ export function createProject(body: CreateProjectPayload) {
 export interface ProjectActionCapabilityReadModel {
   projectId?: string;
   availableActions: string[];
+  definition?: BusinessEntrySceneDefinition;
+}
+
+export function validateProjectCreation(body: CreateProjectPayload) {
+  return postJson<BusinessEntryValidationResult>("/projects/create-validation", body);
 }
 
 export function fetchProjectCreateCapability() {

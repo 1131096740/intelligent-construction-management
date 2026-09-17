@@ -10,6 +10,7 @@ import { PROJECT_OPERATING_TAKEOVER_STATUSES } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { translateOperatingProfileConstraint } from "./project-operating-constraint";
+import { PARTICIPANT_DEACTIVATION_DEFINITION, freezeParticipantDeactivation, validateParticipantDeactivation } from "./project-base-entry";
 
 export interface UpdateProjectOperatingProfileInput {
   operatingLedgerEffectiveDate?: string | null;
@@ -26,6 +27,7 @@ export interface AddProjectParticipatingCompanyInput {
 export interface DeactivateProjectParticipatingCompanyInput {
   endedOn: string;
   changeReason: string;
+  definitionVersion?: number;
 }
 
 const PROFILE_SELECT = {
@@ -118,9 +120,17 @@ export class ProjectOperatingProfileService {
       })
     ]);
     const canManage = await this.isProjectFinanceManager(actorUserId, projectId);
+    const entrySnapshots = await this.prisma.businessEntrySubmissionSnapshot.findMany({
+      where: { projectId, sceneKey: { in: ["project_create", PARTICIPANT_DEACTIVATION_DEFINITION.key] } },
+      select: { sceneKey: true, entityType: true, entityId: true, revision: true, definitionVersion: true,
+        definitionSnapshot: true, valuesSnapshot: true, frozenAt: true },
+      orderBy: { frozenAt: "asc" }
+    });
     return {
       ...toProfileReadModel(project),
       canManage,
+      deactivationDefinition: canManage ? PARTICIPANT_DEACTIVATION_DEFINITION : null,
+      entrySnapshots,
       constructionEnterprise: constructionEnterprise
         ? {
             assignmentId: constructionEnterprise.id,
@@ -429,6 +439,18 @@ export class ProjectOperatingProfileService {
     }), { mapSerializationConflict: true });
   }
 
+  async validateParticipatingCompanyDeactivation(projectId: string, participantId: string, actorUserId: string,
+    input: DeactivateProjectParticipatingCompanyInput) {
+    await this.assertProjectFinanceManager(this.prisma, actorUserId, projectId);
+    const participant = await this.prisma.projectParticipatingCompany.findFirst({ where: { id: participantId, projectId } });
+    if (!participant) throw new NotFoundException("项目参与公司不存在，请刷新后重试");
+    if (participant.endedAt) throw new BadRequestException("该公司已经停止新增业务，请刷新后重试");
+    const endedAt = requiredDateOnly(input.endedOn, "停止新增业务日期");
+    const changeReason = requiredText(input.changeReason, "请填写停止新增业务原因");
+    if (endedAt.getTime() < participant.effectiveFrom.getTime()) throw new BadRequestException("停止新增业务日期不能早于参与公司生效日");
+    return validateParticipantDeactivation(participant.id, { endedOn: dateOnly(endedAt), changeReason }, input.definitionVersion);
+  }
+
   async deactivateParticipatingCompany(
     projectId: string,
     participantId: string,
@@ -519,6 +541,8 @@ export class ProjectOperatingProfileService {
         where: { id: participant.id },
         data: { endedAt, endedByUserId: actorUserId, changeReason }
       });
+      const entrySnapshot = await freezeParticipantDeactivation(tx, this.audit, actorUserId, participant,
+        { endedOn: dateOnly(endedAt), changeReason }, input.definitionVersion);
       await this.audit.record(tx, {
         actorUserId,
         action: "project.participating_company.deactivate",
@@ -531,7 +555,7 @@ export class ProjectOperatingProfileService {
           changeReason
         }
       });
-      return toParticipatingCompanyReadModel(updated);
+      return { ...toParticipatingCompanyReadModel(updated), entrySnapshot };
     }), { mapSerializationConflict: true });
   }
 

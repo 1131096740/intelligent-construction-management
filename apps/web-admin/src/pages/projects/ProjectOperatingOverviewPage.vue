@@ -25,31 +25,11 @@
             header="项目维护"
           >
             <div class="project-maintenance-forms">
-              <form
-                class="project-create-form"
-                @submit.prevent="submitProject"
-              >
-                <label>
-                  <span>项目编号</span>
-                  <input
-                    v-model.trim="projectForm.code"
-                    required
-                  >
-                </label>
-                <label>
-                  <span>项目名称</span>
-                  <input
-                    v-model.trim="projectForm.name"
-                    required
-                  >
-                </label>
-                <button
-                  type="submit"
-                  :disabled="projectSubmitting"
-                >
-                  {{ projectSubmitting ? "新增中" : "新增项目" }}
-                </button>
-              </form>
+              <ProjectCreateForm
+                :key="projectCreateRevision"
+                :saving="projectSubmitting"
+                @save="submitProject"
+              />
               <ProjectRenameForm
                 v-if="selectedProjectId"
                 :key="selectedProjectId"
@@ -1002,6 +982,7 @@ import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
+import ProjectCreateForm from "./components/ProjectCreateForm.vue";
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
@@ -1077,11 +1058,6 @@ interface ProjectExpenseActionFormState {
   downloadPassword: string;
 }
 
-interface ProjectFormState {
-  code: string;
-  name: string;
-}
-
 const auth = useAuthStore();
 const router = useRouter();
 const projects = ref<ProjectOptionReadModel[]>([]);
@@ -1104,7 +1080,7 @@ const projectSubmitting = ref(false);
 const projectUpdating = ref(false);
 const projectMessage = ref("");
 const projectMessageTone = ref<"success" | "danger">("success");
-const projectForm = ref<ProjectFormState>({ code: "", name: "" });
+const projectCreateRevision = ref(0);
 const selectedProjectName = ref("");
 const receiptSubmitting = ref(false);
 const receiptMessage = ref("");
@@ -1492,7 +1468,7 @@ async function loadProjects() {
   }
 }
 
-async function submitProject() {
+async function submitProject(values: Parameters<typeof createProject>[0]) {
   if (!canManageProjects.value) {
     return;
   }
@@ -1507,17 +1483,14 @@ async function submitProject() {
   projectSubmitting.value = true;
   projectMessage.value = "";
   try {
-    const created = await createProjectWithCapability({
-      code: requiredText(projectForm.value.code, "项目编号"),
-      name: requiredText(projectForm.value.name, "项目名称")
-    });
+    const created = await createProjectWithCapability(values);
     const nextProjects = await fetchProjects();
     projects.value = nextProjects.some((project) => project.id === created.id)
       ? nextProjects
       : [...nextProjects, created];
     selectedProjectId.value = projects.value.find((project) => project.id === created.id)?.id ?? created.id;
     loadedProjectId.value = selectedProjectId.value;
-    projectForm.value = { code: "", name: "" };
+    projectCreateRevision.value += 1;
     syncSelectedProjectName();
     projectMessageTone.value = "success";
     projectMessage.value = "项目已新增";

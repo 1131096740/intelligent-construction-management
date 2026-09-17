@@ -142,35 +142,41 @@
       v-if="profile?.canManage"
       v-model:visible="deactivationVisible"
       header="停止参与公司新增业务"
-      :confirm-btn="{ content: '确认停止', loading: deactivationSaving, disabled: !deactivationForm.endedOn || !deactivationForm.changeReason.trim() }"
-      @confirm="confirmDeactivate(deactivationForm.endedOn, deactivationForm.changeReason.trim())"
+      :confirm-btn="{ content: '确认停止', loading: deactivationSaving, disabled: !profile.deactivationDefinition || deactivationSaving }"
+      @confirm="confirmDeactivate"
     >
-      <t-form label-align="top">
-        <t-form-item label="停止日期">
-          <t-date-picker v-model="deactivationForm.endedOn" />
-        </t-form-item>
-        <t-form-item label="原因">
-          <t-input v-model="deactivationForm.changeReason" />
-        </t-form-item>
-      </t-form>
+      <BusinessEntryForm
+        v-if="profile.deactivationDefinition"
+        v-model="deactivationDraft"
+        :definition="profile.deactivationDefinition"
+        :errors="deactivationErrors"
+        :readonly="deactivationSaving"
+      />
+      <p
+        v-if="message"
+        role="alert"
+      >
+        {{ message }}
+      </p>
     </t-dialog>
   </t-space>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, shallowRef, watch } from "vue";
+import { onMounted, ref, shallowRef, watch } from "vue";
 import { PROJECT_OPERATING_TAKEOVER_STATUSES, type BusinessEntryDraftPayload, type BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../../api/business-entry.api";
 import { formatUnknownApiError } from "../../../api/error-message";
-import { addProjectParticipatingCompany, assignProjectConstructionEnterprise, deactivateProjectParticipatingCompany, fetchProjectConstructionEnterpriseOptions, fetchProjectOperatingProfile, fetchProjectParticipatingCompanyOptions, removeProjectParticipatingCompany, updateProjectOperatingProfile, type ProjectOperatingProfileReadModel } from "../../../api/project-operating-profile.api";
+import { addProjectParticipatingCompany, assignProjectConstructionEnterprise, deactivateProjectParticipatingCompany, validateProjectParticipatingCompanyDeactivation, fetchProjectConstructionEnterpriseOptions, fetchProjectOperatingProfile, fetchProjectParticipatingCompanyOptions, removeProjectParticipatingCompany, updateProjectOperatingProfile, type ProjectOperatingProfileReadModel } from "../../../api/project-operating-profile.api";
 
 const props = defineProps<{ projectId: string }>();
 const profile = ref<ProjectOperatingProfileReadModel | null>(null);
 const loading = ref(false); const saving = ref(false); const adding = ref(false); const savingConstruction = ref(false);
 const message = ref(""); const tone = ref<"success" | "error">("success");
 const deactivationVisible = ref(false); const deactivationSaving = ref(false); const deactivationParticipantId = ref("");
-const deactivationForm = reactive({ endedOn: "", changeReason: "" });
+const deactivationDraft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_participating_company_deactivate", values: {} });
+const deactivationErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const profileDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
 const profileErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const profileDraft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_operating_profile", values: {} });
@@ -188,7 +194,7 @@ const columns = [{ colKey: "companyName", title: "公司" }, { colKey: "effectiv
 
 function ownsLoad(requestId: number, expectedProjectId: string) { return requestId === loadRequestId && props.projectId === expectedProjectId; }
 function ownsProject(expectedProjectId: string, expectedGeneration: number) { return props.projectId === expectedProjectId && projectGeneration === expectedGeneration; }
-function resetProjectForms() { profile.value = null; profileDefinition.value = null; profileErrors.value = []; profileDraft.value = { sceneKey: "project_operating_profile", values: {} }; constructionDefinition.value = null; constructionErrors.value = []; constructionDraft.value = { sceneKey: "project_construction_enterprise", values: {} }; participantDefinition.value = null; participantErrors.value = []; participantDraft.value = { sceneKey: "project_participating_company_add", values: {} }; companyOptions.value = []; constructionOptions.value = []; message.value = ""; Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationParticipantId.value = ""; deactivationVisible.value = false; saving.value = false; adding.value = false; savingConstruction.value = false; deactivationSaving.value = false; }
+function resetProjectForms() { profile.value = null; profileDefinition.value = null; profileErrors.value = []; profileDraft.value = { sceneKey: "project_operating_profile", values: {} }; constructionDefinition.value = null; constructionErrors.value = []; constructionDraft.value = { sceneKey: "project_construction_enterprise", values: {} }; participantDefinition.value = null; participantErrors.value = []; participantDraft.value = { sceneKey: "project_participating_company_add", values: {} }; companyOptions.value = []; constructionOptions.value = []; message.value = ""; deactivationDraft.value = { sceneKey: "project_participating_company_deactivate", values: {} }; deactivationErrors.value = []; deactivationParticipantId.value = ""; deactivationVisible.value = false; saving.value = false; adding.value = false; savingConstruction.value = false; deactivationSaving.value = false; }
 async function loadProfileDefinition(projectId: string) {
   const definition = await fetchBusinessEntryDefinition("project_operating_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
   if (definition.key !== "project_operating_profile") throw new Error("项目经营档案字段暂不可用，请刷新后重试");
@@ -289,8 +295,36 @@ async function addParticipant() {
   } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
   finally { if (ownsProject(expectedProjectId, expectedGeneration)) adding.value = false; }
 }
-function deactivate(id: string) { deactivationParticipantId.value = id; Object.assign(deactivationForm, { endedOn: "", changeReason: "" }); deactivationVisible.value = true; }
-async function confirmDeactivate(endedOn: string, changeReason: string) { if (!endedOn || !changeReason) { tone.value = "error"; message.value = "请填写停止日期和原因"; return; } const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; const participantId = deactivationParticipantId.value; const payload = { endedOn, changeReason }; deactivationSaving.value = true; await deactivateProjectParticipatingCompany(expectedProjectId, participantId, payload).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; deactivationVisible.value = false; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("已停止该公司新增业务"); if (ownsProject(expectedProjectId, expectedGeneration)) deactivationSaving.value = false; }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) { fail(error); deactivationSaving.value = false; } }); }
+function deactivate(id: string) {
+  deactivationParticipantId.value = id;
+  deactivationDraft.value = { sceneKey: "project_participating_company_deactivate", target: { entityType: "project_participating_company", entityId: id }, values: {} };
+  deactivationErrors.value = []; message.value = ""; deactivationVisible.value = true;
+}
+async function confirmDeactivate() {
+  if (deactivationSaving.value) return;
+  const expectedProjectId = props.projectId;
+  const expectedGeneration = projectGeneration;
+  const participantId = deactivationParticipantId.value;
+  const values = { ...deactivationDraft.value.values };
+  deactivationSaving.value = true; deactivationErrors.value = []; message.value = "";
+  try {
+    const current = await fetchProjectOperatingProfile(expectedProjectId);
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    if (!current.canManage || !current.deactivationDefinition) throw new Error("当前用户不能停止参与公司新增业务");
+    profile.value = current;
+    const payload = { endedOn: String(values.endedOn ?? ""), changeReason: String(values.changeReason ?? ""), definitionVersion: current.deactivationDefinition.version };
+    const validation = await validateProjectParticipatingCompanyDeactivation(expectedProjectId, participantId, payload);
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    deactivationErrors.value = validation.errors;
+    if (!validation.valid) return;
+    await deactivateProjectParticipatingCompany(expectedProjectId, participantId, payload);
+    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    deactivationVisible.value = false;
+    await load();
+    if (ownsProject(expectedProjectId, expectedGeneration)) ok("已停止该公司新增业务");
+  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(expectedProjectId, expectedGeneration)) deactivationSaving.value = false; }
+}
 async function remove(id: string) { const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; await removeProjectParticipatingCompany(expectedProjectId, id).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("参与公司已删除"); }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }); }
 async function saveConstructionEnterprise() {
   if (savingConstruction.value || !profile.value?.canManage || profile.value.constructionEnterprise?.isLocked || !constructionDefinition.value) return;

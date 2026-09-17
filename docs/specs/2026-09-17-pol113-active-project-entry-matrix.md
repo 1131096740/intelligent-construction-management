@@ -4,12 +4,12 @@
 
 | 活动填写入口 | 现有用户链与领域权威 | 统一接线现状 | 剩余工作及边界 |
 | --- | --- | --- | --- |
-| 项目创建：编号、名称 | `ProjectOperatingOverviewPage.vue` → fresh create-capability → `POST /projects`；controller 限董事长/总经理，原服务事务创建并审计 | 有领域 capability，没有该动作的场景定义/统一预检；原 guard 无项目上下文时合并任意项目岗位，不能直接换成只查全局岗位的 legacy global 场景 | 等待用户确认兼容模式：原 capability 附定义及短期创建目标、同原 guard 的只读领域预检、原 POST 不变。不得擅自 global-only 缩权，不拿经营档案 target 冒充新建目标 |
+| 项目创建：编号、名称 | `ProjectOperatingOverviewPage.vue` → fresh create-capability → 专属 create-validation → 原 `POST /projects`；原董事长/总经理 guard 不变 | 已获批准并实现 `project_create` 定义与统一表单；纯预检复用原字段 normalization、检查当前 definitionVersion，不创建 target/租约/token；原 POST 生成真实 Project.id 后在同事务按正式 project target 冻结 revision 1 | 本地 HTTP/PG16、桌面/390 路径通过；旧调用省略版本仍由服务端当前定义冻结。整票集成与最终固定 SHA 门禁未完成 |
 | 项目重命名：名称 | 同页面 → fresh update-capability → `PATCH /projects/:projectId`；原事务更新并审计 | 第二片已接 `project_rename` 单名称定义、统一表单和 fresh validate，再沿原 capability/PATCH 写入 | 原董事长/总经理 global + 当前项目岗位范围不变，技术管理员及异项目岗位不能借用；当前项目桌面/手机用户链通过，未声明项目切换交互覆盖或冻结写链完成 |
 | 经营档案：经营账生效日、接管完成日、接管状态 | `ProjectOperatingProfilePanel.vue` → `PATCH /projects/:projectId/operating-profile`；`ProjectOperatingProfileService.updateProfileInTransaction` 原事务校验、更新、审计 | 首片已接入共享表单、fresh 三字段定义和 validate；专属 resolver 复用原领域权限入口，项目 scope/target 严格匹配 | 本地真实 HTTP/PG16 与桌面/手机浏览器已验证失败保留输入且零 PATCH、成功原领域写入；未新增冻结写链，不能据此声明整票快照冻结或全门通过。其余入口仍按下列缺口推进 |
 | 唯一施工企业：候选版本、生效日、变更原因 | 同 panel → options → `POST /projects/:projectId/construction-enterprise`；原 `ProjectService.assignAffiliate` 处理版本、锁定及原审计 | 第三片已接 `project_construction_enterprise` 定义、统一表单、fresh validate，候选仍来自原 options | HTTP 和桌面/手机用户链通过；原事务继续裁决当前候选、锁定、生效期和审计，不把字段预检当业务状态最终授权。未扩权或新增冻结写链 |
 | 新增参与公司：公司、生效日、加入原因 | 同 panel → options → `POST /projects/:projectId/participating-companies`；原领域事务维护版本与有效区间 | 第四片已接 `project_participating_company_add` 定义、统一表单和 fresh validate；候选仍来自原 options | HTTP 与桌面/手机用户链通过，原项目财务权限、重复加入拒绝、#284 时间及连续覆盖事务规则不变；未新增冻结写链 |
-| 停止参与：停止日、原因 | 同 panel 的确认弹窗 → `PATCH /projects/:projectId/participating-companies/:participantId/deactivation` | 无独立统一场景定义/校验接线 | 需明确原参与关系 target/项目归属解析；保留领域停止规则，不能仅按项目 ID 代替参与关系身份 |
+| 停止参与：停止日、原因 | 同 panel 确认弹窗 → fresh profile definition → 专属 validate → 原 `PATCH /projects/:projectId/participating-companies/:participantId/deactivation` | 已实现 `project_participating_company_deactivate` 定义及统一表单；target 为真实 participantId，原事务锁行推导 project/company/version 后冻结 revision 1，保留原权限、锁序、领域停止规则及审计 | 公开 profile 回读持久快照，错岗/跨项目/伪归属/stale/二次停止与审计故障回滚已验证；技术坐标不在 Web 展示。整票集成门禁未完成 |
 | 删除无正式事实的参与关系 | 同 panel 的专用确认 → `DELETE /projects/:projectId/participating-companies/:participantId` | 非字段录入动作；既有领域守卫 | 保留原条件及确认交互，作为邻接回归，不造新字段表单 |
 
 ## 首片接缝与共享接线依据
@@ -63,4 +63,16 @@
 - API 窄回归 5 suites / 57 tests；Web 结构 2 files / 43 tests；API typecheck/lint、Web typecheck/E2E typecheck、UI rules 和 diff check 通过。修改页面 ESLint 0 errors / 0 warnings。最终真实 HTTP 运行器退出 0，且独立查询确认自身容器 `jiangkong-pol113-http-9ce5ed59-b94f-4e70-aab5-594a94bd2d12` 已不存在。
 - 未改 controller、领域事务或 Schema。停止操作需要真实参与关系身份；legacy project target 强制实体 ID 等于项目 ID，不能冒充参与关系。目前仅向主控提出原已授权档案回读附定义、原停止 PATCH 校验的领域接线方案，尚未修改共享 target 契约。
 
-剩余为项目创建兼容方案待用户决定、停止参与关系目标接线待协调、整票冻结策略与完整门禁；未推送、未执行 CI 或生产操作。
+以上为前四片交付时的历史记录；项目创建与停止参与后续授权及当前实现见下节。整票冻结策略与完整门禁仍待集成；未推送、未执行 CI 或生产操作。
+
+## 第五、六片：项目创建与停止参与（2026-09-17 本地 checkpoint）
+
+实现父基线为 `fd2ce6bc845d9354fe62477eb14ecec88f0d3e92`。用户已明确批准同事务校验和快照接线；本片没有新增权限、Schema、迁移、通用 target 或短期创建凭据。`CreateProjectDto` 原为 interface，创建预检提取复用原 `ProjectService` 的 `requiredTrimmed` normalization，不伪称有运行时 DTO 字段装饰器，不使用 `view` 代替创建校验。停止 DTO 沿用原日期/非空文字校验，仅增加可选 definitionVersion。
+
+- 项目创建：capability.definition 缺失的公开 RED → GREEN；POST 原事务先创建真实项目，再 registry freeze、快照持久化、freeze 审计及原 project.create 审计。预检零项目/快照/审计；空 code/name、过时定义、技术管理员和财务岗位均拒绝；本用例唯一标识的快照持久化故障令三者全零，清理后同一请求成功。
+- 停止参与：profile.definition 缺失及持久快照回读 RED → GREEN；原 Project→participant 锁序、原财务岗位/本人关系判定、覆盖/经营事实限制保持。错岗位、跨项目、客户端伪 project/company/version、过时定义、二次停止均拒绝。原停止审计的唯一合成故障令关系状态与快照原子回滚，清理后成功。DB 仅用于合成账号/岗位 bootstrap、系统边界故障注入与零残留断言；业务提交和历史回读通过公开 HTTP。
+- Web：新建项目与停止参与共用服务端字段表单，先刷新 capability/profile 及定义并预检，再调用原写 API；失败保留输入。桌面/手机使用各自独立项目/参与关系。实际日期控件提交 `YYYY-MM-DD`；日期诊断确认旧隐藏面板被广域 selector 命中，改为可见面板后通过，未绕过日期控件。失败 trace 仅保留在本机临时目录，未提交。
+- 最新本机门：一次性 PostgreSQL 16 HTTP **23/23**；真实 Desktop Chrome / iPhone 13 WebKit（390）**17 passed / 1 skipped**（既有手机重复撤权用例跳过）；项目域 API **35 suites / 803 tests**；Web 项目相关 **19 files / 173 tests**；API/Web/E2E typecheck、触及文件 lint（0 warnings）、check:ui、diff check 通过。既有全 Web lint 0 errors，历史其他页面 warnings 未改。
+- 各次一次性容器均仅清理自身；最新综合浏览器门容器 `jiangkong-pol113-http-5e09f1ef-2b92-426e-80a7-cc54645f65e1`，随后 HTTP 补充错岗/故障清理断言的容器 `jiangkong-pol113-http-4cc4c16e-f380-46d5-aee4-d11e01aea3a8` 均已删除。此前浏览器沙箱启动错误、日期 locator RED 和过时定义 500 RED 不算成功证据。
+
+剩余整票边界：本文件仅证明独立候选的第五、六片，未宣称 #113 整票完成；还需总控与 #114 冻结实现串行整合、其他四个项目入口的同事务快照策略、完整派生验收/manifest、固定 SHA 全量 release/双审/CI 及 GitHub 交付。本片不修改根 PROGRESS，不 push/PR/部署/生产操作；最终 checkpoint SHA 由外部回执绑定，文内不自指。

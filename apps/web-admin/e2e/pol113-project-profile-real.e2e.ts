@@ -113,16 +113,20 @@ test("切换项目丢弃旧名称草稿，旧目标不能在新项目预检且�
   expect(current.find((project: { id: string }) => project.id === second.id).name).toBe("乙项目切换后保存");
 });
 
-test("项目财务通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }) => {
+test("项目财务通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }, testInfo) => {
+  page.setDefaultTimeout(10_000);
   const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
   const api = process.env.POL113_API_URL!;
-  const projectId = process.env.POL113_PROJECT_ID!;
+  const isolated = JSON.parse(process.env.POL113_PARTICIPANT_PROJECTS!)[testInfo.project.name];
+  const projectId = isolated.id;
   const path = `/projects/${projectId}/participating-companies`;
   const headers = { authorization: `Bearer ${session.tokens.accessToken}` };
   await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/项目经营");
+  await page.locator(".project-picker input").click();
+  await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
   await page.getByText("项目设置", { exact: true }).click();
   const form = page.getByRole("region", { name: "新增参与公司单条业务表单" });
   await expect(form).toBeVisible();
@@ -148,13 +152,38 @@ test("项目财务通过统一字段新增参与公司，空白原因保留且�
   const response = await saved;
   expect(response.ok()).toBe(true);
   const participant = await response.json();
+  try {
   await expect(page.getByText("参与公司已加入", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
   const profile = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
   expect((await profile.json()).participatingCompanies).toContainEqual(expect.objectContaining({ id: participant.id, companyName: "参与主体合成验收公司", effectiveFrom: today, changeReason: "浏览器新增参与验收" }));
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  // Only this test's synthetic, fact-free relation is removed through the original domain guard.
-  expect((await request.delete(`${api}${path}/${participant.id}`, { headers })).ok()).toBe(true);
+  await page.getByText("停止新增", { exact: true }).click();
+  const stopForm = page.getByRole("region", { name: "停止新增业务单条业务表单" });
+  await expect(stopForm).toBeVisible();
+  await stopForm.locator('[data-field="endedOn"] input').click();
+  await page.locator(".t-date-picker__panel:visible .t-date-picker__cell--now").click();
+  await expect(stopForm.locator('[data-field="endedOn"] input')).toHaveValue(today);
+  await stopForm.locator('[data-field="changeReason"] textarea').fill("浏览器停止参与验收");
+  const stopped = page.waitForResponse((res) => res.url().endsWith(`${path}/${participant.id}/deactivation`) && res.request().method() === "PATCH");
+  await page.getByRole("button", { name: "确认停止", exact: true }).click();
+  const stoppedResponse = await stopped;
+  expect(stoppedResponse.request().postDataJSON().endedOn).toBe(today);
+  expect(stoppedResponse.ok()).toBe(true);
+  await page.reload();
+  await page.locator(".project-picker input").click();
+  await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
+  await page.getByText("项目设置", { exact: true }).click();
+  await expect(page.getByText("已停止新增业务", { exact: true })).toBeVisible();
+  const history = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
+  expect((await history.json()).entrySnapshots).toContainEqual(expect.objectContaining({ entityId: participant.id,
+    valuesSnapshot: { endedOn: today, changeReason: "浏览器停止参与验收" } }));
+  await expect(page.locator("body")).not.toContainText(participant.id);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  } finally {
+    // Only this test's synthetic, fact-free relation is removed through the original domain guard.
+    expect((await request.delete(`${api}${path}/${participant.id}`, { headers })).ok()).toBe(true);
+  }
 });
 
 test("项目财务统一填写施工企业版本日期原因，预检失败保留输入且成功绑定可回读", async ({ page, request }) => {
@@ -198,6 +227,33 @@ test("项目财务统一填写施工企业版本日期原因，预检失败保�
   expect(writes).toBe(1);
   const profile = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
   expect((await profile.json()).constructionEnterprise).toMatchObject({ businessPartyVersionId: enterprise.id, effectiveFrom: today, isLocked: false });
+  expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test("项目创建使用服务端定义预检，原创建响应冻结真实项目且手机无溢出", async ({ page }) => {
+  const session = JSON.parse(process.env.POL113_RENAME_SESSION!);
+  await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  await page.goto("/项目经营");
+  await page.getByText("项目维护", { exact: true }).click();
+  const form = page.getByRole("region", { name: "新建项目单条业务表单" });
+  await expect(form).toBeVisible();
+  await form.locator('[data-field="code"] input').fill(`B113-${Date.now()}`);
+  await form.locator('[data-field="name"] input').fill("  ");
+  let writes = 0;
+  page.on("request", (req) => { if (new URL(req.url()).pathname === "/api/projects" && req.method() === "POST") writes += 1; });
+  const invalid = page.waitForResponse((response) => response.url().includes("/projects/create-validation"));
+  await page.getByRole("button", { name: "新增项目", exact: true }).click();
+  expect((await invalid).status()).toBe(400);
+  await expect(form.locator('[data-field="name"] input')).toHaveValue("  ");
+  expect(writes).toBe(0);
+  await form.locator('[data-field="name"] input').fill("浏览器创建合成项目");
+  const saved = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/projects" && response.request().method() === "POST");
+  await page.getByRole("button", { name: "新增项目", exact: true }).click();
+  const body = await (await saved).json();
+  expect(body.entrySnapshot.target.entityId).toBe(body.id);
+  expect(writes).toBe(1);
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 

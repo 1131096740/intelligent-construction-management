@@ -99,10 +99,163 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       // Existing checksum test vector, not an issued business identifier.
       unifiedSocialCreditCode: "9135A211M100100YD0"
     }, contract);
-    expect(created.status).toBe(201);
+    expect(created).toMatchObject({ status: 201 });
     participatingCompanyId = created.body.entity.id;
     return participatingCompanyId;
   }
+
+  it("项目创建能力返回统一定义，原创建事务冻结真实项目目标", async () => {
+    const chairman = await actor("chairman");
+    const capability = await request("/projects/create-capability", "GET", undefined, chairman);
+    expect(capability.status).toBe(200);
+    expect(capability.body.definition).toMatchObject({ key: "project_create", entityType: "project", version: 1 });
+    const values = { code: `P113-${randomUUID()}`, name: "创建快照合成项目" };
+    const created = await request("/projects", "POST", { ...values, definitionVersion: capability.body.definition.version }, chairman);
+    expect(created.status).toBe(201);
+    expect(created.body.entrySnapshot).toMatchObject({
+      sceneKey: "project_create", target: { entityType: "project", entityId: created.body.id },
+      revision: 1, values
+    });
+  });
+
+  it("项目预检无写，空字段过时定义及冻结故障不留下项目审计快照", async () => {
+    const chairman = await actor("chairman");
+    const prisma = app.get(PrismaService);
+    const values = { code: `P113-${randomUUID()}`, name: "创建失败零残留验收" };
+    for (const denied of [await actor("super_admin"), await actor("finance_staff")]) {
+      expect((await request("/projects/create-validation", "POST", values, denied)).status).toBe(403);
+      expect((await request("/projects", "POST", values, denied)).status).toBe(403);
+    }
+    const counts = async () => ({ projects: await prisma.project.count(), snapshots: await prisma.businessEntrySubmissionSnapshot.count(), audits: await prisma.auditLog.count() });
+    const before = await counts();
+    expect((await request("/projects/create-validation", "POST", { ...values, definitionVersion: 1 }, chairman)).body.valid).toBe(true);
+    expect(await counts()).toEqual(before);
+    for (const invalid of [{ ...values, code: "  " }, { ...values, name: "  " }, { ...values, definitionVersion: 999 }]) {
+      expect((await request("/projects", "POST", invalid, chairman)).status).toBe(400);
+      expect(await counts()).toEqual(before);
+    }
+    const fault = `pol113_fault_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION "${fault}"() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW."sceneKey" = 'project_create' AND NEW."valuesSnapshot"->>'code' = '${values.code}' THEN
+          RAISE EXCEPTION 'POL113 synthetic snapshot persistence failure';
+        END IF;
+        RETURN NEW;
+      END $$`);
+    try {
+      await prisma.$executeRawUnsafe(`CREATE TRIGGER "${fault}" BEFORE INSERT ON "BusinessEntrySubmissionSnapshot" FOR EACH ROW EXECUTE FUNCTION "${fault}"()`);
+      expect((await request("/projects", "POST", values, chairman)).status).toBe(500);
+      expect((await request("/projects", "GET", undefined, chairman)).body.some((project: { code: string }) => project.code === values.code)).toBe(false);
+      expect(await counts()).toEqual(before);
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${fault}" ON "BusinessEntrySubmissionSnapshot"`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION "${fault}"()`);
+    }
+    expect(await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) AS count FROM pg_trigger WHERE tgname = ${fault}`).toEqual([{ count: 0n }]);
+    const saved = await request("/projects", "POST", values, chairman);
+    expect(saved.status).toBe(201);
+    const history = await request(`/projects/${saved.body.id}/operating-profile`, "GET", undefined, chairman);
+    expect(history.body.entrySnapshots).toEqual(expect.arrayContaining([expect.objectContaining({ sceneKey: "project_create", entityId: saved.body.id, valuesSnapshot: values })]));
+  });
+
+  it("停止参与按真实参与关系冻结，项目归属来自服务端锁行", async () => {
+    const chairman = await actor("chairman");
+    const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "停止参与快照合成项目" }, chairman);
+    const projectId = created.body.id as string;
+    const finance = await actor("finance_staff", projectId);
+    const companyEntityId = await participatingCompany();
+    const added = await request(`/projects/${projectId}/participating-companies`, "POST", {
+      companyEntityId, effectiveFrom: "2026-01-01", changeReason: "合成停止验收"
+    }, finance);
+    expect(added.status).toBe(201);
+    const profilePath = `/projects/${projectId}/operating-profile`;
+    const profile = await request(profilePath, "GET", undefined, finance);
+    expect(profile.body.deactivationDefinition).toMatchObject({ key: "project_participating_company_deactivate" });
+    const input = { endedOn: "2026-09-17", changeReason: "合成停止完成", definitionVersion: profile.body.deactivationDefinition.version };
+    const path = `/projects/${projectId}/participating-companies/${added.body.id}/deactivation`;
+    expect((await request(`${path}/validate`, "POST", input, finance)).body.valid).toBe(true);
+    const stopped = await request(path, "PATCH", input, finance);
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.entrySnapshot).toMatchObject({
+      sceneKey: "project_participating_company_deactivate",
+      target: { entityType: "project_participating_company", entityId: added.body.id }, revision: 1,
+      values: { endedOn: input.endedOn, changeReason: input.changeReason }
+    });
+    expect((await request(path, "PATCH", input, finance)).status).toBe(400);
+    const persisted = await request(profilePath, "GET", undefined, finance);
+    expect(persisted.body.entrySnapshots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sceneKey: "project_participating_company_deactivate", entityId: added.body.id,
+        valuesSnapshot: { endedOn: "2026-09-17", changeReason: "合成停止完成" } })
+    ]));
+  });
+
+  it("停止参与拒绝错岗位、跨项目、伪归属及过时定义，失败不改变关系或冻结历史", async () => {
+    const chairman = await actor("chairman");
+    const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "停止参与负向合成项目" }, chairman);
+    const projectId = created.body.id as string;
+    const finance = await actor("finance_staff", projectId);
+    const added = await request(`/projects/${projectId}/participating-companies`, "POST", {
+      companyEntityId: await participatingCompany(), effectiveFrom: "2026-01-01", changeReason: "合成负向验收"
+    }, finance);
+    const path = `/projects/${projectId}/participating-companies/${added.body.id}/deactivation`;
+    const input = { endedOn: "2026-09-17", changeReason: "合成负向停止", definitionVersion: 1 };
+    for (const denied of [chairman, await actor("super_admin"), await actor("finance_staff")]) {
+      expect((await request(`${path}/validate`, "POST", input, denied)).status).toBe(403);
+      expect((await request(path, "PATCH", input, denied)).status).toBe(403);
+    }
+    for (const key of ["projectId", "companyEntityId", "companyEntityVersionId"]) {
+      expect((await request(path, "PATCH", { ...input, [key]: randomUUID() }, finance)).status).toBe(400);
+    }
+    expect((await request(path, "PATCH", { ...input, definitionVersion: 999 }, finance)).status).toBe(400);
+    const other = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "跨项目停止验收" }, chairman);
+    const otherFinance = await actor("finance_staff", other.body.id);
+    expect((await request(`/projects/${other.body.id}/participating-companies/${added.body.id}/deactivation`, "PATCH", input, otherFinance)).status).toBe(404);
+    const profile = await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance);
+    expect(profile.body.participatingCompanies).toEqual(expect.arrayContaining([expect.objectContaining({ id: added.body.id, endedAt: null })]));
+    expect(profile.body.entrySnapshots.filter((snapshot: { entityId: string }) => snapshot.entityId === added.body.id)).toEqual([]);
+  });
+
+  it("停止参与审计故障回滚状态及快照，清理注入后原请求成功", async () => {
+    const chairman = await actor("chairman");
+    const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "停止回滚验收" }, chairman);
+    const projectId = created.body.id as string;
+    const finance = await actor("finance_staff", projectId);
+    const added = await request(`/projects/${projectId}/participating-companies`, "POST", {
+      companyEntityId: await participatingCompany(), effectiveFrom: "2026-01-01", changeReason: "回滚前原因"
+    }, finance);
+    const path = `/projects/${projectId}/participating-companies/${added.body.id}/deactivation`;
+    const profilePath = `/projects/${projectId}/operating-profile`;
+    const input = { endedOn: "2026-09-17", changeReason: "回滚后停止", definitionVersion: 1 };
+    const prisma = app.get(PrismaService);
+    const beforeAudits = await prisma.auditLog.count({ where: { businessId: added.body.id } });
+    const beforeProfile = (await request(profilePath, "GET", undefined, finance)).body;
+    expect((await request(`${path}/validate`, "POST", input, finance)).body.valid).toBe(true);
+    expect((await request(profilePath, "GET", undefined, finance)).body).toEqual(beforeProfile);
+    expect(await prisma.auditLog.count({ where: { businessId: added.body.id } })).toBe(beforeAudits);
+    const fault = `pol113_fault_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION "${fault}"() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.action = 'project.participating_company.deactivate' AND NEW."businessId" = '${added.body.id}' THEN
+          RAISE EXCEPTION 'POL113 synthetic deactivation audit failure';
+        END IF;
+        RETURN NEW;
+      END $$`);
+    try {
+      await prisma.$executeRawUnsafe(`CREATE TRIGGER "${fault}" BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION "${fault}"()`);
+      expect((await request(path, "PATCH", input, finance)).status).toBe(500);
+      expect((await request(profilePath, "GET", undefined, finance)).body).toEqual(beforeProfile);
+      expect(await prisma.businessEntrySubmissionSnapshot.count({ where: { entityId: added.body.id } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { businessId: added.body.id } })).toBe(beforeAudits);
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${fault}" ON "AuditLog"`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION "${fault}"()`);
+    }
+    expect(await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) AS count FROM pg_trigger WHERE tgname = ${fault}`).toEqual([{ count: 0n }]);
+    expect((await request(path, "PATCH", input, finance)).status).toBe(200);
+    const current = (await request(profilePath, "GET", undefined, finance)).body;
+    expect(current.participatingCompanies).toEqual(expect.arrayContaining([expect.objectContaining({ id: added.body.id, endedAt: "2026-09-17" })]));
+    expect(current.entrySnapshots.filter((snapshot: { entityId: string }) => snapshot.entityId === added.body.id)).toHaveLength(1);
+  });
 
   it("当前项目财务可预检并保存同一经营档案字段，其他项目及全局财务不可借用权限", async () => {
     const chairman = await actor("chairman");
@@ -175,7 +328,14 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       const fixtureAddress = roleFixture.address();
       if (!fixtureAddress || typeof fixtureAddress === "string") throw new Error("撤权夹具未监听本机端口");
       const settingsAccounts: Record<string, { phone: string; newPhone: string; password: string }> = {};
+      const participantProjects: Record<string, { id: string; code: string; name: string }> = {};
       for (const [index, browser] of ["desktop", "mobile"].entries()) {
+        const isolated = await request("/projects", "POST", { code: `PB113-${browser}-${randomUUID()}`, name: `参与停止独立${browser}项目` }, chairman);
+        expect(isolated.status).toBe(201);
+        participantProjects[browser] = isolated.body;
+        // Synthetic role bootstrap only; project and participant facts use original HTTP.
+        const session = sessions.get(finance) as { user: { id: string } };
+        await prisma.userPosition.create({ data: { userId: session.user.id, positionId: financePosition.id, projectId: isolated.body.id } });
         const suffix = `${String(Date.now()).slice(-7)}${index}`;
         const account = { phone: `136${suffix}`, newPhone: `135${suffix}`, password: `Local-${randomUUID()}` };
         // Account bootstrap only; profile mutations and observations use public HTTP.
@@ -197,6 +357,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           browserEnv.POL113_WITHDRAWAL_SESSION = JSON.stringify(sessions.get(withdrawalFinance));
           browserEnv.POL113_ROLE_FIXTURE_URL = `http://127.0.0.1:${fixtureAddress.port}/${callbackSecret}`;
           browserEnv.POL113_RETAINED_PROJECT_ID = retainedProject.body.id;
+          browserEnv.POL113_PARTICIPANT_PROJECTS = JSON.stringify(participantProjects);
           const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
             cwd: resolve(__dirname, "../../../../apps/web-admin"),
             env: browserEnv,

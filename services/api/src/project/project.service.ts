@@ -17,6 +17,7 @@ import {
 } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { freezeProjectCreation, validateProjectCreation } from "./project-base-entry";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -323,9 +324,16 @@ export class ProjectService {
     }
   }
 
-  async createProject(actorUserId: string, input: CreateProjectDto) {
+  validateCreation(input: CreateProjectDto) {
     const code = requiredTrimmed(input.code, "请填写项目编号");
     const name = requiredTrimmed(input.name, "请填写项目名称");
+    return validateProjectCreation({ code, name }, input.definitionVersion);
+  }
+
+  async createProject(actorUserId: string, input: CreateProjectDto) {
+    const validation = this.validateCreation(input);
+    if (!validation.valid) throw new BadRequestException(validation);
+    const { code, name } = validation.values as { code: string; name: string };
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -333,6 +341,7 @@ export class ProjectService {
           data: { code, name },
           select: { id: true, code: true, name: true }
         });
+        const entrySnapshot = await freezeProjectCreation(tx, this.audit, actorUserId, project, input.definitionVersion);
 
         await this.audit.record(tx, {
           actorUserId,
@@ -342,7 +351,7 @@ export class ProjectService {
           metadata: { code, name }
         });
 
-        return project;
+        return { ...project, entrySnapshot };
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {

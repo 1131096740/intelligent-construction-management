@@ -11,7 +11,7 @@ export default defineConfig({
   testDir: "./e2e", testMatch: ["pol113-project-profile-real.e2e.ts", "pol113-settings-real.e2e.ts", "pol113-business-party-real.e2e.ts"],
   timeout: 45_000, workers: 1, retries: 0, reporter: "line",
   outputDir: join(tmpdir(), `pol113-project-browser-${randomUUID()}`),
-  use: { baseURL: "http://127.0.0.1:4214", trace: "off" },
+  use: { baseURL: "http://127.0.0.1:4214", trace: "retain-on-failure" },
   webServer: {
     command: "pnpm dev --host 127.0.0.1 --port 4214 --strictPort",
     url: "http://127.0.0.1:4214", reuseExistingServer: false,
