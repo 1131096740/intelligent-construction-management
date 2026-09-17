@@ -9,6 +9,7 @@ import {
 } from "../../../api/expense-claim.api";
 import { yuanTextToCentsText } from "../../../lib/money";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./ExpenseClaimLineEditor.vue";
+import ExpenseClaimApplicationFields from "./ExpenseClaimApplicationFields.vue";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: boolean]; saved: [claim: CreatedExpenseClaim] }>();
@@ -42,6 +43,13 @@ const form = reactive({
 });
 
 const stepLabels = ["业务与身份", "费用明细", "收款与借款", "复核保存"];
+const applicationFields = computed({
+  get: () => ({ reason: form.reason, requestedAmountYuan: form.requestedAmountYuan }),
+  set: (value: { reason: string; requestedAmountYuan: string }) => {
+    form.reason = value.reason;
+    form.requestedAmountYuan = value.requestedAmountYuan;
+  }
+});
 const companyOptions = computed(() => options.value?.companyEntities.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const projectOptions = computed(() => [{ label: "非项目报销", value: "" }, ...(options.value?.projects.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id })) ?? [])]);
 const applicantOptions = computed(() => options.value?.applicantUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
@@ -309,26 +317,10 @@ async function createExpenseClaimWithCapability(
             v-else-if="step === 1"
             class="expense-claim-create__section"
           >
-            <t-form label-align="top">
-              <t-form-item
-                label="事由"
-                required-mark
-              >
-                <t-textarea
-                  v-model="form.reason"
-                  :maxlength="500"
-                  placeholder="说明费用事由和使用场景"
-                />
-              </t-form-item><t-form-item
-                label="申请金额（元）"
-                required-mark
-              >
-                <t-input
-                  v-model="form.requestedAmountYuan"
-                  placeholder="最多 2 位小数"
-                />
-              </t-form-item>
-            </t-form>
+            <ExpenseClaimApplicationFields
+              v-model="applicationFields"
+              :definition="options.entryDefinition"
+            />
             <ExpenseClaimLineEditor
               v-if="form.claimType === 'reimbursement'"
               v-model="form.lines"

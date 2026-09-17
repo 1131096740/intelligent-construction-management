@@ -1,4 +1,5 @@
 import { apiFetch } from "./api-fetch";
+import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import { formatApiErrorMessage } from "./error-message";
 
 export type ExpenseClaimWorkbenchView = "all" | "drafts" | "in_progress" | "pending_funds";
@@ -94,6 +95,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
 }
 
 export interface ExpenseClaimCreateOptions {
+  entryDefinition: BusinessEntrySceneDefinition;
   companyEntities: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; name: string }>;
   canProxy: boolean;
