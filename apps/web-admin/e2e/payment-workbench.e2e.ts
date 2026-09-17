@@ -173,8 +173,44 @@ function paymentExecutionDetail(paymentId: string) {
     baseInfo: [
       { label: "付款编号", value: paymentId },
       { label: "申请金额", value: "¥50,000.00" },
+      { label: "批准金额", value: "¥45,000.00" },
       { label: "项目", value: "实际付款 P0 项目" }
     ],
+    businessEntryHistory: [{
+      sceneKey: "payment_request",
+      target: { projectId: "project-1", entityType: "payment_request", entityId: paymentId },
+      revision: 1, definitionVersion: 1, frozenAt: "2026-07-31T07:00:00.000Z",
+      definition: {
+        key: "payment_request", entityType: "payment_request", version: 1,
+        name: "付款申请", description: "申请创建冻结。", rules: [],
+        fields: [{
+          key: "code", label: "付款编号", type: "text", order: 1, scope: "header",
+          description: "付款编号", example: "", unit: "", precision: 0, required: true,
+          permissions: { view: ["contract_staff"], edit: ["contract_staff"] },
+          bulk: { enabled: false, strategy: "replace" },
+          excel: { column: "付款编号", paste: "single", errorLocation: "cell" },
+          display: { formHint: "付款编号", gridColumn: "付款编号", mobilePriority: 1, readonlyText: "创建冻结" }
+        }]
+      },
+      values: { code: paymentId }
+    }, {
+      sceneKey: "payment_approval_amount",
+      target: { projectId: "project-1", entityType: "payment_request", entityId: paymentId },
+      revision: 1, definitionVersion: 1, frozenAt: "2026-07-31T07:30:00.000Z",
+      definition: {
+        key: "payment_approval_amount", entityType: "payment_request", version: 1,
+        name: "付款批准金额", description: "最终审批冻结。", rules: [],
+        fields: [{
+          key: "approvedAmountYuan", label: "批准金额", type: "money", order: 1, scope: "header",
+          description: "批准金额", example: "45000.00", unit: "元", precision: 2, required: true,
+          permissions: { view: ["finance_director"], edit: ["finance_director"] },
+          bulk: { enabled: false, strategy: "replace" },
+          excel: { column: "批准金额", paste: "single", errorLocation: "cell" },
+          display: { formHint: "批准金额", gridColumn: "批准金额", mobilePriority: 1, readonlyText: "最终审批冻结" }
+        }]
+      },
+      values: { approvedAmountYuan: "45000.00" }
+    }],
     approvalSteps: [],
     executionSteps: [],
     executionAllocations: [],
@@ -478,7 +514,9 @@ async function exercisePaymentExecution(
   ).toBeVisible();
   await expectPaymentPageHealthy(page);
   await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
-  await expect(page.getByText("付款编号", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "付款申请业务台账表格" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "付款批准金额业务台账表格" })).toBeVisible();
+  await expect(page.locator(".info-list").getByText("¥45,000.00", { exact: true })).toBeVisible();
   await page
     .locator(".detail-navigation")
     .getByText("流程", { exact: true })
@@ -866,7 +904,6 @@ test("P0 mobile WebKit rejects payment without approved amount and one POST", as
         userAgent: expect.not.stringContaining("Chrome/")
       })
     );
-    await expect(page.locator(".business-entry-mobile-cards")).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
     await expect(
       page.getByRole("heading", {
@@ -1060,6 +1097,7 @@ test("P0 mobile WebKit records actual payment without duplicate upload or POST",
       testInfo,
       "payment-execution-webkit-390x844.png"
     );
+    await expectNoDocumentHorizontalOverflow(page);
     await expect
       .poll(() => capture.order)
       .toEqual([

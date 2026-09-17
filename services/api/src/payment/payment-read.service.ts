@@ -1121,7 +1121,7 @@ export class PaymentReadService {
       }>>;
     } }).businessEntrySubmissionSnapshot;
     const requestSnapshots = requestSnapshotStore ? await requestSnapshotStore.findMany({
-      where: { projectId: payment.projectId, sceneKey: "payment_request", entityType: "payment_request", entityId: payment.id },
+      where: { projectId: payment.projectId, sceneKey: { in: ["payment_request", "payment_approval_amount"] }, entityType: "payment_request", entityId: payment.id },
       orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
     }) : [];
     const businessEntryHistory: BusinessEntryFrozenSnapshot[] = requestSnapshots.map((snapshot) => ({
@@ -1177,6 +1177,9 @@ export class PaymentReadService {
         { label: "付款账期", value: stage ? `${stage.dueDays}天` : "-" },
         { label: "发票要求", value: stage?.requiresInvoice ? "需提供发票" : "不要求发票" },
         { label: "申请金额", value: this.formatMoney(payment.requestedAmountCents) },
+        ...(payment.approvedAmountCents === null
+          ? []
+          : [{ label: "批准金额", value: this.formatMoney(payment.approvedAmountCents) }]),
         ...(paymentDirectSummary?.unlimitedTotal
           ? [
               {

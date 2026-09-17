@@ -690,6 +690,9 @@ if (enabled) {
         fields: [{ key: "amountYuan", type: "money" }, { key: "occurredAt", type: "text" }]
       });
       if (settlementFinance) expect(paymentDetail.businessEntryHistory).toEqual([payment.businessEntrySnapshot]);
+      const expectedApprovedAmountCents = entryMode === "aggregate" ? "9000" : "10000";
+      const expectedApprovedAmountYuan = entryMode === "aggregate" ? "90.00" : "100.00";
+      let paymentApprovalSnapshot: BusinessEntryFrozenSnapshot | undefined;
       for (let step = 0; step < 12; step++) {
         const approval = await prisma.approvalInstance.findFirst({ where: {
           businessType: "payment_request", businessId: payment.id, status: "in_progress"
@@ -706,10 +709,31 @@ if (enabled) {
         });
         if (!signedResponse.ok) throw new Error(`合成签名上传失败：${signedResponse.status}`);
         const review = await request<{ reviewApprovalContext: Record<string, unknown> }>("GET", `/payments/${payment.id}`);
-        await request("POST", `/payments/${payment.id}/approval`, {
+        const finalNode = approval.currentNodeIndex === (approval.frozenNodes as unknown[]).length - 1;
+        if (!finalNode) {
+          await expect(request("POST", `/payments/${payment.id}/approval`, {
+            ...review.reviewApprovalContext, decision: "approve", approvedAmountCents: "9000",
+            confirmationPassword: identity.password
+          })).rejects.toThrow();
+          if (settlementFinance) {
+            expect((await request<{ businessEntryHistory: BusinessEntryFrozenSnapshot[] }>("GET", `/payments/${payment.id}`)).businessEntryHistory)
+              .toEqual([payment.businessEntrySnapshot]);
+          }
+        }
+        const approved = await request<{ businessEntrySnapshot?: BusinessEntryFrozenSnapshot }>("POST", `/payments/${payment.id}/approval`, {
           ...review.reviewApprovalContext, decision: "approve",
+          ...(finalNode && entryMode === "aggregate" ? { approvedAmountCents: "9000" } : {}),
           confirmationPassword: identity.password
         });
+        if (finalNode) paymentApprovalSnapshot = approved.businessEntrySnapshot;
+      }
+      if (settlementFinance) {
+        expect(paymentApprovalSnapshot).toMatchObject({
+          sceneKey: "payment_approval_amount", target: { projectId: project.id, entityType: "payment_request", entityId: payment.id },
+          values: { approvedAmountYuan: expectedApprovedAmountYuan }
+        });
+        expect((await request<{ businessEntryHistory: BusinessEntryFrozenSnapshot[] }>("GET", `/payments/${payment.id}`)).businessEntryHistory)
+          .toEqual([payment.businessEntrySnapshot, paymentApprovalSnapshot]);
       }
       await loginAs(projectFinanceUserId);
       const quotaEvidence = await upload("synthetic-quota.pdf", "application/pdf", await pdf.save());
@@ -736,20 +760,20 @@ if (enabled) {
       const executable = await request<{ executionContext: { expectedPaymentUpdatedAt: string } }>("GET", `/payments/${payment.id}`);
       expect(executable.executionContext).toMatchObject({ expectedPaymentUpdatedAt: expect.any(String) });
       await request("POST", `/payments/${payment.id}/executions`, {
-        ...executable.executionContext, idempotencyKey: randomUUID(), amountCents: "10000",
+        ...executable.executionContext, idempotencyKey: randomUUID(), amountCents: expectedApprovedAmountCents,
         paidAt: new Date().toISOString(), voucherFileId: voucher.id, confirmationPassword: financeIdentity.password
       });
       const finance = await request<{ businessEntrySnapshot?: BusinessEntryFrozenSnapshot }>("POST", `/payments/${payment.id}/finance-records`, {
-        amountCents: "10000", occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: financeIdentity.password
+        amountCents: expectedApprovedAmountCents, occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: financeIdentity.password
       });
       expect(finance.businessEntrySnapshot).toMatchObject({
         sceneKey: "payment_finance_record", revision: 1,
-        values: { amountYuan: "100.00", occurredAt: "2026-09-17T04:34:56.000Z" }
+        values: { amountYuan: expectedApprovedAmountYuan, occurredAt: "2026-09-17T04:34:56.000Z" }
       });
       const recorded = await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`);
       expect(recorded.financeEntry.history).toEqual([finance.businessEntrySnapshot]);
       await expect(request("POST", `/payments/${payment.id}/finance-records`, {
-        amountCents: "10000", occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: financeIdentity.password
+        amountCents: expectedApprovedAmountCents, occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: financeIdentity.password
       })).rejects.toThrow();
       expect((await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`)).financeEntry.history).toEqual(recorded.financeEntry.history);
       const nonFinanceIdentity = await loginAs(actorUserId);

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { paymentApprovalAmountEntryValues } from "./payment-approval-amount-business-entry-definition";
 import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
 import { PAYMENT_REQUEST_ENTRY_DEFINITION, paymentRequestEntryValues } from "./payment-request-business-entry-definition";
 import {
@@ -2588,6 +2589,23 @@ export class PaymentRequestService {
           approvedAmountCents,
           actorUserId
         );
+        if (this.businessEntry) {
+          const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(
+            tx,
+            actorUserId,
+            {
+              sceneKey: "payment_approval_amount",
+              definitionVersion: 1,
+              target: {
+                projectId: payment.projectId,
+                entityType: "payment_request",
+                entityId: payment.id
+              },
+              values: paymentApprovalAmountEntryValues(approvedAmountCents)
+            }
+          );
+          Object.assign(approved, { businessEntrySnapshot });
+        }
       }
       await this.audit.record(tx, {
         actorUserId,
