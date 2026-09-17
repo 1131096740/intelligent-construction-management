@@ -34,12 +34,17 @@ describe("spot procurement business file upload controllers", () => {
     );
 
     await expect(
-      controller.uploadCreateDraftFile("project-1", file, actor, "key-1")
+      controller.uploadCreateDraftFile("project-1", file, actor, {
+        idempotencyKey: "key-1"
+      })
     ).resolves.toEqual({ id: "file-1" });
     expect(order).toEqual(["capability", "storage"]);
     expect(reads.assertCreateActionAvailable).toHaveBeenCalledWith(
       "user-1",
       "project-1"
+    );
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "key-1" })
     );
   });
 
@@ -64,12 +69,17 @@ describe("spot procurement business file upload controllers", () => {
       files as never
     );
 
-    await controller.uploadDraftFile("procurement-1", file, actor);
+    await controller.uploadDraftFile("procurement-1", file, actor, {
+      idempotencyKey: "key-2"
+    });
     expect(order).toEqual(["capability", "storage"]);
     expect(reads.assertProcurementActionAvailable).toHaveBeenCalledWith(
       "procurement-1",
       "user-1",
       "edit_draft"
+    );
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "key-2" })
     );
   });
 

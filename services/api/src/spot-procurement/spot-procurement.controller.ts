@@ -119,13 +119,13 @@ export class SpotProcurementController {
     @Param("projectId") projectId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       () => this.reads.assertCreateActionAvailable(user.id, projectId),
       user.id,
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "采购草稿附件"
     );
   }
@@ -141,7 +141,7 @@ export class SpotProcurementController {
     @Param("procurementId") procurementId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       () =>
@@ -152,7 +152,7 @@ export class SpotProcurementController {
         ),
       user.id,
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "采购草稿附件"
     );
   }
