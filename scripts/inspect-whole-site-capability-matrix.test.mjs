@@ -837,6 +837,35 @@ test("rejects a lookalike self-profile facade that does not match the exact regi
   );
 });
 
+test("keeps the exact self-profile facade in the mutation denominator when its action is missing", () => {
+  const input = selfProfileFacadeFixture();
+  input.pageManifest.actions = [];
+  Object.assign(input.pageManifest.summary, {
+    registeredActionCount: 0,
+    backgroundActionCount: 0,
+    templateEventDirectiveCount: 0,
+    candidateProductionMutationConsumerCount: 0,
+    acceptedProductionMutationConsumerCount: 0,
+    coveredProductionMutationConsumerCount: 0,
+    productionMutationConsumerPairCount: 1,
+    blockerCount: 1
+  });
+  input.pageManifest.status = "blocked";
+  input.pageManifest.blockers.uncoveredMutationWrappers = [{
+    code: "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+    apiFile: "apps/web-admin/src/lib/user-self-profile.ts",
+    wrapper: "updateProfile",
+    sourceFile: "apps/web-admin/src/pages/settings/SettingsPage.vue",
+    normalizedKeys: ["PATCH /auth/profile"]
+  }];
+
+  const matrix = build(input);
+  assert.equal(matrix.status, "blocked");
+  assert.equal(matrix.summary.productionMutationConsumerPairCount, 1);
+  assert.equal(matrix.summary.coveredProductionMutationConsumerPairCount, 0);
+  assert.equal(matrix.summary.uncoveredProductionMutationConsumerPairCount, 1);
+});
+
 test("blocks an accepted write action bound only to GET", () => {
   const input = fixture();
   const getWrapper = input.webManifest.wrappers[0];

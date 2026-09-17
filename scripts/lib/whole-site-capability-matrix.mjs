@@ -1750,25 +1750,23 @@ function isExactSelfProfileFacadeBinding(binding, authTransport) {
   );
 }
 
-function authFacadeMutationConsumers(actionBindings) {
-  const pairs = new Map();
-  for (const { binding, authTransport } of actionBindings) {
-    if (!isExactSelfProfileFacadeBinding(binding, authTransport)) continue;
-    const pair = {
-      apiFile: binding.apiFile,
-      wrapper: binding.wrapper,
-      consumer: SELF_PROFILE_FACADE.consumer,
-      normalizedKeys: [binding.normalizedKey]
-    };
-    pairs.set(
-      mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer),
-      pair
-    );
-  }
-  return sortBy(
-    [...pairs.values()],
-    (pair) => mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer)
+function authFacadeMutationConsumers(webManifest) {
+  const exact = (webManifest.authTransportExceptions ?? []).filter(
+    (entry) =>
+      entry?.transport === "auth_store_exception" &&
+      entry?.sourceFile === SELF_PROFILE_FACADE.authSourceFile &&
+      entry?.method === SELF_PROFILE_FACADE.method &&
+      entry?.normalizedPath === SELF_PROFILE_FACADE.path &&
+      entry?.normalizedKey === SELF_PROFILE_FACADE.normalizedKey
   );
+  return exact.length === 1
+    ? [{
+        apiFile: SELF_PROFILE_FACADE.apiFile,
+        wrapper: SELF_PROFILE_FACADE.wrapper,
+        consumer: SELF_PROFILE_FACADE.consumer,
+        normalizedKeys: [SELF_PROFILE_FACADE.normalizedKey]
+      }]
+    : [];
 }
 
 function selectedPageUncovered(pair) {
@@ -2125,7 +2123,7 @@ export function buildWholeSiteCapabilityMatrix({
       ...new Map(
         [
           ...mutationConsumersFor(webManifest.wrappers),
-          ...authFacadeMutationConsumers(actionBindings)
+          ...authFacadeMutationConsumers(webManifest)
         ].map((pair) => [
           mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer),
           pair

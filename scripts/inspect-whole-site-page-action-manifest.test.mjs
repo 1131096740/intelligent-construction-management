@@ -232,6 +232,7 @@ export const router = createRouter({
   webManifestOverrides = {},
   nestManifestOverrides = {},
   extraFiles = {},
+  pagePath = "apps/web-admin/src/pages/ExamplePage.vue",
   page = `<script setup lang="ts">
 import { getExample, submitExample } from "../api/example.api";
 const detail = await getExample("example-1");
@@ -284,7 +285,7 @@ async function submit() {
     "apps/web-admin/src/routes/route-records.ts",
     routeRecords
   );
-  await write(root, "apps/web-admin/src/pages/ExamplePage.vue", page);
+  await write(root, pagePath, page);
   await write(
     root,
     "apps/web-admin/src/api/example.api.ts",
@@ -1374,11 +1375,13 @@ const profile = ref(null);
 async function submit() {
   const projectId = "project-1";
   const capability = await getExample(projectId);
-  if (!capability.canManage) throw new Error("revoked");
+  const operationAllowed = capability.canManage;
+  if (!operationAllowed) throw new Error("revoked");
   profile.value = capability;
-  const definition = await fetchBusinessEntryDefinition("project_profile", projectId);
+  const definition = await fetchBusinessEntryDefinition("project_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
   if (definition.key !== "project_profile") throw new Error("stale");
-  const validation = await validateBusinessEntryDraft({ sceneKey: definition.key, definitionVersion: definition.version, target: { entityId: projectId }, values: { name: "A" } });
+  const values = { name: "A" };
+  const validation = await validateBusinessEntryDraft({ scope: "project", projectId }, { sceneKey: definition.key, definitionVersion: definition.version, target: { entityType: "project", entityId: projectId }, values }, "edit");
   if (!validation.valid) return;
   return submitExample(projectId, { name: validation.values.name });
 }
@@ -1407,7 +1410,16 @@ async function submit() {
   for (const [name, unsafePage] of [
     ["fresh capability is not rebound to the declared source", page.replace("  profile.value = capability;\n", "")],
     ["capability read uses another project", page.replace("getExample(projectId)", 'getExample("other-project")')],
-    ["final write uses another project", page.replace("submitExample(projectId", 'submitExample("other-project"')]
+    ["final write uses another project", page.replace("submitExample(projectId", 'submitExample("other-project"')],
+    ["validated result is discarded", page.replace("{ name: validation.values.name }", "{ name: values.name }")],
+    ["an unvalidated fallback is mixed into the final field", page.replace(
+      "{ name: validation.values.name }",
+      "{ name: validation.values.name || values.name }"
+    )],
+    ["comment cannot forge the final coordinate", page.replace(
+      "return submitExample(projectId, { name: validation.values.name });",
+      '/* submitExample(projectId, { name: validation.values.name }) */\n  return submitExample("other-project", { name: values.name });'
+    )]
   ]) {
     const unsafeRoot = await fixture({ actions: [action], wrappers, routes, page: unsafePage });
     const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
@@ -1442,9 +1454,10 @@ async function submit() {
 import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../api/example.api";
 async function submit() {
   const projectId = "project-1";
-  const definition = await fetchBusinessEntryDefinition("project_profile", projectId);
+  const definition = await fetchBusinessEntryDefinition("project_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
   if (definition.key !== "project_profile") throw new Error("stale");
-  const validation = await validateBusinessEntryDraft({ sceneKey: definition.key, definitionVersion: definition.version, target: { entityId: projectId }, values: { name: "A" } });
+  const values = { name: "A" };
+  const validation = await validateBusinessEntryDraft({ scope: "project", projectId }, { sceneKey: definition.key, definitionVersion: definition.version, target: { entityType: "project", entityId: projectId }, values }, "edit");
   if (!validation.valid) return;
   return validation.values.name;
 }
@@ -1485,13 +1498,14 @@ import { getExample, uploadExample, recordExample } from "../api/example.api";
 import { prepareWithUpload } from "./write-validation";
 async function submit() {
   const paymentId = "payment-1";
+  const procurementId = "procurement-1";
   const detail = await getExample(paymentId);
-  if (detail.id !== paymentId) throw new Error("changed");
-  const operationAllowed = detail.availableActions.some((action) => action.key === "record_refund" && action.enabled);
+  if (detail.payment.id !== paymentId || detail.payment.procurement.id !== procurementId) throw new Error("changed");
+  const operationAllowed = detail.availableActions.some((action) => action.key === "record_refund" && action.enabled === true);
   if (!operationAllowed) throw new Error("revoked");
   const file = { name: "voucher.png" };
-  const payload = await prepareWithUpload(file, (value, name) => uploadExample(paymentId, value, name));
-  return recordExample(paymentId, payload);
+  const payload = await prepareWithUpload(file, (value, name) => uploadExample(paymentId, procurementId, value, name));
+  return recordExample(paymentId, procurementId, payload);
 }
 </script><template><t-button @click="submit">提交</t-button></template>`;
   const wrappers = [
@@ -1518,6 +1532,57 @@ async function submit() {
   const manifest = await inspectWholeSitePageActionManifest({ root });
   assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
 
+  const retainedPage = page
+    .replace(
+      '  const file = { name: "voucher.png" };',
+      `  const file = { name: "voucher.png" };
+  const attempt = { value: null as null | { paymentId: string; procurementId: string; payload: { voucherFileId: string; amount: string; amountCents: string } } };
+  const retained = attempt.value;
+  const expected = detail.discrepancy?.refundExpectedAmountCents;
+  if (retained && (retained.paymentId !== paymentId || retained.procurementId !== procurementId)) {
+    attempt.value = null;
+    throw new Error("changed");
+  }
+  if (retained && retained.payload.amountCents !== expected) {
+    attempt.value = null;
+    throw new Error("amount changed");
+  }`
+    )
+    .replace(
+      "const payload = await prepareWithUpload",
+      "const payload = retained?.payload ?? await prepareWithUpload"
+    );
+  const retainedRoot = await fixture({
+    actions: [action], wrappers, routes, page: retainedPage,
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+    },
+    extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+  });
+  const retained = await inspectWholeSitePageActionManifest({ root: retainedRoot });
+  assert.equal(retained.status, "ready", JSON.stringify(retained.blockers));
+
+  for (const [name, unsafePage] of [
+    ["retained amount is not rebound to the fresh amount", retainedPage.replace(
+      "retained.payload.amountCents !== expected",
+      'retained.payload.amountCents !== "10"'
+    )],
+    ["retained coordinate mismatch does not clear the attempt", retainedPage.replace(
+      'attempt.value = null;\n    throw new Error("changed");',
+      'throw new Error("changed");'
+    )]
+  ]) {
+    const unsafeRoot = await fixture({
+      actions: [action], wrappers, routes, page: unsafePage,
+      webManifestOverrides: {
+        evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+      },
+      extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+    });
+    const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
+    assert.equal(unsafe.status, "blocked", name);
+  }
+
   const lostVoucherRoot = await fixture({
     actions: [action], wrappers, routes, page,
     webManifestOverrides: {
@@ -1539,8 +1604,8 @@ async function submit() {
   const wrongCoordinateRoot = await fixture({
     actions: [action], wrappers, routes,
     page: page.replace(
-      "uploadExample(paymentId, value, name)",
-      'uploadExample("other-payment", value, name)'
+      "uploadExample(paymentId, procurementId, value, name)",
+      'uploadExample("other-payment", procurementId, value, name)'
     ),
     webManifestOverrides: {
       evidence: {
@@ -1554,6 +1619,34 @@ async function submit() {
   });
   const wrongCoordinate = await inspectWholeSitePageActionManifest({ root: wrongCoordinateRoot });
   assert.equal(wrongCoordinate.status, "blocked");
+
+  const wrongProcurementRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      "recordExample(paymentId, procurementId, payload)",
+      'recordExample(paymentId, "other-procurement", payload)'
+    ),
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+    },
+    extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+  });
+  const wrongProcurement = await inspectWholeSitePageActionManifest({ root: wrongProcurementRoot });
+  assert.equal(wrongProcurement.status, "blocked");
+
+  const disabledActionRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      'action.key === "record_refund" && action.enabled === true',
+      'action.key === "record_refund" && action.enabled === false'
+    ),
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+    },
+    extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+  });
+  const disabledAction = await inspectWholeSitePageActionManifest({ root: disabledActionRoot });
+  assert.equal(disabledAction.status, "blocked");
 
   const duplicateUploadRoot = await fixture({
     actions: [action], wrappers, routes, page,
@@ -1572,6 +1665,21 @@ async function submit() {
   });
   const duplicateUpload = await inspectWholeSitePageActionManifest({ root: duplicateUploadRoot });
   assert.equal(duplicateUpload.status, "blocked");
+
+  const escapedCallbackRoot = await fixture({
+    actions: [action], wrappers, routes, page,
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+    },
+    extraFiles: {
+      "apps/web-admin/src/pages/write-validation.ts": helperSource.replace(
+        "const voucher = await upload(file, file.name);",
+        "const escaped = upload;\n  const voucher = await upload(file, file.name);"
+      )
+    }
+  });
+  const escapedCallback = await inspectWholeSitePageActionManifest({ root: escapedCallbackRoot });
+  assert.equal(escapedCallback.status, "blocked");
 
   const unknownHelperRoot = await fixture({
     actions: [action], wrappers, routes,
@@ -1595,8 +1703,8 @@ async function submit() {
   const oneWrapperOnlyRoot = await fixture({
     actions: [action], wrappers, routes,
     page: page.replace(
-      "return recordExample(paymentId, payload);",
-      'return recordExample("other-payment", payload);'
+      "return recordExample(paymentId, procurementId, payload);",
+      'return recordExample("other-payment", procurementId, payload);'
     ),
     webManifestOverrides: {
       evidence: {
@@ -1991,6 +2099,7 @@ test("consumes the exact registered self-profile facade auth transport exception
     actions: [
       registryAction({
         id: "user-self-profile.update",
+        sourceFile: "apps/web-admin/src/pages/settings/SettingsPage.vue",
         routePaths: ["/example"],
         trigger: {
           element: "t-button",
@@ -2005,17 +2114,24 @@ test("consumes the exact registered self-profile facade auth transport exception
         ]
       })
     ],
-    wrappers: [capabilityReadWrapper()],
+    wrappers: [wrapper({
+      name: "getExample",
+      normalizedKey: "GET /examples/:param",
+      returnProvenance: "transparent_main_response",
+      productionConsumers: ["apps/web-admin/src/pages/settings/SettingsPage.vue"]
+    })],
     routes: [route("PATCH /auth/profile")],
+    pagePath: "apps/web-admin/src/pages/settings/SettingsPage.vue",
+    routeRecords: `export const webAdminRoutes = [{ path: "/example", component: () => import("../pages/settings/SettingsPage.vue") }];\n`,
     page: `<script setup lang="ts">
-import { getExample } from "../api/example.api";
-import { updateProfile } from "../lib/user-self-profile";
+import { getExample } from "../../api/example.api";
+import { updateProfile } from "../../lib/user-self-profile";
 const detail = await getExample("example-1");
 function actionEnabled(key: string) {
   return detail.availableActions.some((action) => action.key === key && action.enabled);
 }
 async function submitProfile() {
-  await updateProfile();
+  await updateProfile("A", "13800000000", "password");
 }
 </script>
 <template>
@@ -2023,13 +2139,13 @@ async function submitProfile() {
 </template>
 `,
     extraFiles: {
-      "apps/web-admin/src/lib/user-self-profile.ts": `export async function updateProfile() { return undefined; }\n`,
-      "apps/web-admin/src/auth/auth.store.ts": `export async function updateProfile() { return undefined; }\n`
+      "apps/web-admin/src/lib/user-self-profile.ts": `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword) { return useAuthStore().updateProfile(name, phone, currentPassword); }\n`,
+      "apps/web-admin/src/auth/auth.store.ts": `export function useAuthStore() { return { updateProfile() { return undefined; } }; }\n`
     },
     webManifestOverrides: {
       evidence: {
         productionModuleCount: 7,
-        reachableProductionModuleCount: 6
+        reachableProductionModuleCount: 7
       },
       authTransportExceptions: [
         {
@@ -2044,7 +2160,7 @@ async function submitProfile() {
   });
 
   const manifest = await inspectWholeSitePageActionManifest({ root });
-  assert.equal(manifest.status, "ready");
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
   assert.equal(manifest.blockers.unresolvedWrappers.length, 0);
   assert.deepEqual(
     manifest.actions.find((action) => action.id === "user-self-profile.update")
@@ -2067,12 +2183,15 @@ test("fails closed for unregistered or mismatched self-profile auth exception ev
   };
   const createRoot = async ({
     actionWrapper = exactWrapper,
-    authTransportExceptions = [exactException]
+    authTransportExceptions = [exactException],
+    includeAction = true,
+    facadeSource = `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword) { return useAuthStore().updateProfile(name, phone, currentPassword); }\n`
   } = {}) =>
     fixture({
-      actions: [
+      actions: includeAction ? [
         registryAction({
           id: "user-self-profile.update",
+          sourceFile: "apps/web-admin/src/pages/settings/SettingsPage.vue",
           routePaths: ["/example"],
           trigger: {
             element: "t-button",
@@ -2081,18 +2200,25 @@ test("fails closed for unregistered or mismatched self-profile auth exception ev
           },
           wrappers: [actionWrapper]
         })
-      ],
-      wrappers: [capabilityReadWrapper()],
+      ] : [],
+      wrappers: [wrapper({
+        name: "getExample",
+        normalizedKey: "GET /examples/:param",
+        returnProvenance: "transparent_main_response",
+        productionConsumers: ["apps/web-admin/src/pages/settings/SettingsPage.vue"]
+      })],
       routes: [route("PATCH /auth/profile")],
+      pagePath: "apps/web-admin/src/pages/settings/SettingsPage.vue",
+      routeRecords: `export const webAdminRoutes = [{ path: "/example", component: () => import("../pages/settings/SettingsPage.vue") }];\n`,
       page: `<script setup lang="ts">
-import { getExample } from "../api/example.api";
-import { updateProfile } from "../lib/user-self-profile";
+import { getExample } from "../../api/example.api";
+import { updateProfile } from "../../lib/user-self-profile";
 const detail = await getExample("example-1");
 function actionEnabled(key: string) {
   return detail.availableActions.some((action) => action.key === key && action.enabled);
 }
 async function submitProfile() {
-  await updateProfile();
+  await updateProfile("A", "13800000000", "password");
 }
 </script>
 <template>
@@ -2100,19 +2226,23 @@ async function submitProfile() {
 </template>
 `,
       extraFiles: {
-        "apps/web-admin/src/lib/user-self-profile.ts": `export async function updateProfile() { return undefined; }\n`,
-        "apps/web-admin/src/auth/auth.store.ts": `export async function updateProfile() { return undefined; }\n`
+        "apps/web-admin/src/lib/user-self-profile.ts": facadeSource,
+        "apps/web-admin/src/auth/auth.store.ts": `export function useAuthStore() { return { updateProfile() { return undefined; } }; }\n`
       },
       webManifestOverrides: {
         evidence: {
           productionModuleCount: 7,
-          reachableProductionModuleCount: 6
+          reachableProductionModuleCount: 7
         },
         authTransportExceptions
       }
     });
 
   const cases = [
+    {
+      name: "facade action registration missing",
+      includeAction: false
+    },
     {
       name: "unregistered exception",
       authTransportExceptions: []
@@ -2144,6 +2274,14 @@ async function submitProfile() {
       ]
     },
     {
+      name: "facade no-op",
+      facadeSource: `export function updateProfile() { return undefined; }\n`
+    },
+    {
+      name: "facade argument order mismatch",
+      facadeSource: `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword) { return useAuthStore().updateProfile(phone, name, currentPassword); }\n`
+    },
+    {
       name: "transport owner mismatch",
       authTransportExceptions: [
         { ...exactException, sourceFile: "apps/web-admin/src/auth/other.store.ts" }
@@ -2162,9 +2300,13 @@ async function submitProfile() {
     const manifest = await inspectWholeSitePageActionManifest({ root });
     assert.equal(manifest.status, "blocked", testCase.name);
     assert.ok(
-      manifest.blockers.unresolvedWrappers.some(
-        (entry) => entry.code === "WRAPPER_NOT_IN_MANIFEST"
-      ),
+      testCase.includeAction === false
+        ? manifest.blockers.uncoveredMutationWrappers.some(
+            (entry) => entry.wrapper === "updateProfile"
+          )
+        : manifest.blockers.unresolvedWrappers.some(
+            (entry) => entry.code === "WRAPPER_NOT_IN_MANIFEST"
+          ),
       testCase.name
     );
   }

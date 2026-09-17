@@ -11041,11 +11041,94 @@ function isSelfProfileFacadeCandidate(declared) {
   );
 }
 
+function registeredSelfProfileAuthTransportException(webManifest) {
+  const exceptions = Array.isArray(webManifest?.authTransportExceptions)
+    ? webManifest.authTransportExceptions
+    : [];
+  const matches = exceptions.filter(
+    (exception) =>
+      posixPath(exception?.sourceFile ?? "") ===
+        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transportSourceFile &&
+      exception?.transport === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transport &&
+      exception?.method === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method &&
+      exception?.normalizedPath === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath &&
+      exception?.normalizedKey === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function selfProfileFacadeImplementationIsTrusted({ asts, sourceFileSet }) {
+  const ast = asts.get(SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile);
+  if (!ast) return false;
+  const symbols = buildSymbolContext(
+    ast,
+    SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile,
+    sourceFileSet
+  );
+  const bindings = topLevelScopeVariables(
+    symbols.scopeManager,
+    SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName
+  );
+  if (bindings.length !== 1) return false;
+  const definition = uniqueIndexedNode(
+    symbols.definitionsByBinding,
+    bindings[0]
+  );
+  if (
+    !definition ||
+    !["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"].includes(
+      definition.type
+    ) ||
+    definition.params?.length !== 3 ||
+    !definition.params.every((parameter) => parameter?.type === "Identifier") ||
+    definition.body?.type !== "BlockStatement" ||
+    definition.body.body?.length !== 1 ||
+    definition.body.body[0]?.type !== "ReturnStatement"
+  ) {
+    return false;
+  }
+  const call = unwrapValueExpression(definition.body.body[0].argument);
+  const member = call?.type === "CallExpression"
+    ? unwrapValueExpression(call.callee)
+    : null;
+  const storeCall = member?.type === "MemberExpression" && !member.computed &&
+    member.property?.type === "Identifier" && member.property.name === "updateProfile"
+    ? unwrapValueExpression(member.object)
+    : null;
+  if (
+    call?.type !== "CallExpression" ||
+    member?.type !== "MemberExpression" ||
+    storeCall?.type !== "CallExpression" ||
+    storeCall.arguments?.length !== 0 ||
+    storeCall.callee?.type !== "Identifier" ||
+    call.arguments?.length !== definition.params.length
+  ) {
+    return false;
+  }
+  const storeBinding = symbols.scopeBindings?.get(storeCall.callee);
+  const storeImport = storeBinding
+    ? symbols.importsByBinding?.get(storeBinding)
+    : null;
+  if (
+    storeImport?.sourceFile !==
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transportSourceFile ||
+    storeImport?.importedName !== "useAuthStore"
+  ) {
+    return false;
+  }
+  return definition.params.every((parameter, index) => {
+    const argument = unwrapValueExpression(call.arguments[index]);
+    return argument?.type === "Identifier" &&
+      symbols.scopeBindings?.get(argument) === symbols.scopeBindings?.get(parameter);
+  });
+}
+
 function registeredSelfProfileAuthTransportWrapper({
   declared,
   action,
   webManifest,
-  graph
+  graph,
+  facadeImplementationTrusted
 }) {
   if (
     posixPath(declared?.apiFile ?? "") !==
@@ -11054,25 +11137,10 @@ function registeredSelfProfileAuthTransportWrapper({
   ) {
     return null;
   }
-  const exceptions = Array.isArray(
-    webManifest?.authTransportExceptions
-  )
-    ? webManifest.authTransportExceptions
-    : [];
-  const matches = exceptions.filter(
-    (exception) =>
-      posixPath(exception?.sourceFile ?? "") ===
-        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transportSourceFile &&
-      exception?.transport ===
-        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transport &&
-      exception?.method ===
-        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method &&
-      exception?.normalizedPath ===
-        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath &&
-      exception?.normalizedKey ===
-        SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey
-  );
-  if (matches.length !== 1) return null;
+  if (
+    !facadeImplementationTrusted ||
+    !registeredSelfProfileAuthTransportException(webManifest)
+  ) return null;
   const dependencies = dependencyClosure(action.sourceFile, graph);
   if (!dependencies.has(SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile)) {
     return null;
@@ -13478,33 +13546,705 @@ function pipelineHandlerSource(handler, wrapperName, context) {
   if (!definitions) return null;
   return {
     definition: definitions[0],
-    definitions,
-    source: definitions
-      .map((definition) => context.source.slice(definition.range[0], definition.range[1]))
-      .join("\n")
+    definitions
   };
 }
 
 function importedWrapperCallCount(definitions, wrapper, context) {
-  let count = 0;
+  return importedWrapperCalls(definitions, wrapper, context).length;
+}
+
+function importedWrapperCalls(definitions, wrapper, context) {
+  const calls = [];
   for (const definition of definitions ?? []) {
     walkEstree(definition, (node) => {
       if (node.type !== "CallExpression" || node.callee?.type !== "Identifier") return;
-      const imported = context.symbols.imports?.get(node.callee.name);
+      const binding = context.symbols.scopeBindings?.get(node.callee);
+      const imported = binding
+        ? context.symbols.importsByBinding?.get(binding)
+        : null;
       if (
-        node.callee.name === wrapper.name &&
-        imported?.importedName === wrapper.name
+        imported?.importedName === wrapper.name &&
+        posixPath(imported.sourceFile ?? "") === posixPath(wrapper.apiFile ?? "")
       ) {
-        count += 1;
+        calls.push(node);
       }
     });
   }
-  return count;
+  return calls;
 }
 
-function wrapperCallCount(source, wrapperName) {
-  const escaped = wrapperName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return [...source.matchAll(new RegExp(`\\b${escaped}\\s*\\(`, "gu"))].length;
+function awaitedCallResultBinding(call, definitions, symbols) {
+  const bindings = new Set();
+  for (const definition of definitions ?? []) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type === "VariableDeclarator" &&
+        node.id?.type === "Identifier" &&
+        unwrapValueExpression(node.init) === call
+      ) {
+        const binding = symbols.scopeBindings?.get(node.id);
+        if (binding) bindings.add(binding);
+      }
+    });
+  }
+  return bindings.size === 1 ? [...bindings][0] : null;
+}
+
+function expressionRootedAtBinding(expression, binding, path, symbols) {
+  const value = unwrapValueExpression(expression);
+  const root = referenceRootIdentifier(value);
+  return Boolean(
+    root &&
+    symbols.scopeBindings?.get(root) === binding &&
+    staticMemberPath(value) === `${root.name}.${path}`
+  );
+}
+
+function sameIdentifierBinding(left, right, symbols) {
+  const leftValue = unwrapValueExpression(left);
+  const rightValue = unwrapValueExpression(right);
+  return leftValue?.type === "Identifier" &&
+    rightValue?.type === "Identifier" &&
+    symbols.scopeBindings?.get(leftValue) === symbols.scopeBindings?.get(rightValue);
+}
+
+function bindingIsImmutable(binding, symbols) {
+  return Boolean(binding) &&
+    (symbols.writesByBinding?.get(binding) ?? []).length === 0;
+}
+
+function failClosedMemberGuardBefore({ definitions, binding, path, target, symbols }) {
+  let count = 0;
+  for (const definition of definitions ?? []) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type !== "IfStatement" ||
+        (node.range?.[0] ?? Infinity) >= (target.range?.[0] ?? -1)
+      ) return;
+      const test = unwrapValueExpression(node.test);
+      const guarded = test?.type === "UnaryExpression" &&
+        test.operator === "!" &&
+        expressionRootedAtBinding(test.argument, binding, path, symbols);
+      const consequent = node.consequent?.type === "BlockStatement"
+        ? node.consequent.body
+        : [node.consequent];
+      if (
+        guarded &&
+        consequent.some((statement) =>
+          ["ReturnStatement", "ThrowStatement"].includes(statement?.type)
+        )
+      ) count += 1;
+    });
+  }
+  return count === 1;
+}
+
+function failClosedMemberLiteralMismatchBefore({
+  definitions,
+  binding,
+  path,
+  literal,
+  target,
+  symbols
+}) {
+  let count = 0;
+  for (const definition of definitions ?? []) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type !== "IfStatement" ||
+        (node.range?.[0] ?? Infinity) >= (target.range?.[0] ?? -1)
+      ) return;
+      const test = unwrapValueExpression(node.test);
+      if (!test || !["!=", "!=="].includes(test.operator)) return;
+      const matches =
+        (expressionRootedAtBinding(test.left, binding, path, symbols) &&
+          literalString(test.right) === literal) ||
+        (expressionRootedAtBinding(test.right, binding, path, symbols) &&
+          literalString(test.left) === literal);
+      const consequent = node.consequent?.type === "BlockStatement"
+        ? node.consequent.body
+        : [node.consequent];
+      if (
+        matches &&
+        consequent.some((statement) => statement?.type === "ThrowStatement")
+      ) count += 1;
+    });
+  }
+  return count === 1;
+}
+
+function bindingDeclarationExpression(binding, symbols) {
+  const direct = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+  if (direct) return direct;
+  const definitions = binding?.defs ?? [];
+  if (definitions.length !== 1) return null;
+  const declarator = definitions[0]?.node;
+  return declarator?.type === "VariableDeclarator" ? declarator.init : null;
+}
+
+function validationDerivedExpression(
+  expression,
+  validationBinding,
+  symbols,
+  seen = new Set(),
+  localBindings = new Set()
+) {
+  const value = unwrapValueExpression(expression);
+  if (!value) return { safe: false, origin: false };
+  const root = referenceRootIdentifier(value);
+  if (
+    root &&
+    symbols.scopeBindings?.get(root) === validationBinding &&
+    staticMemberPath(value)?.startsWith(`${root.name}.values`)
+  ) return { safe: true, origin: true };
+  if (value.type === "Identifier") {
+    const binding = symbols.scopeBindings?.get(value);
+    if (binding && localBindings.has(binding)) return { safe: true, origin: false };
+    if (!binding || seen.has(binding) || !bindingIsImmutable(binding, symbols)) {
+      return { safe: false, origin: false };
+    }
+    const declaration = bindingDeclarationExpression(binding, symbols);
+    if (!declaration) return { safe: false, origin: false };
+    const nextSeen = new Set(seen);
+    nextSeen.add(binding);
+    const proof = validationDerivedExpression(
+      declaration,
+      validationBinding,
+      symbols,
+      nextSeen,
+      localBindings
+    );
+    return proof.origin ? proof : { safe: false, origin: false };
+  }
+  if (["Literal", "MetaProperty"].includes(value.type)) {
+    return { safe: true, origin: false };
+  }
+  const combine = (parts) => ({
+    safe: parts.length > 0 && parts.every((part) => part.safe),
+    origin: parts.some((part) => part.origin)
+  });
+  if (value.type === "MemberExpression") {
+    const parts = [validationDerivedExpression(value.object, validationBinding, symbols, seen, localBindings)];
+    if (value.computed) {
+      parts.push(validationDerivedExpression(value.property, validationBinding, symbols, seen, localBindings));
+    }
+    return combine(parts);
+  }
+  if (value.type === "CallExpression" || value.type === "NewExpression") {
+    const parts = (value.arguments ?? []).map((argument) =>
+      argument?.type === "SpreadElement"
+        ? validationDerivedExpression(argument.argument, validationBinding, symbols, seen, localBindings)
+        : validationDerivedExpression(argument, validationBinding, symbols, seen, localBindings)
+    );
+    return combine(parts);
+  }
+  if (["UnaryExpression", "AwaitExpression", "ChainExpression"].includes(value.type)) {
+    return validationDerivedExpression(value.argument ?? value.expression, validationBinding, symbols, seen, localBindings);
+  }
+  if (["BinaryExpression", "LogicalExpression"].includes(value.type)) {
+    return combine([
+      validationDerivedExpression(value.left, validationBinding, symbols, seen, localBindings),
+      validationDerivedExpression(value.right, validationBinding, symbols, seen, localBindings)
+    ]);
+  }
+  if (value.type === "ConditionalExpression") {
+    return combine([
+      validationDerivedExpression(value.test, validationBinding, symbols, seen, localBindings),
+      validationDerivedExpression(value.consequent, validationBinding, symbols, seen, localBindings),
+      validationDerivedExpression(value.alternate, validationBinding, symbols, seen, localBindings)
+    ]);
+  }
+  if (value.type === "TemplateLiteral") {
+    return combine(value.expressions.map((item) =>
+      validationDerivedExpression(item, validationBinding, symbols, seen, localBindings)
+    ));
+  }
+  if (value.type === "ArrayExpression") {
+    return combine(value.elements.filter(Boolean).map((item) =>
+      item.type === "SpreadElement"
+        ? validationDerivedExpression(item.argument, validationBinding, symbols, seen, localBindings)
+        : validationDerivedExpression(item, validationBinding, symbols, seen, localBindings)
+    ));
+  }
+  if (value.type === "ObjectExpression") {
+    return combine(value.properties.map((property) => {
+      if (property?.type === "SpreadElement") {
+        return validationDerivedExpression(property.argument, validationBinding, symbols, seen, localBindings);
+      }
+      return property?.type === "Property" && property.kind === "init"
+        ? validationDerivedExpression(property.value, validationBinding, symbols, seen, localBindings)
+        : { safe: false, origin: false };
+    }));
+  }
+  if (["ArrowFunctionExpression", "FunctionExpression"].includes(value.type)) {
+    if (!value.params?.every((parameter) => parameter?.type === "Identifier")) {
+      return { safe: false, origin: false };
+    }
+    const callbackLocals = new Set(localBindings);
+    for (const parameter of value.params) {
+      const binding = symbols.scopeBindings?.get(parameter);
+      if (!binding) return { safe: false, origin: false };
+      callbackLocals.add(binding);
+    }
+    let callbackBody = value.body;
+    if (callbackBody?.type === "BlockStatement") {
+      if (callbackBody.body?.length !== 1 || callbackBody.body[0]?.type !== "ReturnStatement") {
+        return { safe: false, origin: false };
+      }
+      callbackBody = callbackBody.body[0].argument;
+    }
+    return validationDerivedExpression(
+      callbackBody,
+      validationBinding,
+      symbols,
+      seen,
+      callbackLocals
+    );
+  }
+  return { safe: false, origin: false };
+}
+
+function payloadFieldsHaveValidationOrigin(expression, validationBinding, symbols) {
+  const value = unwrapValueExpression(expression);
+  if (value?.type === "Identifier") {
+    const binding = symbols.scopeBindings?.get(value);
+    const declaration = binding && bindingIsImmutable(binding, symbols)
+      ? bindingDeclarationExpression(binding, symbols)
+      : null;
+    return declaration
+      ? payloadFieldsHaveValidationOrigin(declaration, validationBinding, symbols)
+      : false;
+  }
+  if (value?.type !== "ObjectExpression" || value.properties.length === 0) {
+    const proof = validationDerivedExpression(value, validationBinding, symbols);
+    return proof.safe && proof.origin;
+  }
+  return value.properties.every((property) => {
+    if (property?.type === "SpreadElement") {
+      const proof = validationDerivedExpression(property.argument, validationBinding, symbols);
+      return proof.safe && proof.origin;
+    }
+    if (property?.type !== "Property" || property.kind !== "init") return false;
+    const proof = validationDerivedExpression(property.value, validationBinding, symbols);
+    return proof.safe && proof.origin;
+  });
+}
+
+function importedCallsByName(definitions, importedName, context) {
+  const matches = [];
+  for (const definition of definitions ?? []) {
+    walkEstree(definition, (node) => {
+      if (node.type !== "CallExpression" || node.callee?.type !== "Identifier") return;
+      const binding = context.symbols.scopeBindings?.get(node.callee);
+      const imported = binding
+        ? context.symbols.importsByBinding?.get(binding)
+        : null;
+      if (imported?.importedName === importedName) {
+        matches.push({ call: node, imported });
+      }
+    });
+  }
+  return matches;
+}
+
+function expressionContainsBindingMember(expression, binding, path, symbols) {
+  let found = false;
+  walkEstree(unwrapValueExpression(expression), (node) => {
+    if (!found && expressionRootedAtBinding(node, binding, path, symbols)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+function exactEnabledActionPredicate(expression, freshBinding, actionKey, symbols) {
+  const call = unwrapValueExpression(expression);
+  const callee = unwrapValueExpression(call?.callee);
+  if (
+    call?.type !== "CallExpression" ||
+    callee?.type !== "MemberExpression" ||
+    callee.computed ||
+    callee.property?.type !== "Identifier" ||
+    callee.property.name !== "some" ||
+    !expressionRootedAtBinding(callee.object, freshBinding, "availableActions", symbols) ||
+    call.arguments?.length !== 1
+  ) return false;
+  const callback = unwrapValueExpression(call.arguments[0]);
+  if (
+    !["ArrowFunctionExpression", "FunctionExpression"].includes(callback?.type) ||
+    callback.params?.length !== 1 ||
+    callback.params[0]?.type !== "Identifier"
+  ) return false;
+  const itemBinding = symbols.scopeBindings?.get(callback.params[0]);
+  if (!itemBinding) return false;
+  let body = callback.body;
+  if (body?.type === "BlockStatement") {
+    if (body.body?.length !== 1 || body.body[0]?.type !== "ReturnStatement") return false;
+    body = body.body[0].argument;
+  }
+  const clauses = [];
+  const flatten = (node) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "LogicalExpression" && value.operator === "&&") {
+      flatten(value.left);
+      flatten(value.right);
+      return;
+    }
+    clauses.push(value);
+  };
+  flatten(body);
+  if (clauses.length !== 2) return false;
+  let keyMatched = 0;
+  let enabledMatched = 0;
+  for (const clause of clauses) {
+    if (!clause || clause.type !== "BinaryExpression" || !["==", "==="].includes(clause.operator)) {
+      return false;
+    }
+    const pairs = [
+      [clause.left, clause.right],
+      [clause.right, clause.left]
+    ];
+    if (pairs.some(([member, literal]) =>
+      expressionRootedAtBinding(member, itemBinding, "key", symbols) &&
+      literalString(literal) === actionKey
+    )) {
+      keyMatched += 1;
+      continue;
+    }
+    if (pairs.some(([member, literal]) =>
+      expressionRootedAtBinding(member, itemBinding, "enabled", symbols) &&
+      unwrapValueExpression(literal)?.type === "Literal" &&
+      unwrapValueExpression(literal)?.value === true
+    )) {
+      enabledMatched += 1;
+      continue;
+    }
+    return false;
+  }
+  return keyMatched === 1 && enabledMatched === 1;
+}
+
+function failClosedBindingGuardBefore({ definitions, binding, target, symbols }) {
+  let count = 0;
+  for (const definition of definitions ?? []) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type !== "IfStatement" ||
+        (node.range?.[0] ?? Infinity) >= (target.range?.[0] ?? -1)
+      ) return;
+      const test = unwrapValueExpression(node.test);
+      const argument = test?.type === "UnaryExpression" && test.operator === "!"
+        ? unwrapValueExpression(test.argument)
+        : null;
+      const consequent = node.consequent?.type === "BlockStatement"
+        ? node.consequent.body
+        : [node.consequent];
+      if (
+        argument?.type === "Identifier" &&
+        symbols.scopeBindings?.get(argument) === binding &&
+        consequent.some((statement) => statement?.type === "ThrowStatement")
+      ) count += 1;
+    });
+  }
+  return count === 1;
+}
+
+function projectFreshCapabilitySources({
+  action,
+  handler,
+  projectIdExpression,
+  targetCall,
+  excludedBindings,
+  context
+}) {
+  const freshCandidates = [];
+  for (const definition of handler.definitions) {
+    directCallableNodes(definition, (node) => {
+      if (node.type !== "VariableDeclarator" || node.id?.type !== "Identifier") return;
+      const call = unwrapValueExpression(node.init);
+      const binding = context.symbols.scopeBindings?.get(node.id);
+      if (
+        call?.type !== "CallExpression" ||
+        !importedReadSource(call, context.serverReadImports, context.symbols) ||
+        !binding ||
+        excludedBindings.has(binding) ||
+        !bindingIsImmutable(binding, context.symbols) ||
+        !sameIdentifierBinding(call.arguments?.[0], projectIdExpression, context.symbols)
+      ) return;
+      freshCandidates.push(binding);
+    });
+  }
+  if (freshCandidates.length !== 1) return null;
+  const freshBinding = freshCandidates[0];
+  const operationBindings = new Set();
+  for (const definition of handler.definitions) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type === "VariableDeclarator" &&
+        node.id?.type === "Identifier" &&
+        expressionContainsBindingMember(
+          node.init,
+          freshBinding,
+          "canManage",
+          context.symbols
+        )
+      ) {
+        const binding = context.symbols.scopeBindings?.get(node.id);
+        if (binding) operationBindings.add(binding);
+      }
+    });
+  }
+  if (operationBindings.size !== 1) return null;
+  const operationBinding = [...operationBindings][0];
+  if (
+    !bindingIsImmutable(operationBinding, context.symbols) ||
+    !failClosedBindingGuardBefore({
+      definitions: handler.definitions,
+      binding: operationBinding,
+      target: targetCall,
+      symbols: context.symbols
+    })
+  ) return null;
+  return pipelineCapabilitySourceEvidence({
+    action,
+    handlerDefinition: handler.definition,
+    freshName: freshBinding.name,
+    context
+  });
+}
+
+function projectDefinitionPipelineProof({ action, wrapper, handler, context }) {
+  const definitionMatches = importedCallsByName(
+    handler.definitions,
+    "fetchBusinessEntryDefinition",
+    context
+  );
+  const validationMatches = importedCallsByName(
+    handler.definitions,
+    "validateBusinessEntryDraft",
+    context
+  );
+  if (definitionMatches.length !== 1 || validationMatches.length !== 1) return null;
+  const definitionCall = definitionMatches[0].call;
+  const validationCall = validationMatches[0].call;
+  const definitionBinding = awaitedCallResultBinding(
+    definitionCall,
+    handler.definitions,
+    context.symbols
+  );
+  const validationBinding = awaitedCallResultBinding(
+    validationCall,
+    handler.definitions,
+    context.symbols
+  );
+  if (
+    !definitionBinding ||
+    !validationBinding ||
+    !bindingIsImmutable(definitionBinding, context.symbols) ||
+    !bindingIsImmutable(validationBinding, context.symbols) ||
+    (definitionCall.range?.[0] ?? Infinity) >= (validationCall.range?.[0] ?? -1)
+  ) return null;
+
+  const scene = literalString(definitionCall.arguments?.[0]);
+  const definitionScope = unwrapValueExpression(definitionCall.arguments?.[1]);
+  const definitionTarget = unwrapValueExpression(definitionCall.arguments?.[2]);
+  const definitionOperation = literalString(definitionCall.arguments?.[3]);
+  const projectIdExpression = objectPropertyValue(definitionScope, "projectId");
+  const projectId = unwrapValueExpression(projectIdExpression);
+  const projectBinding = projectId?.type === "Identifier"
+    ? context.symbols.scopeBindings?.get(projectId)
+    : null;
+  if (
+    !scene ||
+    definitionOperation !== "edit" ||
+    literalString(objectPropertyValue(definitionScope, "scope")) !== "project" ||
+    literalString(objectPropertyValue(definitionTarget, "entityType")) !== "project" ||
+    !sameIdentifierBinding(
+      objectPropertyValue(definitionTarget, "entityId"),
+      projectIdExpression,
+      context.symbols
+    ) ||
+    !bindingIsImmutable(projectBinding, context.symbols)
+  ) return null;
+
+  const validationScope = unwrapValueExpression(validationCall.arguments?.[0]);
+  const validationPayload = unwrapValueExpression(validationCall.arguments?.[1]);
+  const validationTarget = unwrapValueExpression(
+    objectPropertyValue(validationPayload, "target")
+  );
+  const values = objectPropertyValue(validationPayload, "values");
+  const valuesIdentifier = unwrapValueExpression(values);
+  const valuesBinding = valuesIdentifier?.type === "Identifier"
+    ? context.symbols.scopeBindings?.get(valuesIdentifier)
+    : null;
+  if (
+    literalString(objectPropertyValue(validationScope, "scope")) !== "project" ||
+    !sameIdentifierBinding(
+      objectPropertyValue(validationScope, "projectId"),
+      projectIdExpression,
+      context.symbols
+    ) ||
+    !expressionRootedAtBinding(
+      objectPropertyValue(validationPayload, "sceneKey"),
+      definitionBinding,
+      "key",
+      context.symbols
+    ) ||
+    !expressionRootedAtBinding(
+      objectPropertyValue(validationPayload, "definitionVersion"),
+      definitionBinding,
+      "version",
+      context.symbols
+    ) ||
+    literalString(objectPropertyValue(validationTarget, "entityType")) !== "project" ||
+    !sameIdentifierBinding(
+      objectPropertyValue(validationTarget, "entityId"),
+      projectIdExpression,
+      context.symbols
+    ) ||
+    literalString(validationCall.arguments?.[2]) !== definitionOperation ||
+    !bindingIsImmutable(valuesBinding, context.symbols) ||
+    !failClosedMemberLiteralMismatchBefore({
+      definitions: handler.definitions,
+      binding: definitionBinding,
+      path: "key",
+      literal: scene,
+      target: validationCall,
+      symbols: context.symbols
+    })
+  ) return null;
+
+  const targetCalls = importedWrapperCalls(handler.definitions, wrapper, context);
+  if (targetCalls.length !== 1) return null;
+  const targetCall = targetCalls[0];
+  const validationOnly = targetCall === validationCall;
+  if (!validationOnly) {
+    if (
+      (targetCall.range?.[0] ?? -1) <= (validationCall.range?.[0] ?? Infinity) ||
+      !sameIdentifierBinding(
+        targetCall.arguments?.[0],
+        projectIdExpression,
+        context.symbols
+      ) ||
+      !failClosedMemberGuardBefore({
+        definitions: handler.definitions,
+        binding: validationBinding,
+        path: "valid",
+        target: targetCall,
+        symbols: context.symbols
+      }) ||
+      (targetCall.arguments ?? []).slice(1).length === 0 ||
+      !(targetCall.arguments ?? []).slice(1).every((argument) =>
+        argument?.type !== "SpreadElement" &&
+        payloadFieldsHaveValidationOrigin(
+          argument,
+          validationBinding,
+          context.symbols
+        )
+      )
+    ) return null;
+  }
+
+  const definitionName = definitionBinding.name;
+  const definitionSources = pipelineFreshReadSources({
+    handlerDefinition: handler.definition,
+    freshName: definitionName,
+    context
+  })?.sources ?? null;
+  let capabilitySources = validationOnly ? definitionSources : null;
+  if (action.capability.kind !== "server_definition") {
+    capabilitySources = projectFreshCapabilitySources({
+      action,
+      handler,
+      projectIdExpression,
+      targetCall,
+      excludedBindings: new Set([definitionBinding, validationBinding]),
+      context
+    });
+    if (capabilitySources?.size !== 1) return null;
+  }
+  return {
+    kind: "project_definition",
+    verified: true,
+    capabilityWitness: validationOnly || capabilitySources?.size === 1,
+    capabilitySources,
+    definitionSources
+  };
+}
+
+function projectCapabilityPipelineProof({ action, wrapper, handler, context }) {
+  if (
+    importedCallsByName(
+      handler.definitions,
+      "fetchBusinessEntryDefinition",
+      context
+    ).length > 0 ||
+    importedCallsByName(
+      handler.definitions,
+      "validateBusinessEntryDraft",
+      context
+    ).length > 0
+  ) return null;
+  const targetCalls = importedWrapperCalls(handler.definitions, wrapper, context);
+  if (targetCalls.length !== 1) return null;
+  const targetCall = targetCalls[0];
+  const projectId = unwrapValueExpression(targetCall.arguments?.[0]);
+  const projectBinding = projectId?.type === "Identifier"
+    ? context.symbols.scopeBindings?.get(projectId)
+    : null;
+  if (!bindingIsImmutable(projectBinding, context.symbols)) return null;
+  const capabilitySources = projectFreshCapabilitySources({
+    action,
+    handler,
+    projectIdExpression: projectId,
+    targetCall,
+    excludedBindings: new Set(),
+    context
+  });
+  if (capabilitySources?.size !== 1) return null;
+
+  const specializedValidation = importedCallsByName(
+    handler.definitions,
+    "validateProjectParticipatingCompanyDeactivation",
+    context
+  );
+  const specializedWrite = importedCallsByName(
+    handler.definitions,
+    "deactivateProjectParticipatingCompany",
+    context
+  );
+  if (specializedValidation.length > 0 || specializedWrite.length > 0) {
+    if (specializedValidation.length !== 1 || specializedWrite.length !== 1) return null;
+    const validationCall = specializedValidation[0].call;
+    const writeCall = specializedWrite[0].call;
+    const validationBinding = awaitedCallResultBinding(
+      validationCall,
+      handler.definitions,
+      context.symbols
+    );
+    if (
+      !validationBinding ||
+      !bindingIsImmutable(validationBinding, context.symbols) ||
+      !sameIdentifierBinding(validationCall.arguments?.[0], writeCall.arguments?.[0], context.symbols) ||
+      !sameIdentifierBinding(validationCall.arguments?.[1], writeCall.arguments?.[1], context.symbols) ||
+      !sameIdentifierBinding(validationCall.arguments?.[2], writeCall.arguments?.[2], context.symbols) ||
+      !failClosedMemberGuardBefore({
+        definitions: handler.definitions,
+        binding: validationBinding,
+        path: "valid",
+        target: writeCall,
+        symbols: context.symbols
+      }) ||
+      (validationCall.range?.[0] ?? Infinity) >= (writeCall.range?.[0] ?? -1)
+    ) return null;
+  }
+  return {
+    kind: "project_capability",
+    verified: true,
+    capabilityWitness: true,
+    capabilitySources
+  };
 }
 
 function pipelineFreshReadSources({ handlerDefinition, freshName, context }) {
@@ -13561,54 +14301,483 @@ function pipelineCapabilitySourceEvidence({ action, handlerDefinition, freshName
   return rebound ? sources : null;
 }
 
-function guardedUploadHelperSource(handlerDefinition, context) {
-  const candidates = [];
-  directCallableNodes(handlerDefinition, (node) => {
+function nodeContainsNode(container, candidate) {
+  return Array.isArray(container?.range) && Array.isArray(candidate?.range) &&
+    container.range[0] <= candidate.range[0] &&
+    container.range[1] >= candidate.range[1];
+}
+
+function expressionReferencesBinding(expression, binding, symbols) {
+  let found = false;
+  walkEstree(unwrapValueExpression(expression), (node) => {
     if (
-      node.type !== "CallExpression" ||
-      node.callee?.type !== "Identifier" ||
-      !(node.arguments ?? []).some((argument) =>
+      !found &&
+      node.type === "Identifier" &&
+      symbols.scopeBindings?.get(node) === binding
+    ) found = true;
+  });
+  return found;
+}
+
+function failClosedCoordinateMismatchBefore({
+  definitions,
+  freshBinding,
+  freshPath,
+  coordinateBinding,
+  target,
+  symbols
+}) {
+  let matched = false;
+  for (const definition of definitions ?? []) {
+    directCallableNodes(definition, (node) => {
+      if (
+        matched ||
+        node.type !== "IfStatement" ||
+        (node.range?.[0] ?? Infinity) >= (target.range?.[0] ?? -1)
+      ) return;
+      let mismatch = false;
+      walkEstree(node.test, (candidate) => {
+        if (
+          candidate?.type === "BinaryExpression" &&
+          ["!=", "!=="].includes(candidate.operator) &&
+          ((expressionRootedAtBinding(
+            candidate.left,
+            freshBinding,
+            freshPath,
+            symbols
+          ) && expressionReferencesBinding(candidate.right, coordinateBinding, symbols)) ||
+          (expressionRootedAtBinding(
+            candidate.right,
+            freshBinding,
+            freshPath,
+            symbols
+          ) && expressionReferencesBinding(candidate.left, coordinateBinding, symbols)))
+        ) mismatch = true;
+      });
+      const consequent = node.consequent?.type === "BlockStatement"
+        ? node.consequent.body
+        : [node.consequent];
+      if (
+        mismatch &&
+        consequent.some((statement) => statement?.type === "ThrowStatement")
+      ) matched = true;
+    });
+  }
+  return matched;
+}
+
+function failClosedBindingMismatchBefore({
+  definitions,
+  leftBinding,
+  leftPath,
+  rightBinding,
+  clearBinding = null,
+  clearPath = null,
+  target,
+  symbols
+}) {
+  let matched = false;
+  for (const definition of definitions ?? []) {
+    directCallableNodes(definition, (node) => {
+      if (
+        matched ||
+        node.type !== "IfStatement" ||
+        (node.range?.[0] ?? Infinity) >= (target.range?.[0] ?? -1)
+      ) return;
+      let mismatch = false;
+      walkEstree(node.test, (candidate) => {
+        if (
+          candidate?.type === "BinaryExpression" &&
+          ["!=", "!=="].includes(candidate.operator) &&
+          ((expressionRootedAtBinding(candidate.left, leftBinding, leftPath, symbols) &&
+            expressionReferencesBinding(candidate.right, rightBinding, symbols)) ||
+          (expressionRootedAtBinding(candidate.right, leftBinding, leftPath, symbols) &&
+            expressionReferencesBinding(candidate.left, rightBinding, symbols)))
+        ) mismatch = true;
+      });
+      const consequent = node.consequent?.type === "BlockStatement"
+        ? node.consequent.body
+        : [node.consequent];
+      let clearsRetainedSource = !clearBinding;
+      for (const statement of consequent) {
+        walkEstree(statement, (candidate) => {
+          if (
+            candidate?.type === "AssignmentExpression" &&
+            candidate.operator === "=" &&
+            expressionRootedAtBinding(candidate.left, clearBinding, clearPath, symbols) &&
+            unwrapValueExpression(candidate.right)?.type === "Literal" &&
+            unwrapValueExpression(candidate.right)?.value === null
+          ) clearsRetainedSource = true;
+        });
+      }
+      if (
+        mismatch &&
+        clearsRetainedSource &&
+        consequent.some((statement) => statement?.type === "ThrowStatement")
+      ) matched = true;
+    });
+  }
+  return matched;
+}
+
+function importedCallMetadata(call, symbols) {
+  if (call?.callee?.type !== "Identifier") return null;
+  const binding = symbols.scopeBindings?.get(call.callee);
+  return binding ? symbols.importsByBinding?.get(binding) ?? null : null;
+}
+
+function guardedUploadPipelineProof({ action, wrapper, handler, context }) {
+  const helperCandidates = [];
+  for (const definition of handler.definitions) {
+    directCallableNodes(definition, (node) => {
+      if (node.type !== "CallExpression" || node.callee?.type !== "Identifier") return;
+      const callbackIndex = (node.arguments ?? []).findIndex((argument) =>
         ["ArrowFunctionExpression", "FunctionExpression"].includes(
           unwrapValueExpression(argument)?.type
         )
+      );
+      if (callbackIndex < 1) return;
+      const imported = importedCallMetadata(node, context.symbols);
+      if (!imported?.sourceFile || !imported?.importedName) return;
+      const helperAst = context.asts.get(imported.sourceFile);
+      if (!helperAst) return;
+      const helperSymbols = buildSymbolContext(
+        helperAst,
+        imported.sourceFile,
+        context.sourceFileSet
+      );
+      const bindings = topLevelScopeVariables(
+        helperSymbols.scopeManager,
+        imported.importedName
+      );
+      const helperDefinition = bindings.length === 1
+        ? uniqueIndexedNode(helperSymbols.definitionsByBinding, bindings[0])
+        : null;
+      if (!helperDefinition || helperDefinition.params?.length <= callbackIndex) return;
+      helperCandidates.push({
+        call: node,
+        callback: unwrapValueExpression(node.arguments[callbackIndex]),
+        callbackIndex,
+        imported,
+        helperDefinition,
+        helperSymbols
+      });
+    });
+  }
+  if (helperCandidates.length !== 1) return null;
+  const witness = helperCandidates[0];
+  const helperFileParameter = witness.helperDefinition.params[witness.callbackIndex - 1];
+  const helperUploadParameter = witness.helperDefinition.params[witness.callbackIndex];
+  if (
+    helperFileParameter?.type !== "Identifier" ||
+    helperUploadParameter?.type !== "Identifier" ||
+    witness.callback?.params?.length !== 2 ||
+    !witness.callback.params.every((parameter) => parameter?.type === "Identifier")
+  ) return null;
+  const helperFileBinding = witness.helperSymbols.scopeBindings?.get(helperFileParameter);
+  const helperUploadBinding = witness.helperSymbols.scopeBindings?.get(helperUploadParameter);
+  const helperUploadCalls = [];
+  directCallableNodes(witness.helperDefinition, (node) => {
+    if (
+      node.type === "CallExpression" &&
+      node.callee?.type === "Identifier" &&
+      witness.helperSymbols.scopeBindings?.get(node.callee) === helperUploadBinding
+    ) helperUploadCalls.push(node);
+  });
+  if (helperUploadCalls.length !== 1 || (helperUploadBinding?.references ?? []).length !== 1) {
+    return null;
+  }
+  const helperUploadCall = helperUploadCalls[0];
+  if (
+    !sameIdentifierBinding(
+      helperUploadCall.arguments?.[0],
+      helperFileParameter,
+      witness.helperSymbols
+    ) ||
+    !expressionRootedAtBinding(
+      helperUploadCall.arguments?.[1],
+      helperFileBinding,
+      "name",
+      witness.helperSymbols
+    )
+  ) return null;
+  const voucherBinding = awaitedCallResultBinding(
+    helperUploadCall,
+    [witness.helperDefinition],
+    witness.helperSymbols
+  );
+  if (!bindingIsImmutable(voucherBinding, witness.helperSymbols)) return null;
+  const helperReturns = [];
+  directCallableNodes(witness.helperDefinition, (node) => {
+    if (node.type === "ReturnStatement") helperReturns.push(node);
+  });
+  if (helperReturns.length !== 1) return null;
+  const returnObject = unwrapValueExpression(helperReturns[0].argument);
+  if (
+    returnObject?.type !== "ObjectExpression" ||
+    !expressionRootedAtBinding(
+      objectPropertyValue(returnObject, "voucherFileId"),
+      voucherBinding,
+      "id",
+      witness.helperSymbols
+    )
+  ) return null;
+
+  const callbackBindings = witness.callback.params.map((parameter) =>
+    context.symbols.scopeBindings?.get(parameter)
+  );
+  if (callbackBindings.some((binding) => !binding)) return null;
+  const callbackUploadCalls = [];
+  walkEstree(witness.callback, (node) => {
+    if (node.type !== "CallExpression" || !importedCallMetadata(node, context.symbols)) return;
+    const firstCallbackArgument = (node.arguments ?? []).findIndex((argument) => {
+      const value = unwrapValueExpression(argument);
+      return value?.type === "Identifier" &&
+        context.symbols.scopeBindings?.get(value) === callbackBindings[0];
+    });
+    if (
+      firstCallbackArgument >= 1 &&
+      sameIdentifierBinding(
+        node.arguments[firstCallbackArgument + 1],
+        witness.callback.params[1],
+        context.symbols
       )
-    ) {
-      return;
-    }
-    const calleeBinding = context.symbols.scopeBindings?.get(node.callee);
-    const imported = calleeBinding
-      ? context.symbols.importsByBinding?.get(calleeBinding)
+    ) callbackUploadCalls.push({ call: node, firstCallbackArgument });
+  });
+  if (callbackUploadCalls.length !== 1) return null;
+  const uploadCall = callbackUploadCalls[0].call;
+  const coordinateExpressions = uploadCall.arguments.slice(
+    0,
+    callbackUploadCalls[0].firstCallbackArgument
+  );
+  const coordinateBindings = coordinateExpressions.map((expression) => {
+    const value = unwrapValueExpression(expression);
+    return value?.type === "Identifier"
+      ? context.symbols.scopeBindings?.get(value) ?? null
+      : null;
+  });
+  if (
+    coordinateBindings.length < 1 ||
+    coordinateBindings.length > 2 ||
+    coordinateBindings.some((binding) => !bindingIsImmutable(binding, context.symbols))
+  ) return null;
+
+  const payloadBindings = new Set();
+  for (const definition of handler.definitions) {
+    directCallableNodes(definition, (node) => {
+      if (node.type !== "VariableDeclarator" || node.id?.type !== "Identifier") return;
+      let containsHelper = false;
+      walkEstree(node.init, (candidate) => {
+        if (candidate === witness.call) containsHelper = true;
+      });
+      if (containsHelper) {
+        const binding = context.symbols.scopeBindings?.get(node.id);
+        if (binding) payloadBindings.add(binding);
+      }
+    });
+  }
+  if (payloadBindings.size !== 1) return null;
+  const payloadBinding = [...payloadBindings][0];
+  if (!bindingIsImmutable(payloadBinding, context.symbols)) return null;
+  const payloadDeclaration = bindingDeclarationExpression(payloadBinding, context.symbols);
+  const payloadExpression = unwrapValueExpression(payloadDeclaration);
+  let retainedBinding = null;
+  let retainedSourceBinding = null;
+  let retainedSourcePath = null;
+  if (payloadExpression?.type === "LogicalExpression" && payloadExpression.operator === "??") {
+    const retainedRoot = referenceRootIdentifier(payloadExpression.left);
+    retainedBinding = retainedRoot?.type === "Identifier"
+      ? context.symbols.scopeBindings?.get(retainedRoot) ?? null
       : null;
     if (
-      imported?.kind !== "named" ||
-      !isNonEmptyString(imported.sourceFile) ||
-      !isNonEmptyString(imported.importedName)
-    ) {
-      return;
+      !retainedBinding ||
+      !bindingIsImmutable(retainedBinding, context.symbols) ||
+      !expressionRootedAtBinding(
+        payloadExpression.left,
+        retainedBinding,
+        "payload",
+        context.symbols
+      ) ||
+      !nodeContainsNode(payloadExpression.right, witness.call)
+    ) return null;
+    const retainedDeclaration = bindingDeclarationExpression(retainedBinding, context.symbols);
+    const retainedSourceRoot = referenceRootIdentifier(retainedDeclaration);
+    retainedSourceBinding = retainedSourceRoot?.type === "Identifier"
+      ? context.symbols.scopeBindings?.get(retainedSourceRoot) ?? null
+      : null;
+    const retainedDeclarationPath = staticMemberPath(unwrapValueExpression(retainedDeclaration));
+    retainedSourcePath = retainedDeclarationPath?.split(".").slice(1).join(".") ?? null;
+    if (!retainedSourceBinding || !retainedSourcePath) return null;
+  } else if (!nodeContainsNode(payloadExpression, witness.call)) {
+    return null;
+  }
+
+  const finalCalls = [];
+  for (const definition of handler.definitions) {
+    walkEstree(definition, (node) => {
+      if (
+        node.type !== "CallExpression" ||
+        nodeContainsNode(witness.callback, node) ||
+        node === witness.call ||
+        !importedCallMetadata(node, context.symbols)
+      ) return;
+      const payloadIndex = (node.arguments ?? []).findIndex((argument) => {
+        const value = unwrapValueExpression(argument);
+        return value?.type === "Identifier" &&
+          context.symbols.scopeBindings?.get(value) === payloadBinding;
+      });
+      if (payloadIndex !== coordinateBindings.length) return;
+      if (!coordinateExpressions.every((coordinate, index) =>
+        sameIdentifierBinding(node.arguments[index], coordinate, context.symbols)
+      )) return;
+      finalCalls.push(node);
+    });
+  }
+  if (finalCalls.length !== 1) return null;
+  const finalCall = finalCalls[0];
+  if (
+    (witness.call.range?.[0] ?? Infinity) >= (finalCall.range?.[0] ?? -1) ||
+    (uploadCall.range?.[0] ?? Infinity) >= (finalCall.range?.[0] ?? -1)
+  ) return null;
+
+  const capabilityRoot = capabilitySourceRoot(action.capability.source);
+  const freshBindings = new Set();
+  for (const definition of handler.definitions) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type === "VariableDeclarator" &&
+        node.id?.type === "Identifier" &&
+        node.id.name === capabilityRoot
+      ) {
+        const call = unwrapValueExpression(node.init);
+        const binding = context.symbols.scopeBindings?.get(node.id);
+        if (
+          call?.type === "CallExpression" &&
+          importedReadSource(call, context.serverReadImports, context.symbols) &&
+          binding &&
+          sameIdentifierBinding(call.arguments?.[0], coordinateExpressions[0], context.symbols)
+        ) freshBindings.add(binding);
+      }
+    });
+  }
+  if (freshBindings.size !== 1) return null;
+  const freshBinding = [...freshBindings][0];
+  const coordinatePaths = coordinateBindings.length === 2
+    ? ["payment.id", "payment.procurement.id"]
+    : ["id"];
+  if (!coordinateBindings.every((coordinateBinding, index) =>
+    failClosedCoordinateMismatchBefore({
+      definitions: handler.definitions,
+      freshBinding,
+      freshPath: coordinatePaths[index],
+      coordinateBinding,
+      target: witness.call,
+      symbols: context.symbols
+    })
+  )) return null;
+  if (retainedBinding) {
+    if (
+      coordinateBindings.length !== 2 ||
+      !coordinateBindings.every((coordinateBinding, index) =>
+        failClosedBindingMismatchBefore({
+          definitions: handler.definitions,
+          leftBinding: retainedBinding,
+          leftPath: index === 0 ? "paymentId" : "procurementId",
+          rightBinding: coordinateBinding,
+          clearBinding: retainedSourceBinding,
+          clearPath: retainedSourcePath,
+          target: witness.call,
+          symbols: context.symbols
+        })
+      )
+    ) return null;
+    const expectedBindings = new Set();
+    for (const definition of handler.definitions) {
+      directCallableNodes(definition, (node) => {
+        if (
+          node.type === "VariableDeclarator" &&
+          node.id?.type === "Identifier" &&
+          expressionRootedAtBinding(
+            node.init,
+            freshBinding,
+            "discrepancy.refundExpectedAmountCents",
+            context.symbols
+          )
+        ) {
+          const binding = context.symbols.scopeBindings?.get(node.id);
+          if (binding && bindingIsImmutable(binding, context.symbols)) expectedBindings.add(binding);
+        }
+      });
     }
-    const helperAst = context.asts.get(imported.sourceFile);
-    const helperSource = context.sources.get(imported.sourceFile);
-    if (!helperAst || typeof helperSource !== "string") return;
-    const helperSymbols = buildSymbolContext(
-      helperAst,
-      imported.sourceFile,
-      context.sourceFileSet
-    );
-    const bindings = topLevelScopeVariables(
-      helperSymbols.scopeManager,
-      imported.importedName
-    );
-    if (bindings.length !== 1) return;
-    const definition = uniqueIndexedNode(
-      helperSymbols.definitionsByBinding,
-      bindings[0]
-    );
-    if (!definition?.range) return;
-    candidates.push(
-      helperSource.slice(definition.range[0], definition.range[1])
-    );
+    if (expectedBindings.size !== 1) return null;
+    if (!failClosedBindingMismatchBefore({
+      definitions: handler.definitions,
+      leftBinding: retainedBinding,
+      leftPath: "payload.amountCents",
+      rightBinding: [...expectedBindings][0],
+      clearBinding: retainedSourceBinding,
+      clearPath: retainedSourcePath,
+      target: witness.call,
+      symbols: context.symbols
+    })) return null;
+  }
+  const operationBindings = new Set();
+  for (const definition of handler.definitions) {
+    directCallableNodes(definition, (node) => {
+      if (
+        node.type === "VariableDeclarator" &&
+        node.id?.type === "Identifier" &&
+        exactEnabledActionPredicate(
+          node.init,
+          freshBinding,
+          action.capability.key,
+          context.symbols
+        )
+      ) {
+        const binding = context.symbols.scopeBindings?.get(node.id);
+        if (binding) operationBindings.add(binding);
+      }
+    });
+  }
+  if (operationBindings.size !== 1) return null;
+  const operationBinding = [...operationBindings][0];
+  if (
+    !failClosedBindingGuardBefore({
+      definitions: handler.definitions,
+      binding: operationBinding,
+      target: uploadCall,
+      symbols: context.symbols
+    }) ||
+    !failClosedBindingGuardBefore({
+      definitions: handler.definitions,
+      binding: operationBinding,
+      target: finalCall,
+      symbols: context.symbols
+    })
+  ) return null;
+  const currentWrapperCalls = importedWrapperCalls(
+    handler.definitions,
+    wrapper,
+    context
+  );
+  if (
+    currentWrapperCalls.length !== 1 ||
+    (currentWrapperCalls[0] !== uploadCall && currentWrapperCalls[0] !== finalCall)
+  ) return null;
+  const capabilitySources = pipelineCapabilitySourceEvidence({
+    action,
+    handlerDefinition: handler.definition,
+    freshName: freshBinding.name,
+    context
   });
-  return candidates.length === 1 ? candidates[0] : null;
+  return capabilitySources?.size === 1
+    ? {
+        kind: "guarded_upload",
+        verified: true,
+        capabilityWitness: true,
+        capabilitySources
+      }
+    : null;
 }
 
 // A deliberately narrow AST-backed bridge for the two governed pipelines that
@@ -13618,7 +14787,6 @@ function guardedUploadHelperSource(handlerDefinition, context) {
 function proveBusinessActionPipeline({ action, wrapper, context }) {
   const handler = pipelineHandlerSource(action.trigger.handler, wrapper.name, context);
   if (!handler) return null;
-  const source = handler.source;
   const targetCalls = importedWrapperCallCount(
     handler.definitions,
     wrapper,
@@ -13626,161 +14794,27 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
   );
   if (targetCalls !== 1) return null;
 
-  const definitionDeclaration = source.match(
-    /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+fetchBusinessEntryDefinition\s*\(/u
-  );
-  const validationDeclaration = source.match(
-    /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+validateBusinessEntryDraft\s*\(/u
-  );
-  if (definitionDeclaration && validationDeclaration) {
-    const definitionName = definitionDeclaration[1];
-    const validationName = validationDeclaration[1];
-    const escapedDefinition = definitionName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    const escapedValidation = validationName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    const targetStart = source.search(new RegExp(`\\b${wrapper.name}\\s*\\(`, "u"));
-    const definitionStart = definitionDeclaration.index ?? -1;
-    const validationStart = validationDeclaration.index ?? -1;
-    const validGuard = source.search(
-      new RegExp(`if\\s*\\(\\s*!${escapedValidation}\\.valid\\s*\\)\\s*(?:return|\\{)`, "u")
-    );
-    const revisionBound = new RegExp(
-      `definitionVersion\\s*:\\s*${escapedDefinition}\\.version`,
-      "u"
-    ).test(source);
-    const sceneBound = new RegExp(
-      `sceneKey\\s*:\\s*${escapedDefinition}\\.key`,
-      "u"
-    ).test(source);
-    const validationValuesUsed = new RegExp(
-      `\\b${escapedValidation}\\.values\\b`,
-      "u"
-    ).test(source);
-    const targetBound = /entityId\s*:\s*projectId/u.test(source);
-    const capabilityDeclaration = source.match(
-      /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+(?:\w*fetch\w*|get\w*)\s*\(\s*projectId\b/u
-    );
-    const capabilityName = capabilityDeclaration?.[1];
-    const escapedCapability = capabilityName?.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    const directCapabilityGuard = escapedCapability
-      ? new RegExp(`if\\s*\\(\\s*!${escapedCapability}\\.canManage\\s*\\)`, "u").test(source)
-      : false;
-    const assignedCapabilityGuard = escapedCapability
-      ? new RegExp(
-        `const\\s+operationAllowed\\s*=\\s*${escapedCapability}\\.canManage[^;]*;[\\s\\S]*?if\\s*\\(\\s*!operationAllowed\\s*\\)`,
-        "u"
-      ).test(source)
-      : false;
-    const freshCapability = Boolean(
-      capabilityDeclaration && (directCapabilityGuard || assignedCapabilityGuard)
-    );
-    const validationOnly = wrapper.name === "validateBusinessEntryDraft";
-    const finalWriteProjectBound = validationOnly || new RegExp(
-      `\\b${wrapper.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*\\(\\s*projectId\\b`,
-      "u"
-    ).test(source);
-    if (
-      definitionStart >= 0 &&
-      validationStart > definitionStart &&
-      targetStart >= validationStart &&
-      revisionBound && sceneBound && targetBound && validationValuesUsed && finalWriteProjectBound &&
-      (validationOnly || (validGuard > validationStart && validGuard < targetStart && freshCapability))
-    ) {
-      const definitionSources = pipelineFreshReadSources({
-        handlerDefinition: handler.definition,
-        freshName: definitionName,
-        context
-      })?.sources ?? null;
-      const runtimeCapabilitySources = capabilityName
-        ? pipelineCapabilitySourceEvidence({
-            action,
-            handlerDefinition: handler.definition,
-            freshName: capabilityName,
-            context
-          })
-        : null;
-      const capabilitySources =
-        runtimeCapabilitySources ??
-        (validationOnly ? definitionSources : null);
-      return {
-        kind: "project_definition",
-        verified: true,
-        capabilityWitness: validationOnly || capabilitySources?.size === 1,
-        capabilitySources,
-        definitionSources
-      };
-    }
-  }
+  const projectDefinitionProof = projectDefinitionPipelineProof({
+    action,
+    wrapper,
+    handler,
+    context
+  });
+  if (projectDefinitionProof) return projectDefinitionProof;
+  const projectCapabilityProof = projectCapabilityPipelineProof({
+    action,
+    wrapper,
+    handler,
+    context
+  });
+  if (projectCapabilityProof) return projectCapabilityProof;
 
-  const projectCapabilityDeclaration = source.match(
-    /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+fetchProject\w*\s*\(\s*projectId\b/u
-  );
-  const projectCapabilityName = projectCapabilityDeclaration?.[1];
-  const escapedProjectCapability = projectCapabilityName?.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const projectCapability = Boolean(
-    projectCapabilityDeclaration &&
-    escapedProjectCapability &&
-    new RegExp(
-      `const\\s+operationAllowed\\s*=\\s*${escapedProjectCapability}\\.canManage[^;]*;[\\s\\S]*?if\\s*\\(\\s*!operationAllowed\\s*\\)\\s*throw`,
-      "u"
-    ).test(source)
-  );
-  if (projectCapability) {
-    const targetStart = source.search(new RegExp(`\\b${wrapper.name}\\s*\\(`, "u"));
-    const capabilityStart = source.search(/await\s+fetchProject\w*\s*\(/u);
-    const guardStart = source.search(/if\s*\(\s*!operationAllowed\s*\)\s*throw/u);
-    if (capabilityStart >= 0 && guardStart > capabilityStart && targetStart > guardStart) {
-      const capabilitySources = pipelineCapabilitySourceEvidence({
-        action,
-        handlerDefinition: handler.definition,
-        freshName: projectCapabilityName,
-        context
-      });
-      return {
-        kind: "project_capability",
-        verified: true,
-        capabilityWitness: capabilitySources?.size === 1,
-        capabilitySources
-      };
-    }
-  }
-
-  const uploadHelperSource =
-    guardedUploadHelperSource(handler.definition, context);
-  const guardedUpload =
-    typeof uploadHelperSource === "string" &&
-    /await\s+\w+\s*\([^)]*(?:paymentId|paymentIdCoordinate)/u.test(source) &&
-    new RegExp(
-      `\\b${wrapper.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*\\(\\s*(?:paymentId|paymentIdCoordinate)\\b`,
-      "u"
-    ).test(source) &&
-    /availableActions\.some\s*\(/u.test(source) &&
-    /record_refund/u.test(source) &&
-    /if\s*\(\s*!operationAllowed\s*\)/u.test(source) &&
-    (uploadHelperSource.match(/await\s+upload\s*\(/gu)?.length ?? 0) === 1 &&
-    /voucher(?:File)?Id\s*:\s*\w+\.id/u.test(uploadHelperSource);
-  if (guardedUpload) {
-    const targetStart = source.search(new RegExp(`\\b${wrapper.name}\\s*\\(`, "u"));
-    const capabilityStart = source.search(/await\s+\w+\s*\(/u);
-    const guardStart = source.search(/if\s*\(\s*!operationAllowed\s*\)/u);
-    if (capabilityStart >= 0 && guardStart > capabilityStart && targetStart > guardStart) {
-      const freshDetail = source.match(
-        /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+\w+\s*\(\s*(?:paymentId|paymentIdCoordinate)\b/u
-      )?.[1];
-      const capabilitySources = pipelineCapabilitySourceEvidence({
-        action,
-        handlerDefinition: handler.definition,
-        freshName: freshDetail,
-        context
-      });
-      return {
-        kind: "guarded_upload",
-        verified: true,
-        capabilityWitness: capabilitySources?.size === 1,
-        capabilitySources
-      };
-    }
-  }
-  return null;
+  return guardedUploadPipelineProof({
+    action,
+    wrapper,
+    handler,
+    context
+  });
 }
 
 function wrapperCausalProof(
@@ -15280,7 +16314,8 @@ function actionBindings({
   symbols,
   candidate,
   businessDraftActionTrusted,
-  capabilityContext
+  capabilityContext,
+  selfProfileFacadeImplementationTrusted
 }) {
   const bindings = [];
   for (const declared of action.wrappers) {
@@ -15293,7 +16328,9 @@ function actionBindings({
           declared,
           action,
           webManifest,
-          graph
+          graph,
+          facadeImplementationTrusted:
+            selfProfileFacadeImplementationTrusted
         })
       : wrapperIndex.get(identity);
     if (!wrapper) {
@@ -16747,6 +17784,11 @@ export async function inspectWholeSitePageActionManifest({
   const coveredConsumerPairs = new Set();
   const productionMutationConsumerPairs = new Set();
   const authFacadeMutationPairs = new Map();
+  const selfProfileFacadeImplementationTrusted =
+    selfProfileFacadeImplementationIsTrusted({
+      asts,
+      sourceFileSet
+    });
   for (const wrapper of webManifest.wrappers) {
     if (!wrapperIsProductionMutation(wrapper)) continue;
     const identity = wrapperIdentity(
@@ -16760,6 +17802,37 @@ export async function inspectWholeSitePageActionManifest({
         `${identity}\u0000${consumer}`
       );
     }
+  }
+  const selfProfileConsumer =
+    SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.productionConsumer;
+  if (
+    selfProfileFacadeImplementationTrusted &&
+    registeredSelfProfileAuthTransportException(webManifest) &&
+    reachable.has(selfProfileConsumer) &&
+    reachable.has(SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile) &&
+    graph.get(selfProfileConsumer)?.includes(
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile
+    ) &&
+    nestRouteAssociationIsTrusted(
+      nestManifest,
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey
+    )
+  ) {
+    const binding = {
+      apiFile: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile,
+      wrapper: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName,
+      method: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method,
+      path: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath,
+      normalizedKey: SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey,
+      bodyKind: "json",
+      productionConsumers: [selfProfileConsumer]
+    };
+    const pair = `${wrapperIdentity(binding.apiFile, binding.wrapper)}\u0000${selfProfileConsumer}`;
+    productionMutationConsumerPairs.add(pair);
+    authFacadeMutationPairs.set(pair, {
+      binding,
+      consumer: selfProfileConsumer
+    });
   }
   const businessDraftActionTrusted = businessDraftActionIsTrusted(
     sources.get(
@@ -16912,7 +17985,8 @@ export async function inspectWholeSitePageActionManifest({
       symbols,
       candidate,
       businessDraftActionTrusted,
-      capabilityContext
+      capabilityContext,
+      selfProfileFacadeImplementationTrusted
     });
     for (const binding of bindings) {
       const boundWrapper = wrapperIndex.get(
@@ -16952,6 +18026,34 @@ export async function inspectWholeSitePageActionManifest({
     }
     const mutationBindings = bindings.filter(isMutationRequest);
     capabilityContext.mutationBindings = mutationBindings;
+    const governedPipelineRequired = [...(capabilityContext.pipelineProofs?.values() ?? [])]
+      .some((proof) => [
+        "project_definition",
+        "project_capability",
+        "guarded_upload"
+      ].includes(proof.kind));
+    if (governedPipelineRequired) {
+      for (const binding of mutationBindings) {
+        if (capabilityContext.pipelineProofs?.has(
+          wrapperIdentity(binding.apiFile, binding.wrapper)
+        )) continue;
+        binding.causalVerified = false;
+        if (!blockers.unresolvedWrappers.some((entry) =>
+          entry.actionId === action.id &&
+          entry.apiFile === binding.apiFile &&
+          entry.wrapper === binding.wrapper &&
+          entry.code === "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+        )) {
+          blockers.unresolvedWrappers.push({
+            code: "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
+            actionId: action.id,
+            sourceFile: action.sourceFile,
+            apiFile: binding.apiFile,
+            wrapper: binding.wrapper
+          });
+        }
+      }
+    }
     const writes = bindings.some((binding) =>
       isMutationRequest(binding)
     );
