@@ -30,17 +30,17 @@ describe("financial business-entry money values", () => {
     expect(valid(settlementLineEntryDefinition(facts), settlementLineEntryValues(facts), ["contract_staff"])).toBe(true);
   });
 
-  it("documents that the current number contract rejects exact decimal quantity text", () => {
+  it("accepts exact settlement quantity text without converting it to a JavaScript number", () => {
     const facts = { sourceType: "manual_adjustment", name: "调整", quantity: "2.5", amountCents: 500000n };
     const result = createBusinessEntryDefinitionRegistry([settlementLineEntryDefinition(facts)]).validateDraft({
-      sceneKey: "settlement_line", definitionVersion: 1, target: target("settlement_line"), expectedRevision: 0,
+      sceneKey: "settlement_line", definitionVersion: 2, target: target("settlement_line"), expectedRevision: 0,
       values: settlementLineEntryValues(facts)
     }, ["contract_staff"]);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.objectContaining({ fieldKey: "quantity", code: "invalid_type" }));
+    expect(result.valid).toBe(true);
+    expect(result.values.quantity).toBe("2.5");
   });
 
-  it("documents that the current money contract rejects a legal negative manual adjustment", () => {
+  it("accepts the legal negative manual adjustment amount without widening ordinary money", () => {
     const facts = canonicalSettlementLine({
       sourceType: "manual_adjustment", adjustmentKind: "over_settlement_offset",
       name: "超结冲减", amountCents: "-500000", reason: "冲减前期超结",
@@ -48,11 +48,20 @@ describe("financial business-entry money values", () => {
     }, undefined, 0);
     expect(facts).toMatchObject({ amountCents: -500000n, relatedSettlementLineId: "settlement-line-previous" });
     const result = createBusinessEntryDefinitionRegistry([settlementLineEntryDefinition(facts)]).validateDraft({
-      sceneKey: "settlement_line", definitionVersion: 1, target: target("settlement_line"), expectedRevision: 0,
+      sceneKey: "settlement_line", definitionVersion: 2, target: target("settlement_line"), expectedRevision: 0,
       values: settlementLineEntryValues(facts)
     }, ["contract_staff"]);
     expect(settlementLineEntryValues(facts).amountYuan).toBe("-5000.00");
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.objectContaining({ fieldKey: "amountYuan", code: "invalid_type" }));
+    expect(result.valid).toBe(true);
+    const ordinaryFacts = { sourceType: "manual_adjustment", name: "调整", unitPriceCents: -100n, amountCents: 500000n };
+    expect(valid(settlementLineEntryDefinition(ordinaryFacts), settlementLineEntryValues(ordinaryFacts), ["contract_staff"])).toBe(false);
   });
+
+  it.each(["1e3", "-1", "1.001", "1000000000000000000"])(
+    "rejects invalid exact settlement quantity text %s",
+    (quantity) => {
+      const facts = { sourceType: "manual_adjustment", name: "调整", quantity, amountCents: 500000n };
+      expect(valid(settlementLineEntryDefinition(facts), settlementLineEntryValues(facts), ["contract_staff"])).toBe(false);
+    }
+  );
 });

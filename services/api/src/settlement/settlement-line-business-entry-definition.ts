@@ -38,7 +38,7 @@ function field(key: string, label: string, type: BusinessEntryFieldDefinition["t
 
 export function settlementLineEntryDefinition(facts?: SettlementLineFacts): BusinessEntrySceneDefinition {
   return {
-    key: "settlement_line", entityType: "settlement_line", version: 1,
+    key: "settlement_line", entityType: "settlement_line", version: 2,
     name: "结算明细", description: "本次结算提交时冻结的逐行业务事实。", rules: [],
     fields: [
       field("sourceType", "明细来源", "single_select", 1, true, [
@@ -52,8 +52,11 @@ export function settlementLineEntryDefinition(facts?: SettlementLineFacts): Busi
       field("contractBillRowId", "合同清单项", "single_select", 3, false, options(facts?.contractBillRowId, "已选合同清单项")),
       field("sourceItemType", "签证或变更类别", "text", 4), field("occurredOn", "发生日期", "date", 5),
       field("name", "明细名称", "text", 6, true), field("description", "项目说明", "long_text", 7),
-      field("unit", "单位", "text", 8), field("quantity", "数量", "number", 9),
-      field("unitPriceYuan", "单价", "money", 10), field("amountYuan", "本期金额", "money", 11, true),
+      field("unit", "单位", "text", 8),
+      { ...field("quantity", "数量", "number", 9), precision: 2,
+        exactDecimalString: { sign: "nonnegative", maximumExclusive: "1000000000000000000" } },
+      field("unitPriceYuan", "单价", "money", 10),
+      { ...field("amountYuan", "本期金额", "money", 11, true), exactDecimalString: { sign: "signed" } },
       field("pricingBasis", "计价依据", "long_text", 12), field("overageReason", "超量说明", "long_text", 13),
       field("relatedSettlementLineId", "原结算行", "single_select", 14, false, options(facts?.relatedSettlementLineId, "已选原结算行")),
       field("reason", "业务原因", "long_text", 15), field("remark", "备注", "long_text", 16)
