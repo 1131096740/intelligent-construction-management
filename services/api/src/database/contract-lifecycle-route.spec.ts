@@ -1255,7 +1255,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
 
           const submittedIdempotencyKey = randomUUID();
           const submitted = await submit(submittedFixture, submittedIdempotencyKey);
-          expect(submitted.status).toBe(201);
           const submittedBody = await submitted.json() as {
             approvalInstanceId: string;
             contractVersionId: string;
@@ -1264,6 +1263,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             formalCode: string;
             status: string;
           };
+          expect({ status: submitted.status, body: submittedBody }).toMatchObject({
+            status: 201
+          });
           expect(submittedBody).toMatchObject({
             approvalInstanceId: expect.any(String),
             contractVersionId: submittedVersionId,
