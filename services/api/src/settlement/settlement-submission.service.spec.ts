@@ -87,6 +87,9 @@ describe("SettlementSubmissionService", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -232,6 +235,51 @@ describe("SettlementSubmissionService", () => {
           isFinal: true,
           finalDeclarationAccepted: true,
           finalCumulativeAmountYuan: "123.45"
+        })
+      })
+    );
+  });
+
+  it("freezes each formal settlement line in the submission transaction", async () => {
+    const current = context();
+    current.tx.settlementLine.findMany.mockResolvedValueOnce([{
+      id: "settlement-line-1",
+      sourceType: "manual_adjustment",
+      adjustmentKind: "other",
+      contractBillRowId: null,
+      sourceItemId: null,
+      sourceDate: null,
+      name: "现场调整",
+      description: null,
+      unit: null,
+      quantity: null,
+      unitPriceCents: null,
+      amountCents: 10000n,
+      pricingBasis: null,
+      overageTreatment: null,
+      relatedSettlementLineId: null,
+      reason: "现场复核",
+      remark: null
+    }]);
+
+    await current.service.submitDraft("project-1", "draft-1", "owner-1", 3);
+
+    expect(current.businessEntry.freezeSubmissionSnapshotInTransaction).toHaveBeenNthCalledWith(
+      2,
+      current.tx,
+      "owner-1",
+      expect.objectContaining({
+        sceneKey: "settlement_line",
+        target: {
+          projectId: "project-1",
+          entityType: "settlement_line",
+          entityId: "settlement-line-1"
+        },
+        values: expect.objectContaining({
+          sourceType: "manual_adjustment",
+          name: "现场调整",
+          amountYuan: "100.00",
+          reason: "现场复核"
         })
       })
     );

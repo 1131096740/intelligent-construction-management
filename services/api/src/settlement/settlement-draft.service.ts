@@ -32,6 +32,7 @@ import {
   settlementBasicEntryDefinition,
   settlementBasicEntryValues
 } from "./settlement-business-entry-definition";
+import { settlementLineEntryDefinition, settlementLineEntryValues } from "./settlement-line-business-entry-definition";
 import {
   isSettlementDraftSerializationConflict,
   loadSettlementDraftLifecycle,
@@ -248,6 +249,9 @@ export class SettlementDraftService {
       this.draftDocuments(draftId),
       loadSettlementDraftLifecycle(this.prisma, draft!)
     ]);
+    const draftLines = await this.prisma.settlementDraftLine.findMany({
+      where: { settlementDraftId: draftId, status: "active" }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+    });
     return {
       ...this.readModel(
         draft!,
@@ -258,7 +262,12 @@ export class SettlementDraftService {
       businessEntry: {
         definition: settlementBasicEntryDefinition(draft!),
         values: settlementBasicEntryValues(draft!)
-      }
+      },
+      businessEntryLines: draftLines.map((line) => ({
+        lineKey: line.lineKey,
+        definition: settlementLineEntryDefinition(line),
+        values: settlementLineEntryValues(line)
+      }))
     };
   }
 

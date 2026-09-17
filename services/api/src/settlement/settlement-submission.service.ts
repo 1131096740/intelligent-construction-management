@@ -13,6 +13,7 @@ import {
   SETTLEMENT_BASIC_ENTRY_DEFINITION,
   settlementBasicEntryValues
 } from "./settlement-business-entry-definition";
+import { SETTLEMENT_LINE_ENTRY_DEFINITION, settlementLineEntryValues } from "./settlement-line-business-entry-definition";
 import { PrismaService } from "../database/prisma.service";
 import type {
   CreateSettlementDto,
@@ -167,6 +168,19 @@ export class SettlementSubmissionService {
             expectedRevision: 0,
             values: settlementBasicEntryValues(draft)
           });
+          const formalLines = await tx.settlementLine.findMany({
+            where: { settlementId: created.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+          });
+          const businessEntryLineSnapshots = [];
+          for (const line of formalLines) {
+            businessEntryLineSnapshots.push(await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+              sceneKey: SETTLEMENT_LINE_ENTRY_DEFINITION.key,
+              definitionVersion: SETTLEMENT_LINE_ENTRY_DEFINITION.version,
+              target: { projectId, entityType: "settlement_line", entityId: line.id },
+              expectedRevision: 0,
+              values: settlementLineEntryValues(line)
+            }));
+          }
           if (this.lineAttachments) {
             await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
               tx,
@@ -193,7 +207,7 @@ export class SettlementSubmissionService {
           if (draft.processId) {
             await this.processes?.linkSettlement(tx, draft.processId, draft.id, created.id);
           }
-          return { ...created, businessEntrySnapshot };
+          return { ...created, businessEntrySnapshot, businessEntryLineSnapshots };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );

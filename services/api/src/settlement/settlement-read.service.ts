@@ -964,7 +964,13 @@ export class SettlementReadService {
       settlementLines
     );
     const entrySnapshots = await this.prisma.businessEntrySubmissionSnapshot.findMany({
-      where: { projectId: settlement.projectId, sceneKey: "settlement_basic", entityType: "settlement", entityId: settlement.id },
+      where: {
+        projectId: settlement.projectId,
+        OR: [
+          { sceneKey: "settlement_basic", entityType: "settlement", entityId: settlement.id },
+          { sceneKey: "settlement_line", entityType: "settlement_line", entityId: { in: settlementLines.map((line) => line.id) } }
+        ]
+      },
       orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
     });
     const businessEntryHistory: BusinessEntryFrozenSnapshot[] = entrySnapshots.map((snapshot) => ({

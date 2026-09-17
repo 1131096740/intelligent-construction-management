@@ -546,7 +546,10 @@ if (enabled) {
           settlementLines: [{ sourceType: "manual_adjustment", name: "合成现场签认金额", amountCents: "10000", reason: "本期合成现场签认" }]
         });
         const draftPath = `${settlementDraftPath}/${settlementDraft.id}`;
-        const settlementDraftDetail = await request<{ businessEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> } }>("GET", draftPath);
+        const settlementDraftDetail = await request<{
+          businessEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> };
+          businessEntryLines?: Array<{ lineKey: string; definition: BusinessEntrySceneDefinition; values: Record<string, unknown> }>;
+        }>("GET", draftPath);
         expect(settlementDraftDetail.businessEntry?.definition).toMatchObject({
           key: "settlement_basic", entityType: "settlement", version: 2,
           fields: [
@@ -571,6 +574,25 @@ if (enabled) {
           fieldReviewerUserId: roleUsers.get("material_staff"),
           fieldReviewerRoleKey: "material_staff"
         });
+        expect(settlementDraftDetail.businessEntryLines).toEqual([
+          expect.objectContaining({
+            definition: expect.objectContaining({
+              key: "settlement_line", entityType: "settlement_line", version: 1,
+              fields: expect.arrayContaining([
+                expect.objectContaining({ key: "sourceType", label: "明细来源", type: "single_select" }),
+                expect.objectContaining({ key: "name", label: "明细名称", type: "text" }),
+                expect.objectContaining({ key: "amountYuan", label: "本期金额", type: "money" }),
+                expect.objectContaining({ key: "reason", label: "业务原因", type: "long_text" })
+              ])
+            }),
+            values: expect.objectContaining({
+              sourceType: "manual_adjustment",
+              name: "合成现场签认金额",
+              amountYuan: "100.00",
+              reason: "本期合成现场签认"
+            })
+          })
+        ]);
         const frozen = await request<Identified & { fileId: string }>("POST", `${draftPath}/frozen-document`, { expectedRevision: settlementDraft.revision });
         const download = await request<{ downloadUrl: string }>("POST", `/files/${frozen.fileId}/download-ticket`, {
           confirmationPassword: settlementApplicant.password, downloadReason: "合成签署扫描件", accessMode: "download"
@@ -582,7 +604,10 @@ if (enabled) {
           expectedRevision: settlementDraft.revision, frozenDocumentId: frozen.id, uploadedFileId: signed.id,
           declaration: { pageOrderMatchesFrozenDocument: true, counterpartySignedAndDated: true, everyPageStamped: true, crossPageSealCompleted: true }
         });
-        const settlement = await request<Identified & { businessEntrySnapshot?: { sceneKey: string; values: Record<string, unknown> } }>("POST", `${draftPath}/approval-submission`, { expectedRevision: settlementDraft.revision });
+        const settlement = await request<Identified & {
+          businessEntrySnapshot?: { sceneKey: string; values: Record<string, unknown> };
+          businessEntryLineSnapshots?: Array<{ sceneKey: string; target: { entityId: string }; values: Record<string, unknown> }>;
+        }>("POST", `${draftPath}/approval-submission`, { expectedRevision: settlementDraft.revision });
         expect(settlement.businessEntrySnapshot).toMatchObject({
           sceneKey: "settlement_basic", definitionVersion: 2,
           values: {
@@ -595,8 +620,23 @@ if (enabled) {
             fieldReviewerRoleKey: "material_staff"
           }
         });
+        expect(settlement.businessEntryLineSnapshots).toEqual([
+          expect.objectContaining({
+            sceneKey: "settlement_line",
+            target: expect.objectContaining({ entityType: "settlement_line" }),
+            values: expect.objectContaining({
+              sourceType: "manual_adjustment",
+              name: "合成现场签认金额",
+              amountYuan: "100.00",
+              reason: "本期合成现场签认"
+            })
+          })
+        ]);
         const settlementDetail = await request<{ businessEntryHistory?: unknown[] }>("GET", `/settlements/${settlement.id}`);
-        expect(settlementDetail.businessEntryHistory).toEqual([settlement.businessEntrySnapshot]);
+        expect(settlementDetail.businessEntryHistory).toEqual([
+          settlement.businessEntrySnapshot,
+          ...settlement.businessEntryLineSnapshots!
+        ]);
         for (const role of ["material_staff", "material_director", "contract_director", "project_manager", "finance_director"]) {
           const identity = await loginAs(roleUsers.get(role)!);
           const signature = new FormData();

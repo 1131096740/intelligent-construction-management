@@ -373,13 +373,16 @@ test("renders frozen settlement entry history on desktop and 390px", async ({ pa
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/settlements/JS-UI-001");
   await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
-  await expect(page.locator(".business-entry-grid")).toBeVisible();
+  await expect(page.locator(".business-entry-grid")).toHaveCount(2);
+  await expect(page.locator(".entry-history__item p").nth(1)).toContainText("结算明细·现场调整");
+  await expect(page.getByText("100.00", { exact: true })).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".business-entry-mobile-cards")).toBeVisible();
+  await expect(page.locator(".business-entry-mobile-cards")).toHaveCount(2);
   await expect(page.getByText("结算编号", { exact: true })).toBeVisible();
   await expect(page.getByText("结算期间", { exact: true }).last()).toBeVisible();
+  await expect(page.locator(".business-entry-field__label", { hasText: "调整原因" })).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page);
   await capture(page, "settlement-detail-entry-history-390x844.png");
 });
@@ -434,6 +437,27 @@ function settlementDetail(input: {
         },
         values: { code: input.id, periodLabel: input.id === "JS-UI-ARCHIVE" ? "2026年5月" : "2026年6月" },
         frozenAt: "2026-07-14T08:30:00.000Z"
+      },
+      {
+        sceneKey: "settlement_line",
+        target: { projectId: "project-1", entityType: "settlement_line", entityId: `line-${input.id}` },
+        revision: 1,
+        definitionVersion: 1,
+        definition: {
+          key: "settlement_line",
+          entityType: "settlement_line",
+          version: 1,
+          name: "结算明细·现场调整",
+          description: "提交时冻结的结算明细。",
+          rules: [],
+          fields: [
+            { ...entryField("name", "明细名称", 1), scope: "line" },
+            { ...entryField("amountYuan", "金额（元）", 2), scope: "line" },
+            { ...entryField("reason", "调整原因", 3), scope: "line", required: false }
+          ]
+        },
+        values: { name: "现场调整", amountYuan: "100.00", reason: "现场复核" },
+        frozenAt: "2026-07-14T08:30:01.000Z"
       }
     ],
     taxFactSummary: [
