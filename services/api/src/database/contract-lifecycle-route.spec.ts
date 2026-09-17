@@ -1638,6 +1638,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             }
           }
         });
+        await prisma.businessEntrySubmissionSnapshot.deleteMany({
+          where: { projectId }
+        });
         await prisma.project.deleteMany({ where: { id: projectId } });
         await prisma.position.deleteMany({
           where: {
