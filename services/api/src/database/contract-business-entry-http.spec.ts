@@ -43,6 +43,7 @@ if (enabled) {
   let baseUrl: string;
   let token: string;
   let actorUserId: string;
+  let receiptFailure: { contractVersionId: string; triggered: boolean } | null = null;
   const identities = new Map<string, { phone: string; password: string }>();
   jest.setTimeout(60_000);
 
@@ -80,6 +81,17 @@ if (enabled) {
     await app.listen(0, "127.0.0.1");
     baseUrl = await app.getUrl();
     const prisma = app.get(PrismaService);
+    // Test-only database-boundary fault; all earlier writes use the real PG transaction.
+    // No production service is replaced and no persistent database object is installed.
+    prisma.$use(async (params, next) => {
+      if (receiptFailure && !receiptFailure.triggered &&
+          params.model === "ContractDraftSubmissionRequest" && params.action === "create" &&
+          params.args?.data?.contractVersionId === receiptFailure.contractVersionId) {
+        receiptFailure.triggered = true;
+        throw new Error("POL114_SYNTHETIC_RECEIPT_WRITE_FAILURE");
+      }
+      return next(params);
+    });
     const phone = `114${Date.now()}`;
     const password = `Test-${randomUUID()}`;
     const user = await prisma.user.create({ data: {
@@ -322,6 +334,16 @@ if (enabled) {
       idempotencyKey: randomUUID(), expectedRevision: current.version.draftRevision
     };
     if (entryMode !== "aggregate") {
+      const ownerToken = token;
+      const otherSubmitter = identities.get(roleUsers.get("contract_director")!)!;
+      token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", otherSubmitter)).tokens.accessToken;
+      try {
+        await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {}))
+          .rejects.toThrow(/403.*只有合同经办人可以提交该合同审批/u);
+      } finally {
+        token = ownerToken;
+      }
+      expect((await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`)).businessEntrySubmissions).toEqual([]);
       if (entryMode === "legacy-ownerless") {
         // Authorized isolated historical-draft fixture transform; not a claim of
         // all-HTTP legacy creation, and never a manufactured confirmed fact.
@@ -345,8 +367,42 @@ if (enabled) {
         const rejectedDetail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
         expect(rejectedDetail.businessEntrySubmissions).toEqual([]);
       }
+      const beforeFault = {
+        version: await prisma.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } }),
+        contract: await prisma.contract.findUniqueOrThrow({ where: { id: draft.contract.id } }),
+        snapshots: await prisma.businessEntrySubmissionSnapshot.count({ where: { projectId: project.id } }),
+        auditCount: await prisma.auditLog.count()
+      };
+      const fault = { contractVersionId: draft.version.id, triggered: false };
+      receiptFailure = fault;
+      try {
+        await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {})).rejects.toThrow("500");
+        expect(fault.triggered).toBe(true);
+      } finally {
+        receiptFailure = null;
+      }
+      expect(await prisma.contractDraftSubmissionRequest.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      expect(await prisma.approvalInstance.count({ where: { businessType: "contract_version", businessId: draft.version.id } })).toBe(0);
+      expect(await prisma.businessEntrySubmissionSnapshot.count({ where: { projectId: project.id } })).toBe(beforeFault.snapshots);
+      expect(await prisma.auditLog.count()).toBe(beforeFault.auditCount);
+      expect(await prisma.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } })).toEqual(beforeFault.version);
+      expect(await prisma.contract.findUniqueOrThrow({ where: { id: draft.contract.id } })).toEqual(beforeFault.contract);
+      expect((await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`)).businessEntrySubmissions).toEqual([]);
+      expect((await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`)).version.draftRevision).toBe(current.version.draftRevision);
       await request("POST", `/contracts/${draft.version.id}/approval-submission`, {});
       const before = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
+      // The legacy wire response intentionally does not expose its internal receipt key.
+      const receipts = await prisma.contractDraftSubmissionRequest.findMany({ where: { contractVersionId: draft.version.id } });
+      expect(receipts).toHaveLength(1);
+      const receipt = receipts[0]!;
+      expect(receipt.idempotencyKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+      expect(receipt.applicantUserId).toBe(actorUserId);
+      expect(receipt.expectedRevision).toBe(current.version.draftRevision);
+      const approvals = await prisma.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: draft.version.id } });
+      expect(approvals).toHaveLength(1);
+      expect(approvals[0]).toMatchObject({ id: receipt.approvalInstanceId, applicantUserId: actorUserId, status: "in_progress" });
+      expect(receipt.responseSnapshot).toMatchObject({ contractVersionId: draft.version.id, approvalInstanceId: receipt.approvalInstanceId });
+      expect(before.businessEntrySubmissions?.every((entry) => entry.approvalInstanceId === receipt.approvalInstanceId)).toBe(true);
       expect(before.businessEntrySubmissions).toHaveLength(3);
       expect(before.businessEntrySubmissions?.map((entry) => entry.snapshot.sceneKey)).toEqual([
         "contract_basic", "contract_template_fields", "contract_bill_row"
@@ -355,6 +411,8 @@ if (enabled) {
       await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {})).rejects.toThrow("不能重复提交审批");
       const after = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
       expect(after.businessEntrySubmissions).toEqual(before.businessEntrySubmissions);
+      expect(await prisma.contractDraftSubmissionRequest.count({ where: { contractVersionId: draft.version.id } })).toBe(1);
+      expect(await prisma.approvalInstance.count({ where: { businessType: "contract_version", businessId: draft.version.id } })).toBe(1);
       return;
     }
     const submitted = await request<Submission>("POST", `/contract-drafts/${draft.version.id}/submission`, submission, lease.token);
