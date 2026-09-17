@@ -174,7 +174,7 @@ async function freezeRequest(page: Page, role: string, method: string, path: str
 
 test.describe("RC-06 real API-backed four-role browser acceptance", () => {
   test.beforeAll(() => assertRuntimeConfiguration());
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async (_fixtures, testInfo) => {
     if (testInfo.status !== testInfo.expectedStatus) {
       testFailures.push(`${testInfo.project.name}:${testInfo.title}:${testInfo.status}`);
     }
@@ -271,7 +271,39 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     expect(director).toBeDefined();
     await login(page, director!);
 
+    const detailResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/contracts/${selfArchiveContractId}`
+    );
     await page.goto(`/contracts/${encodeURIComponent(selfArchiveContractId!)}`, { waitUntil: "domcontentloaded" });
+    const detailResponse = await detailResponsePromise;
+    expect(detailResponse.ok()).toBeTruthy();
+    const detailPayload = await detailResponse.json() as {
+      businessEntrySubmissions?: Array<{ snapshot?: { sceneKey?: string } }>;
+    };
+    const frozenSceneKeys = detailPayload.businessEntrySubmissions?.map(
+      (entry) => entry.snapshot?.sceneKey
+    ) ?? [];
+    expect(frozenSceneKeys).toEqual(expect.arrayContaining([
+      "contract_party",
+      "contract_commercial_terms",
+      "contract_payment_terms",
+      "contract_payment_stage"
+    ]));
+    await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "合同主体业务台账表格" })).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "合同商务条款业务台账表格" })).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "合同付款条款业务台账表格" })).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "付款阶段业务台账表格" })).toHaveCount(1);
+    for (const region of [
+      "合同主体业务台账表格",
+      "合同商务条款业务台账表格",
+      "合同付款条款业务台账表格",
+      "付款阶段业务台账表格"
+    ]) {
+      await expect(page.getByRole("region", { name: region })).toBeVisible();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();
     await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
 
     const finalReviewGroup = page.locator(".action-group").filter({ hasText: "双方最终版复核" });
@@ -401,7 +433,7 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     await context.close();
   });
 
-  test.afterAll(async ({}, testInfo) => {
+  test.afterAll(async (_fixtures, testInfo) => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const configuredOutput = path.resolve(evidencePath!);
