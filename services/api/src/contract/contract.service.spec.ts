@@ -2085,7 +2085,7 @@ describe("ContractService", () => {
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
-  it("submits a draft contract version for approval", async () => {
+  it("submits a draft and freezes the locked contract name when the draft omits the inherited name", async () => {
     const version = {
       id: "contract-version-1",
       contractId: "contract-1",
@@ -2100,7 +2100,6 @@ describe("ContractService", () => {
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
       draftData: {
-        contractName: "合成合同",
         companyEntitySelection: {
           id: "entity-1",
           versionId: "entity-version-3",
@@ -2126,6 +2125,7 @@ describe("ContractService", () => {
           ownerUserId: "user-contract-staff",
           voidedAt: null,
           code: null,
+          name: "锁内主单合同名称",
           projectId: "project-1",
           contractTypeKey: "material_purchase",
           companyEntityId: "entity-1",
@@ -2280,7 +2280,10 @@ describe("ContractService", () => {
       status: "in_approval",
       formalCode: "HT-20260728-001",
       draftRevision: 4,
-      firstSubmittedAt: expect.any(String)
+      firstSubmittedAt: expect.any(String),
+      businessEntrySnapshot: expect.objectContaining({
+        values: expect.objectContaining({ contractName: "锁内主单合同名称" })
+      })
     });
     expect(prisma.$transaction).toHaveBeenCalledWith(
       expect.any(Function),
