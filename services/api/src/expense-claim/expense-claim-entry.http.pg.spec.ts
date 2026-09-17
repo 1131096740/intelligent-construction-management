@@ -301,7 +301,13 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         POL115_ACCOUNT_PASSWORD: accountPassword
       };
       delete env.JEST_WORKER_ID;
-      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts", "--grep", "零星费用选择既有分类后保存并明确提交"], {
+      const browserArgs = ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts"];
+      const browserGrep = process.env.POL115_BROWSER_GREP?.trim();
+      if (browserGrep) {
+        browserArgs.push("--grep", browserGrep);
+        console.info(`[POL115] 费用真实浏览器仅执行显式筛选: ${browserGrep}`);
+      }
+      const child = spawn("pnpm", browserArgs, {
         cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit"
       });
       child.on("error", reject);
