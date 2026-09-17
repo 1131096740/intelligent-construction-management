@@ -1,5 +1,60 @@
 import { expect, test } from "@playwright/test";
 
+test("切换项目丢弃旧名称草稿，旧目标不能在新项目预检且只保存新项目", async ({ page, request }, testInfo) => {
+  const api = process.env.POL113_API_URL!;
+  const session = JSON.parse(process.env.POL113_RENAME_SESSION!);
+  const headers = { authorization: `Bearer ${session.tokens.accessToken}` };
+  const projects: Array<{ id: string; code: string; name: string }> = [];
+  for (const suffix of ["甲", "乙"]) {
+    const created = await request.post(`${api}/projects`, { headers, data: {
+      code: `SW-${testInfo.project.name}-${suffix}`, name: `切换验收${testInfo.project.name}${suffix}`
+    } });
+    expect(created.status()).toBe(201);
+    projects.push(await created.json());
+  }
+  const [first, second] = projects;
+  await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  await page.goto("/项目经营");
+  async function select(project: typeof first) {
+    await page.locator(".project-picker input").click();
+    await page.locator(".t-select__dropdown:visible")
+      .getByText(`${project.code} · ${project.name}`, { exact: true })
+      .click();
+    await expect(page.locator(".project-picker input")).toHaveValue(`${project.code} · ${project.name}`);
+  }
+  await select(first);
+  await page.getByText("项目维护", { exact: true }).click();
+  const form = page.getByRole("region", { name: "项目名称单条业务表单" });
+  const name = form.locator('[data-field="name"] input');
+  await expect(name).toHaveValue(first.name);
+  await name.fill("甲项目未提交的草稿");
+  const writes: string[] = [];
+  page.on("request", (req) => { if (req.method() === "PATCH") writes.push(new URL(req.url()).pathname); });
+  await select(second);
+  await expect(name).toHaveValue(second.name);
+  expect(writes).toEqual([]);
+  const definition = await request.get(`${api}/business-entry-definitions/project_rename?${new URLSearchParams({ projectId: second.id, operation: "edit", targetEntityType: "project", targetEntityId: second.id })}`, { headers });
+  expect(definition.ok()).toBe(true);
+  const mismatched = await request.post(`${api}/business-entry-definitions/project_rename/validate?projectId=${second.id}`, { headers, data: {
+    definitionVersion: (await definition.json()).version, target: { entityType: "project", entityId: first.id },
+    values: { name: "甲项目未提交的草稿" }, operation: "edit"
+  } });
+  expect(mismatched.status()).toBe(400);
+  await name.fill("乙项目切换后保存");
+  const validated = page.waitForResponse((res) => res.url().includes("/project_rename/validate"));
+  const saved = page.waitForResponse((res) => new URL(res.url()).pathname === `/api/projects/${second.id}` && res.request().method() === "PATCH");
+  await page.getByRole("button", { name: "保存名称", exact: true }).click();
+  expect((await validated).request().postDataJSON().target.entityId).toBe(second.id);
+  expect((await saved).ok()).toBe(true);
+  expect(writes).toEqual([`/api/projects/${second.id}`]);
+  const readback = await request.get(`${api}/projects`, { headers });
+  const current = await readback.json();
+  expect(current.find((project: { id: string }) => project.id === first.id).name).toBe(first.name);
+  expect(current.find((project: { id: string }) => project.id === second.id).name).toBe("乙项目切换后保存");
+});
+
 test("项目财务通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }) => {
   const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
   const api = process.env.POL113_API_URL!;
