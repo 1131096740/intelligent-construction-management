@@ -155,6 +155,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       await new Promise<void>((done, reject) => {
         const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
         delete browserEnv.JEST_WORKER_ID;
+        browserEnv.POL113_PARTY_SESSION = JSON.stringify(sessions.get(contract));
         const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
           cwd: resolve(__dirname, "../../../../apps/web-admin"),
           env: browserEnv,
