@@ -2088,7 +2088,7 @@ export class ContractService {
             sceneKey: "contract_basic", definitionVersion: 1,
             target: { projectId: contract.projectId, entityType: "contract_version", entityId: version.id },
             expectedRevision: previousEntry?.revision ?? 0,
-            values: contractBasicEntryValues(version.draftData)
+            values: contractBasicEntryValues(version.draftData, contract.name)
           }, submittedAt.toISOString()
         );
         const templateEntry = await resolveContractTemplateEntry(tx, version);

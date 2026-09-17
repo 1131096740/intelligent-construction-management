@@ -121,14 +121,16 @@ export const CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION: BusinessEntrySceneDefiniti
   ]
 };
 
-export function contractBasicEntryValues(draftData: unknown) {
+export function contractBasicEntryValues(draftData: unknown, inheritedContractName?: string | null) {
   const draft = draftData && typeof draftData === "object" && !Array.isArray(draftData)
     ? draftData as Record<string, unknown> : {};
   const selection = draft.companyEntitySelection;
   const company = selection && typeof selection === "object" && !Array.isArray(selection)
     ? selection as Record<string, unknown> : {};
   return {
-    contractName: typeof draft.contractName === "string" ? draft.contractName : "",
+    contractName: typeof draft.contractName === "string"
+      ? draft.contractName
+      : inheritedContractName ?? "",
     companyEntityId: typeof company.id === "string" ? company.id : ""
   };
 }

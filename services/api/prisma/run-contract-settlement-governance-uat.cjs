@@ -416,7 +416,10 @@ async function establishContractDocumentContent(fixture, tokens) {
     const isChangeVersion = version.changeType === "change" ||
       version.changeType === "supplement" ||
       workbench.change?.isChange === true;
-    const draftDataForSave = { ...draftData, contractName: contract.name };
+    const draftDataForSave = {
+      ...draftData,
+      ...(isChangeVersion ? {} : { contractName: contract.name })
+    };
     if (isChangeVersion) {
       delete draftDataForSave.companyEntitySelection;
       delete draftDataForSave.myCompanyEntity;

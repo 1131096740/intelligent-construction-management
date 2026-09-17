@@ -1,9 +1,17 @@
 import { Prisma, type ContractVersion } from "@prisma/client";
 import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
 import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
-import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, contractCommercialEntryValues, contractPartyRoleName } from "./contract-business-entry-definition";
+import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName } from "./contract-business-entry-definition";
 
 describe("contract business entry definitions", () => {
+  it("freezes the inherited contract name for a change draft without overriding an explicit draft name", () => {
+    expect(contractBasicEntryValues({}, "原合同名称")).toMatchObject({ contractName: "原合同名称" });
+    expect(contractBasicEntryValues({ contractName: "草稿合同名称" }, "原合同名称")).toMatchObject({
+      contractName: "草稿合同名称"
+    });
+    expect(contractBasicEntryValues({ contractName: "" }, "原合同名称")).toMatchObject({ contractName: "" });
+  });
+
   it("keeps exact money text, tax rate zero, and omits absent optional facts", () => {
     const version = {
       pricingNature: "fixed_total",
