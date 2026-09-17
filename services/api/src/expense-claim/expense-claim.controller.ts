@@ -98,14 +98,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "append_expense_claim_attachment",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "费用追加资料"
     );
   }

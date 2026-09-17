@@ -95,6 +95,25 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(detail).toMatchObject({ status: 200, body: { status: "draft", requestedAmountCents: "1", attachments: [], entrySnapshots: [] } });
   });
 
+  (enabled ? it : it.skip)("提交后经办人通过真实上传接口追加资料并从详情回读", async () => {
+    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "追加资料验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    expect((await request(`${path}/submission`, {})).status).toBe(201);
+
+    const uploadBody = new FormData();
+    uploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成追加资料.png");
+    const upload = await fetch(`${baseUrl}${path}/append-attachment-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: uploadBody });
+    const uploadText = await upload.text();
+    if (upload.status !== 201) throw new Error(`追加资料上传失败：${upload.status} ${uploadText}`);
+    expect(upload.status).toBe(201);
+    const uploaded = JSON.parse(uploadText) as { id: string };
+
+    const appended = await request(`${path}/attachments/append`, { fileId: uploaded.id, category: "receipt_or_other" });
+    expect(appended.status).toBe(201);
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approval_pending", attachments: [{ fileName: "合成追加资料.png", category: "receipt_or_other", stage: "post_submit_append" }] } });
+  });
+
   (enabled ? it : it.skip)("项目借款明确提交后按原授权回读当时字段与金额，重复提交不增加快照", async () => {
     const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" });
     if (created.status !== 201) throw new Error(JSON.stringify(created));

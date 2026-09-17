@@ -445,6 +445,7 @@ export class ExpenseClaimService {
         const file = fileById.get(attachment.fileId);
         return {
           ...attachment,
+          stage: attachment.stage === "appended" ? "post_submit_append" : attachment.stage,
           fileName: file?.originalName ?? "文件信息不可用",
           mimeType: file?.mimeType ?? "application/octet-stream",
           sizeBytes: file?.sizeBytes ?? 0,
@@ -699,7 +700,7 @@ export class ExpenseClaimService {
           fileId,
           category: input.category,
           expenseCategory: optionalText(input.expenseCategory),
-          stage: "post_submit_append",
+          stage: "appended",
           attachedByUserId: actorUserId
         }
       });
@@ -710,7 +711,7 @@ export class ExpenseClaimService {
         businessId: claim.id,
         metadata: { attachmentId: attachment.id, fileId, category: input.category, expenseCategory: optionalText(input.expenseCategory), status: claim.status }
       });
-      return attachment;
+      return { ...attachment, stage: "post_submit_append" };
     });
   }
 

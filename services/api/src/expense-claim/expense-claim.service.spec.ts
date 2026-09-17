@@ -775,11 +775,11 @@ describe("ExpenseClaimService", () => {
     const files = { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({ id: "file-new", uploadedByUserId: "finance-1", storageStatus: "active" }) };
     const { service, tx, audit } = createHarness({ roles: ["finance_staff"], files });
     tx.$queryRaw.mockResolvedValueOnce([{ id: "claim-1", status: "approved_pending_payment", projectId: "project-1", handledByUserId: "user-a" }]);
-    tx.expenseClaimAttachment.create.mockResolvedValue({ id: "attachment-new", fileId: "file-new", category: "receipt_or_other", expenseCategory: null, stage: "post_submit_append", createdAt: new Date() });
+    tx.expenseClaimAttachment.create.mockResolvedValue({ id: "attachment-new", fileId: "file-new", category: "receipt_or_other", expenseCategory: null, stage: "appended", createdAt: new Date() });
 
     await expect(service.appendAttachment("claim-1", "finance-1", { fileId: "file-new", category: "receipt_or_other" })).resolves.toMatchObject({ id: "attachment-new", stage: "post_submit_append" });
 
-    expect(tx.expenseClaimAttachment.create).toHaveBeenCalledWith({ data: expect.objectContaining({ stage: "post_submit_append", attachedByUserId: "finance-1" }) });
+    expect(tx.expenseClaimAttachment.create).toHaveBeenCalledWith({ data: expect.objectContaining({ stage: "appended", attachedByUserId: "finance-1" }) });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.attachment.append" }));
   });
 
