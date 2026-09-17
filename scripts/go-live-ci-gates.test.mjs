@@ -137,6 +137,10 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(dynamic, /--candidate-sha "\$candidate_sha"/u);
   assert.match(dynamic, /--confirm LOCAL_PG16_DYNAMIC_GATE/u);
   assert.match(dynamic, /pnpm check:migration-baseline/u);
+  assert.match(
+    dynamic,
+    /if: \$\{\{ matrix\.group == 'pol113_pol115_business_entries' \}\}\s+run: pnpm --filter @jiangkong\/web-admin exec playwright install --with-deps chromium webkit/u
+  );
 
   assert.match(summary, /name: Release gates/u);
   assert.match(summary, /if: \$\{\{ always\(\) \}\}/u);

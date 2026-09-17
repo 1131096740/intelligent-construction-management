@@ -220,6 +220,10 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
+      - name: Install POL-113/POL-115 browser runtimes
+        if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
+        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
+
       - name: Verify migration baseline
         run: pnpm check:migration-baseline
 
