@@ -485,6 +485,7 @@ function settlementDetail(input: {
         taxAmount: "¥36,814.16",
         taxBreakdownNote: "按提交时冻结的合同税务事实计算",
         reason: "按验收数量结算",
+        overageReason: "-",
         remark: "-"
       }
     ],
