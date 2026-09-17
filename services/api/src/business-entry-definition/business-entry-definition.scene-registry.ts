@@ -32,6 +32,7 @@ const businessPartyCreateRoles = [
 ] as const;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
+const spotProcurementCreateRoles = ["material_staff", "material_director"] as const;
 
 function textField(
   key: string,
@@ -164,7 +165,100 @@ const resolveSettlementVersion = async ({ target, operation, prisma }: Parameter
   }));
 };
 
+export const resolveSpotProcurementVersion = async ({
+  target,
+  projectId,
+  actorUserId,
+  operation,
+  prisma
+}: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]) => {
+  const id = existingTargetId(target);
+  if (!id || !projectId) return false;
+  const version = await prisma.spotProcurementVersion.findUnique({
+    where: { id },
+    select: { status: true, procurementId: true }
+  });
+  if (!version) return false;
+  const procurement = await prisma.spotProcurement.findUnique({
+    where: { id: version.procurementId },
+    select: {
+      projectId: true,
+      currentVersionId: true,
+      applicantUserId: true,
+      handlerUserId: true,
+      status: true
+    }
+  });
+  if (!procurement || procurement.projectId !== projectId) return false;
+  const isOwner = [
+    procurement.applicantUserId,
+    procurement.handlerUserId
+  ].includes(actorUserId);
+  if (operation === "view" || operation === "export") return isOwner;
+  return isOwner &&
+    procurement.currentVersionId === id &&
+    procurement.status === "draft" &&
+    version.status === "draft";
+};
+
+export const resolveSpotProcurementLine = async (
+  context: Parameters<NonNullable<BusinessEntrySceneAccessPolicy["target"]["resolve"]>>[0]
+) => {
+  const id = existingTargetId(context.target);
+  if (!id) return false;
+  const line = await context.prisma.spotProcurementLine.findUnique({
+    where: { id },
+    select: { versionId: true }
+  });
+  return Boolean(line && await resolveSpotProcurementVersion({
+    ...context,
+    target: { entityType: "spot_procurement_version", entityId: line.versionId }
+  }));
+};
+
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
+  {
+    key: "spot_procurement.application",
+    entityType: "spot_procurement_version",
+    name: "零星材料采购申请",
+    description: "零星材料采购申请表头的统一填写与提交快照。",
+    version: 1,
+    fields: [
+      textField("applicationDepartment", "申请部门", spotProcurementCreateRoles, { required: true }),
+      textField("applicationName", "申请人", spotProcurementCreateRoles, { required: true }),
+      { ...textField("requestedArrivalAt", "要求采购到位日期", spotProcurementCreateRoles, { required: true }), type: "date", unit: "日" },
+      textField("reason", "采购原因", spotProcurementCreateRoles, { required: true }),
+      { ...textField("note", "采购备注", spotProcurementCreateRoles), type: "long_text" }
+    ],
+    rules: []
+  },
+  {
+    key: "spot_procurement.application_line",
+    entityType: "spot_procurement_line",
+    name: "零星材料采购明细",
+    description: "零星材料采购明细的统一填写与提交快照。",
+    version: 1,
+    fields: [
+      { ...textField("materialName", "材料名称", spotProcurementCreateRoles, { required: true }), scope: "line" },
+      { ...textField("specification", "规格型号", spotProcurementCreateRoles), scope: "line" },
+      { ...textField("unit", "单位", spotProcurementCreateRoles, { required: true }), scope: "line" },
+      {
+        ...textField("quantity", "数量", spotProcurementCreateRoles, { required: true }),
+        type: "number",
+        scope: "line",
+        precision: 2,
+        exactDecimalString: {
+          sign: "nonnegative",
+          minimumExclusive: "0",
+          maximumExclusive: "1000000000000000000"
+        },
+        unit: "",
+        excel: { column: "数量", paste: "multi", errorLocation: "cell" }
+      },
+      { ...textField("note", "明细备注", spotProcurementCreateRoles), type: "long_text", scope: "line" }
+    ],
+    rules: []
+  },
   {
     key: "project_operating_profile",
     entityType: "project",
@@ -319,6 +413,32 @@ export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionR
 
 export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAccessPolicy[] =
   Object.freeze([
+    {
+      sceneKey: "spot_procurement.application",
+      target: {
+        scope: "project",
+        entityType: "spot_procurement_version",
+        resolve: resolveSpotProcurementVersion
+      },
+      permission: {
+        kind: "business_action",
+        action: "spot_procurement.create",
+        roleScope: "project"
+      }
+    },
+    {
+      sceneKey: "spot_procurement.application_line",
+      target: {
+        scope: "project",
+        entityType: "spot_procurement_line",
+        resolve: resolveSpotProcurementLine
+      },
+      permission: {
+        kind: "business_action",
+        action: "spot_procurement.create",
+        roleScope: "project"
+      }
+    },
     {
       sceneKey: "project_operating_profile",
       target: { scope: "project", entityType: "project" },

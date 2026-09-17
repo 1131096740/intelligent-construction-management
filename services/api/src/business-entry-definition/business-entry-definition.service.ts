@@ -170,6 +170,30 @@ export class BusinessEntryDefinitionService {
     );
   }
 
+  async validateDraftInTransaction(
+    tx: Prisma.TransactionClient,
+    sceneKey: string,
+    projectId: string,
+    actorUserId: string,
+    input: BusinessEntryDraftRequest
+  ): Promise<BusinessEntryValidationResult> {
+    const { access, roleKeys } = await this.authorizeScene(
+      sceneKey,
+      projectId,
+      actorUserId,
+      tx
+    );
+    return this.validateDraftWithAuthorizedRoles(
+      sceneKey,
+      projectId,
+      access,
+      roleKeys,
+      actorUserId,
+      input,
+      tx
+    );
+  }
+
   async validateDraftWithRoles(
     sceneKey: string,
     projectId: string | undefined,
@@ -526,7 +550,8 @@ export class BusinessEntryDefinitionService {
     access: BusinessEntrySceneAccessPolicy,
     roleKeys: readonly BusinessEntryPermissionKey[],
     actorUserId: string,
-    input: BusinessEntryDraftRequest
+    input: BusinessEntryDraftRequest,
+    tx?: Prisma.TransactionClient
   ) {
     const payload = this.payload(sceneKey, input);
     await this.assertTargetScope(
@@ -536,7 +561,8 @@ export class BusinessEntryDefinitionService {
       access,
       payload.target,
       input.operation ?? "edit",
-      sceneKey === "business_party" ? "submission" : undefined
+      sceneKey === "business_party" ? "submission" : undefined,
+      tx
     );
     await this.authorization.assertAuthorized({
       sceneKey,
@@ -545,7 +571,8 @@ export class BusinessEntryDefinitionService {
       operation: input.operation ?? "edit",
       scope: access.target.scope,
       target: payload.target!,
-      values: input.values
+      values: input.values,
+      tx
     });
     return this.registry.validateDraft(
       payload,
@@ -685,7 +712,18 @@ export class BusinessEntryDefinitionService {
       if (!isBusinessEntryExistingTarget(target)) {
         throw new BadRequestException("项目业务场景必须绑定已存在的业务对象");
       }
-      if (target.entityId !== projectId) {
+      const belongsToProject = access.target.resolve
+        ? await access.target.resolve({
+            target,
+            projectId,
+            actorUserId,
+            operation,
+            scene: sceneKey,
+            scope: access.target.scope,
+            prisma: tx ?? this.prisma
+          })
+        : target.entityId === projectId;
+      if (!belongsToProject) {
         throw new BadRequestException("提交对象不属于当前项目");
       }
     }
@@ -715,6 +753,7 @@ export class BusinessEntryDefinitionService {
     }
     if (access.target.scope === "global" && !await access.target.resolve!({
       target,
+      projectId,
       actorUserId,
       operation,
       scene: sceneKey,

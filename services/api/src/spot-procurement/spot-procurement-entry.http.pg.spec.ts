@@ -35,6 +35,16 @@ type Detail = {
   paymentSummary: unknown;
   receipt: unknown;
   discrepancy: unknown;
+  entrySnapshots: Array<{
+    sceneKey: string;
+    versionNo: number;
+    lineNumber: number | null;
+    revision: number;
+    definitionVersion: number;
+    definitionSnapshot: { fields: Array<{ key: string; label: string }> };
+    valuesSnapshot: Record<string, unknown>;
+    frozenAt: string;
+  }>;
 };
 type Version = {
   id: string; versionNo: number; reason: string; status: string; statusLabel: string; note: string | null;
@@ -169,6 +179,11 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   }
 
   async function createDraft(projectId: string, label: string) {
+    const definitions = expectHttpStatus(
+      `零采定义-${label}`,
+      await json(`/spot-procurements/projects/${projectId}/application-definitions`, applicant),
+      200
+    ).body as unknown as { application: { version: number }; line: { version: number } };
     const upload = new FormData();
     upload.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成报价-${label}.png`);
     upload.append("idempotencyKey", randomUUID());
@@ -178,10 +193,11 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     const file = JSON.parse(uploadText) as { id: string };
     const created = await json("/spot-procurements", applicant, "POST", {
       projectId, applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-01",
+      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
       reason: `旧版采购原因-${label}`, lines: [{ materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "10", note: "合成验收" }],
       attachments: [{ fileId: file.id, category: "merchant_quote" }]
     });
-    expect(created.status).toBe(201);
+    expectHttpStatus(`零采草稿创建-${label}`, created, 201);
     expect(created.body!.procurementId).toEqual(expect.any(String));
     return created.body!.procurementId;
   }
@@ -278,12 +294,23 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   }
 
   (enabled ? it : it.skip)("公开链保留旧版本并冻结两级审批坐标", async () => {
+    expect((await json(
+      `/spot-procurements/projects/${projectIds.api}/application-definitions`,
+      sessions.get("finance_staff")!
+    )).status).toBe(403);
     const id = await createDraft(projectIds.api, "api");
     const initial = (await json(`/spot-procurements/${id}`, applicant)).body!;
     expect(initial).toMatchObject({ currentVersion: { versionNo: 1, status: "draft", reason: "旧版采购原因-api" }, attachments: [{ fileName: "合成报价-api.png" }] });
     const initialFacts = immutableDraftFacts(initial);
     expect((await json(`/spot-procurements/${id}/submission`, applicant, "POST", {})).status).toBe(201);
     const firstDirectorView = (await json(`/spot-procurements/${id}`, director)).body!;
+    const frozenV1 = firstDirectorView.entrySnapshots;
+    expect(frozenV1).toHaveLength(2);
+    expect(frozenV1).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sceneKey: "spot_procurement.application", versionNo: 1, lineNumber: null, revision: 1, valuesSnapshot: expect.objectContaining({ reason: "旧版采购原因-api" }) }),
+      expect.objectContaining({ sceneKey: "spot_procurement.application_line", versionNo: 1, lineNumber: 1, revision: 1, valuesSnapshot: expect.objectContaining({ quantity: "10" }) })
+    ]));
+    expect(JSON.stringify(frozenV1)).not.toContain("entityId");
     const firstCoordinates = firstDirectorView.reviewApprovalContext!;
     const beforeWrongManager = (await json(`/spot-procurements/${id}`, applicant)).body!;
     expect((await json(`/spot-procurements/${id}/approval`, manager, "POST", { decision: "approve", comment: "错误越级", ...firstCoordinates })).status).toBe(403);
@@ -293,6 +320,32 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(returned.body).toMatchObject({ procurement: { status: "draft" }, currentVersion: { versionNo: 2, status: "draft" }, versions: [{ versionNo: 2 }, { versionNo: 1, reason: "旧版采购原因-api" }] });
     expect(immutableDraftFacts(returned.body!)).toEqual(initialFacts);
     const frozenV1AfterReturn = returned.body!.versions.find((version) => version.versionNo === 1)!;
+    expect(returned.body!.entrySnapshots).toEqual(frozenV1);
+
+    const definitions = (await json(
+      `/spot-procurements/projects/${projectIds.api}/application-definitions`,
+      applicant
+    )).body as unknown as { application: { version: number }; line: { version: number } };
+    const baseRevision = {
+      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
+      applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-02", reason: "新版补充后采购原因",
+      attachments: returned.body!.attachments.map((attachment) => ({ fileId: attachment.fileId, category: "merchant_quote" }))
+    };
+    for (const quantity of ["0", "1e3", "1.001", "1000000000000000000"]) {
+      const before = rejectionInvariant((await json(`/spot-procurements/${id}`, applicant)).body!);
+      const invalid = await json(`/spot-procurements/${id}/draft`, applicant, "PATCH", {
+        ...baseRevision,
+        lines: [{ materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity }]
+      });
+      expect(invalid.status).toBe(400);
+      expect(rejectionInvariant((await json(`/spot-procurements/${id}`, applicant)).body!)).toEqual(before);
+    }
+    expect((await json(`/spot-procurements/${id}/draft`, applicant, "PATCH", {
+      ...baseRevision,
+      entryDefinitionVersions: { application: 1 },
+      target: { entityType: "spot_procurement_version", entityId: "forged" },
+      lines: [{ materialName: "水泥", unit: "袋", quantity: "2.50" }]
+    })).status).toBe(400);
 
     const uploadKey = randomUUID();
     const uploadRevisionAttachment = async () => {
@@ -308,15 +361,22 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(firstUpload).toMatchObject({ status: 201, body: { id: expect.any(String) } });
     expect(replayUpload).toEqual(firstUpload);
     expect((await json(`/spot-procurements/${id}/draft`, applicant, "PATCH", {
+      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
       applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-02", reason: "新版补充后采购原因",
-      lines: [{ materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "12", note: "已补充" }],
+      lines: [
+        { materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "0.01", note: "已补充" },
+        { materialName: "砂子", specification: "中砂", unit: "立方米", quantity: "2.50", note: "第二行" }
+      ],
       attachments: [
         { fileId: returned.body!.attachments[0]!.fileId, category: "merchant_quote" },
         { fileId: firstUpload.body!.id, category: "other" }
       ]
     })).status).toBe(200);
     const revisedDraft = (await json(`/spot-procurements/${id}`, applicant)).body!;
-    expect(revisedDraft.lines).toEqual([expect.objectContaining({ materialName: "水泥", quantity: "12", note: "已补充" })]);
+    expect(revisedDraft.lines).toEqual([
+      expect.objectContaining({ materialName: "水泥", quantity: "0.01", note: "已补充" }),
+      expect.objectContaining({ materialName: "砂子", quantity: "2.5", note: "第二行" })
+    ]);
     expect(revisedDraft.attachments).toHaveLength(2);
     expect(revisedDraft.attachments.map(({ fileId, fileName, purpose }) => ({ fileId, fileName, purpose }))).toEqual(expect.arrayContaining([
       { fileId: initial.attachments[0]!.fileId, fileName: "合成报价-api.png", purpose: "merchant_quote" },
@@ -342,6 +402,12 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     const final = await json(`/spot-procurements/${id}`, applicant);
     expect(final.body).toMatchObject({ procurement: { status: "approved_in_progress", statusLabel: "采购已批，办理中" }, currentVersion: { versionNo: 2, reason: "新版补充后采购原因" } });
     expect(final.body!.versions.find((version) => version.versionNo === 1)).toEqual(frozenV1AfterReturn);
+    expect(final.body!.entrySnapshots.filter((snapshot) => snapshot.versionNo === 1)).toEqual(frozenV1);
+    expect(final.body!.entrySnapshots.filter((snapshot) => snapshot.versionNo === 2)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sceneKey: "spot_procurement.application", lineNumber: null, revision: 1, valuesSnapshot: expect.objectContaining({ reason: "新版补充后采购原因" }) }),
+      expect.objectContaining({ sceneKey: "spot_procurement.application_line", lineNumber: 1, revision: 1, valuesSnapshot: expect.objectContaining({ quantity: "0.01" }) }),
+      expect.objectContaining({ sceneKey: "spot_procurement.application_line", lineNumber: 2, revision: 1, valuesSnapshot: expect.objectContaining({ quantity: "2.5" }) })
+    ]));
     expect(final.body!.lines).toEqual(revisedDraft.lines);
     expect(final.body!.attachments).toEqual(revisedDraft.attachments);
     expect(final.body!.approvalTimeline.map(({ action, comment, roleName }) => ({ action, comment, roleName }))).toEqual([

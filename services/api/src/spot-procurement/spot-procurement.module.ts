@@ -7,6 +7,8 @@ import { FileModule } from "../file/file.module";
 import { InvoiceLedgerModule } from "../invoice-ledger/invoice-ledger.module";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
+import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
+import { BusinessEntryDefinitionModule } from "../business-entry-definition/business-entry-definition.module";
 import { ReceiptWatermarkService } from "./receipt-watermark.service";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementAccessModule } from "./spot-procurement-access.module";
@@ -35,6 +37,8 @@ import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment
     InvoiceLedgerModule,
     OperatingLedgerModule,
     ProjectFundingModule,
+    BusinessEntryTransactionModule,
+    BusinessEntryDefinitionModule,
     SpotProcurementClosureModule,
     SpotProcurementAccessModule
   ],

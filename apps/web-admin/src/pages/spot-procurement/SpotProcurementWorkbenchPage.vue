@@ -7,12 +7,14 @@ import { useRouter } from "vue-router";
 import {
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
+  fetchSpotProcurementApplicationDefinitions,
   fetchSpotProcurementCapabilities,
   fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurements,
   uploadSpotProcurementCreateFile,
   type SpotProcurementAttachmentPayload,
   type SpotProcurementApplicationTextSuggestionReadModel,
+  type SpotProcurementApplicationDefinitionsReadModel,
   type SpotProcurementCapabilitiesReadModel,
   type SpotProcurementCreateProjectOptionReadModel,
   type SpotProcurementListItemReadModel,
@@ -45,6 +47,7 @@ const applicationTextSuggestions = ref<
   SpotProcurementApplicationTextSuggestionReadModel[]
 >([]);
 const capabilities = ref<SpotProcurementCapabilitiesReadModel | null>(null);
+const entryDefinitions = ref<SpotProcurementApplicationDefinitionsReadModel | null>(null);
 const capabilityBusy = ref(false);
 const createVisible = ref(false);
 const createBusy = ref(false);
@@ -135,6 +138,7 @@ const createDisabledReason = computed(() => {
   if (!capabilities.value.canCreate) {
     return capabilities.value.unavailableReason ?? "当前账号无权在该项目新建零星采购。";
   }
+  if (!entryDefinitions.value) return "零采填写定义尚未读取完成。";
   if (!createForm.applicationDepartment.trim()) return "请填写申请部门。";
   if (!createForm.applicationName.trim()) return "请填写申请人。";
   if (!createForm.requestedArrivalAt) return "请选择要求采购到位日期。";
@@ -286,6 +290,7 @@ async function openCreate() {
   if (createForm.projectId) {
     await Promise.all([
       loadCapabilities(createForm.projectId),
+      loadEntryDefinitions(createForm.projectId),
       loadApplicationTextSuggestions(createForm.projectId)
     ]);
   }
@@ -294,12 +299,26 @@ async function openCreate() {
 async function handleCreateProjectChange(value: unknown) {
   createForm.projectId = typeof value === "string" ? value : "";
   capabilities.value = null;
+  entryDefinitions.value = null;
   applicationTextSuggestions.value = [];
   if (createForm.projectId) {
     await Promise.all([
       loadCapabilities(createForm.projectId),
+      loadEntryDefinitions(createForm.projectId),
       loadApplicationTextSuggestions(createForm.projectId)
     ]);
+  }
+}
+
+async function loadEntryDefinitions(projectId: string) {
+  try {
+    const result = await fetchSpotProcurementApplicationDefinitions(projectId);
+    if (projectId === createForm.projectId) entryDefinitions.value = result;
+  } catch (error) {
+    if (projectId === createForm.projectId) {
+      entryDefinitions.value = null;
+      createError.value = error instanceof Error ? error.message : "零采填写定义读取失败";
+    }
   }
 }
 
@@ -364,6 +383,12 @@ async function saveDraft() {
     }
     const result = await createSpotProcurementDraftWithCapability(projectId, {
       projectId,
+      entryDefinitionVersions: entryDefinitions.value
+        ? {
+            application: entryDefinitions.value.application.version,
+            line: entryDefinitions.value.line.version
+          }
+        : undefined,
       applicationDepartment: requiredText(createForm.applicationDepartment, "申请部门"),
       applicationName: requiredText(createForm.applicationName, "申请人"),
       requestedArrivalAt: createForm.requestedArrivalAt,

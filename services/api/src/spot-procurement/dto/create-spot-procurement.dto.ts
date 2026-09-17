@@ -4,6 +4,9 @@ import {
   IsArray,
   IsDateString,
   IsIn,
+  IsInt,
+  IsOptional,
+  Min,
   registerDecorator,
   ValidateIf,
   ValidateNested
@@ -113,7 +116,22 @@ export class SpotProcurementAttachmentDto {
   category!: SpotProcurementAttachmentCategory;
 }
 
+export class SpotProcurementEntryDefinitionVersionsDto {
+  @IsInt({ message: "申请定义版本必须是整数" })
+  @Min(1, { message: "申请定义版本不正确" })
+  application!: number;
+
+  @IsInt({ message: "明细定义版本必须是整数" })
+  @Min(1, { message: "明细定义版本不正确" })
+  line!: number;
+}
+
 export class SpotProcurementDraftDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SpotProcurementEntryDefinitionVersionsDto)
+  entryDefinitionVersions?: SpotProcurementEntryDefinitionVersionsDto;
+
   @IsRequiredText({
     requiredMessage: "请填写申请部门",
     typeMessage: "申请部门必须是文字",

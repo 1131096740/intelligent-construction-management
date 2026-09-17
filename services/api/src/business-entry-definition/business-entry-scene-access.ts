@@ -19,6 +19,7 @@ export type BusinessEntryRoleScope = "global" | "effective" | "project";
 
 export interface BusinessEntryGlobalTargetResolverContext {
   readonly target: BusinessEntrySubmissionTarget;
+  readonly projectId?: string;
   readonly actorUserId: string;
   readonly operation: BusinessEntryOperation;
   readonly scene: string;

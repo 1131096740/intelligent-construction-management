@@ -1,5 +1,6 @@
 import type {
   ApprovalTimelineItemReadModel,
+  BusinessEntrySceneDefinition,
   DetailActionReadModel,
   EvidenceFileReadModel,
   InvoiceMode,
@@ -568,6 +569,16 @@ export interface SpotProcurementDetailReadModel {
   };
   currentVersion: SpotProcurementVersionReadModel;
   versions: SpotProcurementVersionReadModel[];
+  entrySnapshots: Array<{
+    sceneKey: "spot_procurement.application" | "spot_procurement.application_line";
+    versionNo: number;
+    lineNumber: number | null;
+    revision: number;
+    definitionVersion: number;
+    definitionSnapshot: BusinessEntrySceneDefinition;
+    valuesSnapshot: Record<string, unknown>;
+    frozenAt: string;
+  }>;
   lines: SpotProcurementLineReadModel[];
   invoiceComposition: SpotProcurementInvoiceComposition;
   attachments: EvidenceFileReadModel[];
@@ -852,6 +863,10 @@ export interface SpotProcurementAttachmentPayload {
 }
 
 export interface SpotProcurementDraftPayload {
+  entryDefinitionVersions?: {
+    application: number;
+    line: number;
+  };
   applicationDepartment: string;
   applicationName: string;
   requestedArrivalAt: string;
@@ -859,6 +874,11 @@ export interface SpotProcurementDraftPayload {
   note?: string | null;
   lines: SpotProcurementLinePayload[];
   attachments?: SpotProcurementAttachmentPayload[];
+}
+
+export interface SpotProcurementApplicationDefinitionsReadModel {
+  application: BusinessEntrySceneDefinition;
+  line: BusinessEntrySceneDefinition;
 }
 
 export interface CreateSpotProcurementDraftPayload
@@ -1257,6 +1277,12 @@ export interface SpotProcurementPaymentExecutionWriteReadModel {
 export function fetchSpotProcurementCapabilities(projectId: string) {
   return readJson<SpotProcurementCapabilitiesReadModel>(
     `/spot-procurements/capabilities?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
+export function fetchSpotProcurementApplicationDefinitions(projectId: string) {
+  return readJson<SpotProcurementApplicationDefinitionsReadModel>(
+    `/spot-procurements/projects/${encodeURIComponent(projectId)}/application-definitions`
   );
 }
 

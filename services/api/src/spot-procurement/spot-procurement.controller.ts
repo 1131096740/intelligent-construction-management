@@ -91,6 +91,15 @@ export class SpotProcurementController {
     );
   }
 
+  @Get("projects/:projectId/application-definitions")
+  @RequireProjectRole("spot_procurement.create")
+  createEntryDefinitions(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.applications.getCreateEntryDefinitions(user.id, projectId);
+  }
+
   @Get(":procurementId")
   detail(
     @Param("procurementId") procurementId: string,

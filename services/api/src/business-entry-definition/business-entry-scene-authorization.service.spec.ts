@@ -22,7 +22,8 @@ describe("BusinessEntrySceneAuthorizationService", () => {
         businessParties as never,
         contractTemplates as never,
         layouts as never,
-        settlementTemplates as never
+        settlementTemplates as never,
+        {} as never
       ),
       organization,
       organizationRoles,

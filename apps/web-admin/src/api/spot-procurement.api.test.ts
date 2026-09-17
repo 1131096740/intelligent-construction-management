@@ -8,6 +8,7 @@ import {
   createSpotProcurementDraft,
   fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurementApplicationTextSuggestions,
+  fetchSpotProcurementApplicationDefinitions,
   createSpotProcurementVersion,
   executeSpotProcurementInvoiceAppend,
   executeSpotProcurementPaymentReviewAction,
@@ -63,6 +64,16 @@ describe("spot procurement API client", () => {
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/capabilities?projectId=project%2F1"
+    ]);
+  });
+
+  it("reads static application definitions from the project-scoped create capability", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse({ application: {}, line: {} }));
+
+    await fetchSpotProcurementApplicationDefinitions("project/1");
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/projects/project%2F1/application-definitions"
     ]);
   });
 

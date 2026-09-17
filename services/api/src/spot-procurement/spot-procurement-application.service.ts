@@ -44,6 +44,9 @@ import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { BusinessEntryDefinitionService } from "../business-entry-definition/business-entry-definition.service";
+import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 
 const CREATE_ROLES = new Set<RoleKey>([
   "material_staff",
@@ -205,8 +208,32 @@ export class SpotProcurementApplicationService {
     private readonly pilot: SpotProcurementPilotService,
     private readonly approvalForms: ApprovalFormService,
     private readonly archives?: SpotProcurementPaymentArchiveService,
-    private readonly balances?: SpotProcurementBalanceService
+    private readonly balances?: SpotProcurementBalanceService,
+    private readonly entryTransactions?: BusinessEntryTransactionService,
+    private readonly entryDefinitions?: BusinessEntryDefinitionService
   ) {}
+
+  getCreateEntryDefinitions(actorUserId: string, projectId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      this.pilot.assertEnabled(projectId);
+      await this.requireActiveProject(tx, projectId);
+      const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, projectId);
+      this.requireAnyRole(actorRoles, CREATE_ROLES, "只有物资员或物资主管可以创建零星采购");
+      await this.requireCurrentPurchaser(tx, actorUserId, projectId, actorRoles);
+      return {
+        application: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinitionForRoles(
+          "spot_procurement.application",
+          actorRoles,
+          "edit"
+        ),
+        line: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinitionForRoles(
+          "spot_procurement.application_line",
+          actorRoles,
+          "edit"
+        )
+      };
+    });
+  }
 
   createDraft(actorUserId: string, input: CreateSpotProcurementDto) {
     return this.runWrite(() =>
@@ -253,6 +280,14 @@ export class SpotProcurementApplicationService {
           where: { id: procurement.id },
           data: { currentVersionId: version.id }
         });
+        await this.validateApplicationEntryDraft(
+          tx,
+          actorUserId,
+          procurement,
+          version as unknown as VersionLockRow,
+          await this.loadFrozenVersionFacts(tx, version.id),
+          input.entryDefinitionVersions
+        );
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.draft.create",
@@ -320,6 +355,14 @@ export class SpotProcurementApplicationService {
           data: this.versionUpdateData(prepared)
         });
         await this.replaceVersionFacts(tx, version.id, prepared);
+        await this.validateApplicationEntryDraft(
+          tx,
+          actorUserId,
+          procurement,
+          { ...version, ...this.versionUpdateData(prepared) },
+          await this.loadFrozenVersionFacts(tx, version.id),
+          input.entryDefinitionVersions
+        );
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.draft.update",
@@ -345,11 +388,21 @@ export class SpotProcurementApplicationService {
         approvalBusinessId = version.id;
         this.assertEditableDraft(procurement, version);
         const actorRoles = await this.requireDraftOwnerRole(tx, procurement, actorUserId);
-        await this.requireCanonicalRealApplicationFacts(
+        const canonicalFacts = await this.requireCanonicalRealApplicationFacts(
           tx,
           procurement,
           version,
           { requireNoDownstreamFacts: true }
+        );
+        if (!this.entryTransactions) {
+          throw new ConflictException("采购统一填写冻结能力未配置，请联系管理员处理");
+        }
+        await this.freezeApplicationEntrySnapshots(
+          tx,
+          actorUserId,
+          procurement,
+          version,
+          canonicalFacts
         );
         const now = new Date();
         const frozenNodes = procurementApprovalNodes(actorRoles);
@@ -789,6 +842,14 @@ export class SpotProcurementApplicationService {
           }
         });
         await this.replaceVersionFacts(tx, version.id, prepared);
+        await this.validateApplicationEntryDraft(
+          tx,
+          actorUserId,
+          procurement,
+          version as unknown as VersionLockRow,
+          await this.loadFrozenVersionFacts(tx, version.id),
+          input.entryDefinitionVersions
+        );
         await tx.spotProcurement.update({
           where: { id: procurement.id },
           data: { currentVersionId: version.id, status: "draft", approvedAmountCents: null, actualCostCents: null }
@@ -1395,6 +1456,137 @@ export class SpotProcurementApplicationService {
       tx.spotProcurementAttachment.findMany({ where: { versionId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })
     ]);
     return { lines, attachments };
+  }
+
+  private async freezeApplicationEntrySnapshots(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    procurement: ProcurementLockRow,
+    version: VersionLockRow,
+    facts: FrozenVersionFacts
+  ) {
+    const target = (entityType: string, entityId: string) => ({
+      projectId: procurement.projectId,
+      entityType,
+      entityId
+    });
+    await this.entryTransactions!.freezeSubmissionSnapshotInTransaction(
+      tx,
+      actorUserId,
+      {
+        sceneKey: "spot_procurement.application",
+        definitionVersion: 1,
+        expectedRevision: 0,
+        operation: "edit",
+        target: target("spot_procurement_version", version.id),
+        values: {
+          applicationDepartment: version.applicationDepartmentSnapshot,
+          applicationName: version.applicationNameSnapshot,
+          requestedArrivalAt: version.requestedArrivalAt.toISOString().slice(0, 10),
+          reason: version.reason,
+          note: version.note
+        }
+      }
+    );
+    for (const line of facts.lines) {
+      await this.entryTransactions!.freezeSubmissionSnapshotInTransaction(
+        tx,
+        actorUserId,
+        {
+          sceneKey: "spot_procurement.application_line",
+          definitionVersion: 1,
+          expectedRevision: 0,
+          operation: "edit",
+          target: target("spot_procurement_line", line.id),
+          values: {
+            materialName: line.materialName,
+            specification: line.specification,
+            unit: line.unit,
+            quantity: line.quantity.toString(),
+            note: line.note
+          }
+        }
+      );
+    }
+  }
+
+  private async validateApplicationEntryDraft(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    procurement: ProcurementLockRow,
+    version: VersionLockRow,
+    facts: FrozenVersionFacts,
+    requestedVersions?: { application: number; line: number }
+  ) {
+    if (!this.entryDefinitions) {
+      throw new ConflictException("零采统一填写校验服务未启用");
+    }
+    const applicationDefinition = BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition(
+      "spot_procurement.application"
+    );
+    const lineDefinition = BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition(
+      "spot_procurement.application_line"
+    );
+    if (requestedVersions && (
+      requestedVersions.application !== applicationDefinition.version ||
+      requestedVersions.line !== lineDefinition.version
+    )) {
+      throw new ConflictException("零采填写定义已更新，请刷新后重试");
+    }
+    const validate = async (
+      sceneKey: "spot_procurement.application" | "spot_procurement.application_line",
+      definitionVersion: number,
+      entityType: "spot_procurement_version" | "spot_procurement_line",
+      entityId: string,
+      values: Record<string, unknown>
+    ) => {
+      const result = await this.entryDefinitions!.validateDraftInTransaction(
+        tx,
+        sceneKey,
+        procurement.projectId,
+        actorUserId,
+        {
+          definitionVersion,
+          operation: "edit",
+          target: { entityType, entityId },
+          values
+        }
+      );
+      if (!result.valid) {
+        throw new BadRequestException({
+          message: "零采草稿未通过统一填写校验",
+          errors: result.errors
+        });
+      }
+    };
+    await validate(
+      "spot_procurement.application",
+      applicationDefinition.version,
+      "spot_procurement_version",
+      version.id,
+      {
+        applicationDepartment: version.applicationDepartmentSnapshot,
+        applicationName: version.applicationNameSnapshot,
+        requestedArrivalAt: version.requestedArrivalAt.toISOString().slice(0, 10),
+        reason: version.reason,
+        note: version.note
+      }
+    );
+    for (const line of facts.lines) {
+      await validate(
+        "spot_procurement.application_line",
+        lineDefinition.version,
+        "spot_procurement_line",
+        line.id,
+        {
+          materialName: line.materialName,
+          specification: line.specification,
+          unit: line.unit,
+          quantity: line.quantity.toString(),
+          note: line.note
+        }
+      );
+    }
   }
 
   private async requireCanonicalRealApplicationFacts(

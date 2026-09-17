@@ -9,30 +9,80 @@ async function useSession(page: Page, session: Session) {
   await page.reload();
 }
 
-test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, request }, testInfo) => {
+test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, request, context }, testInfo) => {
   const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
   const director = JSON.parse(process.env.POL115_SPOT_DIRECTOR_SESSION!) as Session;
   const manager = JSON.parse(process.env.POL115_SPOT_MANAGER_SESSION!) as Session;
   const projectId = (JSON.parse(process.env.POL115_SPOT_PROJECT_IDS!) as Record<string, string>)[testInfo.project.name]!;
   const headers = { authorization: `Bearer ${applicant.tokens.accessToken}` };
   const label = testInfo.project.name;
-  const upload = await request.post(`${process.env.POL115_API_URL}/spot-procurements/projects/${projectId}/draft-file-uploads`, {
-    headers, multipart: { file: { name: `浏览器报价-${label}.png`, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64") } }
-  });
-  expect(upload.status(), await upload.text()).toBe(201);
-  const fileId = ((await upload.json()) as { id: string }).id;
-  const created = await request.post(`${process.env.POL115_API_URL}/spot-procurements`, { headers, data: {
-    projectId, applicationDepartment: "浏览器工程部", applicationName: "浏览器申请人", requestedArrivalAt: "2026-10-03",
-    reason: `浏览器旧版原因-${label}`, lines: [{ materialName: "砂子", specification: "中砂", unit: "吨", quantity: "2", note: "现场使用" }],
-    attachments: [{ fileId, category: "merchant_quote" }]
-  } });
-  expect(created.status(), await created.text()).toBe(201);
-  const id = ((await created.json()) as { procurementId: string }).procurementId;
-  expect(id).toEqual(expect.any(String));
-
   await page.goto("/login");
   await useSession(page, applicant);
-  await page.goto(`/零星采购/${id}`);
+  await page.goto("/零星采购工作台");
+  await page.getByRole("button", { name: "新建采购申请", exact: true }).click();
+  const createDialog = page.locator(".t-dialog").filter({ hasText: "新建零星/小额材料采购申请表" });
+  await createDialog.getByPlaceholder("请选择项目").click();
+  const projectName = `零采${testInfo.project.name}隔离项目`;
+  const projectOption = page
+    .locator(".t-select__dropdown:visible")
+    .locator(".t-select-option")
+    .filter({ hasText: new RegExp(` · ${projectName}$`, "u") });
+  await expect(projectOption).toHaveCount(1);
+  await projectOption.click();
+  await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
+  await createDialog.getByPlaceholder("如：工程部").fill("浏览器工程部");
+  await createDialog.getByPlaceholder("如：杨帅").fill("浏览器申请人");
+  const arrivalDateInput = createDialog.getByPlaceholder("请选择日期");
+  await arrivalDateInput.click();
+  const datePanel = page.locator(".t-date-picker__panel:visible");
+  await expect(datePanel).toBeVisible();
+  const monthController = datePanel.locator(".t-date-picker__header-controller-month");
+  await expect(monthController.getByRole("textbox")).toHaveValue("9 月");
+  await monthController.click();
+  const octoberOption = datePanel
+    .locator(".t-date-picker__header-controller-month-popup:visible")
+    .locator(".t-select-option")
+    .filter({ hasText: /^10 月$/u });
+  await expect(octoberOption).toHaveCount(1);
+  await octoberOption.click();
+  await expect(monthController.getByRole("textbox")).toHaveValue("10 月");
+  await datePanel
+    .locator(".t-date-picker__cell:not(.t-date-picker__cell--additional)")
+    .getByText("3", { exact: true })
+    .click();
+  await expect(arrivalDateInput).toHaveValue("2026-10-03");
+  await createDialog.getByPlaceholder("说明现场为什么需要本次零星采购").fill(`浏览器旧版原因-${label}`);
+  if (testInfo.project.name === "desktop") {
+    const grid = createDialog.locator("revo-grid");
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: "http://127.0.0.1:4215"
+    });
+    await page.evaluate(async () => {
+      await navigator.clipboard.writeText("砂子\t中砂\t吨\t2.50\t现场使用\n水泥\tP.O 42.5\t袋\t0.01\t补充用料");
+    });
+    await grid.locator('[data-rgrow="0"][data-rgcol="0"]').click();
+    await page.keyboard.press("ControlOrMeta+V");
+    for (const [column, value] of ["水泥", "P.O 42.5", "袋", "0.01", "补充用料"].entries()) {
+      await expect(grid.locator(`[data-rgrow="1"][data-rgcol="${column}"]`)).toHaveText(value);
+    }
+  } else {
+    const cards = createDialog.locator(".procurement-line-editor__cards");
+    const first = cards.locator("article").first();
+    await first.getByText("材料名称", { exact: true }).locator("..").locator("input").fill("砂子");
+    await first.getByText("单位", { exact: true }).locator("..").locator("input").fill("吨");
+    await first.getByText("数量（最多 2 位小数）", { exact: true }).locator("..").locator("input").fill("2.50");
+    await createDialog.getByRole("button", { name: "添加材料", exact: true }).click();
+    const second = cards.locator("article").nth(1);
+    await second.getByText("材料名称", { exact: true }).locator("..").locator("input").fill("水泥");
+    await second.getByText("单位", { exact: true }).locator("..").locator("input").fill("袋");
+    await second.getByText("数量（最多 2 位小数）", { exact: true }).locator("..").locator("input").fill("0.01");
+  }
+  const created = page.waitForResponse((response) => response.url().endsWith("/spot-procurements") && response.request().method() === "POST");
+  await createDialog.getByRole("button", { name: "保存草稿", exact: true }).click();
+  const createdResponse = await created;
+  expect(createdResponse.status(), await createdResponse.text()).toBe(201);
+  const id = ((await createdResponse.json()) as { procurementId: string }).procurementId;
+  await page.waitForURL((url) => decodeURIComponent(url.pathname) === `/零星采购/${id}`);
   const panelByHeading = (name: string) => page.locator("section.detail-panel").filter({
     has: page.getByRole("heading", { name, exact: true })
   });
@@ -40,7 +90,7 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
     has: page.getByRole("heading", { name: "审批与动作", exact: true })
   });
   await page.locator(".t-tabs").getByText("材料与附件", { exact: true }).click();
-  await expect(panelByHeading("材料明细").getByText(`浏览器报价-${label}.png`, { exact: true })).toBeVisible();
+  await expect(panelByHeading("材料明细").getByText("水泥", { exact: true })).toBeVisible();
   await page.locator(".t-tabs").getByText("审批与动作", { exact: true }).click();
   const initialSubmission = page.waitForResponse((response) => response.url().endsWith(`/spot-procurements/${id}/submission`) && response.request().method() === "POST");
   await processPanel.getByRole("button", { name: "提交采购审批", exact: true }).click();
