@@ -1235,6 +1235,7 @@ import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTo
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   approveContractSeal,
   approveGovernedContractSeal,
@@ -2326,7 +2327,7 @@ async function reloadContractDetail() {
     normalizedChangeVersions.value = [];
     changeEligibility.value = null;
     changeEligibilityLoading.value = false;
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     contractDetailError.value = `未能读取合同详情：${reason}。当前页面数据不能用于审批、归档、结算或付款判断，请确认账号权限和网络状态后重试。`;
     return false;
   } finally {
@@ -2488,7 +2489,7 @@ async function submitChangeDraft() {
     await router.push(`/contracts/${created.contractId}/workbench?versionId=${created.id}`);
   } catch (error) {
     if (submissionIsCurrent()) {
-      changeError.value = error instanceof Error ? error.message : "创建变更草稿失败";
+      changeError.value = formatUnknownApiError(error, "创建变更草稿失败");
     }
   } finally {
     if (submissionIsCurrent()) changeSubmitting.value = false;
@@ -2532,7 +2533,7 @@ function selectedUploadFile(files: UploadFile[]) {
 
 function setActionError(error: unknown, fallback: string) {
   archiveActionMessageTone.value = "danger";
-  archiveActionMessage.value = error instanceof Error ? `${error.message}。请修正后重试。` : fallback;
+  archiveActionMessage.value = `${formatUnknownApiError(error, fallback)}。请修正后重试。`;
 }
 
 function openSensitiveAction(
@@ -3108,7 +3109,7 @@ async function completeContractLifecycleAction() {
 
 function failContractLifecycleAction(error: unknown) {
   archiveActionMessageTone.value = "danger";
-  const reason = error instanceof Error ? error.message : "未知错误";
+  const reason = formatUnknownApiError(error, "未知错误");
   archiveActionMessage.value = `操作未完成：${reason}。已保留当前输入，请核对后重试。`;
   sensitiveAction.error = archiveActionMessage.value;
   return false;
@@ -3501,7 +3502,7 @@ async function failSigningMaterialChange(
   }
   if (!signingMaterialChangeSubmissionIsCurrent(context)) return;
   archiveActionMessageTone.value = "danger";
-  const message = error instanceof Error ? error.message : "未知错误";
+  const message = formatUnknownApiError(error, "未知错误");
   archiveActionMessage.value = `申报未完成：${message}`;
   signingMaterialChangeDialogError.value = archiveActionMessage.value;
 }
@@ -3581,9 +3582,7 @@ function captureContractReviewContext(
       }
     );
   } catch (error) {
-    sensitiveAction.error = error instanceof Error
-      ? error.message
-      : "合同自审确认信息不完整。";
+    sensitiveAction.error = formatUnknownApiError(error, "合同自审确认信息不完整。");
     return null;
   }
   const risk = dialog.ownerContractRisk;
@@ -3687,7 +3686,7 @@ async function failContractReview(
       : "审批提交结果暂时无法确认，权威详情也未能刷新；请重新进入合同详情核对，不要重复提交。";
   } else {
     archiveActionMessageTone.value = "danger";
-    const message = error instanceof Error ? error.message : "未知错误";
+    const message = formatUnknownApiError(error, "未知错误");
     archiveActionMessage.value = `合同审批未完成：${message}`;
   }
   sensitiveAction.error = archiveActionMessage.value;
@@ -3895,7 +3894,7 @@ async function failContractWithdrawal(
   }
 
   archiveActionMessageTone.value = "danger";
-  const message = error instanceof Error ? error.message : "未知错误";
+  const message = formatUnknownApiError(error, "未知错误");
   archiveActionMessage.value = `合同审批撤回未完成：${message}`;
   sensitiveAction.error = archiveActionMessage.value;
 }

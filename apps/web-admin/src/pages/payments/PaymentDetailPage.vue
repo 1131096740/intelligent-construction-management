@@ -741,6 +741,7 @@ import {
   watch
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   createPrivateFileDownloadTicket,
   createPaymentExecutionRecordAttemptState,
@@ -1201,7 +1202,7 @@ async function reloadPaymentDetail() {
     paymentApprovalCapabilityGeneration += 1;
     paymentApprovalCapability.value = null;
     paymentDetail.value = null;
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     paymentDetailLoadError.value = `未能读取付款详情：${reason}。请确认账号权限和网络状态后重试。`;
     return false;
   } finally {
@@ -1359,7 +1360,7 @@ function selectedUploadFile(files: UploadFile[]) {
 
 function setActionError(error: unknown, fallback: string) {
   actionMessageTone.value = "danger";
-  actionMessage.value = error instanceof Error ? `${error.message}。请修正后重试。` : fallback;
+  actionMessage.value = `${formatUnknownApiError(error, fallback)}。请修正后重试。`;
 }
 
 function openSensitiveAction(
@@ -1572,10 +1573,10 @@ function capturePaymentReviewContext(
     sensitiveAction.error = "";
     return context;
   } catch (error) {
-    sensitiveAction.error =
-      error instanceof Error
-        ? error.message
-        : "付款审批信息不完整，请修正后重试";
+    sensitiveAction.error = formatUnknownApiError(
+      error,
+      "付款审批信息不完整，请修正后重试"
+    );
     return null;
   }
 }
@@ -1640,7 +1641,7 @@ function failPaymentReview(
 ) {
   if (!paymentReviewContextIsCurrent(context)) return;
   const reason =
-    error instanceof Error ? error.message : "付款审批操作失败";
+    formatUnknownApiError(error, "付款审批操作失败");
   actionMessageTone.value = "danger";
   actionMessage.value =
     `操作未完成：${reason}。已保留当前输入，请核对后重试。`;
@@ -1874,10 +1875,7 @@ function confirmPaymentExecution(values: {
     })
     .catch((error) => {
       if (paymentExecutionSelectionIsCurrent(selection)) {
-        const reason =
-          error instanceof Error
-            ? error.message
-            : "实际付款登记失败";
+        const reason = formatUnknownApiError(error, "实际付款登记失败");
         actionMessageTone.value = "danger";
         actionMessage.value =
           `操作未完成：${reason}。已保留当前凭证与幂等请求，可直接重试。`;
@@ -2046,7 +2044,7 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
     return true;
   } catch (error) {
     actionMessageTone.value = "danger";
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     actionMessage.value = `操作未完成：${reason}。已保留当前输入，请核对后重试。`;
     return false;
   } finally {

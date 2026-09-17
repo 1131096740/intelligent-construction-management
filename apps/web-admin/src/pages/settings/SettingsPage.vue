@@ -327,9 +327,10 @@ async function loadRetentionPreview() {
   try {
     retentionPreview.value = await fetchDraftRetentionPreview();
   } catch (error) {
-    retentionError.value = error instanceof Error
-      ? `技术临时数据预览失败：${error.message}`
-      : "技术临时数据预览失败，请稍后重试。";
+    retentionError.value = `技术临时数据预览失败：${formatUnknownApiError(
+      error,
+      "请稍后重试"
+    )}`;
   } finally {
     retentionLoading.value = false;
   }
@@ -386,9 +387,7 @@ async function loadSignatureCapabilities() {
   } catch (error) {
     signatureAvailableActions.value = null;
     signatureTone.value = "danger";
-    signatureMessage.value = error instanceof Error
-      ? error.message
-      : "读取手写签名权限失败";
+    signatureMessage.value = formatUnknownApiError(error, "读取手写签名权限失败");
   }
 }
 
@@ -468,7 +467,9 @@ async function submitProfile() {
     profileErrors.value = validation.errors;
     if (!validation.valid) {
       profileTone.value = "error";
-      profileMessage.value = validation.errors.map((error) => error.message).join("；");
+      profileMessage.value = validation.errors
+        .map((validationError) => validationError.message)
+        .join("；");
       return;
     }
     await updateUserSelfProfile(payload.values.name, payload.values.phone, profileForm.currentPassword);
@@ -512,7 +513,7 @@ async function submitPassword() {
     passwordMessage.value = "登录密码已更新。";
   } catch (error) {
     passwordTone.value = "error";
-    passwordMessage.value = error instanceof Error ? error.message : "修改密码失败";
+    passwordMessage.value = formatUnknownApiError(error, "修改密码失败");
   } finally {
     clearPasswordForm();
     passwordBusy.value = false;
@@ -538,7 +539,7 @@ function submitCanvasSignature(signature: File) {
     })
     .catch((error: unknown) => {
       signatureTone.value = "danger";
-      signatureMessage.value = error instanceof Error ? error.message : "保存手写签名失败";
+      signatureMessage.value = formatUnknownApiError(error, "保存手写签名失败");
     })
     .finally(() => {
       signatureBusy.value = false;

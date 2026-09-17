@@ -2,6 +2,7 @@
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   abandonSpotProcurementPaymentDraft,
   executeSpotProcurementPaymentReviewAction,
@@ -317,7 +318,7 @@ function actionLabel(key: string) {
 }
 
 function showSuccess(message: string) { actionState.value = "success"; actionMessage.value = message; }
-function showError(error: unknown, fallback: string) { actionState.value = "error"; actionMessage.value = error instanceof Error ? error.message : fallback; }
+function showError(error: unknown, fallback: string) { actionState.value = "error"; actionMessage.value = formatUnknownApiError(error, fallback); }
 function stopStaleApplicationOperation() {
   showError(new Error("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。"), "原付款申请操作已停止");
 }
@@ -346,7 +347,7 @@ async function loadDetail() {
     if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
     spotProcurementPaymentCapability.value = null;
     detail.value = null;
-    loadError.value = error instanceof Error ? error.message : "付款申请读取失败";
+    loadError.value = formatUnknownApiError(error, "付款申请读取失败");
   } finally {
     if (requestId === latestDetailRequestId && requestedPaymentId === paymentId.value) {
       loading.value = false;
@@ -497,7 +498,7 @@ async function saveApplicationDraft(
       await restoreApplicationTriggerFocus();
       return "local" as const;
     }
-    applicationError.value = error instanceof Error ? error.message : "付款草稿保存失败";
+    applicationError.value = formatUnknownApiError(error, "付款草稿保存失败");
     return "failed" as const;
   } finally {
     if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false;
@@ -527,7 +528,7 @@ async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
     await restoreApplicationTriggerFocus();
   } catch (error) {
     if (error instanceof StaleApplicationOperationError) return;
-    applicationError.value = error instanceof Error ? error.message : "付款申请提交失败";
+    applicationError.value = formatUnknownApiError(error, "付款申请提交失败");
   } finally {
     if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false;
   }
@@ -567,7 +568,7 @@ async function loadCompanies() {
       )?.id ?? "";
     }
   } catch (error) {
-    payerError.value = error instanceof Error ? error.message : "付款主体选项读取失败";
+    payerError.value = formatUnknownApiError(error, "付款主体选项读取失败");
   }
 }
 async function savePayer() {
@@ -596,7 +597,7 @@ async function savePayer() {
     await restorePayerTriggerFocus();
   } catch (error) {
     if (paymentId.value !== operationPaymentId) return;
-    const message = error instanceof Error ? error.message : "付款主体保存失败";
+    const message = formatUnknownApiError(error, "付款主体保存失败");
     if (
       error instanceof SpotProcurementApiError &&
       error.code === "SPOT_PAYMENT_PAYER_TASK_COMPLETED"
@@ -877,10 +878,10 @@ function capturePaymentReviewContext(
         legacyAdjustedSupplierBalanceAmountYuan.value.trim()
       );
     } catch (error) {
-      confirmationError.value =
-        error instanceof Error
-          ? error.message
-          : "请填写有效的调整后供应商余额抵扣金额";
+      confirmationError.value = formatUnknownApiError(
+        error,
+        "请填写有效的调整后供应商余额抵扣金额"
+      );
       return null;
     }
   }
@@ -988,7 +989,7 @@ function failPaymentReview(
 ) {
   if (!paymentReviewContextIsCurrent(context)) return;
   const message =
-    error instanceof Error ? error.message : "付款审批提交失败";
+    formatUnknownApiError(error, "付款审批提交失败");
   if (context.paymentForm === "real_payment") {
     approvalError.value = message;
   } else {
@@ -1156,7 +1157,7 @@ async function confirmAction(values: { reason: string; password: string }) {
       return;
     }
     await loadDetail();
-  } catch (error) { confirmationError.value = error instanceof Error ? error.message : "操作失败"; showError(error, "操作失败"); }
+  } catch (error) { confirmationError.value = formatUnknownApiError(error, "操作失败"); showError(error, "操作失败"); }
   finally { actionBusy.value = false; }
 }
 
@@ -1239,7 +1240,7 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
     await restoreExecutionTriggerFocus();
   } catch (error) {
     if (paymentId.value !== operationPaymentId) return;
-    executionError.value = error instanceof Error ? error.message : "实际付款登记失败";
+    executionError.value = formatUnknownApiError(error, "实际付款登记失败");
   } finally {
     if (paymentId.value === operationPaymentId) actionBusy.value = false;
   }
@@ -1554,7 +1555,7 @@ async function submitRefund() {
   } catch (error) {
     if (operationId !== refundOperationSequence || paymentId.value !== current?.payment.id) return;
     actionState.value = "error";
-    actionMessage.value = error instanceof Error ? error.message : "退款登记失败";
+    actionMessage.value = formatUnknownApiError(error, "退款登记失败");
   } finally {
     if (operationId === refundOperationSequence && paymentId.value === current?.payment.id) actionBusy.value = false;
   }
@@ -2091,7 +2092,7 @@ watch(
       >
         <header><h2>归档资料</h2><p>展示不可变 A5 审批文件、A4 采购来源、PDF 与追加归档包。</p></header>
         <section>
-          <header><h3>关联采购原单</h3><p>以 A4 冻结版本和采购材料为准，不与 A5 付款材料、价格或票据条件混合。</p></header>
+          <header><h3>关联采购原单</h3><p>以 A4 提交时内容和采购材料为准，不与 A5 付款材料、价格或票据条件混合。</p></header>
           <dl class="detail-grid">
             <div><dt>A4 申请编号 / 版本</dt><dd>{{ payment.procurement.code }} / V{{ detail.procurementVersion.versionNo }}</dd></div>
             <div><dt>采购项目</dt><dd>{{ payment.project.name }}</dd></div>

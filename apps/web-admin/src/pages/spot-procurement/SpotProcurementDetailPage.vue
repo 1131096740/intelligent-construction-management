@@ -10,6 +10,7 @@ import {
   watch
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   abandonSpotProcurementDraft,
   confirmSpotProcurementAbnormalTermination,
@@ -439,7 +440,7 @@ async function loadDetail() {
     }
     spotProcurementCapability.value = null;
     detail.value = null;
-    loadError.value = error instanceof Error ? error.message : "零星采购详情读取失败";
+    loadError.value = formatUnknownApiError(error, "零星采购详情读取失败");
   } finally {
     if (
       requestId === detailLoadRequestId &&
@@ -540,10 +541,10 @@ async function saveDraft() {
       );
     }
     editVisible.value = false;
-    showSuccess(editMode.value === "version" ? "采购修订版本已创建。" : "采购草稿已保存。");
+    showSuccess(editMode.value === "version" ? "采购变更草稿已创建。" : "采购草稿已保存。");
     await loadDetail();
   } catch (error) {
-    editError.value = error instanceof Error ? error.message : "采购草稿保存失败";
+    editError.value = formatUnknownApiError(error, "采购草稿保存失败");
   } finally {
     actionBusy.value = false;
   }
@@ -928,7 +929,7 @@ function failReview(
 ) {
   if (!reviewContextIsCurrent(context)) return;
   confirmation.error =
-    error instanceof Error ? error.message : "采购审批操作失败";
+    formatUnknownApiError(error, "采购审批操作失败");
 }
 
 function finishReview(context: SpotProcurementReviewActionContext) {
@@ -1145,7 +1146,7 @@ function failWithdrawal(
 ) {
   if (!withdrawalContextIsCurrent(context)) return;
   confirmation.error =
-    error instanceof Error ? error.message : "采购审批撤回失败";
+    formatUnknownApiError(error, "采购审批撤回失败");
 }
 
 function finishWithdrawal(
@@ -1469,7 +1470,7 @@ function failAbnormalTerminationRequest(
     return;
   }
   abnormalTerminationRequestError.value =
-    error instanceof Error ? error.message : "异常终止发起失败";
+    formatUnknownApiError(error, "异常终止发起失败");
 }
 
 function completeAbnormalTerminationConfirm(
@@ -1501,7 +1502,7 @@ function failAbnormalTerminationConfirm(
     return;
   }
   abnormalTerminationConfirmError.value =
-    error instanceof Error ? error.message : "异常终止确认失败";
+    formatUnknownApiError(error, "异常终止确认失败");
 }
 
 function finishAbnormalTerminationAction(
@@ -1571,7 +1572,7 @@ function showSuccess(message: string) {
 
 function showError(error: unknown, fallback: string) {
   actionState.value = "error";
-  actionMessage.value = error instanceof Error ? error.message : fallback;
+  actionMessage.value = formatUnknownApiError(error, fallback);
 }
 
 function requiredText(value: string, label: string) {
@@ -1963,10 +1964,10 @@ onBeforeUnmount(() => {
 
     <t-dialog
       v-model:visible="editVisible"
-      :header="editMode === 'version' ? '创建采购修订版本' : '编辑零星材料采购草稿'"
+      :header="editMode === 'version' ? '创建采购变更草稿' : '编辑零星材料采购草稿'"
       width="min(1180px, 94vw)"
       :close-on-overlay-click="false"
-      :confirm-btn="{ content: editMode === 'version' ? '创建修订版本' : '保存草稿', loading: actionBusy }"
+      :confirm-btn="{ content: editMode === 'version' ? '创建变更草稿' : '保存草稿', loading: actionBusy }"
       @confirm="saveDraft"
     >
       <div class="edit-form">
@@ -1998,7 +1999,7 @@ onBeforeUnmount(() => {
         /></label>
         <label>
           <span>已有附件</span>
-          <small>取消勾选会从本次保存结果中移除该附件；已失效附件不会带入草稿或修订版本。</small>
+          <small>取消勾选会从本次保存结果中移除该附件；已失效附件不会带入草稿或变更草稿。</small>
           <t-checkbox-group
             v-if="detail?.attachments.length"
             v-model="retainedAttachmentFileIds"

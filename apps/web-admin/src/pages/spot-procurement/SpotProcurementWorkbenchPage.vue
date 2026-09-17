@@ -4,6 +4,7 @@ import type { UploadFile } from "tdesign-vue-next";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
@@ -248,7 +249,7 @@ async function loadWorkbench(page = 1) {
     listMeta.value = result.pagination;
     serverStatistics.value = result.statistics;
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "零星采购工作台读取失败";
+    loadError.value = formatUnknownApiError(error, "零星采购工作台读取失败");
   } finally {
     loading.value = false;
   }
@@ -259,7 +260,7 @@ async function loadReferenceData() {
   try {
     projects.value = await fetchSpotProcurementCreateProjectOptions();
   } catch (error) {
-    referenceError.value = error instanceof Error ? error.message : "零星采购项目读取失败";
+    referenceError.value = formatUnknownApiError(error, "零星采购项目读取失败");
   }
 }
 
@@ -317,7 +318,7 @@ async function loadEntryDefinitions(projectId: string) {
   } catch (error) {
     if (projectId === createForm.projectId) {
       entryDefinitions.value = null;
-      createError.value = error instanceof Error ? error.message : "零采填写定义读取失败";
+      createError.value = formatUnknownApiError(error, "零采填写定义读取失败");
     }
   }
 }
@@ -349,7 +350,7 @@ async function loadCapabilities(projectId: string) {
   } catch (error) {
     if (requestId !== capabilityRequestId) return;
     capabilities.value = null;
-    createError.value = error instanceof Error ? error.message : "项目发起权限读取失败";
+    createError.value = formatUnknownApiError(error, "项目发起权限读取失败");
   } finally {
     if (requestId === capabilityRequestId) capabilityBusy.value = false;
   }
@@ -408,7 +409,7 @@ async function saveDraft() {
     await MessagePlugin.success(`零星材料采购草稿已保存，采购申请单号为 ${result.code}。`);
     await router.push(`/零星采购/${encodeURIComponent(result.procurementId)}`);
   } catch (error) {
-    createError.value = error instanceof Error ? error.message : "零星采购草稿保存失败";
+    createError.value = formatUnknownApiError(error, "零星采购草稿保存失败");
   } finally {
     createBusy.value = false;
   }

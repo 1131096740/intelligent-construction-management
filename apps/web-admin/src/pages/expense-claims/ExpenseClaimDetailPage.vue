@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   adjustExpenseClaimPaymentSubject,
   appendExpenseClaimAttachment,
@@ -92,7 +93,7 @@ function date(value: string | null) { return value ? value.replace("T", " ").sli
 async function loadDetail() {
   loading.value = true; loadError.value = "";
   try { detail.value = await fetchExpenseClaimDetail(String(route.params.claimId)); }
-  catch (error) { loadError.value = error instanceof Error ? error.message : "费用详情读取失败"; }
+  catch (error) { loadError.value = formatUnknownApiError(error, "费用详情读取失败"); }
   finally { loading.value = false; }
 }
 async function submitExpenseClaimWithCapability(claimId: string) {
@@ -286,7 +287,7 @@ async function submit() {
   submitting.value = true;
   actionError.value = "";
   try { await submitExpenseClaimWithCapability(detail.value.id); await loadDetail(); }
-  catch (error) { actionError.value = error instanceof Error ? error.message : "提交费用申请失败"; }
+  catch (error) { actionError.value = formatUnknownApiError(error, "提交费用申请失败"); }
   finally { submitting.value = false; }
 }
 function openReview() {
@@ -327,7 +328,7 @@ async function recordPayment() {
     paymentConfirmVisible.value = false;
     paymentVisible.value = false;
     await loadDetail();
-  } catch (error) { actionError.value = error instanceof Error ? error.message : "登记公司补付失败"; }
+  } catch (error) { actionError.value = formatUnknownApiError(error, "登记公司补付失败"); }
   finally { paymentSubmitting.value = false; }
 }
 function requestPaymentRecord() {
@@ -367,7 +368,7 @@ async function recordLoanAction() {
     loanActionConfirmVisible.value = false;
     loanActionVisible.value = false;
     await loadDetail();
-  } catch (error) { actionError.value = error instanceof Error ? error.message : "登记借款资金事实失败"; }
+  } catch (error) { actionError.value = formatUnknownApiError(error, "登记借款资金事实失败"); }
   finally { loanActionSubmitting.value = false; }
 }
 function openRepaymentAction(id: string, mode: "confirm" | "reverse") {
@@ -385,7 +386,7 @@ async function submitRepaymentAction() {
     else await reverseExpenseClaimLoanRepaymentWithCapability(detail.value.id, repaymentAction.value.id, { reason: repaymentActionForm.value.reason.trim(), confirmationPassword: repaymentActionForm.value.confirmationPassword });
     repaymentActionVisible.value = false;
     await loadDetail();
-  } catch (error) { actionError.value = error instanceof Error ? error.message : "办理员工还款失败"; }
+  } catch (error) { actionError.value = formatUnknownApiError(error, "办理员工还款失败"); }
   finally { repaymentActionSubmitting.value = false; }
 }
 async function generateFinalPdf() {
@@ -397,7 +398,7 @@ async function generateFinalPdf() {
     else await generateExpenseClaimFinalPaymentPdfWithCapability(detail.value.id);
     await loadDetail();
   }
-  catch (error) { actionError.value = error instanceof Error ? error.message : "生成付讫归档 PDF 失败"; }
+  catch (error) { actionError.value = formatUnknownApiError(error, "生成付讫归档 PDF 失败"); }
   finally { finalPdfGenerating.value = false; }
 }
 async function adjustPaymentSubject() {
@@ -414,7 +415,7 @@ async function adjustPaymentSubject() {
     paymentSubjectConfirmVisible.value = false;
     paymentSubjectVisible.value = false;
     await loadDetail();
-  } catch (error) { actionError.value = error instanceof Error ? error.message : "调整实际付款主体失败"; }
+  } catch (error) { actionError.value = formatUnknownApiError(error, "调整实际付款主体失败"); }
   finally { paymentSubjectAdjusting.value = false; }
 }
 function requestPaymentSubjectAdjustment() {
@@ -431,7 +432,7 @@ async function review() {
     await reviewExpenseClaimWithCapability(detail.value.id, { decision: reviewForm.value.decision, comment: reviewForm.value.comment.trim() || undefined, ...selfReview });
     reviewVisible.value = false;
     await loadDetail();
-  } catch (error) { actionError.value = error instanceof Error ? error.message : "费用审批办理失败"; }
+  } catch (error) { actionError.value = formatUnknownApiError(error, "费用审批办理失败"); }
   finally { reviewing.value = false; }
 }
 function selectedAttachmentFiles() {
@@ -462,7 +463,7 @@ async function uploadAttachments() {
     attachmentFiles.value = [];
     attachmentExpenseCategory.value = "";
     await loadDetail();
-  } catch (error) { actionError.value = error instanceof Error ? error.message : "费用附件上传失败"; }
+  } catch (error) { actionError.value = formatUnknownApiError(error, "费用附件上传失败"); }
   finally { attachmentUploading.value = false; }
 }
 async function removeAttachment(attachmentId: string) {
@@ -470,7 +471,7 @@ async function removeAttachment(attachmentId: string) {
   attachmentUploading.value = true;
   actionError.value = "";
   try { await removeExpenseClaimAttachmentWithCapability(detail.value.id, attachmentId); await loadDetail(); }
-  catch (error) { actionError.value = error instanceof Error ? error.message : "移除费用附件失败"; }
+  catch (error) { actionError.value = formatUnknownApiError(error, "移除费用附件失败"); }
   finally { attachmentUploading.value = false; }
 }
 onMounted(() => void loadDetail());

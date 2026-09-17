@@ -112,6 +112,7 @@
 import { computed, onMounted, ref } from "vue";
 import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition, ContractSettlementMode } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
+import { formatUnknownApiError } from "../../../api/error-message";
 import {
   fetchActiveCompanyEntities,
   type CompanyEntityModel
@@ -224,9 +225,10 @@ async function loadCandidates() {
   try {
     candidates.value = await fetchActiveCompanyEntities();
   } catch (error) {
-    loadError.value = error instanceof Error
-      ? error.message
-      : "加载可选我方公司主体失败，请稍后重试";
+    loadError.value = formatUnknownApiError(
+      error,
+      "加载可选我方公司主体失败，请稍后重试"
+    );
   } finally {
     loaded.value = true;
     loading.value = false;

@@ -297,6 +297,7 @@ import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
@@ -680,7 +681,7 @@ async function loadContractPaymentPreview() {
   } catch (error) {
     contractPaymentPreview.value = null;
     previewContractVersionId.value = "";
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `可付款额度校验失败：${reason}。当前无法确认可申请金额，请核对合同状态和权限后重试。`;
     messageState.value = "error";
   } finally {
@@ -722,7 +723,7 @@ async function loadProjects() {
     createForm.projectId = matchedProject?.id ?? projects.value[0]?.id ?? "";
     if (createForm.projectId) await loadPaymentContracts();
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `未能加载项目与合同：${reason}。请检查网络与账号项目权限后重试。`;
     messageState.value = "error";
   } finally {
@@ -746,7 +747,7 @@ async function loadPaymentContracts() {
     contracts.value = paymentContracts;
     paymentEntryDefinition.value = capability.businessEntry;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `未能加载项目合同：${reason}。请确认项目权限后重试。`;
     messageState.value = "error";
   } finally {
@@ -783,7 +784,7 @@ async function submitCreatePayment() {
     await MessagePlugin.success("付款申请已创建，正在打开详情。");
     await router.push(`/payments/${payment.code}`);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `付款申请未创建：${reason}。已保留本页填写内容，请修正后再次提交。`;
     messageState.value = "error";
   } finally {
