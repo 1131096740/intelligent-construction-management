@@ -22,6 +22,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let applicantUserId: string;
   let factWitnessUserId: string;
   let strangerToken: string;
+  let financeToken: string;
+  const approvalTokens: string[] = [];
   let browserSession: unknown;
 
   beforeAll(async () => {
@@ -43,12 +45,29 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     applicantUserId = actor.id;
     const project = await prisma.project.create({ data: { code: `POL115-${suffix}`, name: "入口合成项目" } });
     projectId = project.id;
+    const constructionEnterprise = await prisma.businessParty.create({ data: { name: "入口合成施工企业", normalizedName: `pol115-construction-${suffix}`, unifiedSocialCreditCode: `POL115${suffix.replaceAll("-", "").slice(0, 12)}`, createdByUserId: actor.id } });
+    const constructionEnterpriseVersion = await prisma.businessPartyVersion.create({ data: { businessPartyId: constructionEnterprise.id, versionNo: 1, snapshot: { name: constructionEnterprise.name, unifiedSocialCreditCode: constructionEnterprise.unifiedSocialCreditCode }, createdByUserId: actor.id } });
+    await prisma.projectAffiliateAssignment.create({ data: { projectId, businessPartyId: constructionEnterprise.id, businessPartyVersionId: constructionEnterpriseVersion.id, affiliateNameSnapshot: constructionEnterprise.name, affiliateCreditCodeSnapshot: constructionEnterprise.unifiedSocialCreditCode, effectiveFrom: new Date("2026-01-01"), changeReason: "合成项目主数据", assignedByUserId: actor.id } });
     companyEntityId = (await prisma.companyEntity.create({ data: { name: "入口合成公司", dataStatus: "complete" } })).id;
-    for (const key of ["employee", "comprehensive_director", "project_manager", "finance_director", "chairman"]) {
+    for (const key of ["employee", "comprehensive_director", "project_manager", "finance_director", "chairman", "finance_staff"]) {
       const position = await prisma.position.upsert({ where: { key }, create: { key, name: key }, update: {} });
-      const userId = key === "employee" ? actor.id : (await prisma.user.create({ data: { name: `审批岗位${key}`, mustChangePassword: false } })).id;
+      const positionUser = key === "employee" ? actor : await prisma.user.create({ data: { name: `审批岗位${key}`, phone: `pol115-${key}-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
+      const userId = positionUser.id;
       if (key === "comprehensive_director") factWitnessUserId = userId;
       await prisma.userPosition.create({ data: { userId, positionId: position.id, projectId: key === "employee" || key === "project_manager" ? projectId : null } });
+      if (key !== "employee") {
+        const positionLogin = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: positionUser.phone, password }) });
+        expect(positionLogin.status).toBe(201);
+        const positionToken = ((await positionLogin.json()) as { tokens: { accessToken: string } }).tokens.accessToken;
+        if (key === "finance_staff") financeToken = positionToken;
+        else {
+          approvalTokens.push(positionToken);
+          const signatureBody = new FormData();
+          signatureBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成签名-${key}.png`);
+          const signature = await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${positionToken}` }, body: signatureBody });
+          expect(signature.status).toBe(201);
+        }
+      }
     }
     const login = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: actor.phone, password }) });
     expect(login.status).toBe(201);
@@ -113,6 +132,34 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(appended.status).toBe(201);
     expect(await request(path)).toMatchObject({ status: 200, body: { status: "approval_pending", attachments: [{ fileName: "合成追加资料.png", category: "receipt_or_other", stage: "post_submit_append" }] } });
   });
+
+  (enabled ? it : it.skip)("已完成真实审批的待付款费用可上传单字段幂等付款凭证", async () => {
+    const created = await request("/expense-claims", { claimType: "reimbursement", companyEntityId, projectId, applicantUserId, reason: "付款凭证上传验证", requestedAmountCents: "1", lines: [{ expenseCategory: "办公费", occurredOn: "2026-09-17", purpose: "购买文具", receiptCount: 0, amountCents: "1", evidenceType: "none", noEvidenceReason: "合成验收无纸质凭证" }] });
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    expect((await request(`${path}/submission`, {})).status).toBe(201);
+    for (const [approvalIndex, approvalToken] of approvalTokens.entries()) {
+      const approval = await request(`${path}/approval`, { decision: "approve" }, approvalToken);
+      if (approval.status !== 201) throw new Error(`费用真实审批${approvalIndex + 1}失败：${approval.status} ${JSON.stringify(approval.body)}`);
+    }
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_payment", companyPayableAmountCents: "1" } });
+
+    const idempotencyKey = randomUUID();
+    const upload = async () => {
+      const uploadBody = new FormData();
+      uploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成付款凭证.png");
+      uploadBody.append("idempotencyKey", idempotencyKey);
+      return fetch(`${baseUrl}${path}/payment-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: uploadBody });
+    };
+    const first = await upload();
+    const firstText = await first.text();
+    if (first.status !== 201) throw new Error(`付款凭证上传失败：${first.status} ${firstText}`);
+    const firstBody = JSON.parse(firstText) as { id: string };
+    expect(firstBody.id).toEqual(expect.any(String));
+    const replay = await upload();
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
+  }, 60_000);
 
   (enabled ? it : it.skip)("项目借款明确提交后按原授权回读当时字段与金额，重复提交不增加快照", async () => {
     const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" });

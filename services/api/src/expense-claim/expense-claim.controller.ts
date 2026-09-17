@@ -121,14 +121,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "record_expense_claim_payment",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "费用付款凭证"
     );
   }
