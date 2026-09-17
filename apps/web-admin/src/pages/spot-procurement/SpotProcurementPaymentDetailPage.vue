@@ -1512,9 +1512,9 @@ async function submitRefund() {
       detail.value?.payment.procurement.id === procurementId;
     const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
     if (!operationCurrent()) return;
-    const operationAllowed = fresh.availableActions.some(
-      (action) => action.key === "record_refund" && action.enabled === true
-    );
+    const operationAllowed =
+      fresh.currentTask.key === "record_refund" &&
+      fresh.currentTask.enabled === true;
     const expected = fresh.discrepancy?.refundExpectedAmountCents;
     if (
       fresh.payment.id !== paymentIdCoordinate ||
