@@ -3,6 +3,7 @@ import { paymentApprovalAmountEntryValues, PAYMENT_APPROVAL_AMOUNT_ENTRY_DEFINIT
 import { paymentRequestEntryDefinition, paymentRequestEntryValues } from "../payment/payment-request-business-entry-definition";
 import { settlementBasicEntryDefinition, settlementBasicEntryValues } from "../settlement/settlement-business-entry-definition";
 import { settlementLineEntryDefinition, settlementLineEntryValues } from "../settlement/settlement-line-business-entry-definition";
+import { canonicalSettlementLine } from "../settlement/settlement-line-calculator";
 
 const target = (entityType: string) => ({ projectId: "project-1", entityType, entityId: `${entityType}-1` });
 const valid = (definition: Parameters<typeof createBusinessEntryDefinitionRegistry>[0][number], values: Record<string, unknown>, roles: RoleKey[]) =>
@@ -37,5 +38,21 @@ describe("financial business-entry money values", () => {
     }, ["contract_staff"]);
     expect(result.valid).toBe(false);
     expect(result.errors).toContainEqual(expect.objectContaining({ fieldKey: "quantity", code: "invalid_type" }));
+  });
+
+  it("documents that the current money contract rejects a legal negative manual adjustment", () => {
+    const facts = canonicalSettlementLine({
+      sourceType: "manual_adjustment", adjustmentKind: "over_settlement_offset",
+      name: "超结冲减", amountCents: "-500000", reason: "冲减前期超结",
+      relatedSettlementLineId: "settlement-line-previous", overageReason: "原清单工程量调减"
+    }, undefined, 0);
+    expect(facts).toMatchObject({ amountCents: -500000n, relatedSettlementLineId: "settlement-line-previous" });
+    const result = createBusinessEntryDefinitionRegistry([settlementLineEntryDefinition(facts)]).validateDraft({
+      sceneKey: "settlement_line", definitionVersion: 1, target: target("settlement_line"), expectedRevision: 0,
+      values: settlementLineEntryValues(facts)
+    }, ["contract_staff"]);
+    expect(settlementLineEntryValues(facts).amountYuan).toBe("-5000.00");
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.objectContaining({ fieldKey: "amountYuan", code: "invalid_type" }));
   });
 });

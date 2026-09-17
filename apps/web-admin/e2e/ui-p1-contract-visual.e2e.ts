@@ -273,7 +273,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
     headers: { "Content-Disposition": "inline; filename=contract.pdf" },
     body: "%PDF-1.4\n% preview fixture\n"
   }));
-  await page.route("**/api/contracts/workbench?*", (route) => {
+  await page.route("**/api/contracts/lifecycle-ledger*", (route) => {
     if (ledgerMode === "failure") {
       return route.fulfill({
         status: 500,
