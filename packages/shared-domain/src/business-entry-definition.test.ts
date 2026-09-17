@@ -353,6 +353,26 @@ describe("business entry definition registry", () => {
     }
   );
 
+  it.each([
+    { type: "text", rule: { sign: "nonnegative" } },
+    { type: "number", rule: { sign: "positive" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "-1" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "01" } },
+    { type: "number", rule: { sign: "nonnegative", maximumExclusive: "1e3" } },
+    { type: "money", rule: { sign: "signed", maximumExclusive: "100" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "1", maximumExclusive: "1" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "2", maximumExclusive: "1" } }
+  ])("rejects an invalid exact decimal definition %#", ({ type, rule }) => {
+    expect(() => createBusinessEntryDefinitionRegistry([{
+      ...profileDefinition,
+      key: "invalid_exact_decimal_definition",
+      fields: [{
+        ...profileDefinition.fields[0], key: "quantity", type,
+        exactDecimalString: rule
+      }]
+    } as BusinessEntrySceneDefinition])).toThrow("精确十进制");
+  });
+
   it("fails closed for an unknown scene, unknown field, and stale definition", () => {
     const registry = createBusinessEntryDefinitionRegistry([profileDefinition]);
 

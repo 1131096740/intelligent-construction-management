@@ -341,6 +341,24 @@ function matchesNumericStringPrecision(value: string, precision: number): boolea
   return match !== null && (match[1]?.length ?? 0) <= precision;
 }
 
+function compareUnsignedDecimalStrings(left: string, right: string): number | null {
+  const leftMatch = /^(\d+)(?:\.(\d+))?$/.exec(left);
+  const rightMatch = /^(\d+)(?:\.(\d+))?$/.exec(right);
+  if (!leftMatch || !rightMatch) return null;
+  const leftInteger = leftMatch[1].replace(/^0+(?=\d)/, "");
+  const rightInteger = rightMatch[1].replace(/^0+(?=\d)/, "");
+  if (leftInteger.length !== rightInteger.length) return leftInteger.length < rightInteger.length ? -1 : 1;
+  if (leftInteger !== rightInteger) return leftInteger < rightInteger ? -1 : 1;
+  const scale = Math.max(leftMatch[2]?.length ?? 0, rightMatch[2]?.length ?? 0);
+  const leftFraction = (leftMatch[2] ?? "").padEnd(scale, "0");
+  const rightFraction = (rightMatch[2] ?? "").padEnd(scale, "0");
+  return leftFraction === rightFraction ? 0 : leftFraction < rightFraction ? -1 : 1;
+}
+
+function isCanonicalUnsignedDecimalBoundary(value: string): boolean {
+  return /^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/.test(value);
+}
+
 function validateExactDecimalString(
   value: unknown,
   precision: number,
@@ -350,24 +368,12 @@ function validateExactDecimalString(
   const match = (rule.sign === "signed" ? /^-?(\d+)(?:\.(\d+))?$/ : /^(\d+)(?:\.(\d+))?$/).exec(value);
   if (!match) return "invalid_type";
   if ((match[2]?.length ?? 0) > precision) return "invalid_format";
-  const compareUnsigned = (boundary: string): number | null => {
-    const boundaryMatch = /^(\d+)(?:\.(\d+))?$/.exec(boundary);
-    if (!boundaryMatch || value.startsWith("-")) return null;
-    const leftInteger = match[1].replace(/^0+(?=\d)/, "");
-    const rightInteger = boundaryMatch[1].replace(/^0+(?=\d)/, "");
-    if (leftInteger.length !== rightInteger.length) return leftInteger.length < rightInteger.length ? -1 : 1;
-    if (leftInteger !== rightInteger) return leftInteger < rightInteger ? -1 : 1;
-    const scale = Math.max(match[2]?.length ?? 0, boundaryMatch[2]?.length ?? 0);
-    const leftFraction = (match[2] ?? "").padEnd(scale, "0");
-    const rightFraction = (boundaryMatch[2] ?? "").padEnd(scale, "0");
-    return leftFraction === rightFraction ? 0 : leftFraction < rightFraction ? -1 : 1;
-  };
   if (rule.minimumExclusive) {
-    const comparison = compareUnsigned(rule.minimumExclusive);
+    const comparison = value.startsWith("-") ? null : compareUnsignedDecimalStrings(value, rule.minimumExclusive);
     if (comparison === null || comparison <= 0) return "invalid_format";
   }
   if (rule.maximumExclusive) {
-    const comparison = compareUnsigned(rule.maximumExclusive);
+    const comparison = value.startsWith("-") ? null : compareUnsignedDecimalStrings(value, rule.maximumExclusive);
     if (comparison === null || comparison >= 0) return "invalid_format";
   }
   return "valid";
@@ -484,6 +490,22 @@ function validateDefinition(definition: BusinessEntrySceneDefinition): BusinessE
     }
     if (!Number.isSafeInteger(field.precision) || field.precision < 0) {
       throw new BusinessEntryDefinitionError("invalid_definition", `业务字段精度不合法：${field.key}`);
+    }
+    if (field.exactDecimalString) {
+      const exact = field.exactDecimalString;
+      const bounds = [exact.minimumExclusive, exact.maximumExclusive].filter(
+        (value): value is string => value !== undefined
+      );
+      if (
+        (field.type !== "number" && field.type !== "money") ||
+        (exact.sign !== "nonnegative" && exact.sign !== "signed") ||
+        bounds.some((value) => !isCanonicalUnsignedDecimalBoundary(value)) ||
+        (bounds.length > 0 && exact.sign !== "nonnegative") ||
+        (exact.minimumExclusive !== undefined && exact.maximumExclusive !== undefined &&
+          (compareUnsignedDecimalStrings(exact.minimumExclusive, exact.maximumExclusive) ?? 0) >= 0)
+      ) {
+        throw new BusinessEntryDefinitionError("invalid_definition", `业务字段精确十进制规则不合法：${field.key}`);
+      }
     }
     if (
       !field.display ||
