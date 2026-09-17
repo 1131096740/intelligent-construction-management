@@ -7,10 +7,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
+import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PermissionGuard } from "../auth/guards/permission.guard";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { AuditService } from "../audit/audit.service";
+import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/business-entry-definition.snapshot-store";
+import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
@@ -27,6 +31,10 @@ import { ContractFormalFileService } from "../contract/contract-formal-file.serv
 import { ContractReadService } from "../contract/contract-read.service";
 import { ContractService } from "../contract/contract.service";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
+import {
+  CONTRACT_BASIC_ENTRY_DEFINITION,
+  CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION
+} from "../contract-workbench/contract-business-entry-definition";
 import { FileCleanupSeamService } from "../file/file-cleanup-seam.service";
 import { InMemoryVersionedObjectStorage } from "../file/versioned-object-storage";
 import { PrismaService } from "./prisma.service";
@@ -414,6 +422,14 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           formalFiles,
           authorizations
         );
+        Reflect.set(contractService, "businessEntry", new BusinessEntryTransactionService(
+          createBusinessEntryDefinitionRegistry([
+            CONTRACT_BASIC_ENTRY_DEFINITION,
+            CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION
+          ]),
+          BUSINESS_ENTRY_TRANSACTION_REGISTRY,
+          new PrismaBusinessEntrySnapshotStore(prisma as never, audit)
+        ));
         const deletion = new PristineDraftDeletionService(
           prisma as never,
           new FileCleanupSeamService(prisma as never),
