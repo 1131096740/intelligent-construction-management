@@ -391,6 +391,7 @@ function readFixture(
     },
     settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
     settlementLine: { findMany: jest.fn().mockResolvedValue([]) },
+    businessEntrySubmissionSnapshot: { findMany: jest.fn().mockResolvedValue([]) },
     approvalInstance: {
       findFirst: jest.fn().mockResolvedValue(instance),
       findMany: jest.fn().mockResolvedValue(instances)

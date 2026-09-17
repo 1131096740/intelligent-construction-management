@@ -83,6 +83,7 @@ function detailFixture(
     paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
     paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
     contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+    contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
     approvalInstance: {
       findFirst: jest.fn().mockResolvedValue(instance),
       findMany: jest.fn().mockImplementation((args: {
