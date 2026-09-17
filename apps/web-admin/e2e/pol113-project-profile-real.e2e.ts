@@ -1,5 +1,63 @@
 import { expect, test } from "@playwright/test";
 
+test("项目页加载后撤回本项目岗位，保存及后续目标预检冻结均按当前权限失败且其他项目不变", async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "岗位撤回验收只需单个真实浏览器，避免重复撤回共享合成岗位");
+  const api = process.env.POL113_API_URL!;
+  const projectId = process.env.POL113_PROJECT_ID!;
+  const retainedProjectId = process.env.POL113_RETAINED_PROJECT_ID!;
+  const fixture = process.env.POL113_ROLE_FIXTURE_URL!;
+  const session = JSON.parse(process.env.POL113_WITHDRAWAL_SESSION!);
+  const chairman = JSON.parse(process.env.POL113_RENAME_SESSION!);
+  const headers = { authorization: `Bearer ${session.tokens.accessToken}` };
+  const chairmanHeaders = { authorization: `Bearer ${chairman.tokens.accessToken}` };
+  const projectsBefore = await request.get(`${api}/projects`, { headers: chairmanHeaders });
+  expect(projectsBefore.ok()).toBe(true);
+  const before = await projectsBefore.json();
+  const targetBefore = before.find((project: { id: string }) => project.id === projectId);
+  const retainedBefore = before.find((project: { id: string }) => project.id === retainedProjectId);
+  await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  await page.goto("/项目经营");
+  const selected = before.find((project: { id: string }) => project.id === projectId);
+  await page.locator(".project-picker input").click();
+  await page.locator(".t-select__dropdown:visible").getByText(`${selected.code} · ${selected.name}`, { exact: true }).click();
+  await page.getByText("项目设置", { exact: true }).click();
+  const form = page.getByRole("region", { name: "项目经营档案单条业务表单" });
+  await expect(form).toBeVisible();
+  const definitionResponse = await request.get(`${api}/business-entry-definitions/project_operating_profile?${new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId })}`, { headers });
+  expect(definitionResponse.ok()).toBe(true);
+  const definition = await definitionResponse.json();
+  const payload = {
+    definitionVersion: definition.version,
+    target: { entityType: "project", entityId: projectId },
+    operation: "edit",
+    values: { operatingLedgerEffectiveDate: null, takeoverCompletedDate: null, takeoverStatus: "supplemental_review" }
+  };
+  expect((await request.post(`${fixture}/revoke`)).status()).toBe(204);
+  try {
+    const freshDefinition = page.waitForResponse((response) => response.url().includes("/business-entry-definitions/project_operating_profile?") && response.request().method() === "GET");
+    await form.locator('[data-field="takeoverStatus"]').click();
+    await page.getByText("需要补充复核", { exact: true }).last().click();
+    await page.getByRole("button", { name: "保存经营档案", exact: true }).click();
+    expect((await freshDefinition).status()).toBe(403);
+    await expect(page.getByText(/无权|权限/).last()).toBeVisible();
+    expect((await request.post(`${api}/business-entry-definitions/project_operating_profile/create-target?projectId=${projectId}`, { headers, data: { entityType: "project" } })).status()).toBe(403);
+    expect((await request.post(`${api}/business-entry-definitions/project_operating_profile/validate?projectId=${projectId}`, { headers, data: payload })).status()).toBe(403);
+    expect((await request.post(`${api}/business-entry-definitions/project_operating_profile/freeze?projectId=${projectId}`, { headers, data: payload })).status()).toBe(403);
+    expect((await request.patch(`${api}/projects/${projectId}/operating-profile`, { headers, data: payload.values })).status()).toBe(403);
+    const retainedDefinition = await request.get(`${api}/business-entry-definitions/project_operating_profile?${new URLSearchParams({ projectId: retainedProjectId, operation: "edit", targetEntityType: "project", targetEntityId: retainedProjectId })}`, { headers });
+    expect(retainedDefinition.ok()).toBe(true);
+  } finally {
+    expect((await request.post(`${fixture}/restore`)).status()).toBe(204);
+  }
+  const projectsAfter = await request.get(`${api}/projects`, { headers: chairmanHeaders });
+  expect(projectsAfter.ok()).toBe(true);
+  const after = await projectsAfter.json();
+  expect(after.find((project: { id: string }) => project.id === projectId)).toMatchObject(targetBefore);
+  expect(after.find((project: { id: string }) => project.id === retainedProjectId)).toMatchObject(retainedBefore);
+});
+
 test("切换项目丢弃旧名称草稿，旧目标不能在新项目预检且只保存新项目", async ({ page, request }, testInfo) => {
   const api = process.env.POL113_API_URL!;
   const session = JSON.parse(process.env.POL113_RENAME_SESSION!);

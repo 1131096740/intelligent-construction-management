@@ -2,6 +2,7 @@ import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { resolve } from "node:path";
 import * as bcrypt from "bcryptjs";
 import { AppModule } from "../app.module";
@@ -137,6 +138,42 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect(saved.status).toBe(200);
     expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body).toMatchObject(values);
     if (process.env.RUN_POL113_PROJECT_BROWSER === "1") {
+      const prisma = app.get(PrismaService);
+      const withdrawalFinance = await actor("finance_staff", projectId);
+      const financeSession = sessions.get(withdrawalFinance) as { user: { id: string } };
+      const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_staff" } });
+      const retainedProject = await request("/projects", "POST", {
+        code: `P113-${randomUUID()}`, name: "撤权不受影响合成项目"
+      }, chairman);
+      expect(retainedProject.status).toBe(201);
+      await prisma.userPosition.create({ data: {
+        userId: financeSession.user.id, positionId: financePosition.id, projectId: retainedProject.body.id
+      } });
+      const callbackSecret = randomUUID();
+      const roleFixture = createServer(async (incoming, response) => {
+        if (incoming.url === `/${callbackSecret}/revoke` && incoming.method === "POST") {
+          await prisma.userPosition.deleteMany({ where: {
+            userId: financeSession.user.id, positionId: financePosition.id, projectId
+          } });
+          response.writeHead(204).end();
+          return;
+        }
+        if (incoming.url === `/${callbackSecret}/restore` && incoming.method === "POST") {
+          await prisma.userPosition.upsert({
+            where: { userId_positionId_projectId: {
+              userId: financeSession.user.id, positionId: financePosition.id, projectId
+            } },
+            create: { userId: financeSession.user.id, positionId: financePosition.id, projectId },
+            update: {}
+          });
+          response.writeHead(204).end();
+          return;
+        }
+        response.writeHead(404).end();
+      });
+      await new Promise<void>((resolveListen) => roleFixture.listen(0, "127.0.0.1", resolveListen));
+      const fixtureAddress = roleFixture.address();
+      if (!fixtureAddress || typeof fixtureAddress === "string") throw new Error("撤权夹具未监听本机端口");
       const settingsAccounts: Record<string, { phone: string; newPhone: string; password: string }> = {};
       for (const [index, browser] of ["desktop", "mobile"].entries()) {
         const suffix = `${String(Date.now()).slice(-7)}${index}`;
@@ -152,20 +189,27 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       const contract = await actor("contract_staff");
       const enterpriseIntent = await partyIntent(contract, "浏览器施工企业验收");
       expect((await request("/business-parties", "POST", enterpriseIntent.body, contract)).status).toBe(201);
-      await new Promise<void>((done, reject) => {
-        const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
-        delete browserEnv.JEST_WORKER_ID;
-        browserEnv.POL113_PARTY_SESSION = JSON.stringify(sessions.get(contract));
-        const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
-          cwd: resolve(__dirname, "../../../../apps/web-admin"),
-          env: browserEnv,
-          stdio: "inherit"
+      try {
+        await new Promise<void>((done, reject) => {
+          const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
+          delete browserEnv.JEST_WORKER_ID;
+          browserEnv.POL113_PARTY_SESSION = JSON.stringify(sessions.get(contract));
+          browserEnv.POL113_WITHDRAWAL_SESSION = JSON.stringify(sessions.get(withdrawalFinance));
+          browserEnv.POL113_ROLE_FIXTURE_URL = `http://127.0.0.1:${fixtureAddress.port}/${callbackSecret}`;
+          browserEnv.POL113_RETAINED_PROJECT_ID = retainedProject.body.id;
+          const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
+            cwd: resolve(__dirname, "../../../../apps/web-admin"),
+            env: browserEnv,
+            stdio: "inherit"
+          });
+          child.on("error", reject);
+          child.on("exit", (code) => code === 0 ? done() : reject(new Error("项目档案真实浏览器验证失败")));
         });
-        child.on("error", reject);
-        child.on("exit", (code) => code === 0 ? done() : reject(new Error("项目档案真实浏览器验证失败")));
-      });
+      } finally {
+        await new Promise<void>((resolveClose, rejectClose) => roleFixture.close((error) => error ? rejectClose(error) : resolveClose()));
+      }
     }
-  }, 150_000);
+  }, 210_000);
 
   it("项目名称沿用原董事长总经理岗位范围，空白名称不写入且有效名称可回读", async () => {
     const chairman = await actor("chairman");
