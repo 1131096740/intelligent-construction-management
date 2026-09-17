@@ -53,12 +53,13 @@ const applicationFields = computed({
 });
 const companyOptions = computed(() => options.value?.companyEntities.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const payeeFields = computed({
-  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount }),
+  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount, loanExpectedClearanceOn: form.loanExpectedClearanceOn }),
   set: (value) => {
     form.payeeName = value.payeeName;
     form.payeeAccountName = value.payeeAccountName;
     form.payeeBankName = value.payeeBankName;
     form.payeeBankAccount = value.payeeBankAccount;
+    form.loanExpectedClearanceOn = value.loanExpectedClearanceOn;
   }
 });
 const projectOptions = computed(() => [{ label: "非项目报销", value: "" }, ...(options.value?.projects.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id })) ?? [])]);
@@ -356,18 +357,8 @@ async function createExpenseClaimWithCapability(
               <ExpenseClaimPayeeFields
                 v-model="payeeFields"
                 :definition="options.entryDefinition"
+                :is-loan="form.claimType === 'loan'"
               />
-              <t-form-item
-                v-if="form.claimType === 'loan'"
-                label="预计清账日期"
-                required-mark
-              >
-                <t-date-picker
-                  v-model="form.loanExpectedClearanceOn"
-                  value-type="YYYY-MM-DD"
-                  clearable
-                />
-              </t-form-item>
             </t-form>
           </section>
           <section

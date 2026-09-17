@@ -65,7 +65,7 @@ test("统一费用字段保存一分钱项目借款草稿，不自动提交审�
   await expect(payeeForm).toBeVisible();
   await payeeForm.locator('[data-field="payeeName"] input').fill("合成收款人");
   await payeeForm.locator('[data-field="payeeBankAccount"] input').fill("000012340001");
-  await page.locator(".t-date-picker input").click();
+  await payeeForm.locator('[data-field="loanExpectedClearanceOn"] input').click();
   await page.locator(".t-date-picker__cell--now").click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
