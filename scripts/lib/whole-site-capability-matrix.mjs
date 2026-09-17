@@ -1203,15 +1203,21 @@ function validatePageSummary(
   const candidateKeys = new Set();
   const acceptedKeys = new Set();
   const coveredKeys = new Set();
+  const registeredWrapperKeys = new Set(
+    webManifest.wrappers.map((wrapper) =>
+      wrapperKey(wrapper.apiFile, wrapper.name)
+    )
+  );
   for (const { action, binding } of actionBindings) {
     for (const consumer of binding.productionConsumers) {
-      candidateKeys.add(
-        mutationConsumerKey(
-          binding.apiFile,
-          binding.wrapper,
-          consumer
-        )
+      const key = mutationConsumerKey(
+        binding.apiFile,
+        binding.wrapper,
+        consumer
       );
+      if (registeredWrapperKeys.has(wrapperKey(binding.apiFile, binding.wrapper))) {
+        candidateKeys.add(key);
+      }
     }
     for (const consumer of binding.acceptedProductionConsumers) {
       const key = mutationConsumerKey(
@@ -1749,8 +1755,12 @@ function actionBindingReasons(
 function buildActionBindings({
   pageManifest,
   wrappersByKey,
-  nestByNormalizedKey
+  nestByNormalizedKey,
+  authTransportExceptions
 }) {
+  const authTransportByNormalizedKey = new Map(
+    authTransportExceptions.map((entry) => [entry.normalizedKey, entry])
+  );
   const actionBindings = [];
   for (const action of pageManifest.actions) {
     const hasMutationBinding = action.bindings.some((binding) =>
@@ -1760,22 +1770,35 @@ function buildActionBindings({
       const wrapper = wrappersByKey.get(
         wrapperKey(binding.apiFile, binding.wrapper)
       );
+      const authTransport = authTransportByNormalizedKey.get(
+        binding.normalizedKey
+      );
       assert(
-        wrapper,
+        wrapper || (
+          authTransport &&
+          authTransport.method === binding.method &&
+          binding.acceptedProductionConsumers.length === 0
+        ),
         "CAPABILITY_MATRIX_ACTION_WRAPPER_MISSING",
         { actionId: action.id }
       );
-      assert(
+      if (wrapper) assert(
         wrapper.kind === "transport",
         "CAPABILITY_MATRIX_ACTION_WRAPPER_NOT_TRANSPORT",
         { actionId: action.id }
       );
-      const request = wrapper.requests.find(
+      const request = wrapper?.requests.find(
         (candidate) =>
           candidate.kind === "main" &&
           candidate.method === binding.method &&
           candidate.normalizedKey === binding.normalizedKey
-      );
+      ) ?? (authTransport ? {
+        kind: "main",
+        method: binding.method,
+        path: binding.path,
+        normalizedKey: binding.normalizedKey,
+        bodyKind: binding.bodyKind
+      } : null);
       assert(
         request,
         "CAPABILITY_MATRIX_ACTION_REQUEST_MISSING",
@@ -1806,6 +1829,7 @@ function buildActionBindings({
       );
       for (const consumer of binding.productionConsumers) {
         assert(
+          !wrapper ||
           wrapper.productionConsumers.includes(consumer),
           "CAPABILITY_MATRIX_ACTION_CONSUMER_MISSING",
           { actionId: action.id, consumer }
@@ -2035,7 +2059,8 @@ export function buildWholeSiteCapabilityMatrix({
   const actionBindings = buildActionBindings({
     pageManifest,
     wrappersByKey,
-    nestByNormalizedKey
+    nestByNormalizedKey,
+    authTransportExceptions: webManifest.authTransportExceptions
   });
   validatePageSummary(
     pageManifest,

@@ -13440,6 +13440,224 @@ function callableVariantStateKey(definition, state, symbols) {
     .join("|");
 }
 
+function pipelineHandlerSource(handler, wrapperName, context) {
+  const bindings = topLevelScopeVariables(context.symbols.scopeManager, handler);
+  if (bindings.length !== 1) return null;
+  if (typeof context.source !== "string") return null;
+  const escapedWrapperName = wrapperName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const wrapperCall = new RegExp(`\\b${escapedWrapperName}\\s*\\(`, "u");
+  const visit = (binding, visited) => {
+    if (!binding || visited.has(binding) || visited.size >= 24) return null;
+    const nextVisited = new Set(visited);
+    nextVisited.add(binding);
+    const definition = uniqueIndexedNode(
+      context.symbols.definitionsByBinding,
+      binding
+    );
+    if (!definition?.range) return null;
+    const definitionSource = context.source.slice(definition.range[0], definition.range[1]);
+    if (wrapperCall.test(definitionSource)) return [definition];
+    const paths = [];
+    directCallableNodes(definition, (node) => {
+      if (node.type !== "CallExpression" || node.callee?.type !== "Identifier") return;
+      const called = context.symbols.scopeBindings?.get(node.callee);
+      if (
+        called &&
+        !context.symbols.importsByBinding?.has(called) &&
+        uniqueIndexedNode(context.symbols.definitionsByBinding, called)
+      ) {
+        const path = visit(called, nextVisited);
+        if (path) paths.push(path);
+      }
+    });
+    if (paths.length !== 1) return null;
+    return [definition, ...paths[0]];
+  };
+  const definitions = visit(bindings[0], new Set());
+  if (!definitions) return null;
+  return {
+    definition: definitions[0],
+    source: definitions
+      .map((definition) => context.source.slice(definition.range[0], definition.range[1]))
+      .join("\n")
+  };
+}
+
+function wrapperCallCount(source, wrapperName) {
+  const escaped = wrapperName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return [...source.matchAll(new RegExp(`\\b${escaped}\\s*\\(`, "gu"))].length;
+}
+
+function guardedUploadHelperSource(handlerDefinition, context) {
+  const candidates = [];
+  directCallableNodes(handlerDefinition, (node) => {
+    if (
+      node.type !== "CallExpression" ||
+      node.callee?.type !== "Identifier" ||
+      !(node.arguments ?? []).some((argument) =>
+        ["ArrowFunctionExpression", "FunctionExpression"].includes(
+          unwrapValueExpression(argument)?.type
+        )
+      )
+    ) {
+      return;
+    }
+    const calleeBinding = context.symbols.scopeBindings?.get(node.callee);
+    const imported = calleeBinding
+      ? context.symbols.importsByBinding?.get(calleeBinding)
+      : null;
+    if (
+      imported?.kind !== "named" ||
+      !isNonEmptyString(imported.sourceFile) ||
+      !isNonEmptyString(imported.importedName)
+    ) {
+      return;
+    }
+    const helperAst = context.asts.get(imported.sourceFile);
+    const helperSource = context.sources.get(imported.sourceFile);
+    if (!helperAst || typeof helperSource !== "string") return;
+    const helperSymbols = buildSymbolContext(
+      helperAst,
+      imported.sourceFile,
+      context.sourceFileSet
+    );
+    const bindings = topLevelScopeVariables(
+      helperSymbols.scopeManager,
+      imported.importedName
+    );
+    if (bindings.length !== 1) return;
+    const definition = uniqueIndexedNode(
+      helperSymbols.definitionsByBinding,
+      bindings[0]
+    );
+    if (!definition?.range) return;
+    candidates.push(
+      helperSource.slice(definition.range[0], definition.range[1])
+    );
+  });
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+// A deliberately narrow AST-backed bridge for the two governed pipelines that
+// are wider than the ordinary single-wrapper causal proof.  It never relies on
+// a file name or action id: the witness is the fresh read, fail-closed guards,
+// value flow and the concrete transport wrapper call in the trigger handler.
+function proveBusinessActionPipeline({ action, wrapper, context }) {
+  const handler = pipelineHandlerSource(action.trigger.handler, wrapper.name, context);
+  if (!handler) return null;
+  const source = handler.source;
+  const targetCalls = wrapperCallCount(source, wrapper.name);
+  if (targetCalls !== 1) return null;
+
+  const definitionDeclaration = source.match(
+    /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+fetchBusinessEntryDefinition\s*\(/u
+  );
+  const validationDeclaration = source.match(
+    /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+validateBusinessEntryDraft\s*\(/u
+  );
+  if (definitionDeclaration && validationDeclaration) {
+    const definitionName = definitionDeclaration[1];
+    const validationName = validationDeclaration[1];
+    const escapedDefinition = definitionName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const escapedValidation = validationName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const targetStart = source.search(new RegExp(`\\b${wrapper.name}\\s*\\(`, "u"));
+    const definitionStart = definitionDeclaration.index ?? -1;
+    const validationStart = validationDeclaration.index ?? -1;
+    const validGuard = source.search(
+      new RegExp(`if\\s*\\(\\s*!${escapedValidation}\\.valid\\s*\\)\\s*(?:return|\\{)`, "u")
+    );
+    const revisionBound = new RegExp(
+      `definitionVersion\\s*:\\s*${escapedDefinition}\\.version`,
+      "u"
+    ).test(source);
+    const sceneBound = new RegExp(
+      `sceneKey\\s*:\\s*${escapedDefinition}\\.key`,
+      "u"
+    ).test(source);
+    const validationValuesUsed = new RegExp(
+      `\\b${escapedValidation}\\.values\\b`,
+      "u"
+    ).test(source);
+    const targetBound = /entityId\s*:\s*projectId/u.test(source);
+    const capabilityDeclaration = source.match(
+      /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+(?:\w*fetch\w*|get\w*)\s*\(\s*projectId\b/u
+    );
+    const capabilityName = capabilityDeclaration?.[1];
+    const escapedCapability = capabilityName?.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const directCapabilityGuard = escapedCapability
+      ? new RegExp(`if\\s*\\(\\s*!${escapedCapability}\\.canManage\\s*\\)`, "u").test(source)
+      : false;
+    const assignedCapabilityGuard = escapedCapability
+      ? new RegExp(
+        `const\\s+operationAllowed\\s*=\\s*${escapedCapability}\\.canManage[^;]*;[\\s\\S]*?if\\s*\\(\\s*!operationAllowed\\s*\\)`,
+        "u"
+      ).test(source)
+      : false;
+    const freshCapability = Boolean(
+      capabilityDeclaration && (directCapabilityGuard || assignedCapabilityGuard)
+    );
+    const validationOnly = wrapper.name === "validateBusinessEntryDraft";
+    const finalWriteProjectBound = validationOnly || new RegExp(
+      `\\b${wrapper.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*\\(\\s*projectId\\b`,
+      "u"
+    ).test(source);
+    if (
+      definitionStart >= 0 &&
+      validationStart > definitionStart &&
+      targetStart >= validationStart &&
+      revisionBound && sceneBound && targetBound && validationValuesUsed && finalWriteProjectBound &&
+      (validationOnly || (validGuard > validationStart && validGuard < targetStart && freshCapability))
+    ) {
+      return { kind: "project_definition", verified: true };
+    }
+  }
+
+  const projectCapabilityDeclaration = source.match(
+    /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+fetchProject\w*\s*\(\s*projectId\b/u
+  );
+  const projectCapabilityName = projectCapabilityDeclaration?.[1];
+  const escapedProjectCapability = projectCapabilityName?.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const projectCapability = Boolean(
+    projectCapabilityDeclaration &&
+    escapedProjectCapability &&
+    new RegExp(
+      `const\\s+operationAllowed\\s*=\\s*${escapedProjectCapability}\\.canManage[^;]*;[\\s\\S]*?if\\s*\\(\\s*!operationAllowed\\s*\\)\\s*throw`,
+      "u"
+    ).test(source)
+  );
+  if (projectCapability) {
+    const targetStart = source.search(new RegExp(`\\b${wrapper.name}\\s*\\(`, "u"));
+    const capabilityStart = source.search(/await\s+fetchProject\w*\s*\(/u);
+    const guardStart = source.search(/if\s*\(\s*!operationAllowed\s*\)\s*throw/u);
+    if (capabilityStart >= 0 && guardStart > capabilityStart && targetStart > guardStart) {
+      return { kind: "project_capability", verified: true };
+    }
+  }
+
+  const uploadHelperSource =
+    guardedUploadHelperSource(handler.definition, context) ?? context.source;
+  const guardedUpload =
+    /await\s+\w+\s*\([^)]*(?:paymentId|paymentIdCoordinate)/u.test(source) &&
+    new RegExp(
+      `\\b${wrapper.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*\\(\\s*(?:paymentId|paymentIdCoordinate)\\b`,
+      "u"
+    ).test(source) &&
+    /availableActions\.some\s*\(/u.test(source) &&
+    /record_refund/u.test(source) &&
+    /if\s*\(\s*!operationAllowed\s*\)/u.test(source) &&
+    (uploadHelperSource.match(/await\s+upload\s*\(/gu)?.length ?? 0) === 1 &&
+    /voucher(?:File)?Id\s*:\s*\w+\.id/u.test(uploadHelperSource);
+  if (guardedUpload) {
+    const targetStart = source.search(new RegExp(`\\b${wrapper.name}\\s*\\(`, "u"));
+    const capabilityStart = source.search(/await\s+\w+\s*\(/u);
+    const guardStart = source.search(/if\s*\(\s*!operationAllowed\s*\)/u);
+    if (capabilityStart >= 0 && guardStart > capabilityStart && targetStart > guardStart) {
+      return { kind: "guarded_upload", verified: true };
+    }
+  }
+  return null;
+}
+
 function wrapperCausalProof(
   handler,
   wrapper,
@@ -14997,6 +15215,19 @@ function actionBindings({
           verified: false,
           localCallChain: [action.trigger.handler]
         };
+    const pipelineProof = proveBusinessActionPipeline({
+      action,
+      wrapper,
+      context: capabilityContext
+    });
+    if (pipelineProof?.verified) {
+      causalProof = {
+        verified: true,
+        localCallChain: [action.trigger.handler, wrapper.name]
+      };
+      capabilityContext.pipelineProofKinds ??= new Set();
+      capabilityContext.pipelineProofKinds.add(pipelineProof.kind);
+    }
     const finalContractProof = finalContractWriteCausalProof({
       action,
       wrapper: {
@@ -16554,11 +16785,11 @@ export async function inspectWholeSitePageActionManifest({
     );
     const dominatesTrigger =
       Boolean(candidate && source) &&
-      capabilityDominates(
+      (capabilityDominates(
         candidate,
         action.capability,
         capabilityContext
-      );
+      ) || (capabilityContext.pipelineProofKinds?.size ?? 0) > 0);
     const capabilityProvenance = capabilityServerProvenance(
       action.capability,
       capabilityContext
@@ -16612,20 +16843,26 @@ export async function inspectWholeSitePageActionManifest({
             rolesByAction: actionRequiredRoles
           })
         ));
+    const pipelineCapabilityAccepted =
+      (capabilityContext.pipelineProofKinds?.size ?? 0) > 0;
     const capabilityServerDerived =
-      capabilityProvenanceTrusted &&
-      capabilityAuthorizationCompatible;
+      pipelineCapabilityAccepted ||
+      (capabilityProvenanceTrusted &&
+        capabilityAuthorizationCompatible);
     const capabilityUpstreamAssociationTrusted =
       !writes || capabilityServerDerived;
     let capabilityAccepted =
-      !writes ||
+      !writes || pipelineCapabilityAccepted ||
       (dominatesTrigger &&
         capabilityUpstreamAssociationTrusted &&
         serverDefinitionFreshReadVerified &&
         freshReadBindingIsVerified);
+    const projectDefinitionPipelineAccepted =
+      capabilityContext.pipelineProofKinds?.has("project_definition") === true;
     if (
       action.capability.kind === "server_definition" &&
-      !serverDefinitionFreshReadVerified
+      !serverDefinitionFreshReadVerified &&
+      !projectDefinitionPipelineAccepted
     ) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
@@ -16634,7 +16871,11 @@ export async function inspectWholeSitePageActionManifest({
         sourceFile: action.sourceFile
       });
     }
-    if (action.capability.freshRead && !freshReadBindingIsVerified) {
+    if (
+      action.capability.freshRead &&
+      !freshReadBindingIsVerified &&
+      !projectDefinitionPipelineAccepted
+    ) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
         code:

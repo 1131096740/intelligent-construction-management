@@ -1095,6 +1095,11 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
     expect(payment).toContain("prepareSpotRefundWithUpload(");
+    expect(payment).toContain("const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate)");
+    expect(payment).toContain('action.key === "record_refund" && action.enabled === true');
+    expect(payment.indexOf("const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate)")).toBeLessThan(
+      payment.indexOf("prepareSpotRefundWithUpload(")
+    );
     expect(payment).toContain("recordSpotProcurementRefundForPayment(");
     expect(payment).toContain("uploadSpotProcurementRefundVoucherForPayment(");
     expect(payment).toContain("payment-refund-form");

@@ -1496,24 +1496,42 @@ async function submitRefund() {
   const current = detail.value;
   const operationId = ++refundOperationSequence;
   const file = selectedUploadFiles(refundFiles.value)[0];
-  const expected = current?.discrepancy?.refundExpectedAmountCents;
-  if (!current || !file || !expected) {
+  if (!current || !file) {
     actionState.value = "error";
-    actionMessage.value = file ? "待退款金额尚未读取，请刷新后重试" : "请选择退款到账凭证";
+    actionMessage.value = file ? "付款详情尚未读取，请刷新后重试" : "请选择退款到账凭证";
     return;
   }
   actionBusy.value = true;
   actionMessage.value = "";
   try {
+    const paymentIdCoordinate = current.payment.id;
     const procurementId = current.payment.procurement.id;
     const operationCurrent = () =>
       operationId === refundOperationSequence &&
-      paymentId.value === current.payment.id &&
+      paymentId.value === paymentIdCoordinate &&
       detail.value?.payment.procurement.id === procurementId;
+    const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+    if (!operationCurrent()) return;
+    const operationAllowed = fresh.availableActions.some(
+      (action) => action.key === "record_refund" && action.enabled === true
+    );
+    const expected = fresh.discrepancy?.refundExpectedAmountCents;
+    if (
+      fresh.payment.id !== paymentIdCoordinate ||
+      fresh.payment.procurement.id !== procurementId ||
+      !expected
+    ) {
+      throw new Error("当前付款已不可登记退款，请刷新后重试");
+    }
+    if (!operationAllowed) throw new Error("当前付款已不可登记退款，请刷新后重试");
     const retained = refundAttempt.value;
-    if (retained && (retained.paymentId !== current.payment.id || retained.procurementId !== current.payment.procurement.id)) {
+    if (retained && (retained.paymentId !== paymentIdCoordinate || retained.procurementId !== procurementId)) {
       refundAttempt.value = null;
       throw new Error("退款办理对象已变化，请重新选择凭证");
+    }
+    if (retained && retained.payload.amountCents !== expected) {
+      refundAttempt.value = null;
+      throw new Error("待退款金额已变化，请刷新后重试");
     }
     const payload = retained?.payload ?? await prepareSpotRefundWithUpload(
       {
@@ -1525,12 +1543,12 @@ async function submitRefund() {
       file,
       (uploadFile, fileName) =>
         uploadSpotProcurementRefundVoucherForPayment(
-          current.payment.id, procurementId, uploadFile, fileName, undefined, operationCurrent
+          paymentIdCoordinate, procurementId, uploadFile, fileName, undefined, operationCurrent
         )
     );
     if (!operationCurrent()) return;
-    refundAttempt.value = { paymentId: current.payment.id, procurementId, payload };
-    const result = await recordSpotProcurementRefundForPayment(current.payment.id, procurementId, payload, operationCurrent) as {
+    refundAttempt.value = { paymentId: paymentIdCoordinate, procurementId, payload };
+    const result = await recordSpotProcurementRefundForPayment(paymentIdCoordinate, procurementId, payload, operationCurrent) as {
       refund: { amountCents: string; receivedAt: string };
       discrepancy: { status: string };
     };
@@ -1545,7 +1563,7 @@ async function submitRefund() {
     actionMessage.value = "退款到账事实和凭证已登记";
     refundFiles.value = [];
     try {
-      const refreshed = await fetchSpotProcurementPaymentDetail(current.payment.id);
+      const refreshed = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
       if (operationCurrent() && refreshed.payment.id === current.payment.id && refreshed.payment.procurement.id === procurementId) {
         detail.value = structuredClone(refreshed);
         spotProcurementPaymentCapability.value = refreshed;

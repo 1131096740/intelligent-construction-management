@@ -8,6 +8,7 @@ import { formatUnknownApiError } from "../../../api/error-message";
 const props = defineProps<{ saving: boolean }>();
 const emit = defineEmits<{ save: [values: CreateProjectPayload] }>();
 const definition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const createActions = ref<string[]>([]);
 const draft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_create", values: { code: "", name: "" } });
 const errors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const message = ref("");
@@ -17,8 +18,19 @@ onBeforeUnmount(() => { active = false; });
 async function load() {
   const capability = await fetchProjectCreateCapability();
   if (!capability.availableActions.includes("create_project") || !capability.definition) throw new Error("当前用户不能新增项目");
-  if (active) definition.value = capability.definition;
+  createActions.value = capability.availableActions;
+  if (active) {
+    definition.value = capability.definition;
+  }
   return capability.definition;
+}
+async function validateProjectCreationWithCapability(values: { code: string; name: string }) {
+  const capability = await fetchProjectCreateCapability();
+  const operationAllowed = capability.availableActions.includes("create_project");
+  const currentDefinition = capability.definition;
+  if (!operationAllowed || !currentDefinition) throw new Error("当前用户不能新增项目");
+  const validation = await validateProjectCreation({ ...values, definitionVersion: currentDefinition.version });
+  return { validation, definitionVersion: currentDefinition.version };
 }
 onMounted(async () => {
   try { await load(); } catch (error) { if (active) message.value = formatUnknownApiError(error, "加载项目填写规则失败"); }
@@ -28,12 +40,10 @@ async function submit() {
   busy.value = true; message.value = ""; errors.value = [];
   const values = { code: String(draft.value.values.code ?? ""), name: String(draft.value.values.name ?? "") };
   try {
-    const current = await load();
+    const result = await validateProjectCreationWithCapability(values);
     if (!active) return;
-    const validation = await validateProjectCreation({ ...values, definitionVersion: current.version });
-    if (!active) return;
-    errors.value = validation.errors;
-    if (validation.valid) emit("save", { ...values, definitionVersion: current.version });
+    errors.value = result.validation.errors;
+    if (result.validation.valid) emit("save", { ...values, definitionVersion: result.definitionVersion });
   } catch (error) { if (active) message.value = formatUnknownApiError(error, "项目预检失败，请稍后重试"); }
   finally { if (active) busy.value = false; }
 }
@@ -55,6 +65,7 @@ async function submit() {
       {{ message }}
     </p>
     <t-button
+      v-if="createActions.includes('create_project')"
       :disabled="!definition || busy || saving"
       @click="submit"
     >

@@ -238,62 +238,74 @@ function fail(error: unknown) { tone.value = "error"; message.value = formatUnkn
 function ok(text: string) { tone.value = "success"; message.value = text; }
 async function saveProfile() {
   if (saving.value || !profile.value?.canManage || profileDefinition.value?.key !== "project_operating_profile") return;
-  const expectedProjectId = props.projectId;
+  const projectId = props.projectId;
   const expectedGeneration = projectGeneration;
   const values = { ...profileDraft.value.values };
   saving.value = true;
   profileErrors.value = [];
   message.value = "";
   try {
-    const definition = await loadProfileDefinition(expectedProjectId);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    const current = await fetchProjectOperatingProfile(projectId);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    const operationAllowed = current.canManage;
+    if (!operationAllowed) throw new Error("当前用户不能维护项目经营档案");
+    profile.value = current;
+    const definition = await fetchBusinessEntryDefinition("project_operating_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    if (definition.key !== "project_operating_profile") throw new Error("项目经营档案字段暂不可用，请刷新后重试");
     profileDefinition.value = definition;
-    const validation = await validateBusinessEntryDraft({ scope: "project", projectId: expectedProjectId }, {
+    const validation = await validateBusinessEntryDraft({ scope: "project", projectId }, {
       sceneKey: definition.key, definitionVersion: definition.version,
-      target: { entityType: "project", entityId: expectedProjectId }, values
+      target: { entityType: "project", entityId: projectId }, values
     }, "edit");
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    if (!ownsProject(projectId, expectedGeneration)) return;
     profileErrors.value = validation.errors;
     if (!validation.valid) return;
     const takeoverStatus = PROJECT_OPERATING_TAKEOVER_STATUSES.find(value => value === validation.values.takeoverStatus);
     if (!takeoverStatus) throw new Error("经营接管状态不受支持，请重新选择");
     const dateValue = (value: unknown) => typeof value === "string" && value !== "" ? value : null;
     const payload = { operatingLedgerEffectiveDate: dateValue(validation.values.operatingLedgerEffectiveDate), takeoverCompletedDate: dateValue(validation.values.takeoverCompletedDate), takeoverStatus };
-    await updateProjectOperatingProfile(expectedProjectId, payload);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
-    await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("项目经营档案已保存");
-  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
-  finally { if (ownsProject(expectedProjectId, expectedGeneration)) saving.value = false; }
+    await updateProjectOperatingProfile(projectId, payload);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    await load(); if (ownsProject(projectId, expectedGeneration)) ok("项目经营档案已保存");
+  } catch (error) { if (ownsProject(projectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(projectId, expectedGeneration)) saving.value = false; }
 }
 async function addParticipant() {
   if (adding.value || !profile.value?.canManage || !participantDefinition.value) return;
-  const expectedProjectId = props.projectId;
+  const projectId = props.projectId;
   const expectedGeneration = projectGeneration;
   const values = { ...participantDraft.value.values };
   adding.value = true;
   participantErrors.value = [];
   message.value = "";
   try {
-    const definition = await loadParticipantDefinition(expectedProjectId);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    const current = await fetchProjectOperatingProfile(projectId);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    const operationAllowed = current.canManage;
+    if (!operationAllowed) throw new Error("当前用户不能维护项目参与公司");
+    profile.value = current;
+    const definition = await fetchBusinessEntryDefinition("project_participating_company_add", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    if (definition.key !== "project_participating_company_add") throw new Error("参与公司填写规则暂不可用，请刷新后重试");
     participantDefinition.value = definition;
-    const validation = await validateBusinessEntryDraft({ scope: "project", projectId: expectedProjectId }, {
+    const validation = await validateBusinessEntryDraft({ scope: "project", projectId }, {
       sceneKey: definition.key, definitionVersion: definition.version,
-      target: { entityType: "project", entityId: expectedProjectId }, values
+      target: { entityType: "project", entityId: projectId }, values
     }, "edit");
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    if (!ownsProject(projectId, expectedGeneration)) return;
     participantErrors.value = validation.errors;
     if (!validation.valid) return;
     const { companyEntityId, effectiveFrom, changeReason } = validation.values;
     if (typeof companyEntityId !== "string" || typeof effectiveFrom !== "string" || typeof changeReason !== "string") throw new Error("请检查参与公司填写内容");
-    await addProjectParticipatingCompany(expectedProjectId, { companyEntityId, effectiveFrom, changeReason });
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    await addProjectParticipatingCompany(projectId, { companyEntityId, effectiveFrom, changeReason });
+    if (!ownsProject(projectId, expectedGeneration)) return;
     await load();
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    if (!ownsProject(projectId, expectedGeneration)) return;
     participantDraft.value = { sceneKey: "project_participating_company_add", values: {} };
     ok("参与公司已加入");
-  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
-  finally { if (ownsProject(expectedProjectId, expectedGeneration)) adding.value = false; }
+  } catch (error) { if (ownsProject(projectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(projectId, expectedGeneration)) adding.value = false; }
 }
 function deactivate(id: string) {
   deactivationParticipantId.value = id;
@@ -302,57 +314,79 @@ function deactivate(id: string) {
 }
 async function confirmDeactivate() {
   if (deactivationSaving.value) return;
-  const expectedProjectId = props.projectId;
+  const projectId = props.projectId;
   const expectedGeneration = projectGeneration;
   const participantId = deactivationParticipantId.value;
   const values = { ...deactivationDraft.value.values };
   deactivationSaving.value = true; deactivationErrors.value = []; message.value = "";
   try {
-    const current = await fetchProjectOperatingProfile(expectedProjectId);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
-    if (!current.canManage || !current.deactivationDefinition) throw new Error("当前用户不能停止参与公司新增业务");
+    const current = await fetchProjectOperatingProfile(projectId);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    const operationAllowed = current.canManage && Boolean(current.deactivationDefinition);
+    if (!operationAllowed) throw new Error("当前用户不能停止参与公司新增业务");
     profile.value = current;
+    if (!current.deactivationDefinition) throw new Error("当前参与公司停止规则不可用");
     const payload = { endedOn: String(values.endedOn ?? ""), changeReason: String(values.changeReason ?? ""), definitionVersion: current.deactivationDefinition.version };
-    const validation = await validateProjectParticipatingCompanyDeactivation(expectedProjectId, participantId, payload);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    const validation = await validateProjectParticipatingCompanyDeactivation(projectId, participantId, payload);
+    if (!ownsProject(projectId, expectedGeneration)) return;
     deactivationErrors.value = validation.errors;
     if (!validation.valid) return;
-    await deactivateProjectParticipatingCompany(expectedProjectId, participantId, payload);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    await deactivateProjectParticipatingCompany(projectId, participantId, payload);
+    if (!ownsProject(projectId, expectedGeneration)) return;
     deactivationVisible.value = false;
     await load();
-    if (ownsProject(expectedProjectId, expectedGeneration)) ok("已停止该公司新增业务");
-  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
-  finally { if (ownsProject(expectedProjectId, expectedGeneration)) deactivationSaving.value = false; }
+    if (ownsProject(projectId, expectedGeneration)) ok("已停止该公司新增业务");
+  } catch (error) { if (ownsProject(projectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(projectId, expectedGeneration)) deactivationSaving.value = false; }
 }
-async function remove(id: string) { const expectedProjectId = props.projectId; const expectedGeneration = projectGeneration; await removeProjectParticipatingCompany(expectedProjectId, id).then(async () => { if (!ownsProject(expectedProjectId, expectedGeneration)) return; await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok("参与公司已删除"); }).catch(error => { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }); }
+async function remove(id: string) {
+  const projectId = props.projectId;
+  const expectedGeneration = projectGeneration;
+  try {
+    const current = await fetchProjectOperatingProfile(projectId);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    const operationAllowed = current.canManage;
+    if (!operationAllowed) throw new Error("当前用户不能删除项目参与公司");
+    profile.value = current;
+    await removeProjectParticipatingCompany(projectId, id);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    await load();
+    if (ownsProject(projectId, expectedGeneration)) ok("参与公司已删除");
+  } catch (error) { if (ownsProject(projectId, expectedGeneration)) fail(error); }
+}
 async function saveConstructionEnterprise() {
   if (savingConstruction.value || !profile.value?.canManage || profile.value.constructionEnterprise?.isLocked || !constructionDefinition.value) return;
-  const expectedProjectId = props.projectId;
+  const projectId = props.projectId;
   const expectedGeneration = projectGeneration;
   const values = { ...constructionDraft.value.values };
   savingConstruction.value = true;
   constructionErrors.value = [];
   message.value = "";
   try {
-    const definition = await loadConstructionDefinition(expectedProjectId);
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    const current = await fetchProjectOperatingProfile(projectId);
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    const operationAllowed = current.canManage && !current.constructionEnterprise?.isLocked;
+    if (!operationAllowed) throw new Error("当前用户不能设置施工企业");
+    profile.value = current;
+    const definition = await fetchBusinessEntryDefinition("project_construction_enterprise", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
+    if (!ownsProject(projectId, expectedGeneration)) return;
+    if (definition.key !== "project_construction_enterprise") throw new Error("施工企业填写规则暂不可用，请刷新后重试");
     constructionDefinition.value = definition;
-    const validation = await validateBusinessEntryDraft({ scope: "project", projectId: expectedProjectId }, {
+    const validation = await validateBusinessEntryDraft({ scope: "project", projectId }, {
       sceneKey: definition.key, definitionVersion: definition.version,
-      target: { entityType: "project", entityId: expectedProjectId }, values
+      target: { entityType: "project", entityId: projectId }, values
     }, "edit");
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    if (!ownsProject(projectId, expectedGeneration)) return;
     constructionErrors.value = validation.errors;
     if (!validation.valid) return;
     const { businessPartyVersionId, effectiveFrom, changeReason } = validation.values;
     if (typeof businessPartyVersionId !== "string" || typeof effectiveFrom !== "string" || typeof changeReason !== "string") throw new Error("请检查施工企业填写内容");
-    await assignProjectConstructionEnterprise(expectedProjectId, { businessPartyVersionId, effectiveFrom: `${effectiveFrom}T00:00:00.000Z`, changeReason });
-    if (!ownsProject(expectedProjectId, expectedGeneration)) return;
+    await assignProjectConstructionEnterprise(projectId, { businessPartyVersionId, effectiveFrom: `${effectiveFrom}T00:00:00.000Z`, changeReason });
+    if (!ownsProject(projectId, expectedGeneration)) return;
     await load();
-    if (ownsProject(expectedProjectId, expectedGeneration)) ok("施工企业已保存");
-  } catch (error) { if (ownsProject(expectedProjectId, expectedGeneration)) fail(error); }
-  finally { if (ownsProject(expectedProjectId, expectedGeneration)) savingConstruction.value = false; }
+    if (ownsProject(projectId, expectedGeneration)) ok("施工企业已保存");
+  } catch (error) { if (ownsProject(projectId, expectedGeneration)) fail(error); }
+  finally { if (ownsProject(projectId, expectedGeneration)) savingConstruction.value = false; }
 }
 watch(() => props.projectId, () => { projectGeneration += 1; resetProjectForms(); load(); }); onMounted(load);
 </script>

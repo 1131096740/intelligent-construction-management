@@ -1355,6 +1355,174 @@ void submit;
   assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
 });
 
+test("accepts a project definition pipeline only when fresh capability and validated values dominate the write", async () => {
+  const action = registryAction({
+    id: "example.project-definition-pipeline",
+    capability: {
+      kind: "server_boolean",
+      source: "profile.canManage"
+    },
+    wrappers: [
+      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "validateBusinessEntryDraft" },
+      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "submitExample" }
+    ]
+  });
+  const page = `<script setup lang="ts">
+import { getExample, fetchBusinessEntryDefinition, validateBusinessEntryDraft, submitExample } from "../api/example.api";
+const profile = { canManage: true };
+async function submit() {
+  const projectId = "project-1";
+  const capability = await getExample(projectId);
+  if (!capability.canManage) throw new Error("revoked");
+  const definition = await fetchBusinessEntryDefinition("project_profile", projectId);
+  if (definition.key !== "project_profile") throw new Error("stale");
+  const validation = await validateBusinessEntryDraft({ sceneKey: definition.key, definitionVersion: definition.version, target: { entityId: projectId }, values: { name: "A" } });
+  if (!validation.valid) return;
+  return submitExample(projectId, { name: validation.values.name });
+}
+</script><template><t-button v-if="profile.canManage" @click="submit">提交</t-button></template>`;
+  const wrappers = [
+    wrapper(),
+    wrapper({ name: "getExample", normalizedKey: "GET /examples/:param", returnProvenance: "transparent_main_response" }),
+    wrapper({ name: "fetchBusinessEntryDefinition", normalizedKey: "GET /examples/:param/definition", returnProvenance: "transparent_main_response" }),
+    wrapper({ name: "validateBusinessEntryDraft", normalizedKey: "POST /examples/:param/validate", productionConsumers: ["apps/web-admin/src/pages/ExamplePage.vue"] })
+  ];
+  const routes = [route(), route("GET /examples/:param"), route("GET /examples/:param/definition"), route("POST /examples/:param/validate")];
+  const root = await fixture({ actions: [action], wrappers, routes, page });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+
+  const staleRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      "definitionVersion: definition.version",
+      "definitionVersion: 1"
+    )
+  });
+  const stale = await inspectWholeSitePageActionManifest({ root: staleRoot });
+  assert.equal(stale.status, "blocked");
+
+  for (const [name, unsafePage] of [
+    ["capability read uses another project", page.replace("getExample(projectId)", 'getExample("other-project")')],
+    ["final write uses another project", page.replace("submitExample(projectId", 'submitExample("other-project"')]
+  ]) {
+    const unsafeRoot = await fixture({ actions: [action], wrappers, routes, page: unsafePage });
+    const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
+    assert.equal(unsafe.status, "blocked", name);
+  }
+});
+
+test("accepts a guarded upload callback only when one voucher result flows into the final write", async () => {
+  const action = registryAction({
+    id: "example.guarded-upload-pipeline",
+    capability: {
+      kind: "detail_action",
+      source: "detail.availableActions",
+      key: "record_refund"
+    },
+    wrappers: [
+      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "uploadExample" },
+      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "recordExample" }
+    ]
+  });
+  const helperSource = `export async function prepareWithUpload(file, upload) {
+  const voucher = await upload(file, file.name);
+  return { voucherFileId: voucher.id, amount: "10" };
+}`;
+  const page = `<script setup lang="ts">
+import { getExample, uploadExample, recordExample } from "../api/example.api";
+import { prepareWithUpload } from "./write-validation";
+async function submit() {
+  const paymentId = "payment-1";
+  const detail = await getExample(paymentId);
+  if (detail.id !== paymentId) throw new Error("changed");
+  const operationAllowed = detail.availableActions.some((action) => action.key === "record_refund" && action.enabled);
+  if (!operationAllowed) throw new Error("revoked");
+  const file = { name: "voucher.png" };
+  const payload = await prepareWithUpload(file, (value, name) => uploadExample(paymentId, value, name));
+  return recordExample(paymentId, payload);
+}
+</script><template><t-button @click="submit">提交</t-button></template>`;
+  const wrappers = [
+    wrapper({ name: "recordExample" }),
+    wrapper({ name: "uploadExample", normalizedKey: "POST /examples/:param/upload", productionConsumers: ["apps/web-admin/src/pages/ExamplePage.vue"] }),
+    wrapper({ name: "getExample", normalizedKey: "GET /examples/:param", returnProvenance: "transparent_main_response" })
+  ];
+  const routes = [route(), route("POST /examples/:param/upload"), route("GET /examples/:param")];
+  const root = await fixture({
+    actions: [action],
+    wrappers,
+    routes,
+    page,
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    },
+    extraFiles: {
+      "apps/web-admin/src/pages/write-validation.ts": helperSource
+    }
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+
+  const lostVoucherRoot = await fixture({
+    actions: [action], wrappers, routes, page,
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    },
+    extraFiles: {
+      "apps/web-admin/src/pages/write-validation.ts": helperSource.replace(
+      "return { voucherFileId: voucher.id, amount: \"10\" };",
+      "return { voucherFileId: \"detached\", amount: \"10\" };"
+      )
+    }
+  });
+  const lostVoucher = await inspectWholeSitePageActionManifest({ root: lostVoucherRoot });
+  assert.equal(lostVoucher.status, "blocked");
+
+  const wrongCoordinateRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      "uploadExample(paymentId, value, name)",
+      'uploadExample("other-payment", value, name)'
+    ),
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    },
+    extraFiles: {
+      "apps/web-admin/src/pages/write-validation.ts": helperSource
+    }
+  });
+  const wrongCoordinate = await inspectWholeSitePageActionManifest({ root: wrongCoordinateRoot });
+  assert.equal(wrongCoordinate.status, "blocked");
+
+  const duplicateUploadRoot = await fixture({
+    actions: [action], wrappers, routes, page,
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    },
+    extraFiles: {
+      "apps/web-admin/src/pages/write-validation.ts": helperSource.replace(
+        "const voucher = await upload(file, file.name);",
+        "await upload(file, file.name);\n  const voucher = await upload(file, file.name);"
+      )
+    }
+  });
+  const duplicateUpload = await inspectWholeSitePageActionManifest({ root: duplicateUploadRoot });
+  assert.equal(duplicateUpload.status, "blocked");
+});
+
 test("keeps approve and reject variants distinct while sharing one wrapper and action key", async () => {
   const approve = registryAction({
     id: "example.review.approve",

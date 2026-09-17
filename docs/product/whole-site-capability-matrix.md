@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f8880f950aa24bb1495a6898f8c27f92d1189fb19ad76ec66530296e34acc762` |
-| webApiWrappers | ready | `3d92b10568954064bf587b4751c0d3aac052726930678217505d76e74f0e841b` |
-| webPageActions | ready | `73af9f4211c46c5415eccd93da9cc70b2519bbb690ba8790e0c04a1301a806ff` |
-| routeUsage | ready | `f38aa41e1b4dc90c2df7afbe0171e05d02124ade470ac81c71abf1f05ac979e0` |
+| nestRoutes | ready | `a24a55ae0e650b926c92150a84f2be9719f94219ec8ea0576712ee1f70fd47d8` |
+| webApiWrappers | ready | `298eb7b234b9a7df13eb50ef776257bef6c780220810a824da4279f3f0f07996` |
+| webPageActions | ready | `e55459c1bdedee620d629901d20c91a8ac043f475ac904b2ba289ac13827d47d` |
+| routeUsage | ready | `3727022fb253a70b0974c8be3c3f1cb1540f3b936c8d7c382a6fac23fe6a4289` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 593 |
-| pageRouteCount | 376 |
+| routeCount | 596 |
+| pageRouteCount | 379 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 566 |
+| mainRequestBindingCount | 574 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 302 |
-| actionBindingCount | 337 |
-| acceptedActionBindingCount | 317 |
+| registeredActionCount | 307 |
+| actionBindingCount | 349 |
+| acceptedActionBindingCount | 326 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 290 |
-| coveredProductionMutationConsumerPairCount | 290 |
+| productionMutationConsumerPairCount | 297 |
+| coveredProductionMutationConsumerPairCount | 297 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -109,7 +109,7 @@
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId/classification-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseOptions | — | not_applicable | — |
-| GET | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseActions | — | not_applicable | — |
+| GET | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseActions<br>apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseDetail | — | not_applicable | — |
 | GET | /fund-executions/cases | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCases | — | not_applicable | — |
 | GET | /fund-executions/observation-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionObservationOptions | — | not_applicable | — |
 | GET | /fund-executions/reversal-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionReversalOptions | — | not_applicable | — |
@@ -212,13 +212,14 @@
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | — |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
 | GET | /settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementWorkbenchLedger | — | not_applicable | — |
-| GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction | spot-procurement.invoice-append | not_applicable | — |
+| GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-payment.refund.record<br>spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurement-payments | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPayments | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementWithdrawalAction | — | not_applicable | — |
 | GET | /spot-procurements/application-text-suggestions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationTextSuggestions | — | not_applicable | — |
 | GET | /spot-procurements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCapabilities | — | not_applicable | — |
 | GET | /spot-procurements/create-project-options | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCreateProjectOptions | — | not_applicable | — |
+| GET | /spot-procurements/projects/:projectId/application-definitions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationDefinitions | — | not_applicable | — |
 | GET | /spot-procurements | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurements | — | not_applicable | — |
 | GET | /standard-clauses/history | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listStandardClauseHistory | — | not_applicable | — |
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
@@ -228,7 +229,7 @@
 | GET | /wage-statements/:statementId/summary | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementSummary | — | not_applicable | — |
 | GET | /wage-statements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementCapabilities | — | not_applicable | — |
 | GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
-| PATCH | /auth/profile | page | auth_store | — | — | not_applicable | — |
+| PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | not_applicable | — |
 | PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
 | PATCH | /company-entities/:id | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | not_applicable | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |
@@ -272,7 +273,7 @@
 | POST | /business-entry-definitions/:sceneKey/excel-preview | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#previewBusinessEntryExcel | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#freezeBusinessEntrySnapshot | business-party.create | covered | — |
 | POST | /business-entry-definitions/:sceneKey/submission-target | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntrySubmissionTarget | — | not_applicable | — |
-| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | project-operating-profile.add-participating-company<br>project-operating-profile.save<br>project-operating-profile.set-construction-enterprise<br>project.rename.validate<br>user-self-profile.update | covered | — |
 | POST | /business-entry-definitions/business-party/create/probe | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartyDefinitionProbe | business-party.create.prepare | covered | — |
 | POST | /business-entry-definitions/business-party/create/submission-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartySubmissionTarget | business-party.create.prepare | covered | — |
 | POST | /business-entry-definitions/business-party/create/validate | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessPartyDraft | business-party.create.prepare | covered | — |
@@ -524,6 +525,7 @@
 | POST | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#createOperatingTakeoverBatch | operating-takeover.create-batch | covered | — |
 | POST | /projects/:projectId/owner-contracts/:ownerContractId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectOwnerContract | — | not_applicable | — |
 | POST | /projects/:projectId/owner-contracts | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerContract | — | not_applicable | — |
+| POST | /projects/:projectId/participating-companies/:participantId/deactivation/validate | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#validateProjectParticipatingCompanyDeactivation | project-operating-profile.deactivate-participating-company | covered | — |
 | POST | /projects/:projectId/participating-companies | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#addProjectParticipatingCompany | project-operating-profile.add-participating-company | covered | — |
 | POST | /projects/:projectId/proxy-payments | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment | — | not_applicable | — |
 | POST | /projects/:projectId/receipts | exit_candidate | none | — | — | not_applicable | — |
@@ -543,6 +545,7 @@
 | POST | /projects/:projectId/upstream-fund-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact | project.upstream-fund.record | covered | — |
 | POST | /projects/:projectId/upstream-settlements/:upstreamSettlementId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamSettlement | — | not_applicable | — |
 | POST | /projects/:projectId/upstream-settlements | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement | — | not_applicable | — |
+| POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate | covered | — |
 | POST | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProject | project.create | covered | — |
 | POST | /settlement-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#cloneSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#discardSettlementTemplateVersion | — | not_applicable | — |
@@ -606,8 +609,8 @@
 | POST | /spot-procurements/:procurementId/receipt/review-revocation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#revokeSpotProcurementReceiptReview | spot-procurement-receipt.review.revoke | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/review | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementReceipt | spot-procurement-receipt.review | covered | — |
 | POST | /spot-procurements/:procurementId/receipt/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementReceipt | spot-procurement-receipt.submit | covered | — |
-| POST | /spot-procurements/:procurementId/refund-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherFile | spot-procurement-receipt.refund-voucher.upload | covered | — |
-| POST | /spot-procurements/:procurementId/refunds | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefund | spot-procurement-receipt.refund.record | covered | — |
+| POST | /spot-procurements/:procurementId/refund-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherFile<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-receipt.refund-voucher.upload | covered | — |
+| POST | /spot-procurements/:procurementId/refunds | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefund<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment | spot-procurement-payment.refund.record<br>spot-procurement-receipt.refund.record | covered | — |
 | POST | /spot-procurements/:procurementId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurement | spot-procurement.submit | covered | — |
 | POST | /spot-procurements/:procurementId/supplier-balance-credit | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/versions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementVersion | spot-procurement.version.create | covered | — |

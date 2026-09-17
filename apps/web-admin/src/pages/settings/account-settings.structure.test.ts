@@ -14,7 +14,7 @@ describe("self-service account settings", () => {
     expect(settingsPage).toContain('title="我的账号"');
     expect(settingsPage).toContain("<BusinessEntryForm");
     expect(settingsPage).toContain('"user_self_profile"');
-    expect(settingsPage).toContain("updateUserSelfProfile(");
+    expect(settingsPage).toContain("updateProfile(");
     expect(settingsPage).toContain("auth.changePassword(");
     expect(settingsPage).toContain("auth.logout()");
     expect(settingsPage).toContain("退出登录");

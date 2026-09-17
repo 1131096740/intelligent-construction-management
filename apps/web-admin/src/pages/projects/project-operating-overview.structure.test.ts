@@ -115,7 +115,7 @@ describe("project operating overview structure", () => {
       "utf8"
     );
     expect(panel).toContain("await updateProjectOperatingProfile");
-    expect(panel).toContain("await load(); if (ownsProject(expectedProjectId, expectedGeneration)) ok(\"项目经营档案已保存\")");
+    expect(panel).toContain("await load(); if (ownsProject(projectId, expectedGeneration)) ok(\"项目经营档案已保存\")");
     expect(panel).not.toContain("sync(await updateProjectOperatingProfile");
   });
 
@@ -127,12 +127,12 @@ describe("project operating overview structure", () => {
     expect(panel).toContain("const expectedProjectId = props.projectId");
     expect(panel).toContain("const requestId = ++loadRequestId");
     expect(panel).toContain("ownsLoad(requestId, expectedProjectId)");
-    expect(panel).toContain("updateProjectOperatingProfile(expectedProjectId, payload)");
-    expect(panel).toContain("addProjectParticipatingCompany(expectedProjectId");
-    expect(panel).toContain("deactivateProjectParticipatingCompany(expectedProjectId");
-    expect(panel).toContain("removeProjectParticipatingCompany(expectedProjectId");
-    expect(panel).toContain("assignProjectConstructionEnterprise(expectedProjectId");
-    expect(panel).toContain("if (!ownsProject(expectedProjectId, expectedGeneration)) return");
+    expect(panel).toContain("updateProjectOperatingProfile(projectId, payload)");
+    expect(panel).toContain("addProjectParticipatingCompany(projectId");
+    expect(panel).toContain("deactivateProjectParticipatingCompany(projectId");
+    expect(panel).toContain("removeProjectParticipatingCompany(projectId");
+    expect(panel).toContain("assignProjectConstructionEnterprise(projectId");
+    expect(panel).toContain("if (!ownsProject(projectId, expectedGeneration)) return");
     expect(panel).toContain("resetProjectForms(); load()");
   });
 

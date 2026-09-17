@@ -10,14 +10,15 @@
       </p>
       <div class="account-grid">
         <form
+          v-if="loadedDefinition?.key === 'user_self_profile'"
           class="account-form"
           @submit.prevent="submitProfile"
         >
           <h3>基本资料</h3>
           <BusinessEntryForm
-            v-if="profileDefinition?.key === 'user_self_profile'"
+            v-if="loadedDefinition?.key === 'user_self_profile'"
             v-model="profileDraft"
-            :definition="profileDefinition"
+            :definition="loadedDefinition"
             :errors="profileErrors"
             :readonly="profileBusy"
           />
@@ -37,7 +38,7 @@
             theme="primary"
             type="submit"
             :loading="profileBusy"
-            :disabled="profileDefinition?.key !== 'user_self_profile'"
+            :disabled="loadedDefinition?.key !== 'user_self_profile'"
           >
             保存基本资料
           </t-button>
@@ -284,7 +285,7 @@ import { useAuthStore } from "../../auth/auth.store";
 import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../api/business-entry.api";
-import { updateUserSelfProfile } from "../../api/user-self-profile.api";
+import { updateProfile } from "../../lib/user-self-profile";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
   fetchDraftRetentionPreview,
@@ -349,7 +350,7 @@ let canvasSignaturePromise: Promise<void> | null = null;
 const profileForm = reactive({
   currentPassword: ""
 });
-const profileDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const loadedDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
 const profileErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const profileDraft = ref<BusinessEntryDraftPayload>({
   sceneKey: "user_self_profile",
@@ -420,15 +421,15 @@ function clearProfilePassword() {
 
 async function loadProfileDefinition() {
   try {
-    const definition = await fetchBusinessEntryDefinition(
+    const loadedProfileDefinition = await fetchBusinessEntryDefinition(
       "user_self_profile", { scope: "global" }, profileDraft.value.target!, "edit"
     );
-    if (definition.key !== "user_self_profile") throw new Error("本人资料字段暂不可用，请刷新后重试");
-    profileDefinition.value = definition;
-    profileDraft.value = { ...profileDraft.value, definitionVersion: definition.version };
-    return definition;
+    if (loadedProfileDefinition.key !== "user_self_profile") throw new Error("本人资料字段暂不可用，请刷新后重试");
+    loadedDefinition.value = loadedProfileDefinition;
+    profileDraft.value = { ...profileDraft.value, definitionVersion: loadedProfileDefinition.version };
+    return loadedProfileDefinition;
   } catch (error) {
-    profileDefinition.value = null;
+    loadedDefinition.value = null;
     profileTone.value = "error";
     profileMessage.value = formatUnknownApiError(error, "读取本人资料字段失败，请刷新后重试");
     return null;
@@ -439,6 +440,48 @@ function clearPasswordForm() {
   passwordForm.currentPassword = "";
   passwordForm.newPassword = "";
   passwordForm.confirmPassword = "";
+}
+
+async function readFreshUserSelfProfileDefinition() {
+  return fetchBusinessEntryDefinition(
+    "user_self_profile",
+    { scope: "global" },
+    profileDraft.value.target!,
+    "edit"
+  );
+}
+
+function assertFreshUserSelfProfileDefinition(
+  candidate: BusinessEntrySceneDefinition & { entityId?: string; revision?: number },
+  expectedRevision: number
+) {
+  if (
+    candidate.key !== "user_self_profile" ||
+    (candidate.entityId ?? candidate.entityType) !== "user_self_profile" ||
+    (candidate.revision ?? candidate.version) !== expectedRevision
+  ) {
+    throw new Error("本人资料填写规则已变化，请刷新后重试");
+  }
+}
+
+async function validateUserSelfProfileWithDefinition(payload: BusinessEntryDraftPayload, expectedRevision: number) {
+  const definition = await readFreshUserSelfProfileDefinition();
+  assertFreshUserSelfProfileDefinition(definition, expectedRevision);
+  return validateBusinessEntryDraft({ scope: "global" }, {
+    ...payload,
+    definitionVersion: definition.version
+  }, "edit");
+}
+
+async function commitUserSelfProfileWithDefinition(
+  name: string,
+  phone: string,
+  currentPassword: string,
+  expectedRevision: number
+) {
+  const definition = await readFreshUserSelfProfileDefinition();
+  assertFreshUserSelfProfileDefinition(definition, expectedRevision);
+  return updateProfile(name, phone, currentPassword);
 }
 
 async function submitProfile() {
@@ -453,17 +496,17 @@ async function submitProfile() {
 
   profileBusy.value = true;
   try {
-    const definition = await loadProfileDefinition();
-    if (definition?.key !== "user_self_profile") return;
+    if (!loadedDefinition.value) throw new Error("本人资料填写规则尚未加载");
+    const expectedRevision = loadedDefinition.value.version;
     const payload = {
       ...profileDraft.value,
-      definitionVersion: definition.version,
+      definitionVersion: expectedRevision,
       values: {
         name: String(profileDraft.value.values.name ?? "").trim(),
         phone: String(profileDraft.value.values.phone ?? "").trim()
       }
     };
-    const validation = await validateBusinessEntryDraft({ scope: "global" }, payload, "edit");
+    const validation = await validateUserSelfProfileWithDefinition(payload, expectedRevision);
     profileErrors.value = validation.errors;
     if (!validation.valid) {
       profileTone.value = "error";
@@ -472,7 +515,12 @@ async function submitProfile() {
         .join("；");
       return;
     }
-    await updateUserSelfProfile(payload.values.name, payload.values.phone, profileForm.currentPassword);
+    await commitUserSelfProfileWithDefinition(
+      String(payload.values.name ?? ""),
+      String(payload.values.phone ?? ""),
+      profileForm.currentPassword,
+      expectedRevision
+    );
     profileDraft.value = { ...payload, values: { name: auth.user?.name ?? payload.values.name, phone: auth.user?.phone ?? payload.values.phone } };
     profileTone.value = "success";
     profileMessage.value = "基本资料已更新，下次请使用新手机号登录。";

@@ -10,6 +10,10 @@
 
 ---
 
+## POL 全树本地集成（2026-09-18）
+
+- [~] 集成候选 `codex/pol93-integration-20260917` 已按批准的 #107 极小证明边界清除原 20 项 blocker：仅补充项目定义/能力支配、受保护上传组合和账号本人资料 auth transport facade 的有限证明，不改 Schema、权限或业务语义。当前正式清单为 Nest 596 routes、Web API 550 wrappers/574 bindings、page-action 307 actions/0 blockers、route usage 596 routes/0 unclassified、capability matrix 596 routes/0 blockers；扫描器 90/90、capability matrix 47/47、Web 218 文件 2116/2116、Web typecheck、lint（0 errors，561 既有 warnings）和 UI 规则均通过。退款仍在上传前复验同一付款、采购坐标、`record_refund` 当前能力和待退款金额，金额变化即清除旧 attempt。本条随候选提交冻结；PG16、全量发布门和远端交付在冻结后执行。实现依据为 `/private/tmp/pol107-project-definition-proof-design-v0.2.md`（140 行，SHA256 `f209ba3af71b8724e9ed5d17b2fa8c204b0261679ad946c1eb8bba8b173b4e09`）。
+
 ## POL-19A 历史 finding 治理（2026-09-17，待验收）
 
 - [ ] [五票适用前提治理收据](docs/progress/2026-09-17-pol113-retired-findings-governance.md)已形成：#175/#185/#190/#193/#194 的公司/组织生产接线前提被 #201/#197 保持关闭决定替代；不声明旧修复合入或五票已关闭。退休入口专用收据、当前候选适用门、独立双审与精确 SHA CI 尚待完成，基线单项检查和测试不继承给新文档 SHA。

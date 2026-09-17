@@ -29,15 +29,26 @@ onMounted(async () => {
 
 async function submit() {
   if (busy.value || props.saving || !definition.value) return;
+  const projectId = props.projectId;
   busy.value = true;
   message.value = "";
   errors.value = [];
   const values = { ...draft.value.values };
   try {
-    const current = await loadDefinition();
+    const current = await fetchBusinessEntryDefinition(
+      "project_rename",
+      { scope: "project", projectId },
+      { entityType: "project", entityId: projectId },
+      "edit"
+    );
     if (!active) return;
-    const validation = await validateBusinessEntryDraft(scope, {
-      sceneKey: current.key, definitionVersion: current.version, target, values
+    if (current.key !== "project_rename") throw new Error("项目名称填写规则已变化，请刷新后重试");
+    definition.value = current;
+    const validation = await validateBusinessEntryDraft({ scope: "project", projectId }, {
+      sceneKey: current.key,
+      definitionVersion: current.version,
+      target: { entityType: "project", entityId: projectId },
+      values
     }, "edit");
     if (!active) return;
     errors.value = validation.errors;

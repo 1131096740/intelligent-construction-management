@@ -14,102 +14,102 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "f8880f950aa24bb1495a6898f8c27f92d1189fb19ad76ec66530296e34acc762",
+      "sha256": "a24a55ae0e650b926c92150a84f2be9719f94219ec8ea0576712ee1f70fd47d8",
       "status": "ready",
       "summary": {
-        "routeCount": 593
+        "routeCount": 596
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "3d92b10568954064bf587b4751c0d3aac052726930678217505d76e74f0e841b",
+      "sha256": "298eb7b234b9a7df13eb50ef776257bef6c780220810a824da4279f3f0f07996",
       "status": "ready",
       "summary": {
         "apiModuleCount": 27,
-        "exportedFunctionCount": 564,
-        "transportWrapperCount": 544,
+        "exportedFunctionCount": 570,
+        "transportWrapperCount": 550,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 566,
+        "mainRequestBindingCount": 574,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 566,
-        "productionConsumerCount": 438,
+        "requestEdgeCount": 574,
+        "productionConsumerCount": 445,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
-        "duplicateNormalizedRouteGroupCount": 9,
+        "duplicateNormalizedRouteGroupCount": 10,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "73af9f4211c46c5415eccd93da9cc70b2519bbb690ba8790e0c04a1301a806ff",
+      "sha256": "e55459c1bdedee620d629901d20c91a8ac043f475ac904b2ba289ac13827d47d",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 302,
-        "pageActionCount": 54,
-        "backgroundActionCount": 248,
-        "reachableVueFileCount": 139,
+        "registeredActionCount": 307,
+        "pageActionCount": 56,
+        "backgroundActionCount": 251,
+        "reachableVueFileCount": 152,
         "routeRootCount": 59,
-        "totalVueFileCount": 163,
-        "parsedVueFileCount": 163,
-        "reachableProductionModuleCount": 256,
-        "templateEventDirectiveCount": 958,
+        "totalVueFileCount": 171,
+        "parsedVueFileCount": 171,
+        "reachableProductionModuleCount": 271,
+        "templateEventDirectiveCount": 975,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 290,
-        "candidateProductionMutationConsumerCount": 290,
-        "acceptedProductionMutationConsumerCount": 290,
-        "productionMutationConsumerPairCount": 290,
+        "coveredProductionMutationConsumerCount": 297,
+        "candidateProductionMutationConsumerCount": 297,
+        "acceptedProductionMutationConsumerCount": 297,
+        "productionMutationConsumerPairCount": 297,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "f38aa41e1b4dc90c2df7afbe0171e05d02124ade470ac81c71abf1f05ac979e0",
+      "sha256": "3727022fb253a70b0974c8be3c3f1cb1540f3b936c8d7c382a6fac23fe6a4289",
       "status": "ready",
       "summary": {
-        "routeCount": 593,
-        "exactRouteCount": 593,
-        "normalizedRouteCount": 593,
+        "routeCount": 596,
+        "exactRouteCount": 596,
+        "normalizedRouteCount": 596,
         "classificationOverrideCount": 221,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
         "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-        "derivedProductionPageCount": 372,
-        "pageRouteCount": 376,
+        "derivedProductionPageCount": 375,
+        "pageRouteCount": 379,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 428,
+          "web_api_wrapper": 432,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 37,
-          "none": 120
+          "none": 119
         },
         "blockerCount": 0
       }
     }
   },
   "summary": {
-    "routeCount": 593,
-    "pageRouteCount": 376,
+    "routeCount": 596,
+    "pageRouteCount": 379,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 566,
+    "mainRequestBindingCount": 574,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 302,
-    "actionBindingCount": 337,
-    "acceptedActionBindingCount": 317,
+    "registeredActionCount": 307,
+    "actionBindingCount": 349,
+    "acceptedActionBindingCount": 326,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 290,
-    "coveredProductionMutationConsumerPairCount": 290,
+    "productionMutationConsumerPairCount": 297,
+    "coveredProductionMutationConsumerPairCount": 297,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -928,7 +928,10 @@
           "normalizedKey": "GET /business-entry-definitions/:param",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue"
+            "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/business-entry.api.test.ts"
@@ -3539,6 +3542,18 @@
           "testConsumers": [
             "apps/web-admin/src/api/fund-execution.api.test.ts"
           ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
+          "wrapper": "fetchFundExecutionCaseDetail",
+          "method": "GET",
+          "path": "/fund-executions/cases/:param",
+          "normalizedKey": "GET /fund-executions/cases/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -7602,7 +7617,8 @@
           "normalizedKey": "GET /projects/create-capability",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
           ],
           "testConsumers": []
         }
@@ -8603,10 +8619,90 @@
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
           ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementRefundForPayment",
+          "method": "GET",
+          "path": "/spot-procurement-payments/:param",
+          "normalizedKey": "GET /spot-procurement-payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherForPayment",
+          "method": "GET",
+          "path": "/spot-procurement-payments/:param",
+          "normalizedKey": "GET /spot-procurement-payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "spot-procurement-payment.refund.record",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.refund.record\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000recordSpotProcurementRefundForPayment\u0000GET\u0000GET /spot-procurement-payments/:param\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "fresh.availableActions",
+            "key": "record_refund",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementRefundForPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement-payment.refund.record",
+          "bindingIndex": 2,
+          "identity": "spot-procurement-payment.refund.record\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementRefundVoucherForPayment\u0000GET\u0000GET /spot-procurement-payments/:param\u00002",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "fresh.availableActions",
+            "key": "record_refund",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherForPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
         {
           "actionId": "spot-procurement.invoice-append",
           "bindingIndex": 0,
@@ -8949,6 +9045,49 @@
           "normalizedKey": "GET /spot-procurements/create-project-options",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/spot-procurements/projects/:projectId/application-definitions",
+        "normalizedKey": "GET /spot-procurements/projects/:param/application-definitions",
+        "controller": "SpotProcurementController",
+        "handler": "createEntryDefinitions",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "fetchSpotProcurementApplicationDefinitions",
+          "method": "GET",
+          "path": "/spot-procurements/projects/:param/application-definitions",
+          "normalizedKey": "GET /spot-procurements/projects/:param/application-definitions",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
           ],
           "testConsumers": [
@@ -9352,7 +9491,45 @@
           "transport": "auth_store_exception"
         }
       ],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "user-self-profile.update.commit",
+          "bindingIndex": 0,
+          "identity": "user-self-profile.update.commit\u0000apps/web-admin/src/lib/user-self-profile.ts\u0000updateProfile\u0000PATCH\u0000PATCH /auth/profile\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+          "capability": {
+            "kind": "server_definition",
+            "source": "definition.key",
+            "freshRead": {
+              "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+              "name": "fetchBusinessEntryDefinition",
+              "method": "GET",
+              "mode": "read_only_probe",
+              "binding": {
+                "actor": "fresh actor",
+                "company": "fresh company",
+                "scene": "fresh scene",
+                "action": "fresh action",
+                "definitionRevision": "fresh definition revision"
+              },
+              "submissionTarget": "independent"
+            },
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/lib/user-self-profile.ts",
+          "wrapper": "updateProfile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -10268,8 +10445,8 @@
       "actions": [
         {
           "actionId": "project-operating-profile.save",
-          "bindingIndex": 0,
-          "identity": "project-operating-profile.save\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000updateProjectOperatingProfile\u0000PATCH\u0000PATCH /projects/:param/operating-profile\u00000",
+          "bindingIndex": 1,
+          "identity": "project-operating-profile.save\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000updateProjectOperatingProfile\u0000PATCH\u0000PATCH /projects/:param/operating-profile\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
@@ -11600,7 +11777,7 @@
         "contractCutoverTombstoneWrite": false
       },
       "usage": "external_takeover",
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
@@ -11609,15 +11786,173 @@
           "path": "/business-entry-definitions/:param/validate",
           "normalizedKey": "POST /business-entry-definitions/:param/validate",
           "bodyKind": "json",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/business-entry.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "project-operating-profile.add-participating-company",
+          "bindingIndex": 0,
+          "identity": "project-operating-profile.add-participating-company\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "profile.canManage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-operating-profile.save",
+          "bindingIndex": 0,
+          "identity": "project-operating-profile.save\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "profile.canManage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project-operating-profile.set-construction-enterprise",
+          "bindingIndex": 0,
+          "identity": "project-operating-profile.set-construction-enterprise\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "profile.canManage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project.rename.validate",
+          "bindingIndex": 0,
+          "identity": "project.rename.validate\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+          "capability": {
+            "kind": "server_definition",
+            "source": "definition.key",
+            "freshRead": {
+              "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+              "name": "fetchBusinessEntryDefinition",
+              "method": "GET",
+              "mode": "read_only_probe",
+              "binding": {
+                "actor": "fresh actor",
+                "company": "fresh company",
+                "scene": "fresh scene",
+                "action": "fresh action",
+                "definitionRevision": "fresh definition revision"
+              },
+              "submissionTarget": "independent"
+            },
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "user-self-profile.update",
+          "bindingIndex": 0,
+          "identity": "user-self-profile.update\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+          "capability": {
+            "kind": "server_definition",
+            "source": "definition.key",
+            "freshRead": {
+              "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+              "name": "fetchBusinessEntryDefinition",
+              "method": "GET",
+              "mode": "read_only_probe",
+              "binding": {
+                "actor": "fresh actor",
+                "company": "fresh company",
+                "scene": "fresh scene",
+                "action": "fresh action",
+                "definitionRevision": "fresh definition revision"
+              },
+              "submissionTarget": "independent"
+            },
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -23358,8 +23693,8 @@
       "actions": [
         {
           "actionId": "project-operating-profile.set-construction-enterprise",
-          "bindingIndex": 0,
-          "identity": "project-operating-profile.set-construction-enterprise\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000assignProjectConstructionEnterprise\u0000POST\u0000POST /projects/:param/construction-enterprise\u00000",
+          "bindingIndex": 1,
+          "identity": "project-operating-profile.set-construction-enterprise\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000assignProjectConstructionEnterprise\u0000POST\u0000POST /projects/:param/construction-enterprise\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
@@ -27346,6 +27681,72 @@
     {
       "route": {
         "method": "POST",
+        "path": "/projects/:projectId/participating-companies/:participantId/deactivation/validate",
+        "normalizedKey": "POST /projects/:param/participating-companies/:param/deactivation/validate",
+        "controller": "ProjectController",
+        "handler": "validateParticipatingCompanyDeactivation",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.operating_profile.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "validateProjectParticipatingCompanyDeactivation",
+          "method": "POST",
+          "path": "/projects/:param/participating-companies/:param/deactivation/validate",
+          "normalizedKey": "POST /projects/:param/participating-companies/:param/deactivation/validate",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-operating-profile.deactivate-participating-company",
+          "bindingIndex": 1,
+          "identity": "project-operating-profile.deactivate-participating-company\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000validateProjectParticipatingCompanyDeactivation\u0000POST\u0000POST /projects/:param/participating-companies/:param/deactivation/validate\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "profile.canManage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "validateProjectParticipatingCompanyDeactivation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/projects/:projectId/participating-companies",
         "normalizedKey": "POST /projects/:param/participating-companies",
         "controller": "ProjectController",
@@ -27384,8 +27785,8 @@
       "actions": [
         {
           "actionId": "project-operating-profile.add-participating-company",
-          "bindingIndex": 0,
-          "identity": "project-operating-profile.add-participating-company\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000addProjectParticipatingCompany\u0000POST\u0000POST /projects/:param/participating-companies\u00000",
+          "bindingIndex": 1,
+          "identity": "project-operating-profile.add-participating-company\u0000apps/web-admin/src/api/project-operating-profile.api.ts\u0000addProjectParticipatingCompany\u0000POST\u0000POST /projects/:param/participating-companies\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
@@ -28555,6 +28956,76 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/create-validation",
+        "normalizedKey": "POST /projects/create-validation",
+        "controller": "ProjectController",
+        "handler": "validateCreation",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "general_manager"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "validateProjectCreation",
+          "method": "POST",
+          "path": "/projects/create-validation",
+          "normalizedKey": "POST /projects/create-validation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-create.validate",
+          "bindingIndex": 0,
+          "identity": "project-create.validate\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000validateProjectCreation\u0000POST\u0000POST /projects/create-validation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_project",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "validateProjectCreation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -32598,10 +33069,50 @@
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
           ],
           "testConsumers": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherForPayment",
+          "method": "POST",
+          "path": "/spot-procurements/:param/refund-voucher-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "spot-procurement-payment.refund.record",
+          "bindingIndex": 3,
+          "identity": "spot-procurement-payment.refund.record\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementRefundVoucherForPayment\u0000POST\u0000POST /spot-procurements/:param/refund-voucher-file-uploads\u00003",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "fresh.availableActions",
+            "key": "record_refund",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherForPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "spot-procurement-receipt.refund-voucher.upload",
           "bindingIndex": 0,
@@ -32667,10 +33178,50 @@
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
           ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementRefundForPayment",
+          "method": "POST",
+          "path": "/spot-procurements/:param/refunds",
+          "normalizedKey": "POST /spot-procurements/:param/refunds",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "spot-procurement-payment.refund.record",
+          "bindingIndex": 1,
+          "identity": "spot-procurement-payment.refund.record\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000recordSpotProcurementRefundForPayment\u0000POST\u0000POST /spot-procurements/:param/refunds\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "fresh.availableActions",
+            "key": "record_refund",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementRefundForPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "spot-procurement-receipt.refund.record",
           "bindingIndex": 0,
