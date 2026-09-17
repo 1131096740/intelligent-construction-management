@@ -79,6 +79,22 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     return { status: response.status, body: await response.json() as { id: string; status: string; entryDefinition: BusinessEntrySceneDefinition; entrySnapshots: Array<{ definitionSnapshot: BusinessEntrySceneDefinition; valuesSnapshot: Record<string, unknown> }> } };
   }
 
+  (enabled ? it : it.skip)("草稿附件上传仍拒绝无关账号和非法幂等键，不改变草稿或提交快照", async () => {
+    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "附件权限验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    async function upload(accessToken: string, idempotencyKey?: string) {
+      const body = new FormData();
+      body.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成费用凭证.png");
+      if (idempotencyKey !== undefined) body.append("idempotencyKey", idempotencyKey);
+      return fetch(`${baseUrl}${path}/draft-attachment-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body });
+    }
+    expect((await upload(strangerToken)).status).toBe(403);
+    expect((await upload(token, "invalid-key")).status).toBe(400);
+    const detail = await request(path);
+    expect(detail).toMatchObject({ status: 200, body: { status: "draft", requestedAmountCents: "1", attachments: [], entrySnapshots: [] } });
+  });
+
   (enabled ? it : it.skip)("项目借款明确提交后按原授权回读当时字段与金额，重复提交不增加快照", async () => {
     const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" });
     if (created.status !== 201) throw new Error(JSON.stringify(created));

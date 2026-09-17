@@ -19,7 +19,7 @@ try {
   command("docker", ["run", "--detach", "--rm", "--pull=never", "--name", name, "--env", "POSTGRES_PASSWORD", "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_DB=jiangkong_pol115_entry_test", "--publish", "127.0.0.1::5432", "postgres:16"], { ...process.env, POSTGRES_PASSWORD: password });
   const port = command("docker", ["port", name, "5432/tcp"], process.env, true).split(":").pop();
   command("docker", ["exec", name, "sh", "-c", "until pg_isready -U jiangkong -d jiangkong_pol115_entry_test; do sleep 0.2; done"]);
-  const env = { ...process.env, XDG_CACHE_HOME: mkdtempSync(path.join(tmpdir(), "pol115-entry-cache-")), NODE_ENV: "test", RUN_POL115_ENTRY_PG16: "1", DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/jiangkong_pol115_entry_test` };
+  const env = { ...process.env, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: mkdtempSync(path.join(tmpdir(), "pol115-entry-files-")), XDG_CACHE_HOME: mkdtempSync(path.join(tmpdir(), "pol115-entry-cache-")), NODE_ENV: "test", RUN_POL115_ENTRY_PG16: "1", DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/jiangkong_pol115_entry_test` };
   command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...process.argv.slice(2).length ? process.argv.slice(2) : ["src/expense-claim/expense-claim-entry.http.pg.spec.ts", "src/fund-execution/fund-execution-entry.http.pg.spec.ts"]], env);
 } finally {

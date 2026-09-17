@@ -890,6 +890,7 @@ onMounted(() => void loadDetail());
         </t-card>
         <t-card
           v-else-if="tab === 'attachments'"
+          class="expense-claim-detail__attachment-panel jg-table-region jg-table-region--wide"
           :bordered="true"
         >
           <div class="expense-claim-detail__attachments">
@@ -929,10 +930,11 @@ onMounted(() => void loadDetail());
               </t-button>
             </template>
             <t-table
+              class="expense-claim-detail__attachment-table"
               row-key="id"
               size="small"
               :columns="[
-                { colKey: 'fileName', title: '文件' },
+                { colKey: 'fileName', title: '文件', minWidth: 200 },
                 { colKey: 'category', title: '类别', width: 150 },
                 { colKey: 'expenseCategory', title: '关联费用类别', width: 150 },
                 { colKey: 'stage', title: '状态', width: 130 },
@@ -970,6 +972,48 @@ onMounted(() => void loadDetail());
                 <span v-else>已留痕</span>
               </template>
             </t-table>
+            <section
+              class="expense-claim-detail__attachment-cards"
+              aria-label="费用附件列表"
+            >
+              <p v-if="!detail.attachments.length">
+                暂无附件
+              </p>
+              <t-card
+                v-for="attachment in detail.attachments"
+                :key="attachment.id"
+                size="small"
+                :bordered="true"
+              >
+                <strong>{{ attachment.fileName }}</strong>
+                <dl>
+                  <dt>类别</dt>
+                  <dd>{{ attachment.category === 'invoice' ? '发票' : attachment.category === 'receipt_or_other' ? '收据或其他凭证' : '其他资料' }}</dd>
+                  <dt>关联费用类别</dt>
+                  <dd>{{ attachment.expenseCategory || '未填写' }}</dd>
+                  <dt>状态</dt>
+                  <dd>{{ attachment.removedAt ? '已从草稿移除' : attachment.stage === 'approval_frozen' ? '已冻结于审批快照' : attachment.stage === 'post_submit_append' ? '提交后追加' : '草稿附件' }}</dd>
+                  <dt>上传人</dt>
+                  <dd>{{ attachment.attachedByName }}</dd>
+                  <dt>上传时间</dt>
+                  <dd>{{ date(attachment.createdAt) }}</dd>
+                </dl>
+                <t-popconfirm
+                  v-if="detail.status === 'draft' && !attachment.removedAt"
+                  content="确认从当前草稿移除该附件？已上传的资料仍保留审计记录。"
+                  confirm-btn="确认移除"
+                  @confirm="removeAttachment(attachment.id)"
+                >
+                  <t-button
+                    theme="danger"
+                    variant="text"
+                    :loading="attachmentUploading"
+                  >
+                    移除
+                  </t-button>
+                </t-popconfirm>
+              </t-card>
+            </section>
           </div>
         </t-card>
         <t-card
@@ -1078,7 +1122,14 @@ onMounted(() => void loadDetail());
 
 <style scoped>
 .expense-claim-detail { display: grid; gap: var(--jg-space-lg); min-width: 0; }
-.expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); }
+.expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); min-width: 0; }
+.expense-claim-detail__attachment-cards { display: none; }
+@media (max-width: 767px) {
+  .expense-claim-detail__attachment-table { display: none; }
+  .expense-claim-detail__attachment-cards { display: grid; gap: var(--jg-space-md); min-width: 0; overflow-wrap: anywhere; }
+  .expense-claim-detail__attachment-cards dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--jg-space-sm); }
+  .expense-claim-detail__attachment-cards dd { margin: 0; }
+}
 .expense-claim-detail__review-form { display: grid; gap: var(--jg-space-md); }
 .expense-claim-detail__payment-subject { display: flex; align-items: center; gap: var(--jg-space-xs); }
 .expense-claim-detail__payment-list { display: grid; gap: var(--jg-space-xs); }

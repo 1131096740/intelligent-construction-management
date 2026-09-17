@@ -115,4 +115,22 @@ test("统一费用字段保存一分钱项目借款草稿，不自动提交审�
   const detail = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect(detail.ok()).toBe(true);
   expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器项目借款", payeeNameSnapshot: "合成收款人", payeeBankAccountSnapshot: "000012340001", entrySnapshots: [] });
+  await page.goto(`/费用与报销/${claim.id}`);
+  await page.getByText("附件与证据", { exact: true }).click();
+  await page.locator('.expense-claim-detail__attachments input[type="file"]').setInputFiles({
+    name: "合成费用凭证.png", mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")
+  });
+  const uploaded = page.waitForResponse((response) => response.url().endsWith(`/expense-claims/${claim.id}/draft-attachment-file-uploads`) && response.request().method() === "POST");
+  await page.getByRole("button", { name: "上传并绑定附件", exact: true }).click();
+  const uploadResponse = await uploaded;
+  expect(uploadResponse.status(), await uploadResponse.text()).toBe(201);
+  const attachmentList = page.viewportSize()!.width < 768
+    ? page.getByRole("region", { name: "费用附件列表" })
+    : page.locator(".expense-claim-detail__attachments table");
+  await expect(attachmentList.getByText("合成费用凭证.png", { exact: true })).toBeVisible();
+  expect(await page.locator(".expense-claim-detail__attachment-panel").evaluate((element) => element.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
+  const withAttachment = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
+  expect(withAttachment.ok()).toBe(true);
+  expect(await withAttachment.json()).toMatchObject({ status: "draft", attachments: [{ fileName: "合成费用凭证.png", category: "receipt_or_other" }], entrySnapshots: [] });
 });
