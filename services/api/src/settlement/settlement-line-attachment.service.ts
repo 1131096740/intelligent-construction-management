@@ -149,8 +149,15 @@ export class SettlementLineAttachmentService {
       if (!settlementLineId) throw new BadRequestException("结算明细附件找不到对应的正式结算行，已停止提交");
       return { settlementLineId, fileId: attachment.fileId, purpose: attachment.purpose, uploadedByUserId: attachment.uploadedByUserId };
     });
-    if (!copies.length) return;
+    if (!copies.length) return [];
     await tx.settlementLineAttachment.createMany({ data: copies });
+    const formalAttachments = await tx.settlementLineAttachment.findMany({
+      where: {
+        settlementLineId: { in: settlementLines.map((line) => line.id) },
+        status: "active"
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
     await this.audit.record(tx, {
       actorUserId,
       action: "settlement.line_attachment.copy_to_settlement",
@@ -158,6 +165,7 @@ export class SettlementLineAttachmentService {
       businessId: settlementId,
       metadata: { draftId, attachmentCount: copies.length }
     });
+    return formalAttachments;
   }
 
   private async assertDraftOwner(projectId: string, draftId: string, actorUserId: string) {

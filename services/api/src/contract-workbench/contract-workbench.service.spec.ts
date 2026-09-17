@@ -2,6 +2,12 @@ import { Prisma } from "@prisma/client";
 import { ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractWorkbenchService } from "./contract-workbench.service";
+import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/business-entry-definition.snapshot-store";
+import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
+import { CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION } from "./contract-business-entry-definition";
+import { AuditService } from "../audit/audit.service";
 
 describe("ContractWorkbenchService", () => {
   const audit = {
@@ -388,6 +394,24 @@ describe("ContractWorkbenchService", () => {
       }
     });
     const service = makeService(tx);
+    // Database fixtures only; exercise production authorization and freezing.
+    Object.assign(tx.contract, {
+      findUnique: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" }),
+      findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
+    });
+    Object.assign(tx, {
+      businessEntrySubmissionSnapshot: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: "snapshot-1", ...data }))
+      },
+      auditLog: { create: jest.fn() }
+    });
+    Reflect.set(service, "businessEntry", new BusinessEntryTransactionService(
+      createBusinessEntryDefinitionRegistry([CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION]),
+      BUSINESS_ENTRY_TRANSACTION_REGISTRY,
+      new PrismaBusinessEntrySnapshotStore({} as PrismaService, new AuditService())
+    ));
 
     await service.confirmSettlementMode("version-1", "director-1", {
       expectedRevision: 4,

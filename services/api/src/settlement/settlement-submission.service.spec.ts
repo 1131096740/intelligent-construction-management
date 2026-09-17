@@ -37,8 +37,10 @@ describe("SettlementSubmissionService", () => {
       settlementTemplateVersionId: "template-1",
       code: "JS-DRAFT-001",
       periodLabel: "2026-07",
+      periodEnd: new Date("2026-07-31T00:00:00.000Z"),
       isFinal: false,
       finalCumulativeAmountCents: null,
+      finalDeclarationSnapshot: null,
       lines: [
         {
           sourceType: "contract_bill_row",
@@ -85,6 +87,9 @@ describe("SettlementSubmissionService", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -117,24 +122,40 @@ describe("SettlementSubmissionService", () => {
       }),
       ...coreOverrides
     };
+    const businessEntrySnapshot = {
+      sceneKey: "settlement_basic",
+      definitionVersion: 1,
+      target: { projectId: "project-1", entityType: "settlement", entityId: settlement.id },
+      revision: 1,
+      definition: {},
+      values: { code: draft.code, periodLabel: draft.periodLabel },
+      frozenAt: "2026-07-08T00:00:00.000Z"
+    };
+    const businessEntry = {
+      freezeSubmissionSnapshotInTransaction: jest.fn().mockResolvedValue(businessEntrySnapshot)
+    };
+    const service = new SettlementSubmissionService(
+      prisma as never,
+      settlements as never,
+      counterpartyDocuments as never,
+      frozenDocuments as never
+    );
+    Reflect.set(service, "businessEntry", businessEntry);
     return {
       draft,
       tx,
       prisma,
       settlements,
-      service: new SettlementSubmissionService(
-        prisma as never,
-        settlements as never,
-        counterpartyDocuments as never,
-        frozenDocuments as never
-      ),
+      service,
+      businessEntry,
+      businessEntrySnapshot,
       counterpartyDocuments,
       frozenDocuments
     };
   }
 
   it("claims the expected revision and atomically marks a successful draft submitted", async () => {
-    const { tx, settlements, service, counterpartyDocuments, frozenDocuments } = context();
+    const { tx, settlements, service, counterpartyDocuments, frozenDocuments, businessEntry } = context();
 
     await expect(
       service.submitDraft("project-1", "draft-1", "owner-1", 3)
@@ -176,6 +197,91 @@ describe("SettlementSubmissionService", () => {
     });
     expect(frozenDocuments.assertCurrentFacts.mock.invocationCallOrder[0]).toBeLessThan(
       counterpartyDocuments.assertReadyForSubmission.mock.invocationCallOrder[0]!
+    );
+    expect(businessEntry.freezeSubmissionSnapshotInTransaction).toHaveBeenCalledWith(
+      tx,
+      "owner-1",
+      expect.objectContaining({
+        sceneKey: "settlement_basic",
+        target: { projectId: "project-1", entityType: "settlement", entityId: "settlement-1" },
+        values: {
+          contractVersionId: "version-1",
+          settlementTemplateVersionId: "template-1",
+          code: "JS-DRAFT-001",
+          periodLabel: "2026-07",
+          periodEnd: "2026-07-31",
+          isFinal: false,
+          fieldReviewerUserId: "reviewer-1",
+          fieldReviewerRoleKey: "material_staff"
+        }
+      })
+    );
+  });
+
+  it("freezes the existing final-settlement declaration and cumulative amount from the draft", async () => {
+    const current = context({
+      isFinal: true,
+      finalDeclarationSnapshot: { accepted: true },
+      finalCumulativeAmountCents: 12345n
+    });
+
+    await current.service.submitDraft("project-1", "draft-1", "owner-1", 3);
+
+    expect(current.businessEntry.freezeSubmissionSnapshotInTransaction).toHaveBeenCalledWith(
+      current.tx,
+      "owner-1",
+      expect.objectContaining({
+        values: expect.objectContaining({
+          isFinal: true,
+          finalDeclarationAccepted: true,
+          finalCumulativeAmountYuan: "123.45"
+        })
+      })
+    );
+  });
+
+  it("freezes each formal settlement line in the submission transaction", async () => {
+    const current = context();
+    current.tx.settlementLine.findMany.mockResolvedValueOnce([{
+      id: "settlement-line-1",
+      sourceType: "manual_adjustment",
+      adjustmentKind: "other",
+      contractBillRowId: null,
+      sourceItemId: null,
+      sourceDate: null,
+      name: "现场调整",
+      description: null,
+      unit: null,
+      quantity: null,
+      unitPriceCents: null,
+      amountCents: 10000n,
+      pricingBasis: null,
+      overageTreatment: null,
+      relatedSettlementLineId: null,
+      reason: "现场复核",
+      remark: null
+    }]);
+
+    await current.service.submitDraft("project-1", "draft-1", "owner-1", 3);
+
+    expect(current.businessEntry.freezeSubmissionSnapshotInTransaction).toHaveBeenNthCalledWith(
+      2,
+      current.tx,
+      "owner-1",
+      expect.objectContaining({
+        sceneKey: "settlement_line",
+        target: {
+          projectId: "project-1",
+          entityType: "settlement_line",
+          entityId: "settlement-line-1"
+        },
+        values: expect.objectContaining({
+          sourceType: "manual_adjustment",
+          name: "现场调整",
+          amountYuan: "100.00",
+          reason: "现场复核"
+        })
+      })
     );
   });
 

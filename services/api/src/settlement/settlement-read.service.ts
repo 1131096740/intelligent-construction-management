@@ -4,6 +4,8 @@ import {
   contractInvoiceTypeLabel,
   contractTaxModeLabel,
   type ContractInvoiceType,
+  type BusinessEntryFrozenSnapshot,
+  type BusinessEntrySceneDefinition,
   type ContractTaxMode,
   type CoreFlowTone,
   type DetailActionReadModel,
@@ -961,9 +963,38 @@ export class SettlementReadService {
       contractVersion,
       settlementLines
     );
+    const settlementLineAttachments = settlementLines.length
+      ? await this.prisma.settlementLineAttachment.findMany({
+          where: { settlementLineId: { in: settlementLines.map((line) => line.id) } },
+          select: { id: true }
+        })
+      : [];
+    const entrySnapshots = await this.prisma.businessEntrySubmissionSnapshot.findMany({
+      where: {
+        projectId: settlement.projectId,
+        OR: [
+          { sceneKey: "settlement_basic", entityType: "settlement", entityId: settlement.id },
+          { sceneKey: "settlement_line", entityType: "settlement_line", entityId: { in: settlementLines.map((line) => line.id) } },
+          {
+            sceneKey: "settlement_line_attachment_purpose",
+            entityType: "settlement_line_attachment",
+            entityId: { in: settlementLineAttachments.map((attachment) => attachment.id) }
+          }
+        ]
+      },
+      orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
+    });
+    const businessEntryHistory: BusinessEntryFrozenSnapshot[] = entrySnapshots.map((snapshot) => ({
+      sceneKey: snapshot.sceneKey,
+      target: { projectId: settlement.projectId, entityType: snapshot.entityType, entityId: snapshot.entityId },
+      revision: snapshot.revision, definitionVersion: snapshot.definitionVersion,
+      definition: snapshot.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
+      values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
+    }));
 
     return {
       id: settlement.code,
+      businessEntryHistory,
       settlementId: settlement.id,
       title: `${settlement.code} · ${settlement.periodLabel}结算单`,
       meta: [

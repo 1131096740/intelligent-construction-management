@@ -8,7 +8,8 @@ import { Prisma } from "@prisma/client";
 import {
   isContractBillCustomColumn,
   normalizeContractBillBoolean,
-  normalizeTaxRatePercent
+  normalizeTaxRatePercent,
+  type BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
@@ -23,6 +24,7 @@ import {
   recalculateBillAndContractAmount
 } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
+import { resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
 import {
   describeContractBillImportDiff,
   type ContractBillImportDiff,
@@ -186,6 +188,9 @@ export class ContractBillExcelService {
         : "5. 多税率合同可在税率列填写例外税率；税率列留空继承合同默认税率。"
     ]);
     instructions.getColumn(1).width = 80;
+    for (const field of bill.businessEntryDefinition?.fields ?? []) {
+      instructions.addRow([field.label, field.description, field.example]);
+    }
 
     const sheet = workbook.addWorksheet(DATA_SHEET);
     sheet.addRow(columns.map((column) => column.label));
@@ -1198,6 +1203,7 @@ export class ContractBillExcelService {
     actorUserId: string
   ) {
     const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+    const entry = (await resolveContractBillEntries(tx, version)).find((candidate) => candidate.billId === bill.id);
     return {
       bill: {
         id: bill.id,
@@ -1208,6 +1214,7 @@ export class ContractBillExcelService {
         quantityScale: bill.quantityScale,
         unitPriceScale: bill.unitPriceScale,
         schemaSnapshot: bill.schemaSnapshot,
+        businessEntryDefinition: entry?.definition,
         pricingNature: version.pricingNature,
         amountLimitType: version.amountLimitType,
         taxMode: version.taxMode,
@@ -1286,7 +1293,10 @@ export class ContractBillExcelService {
       label: column.label,
       required: column.required
     }));
-    return [...CORE_FIELDS, ...custom, { code: ROW_KEY_CODE, label: ROW_KEY_CODE, required: false }];
+    const fields = new Map(bill.businessEntryDefinition?.fields.map((field) => [field.key, field]));
+    return [...CORE_FIELDS, ...custom].map((column) => ({
+      ...column, label: fields.get(column.code)?.excel.column ?? column.label
+    })).concat({ code: ROW_KEY_CODE, label: ROW_KEY_CODE, required: false });
   }
 
   private schemaColumns(value: Prisma.JsonValue) {
@@ -1408,6 +1418,7 @@ export class ContractBillExcelService {
 }
 
 interface BillContext {
+  businessEntryDefinition?: BusinessEntrySceneDefinition;
   id: string;
   contractVersionId: string;
   revision: number;

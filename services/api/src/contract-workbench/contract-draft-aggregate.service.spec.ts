@@ -46,6 +46,7 @@ describe("ContractDraftAggregateService", () => {
     director?: boolean;
   } = {}) {
     const prisma = {
+      $transaction: jest.fn(),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue(
           overrides.foundVersion === undefined ? version : overrides.foundVersion
@@ -84,6 +85,7 @@ describe("ContractDraftAggregateService", () => {
         ])
       }
     };
+    prisma.$transaction.mockImplementation((run: (tx: typeof prisma) => unknown) => run(prisma));
     const workbench = {
       getDraftFromExactVersion: overrides.readError
         ? jest.fn().mockRejectedValue(overrides.readError)

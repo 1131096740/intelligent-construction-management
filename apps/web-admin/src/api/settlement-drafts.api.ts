@@ -1,6 +1,6 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
-import type { DetailActionReadModel } from "@jiangkong/shared-domain";
+import type { BusinessEntrySceneDefinition, DetailActionReadModel } from "@jiangkong/shared-domain";
 import type {
   SettlementFieldReviewerRoleKey,
   SettlementLineDraftPayload
@@ -58,6 +58,11 @@ export interface SettlementDraftReadModel {
   submissionBlockingReason: string | null;
   /** Present on the draft detail endpoint; create/update/list responses remain scalar-only. */
   documents?: SettlementDraftDocumentsReadModel;
+  /** Same fixed draft facts that are frozen by the original approval submission. */
+  businessEntry?: {
+    definition: BusinessEntrySceneDefinition;
+    values: Record<string, unknown>;
+  };
 }
 
 export interface SettlementFinalPreparationReadModel {

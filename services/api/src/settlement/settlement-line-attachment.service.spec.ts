@@ -70,12 +70,19 @@ describe("SettlementLineAttachmentService", () => {
     const { tx, audit, service } = context();
     tx.settlementDraftLine.findMany.mockResolvedValue([{ id: "draft-line-1", lineKey: "visa:visa-1" }]);
     tx.settlementLine.findMany.mockResolvedValue([{ id: "settlement-line-1", lineKey: "visa:visa-1" }]);
-    tx.settlementLineAttachment.findMany.mockResolvedValue([{ fileId: "file-1", purpose: "现场签证单", uploadedByUserId: "owner-1", settlementDraftLineId: "draft-line-1" }]);
+    tx.settlementLineAttachment.findMany
+      .mockResolvedValueOnce([{ fileId: "file-1", purpose: "现场签证单", uploadedByUserId: "owner-1", settlementDraftLineId: "draft-line-1" }])
+      .mockResolvedValueOnce([{ id: "formal-attachment-1", settlementLineId: "settlement-line-1", fileId: "file-1", purpose: "现场签证单" }]);
 
-    await service.copyActiveDraftAttachmentsToSettlement(tx as never, "draft-1", "settlement-1", "owner-1");
+    await expect(service.copyActiveDraftAttachmentsToSettlement(tx as never, "draft-1", "settlement-1", "owner-1"))
+      .resolves.toEqual([expect.objectContaining({ id: "formal-attachment-1", purpose: "现场签证单" })]);
 
     expect(tx.settlementLineAttachment.createMany).toHaveBeenCalledWith({
       data: [{ settlementLineId: "settlement-line-1", fileId: "file-1", purpose: "现场签证单", uploadedByUserId: "owner-1" }]
+    });
+    expect(tx.settlementLineAttachment.findMany).toHaveBeenNthCalledWith(2, {
+      where: { settlementLineId: { in: ["settlement-line-1"] }, status: "active" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "settlement.line_attachment.copy_to_settlement" }));
   });

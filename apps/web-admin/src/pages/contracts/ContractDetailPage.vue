@@ -109,6 +109,26 @@
         class="tab-content"
         aria-label="合同概览"
       >
+        <section
+          v-if="contractDetail.businessEntrySubmissions?.length"
+          class="content-panel"
+          aria-label="合同提交记录"
+        >
+          <header class="section-heading">
+            <div>
+              <h2>提交记录</h2>
+              <p>按合同提交时冻结的字段定义和值展示。</p>
+            </div>
+          </header>
+          <BusinessEntryGrid
+            v-for="entry in contractDetail.businessEntrySubmissions"
+            :key="`${entry.approvalInstanceId}:${entry.snapshot.sceneKey}:${entry.snapshot.target.entityType}:${entry.snapshot.target.entityId}:${entry.snapshot.revision}`"
+            :definition="entry.snapshot.definition"
+            :model-value="[frozenSnapshotDraft(entry.snapshot)]"
+            :readonly="true"
+          />
+        </section>
+
         <section class="content-panel content-panel--plain">
           <header class="section-heading">
             <div>
@@ -1211,7 +1231,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
+import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -1258,6 +1278,7 @@ import {
 import { ContractSigningMaterialChangeResultUnknownError } from "../../lib/contract-signing-material-change-result";
 import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import JgApprovalTimeline from "../../components/JgApprovalTimeline.vue";
 import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
@@ -1304,6 +1325,16 @@ import {
   type NormalizedContractChangeVersion
 } from "./contract-change.state";
 import { contractVersionStatusLabel } from "./contract-labels";
+
+function frozenSnapshotDraft(snapshot: BusinessEntryFrozenSnapshot): BusinessEntryDraftPayload {
+  return {
+    sceneKey: snapshot.sceneKey,
+    definitionVersion: snapshot.definitionVersion,
+    target: snapshot.target,
+    expectedRevision: snapshot.revision,
+    values: snapshot.values
+  };
+}
 
 async function downloadContractApprovalFormWithCapability(
   contractId: string,

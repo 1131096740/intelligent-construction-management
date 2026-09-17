@@ -344,6 +344,49 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   });
 });
 
+test("renders frozen settlement entry history on desktop and 390px", async ({ page }) => {
+  await page.route("**/api/auth/login", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      user: {
+        id: "ui-p1-settlement-user", name: "结算验收用户", phone: "13900000000",
+        mustChangePassword: false,
+        roleKeys: ["budget_director", "contract_staff", "project_manager"],
+        globalRoleKeys: ["budget_director"]
+      },
+      tokens: { accessToken: "ui-p1-access", refreshToken: "ui-p1-refresh", expiresIn: 900 }
+    })
+  }));
+  await page.route("**/api/me/work-items", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      generatedAt: "2026-07-14T08:00:00.000Z", visibleProjectCount: 1,
+      queues: { pending: [], blocked: [], started: [] },
+      approvalCenter: { pendingApproval: [], startedByMe: [], handledByMe: [], delegatedToMe: [], overdueReminder: [] }
+    })
+  }));
+  await page.route("**/api/settlements/JS-UI-001", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(approvalDetailBody)
+  }));
+
+  await login(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/settlements/JS-UI-001");
+  await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
+  await expect(page.locator(".business-entry-grid")).toHaveCount(2);
+  await expect(page.locator(".entry-history__item p").nth(1)).toContainText("结算明细·现场调整");
+  await expect(page.getByText("100.00", { exact: true })).toBeVisible();
+  await expectNoDocumentHorizontalOverflow(page);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".business-entry-mobile-cards")).toHaveCount(2);
+  await expect(page.getByText("结算编号", { exact: true })).toBeVisible();
+  await expect(page.getByText("结算期间", { exact: true }).last()).toBeVisible();
+  await expect(page.locator(".business-entry-field__label", { hasText: "调整原因" })).toBeVisible();
+  await expectNoDocumentHorizontalOverflow(page);
+  await capture(page, "settlement-detail-entry-history-390x844.png");
+});
+
 function settlementDetail(input: {
   id: string;
   title: string;
@@ -373,6 +416,49 @@ function settlementDetail(input: {
       { label: "是否最终结算", value: "否" },
       { label: "结算金额", value: "¥320,000.00" },
       { label: "创建人", value: "项目经理 张工" }
+    ],
+    businessEntryHistory: [
+      {
+        sceneKey: "settlement_basic",
+        target: { projectId: "project-1", entityType: "settlement", entityId: `record-${input.id}` },
+        revision: 1,
+        definitionVersion: 1,
+        definition: {
+          key: "settlement_basic",
+          entityType: "settlement",
+          version: 1,
+          name: "结算基础信息",
+          description: "本次结算的编号与期间。",
+          rules: [],
+          fields: [
+            entryField("code", "结算编号", 1),
+            entryField("periodLabel", "结算期间", 2)
+          ]
+        },
+        values: { code: input.id, periodLabel: input.id === "JS-UI-ARCHIVE" ? "2026年5月" : "2026年6月" },
+        frozenAt: "2026-07-14T08:30:00.000Z"
+      },
+      {
+        sceneKey: "settlement_line",
+        target: { projectId: "project-1", entityType: "settlement_line", entityId: `line-${input.id}` },
+        revision: 1,
+        definitionVersion: 1,
+        definition: {
+          key: "settlement_line",
+          entityType: "settlement_line",
+          version: 1,
+          name: "结算明细·现场调整",
+          description: "提交时冻结的结算明细。",
+          rules: [],
+          fields: [
+            { ...entryField("name", "明细名称", 1), scope: "line" },
+            { ...entryField("amountYuan", "金额（元）", 2), scope: "line" },
+            { ...entryField("reason", "调整原因", 3), scope: "line", required: false }
+          ]
+        },
+        values: { name: "现场调整", amountYuan: "100.00", reason: "现场复核" },
+        frozenAt: "2026-07-14T08:30:01.000Z"
+      }
     ],
     taxFactSummary: [
       { label: "发票类型", value: "增值税专用发票" },
@@ -423,6 +509,7 @@ function settlementDetail(input: {
         taxAmount: "¥36,814.16",
         taxBreakdownNote: "按提交时冻结的合同税务事实计算",
         reason: "按验收数量结算",
+        overageReason: "-",
         remark: "-"
       }
     ],
@@ -459,6 +546,25 @@ function settlementDetail(input: {
       { label: "归档资料", to: "/archives" },
       { label: "审计日志", to: "/audit" }
     ]
+  };
+}
+
+function entryField(key: string, label: string, order: number) {
+  return {
+    key,
+    label,
+    type: "text",
+    order,
+    scope: "header",
+    description: label,
+    example: "",
+    unit: "",
+    precision: 0,
+    required: true,
+    permissions: { view: ["contract_staff"], edit: ["contract_staff"] },
+    bulk: { enabled: false, strategy: "replace" },
+    excel: { column: label, paste: "single", errorLocation: "cell" },
+    display: { formHint: label, gridColumn: label, mobilePriority: order, readonlyText: label }
   };
 }
 

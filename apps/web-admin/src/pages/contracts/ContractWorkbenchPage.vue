@@ -587,6 +587,7 @@
                 <ContractOverviewSection :workbench="workbench" />
                 <ContractBasicSection
                   mode="basic"
+                  :definition="workbench?.businessEntry?.definition"
                   :model="model"
                   :disabled="editorDisabled"
                   :name-disabled="editorDisabled || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
@@ -667,6 +668,7 @@
               >
                 <ContractBasicSection
                   mode="settlement"
+                  :settlement-definition="workbench?.settlementModeEntry?.definition"
                   :model="model"
                   :disabled="editorDisabled"
                   :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"

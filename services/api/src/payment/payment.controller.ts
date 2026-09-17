@@ -33,6 +33,7 @@ import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
+import { PAYMENT_REQUEST_ENTRY_DEFINITION } from "./payment-request-business-entry-definition";
 
 @Controller("payments")
 export class PaymentController {
@@ -54,7 +55,8 @@ export class PaymentController {
   createCapability(@Query("projectId") projectId: string) {
     return {
       projectId,
-      availableActions: ["create_payment"]
+      availableActions: ["create_payment"],
+      businessEntry: { definition: PAYMENT_REQUEST_ENTRY_DEFINITION }
     };
   }
 

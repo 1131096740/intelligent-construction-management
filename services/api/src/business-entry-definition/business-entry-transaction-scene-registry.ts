@@ -1,7 +1,15 @@
 import type { Prisma } from "@prisma/client";
+import { SETTLEMENT_BASIC_ENTRY_POLICY } from "../settlement/settlement-business-entry-policy";
+import { SETTLEMENT_LINE_ENTRY_POLICY } from "../settlement/settlement-line-business-entry-policy";
+import { SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_POLICY } from "../settlement/settlement-line-attachment-business-entry-policy";
+import { PAYMENT_FINANCE_ENTRY_POLICY } from "../payment/payment-business-entry-policy";
+import { PAYMENT_REQUEST_ENTRY_POLICY } from "../payment/payment-request-business-entry-policy";
+import { PAYMENT_APPROVAL_AMOUNT_ENTRY_POLICY } from "../payment/payment-approval-amount-business-entry-policy";
+import { CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY, CONTRACT_SETTLEMENT_MODE_ENTRY_POLICY, CONTRACT_COMMERCIAL_ENTRY_POLICY, CONTRACT_PARTY_ENTRY_POLICY, CONTRACT_PAYMENT_TERMS_ENTRY_POLICY, CONTRACT_PAYMENT_STAGE_ENTRY_POLICY } from "../contract-workbench/contract-business-entry-policy";
 import {
   BUSINESS_ACTIONS,
   type BusinessAction,
+  type BusinessEntrySceneDefinition,
   type BusinessEntryOperation,
   type BusinessEntrySubmissionTarget,
   type RoleKey
@@ -40,6 +48,7 @@ export interface BusinessEntryTransactionScenePolicy {
   readonly action: BusinessAction;
   readonly resolveOwnership: BusinessEntryOwnershipResolver;
   readonly resolveAuthorization: BusinessEntryDomainAuthorizationResolver;
+  readonly resolveDefinition?: (context: BusinessEntryTransactionResolverContext) => Promise<BusinessEntrySceneDefinition>;
 }
 
 function freezePolicy(
@@ -93,9 +102,8 @@ export function createBusinessEntryTransactionSceneRegistry(
   return new BusinessEntryTransactionSceneRegistry(policies);
 }
 
-// #255 only establishes the fail-closed contract. #114 owns the concrete scene matrix.
 export const BUSINESS_ENTRY_TRANSACTION_SCENE_POLICIES = Object.freeze(
-  [] as readonly BusinessEntryTransactionScenePolicy[]
+  [CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY, CONTRACT_SETTLEMENT_MODE_ENTRY_POLICY, CONTRACT_COMMERCIAL_ENTRY_POLICY, CONTRACT_PARTY_ENTRY_POLICY, CONTRACT_PAYMENT_TERMS_ENTRY_POLICY, CONTRACT_PAYMENT_STAGE_ENTRY_POLICY, PAYMENT_FINANCE_ENTRY_POLICY, PAYMENT_REQUEST_ENTRY_POLICY, PAYMENT_APPROVAL_AMOUNT_ENTRY_POLICY, SETTLEMENT_BASIC_ENTRY_POLICY, SETTLEMENT_LINE_ENTRY_POLICY, SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_POLICY] as readonly BusinessEntryTransactionScenePolicy[]
 );
 
 export const BUSINESS_ENTRY_TRANSACTION_REGISTRY =

@@ -406,12 +406,20 @@ async function establishContractDocumentContent(fixture, tokens) {
     const draftData = version.draftData && typeof version.draftData === "object"
       ? version.draftData
       : {};
+    const contract = fixture.contract ?? await prisma.contract.findUnique({
+      where: { id: version.contractId },
+      select: { name: true }
+    });
+    assert(contract?.name, `${fixture.config.type} 合同名称缺失`);
     const companyEntityId = draftData.companyEntitySelection?.id;
     const taxFacts = version.taxFacts;
     const isChangeVersion = version.changeType === "change" ||
       version.changeType === "supplement" ||
       workbench.change?.isChange === true;
-    const draftDataForSave = { ...draftData };
+    const draftDataForSave = {
+      ...draftData,
+      ...(isChangeVersion ? {} : { contractName: contract.name })
+    };
     if (isChangeVersion) {
       delete draftDataForSave.companyEntitySelection;
       delete draftDataForSave.myCompanyEntity;

@@ -363,6 +363,7 @@ export function fetchPaymentDetail(paymentId: string) {
 export interface PaymentCreateCapabilityReadModel {
   projectId: string;
   availableActions: string[];
+  businessEntry?: { definition: import("@jiangkong/shared-domain").BusinessEntrySceneDefinition };
 }
 
 export function fetchPaymentCreateCapability(projectId: string) {

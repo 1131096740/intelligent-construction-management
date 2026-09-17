@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -24,6 +25,9 @@ import {
   type SupplementChangePolicy
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { hasGlobalContractDirector } from "./contract-workbench-authority";
+import { CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION } from "./contract-business-entry-definition";
 import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
 import {
   loadContractDraftLifecycle,
@@ -135,6 +139,9 @@ interface CheckpointSnapshot {
 
 @Injectable()
 export class ContractWorkbenchService {
+  @Inject(BusinessEntryTransactionService)
+  private readonly businessEntry!: BusinessEntryTransactionService;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -1107,6 +1114,19 @@ export class ContractWorkbenchService {
         "合同草稿当前不可确认结算方式，请刷新后查看最新状态"
       );
       this.assertRevision(version.draftRevision, input.expectedRevision);
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract) throw new NotFoundException("未找到合同，请刷新后重试");
+      const previousSnapshot = await tx.businessEntrySubmissionSnapshot.findFirst({
+        where: { projectId: contract.projectId, sceneKey: "contract_settlement_mode", entityType: "contract_version", entityId: version.id },
+        orderBy: { revision: "desc" }, select: { revision: true }
+      });
+      const settlementModeSnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, actorUserId, {
+        sceneKey: CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION.key,
+        definitionVersion: CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION.version,
+        target: { projectId: contract.projectId, entityType: "contract_version", entityId: version.id },
+        expectedRevision: previousSnapshot?.revision ?? 0,
+        values: { settlementMode: input.settlementMode }
+      });
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: contractVersionId,
@@ -1138,7 +1158,7 @@ export class ContractWorkbenchService {
           revisionAfter: input.expectedRevision + 1
         }
       });
-      return this.toReadModel(confirmed!);
+      return { ...this.toReadModel(confirmed!), settlementModeSnapshot };
     });
   }
 
@@ -2154,15 +2174,7 @@ export class ContractWorkbenchService {
     client: Pick<PrismaService, "userPosition" | "position">,
     actorUserId: string
   ) {
-    if (!client.userPosition || !client.position) return false;
-    const userPositions = await client.userPosition.findMany({
-      where: { userId: actorUserId, projectId: null }
-    });
-    if (!userPositions.length) return false;
-    const positions = await client.position.findMany({
-      where: { id: { in: userPositions.map((row) => row.positionId) } }
-    });
-    return positions.some((position) => position.key === "contract_director");
+    return hasGlobalContractDirector(client, actorUserId);
   }
 
   private async hasGlobalContractDraftCleanupRole(
