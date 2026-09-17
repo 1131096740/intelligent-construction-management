@@ -324,6 +324,7 @@ async function createExpenseClaimWithCapability(
             <ExpenseClaimLineEditor
               v-if="form.claimType === 'reimbursement'"
               v-model="form.lines"
+              :definition="options.entryDefinition"
             />
             <t-alert
               v-else
