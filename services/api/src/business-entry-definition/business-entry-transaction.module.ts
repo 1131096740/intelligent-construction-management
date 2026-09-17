@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { SETTLEMENT_BASIC_ENTRY_DEFINITION } from "../settlement/settlement-business-entry-definition";
 import { SETTLEMENT_LINE_ENTRY_DEFINITION } from "../settlement/settlement-line-business-entry-definition";
 import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "../payment/payment-business-entry-definition";
+import { PAYMENT_REQUEST_ENTRY_DEFINITION } from "../payment/payment-request-business-entry-definition";
 import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
 import { CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 import { AuditModule } from "../audit/audit.module";
@@ -27,7 +28,7 @@ import { BusinessEntryTransactionService } from "./business-entry-transaction.se
     {
       provide: BUSINESS_ENTRY_DEFINITION_REGISTRY,
       useValue: createBusinessEntryDefinitionRegistry([
-        ...BUSINESS_ENTRY_SCENE_DEFINITIONS, CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION, PAYMENT_FINANCE_ENTRY_DEFINITION, SETTLEMENT_BASIC_ENTRY_DEFINITION, SETTLEMENT_LINE_ENTRY_DEFINITION
+        ...BUSINESS_ENTRY_SCENE_DEFINITIONS, CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION, PAYMENT_FINANCE_ENTRY_DEFINITION, PAYMENT_REQUEST_ENTRY_DEFINITION, SETTLEMENT_BASIC_ENTRY_DEFINITION, SETTLEMENT_LINE_ENTRY_DEFINITION
       ])
     },
     {

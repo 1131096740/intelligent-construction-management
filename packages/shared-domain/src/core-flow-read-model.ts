@@ -392,6 +392,7 @@ export interface SettlementDetailReadModel {
 }
 
 export interface PaymentDetailReadModel {
+  businessEntryHistory?: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
   financeEntry?: {
     definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
     history: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];

@@ -1114,8 +1114,26 @@ export class PaymentReadService {
       definition: snapshot.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
       values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
     }));
+    const requestSnapshotStore = (this.prisma as unknown as { businessEntrySubmissionSnapshot?: {
+      findMany(args: object): Promise<Array<{
+        sceneKey: string; entityType: string; entityId: string; revision: number; definitionVersion: number;
+        definitionSnapshot: unknown; valuesSnapshot: unknown; frozenAt: Date;
+      }>>;
+    } }).businessEntrySubmissionSnapshot;
+    const requestSnapshots = requestSnapshotStore ? await requestSnapshotStore.findMany({
+      where: { projectId: payment.projectId, sceneKey: "payment_request", entityType: "payment_request", entityId: payment.id },
+      orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
+    }) : [];
+    const businessEntryHistory: BusinessEntryFrozenSnapshot[] = requestSnapshots.map((snapshot) => ({
+      sceneKey: snapshot.sceneKey,
+      target: { projectId: payment.projectId, entityType: snapshot.entityType, entityId: snapshot.entityId },
+      revision: snapshot.revision, definitionVersion: snapshot.definitionVersion,
+      definition: snapshot.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
+      values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
+    }));
     return {
       id: payment.code,
+      businessEntryHistory,
       financeEntry: { definition: PAYMENT_FINANCE_ENTRY_DEFINITION, history: financeHistory },
       title: isContractAdvance
         ? `${payment.code} · 合同预付款申请`

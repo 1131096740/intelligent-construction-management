@@ -504,7 +504,7 @@ if (enabled) {
       await request("POST", `/contracts/${draft.version.id}/formal-files/final/confirmation`, {
         ...declaration, formalFileId: final.id, onlyPermittedSignatureChanges: true, documentOrderConfirmed: true
       });
-      let payment: Identified;
+      let payment: Identified & { businessEntrySnapshot?: BusinessEntryFrozenSnapshot };
       if (settlementFinance) {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet("本期结算明细");
@@ -649,8 +649,26 @@ if (enabled) {
         await request("POST", `/settlements/${settlement.id}/signed-document-generation-retry`, {});
         expect(await request("POST", `/settlements/${settlement.id}/archive-confirmation`, { confirmationPassword: archiveActor.password })).toMatchObject({ status: "effective" });
         await loginAs(actorUserId);
-        payment = await request<Identified>("POST", "/payments", {
-          settlementId: settlement.id, code: `POL114-PAY-${randomUUID()}`, requestedAmountCents: "10000"
+        const paymentEntry = await request<{ businessEntry?: { definition: BusinessEntrySceneDefinition } }>("GET", `/payments/create-capability?projectId=${project.id}`);
+        expect(paymentEntry.businessEntry?.definition).toMatchObject({
+          key: "payment_request", entityType: "payment_request", version: 1,
+          fields: expect.arrayContaining([
+            expect.objectContaining({ key: "code", type: "text" }),
+            expect.objectContaining({ key: "requestedAmountYuan", type: "money" })
+          ])
+        });
+        payment = await request<Identified & { businessEntrySnapshot?: BusinessEntryFrozenSnapshot }>("POST", "/payments", {
+          settlementId: settlement.id, code: `POL114-PAY-${randomUUID()}`, requestedAmountCents: "10000",
+          paymentMatter: "本期结算付款", amountCalculationExplanation: "按已归档生效结算申请100元"
+        });
+        expect(payment.businessEntrySnapshot).toMatchObject({
+          sceneKey: "payment_request", target: { projectId: project.id, entityType: "payment_request", entityId: payment.id },
+          values: expect.objectContaining({
+            code: expect.stringMatching(/^POL114-PAY-/), sourceType: "settlement", paymentSubjectType: "our_company",
+            settlementId: settlement.id, contractId: draft.contract.id, contractVersionId: draft.version.id,
+            paymentMatter: "本期结算付款", amountCalculationExplanation: "按已归档生效结算申请100元",
+            requestedAmountYuan: "100.00"
+          })
         });
       } else {
         const application = await request<ContractPaymentApplicationPreviewReadModel>("GET", `/payments/contract-application?contractVersionId=${draft.version.id}`);
@@ -663,11 +681,15 @@ if (enabled) {
           amountCalculationExplanation: "按合同生效阶段100%支付100元"
         });
       }
-      const paymentDetail = await request<{ financeEntry?: { definition: BusinessEntrySceneDefinition } }>("GET", `/payments/${payment.id}`);
+      const paymentDetail = await request<{
+        financeEntry?: { definition: BusinessEntrySceneDefinition };
+        businessEntryHistory?: BusinessEntryFrozenSnapshot[];
+      }>("GET", `/payments/${payment.id}`);
       expect(paymentDetail.financeEntry?.definition).toMatchObject({
         key: "payment_finance_record", entityType: "finance_record", version: 1,
         fields: [{ key: "amountYuan", type: "money" }, { key: "occurredAt", type: "text" }]
       });
+      if (settlementFinance) expect(paymentDetail.businessEntryHistory).toEqual([payment.businessEntrySnapshot]);
       for (let step = 0; step < 12; step++) {
         const approval = await prisma.approvalInstance.findFirst({ where: {
           businessType: "payment_request", businessId: payment.id, status: "in_progress"

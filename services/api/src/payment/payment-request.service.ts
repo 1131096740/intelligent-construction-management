@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
 import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
+import { PAYMENT_REQUEST_ENTRY_DEFINITION, paymentRequestEntryValues } from "./payment-request-business-entry-definition";
 import {
   BadRequestException,
   ConflictException,
@@ -754,7 +755,9 @@ export class PaymentRequestService {
           status: "approval_pending",
           requestedAmountCents: normalizedInput.requestedAmountCents,
           approvedAmountCents: null,
-          paidAmountCents: 0n
+          paidAmountCents: 0n,
+          ...(optionalTrimmedText(normalizedInput.paymentMatter) ? { paymentMatter: optionalTrimmedText(normalizedInput.paymentMatter) } : {}),
+          ...(optionalTrimmedText(normalizedInput.amountCalculationExplanation) ? { amountCalculationExplanation: optionalTrimmedText(normalizedInput.amountCalculationExplanation) } : {})
         }
       });
 
@@ -773,7 +776,15 @@ export class PaymentRequestService {
       }
 
       await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
-      return payment;
+      if (!applicantUserId || !this.businessEntry) return payment;
+      const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+        sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key,
+        definitionVersion: PAYMENT_REQUEST_ENTRY_DEFINITION.version,
+        target: { projectId: payment.projectId, entityType: "payment_request", entityId: payment.id },
+        expectedRevision: 0,
+        values: paymentRequestEntryValues(payment)
+      });
+      return { ...payment, businessEntrySnapshot };
     });
 
     return paymentPostResponseToApi(payment);

@@ -92,6 +92,26 @@
         class="tab-content"
         aria-label="付款概览"
       >
+        <section
+          v-if="paymentDetail.businessEntryHistory?.length"
+          class="content-panel"
+          aria-label="付款申请提交记录"
+        >
+          <header class="section-heading">
+            <div>
+              <h2>提交记录</h2>
+              <p>按付款申请创建时冻结的字段定义和值展示。</p>
+            </div>
+          </header>
+          <BusinessEntryGrid
+            v-for="snapshot in paymentDetail.businessEntryHistory"
+            :key="`${snapshot.sceneKey}:${snapshot.revision}:${snapshot.frozenAt}`"
+            :definition="snapshot.definition"
+            :model-value="[frozenSnapshotDraft(snapshot)]"
+            :readonly="true"
+          />
+        </section>
+
         <section class="content-panel content-panel--plain">
           <header class="section-heading">
             <div>
@@ -710,7 +730,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CoreFlowTone } from "@jiangkong/shared-domain";
+import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,
@@ -758,6 +778,7 @@ import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import MoneyInput from "../../components/MoneyInput.vue";
 import BusinessEntryReadonlySnapshot from "../../components/BusinessEntryReadonlySnapshot.vue";
+import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import PaymentFinanceEntryForm from "./PaymentFinanceEntryForm.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
@@ -2222,6 +2243,15 @@ onBeforeUnmount(() => {
   paymentExecutionComponentActive = false;
   clearPaymentDetailTransientState();
 });
+function frozenSnapshotDraft(snapshot: BusinessEntryFrozenSnapshot): BusinessEntryDraftPayload {
+  return {
+    sceneKey: snapshot.sceneKey,
+    definitionVersion: snapshot.definitionVersion,
+    target: snapshot.target,
+    expectedRevision: snapshot.revision,
+    values: snapshot.values
+  };
+}
 </script>
 
 <style scoped>

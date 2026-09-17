@@ -113,7 +113,7 @@
         </label>
 
         <label class="create-field">
-          <span>付款编号 <b aria-hidden="true">*</b></span>
+          <span>{{ paymentEntryFieldLabel("code", "付款编号") }} <b aria-hidden="true">*</b></span>
           <t-input
             v-model="createForm.code"
             placeholder="FK-2026-007"
@@ -124,7 +124,7 @@
         <MoneyInput
           v-model="createForm.requestedAmountYuan"
           class="create-field"
-          label="申请金额"
+          :label="paymentEntryFieldLabel('requestedAmountYuan', '申请金额')"
           placeholder="请输入申请金额"
           required
         />
@@ -345,6 +345,7 @@ const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const loadingProjects = ref(false);
 const loadingContracts = ref(false);
 const contractPaymentPreview = ref<Awaited<ReturnType<typeof fetchContractPaymentApplication>> | null>(null);
+const paymentEntryDefinition = ref<Awaited<ReturnType<typeof fetchPaymentCreateCapability>>["businessEntry"]>();
 const previewContractVersionId = ref("");
 const baselineFormSnapshot = ref("");
 const leaveDialogVisible = ref(false);
@@ -738,7 +739,12 @@ async function loadPaymentContracts() {
   loadingContracts.value = true;
   message.value = "";
   try {
-    contracts.value = await fetchPaymentContractOptions(createForm.projectId);
+    const [paymentContracts, capability] = await Promise.all([
+      fetchPaymentContractOptions(createForm.projectId),
+      fetchPaymentCreateCapability(createForm.projectId)
+    ]);
+    contracts.value = paymentContracts;
+    paymentEntryDefinition.value = capability.businessEntry;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "未知错误";
     message.value = `未能加载项目合同：${reason}。请确认项目权限后重试。`;
@@ -746,6 +752,10 @@ async function loadPaymentContracts() {
   } finally {
     loadingContracts.value = false;
   }
+}
+
+function paymentEntryFieldLabel(key: string, fallback: string) {
+  return paymentEntryDefinition.value?.definition.fields.find((field) => field.key === key)?.label ?? fallback;
 }
 
 async function createPaymentRequestWithCapability(

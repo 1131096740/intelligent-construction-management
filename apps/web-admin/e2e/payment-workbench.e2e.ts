@@ -61,6 +61,21 @@ function paymentApprovalDetail(
       { label: "申请金额", value: "¥12,345.67" },
       { label: "项目", value: "P0 浏览器验收项目" }
     ],
+    businessEntryHistory: [{
+      sceneKey: "payment_request",
+      target: { projectId: "project-1", entityType: "payment_request", entityId: paymentId },
+      revision: 1, definitionVersion: 1, frozenAt: "2026-07-31T07:00:00.000Z",
+      definition: {
+        key: "payment_request", entityType: "payment_request", version: 1, name: "付款申请", description: "提交时冻结。", rules: [],
+        fields: [{
+          key: "code", label: "付款编号", type: "text", order: 1, scope: "header", description: "付款编号", example: "",
+          unit: "", precision: 0, required: true, permissions: { view: ["contract_staff"], edit: ["contract_staff"] },
+          bulk: { enabled: false, strategy: "replace" }, excel: { column: "付款编号", paste: "single", errorLocation: "cell" },
+          display: { formHint: "付款编号", gridColumn: "付款编号", mobilePriority: 1, readonlyText: "付款编号" }
+        }]
+      },
+      values: { code }
+    }],
     approvalSteps: [],
     executionSteps: [],
     executionAllocations: [],
@@ -462,6 +477,8 @@ async function exercisePaymentExecution(
     })
   ).toBeVisible();
   await expectPaymentPageHealthy(page);
+  await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
+  await expect(page.getByText("付款编号", { exact: true }).first()).toBeVisible();
   await page
     .locator(".detail-navigation")
     .getByText("流程", { exact: true })
@@ -849,6 +866,8 @@ test("P0 mobile WebKit rejects payment without approved amount and one POST", as
         userAgent: expect.not.stringContaining("Chrome/")
       })
     );
+    await expect(page.locator(".business-entry-mobile-cards")).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
     await expect(
       page.getByRole("heading", {
         name: "移动付款驳回验收",
