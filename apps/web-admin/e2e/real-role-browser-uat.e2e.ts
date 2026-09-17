@@ -279,7 +279,9 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const detailResponse = await detailResponsePromise;
     expect(detailResponse.ok()).toBeTruthy();
     const detailPayload = await detailResponse.json() as {
-      businessEntrySubmissions?: Array<{ snapshot?: { sceneKey?: string } }>;
+      businessEntrySubmissions?: Array<{
+        snapshot?: { sceneKey?: string; values?: Record<string, unknown> };
+      }>;
     };
     const frozenSceneKeys = detailPayload.businessEntrySubmissions?.map(
       (entry) => entry.snapshot?.sceneKey
@@ -290,19 +292,42 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       "contract_payment_terms",
       "contract_payment_stage"
     ]));
+    const frozenValues = Object.fromEntries(
+      (detailPayload.businessEntrySubmissions ?? []).map((entry) => [
+        entry.snapshot?.sceneKey,
+        entry.snapshot?.values
+      ])
+    );
+    expect(frozenValues.contract_party).toMatchObject({
+      roleName: "乙方"
+    });
+    expect(String(frozenValues.contract_party?.name)).toMatch(/^UAT乙方-material_purchase-/u);
+    expect(frozenValues.contract_commercial_terms).toMatchObject({
+      contractAmountYuan: "10000.00"
+    });
+    expect(frozenValues.contract_payment_stage).toMatchObject({
+      name: "UAT结算后付款"
+    });
     await expect(page.getByRole("heading", { name: "提交记录" })).toBeVisible();
     await expect(page.getByRole("region", { name: "合同主体业务台账表格" })).toHaveCount(1);
-    await expect(page.getByRole("region", { name: "合同商务条款业务台账表格" })).toHaveCount(1);
-    await expect(page.getByRole("region", { name: "合同付款条款业务台账表格" })).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "合同计价与税务业务台账表格" })).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "付款条款业务台账表格" })).toHaveCount(1);
     await expect(page.getByRole("region", { name: "付款阶段业务台账表格" })).toHaveCount(1);
     for (const region of [
       "合同主体业务台账表格",
-      "合同商务条款业务台账表格",
-      "合同付款条款业务台账表格",
+      "合同计价与税务业务台账表格",
+      "付款条款业务台账表格",
       "付款阶段业务台账表格"
     ]) {
       await expect(page.getByRole("region", { name: region })).toBeVisible();
     }
+    const partyRegion = page.getByRole("region", { name: "合同主体业务台账表格" });
+    await expect(partyRegion.locator('[data-field="roleName"] input')).toHaveValue("乙方");
+    await expect(partyRegion.locator('[data-field="name"] input')).toHaveValue(/^UAT乙方-material_purchase-/u);
+    const commercialRegion = page.getByRole("region", { name: "合同计价与税务业务台账表格" });
+    await expect(commercialRegion.locator('[data-field="contractAmountYuan"] input')).toHaveValue("10000.00");
+    const stageRegion = page.getByRole("region", { name: "付款阶段业务台账表格" });
+    await expect(stageRegion.locator('[data-field="name"] input')).toHaveValue("UAT结算后付款");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();
     await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
 
