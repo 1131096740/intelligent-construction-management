@@ -30,6 +30,11 @@ const POL19P3_SCENE_KEYS = [
   "user_self_profile"
 ] as const;
 
+const SPOT_PROCUREMENT_SCENE_KEYS = [
+  "spot_procurement.application",
+  "spot_procurement.application_line"
+] as const;
+
 describe("BusinessEntrySceneAccessRegistry", () => {
   it("binds every production scene to its backend target and domain action", () => {
     for (const definition of BUSINESS_ENTRY_SCENE_DEFINITIONS) {
@@ -45,7 +50,15 @@ describe("BusinessEntrySceneAccessRegistry", () => {
         expect(access.target.resolve).toEqual(expect.any(Function));
       }
       expect(access.permission).toEqual(
-        definition.key === "project_operating_profile"
+        SPOT_PROCUREMENT_SCENE_KEYS.includes(
+          definition.key as typeof SPOT_PROCUREMENT_SCENE_KEYS[number]
+        )
+          ? {
+              kind: "business_action",
+              action: "spot_procurement.create",
+              roleScope: "project"
+            }
+          : definition.key === "project_operating_profile"
           ? {
               kind: "business_action",
               action: "project.operating_profile.manage",
@@ -70,8 +83,9 @@ describe("BusinessEntrySceneAccessRegistry", () => {
     }
   });
 
-  it("registers production access only from the explicit profile and takeover scene families", () => {
+  it("registers production access only from the explicit spot, profile, takeover, and global scene families", () => {
     expect(BUSINESS_ENTRY_SCENE_ACCESS_POLICIES.map((policy) => policy.sceneKey)).toEqual([
+      ...SPOT_PROCUREMENT_SCENE_KEYS,
       "project_operating_profile",
       ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key),
       ...POL19P3_SCENE_KEYS
@@ -196,7 +210,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
           roleScope: "global"
         }
       }] as never
-    )).toThrow("业务场景目标范围未登记：project_operating_profile");
+    )).toThrow(`业务场景目标范围未登记：${definition.key}`);
   });
 
   it("rejects an unknown permission kind at registration", () => {
@@ -212,7 +226,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
           roleScope: "project"
         }
       }] as never
-    )).toThrow("业务场景权限类型未登记：project_operating_profile");
+    )).toThrow(`业务场景权限类型未登记：${definition.key}`);
   });
 
   it("fails closed when a policy references an unknown scene", () => {
