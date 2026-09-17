@@ -46,6 +46,7 @@ import {
 } from "./business-entry-create-target.service";
 import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
+import { validateUserSelfProfile } from "./user-self-profile-validation";
 
 export const BUSINESS_ENTRY_DEFINITION_REGISTRY = Symbol(
   "BUSINESS_ENTRY_DEFINITION_REGISTRY"
@@ -547,11 +548,12 @@ export class BusinessEntryDefinitionService {
       target: payload.target!,
       values: input.values
     });
-    return this.registry.validateDraft(
+    const result = this.registry.validateDraft(
       payload,
       roleKeys as readonly RoleKey[],
       input.operation ?? "edit"
     );
+    return sceneKey === "user_self_profile" ? validateUserSelfProfile(result) : result;
   }
 
   private async authorizeScene(
