@@ -1579,6 +1579,64 @@ async function submit() {
   const manifest = await inspectWholeSitePageActionManifest({ root });
   assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
 
+  const currentTaskAction = {
+    ...action,
+    capability: {
+      ...action.capability,
+      source: "detail.currentTask"
+    }
+  };
+  const currentTaskPage = page.replace(
+    'detail.availableActions.some((action) => action.key === "record_refund" && action.enabled === true)',
+    'detail.currentTask.key === "record_refund" && detail.currentTask.enabled === true'
+  );
+  const currentTaskRoot = await fixture({
+    actions: [currentTaskAction], wrappers, routes, page: currentTaskPage,
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+    },
+    extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+  });
+  const currentTask = await inspectWholeSitePageActionManifest({ root: currentTaskRoot });
+  assert.equal(currentTask.status, "ready", JSON.stringify(currentTask.blockers));
+
+  const mismatchedSourceRoot = await fixture({
+    actions: [{
+      ...currentTaskAction,
+      capability: { ...currentTaskAction.capability, source: "detail.availableActions" }
+    }],
+    wrappers,
+    routes,
+    page: currentTaskPage,
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+    },
+    extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+  });
+  const mismatchedSource = await inspectWholeSitePageActionManifest({ root: mismatchedSourceRoot });
+  assert.equal(mismatchedSource.status, "blocked", "registry source must match the proven current task");
+
+  for (const [name, unsafePage] of [
+    ["current task key differs", currentTaskPage.replace(
+      'detail.currentTask.key === "record_refund"',
+      'detail.currentTask.key === "other"'
+    )],
+    ["current task is disabled", currentTaskPage.replace(
+      "detail.currentTask.enabled === true",
+      "detail.currentTask.enabled === false"
+    )]
+  ]) {
+    const unsafeRoot = await fixture({
+      actions: [currentTaskAction], wrappers, routes, page: unsafePage,
+      webManifestOverrides: {
+        evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+      },
+      extraFiles: { "apps/web-admin/src/pages/write-validation.ts": helperSource }
+    });
+    const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
+    assert.equal(unsafe.status, "blocked", name);
+  }
+
   const retainedPage = page
     .replace(
       '  const file = { name: "voucher.png" };',

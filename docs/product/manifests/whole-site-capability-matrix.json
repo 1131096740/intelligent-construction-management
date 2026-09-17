@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "723d4b601c8aa68a3281b8ffe8a46c72a065b97abf1bbc8a0846626cdcdc7799",
+      "sha256": "2a7b5ecd23d8ff6fe037061ff7fe05611fb83b297cb22e32e591b7fb7920cff3",
       "status": "ready",
       "summary": {
         "registeredActionCount": 307,
@@ -8660,7 +8660,7 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "fresh.availableActions",
+            "source": "fresh.currentTask",
             "key": "record_refund",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -8686,7 +8686,7 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "fresh.availableActions",
+            "source": "fresh.currentTask",
             "key": "record_refund",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -33098,7 +33098,7 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "fresh.availableActions",
+            "source": "fresh.currentTask",
             "key": "record_refund",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -33207,7 +33207,7 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "fresh.availableActions",
+            "source": "fresh.currentTask",
             "key": "record_refund",
             "serverDerived": true,
             "dominatesTrigger": true

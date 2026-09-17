@@ -18424,7 +18424,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "fresh.availableActions",
+        "source": "fresh.currentTask",
         "key": "record_refund",
         "serverDerived": true,
         "dominatesTrigger": true

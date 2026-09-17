@@ -13859,10 +13859,67 @@ function expressionContainsBindingMember(expression, binding, path, symbols) {
   return found;
 }
 
-function exactEnabledActionPredicate(expression, freshBinding, actionKey, symbols) {
+function exactEnabledActionPredicate(
+  expression,
+  freshBinding,
+  actionKey,
+  capabilitySource,
+  symbols
+) {
+  const directClauses = [];
+  const flattenDirect = (node) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "LogicalExpression" && value.operator === "&&") {
+      flattenDirect(value.left);
+      flattenDirect(value.right);
+      return;
+    }
+    directClauses.push(value);
+  };
+  flattenDirect(expression);
+  if (
+    capabilitySource === `${freshBinding.name}.currentTask` &&
+    directClauses.length === 2
+  ) {
+    let currentTaskKeyMatched = 0;
+    let currentTaskEnabledMatched = 0;
+    for (const clause of directClauses) {
+      if (!clause || clause.type !== "BinaryExpression" || !["==", "==="].includes(clause.operator)) {
+        currentTaskKeyMatched = 0;
+        currentTaskEnabledMatched = 0;
+        break;
+      }
+      const pairs = [
+        [clause.left, clause.right],
+        [clause.right, clause.left]
+      ];
+      if (pairs.some(([member, literal]) =>
+        expressionRootedAtBinding(member, freshBinding, "currentTask.key", symbols) &&
+        literalString(literal) === actionKey
+      )) {
+        currentTaskKeyMatched += 1;
+        continue;
+      }
+      if (pairs.some(([member, literal]) =>
+        expressionRootedAtBinding(member, freshBinding, "currentTask.enabled", symbols) &&
+        unwrapValueExpression(literal)?.type === "Literal" &&
+        unwrapValueExpression(literal)?.value === true
+      )) {
+        currentTaskEnabledMatched += 1;
+        continue;
+      }
+      currentTaskKeyMatched = 0;
+      currentTaskEnabledMatched = 0;
+      break;
+    }
+    if (currentTaskKeyMatched === 1 && currentTaskEnabledMatched === 1) {
+      return true;
+    }
+  }
   const call = unwrapValueExpression(expression);
   const callee = unwrapValueExpression(call?.callee);
   if (
+    capabilitySource !== `${freshBinding.name}.availableActions` ||
     call?.type !== "CallExpression" ||
     callee?.type !== "MemberExpression" ||
     callee.computed ||
@@ -14738,6 +14795,7 @@ function guardedUploadPipelineProof({ action, wrapper, handler, context }) {
           node.init,
           freshBinding,
           action.capability.key,
+          action.capability.source,
           context.symbols
         )
       ) {
