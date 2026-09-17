@@ -13,6 +13,7 @@ import {
 } from "./business-entry-scene-access";
 
 const projectFinanceRoles = ["finance_staff", "finance_director"] as const;
+const projectMaintenanceRoles = ["chairman", "general_manager"] as const;
 const organizationRoles = [
   "chairman",
   "general_manager",
@@ -165,6 +166,12 @@ const resolveSettlementVersion = async ({ target, operation, prisma }: Parameter
 };
 
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
+  globalDefinition("project_rename", "project", "项目名称", [
+    textField("name", "项目名称", projectMaintenanceRoles, {
+      required: true,
+      bulk: { enabled: false, maxRows: 1, strategy: "replace" }
+    })
+  ]),
   {
     key: "project_operating_profile",
     entityType: "project",
@@ -319,6 +326,11 @@ export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionR
 
 export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAccessPolicy[] =
   Object.freeze([
+    {
+      sceneKey: "project_rename",
+      target: { scope: "project", entityType: "project" },
+      permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+    },
     {
       sceneKey: "project_operating_profile",
       target: { scope: "project", entityType: "project" },

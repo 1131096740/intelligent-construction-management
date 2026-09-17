@@ -124,7 +124,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body).toMatchObject(values);
     if (process.env.RUN_POL113_PROJECT_BROWSER === "1") {
       await new Promise<void>((done, reject) => {
-        const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)) };
+        const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)) };
         delete browserEnv.JEST_WORKER_ID;
         const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
           cwd: resolve(__dirname, "../../../../apps/web-admin"),
@@ -136,6 +136,38 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       });
     }
   }, 150_000);
+
+  it("项目名称沿用原董事长总经理岗位范围，空白名称不写入且有效名称可回读", async () => {
+    const chairman = await actor("chairman");
+    const project = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "重命名前合成项目" }, chairman);
+    expect(project.status).toBe(201);
+    const projectId = project.body.id as string;
+    const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId });
+    const definition = await request(`/business-entry-definitions/project_rename?${query}`, "GET", undefined, chairman);
+    expect(definition.status).toBe(200);
+    expect(definition.body.fields.map((field: { key: string }) => field.key)).toEqual(["name"]);
+    const target = { entityType: "project", entityId: projectId };
+    const payload = { definitionVersion: definition.body.version, target, operation: "edit", values: { name: "  新项目名称  " } };
+    const path = `/business-entry-definitions/project_rename/validate?projectId=${projectId}`;
+    const scopedManager = await actor("general_manager", projectId);
+    const other = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "其他重命名项目" }, chairman);
+    const otherManager = await actor("general_manager", other.body.id);
+    const admin = await actor("super_admin");
+    for (const denied of [otherManager, admin]) {
+      expect((await request(path, "POST", payload, denied)).status).toBe(403);
+      expect((await request(`/projects/${projectId}`, "PATCH", payload.values, denied)).status).toBe(403);
+    }
+    const invalid = await request(path, "POST", { ...payload, values: { name: "  " } }, chairman);
+    expect(invalid.body.valid).toBe(false);
+    expect((await request("/projects", "GET", undefined, chairman)).body.find((entry: { id: string }) => entry.id === projectId).name).toBe("重命名前合成项目");
+    for (const allowed of [chairman, scopedManager]) {
+      const valid = await request(path, "POST", payload, allowed);
+      expect(valid.status).toBe(201);
+      expect(valid.body.valid).toBe(true);
+      expect((await request(`/projects/${projectId}`, "PATCH", valid.body.values, allowed)).status).toBe(200);
+    }
+    expect((await request("/projects", "GET", undefined, chairman)).body.find((entry: { id: string }) => entry.id === projectId).name).toBe("新项目名称");
+  });
 
   it("本人字段定义和服务端预检拒绝原账号规则不接受的手机号", async () => {
     const target = { entityType: "user_self_profile", entityId: userId };

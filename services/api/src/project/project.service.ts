@@ -20,6 +20,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { PrismaService } from "../database/prisma.service";
 import {
@@ -308,6 +309,19 @@ export class ProjectService {
     @Optional()
     private readonly operatingProjection?: OperatingProjectionService
   ) {}
+
+  async assertCanRenameBusinessEntry(projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
+    // Same global + current-project UserPosition/ProjectMember scope as the
+    // existing PATCH route's RequirePositions guard; no technical-admin bypass.
+    const visibility = new ProjectVisibilityService(this.prisma);
+    const scopes = tx
+      ? await visibility.effectiveRoleScopesInTransaction(tx, actorUserId, projectId)
+      : await visibility.effectiveRoleScopes(actorUserId, projectId);
+    const roles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+    if (!roles.some((role) => role === "chairman" || role === "general_manager")) {
+      throw new ForbiddenException("当前账号缺少执行该操作所需的岗位权限");
+    }
+  }
 
   async createProject(actorUserId: string, input: CreateProjectDto) {
     const code = requiredTrimmed(input.code, "请填写项目编号");

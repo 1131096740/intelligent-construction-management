@@ -5,7 +5,7 @@
 | 活动填写入口 | 现有用户链与领域权威 | 统一接线现状 | 剩余工作及边界 |
 | --- | --- | --- | --- |
 | 项目创建：编号、名称 | `ProjectOperatingOverviewPage.vue` → fresh create-capability → `POST /projects`；controller 限董事长/总经理，原服务事务创建并审计 | 有领域 capability，没有该动作的场景定义/统一预检 | 需要共享 owner 明确登记现有创建 target 与字段适配；不拿经营档案项目 target 冒充新建目标，不改创建权限 |
-| 项目重命名：名称 | 同页面 → fresh update-capability → `PATCH /projects/:projectId`；原事务更新并审计 | 有领域 capability，没有重命名场景定义/统一预检 | 需要共享 owner 登记既有对象动作；不混入项目经营财务权限 |
+| 项目重命名：名称 | 同页面 → fresh update-capability → `PATCH /projects/:projectId`；原事务更新并审计 | 第二片已接 `project_rename` 单名称定义、统一表单和 fresh validate，再沿原 capability/PATCH 写入 | 原董事长/总经理 global + 当前项目岗位范围不变，技术管理员及异项目岗位不能借用；当前项目桌面/手机用户链通过，未声明项目切换交互覆盖或冻结写链完成 |
 | 经营档案：经营账生效日、接管完成日、接管状态 | `ProjectOperatingProfilePanel.vue` → `PATCH /projects/:projectId/operating-profile`；`ProjectOperatingProfileService.updateProfileInTransaction` 原事务校验、更新、审计 | 首片已接入共享表单、fresh 三字段定义和 validate；专属 resolver 复用原领域权限入口，项目 scope/target 严格匹配 | 本地真实 HTTP/PG16 与桌面/手机浏览器已验证失败保留输入且零 PATCH、成功原领域写入；未新增冻结写链，不能据此声明整票快照冻结或全门通过。其余入口仍按下列缺口推进 |
 | 唯一施工企业：候选版本、生效日、变更原因 | 同 panel → options → `POST /projects/:projectId/construction-enterprise`；原 `ProjectService.assignAffiliate` 处理版本、锁定及原审计 | 领域可写入口存在，无独立统一场景定义/校验接线 | 需共享登记支持原版本候选、日期和原因；保留首笔事实锁定，不开放任意主体或扩权 |
 | 新增参与公司：公司、生效日、加入原因 | 同 panel → options → `POST /projects/:projectId/participating-companies`；原领域事务维护版本与有效区间 | 无独立统一场景定义/校验接线 | 需共享登记现有候选及字段，保留 #284 时间和连续覆盖规则 |
@@ -30,3 +30,15 @@
 - 未运行整票全门、发布门或 CI；未 commit/push、未变更生产。此前 14/14 仅覆盖本人资料与合作单位，不替代本次项目证明或其他活动入口验收。
 
 运行器 `services/api/prisma/run-pol113-http-local.cjs` 保留，仅使用随机凭据、loopback、一次性 pol113 数据库及合成数据，并清理自身容器。本文件不关闭 #113 或任何混合派生票。
+
+## 第二片：当前项目重命名
+
+首片已由主控保存为本地检查点 `54f5e6fa3a6893e31f8d57daaf2f30770513335f`。以下结果属于其后的未提交第二片差异，不是该检查点的清洁树收据：
+
+- 先公开 HTTP RED：未登记场景返回 404；接线后真实 HTTP/PG16 16/16。原 `requiredTrimmed` 与通用 required text 都拒绝空白名称，无须扩大共享校验器；最终 PATCH 仍执行原 trim、更新和审计。
+- 领域窄入口复用 `ProjectVisibilityService.effectiveRoleScopes`，查询与原 `PermissionGuard` 的 global/当前项目 UserPosition、ProjectMember 一致，再按原 `chairman` / `general_manager` 裁决。未改原 controller、岗位语义或 Schema。
+- 浏览器先因旧页面缺少统一名称表单 RED。后续失败诊断发现测试预设项目与页面默认项目不同，故测试明确绑定当前默认项目，仍逐一断言预检 target、PATCH URL 和公开 GET 回读一致；未修改项目切换逻辑，也不把该交互算作本片已验证范围。
+- 最终真实浏览器 Desktop Chrome / iPhone 13 WebKit 共 4/4（名称和经营档案各两项）；HTTP 16/16；共享接线 API 窄回归 41/41；Web 项目结构 37/37；API typecheck/lint、Web typecheck、E2E typecheck、UI rules、diff check 通过。
+- 本片两个 Web src 文件 ESLint 均 0 errors / 0 warnings，新增表单的四条格式警告已修复。未执行整票全门、CI、push 或生产操作。
+
+剩余范围为项目创建、施工企业绑定、参与主体新增/停止及整票派生验收与冻结策略核对；不能以本片替代这些入口。

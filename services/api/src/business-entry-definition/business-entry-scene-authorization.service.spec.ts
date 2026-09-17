@@ -23,7 +23,8 @@ describe("BusinessEntrySceneAuthorizationService", () => {
         contractTemplates as never,
         layouts as never,
         settlementTemplates as never,
-        { assertCanMaintainBusinessEntry: jest.fn() } as never
+        { assertCanMaintainBusinessEntry: jest.fn() } as never,
+        { assertCanRenameBusinessEntry: jest.fn() } as never
       ),
       organization,
       organizationRoles,

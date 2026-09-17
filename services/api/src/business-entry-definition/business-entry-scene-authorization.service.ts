@@ -14,6 +14,7 @@ import { LayoutTemplateService } from "../contract-template/layout-template.serv
 import { OrganizationRoleService } from "../organization/organization-role.service";
 import { OrganizationService } from "../organization/organization.service";
 import { ProjectOperatingProfileService } from "../project/project-operating-profile.service";
+import { ProjectService } from "../project/project.service";
 import { SettlementTemplateService } from "../settlement/settlement-template.service";
 import type { BusinessEntryTargetScope } from "./business-entry-scene-access";
 import { BUSINESS_ENTRY_SCENE_DEFINITIONS } from "./business-entry-definition.scene-registry";
@@ -88,7 +89,8 @@ export class BusinessEntrySceneAuthorizationService {
     contractTemplates: ContractTemplateService,
     layouts: LayoutTemplateService,
     settlementTemplates: SettlementTemplateService,
-    projectOperatingProfiles: ProjectOperatingProfileService
+    projectOperatingProfiles: ProjectOperatingProfileService,
+    projects: ProjectService
   ) {
     // These project-scoped legacy scenes previously reached the switch default.
     // Keep that fail-closed behavior explicit until their owning domains register
@@ -99,6 +101,15 @@ export class BusinessEntrySceneAuthorizationService {
     this.registry = new BusinessEntryDomainAuthorizationRegistry(
       BUSINESS_ENTRY_SCENE_DEFINITIONS,
       [
+        {
+          sceneKey: "project_rename",
+          resolve: (context) => {
+            if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
+              throw new BadRequestException("项目名称目标与当前项目不一致");
+            }
+            return projects.assertCanRenameBusinessEntry(context.projectId, context.actorUserId, context.tx);
+          }
+        },
         {
           sceneKey: "project_operating_profile",
           resolve: (context) => {

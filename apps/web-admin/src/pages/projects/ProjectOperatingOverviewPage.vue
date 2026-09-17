@@ -50,25 +50,14 @@
                   {{ projectSubmitting ? "新增中" : "新增项目" }}
                 </button>
               </form>
-              <form
+              <ProjectRenameForm
                 v-if="selectedProjectId"
-                class="project-name-form"
-                @submit.prevent="submitProjectName"
-              >
-                <label>
-                  <span>当前项目名称</span>
-                  <input
-                    v-model.trim="selectedProjectName"
-                    required
-                  >
-                </label>
-                <button
-                  type="submit"
-                  :disabled="projectUpdating"
-                >
-                  {{ projectUpdating ? "保存中" : "保存名称" }}
-                </button>
-              </form>
+                :key="selectedProjectId"
+                :project-id="selectedProjectId"
+                :name="selectedProjectName"
+                :saving="projectUpdating"
+                @save="submitProjectName"
+              />
             </div>
           </t-collapse-panel>
         </t-collapse>
@@ -1012,6 +1001,7 @@ import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
+import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
@@ -1541,8 +1531,8 @@ async function submitProject() {
   }
 }
 
-async function submitProjectName() {
-  if (!canManageProjects.value || !selectedProjectId.value) {
+async function submitProjectName(name: string) {
+  if (projectUpdating.value || !canManageProjects.value || !selectedProjectId.value) {
     return;
   }
 
@@ -1550,7 +1540,7 @@ async function submitProjectName() {
   projectMessage.value = "";
   try {
     const updated = await updateProjectWithCapability(selectedProjectId.value, {
-      name: requiredText(selectedProjectName.value, "项目名称")
+      name: requiredText(name, "项目名称")
     });
     projects.value = projects.value.map((project) => (project.id === updated.id ? updated : project));
     selectedProjectName.value = updated.name;
