@@ -64,5 +64,7 @@ describe("JgBusinessGrid editor registry", () => {
     expect(gridSource).toContain('@paste.capture="onPaste"');
     expect(gridSource).not.toContain('addEventListener("paste"');
     expect(procurementSource).toContain("expand-paste-rows");
+    expect(procurementSource.match(/:model-value="line\.(materialName|specification|unit|quantity|note)"/gu)).toHaveLength(5);
+    expect(procurementSource).not.toMatch(/:value="line\.(materialName|specification|unit|quantity|note)"/u);
   });
 });

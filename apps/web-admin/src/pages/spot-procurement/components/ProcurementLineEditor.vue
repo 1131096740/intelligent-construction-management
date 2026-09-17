@@ -97,11 +97,11 @@ function updateLine(index: number, key: keyof ProcurementLineDraft, value: unkno
     <div class="procurement-line-editor__cards" aria-label="材料明细卡片填写">
       <article v-for="(line, index) in modelValue" :key="index">
         <h4>材料明细第 {{ index + 1 }} 行</h4>
-        <label><span>材料名称</span><t-input :value="line.materialName" :readonly="readonly" @update:model-value="updateLine(index, 'materialName', $event)" /></label>
-        <label><span>规格型号</span><t-input :value="line.specification" :readonly="readonly" @update:model-value="updateLine(index, 'specification', $event)" /></label>
-        <label><span>单位</span><t-input :value="line.unit" :readonly="readonly" @update:model-value="updateLine(index, 'unit', $event)" /></label>
-        <label><span>数量（最多 2 位小数）</span><t-input :value="line.quantity" :readonly="readonly" @update:model-value="updateLine(index, 'quantity', $event)" /></label>
-        <label><span>备注</span><t-input :value="line.note" :readonly="readonly" @update:model-value="updateLine(index, 'note', $event)" /></label>
+        <label><span>材料名称</span><t-input :model-value="line.materialName" :readonly="readonly" @update:model-value="updateLine(index, 'materialName', $event)" /></label>
+        <label><span>规格型号</span><t-input :model-value="line.specification" :readonly="readonly" @update:model-value="updateLine(index, 'specification', $event)" /></label>
+        <label><span>单位</span><t-input :model-value="line.unit" :readonly="readonly" @update:model-value="updateLine(index, 'unit', $event)" /></label>
+        <label><span>数量（最多 2 位小数）</span><t-input :model-value="line.quantity" :readonly="readonly" @update:model-value="updateLine(index, 'quantity', $event)" /></label>
+        <label><span>备注</span><t-input :model-value="line.note" :readonly="readonly" @update:model-value="updateLine(index, 'note', $event)" /></label>
       </article>
     </div>
     <div
