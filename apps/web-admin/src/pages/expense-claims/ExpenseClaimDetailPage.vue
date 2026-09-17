@@ -988,11 +988,11 @@ onMounted(() => void loadDetail());
                 <strong>{{ attachment.fileName }}</strong>
                 <dl>
                   <dt>类别</dt>
-                  <dd>{{ attachment.category === 'invoice' ? '发票' : attachment.category === 'receipt_or_other' ? '收据或其他凭证' : '其他资料' }}</dd>
+                  <dd>{{ attachment.category === 'invoice' ? '发票' : attachment.category === 'receipt_or_other' ? '收据或其他凭证' : '其他说明' }}</dd>
                   <dt>关联费用类别</dt>
                   <dd>{{ attachment.expenseCategory || '未填写' }}</dd>
                   <dt>状态</dt>
-                  <dd>{{ attachment.removedAt ? '已从草稿移除' : attachment.stage === 'approval_frozen' ? '已冻结于审批快照' : attachment.stage === 'post_submit_append' ? '提交后追加' : '草稿附件' }}</dd>
+                  <dd>{{ attachment.removedAt ? '已从草稿移除' : attachment.stage === 'approval_frozen' ? '审批快照已冻结' : attachment.stage === 'post_submit_append' ? '后续追加资料' : '草稿附件' }}</dd>
                   <dt>上传人</dt>
                   <dd>{{ attachment.attachedByName }}</dd>
                   <dt>上传时间</dt>
@@ -1000,7 +1000,7 @@ onMounted(() => void loadDetail());
                 </dl>
                 <t-popconfirm
                   v-if="detail.status === 'draft' && !attachment.removedAt"
-                  content="确认从当前草稿移除该附件？已上传的资料仍保留审计记录。"
+                  content="仅移除本次草稿中的附件绑定，原文件和审计记录仍会保留。"
                   confirm-btn="确认移除"
                   @confirm="removeAttachment(attachment.id)"
                 >

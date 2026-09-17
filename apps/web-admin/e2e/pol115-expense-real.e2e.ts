@@ -84,7 +84,7 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
   expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器报销明细", lines: [{ expenseCategory: "办公费", purpose: "购买文具", amountCents: "1" }], entrySnapshots: [] });
 });
 
-test("统一费用字段保存一分钱项目借款草稿，不自动提交审批", async ({ page, request }) => {
+test("借款先保存草稿及附件，仅明确提交后冻结审批内容", async ({ page, request }) => {
   const session = JSON.parse(process.env.POL115_BROWSER_SESSION!);
   const api = process.env.POL115_API_URL!;
   await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
@@ -133,4 +133,17 @@ test("统一费用字段保存一分钱项目借款草稿，不自动提交审�
   const withAttachment = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect(withAttachment.ok()).toBe(true);
   expect(await withAttachment.json()).toMatchObject({ status: "draft", attachments: [{ fileName: "合成费用凭证.png", category: "receipt_or_other" }], entrySnapshots: [] });
+  const submitted = page.waitForResponse((result) => result.url().endsWith(`/expense-claims/${claim.id}/submission`) && result.request().method() === "POST");
+  await page.getByRole("button", { name: "提交审批", exact: true }).click();
+  await page.getByRole("button", { name: "确认提交", exact: true }).click();
+  const submission = await submitted;
+  expect(submission.status(), await submission.text()).toBe(201);
+  await expect(attachmentList.getByText("审批快照已冻结", { exact: true })).toBeVisible();
+  await expect(attachmentList.getByRole("button", { name: "移除", exact: true })).toHaveCount(0);
+  const frozen = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
+  expect(frozen.ok()).toBe(true);
+  const frozenDetail = await frozen.json();
+  expect(frozenDetail).toMatchObject({ status: "approval_pending", requestedAmountCents: "1", attachments: [{ fileName: "合成费用凭证.png", stage: "approval_frozen" }] });
+  expect(frozenDetail.entrySnapshots).toHaveLength(1);
+  expect(frozenDetail.entrySnapshots[0]).toMatchObject({ valuesSnapshot: { reason: "真实浏览器项目借款", requestedAmountCents: "1", payeeBankAccount: "000012340001" } });
 });
