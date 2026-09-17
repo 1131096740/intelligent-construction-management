@@ -8,7 +8,7 @@ if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(api) || !process.env.POL113_BROWSER_SESS
   throw new Error("项目档案浏览器测试只允许本机合成会话");
 }
 export default defineConfig({
-  testDir: "./e2e", testMatch: "pol113-project-profile-real.e2e.ts",
+  testDir: "./e2e", testMatch: ["pol113-project-profile-real.e2e.ts", "pol113-settings-real.e2e.ts"],
   timeout: 45_000, workers: 1, retries: 0, reporter: "line",
   outputDir: join(tmpdir(), `pol113-project-browser-${randomUUID()}`),
   use: { baseURL: "http://127.0.0.1:4214", trace: "off" },

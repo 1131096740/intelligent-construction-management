@@ -137,12 +137,23 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect(saved.status).toBe(200);
     expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body).toMatchObject(values);
     if (process.env.RUN_POL113_PROJECT_BROWSER === "1") {
+      const settingsAccounts: Record<string, { phone: string; newPhone: string; password: string }> = {};
+      for (const [index, browser] of ["desktop", "mobile"].entries()) {
+        const suffix = `${String(Date.now()).slice(-7)}${index}`;
+        const account = { phone: `136${suffix}`, newPhone: `135${suffix}`, password: `Local-${randomUUID()}` };
+        // Account bootstrap only; profile mutations and observations use public HTTP.
+        await app.get(PrismaService).user.create({ data: {
+          name: "本人资料浏览器合成账号", phone: account.phone,
+          passwordHash: await bcrypt.hash(account.password, 4), mustChangePassword: false
+        } });
+        settingsAccounts[browser] = account;
+      }
       await participatingCompany();
       const contract = await actor("contract_staff");
       const enterpriseIntent = await partyIntent(contract, "浏览器施工企业验收");
       expect((await request("/business-parties", "POST", enterpriseIntent.body, contract)).status).toBe(201);
       await new Promise<void>((done, reject) => {
-        const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)) };
+        const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
         delete browserEnv.JEST_WORKER_ID;
         const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
           cwd: resolve(__dirname, "../../../../apps/web-admin"),
