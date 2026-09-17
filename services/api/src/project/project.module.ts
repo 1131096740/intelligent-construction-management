@@ -27,6 +27,6 @@ import { ProjectOperatingProfileService } from "./project-operating-profile.serv
     ProjectAffiliateCompanyContractService,
     ProjectOperatingProfileService
   ],
-  exports: [ProjectOperatingProfileService]
+  exports: [ProjectOperatingProfileService, ProjectService]
 })
 export class ProjectModule {}

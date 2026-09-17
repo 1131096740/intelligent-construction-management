@@ -45,7 +45,9 @@ describe("BusinessEntrySceneAccessRegistry", () => {
         expect(access.target.resolve).toEqual(expect.any(Function));
       }
       expect(access.permission).toEqual(
-        definition.key === "project_operating_profile"
+        ["project_rename", "project_create"].includes(definition.key)
+          ? { kind: "role_keys", roleKeys: ["chairman", "general_manager"], roleScope: "effective" }
+          : ["project_operating_profile", "project_construction_enterprise", "project_participating_company_add", "project_participating_company_deactivate"].includes(definition.key)
           ? {
               kind: "business_action",
               action: "project.operating_profile.manage",
@@ -72,6 +74,11 @@ describe("BusinessEntrySceneAccessRegistry", () => {
 
   it("registers production access only from the explicit profile and takeover scene families", () => {
     expect(BUSINESS_ENTRY_SCENE_ACCESS_POLICIES.map((policy) => policy.sceneKey)).toEqual([
+      "project_construction_enterprise",
+      "project_participating_company_add",
+      "project_rename",
+      "project_create",
+      "project_participating_company_deactivate",
       "project_operating_profile",
       ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key),
       ...POL19P3_SCENE_KEYS
@@ -196,7 +203,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
           roleScope: "global"
         }
       }] as never
-    )).toThrow("业务场景目标范围未登记：project_operating_profile");
+    )).toThrow("业务场景目标范围未登记：project_construction_enterprise");
   });
 
   it("rejects an unknown permission kind at registration", () => {
@@ -212,7 +219,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
           roleScope: "project"
         }
       }] as never
-    )).toThrow("业务场景权限类型未登记：project_operating_profile");
+    )).toThrow("业务场景权限类型未登记：project_construction_enterprise");
   });
 
   it("fails closed when a policy references an unknown scene", () => {

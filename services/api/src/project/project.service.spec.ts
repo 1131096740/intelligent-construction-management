@@ -272,6 +272,7 @@ describe("ProjectService", () => {
 
   it("creates a project and records an audit log", async () => {
     const tx = {
+      businessEntrySubmissionSnapshot: { create: jest.fn().mockResolvedValue({ id: "snapshot-1" }) },
       project: {
         create: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
       }
@@ -284,7 +285,7 @@ describe("ProjectService", () => {
 
     await expect(
       service.createProject("chairman-1", { code: " KM-2023-001 ", name: " 昆明项目 " })
-    ).resolves.toEqual({ id: "project-1", code: "KM-2023-001", name: "昆明项目" });
+    ).resolves.toMatchObject({ id: "project-1", code: "KM-2023-001", name: "昆明项目" });
     expect(tx.project.create).toHaveBeenCalledWith({
       data: { code: "KM-2023-001", name: "昆明项目" },
       select: { id: true, code: true, name: true }

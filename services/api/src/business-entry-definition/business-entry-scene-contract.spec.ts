@@ -15,6 +15,17 @@ const POL19P3_SCENES = [
 ] as const;
 
 describe("POL-19P3 explicit scene contract", () => {
+  it("discovers project creation and participant deactivation with explicit project policies", () => {
+    for (const [sceneKey, entityType, keys] of [
+      ["project_create", "project", ["code", "name"]],
+      ["project_participating_company_deactivate", "project_participating_company", ["endedOn", "changeReason"]]
+    ] as const) {
+      const definition = BUSINESS_ENTRY_SCENE_DEFINITIONS.find((scene) => scene.key === sceneKey);
+      expect(definition?.entityType).toBe(entityType);
+      expect(definition?.fields.map((field) => field.key)).toEqual(keys);
+      expect(BUSINESS_ENTRY_ACCESS_REGISTRY.get(sceneKey).target).toMatchObject({ scope: "project", entityType });
+    }
+  });
   it("registers the approved scenes without a template wildcard", () => {
     const sceneKeys = BUSINESS_ENTRY_SCENE_DEFINITIONS.map((definition) => definition.key);
 

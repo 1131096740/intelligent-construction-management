@@ -17,9 +17,11 @@ import {
 } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { freezeProjectCreation, validateProjectCreation } from "./project-base-entry";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { PrismaService } from "../database/prisma.service";
 import {
@@ -309,9 +311,29 @@ export class ProjectService {
     private readonly operatingProjection?: OperatingProjectionService
   ) {}
 
-  async createProject(actorUserId: string, input: CreateProjectDto) {
+  async assertCanRenameBusinessEntry(projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
+    // Same global + current-project UserPosition/ProjectMember scope as the
+    // existing PATCH route's RequirePositions guard; no technical-admin bypass.
+    const visibility = new ProjectVisibilityService(this.prisma);
+    const scopes = tx
+      ? await visibility.effectiveRoleScopesInTransaction(tx, actorUserId, projectId)
+      : await visibility.effectiveRoleScopes(actorUserId, projectId);
+    const roles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+    if (!roles.some((role) => role === "chairman" || role === "general_manager")) {
+      throw new ForbiddenException("当前账号缺少执行该操作所需的岗位权限");
+    }
+  }
+
+  validateCreation(input: CreateProjectDto) {
     const code = requiredTrimmed(input.code, "请填写项目编号");
     const name = requiredTrimmed(input.name, "请填写项目名称");
+    return validateProjectCreation({ code, name }, input.definitionVersion);
+  }
+
+  async createProject(actorUserId: string, input: CreateProjectDto) {
+    const validation = this.validateCreation(input);
+    if (!validation.valid) throw new BadRequestException(validation);
+    const { code, name } = validation.values as { code: string; name: string };
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -319,6 +341,7 @@ export class ProjectService {
           data: { code, name },
           select: { id: true, code: true, name: true }
         });
+        const entrySnapshot = await freezeProjectCreation(tx, this.audit, actorUserId, project, input.definitionVersion);
 
         await this.audit.record(tx, {
           actorUserId,
@@ -328,7 +351,7 @@ export class ProjectService {
           metadata: { code, name }
         });
 
-        return project;
+        return { ...project, entrySnapshot };
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {

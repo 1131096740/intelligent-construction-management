@@ -1,4 +1,4 @@
-import type { ProjectOperatingTakeoverStatus } from "@jiangkong/shared-domain";
+import type { BusinessEntrySceneDefinition, BusinessEntryValidationResult, ProjectOperatingTakeoverStatus } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -19,6 +19,7 @@ export interface ProjectOperatingProfileReadModel {
   takeoverCompletedDate: string | null;
   takeoverStatus: ProjectOperatingTakeoverStatus;
   canManage: boolean;
+  deactivationDefinition?: BusinessEntrySceneDefinition | null;
   constructionEnterprise: {
     assignmentId: string;
     businessPartyId: string;
@@ -65,6 +66,7 @@ export interface AddProjectParticipatingCompanyPayload {
 export interface DeactivateProjectParticipatingCompanyPayload {
   endedOn: string;
   changeReason: string;
+  definitionVersion?: number;
 }
 
 export interface AssignProjectConstructionEnterprisePayload {
@@ -174,6 +176,13 @@ export function addProjectParticipatingCompany(
     `${projectPath(projectId)}/participating-companies`,
     body,
     "新增项目参与公司失败"
+  );
+}
+
+export function validateProjectParticipatingCompanyDeactivation(projectId: string, participantId: string, body: DeactivateProjectParticipatingCompanyPayload) {
+  return postJson<BusinessEntryValidationResult>(
+    `${projectPath(projectId)}/participating-companies/${encodeURIComponent(participantId)}/deactivation/validate`,
+    body, "停止参与公司预检失败"
   );
 }
 
