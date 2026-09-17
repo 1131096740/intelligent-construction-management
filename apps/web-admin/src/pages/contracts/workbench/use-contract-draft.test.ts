@@ -1023,7 +1023,7 @@ describe("useContractDraft", () => {
       selection
     )).toBe(false);
   });
-  it("uses a TDesign company selector and removes party_a from new-party options", () => {
+  it("delegates the company selector to the unified field form and removes party_a from new-party options", () => {
     const basicSource = readFileSync(
       new URL("./ContractBasicSection.vue", import.meta.url),
       "utf8"
@@ -1033,8 +1033,8 @@ describe("useContractDraft", () => {
       "utf8"
     );
 
-    expect(basicSource).toContain("<t-select");
-    expect(basicSource).toContain("companyEntityId");
+    expect(basicSource).toContain("<BusinessEntryForm");
+    expect(basicSource).toContain(':options-by-field="{ companyEntityId: companyOptions }"');
     expect(basicSource).not.toMatch(/emit\([^\n]*myCompanyEntity/u);
     expect(partySource).toContain('.filter(([value]) => value !== "party_a")');
   });
