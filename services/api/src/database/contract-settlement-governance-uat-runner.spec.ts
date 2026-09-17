@@ -132,7 +132,7 @@ describe("contract settlement governance UAT runners", () => {
       expect(governedRunner).toContain(`"${caseId}"`);
     }
     expect(governedRunner).toContain("productionData: false");
-    expect(governedRunner).toContain("contractName: fixture.contract.name");
+    expect(governedRunner).toContain("contractName: contract.name");
     expect(governedRunner).toContain('storageDriver: "local"');
     expect(governedRunner).toContain("writeFileSync(temporary");
     expect(governedRunner).toContain("renameSync(temporary, output)");
