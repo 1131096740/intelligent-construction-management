@@ -121,6 +121,15 @@ const ACTION_SEMANTICS = new Set([
 ]);
 const EXIT_CANDIDATE_SEMANTICS =
   "candidate_only_no_deletion_authorization";
+const SELF_PROFILE_FACADE = Object.freeze({
+  apiFile: "apps/web-admin/src/lib/user-self-profile.ts",
+  wrapper: "updateProfile",
+  method: "PATCH",
+  path: "/auth/profile",
+  normalizedKey: "PATCH /auth/profile",
+  consumer: "apps/web-admin/src/pages/settings/SettingsPage.vue",
+  authSourceFile: "apps/web-admin/src/auth/auth.store.ts"
+});
 
 function matrixError(code, details = undefined) {
   const error = new Error("Whole-site capability matrix failed");
@@ -1215,7 +1224,17 @@ function validatePageSummary(
         binding.wrapper,
         consumer
       );
-      if (registeredWrapperKeys.has(wrapperKey(binding.apiFile, binding.wrapper))) {
+      if (
+        registeredWrapperKeys.has(
+          wrapperKey(binding.apiFile, binding.wrapper)
+        ) ||
+        isExactSelfProfileFacadeBinding(
+          binding,
+          webManifest.authTransportExceptions.find(
+            (entry) => entry.normalizedKey === binding.normalizedKey
+          )
+        )
+      ) {
         candidateKeys.add(key);
       }
     }
@@ -1711,6 +1730,47 @@ function mutationConsumersFor(wrappers) {
   );
 }
 
+function isExactSelfProfileFacadeBinding(binding, authTransport) {
+  return Boolean(
+    authTransport &&
+      authTransport.transport === "auth_store_exception" &&
+      authTransport.sourceFile === SELF_PROFILE_FACADE.authSourceFile &&
+      authTransport.method === SELF_PROFILE_FACADE.method &&
+      authTransport.normalizedPath === SELF_PROFILE_FACADE.path &&
+      authTransport.normalizedKey === SELF_PROFILE_FACADE.normalizedKey &&
+      binding.apiFile === SELF_PROFILE_FACADE.apiFile &&
+      binding.wrapper === SELF_PROFILE_FACADE.wrapper &&
+      binding.method === SELF_PROFILE_FACADE.method &&
+      binding.path === SELF_PROFILE_FACADE.path &&
+      binding.normalizedKey === SELF_PROFILE_FACADE.normalizedKey &&
+      binding.bodyKind === "json" &&
+      isDeepStrictEqual(binding.productionConsumers, [
+        SELF_PROFILE_FACADE.consumer
+      ])
+  );
+}
+
+function authFacadeMutationConsumers(actionBindings) {
+  const pairs = new Map();
+  for (const { binding, authTransport } of actionBindings) {
+    if (!isExactSelfProfileFacadeBinding(binding, authTransport)) continue;
+    const pair = {
+      apiFile: binding.apiFile,
+      wrapper: binding.wrapper,
+      consumer: SELF_PROFILE_FACADE.consumer,
+      normalizedKeys: [binding.normalizedKey]
+    };
+    pairs.set(
+      mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer),
+      pair
+    );
+  }
+  return sortBy(
+    [...pairs.values()],
+    (pair) => mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer)
+  );
+}
+
 function selectedPageUncovered(pair) {
   return {
     code:
@@ -1773,12 +1833,12 @@ function buildActionBindings({
       const authTransport = authTransportByNormalizedKey.get(
         binding.normalizedKey
       );
+      const exactAuthFacade = isExactSelfProfileFacadeBinding(
+        binding,
+        authTransport
+      );
       assert(
-        wrapper || (
-          authTransport &&
-          authTransport.method === binding.method &&
-          binding.acceptedProductionConsumers.length === 0
-        ),
+        wrapper || exactAuthFacade,
         "CAPABILITY_MATRIX_ACTION_WRAPPER_MISSING",
         { actionId: action.id }
       );
@@ -1851,6 +1911,7 @@ function buildActionBindings({
       actionBindings.push({
         action,
         binding,
+        authTransport: exactAuthFacade ? authTransport : null,
         index,
         identity: actionBindingKey(action.id, binding, index),
         reasons: actionBindingReasons(action, binding, {
@@ -2053,15 +2114,27 @@ export function buildWholeSiteCapabilityMatrix({
       wrapper
     ])
   );
-  const mutationConsumers = mutationConsumersFor(
-    webManifest.wrappers
-  );
   const actionBindings = buildActionBindings({
     pageManifest,
     wrappersByKey,
     nestByNormalizedKey,
     authTransportExceptions: webManifest.authTransportExceptions
   });
+  const mutationConsumers = sortBy(
+    [
+      ...new Map(
+        [
+          ...mutationConsumersFor(webManifest.wrappers),
+          ...authFacadeMutationConsumers(actionBindings)
+        ].map((pair) => [
+          mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer),
+          pair
+        ])
+      ).values()
+    ],
+    (pair) =>
+      mutationConsumerKey(pair.apiFile, pair.wrapper, pair.consumer)
+  );
   validatePageSummary(
     pageManifest,
     webManifest,

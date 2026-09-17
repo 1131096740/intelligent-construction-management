@@ -650,6 +650,83 @@ function fixture({ mutation = "none" } = {}) {
   };
 }
 
+function selfProfileFacadeFixture() {
+  const input = fixture();
+  const profileRoute = route("PATCH", "/auth/profile", "AuthProfile");
+  profileRoute.controller = "AuthController";
+  profileRoute.handler = "updateMyProfile";
+  profileRoute.sourceFile = "services/api/src/auth/auth.controller.ts";
+  input.nestManifest.routes.push(profileRoute);
+  input.webManifest.authTransportExceptions.push({
+    sourceFile: "apps/web-admin/src/auth/auth.store.ts",
+    transport: "auth_store_exception",
+    method: "PATCH",
+    normalizedPath: "/auth/profile",
+    normalizedKey: "PATCH /auth/profile"
+  });
+  input.webManifest.summary.authTransportExceptionCount = 1;
+
+  const facade = {
+    name: "updateProfile",
+    apiFile: "apps/web-admin/src/lib/user-self-profile.ts",
+    productionConsumers: [
+      "apps/web-admin/src/pages/settings/SettingsPage.vue"
+    ],
+    requests: [
+      {
+        method: "PATCH",
+        path: "/auth/profile",
+        normalizedKey: "PATCH /auth/profile",
+        bodyKind: "json"
+      }
+    ]
+  };
+  const action = actionFor(profileRoute, facade, { accepted: true });
+  action.id = "user-self-profile.update.commit";
+  action.usage = "background";
+  action.sourceFile = facade.productionConsumers[0];
+  action.capability = {
+    kind: "server_definition",
+    source: "definition.key",
+    serverDerived: true,
+    dominatesTrigger: true,
+    freshRead: {
+      apiFile: "apps/web-admin/src/api/business-entry.api.ts",
+      name: "fetchBusinessEntryDefinition",
+      method: "GET",
+      mode: "read_only_probe",
+      binding: {
+        actor: "fresh actor",
+        company: "fresh company",
+        scene: "fresh scene",
+        action: "fresh action",
+        definitionRevision: "fresh definition revision"
+      },
+      submissionTarget: "independent"
+    }
+  };
+  input.pageManifest = pageManifest(input.webManifest, [action]);
+  input.pageManifest.summary.productionMutationConsumerPairCount = 1;
+
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest,
+    [
+      undefined,
+      {
+        usage: "page",
+        consumerSurface: "auth_store"
+      }
+    ]
+  );
+  const authUsage = input.usageManifest.routes[1];
+  authUsage.consumerEvidence.authStore = clone(
+    input.webManifest.authTransportExceptions
+  );
+  input.usageManifest.evidence.authStoreRouteCount = 1;
+  return input;
+}
+
 function build(input = fixture()) {
   return buildWholeSiteCapabilityMatrix(input);
 }
@@ -725,6 +802,38 @@ test("accepts a causally verified server-capability mutation", () => {
   assert.equal(
     matrix.summary.coveredProductionMutationConsumerPairCount,
     1
+  );
+});
+
+test("counts the exact self-profile auth facade as a covered mutation consumer", () => {
+  const matrix = build(selfProfileFacadeFixture());
+
+  assert.equal(matrix.status, "ready");
+  assert.equal(matrix.summary.productionMutationConsumerPairCount, 1);
+  assert.equal(
+    matrix.summary.coveredProductionMutationConsumerPairCount,
+    1
+  );
+  assert.equal(
+    matrix.summary.uncoveredProductionMutationConsumerPairCount,
+    0
+  );
+  const profileRoute = matrix.routes.find(
+    (entry) => entry.route.normalizedKey === "PATCH /auth/profile"
+  );
+  assert.equal(profileRoute.actions[0].accepted, true);
+  assert.equal(profileRoute.mutationCoverage, "covered");
+  assert.deepEqual(profileRoute.blockerCodes, []);
+});
+
+test("rejects a lookalike self-profile facade that does not match the exact registration", () => {
+  const input = selfProfileFacadeFixture();
+  input.pageManifest.actions[0].bindings[0].apiFile =
+    "apps/web-admin/src/lib/lookalike-self-profile.ts";
+
+  assert.throws(
+    () => build(input),
+    (error) => error?.code === "CAPABILITY_MATRIX_ACTION_WRAPPER_MISSING"
   );
 });
 

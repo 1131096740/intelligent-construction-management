@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e55459c1bdedee620d629901d20c91a8ac043f475ac904b2ba289ac13827d47d",
+      "sha256": "723d4b601c8aa68a3281b8ffe8a46c72a065b97abf1bbc8a0846626cdcdc7799",
       "status": "ready",
       "summary": {
         "registeredActionCount": 307,
@@ -55,10 +55,10 @@
         "reachableProductionModuleCount": 271,
         "templateEventDirectiveCount": 975,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 297,
-        "candidateProductionMutationConsumerCount": 297,
-        "acceptedProductionMutationConsumerCount": 297,
-        "productionMutationConsumerPairCount": 297,
+        "coveredProductionMutationConsumerCount": 298,
+        "candidateProductionMutationConsumerCount": 298,
+        "acceptedProductionMutationConsumerCount": 298,
+        "productionMutationConsumerPairCount": 298,
         "blockerCount": 0
       }
     },
@@ -106,10 +106,10 @@
     "duplicateMutationRouteCount": 0,
     "registeredActionCount": 307,
     "actionBindingCount": 349,
-    "acceptedActionBindingCount": 326,
+    "acceptedActionBindingCount": 327,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 297,
-    "coveredProductionMutationConsumerPairCount": 297,
+    "productionMutationConsumerPairCount": 298,
+    "coveredProductionMutationConsumerPairCount": 298,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -9524,13 +9524,15 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
-          "acceptedProductionConsumers": [],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
           "causalVerified": true,
-          "accepted": false,
+          "accepted": true,
           "blockerCodes": []
         }
       ],
-      "mutationCoverage": "not_applicable",
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

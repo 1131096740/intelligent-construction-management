@@ -35,7 +35,8 @@ const SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION = Object.freeze({
   method: "PATCH",
   normalizedPath: "/auth/profile",
   normalizedKey: "PATCH /auth/profile",
-  transport: "auth_store_exception"
+  transport: "auth_store_exception",
+  productionConsumer: `${WEB_SOURCE_ROOT}/pages/settings/SettingsPage.vue`
 });
 const CONTRACT_WORKBENCH_PAGE_PATH =
   `${WEB_SOURCE_ROOT}/pages/contracts/ContractWorkbenchPage.vue`;
@@ -13477,15 +13478,87 @@ function pipelineHandlerSource(handler, wrapperName, context) {
   if (!definitions) return null;
   return {
     definition: definitions[0],
+    definitions,
     source: definitions
       .map((definition) => context.source.slice(definition.range[0], definition.range[1]))
       .join("\n")
   };
 }
 
+function importedWrapperCallCount(definitions, wrapper, context) {
+  let count = 0;
+  for (const definition of definitions ?? []) {
+    walkEstree(definition, (node) => {
+      if (node.type !== "CallExpression" || node.callee?.type !== "Identifier") return;
+      const imported = context.symbols.imports?.get(node.callee.name);
+      if (
+        node.callee.name === wrapper.name &&
+        imported?.importedName === wrapper.name
+      ) {
+        count += 1;
+      }
+    });
+  }
+  return count;
+}
+
 function wrapperCallCount(source, wrapperName) {
   const escaped = wrapperName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   return [...source.matchAll(new RegExp(`\\b${escaped}\\s*\\(`, "gu"))].length;
+}
+
+function pipelineFreshReadSources({ handlerDefinition, freshName, context }) {
+  if (!freshName || !handlerDefinition) return null;
+  const freshBindings = new Set();
+  directCallableNodes(handlerDefinition, (node) => {
+    if (node.type === "Identifier" && node.name === freshName) {
+      const binding = context.symbols.scopeBindings?.get(node);
+      if (binding) freshBindings.add(binding);
+    }
+  });
+  if (freshBindings.size !== 1) return null;
+  const freshBinding = [...freshBindings][0];
+  const declaration = uniqueIndexedNode(
+    context.symbols.declarationsByBinding,
+    freshBinding
+  );
+  const sources = declaration
+    ? expressionServerReadSources(declaration, context)
+    : null;
+  if (sources?.size !== 1) return null;
+  return { binding: freshBinding, sources };
+}
+
+function pipelineCapabilitySourceEvidence({ action, handlerDefinition, freshName, context }) {
+  const root = capabilitySourceRoot(action.capability.source);
+  if (!root) return null;
+  const freshRead = pipelineFreshReadSources({
+    handlerDefinition,
+    freshName,
+    context
+  });
+  if (!freshRead) return null;
+  const { binding: freshBinding, sources } = freshRead;
+  if (root === freshName) return sources;
+  const rootBindings = topLevelScopeVariables(context.symbols.scopeManager, root);
+  if (rootBindings.length !== 1) return null;
+  const rootBinding = rootBindings[0];
+  let rebound = false;
+  directCallableNodes(handlerDefinition, (node) => {
+    if (node.type !== "AssignmentExpression" || node.operator !== "=") return;
+    const left = unwrapValueExpression(node.left);
+    const right = unwrapValueExpression(node.right);
+    const leftRoot = referenceRootIdentifier(left);
+    if (
+      leftRoot?.name === root &&
+      context.symbols.scopeBindings?.get(leftRoot) === rootBinding &&
+      right?.type === "Identifier" &&
+      context.symbols.scopeBindings?.get(right) === freshBinding
+    ) {
+      rebound = true;
+    }
+  });
+  return rebound ? sources : null;
 }
 
 function guardedUploadHelperSource(handlerDefinition, context) {
@@ -13546,7 +13619,11 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
   const handler = pipelineHandlerSource(action.trigger.handler, wrapper.name, context);
   if (!handler) return null;
   const source = handler.source;
-  const targetCalls = wrapperCallCount(source, wrapper.name);
+  const targetCalls = importedWrapperCallCount(
+    handler.definitions,
+    wrapper,
+    context
+  );
   if (targetCalls !== 1) return null;
 
   const definitionDeclaration = source.match(
@@ -13608,7 +13685,29 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
       revisionBound && sceneBound && targetBound && validationValuesUsed && finalWriteProjectBound &&
       (validationOnly || (validGuard > validationStart && validGuard < targetStart && freshCapability))
     ) {
-      return { kind: "project_definition", verified: true };
+      const definitionSources = pipelineFreshReadSources({
+        handlerDefinition: handler.definition,
+        freshName: definitionName,
+        context
+      })?.sources ?? null;
+      const runtimeCapabilitySources = capabilityName
+        ? pipelineCapabilitySourceEvidence({
+            action,
+            handlerDefinition: handler.definition,
+            freshName: capabilityName,
+            context
+          })
+        : null;
+      const capabilitySources =
+        runtimeCapabilitySources ??
+        (validationOnly ? definitionSources : null);
+      return {
+        kind: "project_definition",
+        verified: true,
+        capabilityWitness: validationOnly || capabilitySources?.size === 1,
+        capabilitySources,
+        definitionSources
+      };
     }
   }
 
@@ -13630,13 +13729,25 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
     const capabilityStart = source.search(/await\s+fetchProject\w*\s*\(/u);
     const guardStart = source.search(/if\s*\(\s*!operationAllowed\s*\)\s*throw/u);
     if (capabilityStart >= 0 && guardStart > capabilityStart && targetStart > guardStart) {
-      return { kind: "project_capability", verified: true };
+      const capabilitySources = pipelineCapabilitySourceEvidence({
+        action,
+        handlerDefinition: handler.definition,
+        freshName: projectCapabilityName,
+        context
+      });
+      return {
+        kind: "project_capability",
+        verified: true,
+        capabilityWitness: capabilitySources?.size === 1,
+        capabilitySources
+      };
     }
   }
 
   const uploadHelperSource =
-    guardedUploadHelperSource(handler.definition, context) ?? context.source;
+    guardedUploadHelperSource(handler.definition, context);
   const guardedUpload =
+    typeof uploadHelperSource === "string" &&
     /await\s+\w+\s*\([^)]*(?:paymentId|paymentIdCoordinate)/u.test(source) &&
     new RegExp(
       `\\b${wrapper.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*\\(\\s*(?:paymentId|paymentIdCoordinate)\\b`,
@@ -13652,7 +13763,21 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
     const capabilityStart = source.search(/await\s+\w+\s*\(/u);
     const guardStart = source.search(/if\s*\(\s*!operationAllowed\s*\)/u);
     if (capabilityStart >= 0 && guardStart > capabilityStart && targetStart > guardStart) {
-      return { kind: "guarded_upload", verified: true };
+      const freshDetail = source.match(
+        /const\s+([A-Za-z_$]\w*)\s*=\s*await\s+\w+\s*\(\s*(?:paymentId|paymentIdCoordinate)\b/u
+      )?.[1];
+      const capabilitySources = pipelineCapabilitySourceEvidence({
+        action,
+        handlerDefinition: handler.definition,
+        freshName: freshDetail,
+        context
+      });
+      return {
+        kind: "guarded_upload",
+        verified: true,
+        capabilityWitness: capabilitySources?.size === 1,
+        capabilitySources
+      };
     }
   }
   return null;
@@ -15225,8 +15350,11 @@ function actionBindings({
         verified: true,
         localCallChain: [action.trigger.handler, wrapper.name]
       };
-      capabilityContext.pipelineProofKinds ??= new Set();
-      capabilityContext.pipelineProofKinds.add(pipelineProof.kind);
+      capabilityContext.pipelineProofs ??= new Map();
+      capabilityContext.pipelineProofs.set(
+        wrapperIdentity(declared.apiFile, declared.name),
+        pipelineProof
+      );
     }
     const finalContractProof = finalContractWriteCausalProof({
       action,
@@ -15856,6 +15984,32 @@ function bindingUpstreamAssociationIsTrusted({
     productionConsumers:
       binding.productionConsumers.map(posixPath)
   };
+  const authFacadeException =
+    posixPath(binding.apiFile) ===
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile &&
+    binding.wrapper === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName &&
+    binding.method === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method &&
+    binding.path === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath &&
+    binding.normalizedKey === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey &&
+    binding.bodyKind === "json" &&
+    binding.productionConsumers.length === 1 &&
+    binding.productionConsumers[0] ===
+      SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.productionConsumer &&
+    (webManifest.authTransportExceptions ?? []).filter(
+      (entry) =>
+        posixPath(entry?.sourceFile ?? "") ===
+          SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transportSourceFile &&
+        entry?.transport === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.transport &&
+        entry?.method === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.method &&
+        entry?.normalizedPath === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedPath &&
+        entry?.normalizedKey === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.normalizedKey
+    ).length === 1;
+  if (authFacadeException) {
+    return nestRouteAssociationIsTrusted(
+      nestManifest,
+      binding.normalizedKey
+    );
+  }
   const wrapper = trustedWebWrapperForAssociation({
     manifest: webManifest,
     association
@@ -16592,6 +16746,7 @@ export async function inspectWholeSitePageActionManifest({
   const candidateConsumerPairs = new Set();
   const coveredConsumerPairs = new Set();
   const productionMutationConsumerPairs = new Set();
+  const authFacadeMutationPairs = new Map();
   for (const wrapper of webManifest.wrappers) {
     if (!wrapperIsProductionMutation(wrapper)) continue;
     const identity = wrapperIdentity(
@@ -16766,16 +16921,33 @@ export async function inspectWholeSitePageActionManifest({
           binding.wrapper
         )
       );
-      if (!boundWrapper || !wrapperIsProductionMutation(boundWrapper)) {
+      const authFacadeMutation =
+        !boundWrapper &&
+        isMutationRequest(binding) &&
+        bindingUpstreamAssociationIsTrusted({
+          binding,
+          webManifest,
+          nestManifest
+        }) &&
+        posixPath(binding.apiFile) ===
+          SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile &&
+        binding.wrapper === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName;
+      if (
+        (!boundWrapper || !wrapperIsProductionMutation(boundWrapper)) &&
+        !authFacadeMutation
+      ) {
         continue;
       }
       for (const consumer of binding.productionConsumers) {
-        candidateConsumerPairs.add(
-          `${wrapperIdentity(
-            binding.apiFile,
-            binding.wrapper
-          )}\u0000${consumer}`
-        );
+        const pair = `${wrapperIdentity(
+          binding.apiFile,
+          binding.wrapper
+        )}\u0000${consumer}`;
+        candidateConsumerPairs.add(pair);
+        if (authFacadeMutation) {
+          productionMutationConsumerPairs.add(pair);
+          authFacadeMutationPairs.set(pair, { binding, consumer });
+        }
       }
     }
     const mutationBindings = bindings.filter(isMutationRequest);
@@ -16783,17 +16955,71 @@ export async function inspectWholeSitePageActionManifest({
     const writes = bindings.some((binding) =>
       isMutationRequest(binding)
     );
+    const pipelineDominates =
+      mutationBindings.length > 0 &&
+      mutationBindings.every((binding) =>
+        capabilityContext.pipelineProofs?.get(
+          wrapperIdentity(binding.apiFile, binding.wrapper)
+        )?.capabilityWitness === true
+      );
+    const pipelineCapabilitySources = new Set(
+      mutationBindings.flatMap((binding) => [
+        ...(capabilityContext.pipelineProofs?.get(
+          wrapperIdentity(binding.apiFile, binding.wrapper)
+        )?.capabilitySources ?? [])
+      ])
+    );
+    const pipelineDefinitionSources = new Set(
+      mutationBindings.flatMap((binding) => [
+        ...(capabilityContext.pipelineProofs?.get(
+          wrapperIdentity(binding.apiFile, binding.wrapper)
+        )?.definitionSources ?? [])
+      ])
+    );
+    const expectedFreshReadIdentity = action.capability.freshRead
+      ? wrapperIdentity(
+          action.capability.freshRead.apiFile,
+          action.capability.freshRead.name
+        )
+      : null;
+    const projectDefinitionFreshReadAccepted =
+      Boolean(expectedFreshReadIdentity) &&
+      mutationBindings.length > 0 &&
+      mutationBindings.every((binding) => {
+        const proof = capabilityContext.pipelineProofs?.get(
+          wrapperIdentity(binding.apiFile, binding.wrapper)
+        );
+        return proof?.kind === "project_definition" &&
+          proof.definitionSources?.size === 1 &&
+          proof.definitionSources.has(expectedFreshReadIdentity);
+      });
     const dominatesTrigger =
       Boolean(candidate && source) &&
       (capabilityDominates(
         candidate,
         action.capability,
         capabilityContext
-      ) || (capabilityContext.pipelineProofKinds?.size ?? 0) > 0);
-    const capabilityProvenance = capabilityServerProvenance(
-      action.capability,
-      capabilityContext
-    );
+      ) || pipelineDominates);
+    const pipelineProvenanceSources =
+      action.capability.kind === "server_definition"
+        ? pipelineDefinitionSources
+        : pipelineCapabilitySources;
+    const capabilityProvenance =
+      capabilityServerProvenance(
+        action.capability,
+        capabilityContext
+      ) ??
+      (pipelineDominates && pipelineProvenanceSources.size === 1
+        ? {
+            sources: pipelineProvenanceSources,
+            sourceFiles: new Map(
+              [...pipelineProvenanceSources].map((sourceIdentity) => [
+                sourceIdentity,
+                action.sourceFile
+              ])
+            )
+          }
+        : null);
     const capabilitySources = capabilityProvenance?.sources ?? null;
     const capabilityProvenanceTrusted =
       SERVER_CAPABILITY_KINDS.has(
@@ -16816,6 +17042,9 @@ export async function inspectWholeSitePageActionManifest({
         symbols,
         capabilityContext
       });
+    const effectiveServerDefinitionFreshReadVerified =
+      serverDefinitionFreshReadVerified ||
+      projectDefinitionFreshReadAccepted;
     const freshReadBindingIsVerified =
       freshReadBindingVerified({
         action,
@@ -16824,6 +17053,9 @@ export async function inspectWholeSitePageActionManifest({
         capabilityContext,
         handlerFreshReadVerified: serverDefinitionFreshReadVerified
       });
+    const effectiveFreshReadBindingIsVerified =
+      freshReadBindingIsVerified ||
+      projectDefinitionFreshReadAccepted;
     const effectiveMutationActors =
       effectiveMutationActorPositions({
         mutationBindings,
@@ -16843,26 +17075,20 @@ export async function inspectWholeSitePageActionManifest({
             rolesByAction: actionRequiredRoles
           })
         ));
-    const pipelineCapabilityAccepted =
-      (capabilityContext.pipelineProofKinds?.size ?? 0) > 0;
     const capabilityServerDerived =
-      pipelineCapabilityAccepted ||
-      (capabilityProvenanceTrusted &&
-        capabilityAuthorizationCompatible);
+      capabilityProvenanceTrusted &&
+      capabilityAuthorizationCompatible;
     const capabilityUpstreamAssociationTrusted =
       !writes || capabilityServerDerived;
     let capabilityAccepted =
-      !writes || pipelineCapabilityAccepted ||
+      !writes ||
       (dominatesTrigger &&
         capabilityUpstreamAssociationTrusted &&
-        serverDefinitionFreshReadVerified &&
-        freshReadBindingIsVerified);
-    const projectDefinitionPipelineAccepted =
-      capabilityContext.pipelineProofKinds?.has("project_definition") === true;
+        effectiveServerDefinitionFreshReadVerified &&
+        effectiveFreshReadBindingIsVerified);
     if (
       action.capability.kind === "server_definition" &&
-      !serverDefinitionFreshReadVerified &&
-      !projectDefinitionPipelineAccepted
+      !effectiveServerDefinitionFreshReadVerified
     ) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
@@ -16873,8 +17099,7 @@ export async function inspectWholeSitePageActionManifest({
     }
     if (
       action.capability.freshRead &&
-      !freshReadBindingIsVerified &&
-      !projectDefinitionPipelineAccepted
+      !effectiveFreshReadBindingIsVerified
     ) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
@@ -16986,7 +17211,21 @@ export async function inspectWholeSitePageActionManifest({
             binding.wrapper
           )
         );
-        if (wrapper && wrapperIsProductionMutation(wrapper)) {
+        const authFacadeMutation =
+          !wrapper &&
+          isMutationRequest(binding) &&
+          bindingUpstreamAssociationIsTrusted({
+            binding,
+            webManifest,
+            nestManifest
+          }) &&
+          posixPath(binding.apiFile) ===
+            SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeApiFile &&
+          binding.wrapper === SELF_PROFILE_AUTH_TRANSPORT_EXCEPTION.facadeName;
+        if (
+          (wrapper && wrapperIsProductionMutation(wrapper)) ||
+          authFacadeMutation
+        ) {
           for (const consumer of binding.productionConsumers) {
             coveredConsumerPairs.add(
               `${wrapperIdentity(
@@ -17053,6 +17292,16 @@ export async function inspectWholeSitePageActionManifest({
         )
       });
     }
+  }
+  for (const [pair, { binding, consumer }] of authFacadeMutationPairs) {
+    if (coveredConsumerPairs.has(pair)) continue;
+    blockers.uncoveredMutationWrappers.push({
+      code: "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+      apiFile: posixPath(binding.apiFile),
+      wrapper: binding.wrapper,
+      sourceFile: consumer,
+      normalizedKeys: [binding.normalizedKey]
+    });
   }
 
   sortBlockers(blockers);

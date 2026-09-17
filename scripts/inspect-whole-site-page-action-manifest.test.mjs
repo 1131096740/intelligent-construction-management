@@ -1368,12 +1368,14 @@ test("accepts a project definition pipeline only when fresh capability and valid
     ]
   });
   const page = `<script setup lang="ts">
+import { ref } from "vue";
 import { getExample, fetchBusinessEntryDefinition, validateBusinessEntryDraft, submitExample } from "../api/example.api";
-const profile = { canManage: true };
+const profile = ref(null);
 async function submit() {
   const projectId = "project-1";
   const capability = await getExample(projectId);
   if (!capability.canManage) throw new Error("revoked");
+  profile.value = capability;
   const definition = await fetchBusinessEntryDefinition("project_profile", projectId);
   if (definition.key !== "project_profile") throw new Error("stale");
   const validation = await validateBusinessEntryDraft({ sceneKey: definition.key, definitionVersion: definition.version, target: { entityId: projectId }, values: { name: "A" } });
@@ -1403,6 +1405,7 @@ async function submit() {
   assert.equal(stale.status, "blocked");
 
   for (const [name, unsafePage] of [
+    ["fresh capability is not rebound to the declared source", page.replace("  profile.value = capability;\n", "")],
     ["capability read uses another project", page.replace("getExample(projectId)", 'getExample("other-project")')],
     ["final write uses another project", page.replace("submitExample(projectId", 'submitExample("other-project"')]
   ]) {
@@ -1410,6 +1413,54 @@ async function submit() {
     const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
     assert.equal(unsafe.status, "blocked", name);
   }
+
+  const validationOnlyAction = registryAction({
+    id: "example.project-definition-validation-only",
+    capability: {
+      kind: "server_definition",
+      source: "definition.key",
+      freshRead: {
+        apiFile: "apps/web-admin/src/api/example.api.ts",
+        name: "fetchBusinessEntryDefinition",
+        method: "GET",
+        mode: "read_only_probe",
+        binding: {
+          actor: "fresh actor",
+          company: "fresh company",
+          scene: "fresh scene",
+          action: "fresh action",
+          definitionRevision: "fresh definition revision"
+        },
+        submissionTarget: "independent"
+      }
+    },
+    wrappers: [
+      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "validateBusinessEntryDraft" }
+    ]
+  });
+  const validationOnlyPage = `<script setup lang="ts">
+import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../api/example.api";
+async function submit() {
+  const projectId = "project-1";
+  const definition = await fetchBusinessEntryDefinition("project_profile", projectId);
+  if (definition.key !== "project_profile") throw new Error("stale");
+  const validation = await validateBusinessEntryDraft({ sceneKey: definition.key, definitionVersion: definition.version, target: { entityId: projectId }, values: { name: "A" } });
+  if (!validation.valid) return;
+  return validation.values.name;
+}
+</script><template><t-button @click="submit">校验</t-button></template>`;
+  const validationOnlyRoot = await fixture({
+    actions: [validationOnlyAction],
+    wrappers: wrappers.filter((item) =>
+      ["fetchBusinessEntryDefinition", "validateBusinessEntryDraft"].includes(item.name)
+    ),
+    routes: routes.filter((item) =>
+      ["GET /examples/:param/definition", "POST /examples/:param/validate"].includes(item.normalizedKey)
+    ),
+    page: validationOnlyPage
+  });
+  const validationOnly = await inspectWholeSitePageActionManifest({ root: validationOnlyRoot });
+  assert.equal(validationOnly.status, "ready", JSON.stringify(validationOnly.blockers));
 });
 
 test("accepts a guarded upload callback only when one voucher result flows into the final write", async () => {
@@ -1521,6 +1572,48 @@ async function submit() {
   });
   const duplicateUpload = await inspectWholeSitePageActionManifest({ root: duplicateUploadRoot });
   assert.equal(duplicateUpload.status, "blocked");
+
+  const unknownHelperRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      'import { prepareWithUpload } from "./write-validation";',
+      `async function prepareWithUpload(file, upload) {
+  const voucher = await upload(file, file.name);
+  return { voucherFileId: voucher.id, amount: "10" };
+}`
+    ),
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 5,
+        reachableProductionModuleCount: 5
+      }
+    }
+  });
+  const unknownHelper = await inspectWholeSitePageActionManifest({ root: unknownHelperRoot });
+  assert.equal(unknownHelper.status, "blocked");
+
+  const oneWrapperOnlyRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      "return recordExample(paymentId, payload);",
+      'return recordExample("other-payment", payload);'
+    ),
+    webManifestOverrides: {
+      evidence: {
+        productionModuleCount: 6,
+        reachableProductionModuleCount: 6
+      }
+    },
+    extraFiles: {
+      "apps/web-admin/src/pages/write-validation.ts": helperSource
+    }
+  });
+  const oneWrapperOnly = await inspectWholeSitePageActionManifest({ root: oneWrapperOnlyRoot });
+  assert.equal(oneWrapperOnly.status, "blocked");
+  assert.equal(
+    oneWrapperOnly.actions[0].bindings.find((binding) => binding.wrapper === "recordExample")?.causalVerified,
+    false
+  );
 });
 
 test("keeps approve and reject variants distinct while sharing one wrapper and action key", async () => {

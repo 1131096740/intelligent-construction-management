@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | nestRoutes | ready | `a24a55ae0e650b926c92150a84f2be9719f94219ec8ea0576712ee1f70fd47d8` |
 | webApiWrappers | ready | `298eb7b234b9a7df13eb50ef776257bef6c780220810a824da4279f3f0f07996` |
-| webPageActions | ready | `e55459c1bdedee620d629901d20c91a8ac043f475ac904b2ba289ac13827d47d` |
+| webPageActions | ready | `723d4b601c8aa68a3281b8ffe8a46c72a065b97abf1bbc8a0846626cdcdc7799` |
 | routeUsage | ready | `3727022fb253a70b0974c8be3c3f1cb1540f3b936c8d7c382a6fac23fe6a4289` |
 
 ## 汇总
@@ -28,10 +28,10 @@
 | duplicateMutationRouteCount | 0 |
 | registeredActionCount | 307 |
 | actionBindingCount | 349 |
-| acceptedActionBindingCount | 326 |
+| acceptedActionBindingCount | 327 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 297 |
-| coveredProductionMutationConsumerPairCount | 297 |
+| productionMutationConsumerPairCount | 298 |
+| coveredProductionMutationConsumerPairCount | 298 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -229,7 +229,7 @@
 | GET | /wage-statements/:statementId/summary | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementSummary | — | not_applicable | — |
 | GET | /wage-statements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementCapabilities | — | not_applicable | — |
 | GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
-| PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | not_applicable | — |
+| PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | covered | — |
 | PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
 | PATCH | /company-entities/:id | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | not_applicable | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |

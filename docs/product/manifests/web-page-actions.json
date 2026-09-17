@@ -19,10 +19,10 @@
     "reachableProductionModuleCount": 271,
     "templateEventDirectiveCount": 975,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 297,
-    "candidateProductionMutationConsumerCount": 297,
-    "acceptedProductionMutationConsumerCount": 297,
-    "productionMutationConsumerPairCount": 297,
+    "coveredProductionMutationConsumerCount": 298,
+    "candidateProductionMutationConsumerCount": 298,
+    "acceptedProductionMutationConsumerCount": 298,
+    "productionMutationConsumerPairCount": 298,
     "blockerCount": 0
   },
   "evidence": {
@@ -21332,7 +21332,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
-          "acceptedProductionConsumers": [],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
           "causalVerified": true,
           "causalProof": {
             "localCallChain": [
