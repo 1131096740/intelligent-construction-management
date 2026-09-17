@@ -10,6 +10,7 @@ import {
 import { yuanTextToCentsText } from "../../../lib/money";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./ExpenseClaimLineEditor.vue";
 import ExpenseClaimApplicationFields from "./ExpenseClaimApplicationFields.vue";
+import ExpenseClaimPayeeFields from "./ExpenseClaimPayeeFields.vue";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: boolean]; saved: [claim: CreatedExpenseClaim] }>();
@@ -51,6 +52,15 @@ const applicationFields = computed({
   }
 });
 const companyOptions = computed(() => options.value?.companyEntities.map((item) => ({ label: item.name, value: item.id })) ?? []);
+const payeeFields = computed({
+  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount }),
+  set: (value) => {
+    form.payeeName = value.payeeName;
+    form.payeeAccountName = value.payeeAccountName;
+    form.payeeBankName = value.payeeBankName;
+    form.payeeBankAccount = value.payeeBankAccount;
+  }
+});
 const projectOptions = computed(() => [{ label: "非项目报销", value: "" }, ...(options.value?.projects.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id })) ?? [])]);
 const applicantOptions = computed(() => options.value?.applicantUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
@@ -342,15 +352,12 @@ async function createExpenseClaimWithCapability(
                   v-model="form.paymentMethod"
                   :options="[{ label: '银行转账', value: 'bank_transfer' }, { label: '现金', value: 'cash' }]"
                 />
-              </t-form-item><t-form-item label="收款对象">
-                <t-input v-model="form.payeeName" />
-              </t-form-item><t-form-item label="账户名称">
-                <t-input v-model="form.payeeAccountName" />
-              </t-form-item><t-form-item label="开户银行">
-                <t-input v-model="form.payeeBankName" />
-              </t-form-item><t-form-item label="收款账号">
-                <t-input v-model="form.payeeBankAccount" />
-              </t-form-item><t-form-item
+              </t-form-item>
+              <ExpenseClaimPayeeFields
+                v-model="payeeFields"
+                :definition="options.entryDefinition"
+              />
+              <t-form-item
                 v-if="form.claimType === 'loan'"
                 label="预计清账日期"
                 required-mark

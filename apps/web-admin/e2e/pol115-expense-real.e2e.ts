@@ -61,6 +61,10 @@ test("统一费用字段保存一分钱项目借款草稿，不自动提交审�
   await form.locator('[data-field="requestedAmountYuan"] input').fill("0.01");
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
+  const payeeForm = page.getByRole("region", { name: "费用收款单条业务表单" });
+  await expect(payeeForm).toBeVisible();
+  await payeeForm.locator('[data-field="payeeName"] input').fill("合成收款人");
+  await payeeForm.locator('[data-field="payeeBankAccount"] input').fill("000012340001");
   await page.locator(".t-date-picker input").click();
   await page.locator(".t-date-picker__cell--now").click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -71,5 +75,5 @@ test("统一费用字段保存一分钱项目借款草稿，不自动提交审�
   const claim = await response.json();
   const detail = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect(detail.ok()).toBe(true);
-  expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器项目借款", entrySnapshots: [] });
+  expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器项目借款", payeeNameSnapshot: "合成收款人", payeeBankAccountSnapshot: "000012340001", entrySnapshots: [] });
 });
