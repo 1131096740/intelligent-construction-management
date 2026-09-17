@@ -353,13 +353,18 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       if (!fixtureAddress || typeof fixtureAddress === "string") throw new Error("撤权夹具未监听本机端口");
       const settingsAccounts: Record<string, { phone: string; newPhone: string; password: string }> = {};
       const participantProjects: Record<string, { id: string; code: string; name: string }> = {};
+      const constructionProjects: Record<string, { id: string; code: string; name: string }> = {};
       for (const [index, browser] of ["desktop", "mobile"].entries()) {
         const isolated = await request("/projects", "POST", { code: `PB113-${browser}-${randomUUID()}`, name: `参与停止独立${browser}项目` }, chairman);
         expect(isolated.status).toBe(201);
         participantProjects[browser] = isolated.body;
+        const construction = await request("/projects", "POST", { code: `CE113-${browser}-${randomUUID()}`, name: `施工企业独立${browser}项目` }, chairman);
+        expect(construction.status).toBe(201);
+        constructionProjects[browser] = construction.body;
         // Synthetic role bootstrap only; project and participant facts use original HTTP.
         const session = sessions.get(finance) as { user: { id: string } };
         await prisma.userPosition.create({ data: { userId: session.user.id, positionId: financePosition.id, projectId: isolated.body.id } });
+        await prisma.userPosition.create({ data: { userId: session.user.id, positionId: financePosition.id, projectId: construction.body.id } });
         const suffix = `${String(Date.now()).slice(-7)}${index}`;
         const account = { phone: `136${suffix}`, newPhone: `135${suffix}`, password: `Local-${randomUUID()}` };
         // Account bootstrap only; profile mutations and observations use public HTTP.
@@ -382,6 +387,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           browserEnv.POL113_ROLE_FIXTURE_URL = `http://127.0.0.1:${fixtureAddress.port}/${callbackSecret}`;
           browserEnv.POL113_RETAINED_PROJECT_ID = retainedProject.body.id;
           browserEnv.POL113_PARTICIPANT_PROJECTS = JSON.stringify(participantProjects);
+          browserEnv.POL113_CONSTRUCTION_PROJECTS = JSON.stringify(constructionProjects);
           const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol113-project-real.config.ts"], {
             cwd: resolve(__dirname, "../../../../apps/web-admin"),
             env: browserEnv,

@@ -36,12 +36,18 @@ test("项目页加载后撤回本项目岗位，保存及后续目标预检冻�
   };
   expect((await request.post(`${fixture}/revoke`)).status()).toBe(204);
   try {
-    const freshDefinition = page.waitForResponse((response) => response.url().includes("/business-entry-definitions/project_operating_profile?") && response.request().method() === "GET");
+    let writes = 0;
+    page.on("request", (request) => {
+      if (request.url().endsWith(`/projects/${projectId}/operating-profile`) && request.method() === "PATCH") writes += 1;
+    });
+    const freshProfile = page.waitForResponse((response) => response.url().endsWith(`/projects/${projectId}/operating-profile`) && response.request().method() === "GET");
     await form.locator('[data-field="takeoverStatus"]').click();
     await page.getByText("需要补充复核", { exact: true }).last().click();
     await page.getByRole("button", { name: "保存经营档案", exact: true }).click();
-    expect((await freshDefinition).status()).toBe(403);
+    const refreshed = await freshProfile;
+    expect(refreshed.status()).toBe(403);
     await expect(page.getByText(/无权|权限/).last()).toBeVisible();
+    expect(writes).toBe(0);
     expect((await request.post(`${api}/business-entry-definitions/project_operating_profile/create-target?projectId=${projectId}`, { headers, data: { entityType: "project" } })).status()).toBe(403);
     expect((await request.post(`${api}/business-entry-definitions/project_operating_profile/validate?projectId=${projectId}`, { headers, data: payload })).status()).toBe(403);
     expect((await request.post(`${api}/business-entry-definitions/project_operating_profile/freeze?projectId=${projectId}`, { headers, data: payload })).status()).toBe(403);
@@ -186,10 +192,11 @@ test("项目财务通过统一字段新增参与公司，空白原因保留且�
   }
 });
 
-test("项目财务统一填写施工企业版本日期原因，预检失败保留输入且成功绑定可回读", async ({ page, request }) => {
+test("项目财务统一填写施工企业版本日期原因，预检失败保留输入且成功绑定可回读", async ({ page, request }, testInfo) => {
   const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
   const api = process.env.POL113_API_URL!;
-  const projectId = process.env.POL113_PROJECT_ID!;
+  const isolated = JSON.parse(process.env.POL113_CONSTRUCTION_PROJECTS!)[testInfo.project.name];
+  const projectId = isolated.id;
   const path = `/projects/${projectId}/construction-enterprise`;
   const headers = { authorization: `Bearer ${session.tokens.accessToken}` };
   const optionsResponse = await request.get(`${api}${path}-options`, { headers });
@@ -199,15 +206,20 @@ test("项目财务统一填写施工企业版本日期原因，预检失败保�
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/项目经营");
+  await page.locator(".project-picker input").click();
+  await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
   await page.getByText("项目设置", { exact: true }).click();
   const form = page.getByRole("region", { name: "项目施工企业单条业务表单" });
   await expect(form).toBeVisible();
   await form.locator('[data-field="businessPartyVersionId"]').click();
   await page.getByText("浏览器施工企业验收 · 第 1 版", { exact: true }).last().click();
-  const today = new Intl.DateTimeFormat("en-CA").format(new Date());
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const effectiveFrom = new Intl.DateTimeFormat("en-CA").format(yesterday);
   await form.locator('[data-field="effectiveFrom"] input').click();
-  await page.locator(".t-date-picker__panel .t-date-picker__cell--now").click();
-  await expect(form.locator('[data-field="effectiveFrom"] input')).toHaveValue(today);
+  await page.locator(".t-date-picker__panel:visible .t-date-picker__cell--now")
+    .locator("xpath=preceding-sibling::*[1]")
+    .click();
+  await expect(form.locator('[data-field="effectiveFrom"] input')).toHaveValue(effectiveFrom);
   const reason = form.locator('[data-field="changeReason"] textarea');
   await reason.fill(" ");
   let writes = 0;
@@ -226,7 +238,7 @@ test("项目财务统一填写施工企业版本日期原因，预检失败保�
   await expect(page.getByText("施工企业已保存", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
   const profile = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
-  expect((await profile.json()).constructionEnterprise).toMatchObject({ businessPartyVersionId: enterprise.id, effectiveFrom: today, isLocked: false });
+  expect((await profile.json()).constructionEnterprise).toMatchObject({ businessPartyVersionId: enterprise.id, effectiveFrom, isLocked: false });
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
@@ -311,6 +323,12 @@ test("项目财务通过统一字段保存档案，预检失败保留输入且�
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/项目经营");
+  const projects = await request.get(`${api}/projects`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
+  expect(projects.ok()).toBe(true);
+  const selected = (await projects.json()).find((project: { id: string }) => project.id === projectId);
+  expect(selected).toBeTruthy();
+  await page.locator(".project-picker input").click();
+  await page.locator(".t-select__dropdown:visible").getByText(`${selected.code} · ${selected.name}`, { exact: true }).click();
   await page.getByText("项目设置", { exact: true }).click();
   const form = page.getByRole("region", { name: "项目经营档案单条业务表单" });
   await expect(form).toBeVisible();
