@@ -589,6 +589,9 @@ describe("SettlementReadService", () => {
           }
         ])
       },
+      settlementLineAttachment: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       settlementArchiveFile: {
         findMany: jest.fn().mockResolvedValue([
           {

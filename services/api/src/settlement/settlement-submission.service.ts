@@ -14,6 +14,10 @@ import {
   settlementBasicEntryValues
 } from "./settlement-business-entry-definition";
 import { SETTLEMENT_LINE_ENTRY_DEFINITION, settlementLineEntryValues } from "./settlement-line-business-entry-definition";
+import {
+  SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION,
+  settlementLineAttachmentPurposeEntryValues
+} from "./settlement-line-attachment-business-entry-definition";
 import { PrismaService } from "../database/prisma.service";
 import type {
   CreateSettlementDto,
@@ -181,13 +185,27 @@ export class SettlementSubmissionService {
               values: settlementLineEntryValues(line)
             }));
           }
+          const businessEntryLineAttachmentSnapshots = [];
           if (this.lineAttachments) {
-            await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
+            const formalAttachments = await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
               tx,
               draft.id,
               created.id,
               applicantUserId
             );
+            for (const attachment of formalAttachments) {
+              businessEntryLineAttachmentSnapshots.push(await this.businessEntry.freezeSubmissionSnapshotInTransaction(
+                tx,
+                applicantUserId,
+                {
+                  sceneKey: SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION.key,
+                  definitionVersion: SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION.version,
+                  target: { projectId, entityType: "settlement_line_attachment", entityId: attachment.id },
+                  expectedRevision: 0,
+                  values: settlementLineAttachmentPurposeEntryValues(attachment)
+                }
+              ));
+            }
           }
           const marked = await tx.settlementDraft.updateMany({
             where: {
@@ -207,7 +225,7 @@ export class SettlementSubmissionService {
           if (draft.processId) {
             await this.processes?.linkSettlement(tx, draft.processId, draft.id, created.id);
           }
-          return { ...created, businessEntrySnapshot, businessEntryLineSnapshots };
+          return { ...created, businessEntrySnapshot, businessEntryLineSnapshots, businessEntryLineAttachmentSnapshots };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );

@@ -1,6 +1,7 @@
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { hash } from "bcryptjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -43,7 +44,11 @@ if (enabled) {
   let baseUrl: string;
   let token: string;
   let actorUserId: string;
+  let actorPhone: string;
+  let actorPassword: string;
+  let prisma: PrismaService;
   let receiptFailure: { contractVersionId: string; triggered: boolean } | null = null;
+  let settlementAttachmentSnapshotFailure = false;
   const identities = new Map<string, { phone: string; password: string }>();
   jest.setTimeout(60_000);
 
@@ -73,6 +78,33 @@ if (enabled) {
     return result;
   }
 
+  async function runSettlementBrowserAcceptance(settlementId: string) {
+    if (process.env.RUN_POL114_BROWSER !== "1") return;
+    await new Promise<void>((resolve, reject) => {
+      const childEnv = { ...process.env };
+      delete childEnv.JEST_WORKER_ID;
+      const child = spawn(process.env.PNPM_BIN ?? "pnpm", [
+        "--filter", "@jiangkong/web-admin", "exec", "playwright", "test",
+        "--config", "playwright.settlement-entry-history-real.config.ts"
+      ], {
+        cwd: join(__dirname, "../../../.."),
+        env: {
+          ...childEnv,
+          POL114_REAL_SETTLEMENT_ID: settlementId,
+          POL114_REAL_SETTLEMENT_PHONE: actorPhone,
+          POL114_REAL_SETTLEMENT_PASSWORD: actorPassword,
+          VITE_API_PROXY_TARGET: baseUrl
+        },
+        stdio: "inherit"
+      });
+      child.once("error", reject);
+      child.once("exit", (code, signal) => {
+        if (code === 0) resolve();
+        else reject(new Error(`真实结算历史浏览器验收失败：${signal ?? code ?? "unknown"}`));
+      });
+    });
+  }
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
@@ -80,7 +112,7 @@ if (enabled) {
     app.useGlobalPipes(createApiValidationPipe());
     await app.listen(0, "127.0.0.1");
     baseUrl = await app.getUrl();
-    const prisma = app.get(PrismaService);
+    prisma = app.get(PrismaService);
     // Test-only database-boundary fault; all earlier writes use the real PG transaction.
     // No production service is replaced and no persistent database object is installed.
     prisma.$use(async (params, next) => {
@@ -90,10 +122,18 @@ if (enabled) {
         receiptFailure.triggered = true;
         throw new Error("POL114_SYNTHETIC_RECEIPT_WRITE_FAILURE");
       }
+      if (settlementAttachmentSnapshotFailure &&
+          params.model === "BusinessEntrySubmissionSnapshot" && params.action === "create" &&
+          params.args?.data?.sceneKey === "settlement_line_attachment_purpose") {
+        settlementAttachmentSnapshotFailure = false;
+        throw new Error("POL114_SYNTHETIC_SETTLEMENT_ATTACHMENT_SNAPSHOT_FAILURE");
+      }
       return next(params);
     });
-    const phone = `114${Date.now()}`;
-    const password = `Test-${randomUUID()}`;
+    const phone = process.env.POL114_HTTP_TEST_PHONE ?? `114${Date.now()}`;
+    const password = process.env.POL114_HTTP_TEST_PASSWORD ?? `Test-${randomUUID()}`;
+    actorPhone = phone;
+    actorPassword = password;
     const user = await prisma.user.create({ data: {
       phone, name: "合同录入测试负责人", passwordHash: await hash(password, 4),
       mustChangePassword: false
@@ -555,9 +595,10 @@ if (enabled) {
         const applicantSignatureResponse = await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: applicantSignature });
         if (!applicantSignatureResponse.ok) throw new Error(`合成经办签名上传失败：${applicantSignatureResponse.status}`);
         const settlementDraftPath = `/projects/${project.id}/settlement-drafts`;
+        const settlementCode = process.env.POL114_HTTP_SETTLEMENT_CODE ?? `POL114-ST-${randomUUID()}`;
         const settlementDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
           contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: `POL114-ST-${randomUUID()}`, periodLabel: "2026-09", periodEnd: "2026-09-30",
+          code: settlementCode, periodLabel: "2026-09", periodEnd: "2026-09-30",
           fieldReviewerUserId: roleUsers.get("material_staff"), fieldReviewerRoleKey: "material_staff",
           settlementLines: [{ sourceType: "manual_adjustment", name: "合成现场签认金额", amountCents: "10000", reason: "本期合成现场签认" }]
         });
@@ -609,7 +650,21 @@ if (enabled) {
             })
           })
         ]);
-        const frozen = await request<Identified & { fileId: string }>("POST", `${draftPath}/frozen-document`, { expectedRevision: settlementDraft.revision });
+        const settlementLineKey = settlementDraftDetail.businessEntryLines?.[0]?.lineKey;
+        if (!settlementLineKey) throw new Error("公开结算草稿未返回明细标识");
+        const lineEvidence = await upload("synthetic-line-evidence.pdf", "application/pdf", await pdf.save());
+        const firstAttached = await request<{ revision: number }>(
+          "POST",
+          `${draftPath}/lines/${encodeURIComponent(settlementLineKey)}/attachments`,
+          { fileId: lineEvidence.id, purpose: "现场签证单", expectedRevision: settlementDraft.revision }
+        );
+        const measurementEvidence = await upload("synthetic-measurement-evidence.pdf", "application/pdf", await pdf.save());
+        const attached = await request<{ revision: number }>(
+          "POST",
+          `${draftPath}/lines/${encodeURIComponent(settlementLineKey)}/attachments`,
+          { fileId: measurementEvidence.id, purpose: "计量凭证", expectedRevision: firstAttached.revision }
+        );
+        const frozen = await request<Identified & { fileId: string }>("POST", `${draftPath}/frozen-document`, { expectedRevision: attached.revision });
         const download = await request<{ downloadUrl: string }>("POST", `/files/${frozen.fileId}/download-ticket`, {
           confirmationPassword: settlementApplicant.password, downloadReason: "合成签署扫描件", accessMode: "download"
         });
@@ -617,13 +672,43 @@ if (enabled) {
         if (!downloaded.ok) throw new Error(`结算冻结件下载失败：${downloaded.status}`);
         const signed = await upload("synthetic-settlement-signed.pdf", "application/pdf", new Uint8Array(await downloaded.arrayBuffer()));
         await request("POST", `${draftPath}/counterparty-signed-documents`, {
-          expectedRevision: settlementDraft.revision, frozenDocumentId: frozen.id, uploadedFileId: signed.id,
+          expectedRevision: attached.revision, frozenDocumentId: frozen.id, uploadedFileId: signed.id,
           declaration: { pageOrderMatchesFrozenDocument: true, counterpartySignedAndDated: true, everyPageStamped: true, crossPageSealCompleted: true }
         });
-        const settlement = await request<Identified & {
+        type SettlementSubmission = Identified & {
           businessEntrySnapshot?: { sceneKey: string; values: Record<string, unknown> };
           businessEntryLineSnapshots?: Array<{ sceneKey: string; target: { entityId: string }; values: Record<string, unknown> }>;
-        }>("POST", `${draftPath}/approval-submission`, { expectedRevision: settlementDraft.revision });
+          businessEntryLineAttachmentSnapshots?: Array<{ sceneKey: string; target: { entityId: string }; values: Record<string, unknown> }>;
+        };
+        const beforeFailedSubmission = {
+          settlements: await prisma.settlement.count({ where: { code: settlementCode } }),
+          formalAttachments: await prisma.settlementLineAttachment.count({ where: { settlementLineId: { not: null } } }),
+          purposeSnapshots: await prisma.businessEntrySubmissionSnapshot.count({
+            where: { sceneKey: "settlement_line_attachment_purpose" }
+          }),
+          approvals: await prisma.approvalInstance.count({ where: { businessType: "settlement" } })
+        };
+        settlementAttachmentSnapshotFailure = true;
+        await expect(request("POST", `${draftPath}/approval-submission`, { expectedRevision: attached.revision }))
+          .rejects.toThrow(`POST ${draftPath}/approval-submission: 500`);
+        await expect(Promise.all([
+          prisma.settlement.count({ where: { code: settlementCode } }),
+          prisma.settlementLineAttachment.count({ where: { settlementLineId: { not: null } } }),
+          prisma.businessEntrySubmissionSnapshot.count({ where: { sceneKey: "settlement_line_attachment_purpose" } }),
+          prisma.approvalInstance.count({ where: { businessType: "settlement" } })
+        ])).resolves.toEqual([
+          beforeFailedSubmission.settlements,
+          beforeFailedSubmission.formalAttachments,
+          beforeFailedSubmission.purposeSnapshots,
+          beforeFailedSubmission.approvals
+        ]);
+        expect(await request<Array<{ purpose: string }>>("GET", `${draftPath}/line-attachments`)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ purpose: "现场签证单" }),
+            expect.objectContaining({ purpose: "计量凭证" })
+          ])
+        );
+        const settlement = await request<SettlementSubmission>("POST", `${draftPath}/approval-submission`, { expectedRevision: attached.revision });
         expect(settlement.businessEntrySnapshot).toMatchObject({
           sceneKey: "settlement_basic", definitionVersion: 2,
           values: {
@@ -648,11 +733,45 @@ if (enabled) {
             })
           })
         ]);
+        expect(settlement.businessEntryLineAttachmentSnapshots).toHaveLength(2);
+        expect(new Set(settlement.businessEntryLineAttachmentSnapshots?.map((snapshot) => snapshot.values.purpose)))
+          .toEqual(new Set(["现场签证单", "计量凭证"]));
+        expect(new Set(settlement.businessEntryLineAttachmentSnapshots?.map((snapshot) => snapshot.target.entityId)).size).toBe(2);
+        expect(settlement.businessEntryLineAttachmentSnapshots).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              sceneKey: "settlement_line_attachment_purpose",
+              target: expect.objectContaining({ entityType: "settlement_line_attachment" })
+            })
+          ])
+        );
+        const formalAttachmentFacts = await prisma.settlementLineAttachment.findMany({
+          where: { id: { in: settlement.businessEntryLineAttachmentSnapshots!.map((snapshot) => snapshot.target.entityId) } },
+          select: { id: true, purpose: true }
+        });
+        expect(new Map(formalAttachmentFacts.map((attachment) => [attachment.id, attachment.purpose])))
+          .toEqual(new Map(settlement.businessEntryLineAttachmentSnapshots!.map((snapshot) => [
+            snapshot.target.entityId,
+            snapshot.values.purpose as string
+          ])));
+        await expect(Promise.all([
+          prisma.settlement.count({ where: { code: settlementCode } }),
+          prisma.settlementLineAttachment.count({ where: {
+            settlementLineId: { in: settlement.businessEntryLineSnapshots!.map((snapshot) => snapshot.target.entityId) }
+          } }),
+          prisma.businessEntrySubmissionSnapshot.count({ where: {
+            sceneKey: "settlement_line_attachment_purpose",
+            entityId: { in: settlement.businessEntryLineAttachmentSnapshots!.map((snapshot) => snapshot.target.entityId) }
+          } }),
+          prisma.approvalInstance.count({ where: { businessType: "settlement", businessId: settlement.id } })
+        ])).resolves.toEqual([1, 2, 2, 1]);
         const settlementDetail = await request<{ businessEntryHistory?: unknown[] }>("GET", `/settlements/${settlement.id}`);
         expect(settlementDetail.businessEntryHistory).toEqual([
           settlement.businessEntrySnapshot,
-          ...settlement.businessEntryLineSnapshots!
+          ...settlement.businessEntryLineSnapshots!,
+          ...settlement.businessEntryLineAttachmentSnapshots!
         ]);
+        await runSettlementBrowserAcceptance(settlement.id);
         for (const role of ["material_staff", "material_director", "contract_director", "project_manager", "finance_director"]) {
           const identity = await loginAs(roleUsers.get(role)!);
           const signature = new FormData();

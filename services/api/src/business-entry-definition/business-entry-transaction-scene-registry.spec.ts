@@ -3,6 +3,7 @@ import {
   createBusinessEntryTransactionSceneRegistry,
   type BusinessEntryTransactionScenePolicy
 } from "./business-entry-transaction-scene-registry";
+import { SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_POLICY } from "../settlement/settlement-line-attachment-business-entry-policy";
 
 const definition = {
   key: "contract_formal_entry",
@@ -35,6 +36,65 @@ describe("BusinessEntryTransactionSceneRegistry", () => {
       action: "contract.submit"
     });
     expect(Object.isFrozen(registered)).toBe(true);
+  });
+
+  it.each([
+    {
+      name: "a target project different from the formal settlement",
+      targetProjectId: "project-2",
+      actorUserId: "owner-1",
+      attachment: { settlementLineId: "line-1" },
+      line: { settlementId: "settlement-1" },
+      settlement: { id: "settlement-1", projectId: "project-1", preparedByUserId: "owner-1" }
+    },
+    {
+      name: "an actor other than the settlement preparer",
+      targetProjectId: "project-1",
+      actorUserId: "other-actor",
+      attachment: { settlementLineId: "line-1" },
+      line: { settlementId: "settlement-1" },
+      settlement: { id: "settlement-1", projectId: "project-1", preparedByUserId: "owner-1" }
+    },
+    {
+      name: "a draft attachment without a formal settlement line",
+      targetProjectId: "project-1",
+      actorUserId: "owner-1",
+      attachment: { settlementLineId: null },
+      line: null,
+      settlement: null
+    }
+  ])("fails the settlement attachment purpose policy closed for $name", async (fixture) => {
+    const tx = {
+      settlementLineAttachment: { findUnique: jest.fn().mockResolvedValue(fixture.attachment) },
+      settlementLine: { findUnique: jest.fn().mockResolvedValue(fixture.line) },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue(
+          fixture.settlement ? [{ projectId: fixture.settlement.projectId }] : []
+        ),
+        findUnique: jest.fn().mockResolvedValue(fixture.settlement)
+      }
+    };
+    const context = {
+      tx,
+      sceneKey: "settlement_line_attachment_purpose",
+      target: {
+        projectId: fixture.targetProjectId,
+        entityType: "settlement_line_attachment",
+        entityId: "attachment-1"
+      },
+      actorUserId: fixture.actorUserId,
+      operation: "edit" as const,
+      action: "settlement.create",
+      values: { purpose: "现场签证单" }
+    };
+
+    const ownership = await SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_POLICY.resolveOwnership(context as never);
+    const roles = await SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_POLICY.resolveAuthorization(context as never);
+
+    if (fixture.attachment.settlementLineId === null) {
+      expect(ownership).toEqual([]);
+    }
+    expect(roles).toEqual([]);
   });
 
   it.each([
