@@ -468,6 +468,9 @@ export class BusinessEntryDefinitionService {
       values: input.values,
       tx
     });
+    if (sceneKey === "project_create" || sceneKey === "project_participating_company_deactivate") {
+      throw new BadRequestException("该场景须通过原领域提交入口在同一事务中冻结");
+    }
     try {
       const snapshot = this.registry.freezeSubmissionSnapshot(
         payload,
@@ -687,7 +690,12 @@ export class BusinessEntryDefinitionService {
       if (!isBusinessEntryExistingTarget(target)) {
         throw new BadRequestException("项目业务场景必须绑定已存在的业务对象");
       }
-      if (target.entityId !== projectId) {
+      if (sceneKey === "project_participating_company_deactivate") {
+        const participant = await (tx ?? this.prisma).projectParticipatingCompany.findFirst({
+          where: { id: target.entityId, projectId }, select: { id: true }
+        });
+        if (!participant) throw new BadRequestException("提交对象不属于当前项目");
+      } else if (target.entityId !== projectId) {
         throw new BadRequestException("提交对象不属于当前项目");
       }
     }

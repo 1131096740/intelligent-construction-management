@@ -176,8 +176,8 @@ test("项目财务通过统一字段新增参与公司，空白原因保留且�
   await page.getByText("项目设置", { exact: true }).click();
   await expect(page.getByText("已停止新增业务", { exact: true })).toBeVisible();
   const history = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
-  expect((await history.json()).entrySnapshots).toContainEqual(expect.objectContaining({ entityId: participant.id,
-    valuesSnapshot: { endedOn: today, changeReason: "浏览器停止参与验收" } }));
+  expect((await history.json()).entrySnapshots).toContainEqual(expect.objectContaining({ sceneLabel: "停止新增业务", companyName: "参与主体合成验收公司",
+    values: { endedOn: today, changeReason: "浏览器停止参与验收" } }));
   await expect(page.locator("body")).not.toContainText(participant.id);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   } finally {

@@ -55,6 +55,13 @@ export class ProjectOperatingProfileService {
     if (!project) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
   }
 
+  async assertCanDeactivateBusinessEntry(projectId: string, participantId: string, actorUserId: string,
+    tx: Prisma.TransactionClient = this.prisma) {
+    await this.assertCanMaintainBusinessEntry(projectId, actorUserId, tx);
+    const participant = await tx.projectParticipatingCompany.findFirst({ where: { id: participantId, projectId }, select: { id: true } });
+    if (!participant) throw new NotFoundException("项目参与公司不存在，请刷新后重试");
+  }
+
   async listParticipatingCompanyOptions(projectId: string, actorUserId: string) {
     await this.assertProjectFinanceManager(this.prisma, actorUserId, projectId);
     return this.prisma.companyEntity.findMany({
@@ -122,15 +129,26 @@ export class ProjectOperatingProfileService {
     const canManage = await this.isProjectFinanceManager(actorUserId, projectId);
     const entrySnapshots = await this.prisma.businessEntrySubmissionSnapshot.findMany({
       where: { projectId, sceneKey: { in: ["project_create", PARTICIPANT_DEACTIVATION_DEFINITION.key] } },
-      select: { sceneKey: true, entityType: true, entityId: true, revision: true, definitionVersion: true,
-        definitionSnapshot: true, valuesSnapshot: true, frozenAt: true },
+      select: { sceneKey: true, entityId: true, revision: true, definitionVersion: true,
+        valuesSnapshot: true, frozenAt: true },
       orderBy: { frozenAt: "asc" }
     });
     return {
       ...toProfileReadModel(project),
       canManage,
       deactivationDefinition: canManage ? PARTICIPANT_DEACTIVATION_DEFINITION : null,
-      entrySnapshots,
+      entrySnapshots: entrySnapshots.map((snapshot) => {
+        const source = snapshot.valuesSnapshot && typeof snapshot.valuesSnapshot === "object" && !Array.isArray(snapshot.valuesSnapshot)
+          ? snapshot.valuesSnapshot as Record<string, unknown> : {};
+        const creation = snapshot.sceneKey === "project_create";
+        const allowedFields = creation ? ["code", "name"] : ["endedOn", "changeReason"];
+        return {
+          sceneLabel: creation ? "新建项目" : "停止新增业务",
+          revision: snapshot.revision, definitionVersion: snapshot.definitionVersion, frozenAt: snapshot.frozenAt,
+          ...(!creation ? { companyName: participatingCompanies.find((participant) => participant.id === snapshot.entityId)?.companyNameSnapshot ?? "历史参与公司" } : {}),
+          values: Object.fromEntries(allowedFields.filter((key) => typeof source[key] === "string").map((key) => [key, source[key]]))
+        };
+      }),
       constructionEnterprise: constructionEnterprise
         ? {
             assignmentId: constructionEnterprise.id,

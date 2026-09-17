@@ -165,6 +165,26 @@ const resolveSettlementVersion = async ({ target, operation, prisma }: Parameter
   }));
 };
 
+const projectBaseFields = (entries: Array<[string, string, "text" | "long_text" | "date"]>, roles: readonly RoleKey[]) => entries.map(([key, label, type]) => ({
+  key, label, type, description: `请填写${label}`, example: `${label}示例`, scope: "header" as const,
+  unit: "", precision: 0, required: true,
+  permissions: { view: roles, edit: roles },
+  display: { formHint: `请填写${label}`, gridColumn: label, mobilePriority: 1, readonlyText: label },
+  excel: { column: label, paste: "single" as const, errorLocation: "cell" as const },
+  bulk: { enabled: false, strategy: "replace" as const }
+}));
+
+export const PROJECT_CREATE_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "project_create", entityType: "project", name: "新建项目", version: 1,
+  description: "项目编号和名称，沿用项目创建岗位及原事务。",
+  fields: projectBaseFields([["code", "项目编号", "text"], ["name", "项目名称", "text"]], projectMaintenanceRoles), rules: []
+};
+export const PARTICIPANT_DEACTIVATION_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "project_participating_company_deactivate", entityType: "project_participating_company",
+  name: "停止新增业务", version: 1, description: "沿用项目参与公司停止规则。",
+  fields: projectBaseFields([["endedOn", "停止新增业务日期", "date"], ["changeReason", "停止新增业务原因", "long_text"]], projectFinanceRoles), rules: []
+};
+
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
   globalDefinition("project_construction_enterprise", "project", "项目施工企业", [
     textField("businessPartyVersionId", "施工企业", projectFinanceRoles, { type: "counterparty", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
@@ -182,6 +202,8 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
       bulk: { enabled: false, maxRows: 1, strategy: "replace" }
     })
   ]),
+  PROJECT_CREATE_DEFINITION,
+  PARTICIPANT_DEACTIVATION_DEFINITION,
   {
     key: "project_operating_profile",
     entityType: "project",
@@ -350,6 +372,16 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
       sceneKey: "project_rename",
       target: { scope: "project", entityType: "project" },
       permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+    },
+    {
+      sceneKey: "project_create",
+      target: { scope: "project", entityType: "project" },
+      permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+    },
+    {
+      sceneKey: "project_participating_company_deactivate",
+      target: { scope: "project", entityType: "project_participating_company" },
+      permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
     },
     {
       sceneKey: "project_operating_profile",

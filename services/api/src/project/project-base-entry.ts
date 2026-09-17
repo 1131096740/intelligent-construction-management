@@ -1,28 +1,10 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { createBusinessEntryDefinitionRegistry, type BusinessEntrySceneDefinition, type BusinessEntryValidationResult, type RoleKey } from "@jiangkong/shared-domain";
+import { type BusinessEntryValidationResult } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
-
-const fields = (entries: Array<[string, string, "text" | "long_text" | "date"]>, roles: readonly RoleKey[]) => entries.map(([key, label, type]) => ({
-  key, label, type, description: `请填写${label}`, example: `${label}示例`, scope: "header" as const,
-  unit: "", precision: 0, required: true,
-  permissions: { view: roles, edit: roles },
-  display: { formHint: `请填写${label}`, gridColumn: label, mobilePriority: 1, readonlyText: label },
-  excel: { column: label, paste: "single" as const, errorLocation: "cell" as const },
-  bulk: { enabled: false, strategy: "replace" as const }
-}));
-
-export const PROJECT_CREATE_DEFINITION: BusinessEntrySceneDefinition = {
-  key: "project_create", entityType: "project", name: "新建项目", version: 1,
-  description: "项目编号和名称，沿用项目创建岗位及原事务。",
-  fields: fields([["code", "项目编号", "text"], ["name", "项目名称", "text"]], ["chairman", "general_manager"]), rules: []
-};
-export const PARTICIPANT_DEACTIVATION_DEFINITION: BusinessEntrySceneDefinition = {
-  key: "project_participating_company_deactivate", entityType: "project_participating_company",
-  name: "停止新增业务", version: 1, description: "沿用项目参与公司停止规则。",
-  fields: fields([["endedOn", "停止新增业务日期", "date"], ["changeReason", "停止新增业务原因", "long_text"]], ["finance_staff", "finance_director"]), rules: []
-};
-const registry = createBusinessEntryDefinitionRegistry([PROJECT_CREATE_DEFINITION, PARTICIPANT_DEACTIVATION_DEFINITION]);
+import { BUSINESS_ENTRY_DEFINITION_REGISTRY as registry } from "../business-entry-definition/business-entry-definition.scene-registry";
+export const PROJECT_CREATE_DEFINITION = registry.getSceneDefinition("project_create");
+export const PARTICIPANT_DEACTIVATION_DEFINITION = registry.getSceneDefinition("project_participating_company_deactivate");
 
 export function validateParticipantDeactivation(participantId: string, values: Record<string, unknown>, definitionVersion = PARTICIPANT_DEACTIVATION_DEFINITION.version) {
   return registry.validateDraft({ sceneKey: PARTICIPANT_DEACTIVATION_DEFINITION.key, definitionVersion,

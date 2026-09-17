@@ -76,3 +76,13 @@
 - 各次一次性容器均仅清理自身；最新综合浏览器门容器 `jiangkong-pol113-http-5e09f1ef-2b92-426e-80a7-cc54645f65e1`，随后 HTTP 补充错岗/故障清理断言的容器 `jiangkong-pol113-http-4cc4c16e-f380-46d5-aee4-d11e01aea3a8` 均已删除。此前浏览器沙箱启动错误、日期 locator RED 和过时定义 500 RED 不算成功证据。
 
 剩余整票边界：本文件仅证明独立候选的第五、六片，未宣称 #113 整票完成；还需总控与 #114 冻结实现串行整合、其他四个项目入口的同事务快照策略、完整派生验收/manifest、固定 SHA 全量 release/双审/CI 及 GitHub 交付。本片不修改根 PROGRESS，不 push/PR/部署/生产操作；最终 checkpoint SHA 由外部回执绑定，文内不自指。
+
+## 独立双审修复：历史投影与正式场景来源
+
+父 checkpoint 为 `25cae258d7ccb1affb1c8ffb8346463b79797e31`；本次新增提交，不改写旧提交。
+
+- Standards M：新增 `entrySnapshots` 从持久化对象直出改为最小业务历史投影，仅返回中文场景名称、revision、definitionVersion、frozenAt、允许的字符串业务值；停止参与补查询得到的中文公司名。不返回 entityId/entityType/snapshotId、原始 definitionSnapshot/valuesSnapshot。原 profile 顶层 projectId、participatingCompanies.id 等既有领域 API 契约保持。公开 HTTP 负向断言确认新增历史响应不含本项目/参与关系 UUID 或原始快照字段。
+- Spec M：两份定义原样迁入正式 `BUSINESS_ENTRY_SCENE_DEFINITIONS` 单一来源，项目适配从正式 registry 读取定义并 validate/freeze；移除私有 registry。正式 access/domain-authorization 清单登记创建与停止参与。创建既有项目 target 沿董事长/总经理 effective role policy；预创建仍仅原领域 capability/无目标预检。停止参与显式查询 participant→project 归属，再由原项目财务权限 helper 授权。错误类型/目标及错岗位 fail closed。两项通用 freeze 明确拒绝，只有原领域提交事务能够冻结，避免通用 snapshot store 绕过领域事实。
+- RED：正式 scene contract 1/4 缺定义；真实 HTTP 22/23 因历史泄露 UUID；通用 freeze 拒绝测试曾返回旧 store 的 409 而非领域入口拒绝。GREEN：scene/access/authorization 19/19、相关 API 47 suites / 891、HTTP/PG16 23/23、Web 页面 19 files / 173；API/Web/E2E 类型、触及 lint、check:ui 与 diff 检查通过。
+- 未修改 Web 控件或用户流程，仅更新 E2E 历史响应断言；按本次授权不重跑完整 browser，不将父 checkpoint 的浏览器结果伪称为新 SHA 全量浏览器证据。重复 load helper 的 LOW 仅记录，本次未抽取，避免扩大界面 diff。
+- 未改 Schema、migration、transaction registry、根 PROGRESS 或他人候选；共享 scene-registry 的合入由总控与 #114/#115 串行协调。未 push、PR 或生产操作，仍待新 SHA 独立双审。

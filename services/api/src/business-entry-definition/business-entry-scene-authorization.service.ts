@@ -129,6 +129,23 @@ export class BusinessEntrySceneAuthorizationService {
           }
         },
         {
+          sceneKey: "project_create",
+          resolve: (context) => {
+            if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
+              throw new BadRequestException("项目创建历史目标与当前项目不一致");
+            }
+            return projects.assertCanRenameBusinessEntry(context.projectId, context.actorUserId, context.tx);
+          }
+        },
+        {
+          sceneKey: "project_participating_company_deactivate",
+          resolve: (context) => {
+            const participantId = this.targetId(context);
+            if (context.scope !== "project" || !context.projectId || !participantId) throw new BadRequestException("请选择项目参与公司");
+            return projectOperatingProfiles.assertCanDeactivateBusinessEntry(context.projectId, participantId, context.actorUserId, context.tx);
+          }
+        },
+        {
           sceneKey: "project_operating_profile",
           resolve: (context) => {
             if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {

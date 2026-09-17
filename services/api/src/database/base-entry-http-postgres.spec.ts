@@ -155,7 +155,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const saved = await request("/projects", "POST", values, chairman);
     expect(saved.status).toBe(201);
     const history = await request(`/projects/${saved.body.id}/operating-profile`, "GET", undefined, chairman);
-    expect(history.body.entrySnapshots).toEqual(expect.arrayContaining([expect.objectContaining({ sceneKey: "project_create", entityId: saved.body.id, valuesSnapshot: values })]));
+    expect(history.body.entrySnapshots).toEqual(expect.arrayContaining([expect.objectContaining({ sceneLabel: "新建项目", values })]));
   });
 
   it("停止参与按真实参与关系冻结，项目归属来自服务端锁行", async () => {
@@ -168,6 +168,24 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       companyEntityId, effectiveFrom: "2026-01-01", changeReason: "合成停止验收"
     }, finance);
     expect(added.status).toBe(201);
+    const admin = await actor("super_admin");
+    for (const [scene, entityType, entityId, allowed, denied, values] of [
+      ["project_create", "project", projectId, chairman, finance, { code: "测试编号", name: "测试项目" }],
+      ["project_participating_company_deactivate", "project_participating_company", added.body.id, finance, chairman, { endedOn: "2026-09-17", changeReason: "授权预检" }]
+    ] as const) {
+      const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: entityType, targetEntityId: entityId });
+      const definitionPath = `/business-entry-definitions/${scene}?${query}`;
+      expect((await request(definitionPath, "GET", undefined, allowed)).status).toBe(200);
+      for (const actorToken of [denied, admin]) expect((await request(definitionPath, "GET", undefined, actorToken)).status).toBe(403);
+      const payload = { target: { entityType, entityId }, definitionVersion: 1, operation: "edit", values };
+      const validationPath = `/business-entry-definitions/${scene}/validate?projectId=${projectId}`;
+      expect((await request(validationPath, "POST", payload, allowed)).body.valid).toBe(true);
+      expect((await request(validationPath, "POST", { ...payload, target: { entityType, entityId: randomUUID() } }, allowed)).status).toBe(400);
+      expect((await request(validationPath, "POST", { ...payload, target: { entityType: "company_entity", entityId } }, allowed)).status).toBe(400);
+      const frozen = await request(`/business-entry-definitions/${scene}/freeze?projectId=${projectId}`, "POST", payload, allowed);
+      expect(frozen.status).toBe(400);
+      expect(frozen.body.message).toBe("该场景须通过原领域提交入口在同一事务中冻结");
+    }
     const profilePath = `/projects/${projectId}/operating-profile`;
     const profile = await request(profilePath, "GET", undefined, finance);
     expect(profile.body.deactivationDefinition).toMatchObject({ key: "project_participating_company_deactivate" });
@@ -183,9 +201,15 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     });
     expect((await request(path, "PATCH", input, finance)).status).toBe(400);
     const persisted = await request(profilePath, "GET", undefined, finance);
+    const historyJson = JSON.stringify(persisted.body.entrySnapshots);
+    expect(historyJson).not.toContain(added.body.id);
+    expect(historyJson).not.toContain(projectId);
+    expect(historyJson).not.toContain("definitionSnapshot");
+    expect(historyJson).not.toContain("valuesSnapshot");
+    expect(historyJson).not.toContain("snapshotId");
     expect(persisted.body.entrySnapshots).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sceneKey: "project_participating_company_deactivate", entityId: added.body.id,
-        valuesSnapshot: { endedOn: "2026-09-17", changeReason: "合成停止完成" } })
+      expect.objectContaining({ sceneLabel: "停止新增业务", companyName: "参与主体合成验收公司",
+        values: { endedOn: "2026-09-17", changeReason: "合成停止完成" } })
     ]));
   });
 
@@ -212,7 +236,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/projects/${other.body.id}/participating-companies/${added.body.id}/deactivation`, "PATCH", input, otherFinance)).status).toBe(404);
     const profile = await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance);
     expect(profile.body.participatingCompanies).toEqual(expect.arrayContaining([expect.objectContaining({ id: added.body.id, endedAt: null })]));
-    expect(profile.body.entrySnapshots.filter((snapshot: { entityId: string }) => snapshot.entityId === added.body.id)).toEqual([]);
+    expect(profile.body.entrySnapshots.filter((snapshot: { sceneLabel: string }) => snapshot.sceneLabel === "停止新增业务")).toEqual([]);
   });
 
   it("停止参与审计故障回滚状态及快照，清理注入后原请求成功", async () => {
@@ -254,7 +278,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await request(path, "PATCH", input, finance)).status).toBe(200);
     const current = (await request(profilePath, "GET", undefined, finance)).body;
     expect(current.participatingCompanies).toEqual(expect.arrayContaining([expect.objectContaining({ id: added.body.id, endedAt: "2026-09-17" })]));
-    expect(current.entrySnapshots.filter((snapshot: { entityId: string }) => snapshot.entityId === added.body.id)).toHaveLength(1);
+    expect(current.entrySnapshots.filter((snapshot: { sceneLabel: string }) => snapshot.sceneLabel === "停止新增业务")).toHaveLength(1);
   });
 
   it("当前项目财务可预检并保存同一经营档案字段，其他项目及全局财务不可借用权限", async () => {

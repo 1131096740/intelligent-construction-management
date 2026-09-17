@@ -45,9 +45,9 @@ describe("BusinessEntrySceneAccessRegistry", () => {
         expect(access.target.resolve).toEqual(expect.any(Function));
       }
       expect(access.permission).toEqual(
-        definition.key === "project_rename"
+        ["project_rename", "project_create"].includes(definition.key)
           ? { kind: "role_keys", roleKeys: ["chairman", "general_manager"], roleScope: "effective" }
-          : ["project_operating_profile", "project_construction_enterprise", "project_participating_company_add"].includes(definition.key)
+          : ["project_operating_profile", "project_construction_enterprise", "project_participating_company_add", "project_participating_company_deactivate"].includes(definition.key)
           ? {
               kind: "business_action",
               action: "project.operating_profile.manage",
@@ -77,6 +77,8 @@ describe("BusinessEntrySceneAccessRegistry", () => {
       "project_construction_enterprise",
       "project_participating_company_add",
       "project_rename",
+      "project_create",
+      "project_participating_company_deactivate",
       "project_operating_profile",
       ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key),
       ...POL19P3_SCENE_KEYS
