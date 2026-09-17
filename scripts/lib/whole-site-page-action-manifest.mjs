@@ -13509,12 +13509,9 @@ function callableVariantStateKey(definition, state, symbols) {
     .join("|");
 }
 
-function pipelineHandlerSource(handler, wrapperName, context) {
+function pipelineHandlerSource(handler, wrapper, context) {
   const bindings = topLevelScopeVariables(context.symbols.scopeManager, handler);
   if (bindings.length !== 1) return null;
-  if (typeof context.source !== "string") return null;
-  const escapedWrapperName = wrapperName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const wrapperCall = new RegExp(`\\b${escapedWrapperName}\\s*\\(`, "u");
   const visit = (binding, visited) => {
     if (!binding || visited.has(binding) || visited.size >= 24) return null;
     const nextVisited = new Set(visited);
@@ -13524,8 +13521,9 @@ function pipelineHandlerSource(handler, wrapperName, context) {
       binding
     );
     if (!definition?.range) return null;
-    const definitionSource = context.source.slice(definition.range[0], definition.range[1]);
-    if (wrapperCall.test(definitionSource)) return [definition];
+    if (importedWrapperCalls([definition], wrapper, context).length > 0) {
+      return [definition];
+    }
     const paths = [];
     directCallableNodes(definition, (node) => {
       if (node.type !== "CallExpression" || node.callee?.type !== "Identifier") return;
@@ -13831,7 +13829,7 @@ function payloadFieldsHaveValidationOrigin(expression, validationBinding, symbol
   });
 }
 
-function importedCallsByName(definitions, importedName, context) {
+function importedCallsByName(definitions, importedName, sourceFile, context) {
   const matches = [];
   for (const definition of definitions ?? []) {
     walkEstree(definition, (node) => {
@@ -13840,7 +13838,10 @@ function importedCallsByName(definitions, importedName, context) {
       const imported = binding
         ? context.symbols.importsByBinding?.get(binding)
         : null;
-      if (imported?.importedName === importedName) {
+      if (
+        imported?.importedName === importedName &&
+        posixPath(imported.sourceFile ?? "") === posixPath(sourceFile ?? "")
+      ) {
         matches.push({ call: node, imported });
       }
     });
@@ -14018,11 +14019,13 @@ function projectDefinitionPipelineProof({ action, wrapper, handler, context }) {
   const definitionMatches = importedCallsByName(
     handler.definitions,
     "fetchBusinessEntryDefinition",
+    "apps/web-admin/src/api/business-entry.api.ts",
     context
   );
   const validationMatches = importedCallsByName(
     handler.definitions,
     "validateBusinessEntryDraft",
+    "apps/web-admin/src/api/business-entry.api.ts",
     context
   );
   if (definitionMatches.length !== 1 || validationMatches.length !== 1) return null;
@@ -14178,11 +14181,13 @@ function projectCapabilityPipelineProof({ action, wrapper, handler, context }) {
     importedCallsByName(
       handler.definitions,
       "fetchBusinessEntryDefinition",
+      "apps/web-admin/src/api/business-entry.api.ts",
       context
     ).length > 0 ||
     importedCallsByName(
       handler.definitions,
       "validateBusinessEntryDraft",
+      "apps/web-admin/src/api/business-entry.api.ts",
       context
     ).length > 0
   ) return null;
@@ -14207,11 +14212,13 @@ function projectCapabilityPipelineProof({ action, wrapper, handler, context }) {
   const specializedValidation = importedCallsByName(
     handler.definitions,
     "validateProjectParticipatingCompanyDeactivation",
+    "apps/web-admin/src/api/project-operating-profile.api.ts",
     context
   );
   const specializedWrite = importedCallsByName(
     handler.definitions,
     "deactivateProjectParticipatingCompany",
+    "apps/web-admin/src/api/project-operating-profile.api.ts",
     context
   );
   if (specializedValidation.length > 0 || specializedWrite.length > 0) {
@@ -14785,7 +14792,7 @@ function guardedUploadPipelineProof({ action, wrapper, handler, context }) {
 // a file name or action id: the witness is the fresh read, fail-closed guards,
 // value flow and the concrete transport wrapper call in the trigger handler.
 function proveBusinessActionPipeline({ action, wrapper, context }) {
-  const handler = pipelineHandlerSource(action.trigger.handler, wrapper.name, context);
+  const handler = pipelineHandlerSource(action.trigger.handler, wrapper, context);
   if (!handler) return null;
   const targetCalls = importedWrapperCallCount(
     handler.definitions,

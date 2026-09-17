@@ -52,6 +52,7 @@ function route(normalizedKey = "POST /examples/:param/submission") {
 }
 
 function wrapper({
+  apiFile = "apps/web-admin/src/api/example.api.ts",
   name = "submitExample",
   normalizedKey = "POST /examples/:param/submission",
   productionConsumers = [
@@ -63,7 +64,7 @@ function wrapper({
   const [method, path] = normalizedKey.split(" ");
   return {
     name,
-    apiFile: "apps/web-admin/src/api/example.api.ts",
+    apiFile,
     kind: "transport",
     ...(returnProvenance
       ? { returnProvenance }
@@ -1357,6 +1358,16 @@ void submit;
 });
 
 test("accepts a project definition pipeline only when fresh capability and validated values dominate the write", async () => {
+  const businessEntrySource = `
+export async function fetchBusinessEntryDefinition(...args) { return args; }
+export async function validateBusinessEntryDraft(...args) { return args; }
+`;
+  const projectExtraFiles = {
+    "apps/web-admin/src/api/business-entry.api.ts": businessEntrySource
+  };
+  const projectWebManifestOverrides = {
+    evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 }
+  };
   const action = registryAction({
     id: "example.project-definition-pipeline",
     capability: {
@@ -1364,13 +1375,14 @@ test("accepts a project definition pipeline only when fresh capability and valid
       source: "profile.canManage"
     },
     wrappers: [
-      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "validateBusinessEntryDraft" },
+      { apiFile: "apps/web-admin/src/api/business-entry.api.ts", name: "validateBusinessEntryDraft" },
       { apiFile: "apps/web-admin/src/api/example.api.ts", name: "submitExample" }
     ]
   });
   const page = `<script setup lang="ts">
 import { ref } from "vue";
-import { getExample, fetchBusinessEntryDefinition, validateBusinessEntryDraft, submitExample } from "../api/example.api";
+import { getExample, submitExample } from "../api/example.api";
+import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../api/business-entry.api";
 const profile = ref(null);
 async function submit() {
   const projectId = "project-1";
@@ -1389,11 +1401,15 @@ async function submit() {
   const wrappers = [
     wrapper(),
     wrapper({ name: "getExample", normalizedKey: "GET /examples/:param", returnProvenance: "transparent_main_response" }),
-    wrapper({ name: "fetchBusinessEntryDefinition", normalizedKey: "GET /examples/:param/definition", returnProvenance: "transparent_main_response" }),
-    wrapper({ name: "validateBusinessEntryDraft", normalizedKey: "POST /examples/:param/validate", productionConsumers: ["apps/web-admin/src/pages/ExamplePage.vue"] })
+    wrapper({ apiFile: "apps/web-admin/src/api/business-entry.api.ts", name: "fetchBusinessEntryDefinition", normalizedKey: "GET /examples/:param/definition", returnProvenance: "transparent_main_response" }),
+    wrapper({ apiFile: "apps/web-admin/src/api/business-entry.api.ts", name: "validateBusinessEntryDraft", normalizedKey: "POST /examples/:param/validate", productionConsumers: ["apps/web-admin/src/pages/ExamplePage.vue"] })
   ];
   const routes = [route(), route("GET /examples/:param"), route("GET /examples/:param/definition"), route("POST /examples/:param/validate")];
-  const root = await fixture({ actions: [action], wrappers, routes, page });
+  const root = await fixture({
+    actions: [action], wrappers, routes, page,
+    extraFiles: projectExtraFiles,
+    webManifestOverrides: projectWebManifestOverrides
+  });
   const manifest = await inspectWholeSitePageActionManifest({ root });
   assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
 
@@ -1402,7 +1418,9 @@ async function submit() {
     page: page.replace(
       "definitionVersion: definition.version",
       "definitionVersion: 1"
-    )
+    ),
+    extraFiles: projectExtraFiles,
+    webManifestOverrides: projectWebManifestOverrides
   });
   const stale = await inspectWholeSitePageActionManifest({ root: staleRoot });
   assert.equal(stale.status, "blocked");
@@ -1416,12 +1434,20 @@ async function submit() {
       "{ name: validation.values.name }",
       "{ name: validation.values.name || values.name }"
     )],
+    ["a draft object cannot be indexed by a validated key", page.replace(
+      "{ name: validation.values.name }",
+      "{ name: values[validation.values.name] }"
+    )],
     ["comment cannot forge the final coordinate", page.replace(
       "return submitExample(projectId, { name: validation.values.name });",
       '/* submitExample(projectId, { name: validation.values.name }) */\n  return submitExample("other-project", { name: values.name });'
     )]
   ]) {
-    const unsafeRoot = await fixture({ actions: [action], wrappers, routes, page: unsafePage });
+    const unsafeRoot = await fixture({
+      actions: [action], wrappers, routes, page: unsafePage,
+      extraFiles: projectExtraFiles,
+      webManifestOverrides: projectWebManifestOverrides
+    });
     const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
     assert.equal(unsafe.status, "blocked", name);
   }
@@ -1432,7 +1458,7 @@ async function submit() {
       kind: "server_definition",
       source: "definition.key",
       freshRead: {
-        apiFile: "apps/web-admin/src/api/example.api.ts",
+        apiFile: "apps/web-admin/src/api/business-entry.api.ts",
         name: "fetchBusinessEntryDefinition",
         method: "GET",
         mode: "read_only_probe",
@@ -1447,11 +1473,11 @@ async function submit() {
       }
     },
     wrappers: [
-      { apiFile: "apps/web-admin/src/api/example.api.ts", name: "validateBusinessEntryDraft" }
+      { apiFile: "apps/web-admin/src/api/business-entry.api.ts", name: "validateBusinessEntryDraft" }
     ]
   });
   const validationOnlyPage = `<script setup lang="ts">
-import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../api/example.api";
+import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../api/business-entry.api";
 async function submit() {
   const projectId = "project-1";
   const definition = await fetchBusinessEntryDefinition("project_profile", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
@@ -1470,10 +1496,31 @@ async function submit() {
     routes: routes.filter((item) =>
       ["GET /examples/:param/definition", "POST /examples/:param/validate"].includes(item.normalizedKey)
     ),
-    page: validationOnlyPage
+    page: validationOnlyPage,
+    extraFiles: projectExtraFiles,
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 6, reachableProductionModuleCount: 5 }
+    }
   });
   const validationOnly = await inspectWholeSitePageActionManifest({ root: validationOnlyRoot });
   assert.equal(validationOnly.status, "ready", JSON.stringify(validationOnly.blockers));
+
+  const foreignSourceRoot = await fixture({
+    actions: [action], wrappers, routes,
+    page: page.replace(
+      'from "../api/business-entry.api";',
+      'from "../api/foreign-business-entry.api";'
+    ),
+    extraFiles: {
+      ...projectExtraFiles,
+      "apps/web-admin/src/api/foreign-business-entry.api.ts": businessEntrySource
+    },
+    webManifestOverrides: {
+      evidence: { productionModuleCount: 7, reachableProductionModuleCount: 6 }
+    }
+  });
+  const foreignSource = await inspectWholeSitePageActionManifest({ root: foreignSourceRoot });
+  assert.equal(foreignSource.status, "blocked");
 });
 
 test("accepts a guarded upload callback only when one voucher result flows into the final write", async () => {
