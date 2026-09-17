@@ -9,6 +9,59 @@ import { ContractWorkbenchService } from "../contract-workbench/contract-workben
 import { PrismaService } from "../database/prisma.service";
 import { ContractService } from "./contract.service";
 import { ContractGovernanceDenial } from "./contract-formal-file.service";
+import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
+import { AuditService } from "../audit/audit.service";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/business-entry-definition.snapshot-store";
+import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
+import { CONTRACT_BASIC_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
+
+// Keep the production definition, ownership, authorization and snapshot services.
+// These legacy unit fixtures replace only the database boundary.
+function connectBusinessEntryFixture(
+  service: ContractService,
+  transaction: object,
+  version: { id: string; contractId: string },
+  actorUserId: string
+) {
+  const tx = transaction as Prisma.TransactionClient;
+  const previousFindMany = tx.contract.findMany;
+  Object.assign(tx.contract, {
+    findMany: jest.fn((args: { where?: { id?: unknown } }) =>
+      args.where?.id === version.contractId
+        ? Promise.resolve([{ projectId: "project-1" }])
+        : previousFindMany(args as never))
+  });
+  Object.assign(tx.contractVersion, { findUnique: jest.fn().mockResolvedValue(version) });
+  const snapshots: Array<Record<string, unknown>> = [];
+  Object.assign(tx, {
+    user: { findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
+      where.id === actorUserId ? { id: actorUserId, isActive: true } : null) },
+    userPosition: { findMany: jest.fn(async ({ where }: { where: { userId: string } }) =>
+      where.userId === actorUserId
+        ? [{ userId: actorUserId, projectId: "project-1", positionId: "entry-contract-staff" }] : []) },
+    position: { findMany: jest.fn().mockResolvedValue([{ id: "entry-contract-staff", key: "contract_staff" }]) },
+    projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    businessEntrySubmissionSnapshot: {
+      findFirst: jest.fn(async () => snapshots.at(-1) ?? null),
+      findMany: jest.fn(async () => [...snapshots].reverse()),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const record = { id: `entry-snapshot-${snapshots.length + 1}`, ...data };
+        snapshots.push(record);
+        return record;
+      })
+    }
+  });
+  if (!tx.auditLog) Object.assign(tx, { auditLog: { create: jest.fn() } });
+  if (!tx.contractDraftSubmissionRequest) {
+    Object.assign(tx, { contractDraftSubmissionRequest: { create: jest.fn() } });
+  }
+  Reflect.set(service, "businessEntry", new BusinessEntryTransactionService(
+    createBusinessEntryDefinitionRegistry([CONTRACT_BASIC_ENTRY_DEFINITION]),
+    BUSINESS_ENTRY_TRANSACTION_REGISTRY,
+    new PrismaBusinessEntrySnapshotStore({} as PrismaService, new AuditService())
+  ));
+}
 
 const CONTRACT_REVIEW_VERSION_UPDATED_AT = new Date("2026-08-02T01:00:00.000Z");
 const CONTRACT_REVIEW_APPROVAL_UPDATED_AT = new Date("2026-08-02T01:00:01.000Z");
@@ -726,6 +779,7 @@ describe("ContractService", () => {
       templateSnapshot: {},
       clauseSnapshot: [],
       draftData: {
+        contractName: "合成合同",
         companyEntitySelection: {
           id: "company-1",
           versionNo: 1
@@ -953,6 +1007,7 @@ describe("ContractService", () => {
       businessNumbers as never,
       routes as never
     );
+    connectBusinessEntryFixture(service, tx, version, "owner-1");
     return {
       state,
       receipts,
@@ -2008,6 +2063,7 @@ describe("ContractService", () => {
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
       draftData: {
+        contractName: "合成合同",
         companyEntitySelection: {
           id: "entity-1",
           versionId: "entity-version-3",
@@ -2169,6 +2225,7 @@ describe("ContractService", () => {
       formalFiles as never,
       authorizations as never
     );
+    connectBusinessEntryFixture(service, tx, version, "user-contract-staff");
 
     const result = await service.submitApproval(
       "contract-version-1",
@@ -2330,6 +2387,7 @@ describe("ContractService", () => {
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
       draftData: {
+        contractName: "合成合同",
         companyEntitySelection: {
           id: "entity-1",
           versionId: "entity-version-3",
@@ -2499,6 +2557,7 @@ describe("ContractService", () => {
       formalFiles as never,
       authorizations as never
     );
+    connectBusinessEntryFixture(service, tx, version, "user-contract-staff");
 
     const result = await service.submitApproval(
       "contract-version-1",
@@ -3235,6 +3294,7 @@ describe("ContractService", () => {
         content: { text: "按实际发生量结算后付款" }
       }],
       draftData: {
+        contractName: "合成合同",
         companyEntitySelection: {
           id: "entity-1",
           versionId: "entity-version-1",
@@ -3380,7 +3440,7 @@ describe("ContractService", () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         createMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      approvalInstance: { create: jest.fn() },
+      approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) },
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -3414,10 +3474,11 @@ describe("ContractService", () => {
       numbering as never,
       routes as never
     );
+    connectBusinessEntryFixture(service, tx, version, "staff-1");
 
     await workbench.saveDraft("contract-version-framework", "staff-1", {
       expectedRevision: 1,
-      draftData: {},
+      draftData: { contractName: "合成合同" },
       clauses: version.clauseSnapshot,
       pricingNature: "framework",
       amountSource: "bill_sum",
@@ -3499,7 +3560,9 @@ describe("ContractService", () => {
       {}
     )).resolves.toMatchObject({ status: "in_approval", amountCents: "0" });
     expect(tx.projectOwnerContract.findMany).not.toHaveBeenCalled();
-    expect(tx.contract.findMany).not.toHaveBeenCalled();
+    expect(tx.contract.findMany).toHaveBeenCalledWith({
+      where: { id: "contract-framework" }, select: { projectId: true }, take: 2
+    });
     expect(routes.freezeNewContractRoute).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ id: "contract-framework", projectId: "project-1" }),
@@ -3606,6 +3669,7 @@ describe("ContractService", () => {
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
       draftData: {
+        contractName: "合成合同",
         companyEntitySelection: {
           id: "entity-1",
           versionId: "entity-version-1",
@@ -3650,7 +3714,7 @@ describe("ContractService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       approvalInstance: {
-        create: jest.fn()
+        create: jest.fn().mockResolvedValue({ id: "approval-1" })
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
@@ -3703,6 +3767,7 @@ describe("ContractService", () => {
       readiness as never,
       numbering as never
     );
+    connectBusinessEntryFixture(service, tx, version, "user-contract-staff");
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff", {})
@@ -4030,7 +4095,8 @@ describe("ContractService", () => {
       amountCents: BigInt(5000000),
       readinessSnapshot: null,
       templateSnapshot: {},
-      clauseSnapshot: []
+      clauseSnapshot: [],
+      draftData: { contractName: "合成合同", companyEntitySelection: { id: "entity-1" } }
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
@@ -4054,7 +4120,7 @@ describe("ContractService", () => {
         }),
         findMany: jest.fn().mockResolvedValue([])
       },
-      approvalInstance: { create: jest.fn() }
+      approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) }
     };
     const service = new ContractService(
       {
@@ -4064,6 +4130,7 @@ describe("ContractService", () => {
       } as unknown as PrismaService,
       audit as never
     );
+    connectBusinessEntryFixture(service, tx, version, "user-contract-staff");
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff")
@@ -4081,7 +4148,8 @@ describe("ContractService", () => {
       amountCents: BigInt(5000000),
       readinessSnapshot: null,
       templateSnapshot: {},
-      clauseSnapshot: []
+      clauseSnapshot: [],
+      draftData: { contractName: "合成合同", companyEntitySelection: { id: "entity-1" } }
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
@@ -4106,7 +4174,7 @@ describe("ContractService", () => {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
-      approvalInstance: { create: jest.fn() }
+      approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) }
     };
     const service = new ContractService(
       {
@@ -4116,6 +4184,7 @@ describe("ContractService", () => {
       } as unknown as PrismaService,
       audit as never
     );
+    connectBusinessEntryFixture(service, tx, version, "user-contract-staff");
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff")

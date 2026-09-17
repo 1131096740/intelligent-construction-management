@@ -241,6 +241,24 @@ if (enabled) {
         // Authorized isolated historical-draft fixture transform; not a claim of
         // all-HTTP legacy creation, and never a manufactured confirmed fact.
         await prisma.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: null } });
+        const outsiderPhone = `114${Date.now()}`;
+        const outsiderPassword = `Test-${randomUUID()}`;
+        await prisma.user.create({ data: {
+          phone: outsiderPhone, name: "无合同提交岗位的活跃账号",
+          passwordHash: await hash(outsiderPassword, 4), mustChangePassword: false
+        } });
+        const authorizedToken = token;
+        token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", {
+          phone: outsiderPhone, password: outsiderPassword
+        })).tokens.accessToken;
+        try {
+          await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {}))
+            .rejects.toThrow("403");
+        } finally {
+          token = authorizedToken;
+        }
+        const rejectedDetail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
+        expect(rejectedDetail.businessEntrySubmissions).toEqual([]);
       }
       await request("POST", `/contracts/${draft.version.id}/approval-submission`, {});
       const before = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
