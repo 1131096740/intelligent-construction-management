@@ -23,6 +23,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let factWitnessUserId: string;
   let strangerToken: string;
   let financeToken: string;
+  let accountPassword: string;
   const approvalTokens: string[] = [];
   let browserSession: unknown;
 
@@ -40,6 +41,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     baseUrl = await app.getUrl();
     const prisma = app.get(PrismaService);
     const password = randomUUID();
+    accountPassword = password;
     const suffix = randomUUID();
     const actor = await prisma.user.create({ data: { name: "入口申请人", phone: `pol115-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
     applicantUserId = actor.id;
@@ -182,6 +184,60 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const first = await upload();
     const firstText = await first.text();
     if (first.status !== 201) throw new Error(`放款凭证上传失败：${first.status} ${firstText}`);
+    const firstBody = JSON.parse(firstText) as { id: string };
+    expect(firstBody.id).toEqual(expect.any(String));
+    const replay = await upload();
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
+  }, 60_000);
+
+  (enabled ? it : it.skip)("公开登记实际放款后可上传单字段幂等还款凭证", async () => {
+    const quotaAttachmentBody = new FormData();
+    quotaAttachmentBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成垫资申请依据.png");
+    const quotaAttachmentResponse = await fetch(`${baseUrl}/files`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: quotaAttachmentBody });
+    expect(quotaAttachmentResponse.status).toBe(201);
+    const quotaAttachment = await quotaAttachmentResponse.json() as { id: string };
+    const quotaRequest = await request(`/projects/${projectId}/financing-quotas`, { idempotencyKey: randomUUID(), amountCents: "1", reason: "合成还款链放款资金", attachmentFileId: quotaAttachment.id }, financeToken);
+    expect(quotaRequest.status).toBe(201);
+    const quotaId = (quotaRequest.body as unknown as { quotaId: string }).quotaId;
+    for (const approvalToken of [approvalTokens[2]!, approvalTokens[3]!]) {
+      const capabilityResponse = await fetch(`${baseUrl}/projects/${projectId}/financing-quotas/${quotaId}/review-capability`, { headers: { authorization: `Bearer ${approvalToken}` } });
+      expect(capabilityResponse.status).toBe(200);
+      const capability = await capabilityResponse.json() as { lifecycleToken: string };
+      const approval = await request(`/projects/${projectId}/financing-quotas/${quotaId}/approval`, { actionId: randomUUID(), expectedLifecycleToken: capability.lifecycleToken, decision: "approve", confirmationPassword: accountPassword }, approvalToken);
+      if (approval.status !== 201) throw new Error(`公开垫资额度审批失败：${approval.status} ${JSON.stringify(approval.body)}`);
+    }
+
+    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "还款凭证上传验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    expect((await request(`${path}/submission`, {})).status).toBe(201);
+    for (const [approvalIndex, approvalToken] of approvalTokens.entries()) {
+      const approval = await request(`${path}/approval`, { decision: "approve" }, approvalToken);
+      if (approval.status !== 201) throw new Error(`借款真实审批${approvalIndex + 1}失败：${approval.status} ${JSON.stringify(approval.body)}`);
+    }
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_disbursement" } });
+
+    const disbursementUploadBody = new FormData();
+    disbursementUploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成实际放款凭证.png");
+    disbursementUploadBody.append("idempotencyKey", randomUUID());
+    const disbursementUpload = await fetch(`${baseUrl}${path}/disbursement-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: disbursementUploadBody });
+    expect(disbursementUpload.status).toBe(201);
+    const disbursementFile = await disbursementUpload.json() as { id: string };
+    const disbursed = await request(`${path}/disbursements`, { amountCents: "1", paidAt: "2026-09-17", paymentMethod: "合成银行转账", voucherFileId: disbursementFile.id, confirmationPassword: accountPassword }, financeToken);
+    if (disbursed.status !== 201) throw new Error(`公开放款登记失败：${disbursed.status} ${JSON.stringify(disbursed.body)}`);
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "disbursed", fundedAmountCents: "1" } });
+
+    const idempotencyKey = randomUUID();
+    const upload = async () => {
+      const uploadBody = new FormData();
+      uploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成还款凭证.png");
+      uploadBody.append("idempotencyKey", idempotencyKey);
+      return fetch(`${baseUrl}${path}/repayment-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: uploadBody });
+    };
+    const first = await upload();
+    const firstText = await first.text();
+    if (first.status !== 201) throw new Error(`还款凭证上传失败：${first.status} ${firstText}`);
     const firstBody = JSON.parse(firstText) as { id: string };
     expect(firstBody.id).toEqual(expect.any(String));
     const replay = await upload();

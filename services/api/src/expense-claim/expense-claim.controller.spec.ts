@@ -51,13 +51,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
       };
       const controller = new ExpenseClaimController(claims as never, files as never);
 
-      if (method === "uploadDraftAttachmentFile" || method === "uploadAppendAttachmentFile") {
-        await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, { idempotencyKey: "idempotency-1" });
-      } else if (method === "uploadPaymentVoucherFile" || method === "uploadDisbursementVoucherFile") {
-        await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, { idempotencyKey: "idempotency-1" });
-      } else {
-        await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, "idempotency-1");
-      }
+      await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, { idempotencyKey: "idempotency-1" });
 
       expect(claims.assertActionAvailable).toHaveBeenCalledWith(
         "claim-1",
