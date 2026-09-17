@@ -8,7 +8,7 @@ if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(api) || !process.env.POL115_BROWSER_SESS
   throw new Error("费用浏览器测试仅允许本机合成会话");
 }
 export default defineConfig({
-  testDir: "./e2e", testMatch: "pol115-expense-real.e2e.ts", timeout: 45_000,
+  testDir: "./e2e", testMatch: process.env.POL115_BROWSER_SPEC ?? "pol115-expense-real.e2e.ts", timeout: 45_000,
   workers: 1, retries: 0, reporter: "line",
   outputDir: join(tmpdir(), `pol115-browser-${randomUUID()}`),
   use: { baseURL: "http://127.0.0.1:4215", trace: "off" },

@@ -2,6 +2,8 @@ import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
 import { PrismaService } from "../database/prisma.service";
@@ -16,6 +18,8 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let app: INestApplication;
   let baseUrl: string;
   let token: string;
+  let reviewerToken: string;
+  let browserSession: unknown;
   beforeAll(async () => {
     if (!enabled) return;
     const url = new URL(process.env.DATABASE_URL ?? "");
@@ -32,7 +36,7 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const suffix = randomUUID();
     const password = randomUUID();
     const actor = await db.user.create({ data: { name: "资金填写人", phone: suffix, passwordHash: await hash(password, 4), mustChangePassword: false } });
-    const reviewer = await db.user.create({ data: { name: "核验人", mustChangePassword: false } });
+    const reviewer = await db.user.create({ data: { name: "核验人", phone: `reviewer-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
     const role = await db.position.upsert({ where: { key: "finance_staff" }, create: { key: "finance_staff", name: "财务人员" }, update: {} });
     await db.userPosition.create({ data: { userId: actor.id, positionId: role.id } });
     const reviewerRole = await db.position.upsert({ where: { key: "finance_director" }, create: { key: "finance_director", name: "财务主管" }, update: {} });
@@ -53,11 +57,20 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     await app.get(VerifiedBankTransactionObservationService).record({ reference: suffix, payerVerificationId: verificationId, transactionSourceType: "pol115_test_statement", transactionSourceId: suffix, transactionSourceIdentity: "b".repeat(64), transactionEvidenceFileId: files[1]!.id, transactionExecutedByUserId: actor.id, amountCents: 12500n, currencyCode: "CNY", direction: "inflow", occurredAt: new Date("2026-09-16T00:00:00.000Z"), createdByUserId: actor.id, auditRequestId: randomUUID() });
     const login = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: actor.phone, password }) });
     expect(login.status).toBe(201);
-    token = ((await login.json()) as { tokens: { accessToken: string } }).tokens.accessToken;
+    const actorSession = await login.json();
+    browserSession = {
+      user: { id: actor.id, name: actor.name, phone: actor.phone, mustChangePassword: false, roleKeys: ["finance_staff"], globalRoleKeys: ["finance_staff"] },
+      tokens: (actorSession as { tokens: unknown }).tokens
+    };
+    token = (actorSession as { tokens: { accessToken: string } }).tokens.accessToken;
+    const reviewerLogin = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: reviewer.phone, password }) });
+    expect(reviewerLogin.status).toBe(201);
+    const reviewerSession = await reviewerLogin.json();
+    reviewerToken = (reviewerSession as { tokens: { accessToken: string } }).tokens.accessToken;
   }, 60_000);
   afterAll(async () => { if (app) await app.close(); });
-  async function request<T>(path: string, method = "GET", body?: unknown) {
-    const response = await fetch(`${baseUrl}${path}`, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  async function request<T>(path: string, method = "GET", body?: unknown, accessToken = token) {
+    const response = await fetch(`${baseUrl}${path}`, { method, headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const result = await response.json();
     if (!response.ok) throw new Error(JSON.stringify({ status: response.status, body: result }));
     return result as T;
@@ -78,5 +91,23 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(detail.entrySnapshots[0]).toMatchObject({ definitionVersion: 1, valuesSnapshot: { reason: "公司项目资金到账", amountCents: "12500", direction: "inflow" } });
     expect(await request(`${path}/submit`, "POST", submit)).toEqual(submitted);
     expect((await request<CaseBody>(path)).entrySnapshots).toEqual(detail.entrySnapshots);
+
+    await request(`${path}/approval-actions`, "POST", { action: "return_to_applicant", comment: "分类说明需更精确" }, reviewerToken);
+    const returned = await request<CaseBody>(`${path}/return`, "POST", { expectedRevision: submitted.revision, reason: "补充分项目说明", idempotencyKey: randomUUID() }, reviewerToken);
+    await request<CaseBody>(`${path}/submit`, "POST", { expectedRevision: returned.revision, idempotencyKey: randomUUID() }, reviewerToken);
+    const resubmitted = await request<CaseBody>(path, "GET", undefined, reviewerToken);
+    expect(resubmitted.entrySnapshots).toHaveLength(2);
+    expect(resubmitted.entrySnapshots[0]).toEqual(detail.entrySnapshots[0]);
+    expect(resubmitted.entrySnapshots[1]).toMatchObject({ valuesSnapshot: { reason: "公司项目资金到账", amountCents: "12500", direction: "inflow" } });
   }, 60_000);
+
+  (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机从真实详情回读冻结提交记录", async () => {
+    await new Promise<void>((done, reject) => {
+      const env: NodeJS.ProcessEnv = { ...process.env, POL115_API_URL: baseUrl, POL115_BROWSER_SESSION: JSON.stringify(browserSession), POL115_BROWSER_SPEC: "pol115-fund-real.e2e.ts" };
+      delete env.JEST_WORKER_ID;
+      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
+      child.on("error", reject);
+      child.on("exit", (code) => code === 0 ? done() : reject(new Error("资金执行历史真实浏览器验证失败")));
+    });
+  }, 180_000);
 });
