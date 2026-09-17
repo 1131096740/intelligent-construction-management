@@ -2,6 +2,8 @@ import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
@@ -20,6 +22,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let applicantUserId: string;
   let factWitnessUserId: string;
   let strangerToken: string;
+  let browserSession: unknown;
 
   beforeAll(async () => {
     if (!enabled) return;
@@ -49,13 +52,27 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     }
     const login = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: actor.phone, password }) });
     expect(login.status).toBe(201);
-    token = ((await login.json()) as { tokens: { accessToken: string } }).tokens.accessToken;
+    const loginSession = (await login.json()) as { tokens: { accessToken: string } };
+    browserSession = loginSession;
+    token = loginSession.tokens.accessToken;
     const stranger = await prisma.user.create({ data: { name: "无关申请人", phone: `stranger-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
     const strangerLogin = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: stranger.phone, password }) });
     strangerToken = ((await strangerLogin.json()) as { tokens: { accessToken: string } }).tokens.accessToken;
   }, 60_000);
 
   afterAll(async () => { if (app) await app.close(); });
+
+  (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机通过真实页面创建费用草稿而不自动提交", async () => {
+    await new Promise<void>((done, reject) => {
+      const env: NodeJS.ProcessEnv = { ...process.env, POL115_API_URL: baseUrl, POL115_BROWSER_SESSION: JSON.stringify(browserSession) };
+      delete env.JEST_WORKER_ID;
+      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts"], {
+        cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit"
+      });
+      child.on("error", reject);
+      child.on("exit", (code) => code === 0 ? done() : reject(new Error("费用真实浏览器验证失败")));
+    });
+  }, 180_000);
 
   async function request(path: string, body?: unknown, accessToken = token) {
     const response = await fetch(`${baseUrl}${path}`, { method: body === undefined ? "GET" : "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
