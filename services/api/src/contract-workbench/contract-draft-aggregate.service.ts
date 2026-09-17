@@ -15,6 +15,7 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { calculateContractDocumentContentFingerprint } from "./contract-document-content";
 import { ContractWorkbenchService } from "./contract-workbench.service";
+import { CONTRACT_BASIC_ENTRY_DEFINITION, contractBasicEntryValues, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
 import { projectContractDraftOperationCapabilities } from "./contract-mutation-authority";
 import type {
   SaveContractDraftAggregateDto,
@@ -43,8 +44,10 @@ export class ContractDraftAggregateService {
   ) {}
 
   async getWorkbench(contractVersionId: string, actorUserId: string) {
-    const version = await this.prisma.contractVersion.findUnique({
-      where: { id: contractVersionId }
+    const { version, templateEntry, billEntries } = await this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
+      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version) };
     });
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
@@ -95,6 +98,16 @@ export class ContractDraftAggregateService {
         draftLifecycleKind: legacyReadModel.lifecycleKind
       },
       draft: version.draftData,
+      templateEntry,
+      billEntries,
+      bills: legacyReadModel.bills.map((bill) => ({
+        ...bill,
+        businessEntryDefinition: billEntries.find((entry) => entry.billId === bill.id)?.definition
+      })),
+      businessEntry: {
+        definition: CONTRACT_BASIC_ENTRY_DEFINITION,
+        values: contractBasicEntryValues(version.draftData)
+      },
       attachments,
       draftOperationAvailableActions,
       lease: {

@@ -117,6 +117,12 @@ export interface BusinessEntrySceneDefinition {
   name: string;
   description: string;
   version: number;
+  source?: {
+    kind: "contract_business_template_version";
+    id: string;
+    version: number;
+    billKey?: string;
+  };
   fields: readonly BusinessEntryFieldDefinition[];
   rules: readonly BusinessEntryRule[];
   permissions?: BusinessEntryPermissionPolicy;
@@ -334,7 +340,7 @@ function matchesNumericStringPrecision(value: string, precision: number): boolea
   return match !== null && (match[1]?.length ?? 0) <= precision;
 }
 
-function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown): BusinessEntryValidationError | null {
+function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown, contractTemplateScalar = false): BusinessEntryValidationError | null {
   const invalid = (
     code: "invalid_type" | "invalid_option" | "invalid_format",
     message: string
@@ -343,6 +349,20 @@ function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown)
     message,
     fieldKey: field.key
   });
+
+  // Existing contract templates have their own published scalar contract. Do not
+  // retrofit static-scene precision/date/option restrictions onto that contract.
+  if (contractTemplateScalar) {
+    const valid = field.type === "boolean"
+      ? typeof value === "boolean"
+      : field.type === "multi_select"
+        ? Array.isArray(value) && value.every((item) => typeof item === "string")
+        : field.type === "number" || field.type === "money"
+          ? (typeof value === "number" && Number.isFinite(value)) ||
+            (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)))
+          : typeof value === "string";
+    return valid ? null : invalid("invalid_type", `${field.label}填写类型不正确`);
+  }
 
   if (field.type === "text" || field.type === "long_text") {
     if (typeof value !== "string") return invalid("invalid_type", `${field.label}必须填写文本`);
@@ -413,6 +433,14 @@ function validateDefinition(definition: BusinessEntrySceneDefinition): BusinessE
   }
   if (!Number.isSafeInteger(definition.version) || definition.version < 1) {
     throw new BusinessEntryDefinitionError("invalid_definition", "业务场景定义版本必须是正整数");
+  }
+  if (definition.source && (
+    definition.source.kind !== "contract_business_template_version" ||
+    !((definition.key === "contract_template_fields" && definition.entityType === "contract_version") ||
+      (definition.key === "contract_bill_row" && definition.entityType === "contract_bill_row" && definition.source.billKey?.trim())) ||
+    !definition.source.id.trim() || definition.source.version !== definition.version
+  )) {
+    throw new BusinessEntryDefinitionError("invalid_definition", "合同模板字段来源不合法");
   }
 
   const fieldKeys = new Set<string>();
@@ -628,14 +656,15 @@ export class BusinessEntryDefinitionRegistry {
       }
     }
 
+    const contractTemplateScalar = definition.source?.kind === "contract_business_template_version";
     for (const field of definition.fields) {
-      if (!(field.key in values) && field.defaultValue !== undefined) {
+      if (!contractTemplateScalar && !(field.key in values) && field.defaultValue !== undefined) {
         values[field.key] = cloneValue(field.defaultValue);
       }
       const value = values[field.key];
       const visible = !field.visibleWhen || conditionMatches(field.visibleWhen, values);
       if (!visible) {
-        if (isPresent(value)) {
+        if (!contractTemplateScalar && isPresent(value)) {
           errors.push({
             code: "hidden_field",
             fieldKey: field.key,
@@ -681,7 +710,7 @@ export class BusinessEntryDefinitionRegistry {
         continue;
       }
       if (isPresent(value)) {
-        const error = validateFieldValue(field, value);
+        const error = validateFieldValue(field, value, contractTemplateScalar);
         if (error) errors.push(error);
       }
     }

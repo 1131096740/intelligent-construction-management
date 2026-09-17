@@ -3,6 +3,7 @@ import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { BusinessNumberModule } from "../business-number/business-number.module";
+import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
 import { ContractWorkbenchModule } from "../contract-workbench/contract-workbench.module";
 import { FileModule } from "../file/file.module";
@@ -26,6 +27,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     AuditModule,
     AuthModule,
     BusinessNumberModule,
+    BusinessEntryTransactionModule,
     ContractBillModule,
     forwardRef(() => ContractWorkbenchModule),
     FileModule,

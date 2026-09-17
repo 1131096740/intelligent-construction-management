@@ -1,6 +1,7 @@
 import {
   isContractBillCustomColumn,
   normalizeTaxRatePercent,
+  type BusinessEntrySceneDefinition,
   type DetailActionReadModel
 } from "@jiangkong/shared-domain";
 
@@ -47,6 +48,7 @@ export interface WorkbenchBillRemainderCancellationFacts {
 }
 
 export interface WorkbenchBill {
+  businessEntryDefinition?: BusinessEntrySceneDefinition;
   id: string;
   billKey: string;
   name: string;
@@ -161,6 +163,9 @@ export function selectedBillForDownload(bills: WorkbenchBill[], billKey: string)
 }
 
 export function billColumns(bill: WorkbenchBill): WorkbenchBillColumn[] {
+  if (bill.businessEntryDefinition) return bill.businessEntryDefinition.fields.map((field) => ({
+    key: field.key, label: field.label, type: field.type, required: field.required
+  }));
   const customColumns = Array.isArray(bill.schemaSnapshot?.columns)
     ? bill.schemaSnapshot.columns
     : [];

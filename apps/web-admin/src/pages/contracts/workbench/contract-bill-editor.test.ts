@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import {
   billColumns,
   billRowValidationMessage,
@@ -40,6 +41,18 @@ const bills: WorkbenchBill[] = [
 ];
 
 describe("contract bill editor helpers", () => {
+  it("uses server scene fields for grid and mobile column labels", () => {
+    const definition: BusinessEntrySceneDefinition = {
+      key: "contract_bill_row", entityType: "contract_bill_row", name: "材料清单", description: "合同清单", version: 1,
+      source: { kind: "contract_business_template_version", id: "template-1", version: 1, billKey: "materials" }, rules: [],
+      fields: [{ key: "brand", label: "精确版本品牌", type: "text", scope: "line", description: "填写品牌", example: "合成品牌",
+        unit: "", precision: 0, required: true, permissions: { view: ["contract_staff"], edit: ["contract_staff"] },
+        bulk: { enabled: true, strategy: "append" }, excel: { column: "精确版本品牌", paste: "multi", errorLocation: "cell" },
+        display: { formHint: "填写品牌", gridColumn: "精确版本品牌", mobilePriority: 1, readonlyText: "提交品牌" } }]
+    };
+    const bill = { ...bills[0]!, businessEntryDefinition: definition };
+    expect(billColumns(bill)).toEqual([{ key: "brand", label: "精确版本品牌", type: "text", required: true }]);
+  });
   it("creates a local blank row before any backend mutation", () => {
     const row = createUnsavedBillRow("test-1");
 

@@ -238,6 +238,10 @@ export interface ProjectExpenseApprovalDetailReadModel {
 }
 
 export interface ContractDetailReadModel {
+  businessEntrySubmissions?: Array<{
+    approvalInstanceId: string;
+    snapshot: import("./business-entry-definition").BusinessEntryFrozenSnapshot;
+  }>;
   id: string;
   contractVersionId: string;
   title: string;

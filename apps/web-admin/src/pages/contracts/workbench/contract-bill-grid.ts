@@ -492,6 +492,7 @@ function optionalText(value: string | null | undefined): string | undefined {
 }
 
 function billColumns(bill: WorkbenchBill): WorkbenchBillColumn[] {
+  if (bill.businessEntryDefinition) return bill.businessEntryDefinition.fields.filter((field) => isContractBillCustomColumn(field.key));
   const snapshot = bill.schemaSnapshot;
   if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.columns)) return [];
   return snapshot.columns.filter(

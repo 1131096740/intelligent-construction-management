@@ -1,7 +1,9 @@
 import type { Prisma } from "@prisma/client";
+import { CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY } from "../contract-workbench/contract-business-entry-policy";
 import {
   BUSINESS_ACTIONS,
   type BusinessAction,
+  type BusinessEntrySceneDefinition,
   type BusinessEntryOperation,
   type BusinessEntrySubmissionTarget,
   type RoleKey
@@ -40,6 +42,7 @@ export interface BusinessEntryTransactionScenePolicy {
   readonly action: BusinessAction;
   readonly resolveOwnership: BusinessEntryOwnershipResolver;
   readonly resolveAuthorization: BusinessEntryDomainAuthorizationResolver;
+  readonly resolveDefinition?: (context: BusinessEntryTransactionResolverContext) => Promise<BusinessEntrySceneDefinition>;
 }
 
 function freezePolicy(
@@ -93,9 +96,8 @@ export function createBusinessEntryTransactionSceneRegistry(
   return new BusinessEntryTransactionSceneRegistry(policies);
 }
 
-// #255 only establishes the fail-closed contract. #114 owns the concrete scene matrix.
 export const BUSINESS_ENTRY_TRANSACTION_SCENE_POLICIES = Object.freeze(
-  [] as readonly BusinessEntryTransactionScenePolicy[]
+  [CONTRACT_BASIC_ENTRY_POLICY, CONTRACT_TEMPLATE_ENTRY_POLICY, CONTRACT_BILL_ENTRY_POLICY] as readonly BusinessEntryTransactionScenePolicy[]
 );
 
 export const BUSINESS_ENTRY_TRANSACTION_REGISTRY =
