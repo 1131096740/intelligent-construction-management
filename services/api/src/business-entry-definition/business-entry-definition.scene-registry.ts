@@ -171,6 +171,11 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     textField("effectiveFrom", "生效日", projectFinanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
     textField("changeReason", "设置/变更原因", projectFinanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
   ]),
+  globalDefinition("project_participating_company_add", "project", "新增参与公司", [
+    textField("companyEntityId", "参与公司", projectFinanceRoles, { type: "company", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("effectiveFrom", "生效日", projectFinanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("changeReason", "加入原因", projectFinanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
+  ]),
   globalDefinition("project_rename", "project", "项目名称", [
     textField("name", "项目名称", projectMaintenanceRoles, {
       required: true,
@@ -333,6 +338,11 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
   Object.freeze([
     {
       sceneKey: "project_construction_enterprise",
+      target: { scope: "project", entityType: "project" },
+      permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
+    },
+    {
+      sceneKey: "project_participating_company_add",
       target: { scope: "project", entityType: "project" },
       permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
     },

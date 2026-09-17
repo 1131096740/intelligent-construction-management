@@ -1,5 +1,49 @@
 import { expect, test } from "@playwright/test";
 
+test("项目财务通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }) => {
+  const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
+  const api = process.env.POL113_API_URL!;
+  const projectId = process.env.POL113_PROJECT_ID!;
+  const path = `/projects/${projectId}/participating-companies`;
+  const headers = { authorization: `Bearer ${session.tokens.accessToken}` };
+  await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  await page.goto("/项目经营");
+  await page.getByText("项目设置", { exact: true }).click();
+  const form = page.getByRole("region", { name: "新增参与公司单条业务表单" });
+  await expect(form).toBeVisible();
+  await form.locator('[data-field="companyEntityId"]').click();
+  await page.getByText("参与主体合成验收公司", { exact: true }).last().click();
+  const today = new Intl.DateTimeFormat("en-CA").format(new Date());
+  await form.locator('[data-field="effectiveFrom"] input').click();
+  await page.locator(".t-date-picker__panel .t-date-picker__cell--now").click();
+  const reason = form.locator('[data-field="changeReason"] textarea');
+  await reason.fill(" ");
+  let writes = 0;
+  page.on("request", (req) => { if (req.url().endsWith(path) && req.method() === "POST") writes += 1; });
+  const save = page.getByRole("button", { name: "新增参与公司", exact: true });
+  const invalid = page.waitForResponse((response) => response.url().includes("/project_participating_company_add/validate"));
+  await save.click();
+  expect((await invalid).ok()).toBe(true);
+  await expect(form).toContainText("请填写加入原因");
+  await expect(reason).toHaveValue(" ");
+  expect(writes).toBe(0);
+  await reason.fill("浏览器新增参与验收");
+  const saved = page.waitForResponse((response) => response.url().endsWith(path) && response.request().method() === "POST", { timeout: 10_000 });
+  await save.click();
+  const response = await saved;
+  expect(response.ok()).toBe(true);
+  const participant = await response.json();
+  await expect(page.getByText("参与公司已加入", { exact: true })).toBeVisible();
+  expect(writes).toBe(1);
+  const profile = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
+  expect((await profile.json()).participatingCompanies).toContainEqual(expect.objectContaining({ id: participant.id, companyName: "参与主体合成验收公司", effectiveFrom: today, changeReason: "浏览器新增参与验收" }));
+  expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  // Only this test's synthetic, fact-free relation is removed through the original domain guard.
+  expect((await request.delete(`${api}${path}/${participant.id}`, { headers })).ok()).toBe(true);
+});
+
 test("项目财务统一填写施工企业版本日期原因，预检失败保留输入且成功绑定可回读", async ({ page, request }) => {
   const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
   const api = process.env.POL113_API_URL!;

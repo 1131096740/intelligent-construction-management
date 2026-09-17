@@ -8,7 +8,7 @@
 | 项目重命名：名称 | 同页面 → fresh update-capability → `PATCH /projects/:projectId`；原事务更新并审计 | 第二片已接 `project_rename` 单名称定义、统一表单和 fresh validate，再沿原 capability/PATCH 写入 | 原董事长/总经理 global + 当前项目岗位范围不变，技术管理员及异项目岗位不能借用；当前项目桌面/手机用户链通过，未声明项目切换交互覆盖或冻结写链完成 |
 | 经营档案：经营账生效日、接管完成日、接管状态 | `ProjectOperatingProfilePanel.vue` → `PATCH /projects/:projectId/operating-profile`；`ProjectOperatingProfileService.updateProfileInTransaction` 原事务校验、更新、审计 | 首片已接入共享表单、fresh 三字段定义和 validate；专属 resolver 复用原领域权限入口，项目 scope/target 严格匹配 | 本地真实 HTTP/PG16 与桌面/手机浏览器已验证失败保留输入且零 PATCH、成功原领域写入；未新增冻结写链，不能据此声明整票快照冻结或全门通过。其余入口仍按下列缺口推进 |
 | 唯一施工企业：候选版本、生效日、变更原因 | 同 panel → options → `POST /projects/:projectId/construction-enterprise`；原 `ProjectService.assignAffiliate` 处理版本、锁定及原审计 | 第三片已接 `project_construction_enterprise` 定义、统一表单、fresh validate，候选仍来自原 options | HTTP 和桌面/手机用户链通过；原事务继续裁决当前候选、锁定、生效期和审计，不把字段预检当业务状态最终授权。未扩权或新增冻结写链 |
-| 新增参与公司：公司、生效日、加入原因 | 同 panel → options → `POST /projects/:projectId/participating-companies`；原领域事务维护版本与有效区间 | 无独立统一场景定义/校验接线 | 需共享登记现有候选及字段，保留 #284 时间和连续覆盖规则 |
+| 新增参与公司：公司、生效日、加入原因 | 同 panel → options → `POST /projects/:projectId/participating-companies`；原领域事务维护版本与有效区间 | 第四片已接 `project_participating_company_add` 定义、统一表单和 fresh validate；候选仍来自原 options | HTTP 与桌面/手机用户链通过，原项目财务权限、重复加入拒绝、#284 时间及连续覆盖事务规则不变；未新增冻结写链 |
 | 停止参与：停止日、原因 | 同 panel 的确认弹窗 → `PATCH /projects/:projectId/participating-companies/:participantId/deactivation` | 无独立统一场景定义/校验接线 | 需明确原参与关系 target/项目归属解析；保留领域停止规则，不能仅按项目 ID 代替参与关系身份 |
 | 删除无正式事实的参与关系 | 同 panel 的专用确认 → `DELETE /projects/:projectId/participating-companies/:participantId` | 非字段录入动作；既有领域守卫 | 保留原条件及确认交互，作为邻接回归，不造新字段表单 |
 
@@ -53,3 +53,14 @@
 - 原 controller、领域事务、Schema 均未改。最终状态约束仍在 `assignAffiliate` 内，字段预检不能替代锁定/版本/日期约束。运行器最终自身容器已清理。
 
 当前仍未完成：项目创建（兼容权限模式待确认）、参与主体新增/停止、整票冻结策略与全门；未推送、未执行 CI 或生产操作。
+
+## 第四片：新增参与公司
+
+第三片已由主控保存为 `1bc246c1b9e142e9304d1f6690cf57672a97c58f`。本片证据绑定该 SHA 之后的本地差异，不是清洁树收据：
+
+- 场景未登记 HTTP 404 RED → 18/18 GREEN；合成完整公司经原公开公司创建接口生成，原 options 读取；统一预检成功后沿原新增参与公司 POST 保存并回读，空白原因无新增，原事务仍拒绝重复加入。
+- 浏览器旧表单缺统一 region RED → Desktop Chrome / iPhone 13 WebKit 共 8/8 GREEN（含此前三片回归）。验证日期控件、空白原因保留且零 POST、成功回读和表单无横向溢出；仅通过原 DELETE 清理本用例创建的无正式事实合成关系。
+- API 窄回归 5 suites / 57 tests；Web 结构 2 files / 43 tests；API typecheck/lint、Web typecheck/E2E typecheck、UI rules 和 diff check 通过。修改页面 ESLint 0 errors / 0 warnings。最终真实 HTTP 运行器退出 0，且独立查询确认自身容器 `jiangkong-pol113-http-9ce5ed59-b94f-4e70-aab5-594a94bd2d12` 已不存在。
+- 未改 controller、领域事务或 Schema。停止操作需要真实参与关系身份；legacy project target 强制实体 ID 等于项目 ID，不能冒充参与关系。目前仅向主控提出原已授权档案回读附定义、原停止 PATCH 校验的领域接线方案，尚未修改共享 target 契约。
+
+剩余为项目创建兼容方案待用户决定、停止参与关系目标接线待协调、整票冻结策略与完整门禁；未推送、未执行 CI 或生产操作。

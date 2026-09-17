@@ -47,7 +47,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
       expect(access.permission).toEqual(
         definition.key === "project_rename"
           ? { kind: "role_keys", roleKeys: ["chairman", "general_manager"], roleScope: "effective" }
-          : ["project_operating_profile", "project_construction_enterprise"].includes(definition.key)
+          : ["project_operating_profile", "project_construction_enterprise", "project_participating_company_add"].includes(definition.key)
           ? {
               kind: "business_action",
               action: "project.operating_profile.manage",
@@ -75,6 +75,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
   it("registers production access only from the explicit profile and takeover scene families", () => {
     expect(BUSINESS_ENTRY_SCENE_ACCESS_POLICIES.map((policy) => policy.sceneKey)).toEqual([
       "project_construction_enterprise",
+      "project_participating_company_add",
       "project_rename",
       "project_operating_profile",
       ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key),

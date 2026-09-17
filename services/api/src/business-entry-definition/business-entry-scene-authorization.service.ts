@@ -111,6 +111,15 @@ export class BusinessEntrySceneAuthorizationService {
           }
         },
         {
+          sceneKey: "project_participating_company_add",
+          resolve: (context) => {
+            if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
+              throw new BadRequestException("新增参与公司目标与当前项目不一致");
+            }
+            return projectOperatingProfiles.assertCanMaintainBusinessEntry(context.projectId, context.actorUserId, context.tx);
+          }
+        },
+        {
           sceneKey: "project_rename",
           resolve: (context) => {
             if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {

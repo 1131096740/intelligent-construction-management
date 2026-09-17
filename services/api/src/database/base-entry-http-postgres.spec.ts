@@ -18,6 +18,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   let userId: string;
   let token: string;
   const sessions = new Map<string, unknown>();
+  let participatingCompanyId: string;
   const password = `Local-${randomUUID()}`;
   const phone = `139${String(Date.now()).slice(-8)}`;
 
@@ -89,6 +90,19 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     } };
   }
 
+  async function participatingCompany() {
+    if (participatingCompanyId) return participatingCompanyId;
+    const contract = await actor("contract_staff");
+    const created = await request("/company-entities", "POST", {
+      name: "参与主体合成验收公司",
+      // Existing checksum test vector, not an issued business identifier.
+      unifiedSocialCreditCode: "9135A211M100100YD0"
+    }, contract);
+    expect(created.status).toBe(201);
+    participatingCompanyId = created.body.entity.id;
+    return participatingCompanyId;
+  }
+
   it("当前项目财务可预检并保存同一经营档案字段，其他项目及全局财务不可借用权限", async () => {
     const chairman = await actor("chairman");
     const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "统一档案合成项目" }, chairman);
@@ -123,6 +137,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect(saved.status).toBe(200);
     expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body).toMatchObject(values);
     if (process.env.RUN_POL113_PROJECT_BROWSER === "1") {
+      await participatingCompany();
       const contract = await actor("contract_staff");
       const enterpriseIntent = await partyIntent(contract, "浏览器施工企业验收");
       expect((await request("/business-parties", "POST", enterpriseIntent.body, contract)).status).toBe(201);
@@ -204,6 +219,39 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect(valid.body.valid).toBe(true);
     expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", { ...valid.body.values, effectiveFrom: `${values.effectiveFrom}T00:00:00.000Z` }, finance)).status).toBe(201);
     expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: false });
+  });
+
+  it("项目财务通过统一字段加入完整公司，空白原因不新增并按原关系回读", async () => {
+    const chairman = await actor("chairman");
+    const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "参与公司合成项目" }, chairman);
+    expect(created.status).toBe(201);
+    const projectId = created.body.id as string;
+    const finance = await actor("finance_staff", projectId);
+    const companyEntityId = await participatingCompany();
+    const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId });
+    const definition = await request(`/business-entry-definitions/project_participating_company_add?${query}`, "GET", undefined, finance);
+    expect(definition.status).toBe(200);
+    expect(definition.body.fields.map((field: { key: string }) => field.key)).toEqual(["companyEntityId", "effectiveFrom", "changeReason"]);
+    const values = { companyEntityId, effectiveFrom: "2026-01-01", changeReason: "加入项目验收" };
+    const payload = { definitionVersion: definition.body.version, target: { entityType: "project", entityId: projectId }, operation: "edit", values };
+    const validationPath = `/business-entry-definitions/project_participating_company_add/validate?projectId=${projectId}`;
+    const path = `/projects/${projectId}/participating-companies`;
+    const globalFinance = await actor("finance_staff");
+    for (const denied of [chairman, globalFinance]) {
+      expect((await request(validationPath, "POST", payload, denied)).status).toBe(403);
+      expect((await request(path, "POST", values, denied)).status).toBe(403);
+    }
+    const invalid = await request(validationPath, "POST", { ...payload, values: { ...values, changeReason: " " } }, finance);
+    expect(invalid.body.valid).toBe(false);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.participatingCompanies).toEqual([]);
+    const valid = await request(validationPath, "POST", payload, finance);
+    expect(valid.body.valid).toBe(true);
+    const added = await request(path, "POST", valid.body.values, finance);
+    expect(added.status).toBe(201);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.participatingCompanies).toEqual([
+      expect.objectContaining({ id: added.body.id, companyEntityId, effectiveFrom: "2026-01-01", changeReason: "加入项目验收", status: "active" })
+    ]);
+    expect((await request(path, "POST", valid.body.values, finance)).status).toBe(400);
   });
 
   it("本人字段定义和服务端预检拒绝原账号规则不接受的手机号", async () => {
