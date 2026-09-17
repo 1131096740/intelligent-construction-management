@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("窄屏报销卡片保存一分钱明细并经真实接口回读", async ({ page, request }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("报销表格或移动卡片保存一分钱明细并经真实接口回读", async ({ page, request }) => {
   const session = JSON.parse(process.env.POL115_BROWSER_SESSION!);
   await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
@@ -15,12 +14,25 @@ test("窄屏报销卡片保存一分钱明细并经真实接口回读", async ({
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
   await form.locator('[data-field="reason"] textarea').fill("真实浏览器报销明细");
   await form.locator('[data-field="requestedAmountYuan"] input').fill("0.01");
-  const cards = page.locator(".business-entry-mobile-cards");
-  await expect(cards).toBeVisible();
-  await cards.locator('[data-field="expenseCategory"] input').fill("办公费");
-  await cards.locator('[data-field="purpose"] input, [data-field="purpose"] textarea').fill("购买文具");
-  await cards.locator('[data-field="amountYuan"] input').fill("0.01");
-  expect(await cards.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  if (page.viewportSize()!.width < 768) {
+    const cards = page.locator(".business-entry-mobile-cards");
+    await expect(cards).toBeVisible();
+    await cards.locator('[data-field="expenseCategory"] input').fill("办公费");
+    await cards.locator('[data-field="purpose"] input, [data-field="purpose"] textarea').fill("购买文具");
+    await cards.locator('[data-field="amountYuan"] input').fill("0.01");
+    expect(await cards.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  } else {
+    const grid = page.locator("revo-grid");
+    for (const [column, value] of [[0, "办公费"], [2, "购买文具"], [4, "0.01"]] as const) {
+      const cell = grid.locator(`[data-rgrow="0"][data-rgcol="${column}"]`);
+      await cell.dblclick();
+      const editor = grid.locator("revogr-edit input");
+      await editor.fill(value);
+      await editor.press("Enter");
+      await expect(editor).toBeHidden();
+      await expect(cell).toHaveText(value);
+    }
+  }
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
