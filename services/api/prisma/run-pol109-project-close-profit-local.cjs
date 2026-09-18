@@ -17,7 +17,9 @@ const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const prismaCli = require.resolve("prisma/build/index.js");
 const jestCli = require.resolve("jest/bin/jest");
-const playwrightCli = require.resolve("@playwright/test/cli");
+const playwrightCli = require.resolve("@playwright/test/cli", {
+  paths: [path.join(root, "apps/web-admin")]
+});
 const IMAGE = "postgres:16";
 const DATABASE_NAME = "jiangkong_pol109";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";

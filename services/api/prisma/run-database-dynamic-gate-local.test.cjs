@@ -3,6 +3,7 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const {
@@ -232,6 +233,18 @@ test("canonical manifest executes the POL-109 project close PG16 and HTTP accept
     },
     state: "executable_local_runner"
   });
+});
+
+test("POL-109 runner resolves Playwright from the Web workspace", () => {
+  const source = readFileSync(
+    path.join(__dirname, "run-pol109-project-close-profit-local.cjs"),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /require\.resolve\("@playwright\/test\/cli",\s*\{\s*paths:\s*\[path\.join\(root,\s*"apps\/web-admin"\)\]\s*\}\)/u
+  );
 });
 
 test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", () => {
