@@ -222,7 +222,10 @@ jobs:
 
       - name: Install POL-113/POL-115 browser runtimes
         if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
-        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
+        run: |
+          browser_path="$RUNNER_TEMP/pol113-pol115-playwright"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 
       - name: Verify migration baseline
         run: pnpm check:migration-baseline
