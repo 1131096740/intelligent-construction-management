@@ -87,7 +87,7 @@ test("RC-06 真实 API/PG16 项目收口移动刷新重进仍可见且无面板�
 });
 
 test("真实 API/PG16 技术管理员只能回看且不能执行收口命令", async ({ page }) => {
-  await login(page, "13800000001");
+  await login(page, "13800001015");
   await openCloseProfit(page);
   await expect(page.getByRole("heading", { name: "项目收口与盈亏" })).toBeVisible();
   await expect(page.locator(".stage-actions button")).toHaveCount(0);

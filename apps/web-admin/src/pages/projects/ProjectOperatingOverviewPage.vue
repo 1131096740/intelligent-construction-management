@@ -1812,13 +1812,7 @@ async function loadOverview() {
               options: null,
               error: formatUnknownApiError(error, "读取上游资金业务关联选项失败")
             }))
-        : Promise.resolve({ options: null, error: "" }),
-      fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId)
-        .then((workbench) => ({ workbench, error: "" }))
-        .catch((error: unknown) => ({
-          workbench: null,
-          error: formatUnknownApiError(error, "读取项目收口与盈亏失败")
-        }))
+        : Promise.resolve({ options: null, error: "" })
     ]);
     let nextOverview: ProjectOperatingOverviewReadModel | null = null;
     if (canReadProjectOverview.value) {
@@ -1830,9 +1824,14 @@ async function loadOverview() {
       spotCapability,
       nextFinancingQuota,
       nextParticipatingCompanies,
-      nextUpstreamFundReferenceOptions,
-      nextCloseProfit
+      nextUpstreamFundReferenceOptions
     ] = await companionRequests;
+    const nextCloseProfit = await fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId)
+      .then((workbench) => ({ workbench, error: "" }))
+      .catch((error: unknown) => ({
+        workbench: null,
+        error: formatUnknownApiError(error, "读取项目收口与盈亏失败")
+      }));
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
       selectedProjectId.value === projectId
