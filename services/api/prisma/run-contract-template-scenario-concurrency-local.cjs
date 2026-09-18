@@ -11,6 +11,9 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const {
+  waitForLocalTcpReady
+} = require("./wait-for-local-tcp-ready.cjs");
 
 const DATABASE_NAME =
   "jiangkong_contract_template_scenario_concurrency";
@@ -105,7 +108,13 @@ async function freePort() {
   });
 }
 
-async function waitForPostgres(containerName, dockerCommand) {
+async function waitForPostgres(
+  containerName,
+  databasePort,
+  dockerCommand,
+  waitForHost = waitForLocalTcpReady
+) {
+  let containerReady = false;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       await dockerCommand(
@@ -120,12 +129,16 @@ async function waitForPostgres(containerName, dockerCommand) {
         ],
         { timeoutMs: 15_000 }
       );
-      return;
+      containerReady = true;
+      break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
-  throw new Error("合同模板场景临时 PostgreSQL 16 在 30 秒内未就绪");
+  if (!containerReady) {
+    throw new Error("合同模板场景临时 PostgreSQL 16 在 30 秒内未就绪");
+  }
+  await waitForHost({ host: "127.0.0.1", port: databasePort });
 }
 
 function createContractTemplateScenarioCleanup({
@@ -245,7 +258,11 @@ async function main() {
           forwardOutput: true
         }
       );
-      await waitForPostgres(containerName, dockerCommand);
+      await waitForPostgres(
+        containerName,
+        databasePort,
+        dockerCommand
+      );
       console.log(
         `临时 PostgreSQL 16 已就绪：${containerName}` +
           `（${DATABASE_NAME}，仅 127.0.0.1）`
@@ -315,5 +332,6 @@ module.exports = {
   createDockerCommand,
   createContractTemplateScenarioCleanup,
   freePort,
+  waitForPostgres,
   main
 };

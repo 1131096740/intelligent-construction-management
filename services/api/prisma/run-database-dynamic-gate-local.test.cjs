@@ -29,6 +29,9 @@ const {
   waitForLocalTcpReady
 } = require("./wait-for-local-tcp-ready.cjs");
 const {
+  waitForPostgres: waitForContractTemplateScenarioPostgres
+} = require("./run-contract-template-scenario-concurrency-local.cjs");
+const {
   CURRENT_PROCESS_DYNAMIC_TESTS,
   assertCanonicalMigrationBaseline: assertPol275CanonicalMigrationBaseline,
   assertSafeEnvironment: assertPol275SafeEnvironment,
@@ -107,6 +110,28 @@ test("POL-115 host-port readiness retries until the published loopback port acce
     }),
     /127\.0\.0\.1/u
   );
+});
+
+test("contract template scenario waits for the published loopback port after container readiness", async () => {
+  const dockerCalls = [];
+  const hostWaitCalls = [];
+
+  await waitForContractTemplateScenarioPostgres(
+    "contract-template-postgres",
+    43210,
+    async (args) => {
+      dockerCalls.push(args);
+    },
+    async (options) => {
+      hostWaitCalls.push(options);
+    }
+  );
+
+  assert.equal(dockerCalls.length, 1);
+  assert.equal(dockerCalls[0].includes("pg_isready"), true);
+  assert.deepEqual(hostWaitCalls, [
+    { host: "127.0.0.1", port: 43210 }
+  ]);
 });
 
 test("manifest derives all 290 pending tests as executable local coverage", () => {
