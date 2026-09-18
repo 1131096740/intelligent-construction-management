@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 27,
-    "exportedFunctionCount": 570,
-    "transportWrapperCount": 550,
+    "apiModuleCount": 28,
+    "exportedFunctionCount": 578,
+    "transportWrapperCount": 558,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 574,
+    "mainRequestBindingCount": 582,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 574,
-    "productionConsumerCount": 445,
+    "requestEdgeCount": 582,
+    "productionConsumerCount": 453,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 298,
-    "reachableProductionModuleCount": 271
+    "productionModuleCount": 300,
+    "reachableProductionModuleCount": 273
   },
   "wrappers": [
     {
@@ -13092,6 +13092,243 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "attestProjectDownstreamContractCost",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/downstream-cost/attestations/contract",
+          "normalizedPath": "/projects/:param/close-profit/downstream-cost/attestations/contract",
+          "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/contract",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attestProjectDownstreamContractCost",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "attestProjectDownstreamFinanceCost",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/downstream-cost/attestations/finance",
+          "normalizedPath": "/projects/:param/close-profit/downstream-cost/attestations/finance",
+          "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/finance",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "attestProjectDownstreamFinanceCost",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-close-profit.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "completeProjectCloseStage",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/stages/:param/complete",
+          "normalizedPath": "/projects/:param/close-profit/stages/:param/complete",
+          "normalizedKey": "POST /projects/:param/close-profit/stages/:param/complete",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "completeProjectCloseStage",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-close-profit.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmProjectFinalProfit",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/final-profit/confirm",
+          "normalizedPath": "/projects/:param/close-profit/final-profit/confirm",
+          "normalizedKey": "POST /projects/:param/close-profit/final-profit/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectFinalProfit",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-close-profit.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmProjectProfitDistribution",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/distributions/confirm",
+          "normalizedPath": "/projects/:param/close-profit/distributions/confirm",
+          "normalizedKey": "POST /projects/:param/close-profit/distributions/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmProjectProfitDistribution",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-close-profit.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectCloseProfitWorkbench",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 217,
+          "method": "GET",
+          "path": "/projects/:param/close-profit",
+          "normalizedPath": "/projects/:param/close-profit",
+          "normalizedKey": "GET /projects/:param/close-profit",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectCloseProfitWorkbench",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-close-profit.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "postTemporaryProfitDistribution",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/temporary-distributions",
+          "normalizedPath": "/projects/:param/close-profit/temporary-distributions",
+          "normalizedKey": "POST /projects/:param/close-profit/temporary-distributions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "postTemporaryProfitDistribution",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-close-profit.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reconcileProjectCloseImpacts",
+      "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 227,
+          "method": "POST",
+          "path": "/projects/:param/close-profit/impacts/reconcile",
+          "normalizedPath": "/projects/:param/close-profit/impacts/reconcile",
+          "normalizedKey": "POST /projects/:param/close-profit/impacts/reconcile",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reconcileProjectCloseImpacts",
+              "post"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

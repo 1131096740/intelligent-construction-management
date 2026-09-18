@@ -2,6 +2,76 @@
   "schemaVersion": 1,
   "actions": [
     {
+      "id": "project-close-profit.impacts.reconcile",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reconcileProjectCloseImpactsWithCapability" },
+      "semantic": "technical_write",
+      "capability": { "kind": "server_boolean", "source": "capability.canReconcileImpacts" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "reconcileProjectCloseImpacts" }]
+    },
+    {
+      "id": "project-close-profit.stage.complete",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "completeProjectCloseStageWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "complete" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "completeProjectCloseStage" }]
+    },
+    {
+      "id": "project-close-profit.downstream-cost.attest",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attestProjectDownstreamContractCostWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attest_contract_cost" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "attestProjectDownstreamContractCost" }]
+    },
+    {
+      "id": "project-close-profit.downstream-cost.attest-finance",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attestProjectDownstreamFinanceCostWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attest_finance_cost" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "attestProjectDownstreamFinanceCost" }]
+    },
+    {
+      "id": "project-close-profit.final-profit.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectFinalProfitWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_final_profit" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "confirmProjectFinalProfit" }]
+    },
+    {
+      "id": "project-close-profit.distribution.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectProfitDistributionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_distribution" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "confirmProjectProfitDistribution" }]
+    },
+    {
+      "id": "project-close-profit.temporary-distribution.create",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "persistTemporaryProfitWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_temporary_distribution" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "postTemporaryProfitDistribution" }]
+    },
+    {
       "id": "business-party.create",
       "usage": "page_action",
       "routePaths": [

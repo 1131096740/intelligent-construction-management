@@ -195,6 +195,7 @@ model Project {
   fundMovementRelationshipsAsBeneficiary FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipBeneficiaryProject")
   necessaryExpenseReserves               ProjectNecessaryExpenseReserve[]
   projectFundDisputes                    ProjectFundDispute[]
+  closeAggregate                         ProjectCloseAggregate?
   isActive                               Boolean                           @default(true)
   createdAt                              DateTime                          @default(now())
   updatedAt                              DateTime                          @updatedAt
@@ -249,6 +250,265 @@ model ProjectParticipatingCompany {
 model ProjectParticipatingCompanyMutationFence {
   projectId String @id
   revision  BigInt @default(0)
+}
+
+// POL-16 project close root. This row is the sole lock coordinate; business
+// history remains append-only in the version and receipt tables below.
+model ProjectCloseAggregate {
+  projectId String   @id
+  revision  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project                Project                                  @relation(fields: [projectId], references: [id], onDelete: Restrict, map: "ProjectCloseAggregate_project_fkey")
+  stageVersions          ProjectCloseStageVersion[]
+  receipts               ProjectCloseCommandReceipt[]
+  attestations           ProjectCloseProfessionalAttestation[]
+  profitConfirmations    ProjectCloseProfitConfirmation[]
+  distributions          ProjectCloseDistribution[]
+  profitAuthorizations   ProjectProfitDistributionAuthorization[]
+  temporaryDistributions ProjectTemporaryProfitDistribution[]
+  impacts                ProjectCloseImpact[]
+}
+
+model ProjectCloseStageVersion {
+  id                    String   @id @default(uuid())
+  projectId             String
+  stageKey              String
+  revision              Int
+  status                String
+  previousVersionId     String?
+  projectionReadAt      DateTime
+  projectionCutoffAt    DateTime
+  projectionFingerprint String
+  amountSnapshot        Json
+  stateSnapshot         Json
+  basisSnapshot         Json
+  confirmedByUserId     String
+  confirmedAt           DateTime
+  idempotencyKey        String   @unique
+  payloadFingerprint    String
+  createdAt             DateTime @default(now())
+
+  aggregate          ProjectCloseAggregate              @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseStageVersion_aggregate_fkey")
+  previousVersion    ProjectCloseStageVersion?          @relation("ProjectCloseStageVersionHistory", fields: [previousVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseStageVersion_previous_fkey")
+  nextVersions       ProjectCloseStageVersion[]         @relation("ProjectCloseStageVersionHistory")
+  receipts           ProjectCloseCommandReceipt[]
+  attestationLinks   ProjectCloseStageAttestationLink[]
+  profitConfirmation ProjectCloseProfitConfirmation?
+  distribution       ProjectCloseDistribution?
+
+  @@unique([projectId, stageKey, revision], map: "ProjectCloseStageVersion_project_stage_revision_key")
+  @@index([projectId, stageKey, createdAt], map: "ProjectCloseStageVersion_project_stage_created_idx")
+  @@index([previousVersionId], map: "ProjectCloseStageVersion_previous_idx")
+}
+
+model ProjectCloseImpact {
+  id                    String   @id @default(uuid())
+  projectId             String
+  sourceType            String
+  sourceId              String
+  sourceFingerprint     String
+  reason                String
+  affectedStages        Json
+  observedAt            DateTime
+  projectionFingerprint String
+  idempotencyKey        String   @unique
+  payloadFingerprint    String
+  createdAt             DateTime @default(now())
+
+  aggregate ProjectCloseAggregate @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseImpact_aggregate_fkey")
+
+  @@unique([projectId, sourceType, sourceId, sourceFingerprint], map: "ProjectCloseImpact_source_fingerprint_key")
+  @@index([projectId, observedAt], map: "ProjectCloseImpact_project_observed_idx")
+}
+
+model ProjectTemporaryProfitDistribution {
+  id                              String   @id @default(uuid())
+  projectId                       String
+  revision                        Int
+  projectParticipatingCompanyId   String
+  companyEntityId                 String
+  companyEntityVersionId          String
+  companyNameSnapshot             String
+  companyCreditCodeSnapshot       String?
+  amountCents                     BigInt
+  authorizationCeilingCents       BigInt
+  temporaryDistributedBeforeCents BigInt
+  authorizedCumulativeCents       BigInt
+  projectionReadAt                DateTime
+  projectionCutoffAt              DateTime
+  projectionFingerprint           String
+  basisSnapshot                   Json
+  authorizedByUserId              String
+  authorizedAt                    DateTime
+  idempotencyKey                  String   @unique
+  payloadFingerprint              String
+  createdAt                       DateTime @default(now())
+
+  aggregate     ProjectCloseAggregate                   @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectTemporaryProfitDistribution_aggregate_fkey")
+  authorization ProjectProfitDistributionAuthorization?
+
+  @@unique([projectId, revision], map: "ProjectTemporaryProfitDistribution_project_revision_key")
+  @@index([projectId, companyEntityId, createdAt], map: "ProjectTemporaryProfitDistribution_project_company_idx")
+}
+
+model ProjectCloseProfessionalAttestation {
+  id                    String   @id @default(uuid())
+  projectId             String
+  specialty             String
+  revision              Int
+  projectionReadAt      DateTime
+  projectionCutoffAt    DateTime
+  projectionFingerprint String
+  basisSnapshot         Json
+  attestedByUserId      String
+  attestedAt            DateTime
+  idempotencyKey        String   @unique
+  payloadFingerprint    String
+  createdAt             DateTime @default(now())
+
+  aggregate ProjectCloseAggregate             @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseProfessionalAttestation_aggregate_fkey")
+  stageLink ProjectCloseStageAttestationLink?
+
+  @@unique([projectId, specialty, revision], map: "ProjectCloseAttestation_project_specialty_revision_key")
+  @@index([projectId, specialty, createdAt], map: "ProjectCloseAttestation_project_specialty_created_idx")
+}
+
+model ProjectCloseStageAttestationLink {
+  stageVersionId String
+  attestationId  String @unique
+  specialty      String
+
+  stageVersion ProjectCloseStageVersion            @relation(fields: [stageVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseStageAttestationLink_stage_fkey")
+  attestation  ProjectCloseProfessionalAttestation @relation(fields: [attestationId], references: [id], onDelete: Restrict, map: "ProjectCloseStageAttestationLink_attestation_fkey")
+
+  @@id([stageVersionId, specialty])
+}
+
+model ProjectCloseProfitConfirmation {
+  id                     String   @id @default(uuid())
+  projectId              String
+  stageVersionId         String   @unique
+  revision               Int
+  previousConfirmationId String?
+  finalProfitCents       BigInt
+  projectionReadAt       DateTime
+  projectionCutoffAt     DateTime
+  projectionFingerprint  String
+  formulaVersion         String
+  amountSnapshot         Json
+  sourceSnapshot         Json
+  basisSnapshot          Json
+  confirmedByUserId      String
+  confirmedAt            DateTime
+  idempotencyKey         String   @unique
+  payloadFingerprint     String
+  createdAt              DateTime @default(now())
+
+  aggregate            ProjectCloseAggregate            @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_aggregate_fkey")
+  stageVersion         ProjectCloseStageVersion         @relation(fields: [stageVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_stage_fkey")
+  previousConfirmation ProjectCloseProfitConfirmation?  @relation("ProjectCloseProfitConfirmationHistory", fields: [previousConfirmationId], references: [id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_previous_fkey")
+  nextConfirmations    ProjectCloseProfitConfirmation[] @relation("ProjectCloseProfitConfirmationHistory")
+  distributions        ProjectCloseDistribution[]
+
+  @@unique([projectId, revision], map: "ProjectCloseProfitConfirmation_project_revision_key")
+  @@index([previousConfirmationId], map: "ProjectCloseProfitConfirmation_previous_idx")
+}
+
+model ProjectCloseDistribution {
+  id                     String   @id @default(uuid())
+  projectId              String
+  stageVersionId         String   @unique
+  profitConfirmationId   String
+  revision               Int
+  previousDistributionId String?
+  totalProfitCents       BigInt
+  projectionReadAt       DateTime
+  projectionCutoffAt     DateTime
+  projectionFingerprint  String
+  basisSnapshot          Json
+  confirmedByUserId      String
+  confirmedAt            DateTime
+  idempotencyKey         String   @unique
+  payloadFingerprint     String
+  createdAt              DateTime @default(now())
+
+  aggregate            ProjectCloseAggregate                    @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseDistribution_aggregate_fkey")
+  stageVersion         ProjectCloseStageVersion                 @relation(fields: [stageVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseDistribution_stage_fkey")
+  profitConfirmation   ProjectCloseProfitConfirmation           @relation(fields: [profitConfirmationId], references: [id], onDelete: Restrict, map: "ProjectCloseDistribution_profit_fkey")
+  previousDistribution ProjectCloseDistribution?                @relation("ProjectCloseDistributionHistory", fields: [previousDistributionId], references: [id], onDelete: Restrict, map: "ProjectCloseDistribution_previous_fkey")
+  nextDistributions    ProjectCloseDistribution[]               @relation("ProjectCloseDistributionHistory")
+  lines                ProjectCloseDistributionLine[]
+  authorizations       ProjectProfitDistributionAuthorization[]
+
+  @@unique([projectId, revision], map: "ProjectCloseDistribution_project_revision_key")
+  @@index([profitConfirmationId], map: "ProjectCloseDistribution_profit_idx")
+  @@index([previousDistributionId], map: "ProjectCloseDistribution_previous_idx")
+}
+
+model ProjectCloseDistributionLine {
+  id                            String   @id @default(uuid())
+  distributionId                String
+  projectParticipatingCompanyId String
+  companyEntityId               String
+  companyEntityVersionId        String
+  companyNameSnapshot           String
+  finalShareCents               BigInt
+  temporaryDistributedCents     BigInt
+  existingFundsAppliedCents     BigInt
+  actualTransferCents           BigInt
+  toReceiveCents                BigInt
+  toReturnCents                 BigInt
+  additionalBearingCents        BigInt
+  sourceSnapshot                Json
+  createdAt                     DateTime @default(now())
+
+  distribution ProjectCloseDistribution @relation(fields: [distributionId], references: [id], onDelete: Restrict, map: "ProjectCloseDistributionLine_distribution_fkey")
+
+  @@unique([distributionId, projectParticipatingCompanyId], map: "ProjectCloseDistributionLine_distribution_participant_key")
+  @@index([companyEntityId], map: "ProjectCloseDistributionLine_company_idx")
+}
+
+model ProjectProfitDistributionAuthorization {
+  id                      String   @id @default(uuid())
+  projectId               String
+  authorizationKind       String
+  temporaryDistributionId String?  @unique
+  distributionId          String?
+  distributionLineId      String?  @unique
+  companyEntityId         String
+  authorizedAmountCents   BigInt
+  projectionFingerprint   String
+  authorizedByUserId      String
+  authorizedAt            DateTime
+  idempotencyKey          String   @unique
+  payloadFingerprint      String
+  createdAt               DateTime @default(now())
+
+  aggregate             ProjectCloseAggregate               @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectProfitDistributionAuthorization_aggregate_fkey")
+  temporaryDistribution ProjectTemporaryProfitDistribution? @relation(fields: [temporaryDistributionId], references: [id], onDelete: Restrict, map: "ProjectProfitDistributionAuthorization_temporary_fkey")
+  distribution          ProjectCloseDistribution?           @relation(fields: [distributionId], references: [id], onDelete: Restrict, map: "ProjectProfitDistributionAuthorization_distribution_fkey")
+  movements             FundMovement[]
+
+  @@index([projectId, companyEntityId], map: "ProjectProfitDistributionAuthorization_project_company_idx")
+}
+
+model ProjectCloseCommandReceipt {
+  id                 String   @id @default(uuid())
+  projectId          String
+  stageVersionId     String?
+  action             String
+  idempotencyKey     String   @unique
+  payloadFingerprint String
+  responseSnapshot   Json
+  createdAt          DateTime @default(now())
+
+  aggregate    ProjectCloseAggregate     @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseCommandReceipt_aggregate_fkey")
+  stageVersion ProjectCloseStageVersion? @relation(fields: [stageVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseCommandReceipt_stage_version_fkey")
+
+  @@index([projectId, action, createdAt], map: "ProjectCloseCommandReceipt_project_action_idx")
+  @@index([stageVersionId], map: "ProjectCloseCommandReceipt_stage_version_idx")
 }
 
 // 正式经营事实信封只允许追加；更正和冲销通过新增事实引用原事实。
@@ -3037,13 +3297,13 @@ model FundExecution {
 // Case lifecycle is append-only: every state is a new revision in one caseKey
 // chain. A returned state may only be followed by a new draft successor.
 model FundExecutionCase {
-  id                             String    @id @default(uuid())
+  id                             String                      @id @default(uuid())
   caseKey                        String
   fundExecutionId                String
   revision                       Int
   status                         String
-  predecessorCaseId              String?   @unique
-  returnedFromCaseId             String?   @unique
+  predecessorCaseId              String?                     @unique
+  returnedFromCaseId             String?                     @unique
   approvalInstanceId             String?
   reason                         String
   approvalInstanceSnapshot       Json?
@@ -3054,7 +3314,7 @@ model FundExecutionCase {
   finalApprovalActionLogId       String?
   finalApprovalActionFingerprint String?
   payloadFingerprint             String
-  idempotencyKey                 String    @unique
+  idempotencyKey                 String                      @unique
   createdByUserId                String
   commandActorUserId             String
   submittedByUserId              String?
@@ -3068,7 +3328,7 @@ model FundExecutionCase {
   auditRequestId                 String
   createdTransactionId           BigInt
   createdBackendPid              Int
-  createdAt                      DateTime  @default(now())
+  createdAt                      DateTime                    @default(now())
   entrySnapshot                  FundExecutionEntrySnapshot?
 
   @@unique([fundExecutionId, revision], map: "FundExecutionCase_execution_revision_key")
@@ -3079,17 +3339,17 @@ model FundExecutionCase {
 
 // 每个已提交案件修订一份字段快照，不改写既有四轴后果快照或命令回执。
 model FundExecutionEntrySnapshot {
-  id                   String   @id @default(uuid())
-  fundExecutionCaseId  String   @unique
-  sceneKey             String
-  businessAction       String
-  definitionVersion    Int
-  definitionSnapshot   Json
-  valuesSnapshot       Json
-  frozenByUserId       String
-  frozenAt             DateTime @default(now())
-  fundExecutionCase    FundExecutionCase @relation(fields: [fundExecutionCaseId], references: [id], onDelete: Restrict)
-  frozenByUser         User @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
+  id                  String            @id @default(uuid())
+  fundExecutionCaseId String            @unique
+  sceneKey            String
+  businessAction      String
+  definitionVersion   Int
+  definitionSnapshot  Json
+  valuesSnapshot      Json
+  frozenByUserId      String
+  frozenAt            DateTime          @default(now())
+  fundExecutionCase   FundExecutionCase @relation(fields: [fundExecutionCaseId], references: [id], onDelete: Restrict)
+  frozenByUser        User              @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
 }
 
 model FundExecutionCaseAxisSelection {
@@ -3249,14 +3509,15 @@ model FundMovement {
   confirmedAt                DateTime?
   updatedAt                  DateTime  @updatedAt
 
-  paymentExecution    PaymentExecution?               @relation("FundMovementPaymentExecution", fields: [paymentExecutionId], references: [id], onDelete: Restrict)
-  sourceProject       Project                         @relation("FundMovementSourceProject", fields: [sourceProjectId], references: [id], onDelete: Restrict)
-  beneficiaryProject  Project                         @relation("FundMovementBeneficiaryProject", fields: [beneficiaryProjectId], references: [id], onDelete: Restrict)
-  sourceCompany       CompanyEntity                   @relation("FundMovementSourceCompany", fields: [sourceCompanyEntityId], references: [id], onDelete: Restrict)
-  beneficiaryCompany  CompanyEntity                   @relation("FundMovementBeneficiaryCompany", fields: [beneficiaryCompanyEntityId], references: [id], onDelete: Restrict)
-  createdBy           User                            @relation("FundMovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  submittedBy         User?                           @relation("FundMovementSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
-  confirmedBy         User?                           @relation("FundMovementConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  paymentExecution    PaymentExecution?                       @relation("FundMovementPaymentExecution", fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+  sourceProject       Project                                 @relation("FundMovementSourceProject", fields: [sourceProjectId], references: [id], onDelete: Restrict)
+  beneficiaryProject  Project                                 @relation("FundMovementBeneficiaryProject", fields: [beneficiaryProjectId], references: [id], onDelete: Restrict)
+  sourceCompany       CompanyEntity                           @relation("FundMovementSourceCompany", fields: [sourceCompanyEntityId], references: [id], onDelete: Restrict)
+  beneficiaryCompany  CompanyEntity                           @relation("FundMovementBeneficiaryCompany", fields: [beneficiaryCompanyEntityId], references: [id], onDelete: Restrict)
+  createdBy           User                                    @relation("FundMovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  submittedBy         User?                                   @relation("FundMovementSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  confirmedBy         User?                                   @relation("FundMovementConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  profitAuthorization ProjectProfitDistributionAuthorization? @relation(fields: [profitAuthorizationId], references: [id], onDelete: Restrict, map: "FundMovement_profit_authorization_fkey")
   legs                FundMovementLeg[]
   relationshipEntries FundMovementRelationshipEntry[]
   receipts            FundMovementCommandReceipt[]
@@ -3268,6 +3529,7 @@ model FundMovement {
   @@index([paymentExecutionId])
   @@index([sourceProjectId, beneficiaryProjectId])
   @@index([sourceCompanyEntityId, beneficiaryCompanyEntityId])
+  @@index([profitAuthorizationId, status], map: "FundMovement_profit_authorization_status_idx")
 }
 
 // One leg owns one project's projection.  Typed source/contract snapshots
@@ -4414,8 +4676,8 @@ model ProjectExpenseFinancingQuotaUsage {
 // 新费用与报销域与旧 ProjectExpenseRequest 严格隔离。旧表继续只读承载历史
 // 项目支出事实；新报销、借款、冲销和还款只写入以下账本模型。
 model ExpenseClaim {
-  id                              String    @id @default(uuid())
-  code                            String    @unique
+  id                              String                      @id @default(uuid())
+  code                            String                      @unique
   claimType                       String
   incidentalExpenseCategory       String?
   status                          String
@@ -4432,9 +4694,9 @@ model ExpenseClaim {
   proxyReason                     String?
   reason                          String
   requestedAmountCents            BigInt
-  loanOffsetAmountCents           BigInt    @default(0)
-  companyPayableAmountCents       BigInt    @default(0)
-  fundedAmountCents               BigInt    @default(0)
+  loanOffsetAmountCents           BigInt                      @default(0)
+  companyPayableAmountCents       BigInt                      @default(0)
+  fundedAmountCents               BigInt                      @default(0)
   paymentSubject                  String?
   paymentSubjectCompanyEntityId   String?
   paymentSubjectNameSnapshot      String?
@@ -4448,14 +4710,14 @@ model ExpenseClaim {
   payeeBankNameSnapshot           String?
   payeeBankAccountSnapshot        String?
   loanExpectedClearanceAt         DateTime?
-  approvalInstanceId              String?   @unique
+  approvalInstanceId              String?                     @unique
   submittedAt                     DateTime?
   approvedAt                      DateTime?
   voidedAt                        DateTime?
   voidedByUserId                  String?
   voidReason                      String?
-  createdAt                       DateTime  @default(now())
-  updatedAt                       DateTime  @updatedAt
+  createdAt                       DateTime                    @default(now())
+  updatedAt                       DateTime                    @updatedAt
   entrySnapshots                  ExpenseClaimEntrySnapshot[]
 
   @@index([claimType, status, updatedAt])
@@ -4467,20 +4729,20 @@ model ExpenseClaim {
 
 // 费用领域提交快照：项目和非项目费用共用，审批实例标识提交修订。
 model ExpenseClaimEntrySnapshot {
-  id                  String   @id @default(uuid())
+  id                  String       @id @default(uuid())
   expenseClaimId      String
   sceneKey            String
   businessAction      String
   operationObjectType String
   operationObjectId   String
-  submissionRevision String
+  submissionRevision  String
   definitionVersion   Int
   definitionSnapshot  Json
   valuesSnapshot      Json
   frozenByUserId      String
-  frozenAt            DateTime @default(now())
+  frozenAt            DateTime     @default(now())
   expenseClaim        ExpenseClaim @relation(fields: [expenseClaimId], references: [id], onDelete: Restrict)
-  frozenByUser        User @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
+  frozenByUser        User         @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
 
   @@unique([expenseClaimId, sceneKey, operationObjectType, operationObjectId, submissionRevision], map: "ExpenseClaimEntrySnapshot_operation_revision_key")
   @@index([expenseClaimId, frozenAt])

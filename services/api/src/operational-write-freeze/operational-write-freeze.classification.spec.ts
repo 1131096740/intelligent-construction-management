@@ -109,4 +109,10 @@ describe("operational write freeze classification", () => {
       "finance"
     );
   });
+
+  it("keeps project close and profit mutations in the finance control plane", () => {
+    expect(OPERATIONAL_WRITE_CONTROLLER_MODULES.ProjectCloseProfitController).toBe(
+      "finance"
+    );
+  });
 });

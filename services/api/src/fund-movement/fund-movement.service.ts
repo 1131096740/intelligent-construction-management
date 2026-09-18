@@ -35,7 +35,8 @@ import {
   assertFundMovementPurpose,
   type FundMovementDirection,
   type FundMovementKind,
-  type FundMovementLegRole
+  type FundMovementLegRole,
+  type ProfitDistributionAuthorizationEvidence
 } from "./fund-movement.domain";
 
 export interface FundMovementLegInput {
@@ -96,9 +97,20 @@ type MovementScope = Pick<MovementRow,
   | "paymentAmountCents"
   | "projectFundUsedCents"
   | "companyAdvanceCents"
+  | "profitAuthorizationId"
   | "createdByUserId"
   | "submittedByUserId"
 >;
+
+type ProfitMovementScope = Readonly<{
+  kind: string;
+  profitAuthorizationId: string | null;
+  sourceProjectId: string;
+  beneficiaryProjectId: string;
+  sourceCompanyEntityId: string;
+  beneficiaryCompanyEntityId: string;
+  paymentAmountCents: bigint;
+}>;
 
 type LockedPaymentExecution = {
   id: string;
@@ -353,6 +365,9 @@ export class FundMovementService {
     if (input.kind !== "cross_project_payment" && paymentExecutionId) {
       throw new BadRequestException("只有跨项目支付可以绑定既有实际付款");
     }
+    if (input.kind === "profit_distribution_execution" && input.profitAuthorizationId !== undefined) {
+      throw new BadRequestException("利润分配授权由服务器按项目和公司解析，客户端不得指定");
+    }
     const paymentAmountCents = safeAmount(input.paymentAmountCents, "资金移动金额必须大于零");
     const payload = {
       ...input,
@@ -379,19 +394,16 @@ export class FundMovementService {
       projectFundUsedCents: input.projectFundUsedCents,
       companyAdvanceCents: input.companyAdvanceCents
     });
-    if (input.kind === "profit_distribution_execution") {
-      // #109 is the only authority for this operation.  It is still open, so
-      // accepting a client-provided authorization id would be fail-open.
-      throw new ConflictException("利润分配执行必须等待 #109 提供服务端生效授权");
+    if (input.kind !== "profit_distribution_execution") {
+      assertFundMovementPurpose({
+        kind: input.kind,
+        sourceProjectId,
+        beneficiaryProjectId,
+        sourceCompanyId: sourceCompanyEntityId,
+        beneficiaryCompanyId: beneficiaryCompanyEntityId,
+        amountCents: paymentAmountCents
+      });
     }
-    assertFundMovementPurpose({
-      kind: input.kind,
-      sourceProjectId,
-      beneficiaryProjectId,
-      sourceCompanyId: sourceCompanyEntityId,
-      beneficiaryCompanyId: beneficiaryCompanyEntityId,
-      amountCents: paymentAmountCents
-    });
     assertFundMovementLegSet({
       kind: input.kind,
       paymentAmountCents,
@@ -416,6 +428,27 @@ export class FundMovementService {
         }
         return existing.responseSnapshot;
       }
+
+      const profitAuthorization = input.kind === "profit_distribution_execution"
+        ? await this.lockAndResolveProfitAuthorization(tx, {
+            kind: input.kind,
+            profitAuthorizationId: null,
+            sourceProjectId,
+            beneficiaryProjectId,
+            sourceCompanyEntityId,
+            beneficiaryCompanyEntityId,
+            paymentAmountCents
+          })
+        : null;
+      assertFundMovementPurpose({
+        kind: input.kind,
+        sourceProjectId,
+        beneficiaryProjectId,
+        sourceCompanyId: sourceCompanyEntityId,
+        beneficiaryCompanyId: beneficiaryCompanyEntityId,
+        amountCents: paymentAmountCents,
+        profitAuthorization
+      });
 
       if (input.kind === "cross_project_payment") {
         const paymentExecutionId = requiredText(input.paymentExecutionId, "跨项目支付必须绑定实际付款");
@@ -504,7 +537,7 @@ export class FundMovementService {
           paymentAmountCents,
           projectFundUsedCents: input.projectFundUsedCents,
           companyAdvanceCents: input.companyAdvanceCents,
-          profitAuthorizationId: input.profitAuthorizationId,
+          profitAuthorizationId: profitAuthorization?.authorizationId,
           payloadFingerprint,
           idempotencyKey,
           createdByUserId: actorUserId
@@ -568,7 +601,10 @@ export class FundMovementService {
       }
 
       let relationshipId: string | null = null;
-      if (input.kind !== "same_project_company_transfer") {
+      if (
+        input.kind !== "same_project_company_transfer" &&
+        input.kind !== "profit_distribution_execution"
+      ) {
         const sourceLeg = legRows.find((leg) => leg.role === "source");
         const beneficiaryLeg = legRows.find((leg) => leg.role === "beneficiary");
         if (!sourceLeg || !beneficiaryLeg) throw new ConflictException("资金移动分腿不完整");
@@ -695,7 +731,45 @@ export class FundMovementService {
         representedUserId: actorUserId,
         delegatorUserId: null
       };
+      const movementScope = await tx.fundMovement.findUnique({
+        where: { id: movementId },
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          revision: true,
+          paymentExecutionId: true,
+          sourceProjectId: true,
+          beneficiaryProjectId: true,
+          sourceCompanyEntityId: true,
+          beneficiaryCompanyEntityId: true,
+          paymentAmountCents: true,
+          projectFundUsedCents: true,
+          companyAdvanceCents: true,
+          profitAuthorizationId: true,
+          createdByUserId: true,
+          submittedByUserId: true
+        }
+      });
+      if (!movementScope) throw new NotFoundException("资金移动不存在");
+      const profitAuthorization = movementScope.kind === "profit_distribution_execution"
+        ? await this.lockAndResolveProfitAuthorization(tx, movementScope)
+        : null;
       const movement = await this.lockMovement(tx, movementId);
+      if (
+        movement.id !== movementScope.id ||
+        movement.kind !== movementScope.kind ||
+        movement.status !== movementScope.status ||
+        movement.revision !== movementScope.revision ||
+        movement.profitAuthorizationId !== movementScope.profitAuthorizationId ||
+        movement.paymentAmountCents !== movementScope.paymentAmountCents ||
+        movement.sourceProjectId !== movementScope.sourceProjectId ||
+        movement.beneficiaryProjectId !== movementScope.beneficiaryProjectId ||
+        movement.sourceCompanyEntityId !== movementScope.sourceCompanyEntityId ||
+        movement.beneficiaryCompanyEntityId !== movementScope.beneficiaryCompanyEntityId
+      ) {
+        throw new ConflictException("资金移动范围或版本已变化，请刷新后重试");
+      }
       const activeDelegations = await this.loadActiveFundMovementDelegations(tx);
       const actorIdentityIds = delegationIdentitySet(actorUserId, activeDelegations);
       const payloadFingerprint = fingerprint("fund_movement.submit", {
@@ -720,6 +794,15 @@ export class FundMovementService {
           delegationIdentitySet(movement.createdByUserId, activeDelegations)
         )
       ) throw new ForbiddenException("创建人不能提交后确认自己的资金移动");
+      assertFundMovementPurpose({
+        kind: movement.kind,
+        sourceProjectId: movement.sourceProjectId,
+        beneficiaryProjectId: movement.beneficiaryProjectId,
+        sourceCompanyId: movement.sourceCompanyEntityId,
+        beneficiaryCompanyId: movement.beneficiaryCompanyEntityId,
+        amountCents: movement.paymentAmountCents,
+        profitAuthorization
+      });
       const now = new Date();
       const updated = await tx.fundMovement.update({
         where: { id: movement.id },
@@ -797,6 +880,7 @@ export class FundMovementService {
           paymentAmountCents: true,
           projectFundUsedCents: true,
           companyAdvanceCents: true,
+          profitAuthorizationId: true,
           createdByUserId: true,
           submittedByUserId: true
         }
@@ -817,6 +901,9 @@ export class FundMovementService {
       } else if (movementScope.paymentExecutionId) {
         throw new ConflictException("非跨项目支付不得绑定实际付款");
       }
+      const profitAuthorization = movementScope.kind === "profit_distribution_execution"
+        ? await this.lockAndResolveProfitAuthorization(tx, movementScope)
+        : null;
       // The aggregate lock follows the payment/source rows and precedes all
       // project/funding locks.  This is the fixed #106 order: idempotency ->
       // payment/approval/source -> movement -> projects/funds -> relations.
@@ -830,6 +917,7 @@ export class FundMovementService {
         movement.revision !== movementScope.revision ||
         movement.paymentExecutionId !== movementScope.paymentExecutionId ||
         movement.paymentAmountCents !== movementScope.paymentAmountCents ||
+        movement.profitAuthorizationId !== movementScope.profitAuthorizationId ||
         movement.sourceProjectId !== movementScope.sourceProjectId ||
         movement.beneficiaryProjectId !== movementScope.beneficiaryProjectId ||
         movement.sourceCompanyEntityId !== movementScope.sourceCompanyEntityId ||
@@ -861,9 +949,15 @@ export class FundMovementService {
       ) {
         throw new ForbiddenException("创建人和提交人不能确认自己的资金移动");
       }
-      if (movement.kind === "profit_distribution_execution") {
-        throw new ConflictException("利润分配执行必须等待 #109 提供服务端生效授权");
-      }
+      assertFundMovementPurpose({
+        kind: movement.kind,
+        sourceProjectId: movement.sourceProjectId,
+        beneficiaryProjectId: movement.beneficiaryProjectId,
+        sourceCompanyId: movement.sourceCompanyEntityId,
+        beneficiaryCompanyId: movement.beneficiaryCompanyEntityId,
+        amountCents: movement.paymentAmountCents,
+        profitAuthorization
+      });
       await this.lockFundingContexts(tx, movement);
       const legs = await tx.fundMovementLeg.findMany({
         where: { movementId: movement.id },
@@ -2083,6 +2177,20 @@ export class FundMovementService {
       return;
     }
 
+    if (movement.kind === "profit_distribution_execution") {
+      await this.funding.allocateExecution(tx, {
+        projectId: movement.sourceProjectId,
+        executionType: "fund_movement",
+        executionId: movement.id,
+        businessType: "fund_movement",
+        businessId: movement.id,
+        amountCents,
+        occurredAt,
+        actorUserId
+      });
+      return;
+    }
+
     if (movement.kind === "same_project_company_transfer") {
       await this.assertProjectFundingAvailable(tx, movement.sourceProjectId, amountCents);
       return;
@@ -2279,6 +2387,22 @@ export class FundMovementService {
         impactSnapshot: jsonObject({ movementId: movement.id, legId: leg.id, role: leg.role })
       });
     }
+    if (
+      movement.kind === "profit_distribution_execution" &&
+      leg.role === "beneficiary"
+    ) {
+      impacts.push({
+        idempotencyKey: `fund_movement:${leg.id}:profit-distribution`,
+        sourceImpactKey: "final_profit_distribution",
+        impactKind: "final_profit_distribution",
+        amountCents: leg.amountCents,
+        direction: "increase",
+        subjectRole: "payee",
+        subject: { kind: "participating_company", id: leg.companyEntityId },
+        description: "最终利润分配执行",
+        impactSnapshot: jsonObject({ movementId: movement.id, legId: leg.id })
+      });
+    }
     const carriesRelationship = movement.kind !== "same_project_company_transfer" &&
       movement.kind !== "profit_distribution_execution";
     if (carriesRelationship && leg.direction !== "neutral") {
@@ -2390,9 +2514,16 @@ export class FundMovementService {
     legs: readonly MovementLegRow[],
     relationships: readonly Prisma.FundMovementRelationshipEntryGetPayload<Prisma.FundMovementRelationshipEntryDefaultArgs>[]
   ) {
-    if (movement.kind === "same_project_company_transfer") {
+    if (
+      movement.kind === "same_project_company_transfer" ||
+      movement.kind === "profit_distribution_execution"
+    ) {
       if (relationships.length > 0) {
-        throw new ConflictException("同项目持有调拨不得形成主体间往来");
+        throw new ConflictException(
+          movement.kind === "profit_distribution_execution"
+            ? "利润分配执行不得形成主体间往来"
+            : "同项目持有调拨不得形成主体间往来"
+        );
       }
       return;
     }
@@ -2530,6 +2661,149 @@ export class FundMovementService {
       where: { id },
       include: includeRelations ? { legs: { orderBy: { legNo: "asc" } }, relationshipEntries: { orderBy: { createdAt: "asc" } } } : undefined
     }) as Promise<MovementRow>;
+  }
+
+  private async lockAndResolveProfitAuthorization(
+    tx: Prisma.TransactionClient,
+    movement: ProfitMovementScope
+  ): Promise<ProfitDistributionAuthorizationEvidence> {
+    const resolved = movement.profitAuthorizationId
+      ? { id: movement.profitAuthorizationId }
+      : await tx.projectProfitDistributionAuthorization.findFirst({
+          where: {
+            projectId: movement.sourceProjectId,
+            companyEntityId: movement.beneficiaryCompanyEntityId
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true }
+        });
+    const authorizationId = requiredText(
+      resolved?.id,
+      "利润分配执行必须引用 #109 生效授权"
+    );
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "ProjectProfitDistributionAuthorization"
+      WHERE "id" = ${authorizationId}
+      FOR UPDATE
+    `);
+    if (!locked.length) {
+      throw new ConflictException("利润分配执行必须引用 #109 生效授权");
+    }
+    const authorization = await tx.projectProfitDistributionAuthorization.findUnique({
+      where: { id: authorizationId },
+      include: {
+        temporaryDistribution: true,
+        distribution: {
+          include: {
+            stageVersion: true,
+            profitConfirmation: true
+          }
+        }
+      }
+    });
+    if (!authorization) {
+      throw new ConflictException("利润分配执行必须引用 #109 生效授权");
+    }
+    const aggregateLock = await tx.$queryRaw<Array<{ projectId: string }>>(Prisma.sql`
+      SELECT "projectId"
+      FROM "ProjectCloseAggregate"
+      WHERE "projectId" = ${authorization.projectId}
+      FOR UPDATE
+    `);
+    if (!aggregateLock.length) {
+      throw new ConflictException("#109 利润分配授权所属项目收口记录不存在");
+    }
+    const [currentDistributionStage, currentProfitStage, newerImpact, changedParticipant] = await Promise.all([
+      tx.projectCloseStageVersion.findFirst({
+        where: {
+          projectId: authorization.projectId,
+          stageKey: "profit_distribution_completed"
+        },
+        orderBy: { revision: "desc" },
+        select: { id: true, status: true, projectionFingerprint: true }
+      }),
+      tx.projectCloseStageVersion.findFirst({
+        where: {
+          projectId: authorization.projectId,
+          stageKey: "final_profit_confirmed"
+        },
+        orderBy: { revision: "desc" },
+        select: { id: true, status: true, projectionFingerprint: true }
+      }),
+      tx.projectCloseImpact.findFirst({
+        where: {
+          projectId: authorization.projectId,
+          OR: [
+            { observedAt: { gt: authorization.authorizedAt } },
+            { createdAt: { gt: authorization.authorizedAt } }
+          ]
+        },
+        orderBy: [{ observedAt: "desc" }, { createdAt: "desc" }],
+        select: { id: true }
+      }),
+      tx.projectParticipatingCompany.findFirst({
+        where: {
+          projectId: authorization.projectId,
+          OR: [
+            { createdAt: { gt: authorization.authorizedAt } },
+            { updatedAt: { gt: authorization.authorizedAt } }
+          ]
+        },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true }
+      })
+    ]);
+    const distribution = authorization.distribution;
+    const temporaryDistribution = authorization.temporaryDistribution;
+    const canonicalScopeInvalid =
+      movement.kind !== "profit_distribution_execution" ||
+      authorization.projectId !== movement.sourceProjectId ||
+      authorization.projectId !== movement.beneficiaryProjectId ||
+      authorization.companyEntityId !== movement.beneficiaryCompanyEntityId;
+    const temporaryInvalid = authorization.authorizationKind === "temporary" && (
+      !temporaryDistribution ||
+      temporaryDistribution.id !== authorization.temporaryDistributionId ||
+      temporaryDistribution.projectId !== authorization.projectId ||
+      temporaryDistribution.companyEntityId !== authorization.companyEntityId ||
+      temporaryDistribution.amountCents !== authorization.authorizedAmountCents ||
+      currentProfitStage?.status === "completed"
+    );
+    const finalInvalid = authorization.authorizationKind === "final" && (
+      !distribution ||
+      distribution.projectId !== authorization.projectId ||
+      distribution.id !== authorization.distributionId ||
+      distribution.projectionFingerprint !== authorization.projectionFingerprint ||
+      currentDistributionStage?.id !== distribution.stageVersionId ||
+      currentDistributionStage.status !== "completed" ||
+      currentDistributionStage.projectionFingerprint !== authorization.projectionFingerprint ||
+      currentProfitStage?.id !== distribution.profitConfirmation.stageVersionId ||
+      currentProfitStage.status !== "completed"
+    );
+    if (newerImpact || changedParticipant) {
+      throw new ConflictException("#109 授权后项目经营事实或参与公司已变化，请重新确认利润分配");
+    }
+    if (canonicalScopeInvalid || temporaryInvalid || finalInvalid ||
+        !["temporary", "final"].includes(authorization.authorizationKind)) {
+      throw new ConflictException("#109 利润分配授权已失效或主体范围不一致");
+    }
+    const consumed = await tx.fundMovement.aggregate({
+      where: {
+        profitAuthorizationId: authorization.id,
+        kind: "profit_distribution_execution",
+        status: "confirmed"
+      },
+      _sum: { paymentAmountCents: true }
+    });
+    const consumedAmountCents = consumed._sum.paymentAmountCents ?? 0n;
+    const remainingAmountCents = authorization.authorizedAmountCents - consumedAmountCents;
+    const evidence: ProfitDistributionAuthorizationEvidence = {
+      issueKey: "#109",
+      authorizationId: authorization.id,
+      status: "effective",
+      remainingAmountCents: remainingAmountCents > 0n ? remainingAmountCents : 0n
+    };
+    return evidence;
   }
 
   private async lockIdempotency(tx: Prisma.TransactionClient, idempotencyKey: string) {

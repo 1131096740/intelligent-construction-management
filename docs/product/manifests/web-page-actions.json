@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 307,
+    "registeredActionCount": 314,
     "pageActionCount": 56,
-    "backgroundActionCount": 251,
-    "reachableVueFileCount": 152,
+    "backgroundActionCount": 258,
+    "reachableVueFileCount": 153,
     "routeRootCount": 59,
-    "totalVueFileCount": 171,
-    "parsedVueFileCount": 171,
-    "reachableProductionModuleCount": 271,
-    "templateEventDirectiveCount": 975,
+    "totalVueFileCount": 172,
+    "parsedVueFileCount": 172,
+    "reachableProductionModuleCount": 273,
+    "templateEventDirectiveCount": 978,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 298,
-    "candidateProductionMutationConsumerCount": 298,
-    "acceptedProductionMutationConsumerCount": 298,
-    "productionMutationConsumerPairCount": 298,
+    "coveredProductionMutationConsumerCount": 305,
+    "candidateProductionMutationConsumerCount": 305,
+    "acceptedProductionMutationConsumerCount": 305,
+    "productionMutationConsumerPairCount": 305,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 298,
-    "reachableProductionModuleCount": 271,
-    "totalVueFileCount": 171,
-    "parsedVueFileCount": 171
+    "totalProductionModuleCount": 300,
+    "reachableProductionModuleCount": 273,
+    "totalVueFileCount": 172,
+    "parsedVueFileCount": 172
   },
   "actions": [
     {
@@ -11844,6 +11844,544 @@
       ]
     },
     {
+      "id": "project-close-profit.distribution.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectProfitDistributionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 423,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_distribution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "confirmProjectProfitDistribution",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/distributions/confirm",
+          "normalizedKey": "POST /projects/:param/close-profit/distributions/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/distributions/confirm",
+            "normalizedKey": "POST /projects/:param/close-profit/distributions/confirm",
+            "controller": "ProjectCloseProfitController",
+            "handler": "confirmDistribution",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectProfitDistributionWithCapability",
+              "confirmProjectProfitDistribution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-close-profit.downstream-cost.attest",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attestProjectDownstreamContractCostWithCapability",
+        "kind": "background_call",
+        "sourceLine": 402,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attest_contract_cost",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "attestProjectDownstreamContractCost",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/downstream-cost/attestations/contract",
+          "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/contract",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/downstream-cost/attestations/contract",
+            "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/contract",
+            "controller": "ProjectCloseProfitController",
+            "handler": "attestContractDownstreamCost",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attestProjectDownstreamContractCostWithCapability",
+              "attestProjectDownstreamContractCost"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-close-profit.downstream-cost.attest-finance",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attestProjectDownstreamFinanceCostWithCapability",
+        "kind": "background_call",
+        "sourceLine": 409,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attest_finance_cost",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "attestProjectDownstreamFinanceCost",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/downstream-cost/attestations/finance",
+          "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/finance",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/downstream-cost/attestations/finance",
+            "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/finance",
+            "controller": "ProjectCloseProfitController",
+            "handler": "attestFinanceDownstreamCost",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attestProjectDownstreamFinanceCostWithCapability",
+              "attestProjectDownstreamFinanceCost"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-close-profit.final-profit.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectFinalProfitWithCapability",
+        "kind": "background_call",
+        "sourceLine": 416,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_final_profit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "confirmProjectFinalProfit",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/final-profit/confirm",
+          "normalizedKey": "POST /projects/:param/close-profit/final-profit/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/final-profit/confirm",
+            "normalizedKey": "POST /projects/:param/close-profit/final-profit/confirm",
+            "controller": "ProjectCloseProfitController",
+            "handler": "confirmFinalProfit",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectFinalProfitWithCapability",
+              "confirmProjectFinalProfit"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-close-profit.impacts.reconcile",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reconcileProjectCloseImpactsWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1642,
+        "sourceColumn": 0
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReconcileImpacts",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "reconcileProjectCloseImpacts",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/impacts/reconcile",
+          "normalizedKey": "POST /projects/:param/close-profit/impacts/reconcile",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/impacts/reconcile",
+            "normalizedKey": "POST /projects/:param/close-profit/impacts/reconcile",
+            "controller": "ProjectCloseProfitController",
+            "handler": "reconcileImpacts",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reconcileProjectCloseImpactsWithCapability",
+              "reconcileProjectCloseImpacts"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-close-profit.stage.complete",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "completeProjectCloseStageWithCapability",
+        "kind": "background_call",
+        "sourceLine": 395,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "complete",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "completeProjectCloseStage",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/stages/:param/complete",
+          "normalizedKey": "POST /projects/:param/close-profit/stages/:param/complete",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/stages/:stageKey/complete",
+            "normalizedKey": "POST /projects/:param/close-profit/stages/:param/complete",
+            "controller": "ProjectCloseProfitController",
+            "handler": "completeStage",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "completeProjectCloseStageWithCapability",
+              "completeProjectCloseStage"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-close-profit.temporary-distribution.create",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "persistTemporaryProfitWithCapability",
+        "kind": "background_call",
+        "sourceLine": 377,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_temporary_distribution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "postTemporaryProfitDistribution",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/temporary-distributions",
+          "normalizedKey": "POST /projects/:param/close-profit/temporary-distributions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/close-profit/temporary-distributions",
+            "normalizedKey": "POST /projects/:param/close-profit/temporary-distributions",
+            "controller": "ProjectCloseProfitController",
+            "handler": "createTemporaryDistribution",
+            "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "persistTemporaryProfitWithCapability",
+              "postTemporaryProfitDistribution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "project-create.validate",
       "usage": "background",
       "routePaths": [
@@ -11926,7 +12464,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2517,
+        "sourceLine": 2598,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11991,7 +12529,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2478,
+        "sourceLine": 2559,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12056,7 +12594,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1937,
+        "sourceLine": 2018,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12121,7 +12659,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 1921,
+        "sourceLine": 2002,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12424,7 +12962,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2437,
+        "sourceLine": 2518,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14301,7 +14839,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 898,
+        "sourceLine": 912,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -15054,7 +15592,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1532,
+        "sourceLine": 1555,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15200,7 +15738,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1541,
+        "sourceLine": 1564,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15268,7 +15806,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2216,
+        "sourceLine": 2297,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15333,7 +15871,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2155,
+        "sourceLine": 2236,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15398,7 +15936,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2139,
+        "sourceLine": 2220,
         "sourceColumn": 0
       },
       "semantic": "business_write",
