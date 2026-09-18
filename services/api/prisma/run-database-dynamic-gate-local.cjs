@@ -412,6 +412,12 @@ function createProbeEnvironment(sourceEnv, temporaryRoot) {
 
 function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
   const corepackHome = resolveCorepackHome(sourceEnv, temporaryRoot);
+  const playwrightBrowsersPath = String(
+    sourceEnv.PLAYWRIGHT_BROWSERS_PATH ?? ""
+  ).trim();
+  if (playwrightBrowsersPath && !path.isAbsolute(playwrightBrowsersPath)) {
+    fail("PLAYWRIGHT_BROWSERS_PATH 必须是绝对路径");
+  }
   const prismaEngineEnvironment = {};
   for (const key of [
     "PRISMA_QUERY_ENGINE_LIBRARY",
@@ -428,6 +434,9 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
     DOCKER_HOST: dockerEndpoint,
     ...(sourceEnv.PNPM_BIN?.trim()
       ? { PNPM_BIN: sourceEnv.PNPM_BIN.trim() }
+      : {}),
+    ...(playwrightBrowsersPath
+      ? { PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath }
       : {}),
     ...prismaEngineEnvironment,
     ...(corepackHome ? { COREPACK_HOME: corepackHome } : {})

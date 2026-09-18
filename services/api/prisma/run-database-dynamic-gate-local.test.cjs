@@ -690,6 +690,32 @@ test("child runner preserves the explicitly configured pnpm binary", () => {
   assert.equal(child.PNPM_BIN, "/tmp/task-tools/pnpm");
 });
 
+test("child runner preserves only an absolute Playwright browser cache path", () => {
+  const child = createChildEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/tmp/local-home",
+      PLAYWRIGHT_BROWSERS_PATH: "/tmp/task-playwright"
+    },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+
+  assert.equal(child.PLAYWRIGHT_BROWSERS_PATH, "/tmp/task-playwright");
+  assert.throws(
+    () => createChildEnvironment(
+      {
+        PATH: "/usr/bin",
+        HOME: "/tmp/local-home",
+        PLAYWRIGHT_BROWSERS_PATH: "relative/playwright"
+      },
+      "/tmp/dynamic-gate",
+      "unix:///var/run/docker.sock"
+    ),
+    /PLAYWRIGHT_BROWSERS_PATH.*绝对路径/u
+  );
+});
+
 test("preserves an explicitly configured Corepack cache location", () => {
   const child = createChildEnvironment(
     {
