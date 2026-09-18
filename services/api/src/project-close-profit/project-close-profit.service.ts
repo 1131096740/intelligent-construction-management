@@ -594,8 +594,17 @@ export class ProjectCloseProfitService {
       });
       const otherSpecialty: DownstreamCostSpecialty = specialty === "contract" ? "finance" : "contract";
       const counterpart = latestAttestations.get(otherSpecialty);
+      const counterpartLink = counterpart
+        ? await tx.projectCloseStageAttestationLink.findUnique({
+            where: { attestationId: counterpart.id },
+            select: { attestationId: true }
+          })
+        : null;
       let stageVersion: CompleteStageResult | null = null;
-      if (counterpart?.projectionFingerprint === projection.fingerprint) {
+      if (
+        counterpart?.projectionFingerprint === projection.fingerprint &&
+        counterpartLink === null
+      ) {
         stageVersion = await appendCompletedStage(tx, {
           projectId,
           stageKey: "downstream_cost_confirmed",

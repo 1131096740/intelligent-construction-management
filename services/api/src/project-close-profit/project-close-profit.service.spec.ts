@@ -319,6 +319,7 @@ describe("ProjectCloseProfitService", () => {
         })
       },
       projectCloseStageAttestationLink: {
+        findUnique: jest.fn().mockResolvedValue(null),
         createMany: jest.fn().mockResolvedValue({ count: 2 })
       }
     };
@@ -358,6 +359,84 @@ describe("ProjectCloseProfitService", () => {
         expect.objectContaining({ specialty: "finance", attestationId: "attestation-finance" })
       ])
     });
+  });
+
+  it("does not reuse a specialty attestation already frozen into an earlier stage version", async () => {
+    const readAt = new Date("2026-09-18T09:10:00.000Z");
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
+      projectCloseAggregate: {
+        upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
+        update: jest.fn()
+      },
+      projectCloseCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "receipt-4" })
+      },
+      projectCloseStageVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "stage-1", stageKey: "construction_completed", revision: 1, status: "completed" },
+          { id: "stage-2", stageKey: "owner_settlement_completed", revision: 1, status: "completed" },
+          {
+            id: "stage-3-reopen",
+            stageKey: "downstream_cost_confirmed",
+            revision: 2,
+            status: "needs_reconfirmation"
+          }
+        ]),
+        create: jest.fn()
+      },
+      projectCloseProfessionalAttestation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "attestation-finance-old",
+            specialty: "finance",
+            revision: 1,
+            projectionFingerprint: "projection-fingerprint"
+          }
+        ]),
+        create: jest.fn().mockResolvedValue({
+          id: "attestation-contract-new",
+          specialty: "contract",
+          revision: 1,
+          attestedAt: readAt
+        })
+      },
+      projectCloseStageAttestationLink: {
+        findUnique: jest.fn().mockResolvedValue({
+          stageVersionId: "stage-3-old",
+          attestationId: "attestation-finance-old"
+        }),
+        createMany: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
+    };
+    const service = new ProjectCloseProfitService(
+      prisma as never,
+      { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
+      {
+        effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+          new Map([["project-1", ["contract_director"]]])
+        )
+      } as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never
+    );
+
+    await expect(service.attestDownstreamCost("contract-user", "project-1", {
+      specialty: "contract",
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "8b2568f2-d303-4708-9ca0-04b3e594225f",
+      basis: { summary: "合同专业重新确认成本", evidenceFileIds: [] }
+    })).resolves.toMatchObject({
+      attestationId: "attestation-contract-new",
+      specialty: "contract",
+      stageCompleted: false,
+      stageVersionId: null
+    });
+    expect(tx.projectCloseStageVersion.create).not.toHaveBeenCalled();
+    expect(tx.projectCloseStageAttestationLink.createMany).not.toHaveBeenCalled();
   });
 
   it("fails closed when final profit is confirmed from an incomplete money projection", async () => {
