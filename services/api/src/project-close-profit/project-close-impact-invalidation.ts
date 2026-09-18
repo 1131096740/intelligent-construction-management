@@ -41,6 +41,7 @@ type InvalidationSource = Readonly<{
   observedAt: Date;
   actorUserId: string;
   basis: Prisma.InputJsonObject;
+  requiresObservedAfterProjectionCutoff: boolean;
 }>;
 
 export async function invalidateProjectCloseForOperatingImpact(
@@ -63,7 +64,8 @@ export async function invalidateProjectCloseForOperatingImpact(
     affectedStages: policy.affectedStages,
     observedAt: impact.observedAt,
     actorUserId: impact.actorUserId,
-    basis: { operatingImpactEntryId: impact.id }
+    basis: { operatingImpactEntryId: impact.id },
+    requiresObservedAfterProjectionCutoff: true
   });
 }
 
@@ -83,7 +85,8 @@ export async function invalidateProjectCloseForParticipationChange(
     basis: {
       projectParticipatingCompanyId: change.participantId,
       mutation: change.mutation
-    }
+    },
+    requiresObservedAfterProjectionCutoff: false
   });
 }
 
@@ -141,7 +144,9 @@ async function appendProjectCloseInvalidation(
   }
   const affectedStages = source.affectedStages.filter((stageKey) => {
     const version = latest.get(stageKey);
-    return version?.status === "completed" && version.projectionCutoffAt < source.observedAt;
+    return version?.status === "completed" &&
+      (!source.requiresObservedAfterProjectionCutoff ||
+        version.projectionCutoffAt < source.observedAt);
   });
   if (affectedStages.length === 0) return;
 

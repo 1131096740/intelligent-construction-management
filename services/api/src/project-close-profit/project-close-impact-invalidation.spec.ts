@@ -5,8 +5,8 @@ import {
 
 describe("project close automatic impact invalidation", () => {
   it("appends the participation impact and reopens only stages six and seven", async () => {
-    const cutoff = new Date("2026-09-18T01:00:00.000Z");
     const observedAt = new Date("2026-09-18T02:00:00.000Z");
+    const cutoff = new Date("2026-09-18T16:00:00.000Z");
     const tx = transactionMock([
       stage("profit_distribution_completed", cutoff),
       stage("project_funds_cleared", cutoff)
