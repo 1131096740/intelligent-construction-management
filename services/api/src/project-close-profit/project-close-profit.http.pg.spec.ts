@@ -57,6 +57,18 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     };
   }
 
+  function confirmationBody(
+    fingerprint: string,
+    submissionId: string,
+    idempotencyKey = randomUUID()
+  ) {
+    return {
+      expectedProjectionFingerprint: fingerprint,
+      idempotencyKey,
+      submissionId
+    };
+  }
+
   async function workbench(token: string) {
     const response = await request(`/projects/${projectId}/close-profit`, token);
     if (response.status !== 200) {
@@ -423,10 +435,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/final-profit/confirm`,
       chairman,
       "POST",
-      {
-        ...commandBody(current.projection.fingerprint),
-        submissionId: finalProfitSubmission.body.id
-      }
+      confirmationBody(current.projection.fingerprint, finalProfitSubmission.body.id)
     )).status).toBe(201);
 
     current = await workbench(financeDirector);
@@ -462,10 +471,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      {
-        ...commandBody(current.projection.fingerprint),
-        submissionId: distributionSubmission.body.id
-      }
+      confirmationBody(current.projection.fingerprint, distributionSubmission.body.id)
     )).status).toBe(201);
 
     current = await workbench(financeDirector);
@@ -512,10 +518,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      {
-        ...commandBody(refreshed.projection.fingerprint),
-        submissionId: distributionSubmission.body.id
-      }
+      confirmationBody(refreshed.projection.fingerprint, distributionSubmission.body.id)
     );
     const concurrentNewFact = operatingProfile.addParticipatingCompany(
       projectId,
@@ -578,10 +581,10 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      {
-        ...commandBody(distributionConfirmationWorkbench.projection.fingerprint),
-        submissionId: reconfirmDistributionSubmission.body.id
-      }
+      confirmationBody(
+        distributionConfirmationWorkbench.projection.fingerprint,
+        reconfirmDistributionSubmission.body.id
+      )
     );
     if (reconfirmDistribution.status !== 201) {
       throw new Error(`公司分配重新确认失败：${JSON.stringify(reconfirmDistribution)}`);
@@ -681,10 +684,10 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/final-profit/confirm`,
       chairman,
       "POST",
-      {
-        ...commandBody(executionProfitConfirmationWorkbench.projection.fingerprint),
-        submissionId: executionProfitSubmission.body.id
-      }
+      confirmationBody(
+        executionProfitConfirmationWorkbench.projection.fingerprint,
+        executionProfitSubmission.body.id
+      )
     )).status).toBe(201);
 
     const afterExecutionProfit = await workbench(financeDirector);
@@ -711,10 +714,10 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      {
-        ...commandBody(executionDistributionConfirmationWorkbench.projection.fingerprint),
-        submissionId: executionDistributionSubmission.body.id
-      }
+      confirmationBody(
+        executionDistributionConfirmationWorkbench.projection.fingerprint,
+        executionDistributionSubmission.body.id
+      )
     )).status).toBe(201);
 
     const afterExecutionDistribution = await workbench(financeDirector);
