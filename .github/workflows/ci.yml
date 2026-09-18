@@ -224,7 +224,7 @@ jobs:
         if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libreoffice-writer
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc
           command -v soffice
           browser_path="$RUNNER_TEMP/pol113-pol115-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
