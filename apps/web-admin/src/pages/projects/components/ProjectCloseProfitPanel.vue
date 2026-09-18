@@ -281,7 +281,11 @@ import {
   type ProjectCloseStageStatus
 } from "../../../api/project-close-profit.api";
 import { formatUnknownApiError } from "../../../api/error-message";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
+import {
+  centsTextToYuanText,
+  signedYuanTextToCentsText,
+  yuanTextToCentsText
+} from "../../../lib/money";
 
 const props = defineProps<{
   projectId: string;
@@ -408,7 +412,7 @@ const distributionTotalText = computed(() => {
   try {
     const cents = Object.values(distributionYuanByParticipant.value)
       .filter((value) => value.trim() !== "")
-      .reduce((sum, value) => sum + BigInt(yuanTextToCentsText(value)), 0n);
+      .reduce((sum, value) => sum + BigInt(signedYuanTextToCentsText(value)), 0n);
     return formatCents(cents.toString());
   } catch {
     return "金额格式有误";
@@ -551,7 +555,7 @@ async function submitProjectProfitDistributionWithCapability(summary: string) {
     if (!amount) throw new Error(`请填写${company.companyName}的分配金额`);
     return {
       projectParticipatingCompanyId: company.id,
-      finalShareCents: yuanTextToCentsText(amount)
+      finalShareCents: signedYuanTextToCentsText(amount)
     };
   });
   return submitProjectProfitDistribution(props.projectId, {

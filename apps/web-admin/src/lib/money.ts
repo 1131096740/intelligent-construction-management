@@ -1,4 +1,5 @@
 const YUAN_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/;
+const SIGNED_YUAN_INPUT_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
 const CENTS_TEXT_PATTERN = /^-?\d+$/;
 const SPOT_PROCUREMENT_DECIMAL_TEXT_PATTERN = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/;
 const SPOT_PROCUREMENT_MAX_INTEGER_DIGITS = 18;
@@ -20,6 +21,18 @@ export function yuanTextToCentsText(value: string): string {
 
   const [yuan, fraction = ""] = value.split(".");
   return normalizeUnsignedDigits(`${yuan}${fraction.padEnd(2, "0")}`);
+}
+
+export function signedYuanTextToCentsText(value: string): string {
+  if (typeof value !== "string" || !SIGNED_YUAN_INPUT_PATTERN.test(value)) {
+    throw new Error("金额必须是数字，最多保留两位小数；承担亏损时可填写负数");
+  }
+
+  const negative = value.startsWith("-");
+  const unsigned = negative ? value.slice(1) : value;
+  const [yuan, fraction = ""] = unsigned.split(".");
+  const cents = normalizeUnsignedDigits(`${yuan}${fraction.padEnd(2, "0")}`);
+  return negative && cents !== "0" ? `-${cents}` : cents;
 }
 
 export function centsTextToYuanText(value: string): string {
