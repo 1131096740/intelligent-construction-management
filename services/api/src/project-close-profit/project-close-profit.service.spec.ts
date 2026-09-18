@@ -15,18 +15,79 @@ describe("ProjectCloseProfitService", () => {
       projectCloseProfessionalAttestation: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseProfitConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseDistribution: { findMany: jest.fn().mockResolvedValue([]) },
-      projectCloseDecisionSubmission: { findMany: jest.fn().mockResolvedValue([]) },
+      projectCloseDecisionSubmission: { findMany: jest.fn().mockResolvedValue([
+        {
+          id: "stale-final-profit-submission",
+          projectId: "project-1",
+          decisionKind: "final_profit",
+          revision: 1,
+          previousSubmissionId: null,
+          projectionFingerprint: "projection-fingerprint",
+          prerequisiteStageVersionIds: ["stale-stage-1"],
+          profitConfirmationId: null,
+          profitStageVersionId: null,
+          projectionReadAt: new Date("2026-09-18T08:00:00.000Z"),
+          projectionCutoffAt: new Date("2026-09-17T16:00:00.000Z"),
+          amountSnapshot: {},
+          stateSnapshot: {},
+          participantsSnapshot: [],
+          proposalSnapshot: {},
+          basisSnapshot: {},
+          preparedByUserId: "finance-user",
+          preparedAt: new Date("2026-09-18T08:00:00.000Z"),
+          submittedByUserId: "finance-user",
+          submittedAt: new Date("2026-09-18T08:00:00.000Z")
+        },
+        {
+          id: "stale-distribution-submission",
+          projectId: "project-1",
+          decisionKind: "distribution",
+          revision: 1,
+          previousSubmissionId: null,
+          projectionFingerprint: "projection-fingerprint",
+          prerequisiteStageVersionIds: [],
+          profitConfirmationId: "stale-profit-confirmation",
+          profitStageVersionId: "stale-stage-5",
+          projectionReadAt: new Date("2026-09-18T08:00:00.000Z"),
+          projectionCutoffAt: new Date("2026-09-17T16:00:00.000Z"),
+          amountSnapshot: {},
+          stateSnapshot: {},
+          participantsSnapshot: [],
+          proposalSnapshot: {},
+          basisSnapshot: {},
+          preparedByUserId: "finance-user",
+          preparedAt: new Date("2026-09-18T08:00:00.000Z"),
+          submittedByUserId: "finance-user",
+          submittedAt: new Date("2026-09-18T08:00:00.000Z")
+        }
+      ]) },
       projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       projectTemporaryProfitDistribution: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseImpact: { findMany: jest.fn().mockResolvedValue([]) },
-      contract: { findMany: jest.fn().mockResolvedValue([]) }
+      operatingFact: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "downstream-settlement-fact-1",
+          sourceSnapshot: { contractVersionId: "contract-version-1" }
+        }])
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{
+        contractVersionId: "contract-version-1",
+        contractId: "contract-1",
+        ownerUserId: "contract-owner-1",
+        isActive: true
+      }])
     };
     const prisma = {
       $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
     };
     const projections = {
       readProjectInTransaction: jest.fn().mockResolvedValue({
-        projection: {},
+        projection: {
+          details: [{
+            factId: "downstream-settlement-fact-1",
+            factKind: "downstream_settlement"
+          }]
+        },
         aggregate: { profitAndLoss: {}, distribution: {} },
         readAt: new Date("2026-09-18T08:00:00.000Z"),
         cutoffAt: new Date("2026-09-17T16:00:00.000Z"),
@@ -70,6 +131,10 @@ describe("ProjectCloseProfitService", () => {
       availableActions: []
     });
     expect(result.stages.slice(1).every((stage) => stage.availableActions.length === 0)).toBe(true);
+    expect(result.currentDecisionSubmissions).toEqual({
+      finalProfit: null,
+      distribution: null
+    });
     expect(projections.readProjectInTransaction).toHaveBeenCalledWith(
       tx,
       "user-1",
@@ -209,14 +274,30 @@ describe("ProjectCloseProfitService", () => {
       projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       projectTemporaryProfitDistribution: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseImpact: { findMany: jest.fn().mockResolvedValue([]) },
-      contract: { findMany: jest.fn().mockResolvedValue([]) }
+      operatingFact: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "downstream-settlement-fact-1",
+          sourceSnapshot: { contractVersionId: "contract-version-1" }
+        }])
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{
+        contractVersionId: "contract-version-1",
+        contractId: "contract-1",
+        ownerUserId: "contract-owner-1",
+        isActive: true
+      }])
     };
     const prisma = {
       $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
     };
     const projections = {
       readProjectInTransaction: jest.fn().mockResolvedValue({
-        projection: {},
+        projection: {
+          details: [{
+            factId: "downstream-settlement-fact-1",
+            factKind: "downstream_settlement"
+          }]
+        },
         aggregate: {},
         readAt: completedAt,
         cutoffAt: completedAt,
@@ -248,6 +329,22 @@ describe("ProjectCloseProfitService", () => {
     );
     const contractStaffView = await service.getWorkbench("contract-owner-1", "project-1");
     expect(contractStaffView.stages[2]).toMatchObject({
+      key: "downstream_cost_confirmed",
+      status: "ready",
+      availableActions: ["attest_contract_cost"]
+    });
+
+    tx.$queryRaw.mockResolvedValueOnce([{
+      contractVersionId: "contract-version-1",
+      contractId: "contract-1",
+      ownerUserId: "another-contract-owner",
+      isActive: true
+    }]);
+    const unrelatedContractStaffView = await service.getWorkbench(
+      "contract-owner-1",
+      "project-1"
+    );
+    expect(unrelatedContractStaffView.stages[2]).toMatchObject({
       key: "downstream_cost_confirmed",
       status: "ready",
       availableActions: []
@@ -359,6 +456,91 @@ describe("ProjectCloseProfitService", () => {
         expect.objectContaining({ specialty: "finance", attestationId: "attestation-finance" })
       ])
     });
+  });
+
+  it("allows the active owner of every exact referenced contract to attest contract costs", async () => {
+    const readAt = new Date("2026-09-18T09:05:00.000Z");
+    const projection = completeProjection(readAt);
+    projection.projection.details = [{
+      factId: "downstream-settlement-fact-1",
+      factKind: "downstream_settlement"
+    } as never];
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ locked: "1" }])
+        .mockResolvedValueOnce([{ projectId: "project-1" }])
+        .mockResolvedValueOnce([{
+          contractVersionId: "contract-version-1",
+          contractId: "contract-1",
+          ownerUserId: "contract-owner-1",
+          isActive: true
+        }]),
+      projectCloseAggregate: {
+        upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
+        update: jest.fn()
+      },
+      projectCloseCommandReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      projectCloseStageVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "stage-1", stageKey: "construction_completed", revision: 1, status: "completed" },
+          { id: "stage-2", stageKey: "owner_settlement_completed", revision: 1, status: "completed" }
+        ]),
+        create: jest.fn()
+      },
+      projectCloseProfessionalAttestation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "attestation-contract-owner",
+          specialty: "contract",
+          revision: 1,
+          attestedAt: readAt
+        })
+      },
+      projectCloseStageAttestationLink: {
+        findUnique: jest.fn(),
+        createMany: jest.fn()
+      },
+      operatingFact: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "downstream-settlement-fact-1",
+          sourceSnapshot: { contractVersionId: "contract-version-1" }
+        }])
+      }
+    };
+    const audit = { record: jest.fn() };
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
+      { readProjectInTransaction: jest.fn().mockResolvedValue(projection) } as never,
+      { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+        new Map([["project-1", ["contract_staff"]]])
+      ) } as never,
+      audit as never
+    );
+
+    await expect(service.attestDownstreamCost("contract-owner-1", "project-1", {
+      specialty: "contract",
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "7b2568f2-d303-4708-9ca0-04b3e594225f",
+      basis: { summary: "本人负责合同结算已逐项核清", evidenceFileIds: [] }
+    })).resolves.toMatchObject({
+      attestationId: "attestation-contract-owner",
+      specialty: "contract",
+      stageCompleted: false
+    });
+    expect(tx.operatingFact.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: { in: ["downstream-settlement-fact-1"] },
+        projectId: "project-1",
+        status: "confirmed"
+      })
+    }));
+    expect(tx.projectCloseProfessionalAttestation.create).toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "project_close.downstream_cost.attest"
+    }));
   });
 
   it("does not reuse a specialty attestation already frozen into an earlier stage version", async () => {
@@ -581,6 +763,47 @@ describe("ProjectCloseProfitService", () => {
     })).rejects.toThrow("公司分配合计必须精确等于最终盈亏");
     expect(tx.projectCloseDistribution.create).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["9223372036854775808", "-9223372036854769808"],
+    ["-9223372036854775809", "9223372036854781809"]
+  ])(
+    "rejects an out-of-range company share before a conserving proposal can write (%s)",
+    async (outOfRangeShare, balancingShare) => {
+      const readAt = new Date("2026-09-18T10:01:00.000Z");
+      const tx = distributionTx(readAt);
+      const prisma = {
+        $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
+      };
+      const audit = { record: jest.fn() };
+      const service = new ProjectCloseProfitService(
+        prisma as never,
+        { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
+        { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+          new Map([["project-1", ["finance_director"]]])
+        ) } as never,
+        audit as never
+      );
+
+      await expect(service.submitDistribution("finance-user", "project-1", {
+        expectedProjectionFingerprint: "projection-fingerprint",
+        idempotencyKey: "884526fd-d5a1-423e-b417-784759d2a7f2",
+        basis: { summary: "确认公司分配", evidenceFileIds: [] },
+        lines: [
+          { projectParticipatingCompanyId: "participant-1", finalShareCents: outOfRangeShare },
+          { projectParticipatingCompanyId: "participant-2", finalShareCents: balancingShare }
+        ]
+      })).rejects.toThrow("公司分配金额超出系统可保存范围");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.projectCloseDecisionSubmission.create).not.toHaveBeenCalled();
+      expect(tx.projectCloseCommandReceipt.create).not.toHaveBeenCalled();
+      expect(tx.projectCloseStageVersion.create).not.toHaveBeenCalled();
+      expect(tx.projectCloseDistribution.create).not.toHaveBeenCalled();
+      expect(tx.projectCloseDistributionLine.createMany).not.toHaveBeenCalled();
+      expect(tx.projectProfitDistributionAuthorization.createMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects a final-profit submission bound to stale prerequisite stages", async () => {
     const readAt = new Date("2026-09-18T09:50:00.000Z");
@@ -851,6 +1074,40 @@ describe("ProjectCloseProfitService", () => {
     })).rejects.toThrow("暂分金额超过当前可分配利润");
     expect(tx.projectTemporaryProfitDistribution.create).not.toHaveBeenCalled();
   });
+
+  it("rejects a temporary distribution outside the PostgreSQL bigint range before any write", async () => {
+    const readAt = new Date("2026-09-18T10:41:00.000Z");
+    const tx = temporaryDistributionTx(readAt);
+    const prisma = {
+      $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
+    };
+    const audit = { record: jest.fn() };
+    const ledger = { appendConfirmedSourceInTransaction: jest.fn() };
+    const service = new ProjectCloseProfitService(
+      prisma as never,
+      { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
+      { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+        new Map([["project-1", ["finance_director"]]])
+      ) } as never,
+      audit as never,
+      ledger as never
+    );
+
+    await expect(service.createTemporaryDistribution("finance-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "36a4526f-d5a1-423e-b417-784759d2a7f2",
+      basis: { summary: "超范围暂分", evidenceFileIds: [] },
+      projectParticipatingCompanyId: "participant-1",
+      amountCents: "9223372036854775808"
+    })).rejects.toThrow("暂分金额超出系统可保存范围");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.projectTemporaryProfitDistribution.create).not.toHaveBeenCalled();
+    expect(tx.projectProfitDistributionAuthorization.create).not.toHaveBeenCalled();
+    expect(tx.projectCloseCommandReceipt.create).not.toHaveBeenCalled();
+    expect(tx.projectCloseStageVersion.create).not.toHaveBeenCalled();
+    expect(ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
 });
 
 function completeProjection(readAt: Date) {
@@ -1053,7 +1310,8 @@ function temporaryDistributionTx(readAt: Date) {
         basisSnapshot: {},
         confirmedByUserId: "actor",
         confirmedAt: readAt
-      })))
+      }))),
+      create: jest.fn()
     },
     projectParticipatingCompany: {
       findUnique: jest.fn().mockResolvedValue({

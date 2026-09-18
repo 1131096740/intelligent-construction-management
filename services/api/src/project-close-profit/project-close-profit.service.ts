@@ -20,6 +20,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
+import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { resolveProjectCloseImpactPolicy } from "./project-close-impact-policy";
 import { projectParticipationChangeFingerprint } from "./project-close-impact-invalidation";
 
@@ -257,19 +258,54 @@ export class ProjectCloseProfitService {
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const technicalAdministrator = roleKeys.includes("super_admin");
       const timeline = buildProjectCloseStageTimeline(completedStages, affectedStages);
+      const contractResponsibilityStages = new Set<ProjectStage>();
+      if (!technicalAdministrator && !roleKeys.includes("contract_director")) {
+        for (const stage of [
+          "owner_settlement_completed",
+          "downstream_cost_confirmed"
+        ] as const) {
+          const item = timeline.find((candidate) => candidate.stage === stage);
+          if (
+            item &&
+            stageActionStatus(timeline, timeline.indexOf(item)) === "ready" &&
+            await hasExactContractResponsibility(
+              tx,
+              actorUserId,
+              projectId,
+              projection,
+              stage,
+              false
+            )
+          ) {
+            contractResponsibilityStages.add(stage);
+          }
+        }
+      }
       const currentProfitConfirmation = profitConfirmations.find(
         (row) => row.stageVersionId === latestByStage.get("final_profit_confirmed")?.id
       );
       const currentDistribution = distributions.find(
         (row) => row.stageVersionId === latestByStage.get("profit_distribution_completed")?.id
       );
+      const currentFinalProfitPrerequisites = currentPrerequisiteStageVersionIds(
+        latestByStage,
+        "final_profit_confirmed"
+      );
       const currentFinalProfitSubmission = decisionSubmissions.find(
         (row) => row.decisionKind === "final_profit" &&
-          row.projectionFingerprint === projection.fingerprint
+          row.projectionFingerprint === projection.fingerprint &&
+          currentFinalProfitPrerequisites !== null &&
+          frozenPrerequisitesMatch(
+            row.prerequisiteStageVersionIds,
+            currentFinalProfitPrerequisites
+          )
       );
       const currentDistributionSubmission = decisionSubmissions.find(
         (row) => row.decisionKind === "distribution" &&
-          row.projectionFingerprint === projection.fingerprint
+          row.projectionFingerprint === projection.fingerprint &&
+          currentProfitConfirmation !== undefined &&
+          row.profitConfirmationId === currentProfitConfirmation.id &&
+          row.profitStageVersionId === currentProfitConfirmation.stageVersionId
       );
 
       return {
@@ -286,7 +322,8 @@ export class ProjectCloseProfitService {
                 roleKeys,
                 {
                   hasFinalProfitSubmission: Boolean(currentFinalProfitSubmission),
-                  hasDistributionSubmission: Boolean(currentDistributionSubmission)
+                  hasDistributionSubmission: Boolean(currentDistributionSubmission),
+                  contractResponsibilityStages
                 }
               )
             ))],
@@ -311,7 +348,8 @@ export class ProjectCloseProfitService {
                 roleKeys,
                 {
                   hasFinalProfitSubmission: Boolean(currentFinalProfitSubmission),
-                  hasDistributionSubmission: Boolean(currentDistributionSubmission)
+                  hasDistributionSubmission: Boolean(currentDistributionSubmission),
+                  contractResponsibilityStages
                 }
               )
         })),
@@ -444,8 +482,20 @@ export class ProjectCloseProfitService {
       const latestByStage = latestStageVersions(versions);
       assertStageReady(versions, stageKey);
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
+      const hasContractResponsibility =
+        stageKey === "owner_settlement_completed" &&
+        !roleKeys.includes("contract_director") &&
+        await hasExactContractResponsibility(
+          tx,
+          actorUserId,
+          projectId,
+          projection,
+          stageKey,
+          true
+        );
       if (roleKeys.includes("super_admin") || (
-        !STAGE_CONFIRMATION_ROLES[stageKey].some((role) => roleKeys.includes(role))
+        !STAGE_CONFIRMATION_ROLES[stageKey].some((role) => roleKeys.includes(role)) &&
+        !hasContractResponsibility
       )) {
         throw new ForbiddenException("当前岗位不能确认该项目收口阶段");
       }
@@ -559,9 +609,19 @@ export class ProjectCloseProfitService {
       assertStageReady(versions, "downstream_cost_confirmed");
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       if (specialty === "contract") {
+        const hasContractResponsibility =
+          !roleKeys.includes("contract_director") &&
+          await hasExactContractResponsibility(
+            tx,
+            actorUserId,
+            projectId,
+            projection,
+            "downstream_cost_confirmed",
+            true
+          );
         if (
           roleKeys.includes("super_admin") ||
-          !roleKeys.includes("contract_director")
+          (!roleKeys.includes("contract_director") && !hasContractResponsibility)
         ) {
           throw new ForbiddenException("当前岗位不能完成该专业成本确认");
         }
@@ -909,7 +969,11 @@ export class ProjectCloseProfitService {
       input.projectParticipatingCompanyId,
       "暂分公司不能为空"
     );
-    const amountCents = requiredPositiveMoney(input.amountCents, "暂分金额必须大于零");
+    const amountCents = requiredPositiveInputMoney(
+      input.amountCents,
+      "暂分金额必须大于零",
+      "暂分金额超出系统可保存范围"
+    );
     const basis = normalizedBasis(input.basis);
     const payloadFingerprint = fingerprint({
       action: "project_close.temporary_distribution.create",
@@ -1707,6 +1771,83 @@ type TransactionProjection = Awaited<
   ReturnType<OperatingProjectionService["readProjectInTransaction"]>
 >;
 
+const CONTRACT_RESPONSIBILITY_FACT_KINDS: Readonly<
+  Record<"owner_settlement_completed" | "downstream_cost_confirmed", readonly string[]>
+> = {
+  owner_settlement_completed: ["owner_settlement"],
+  downstream_cost_confirmed: [
+    "downstream_contract",
+    "downstream_settlement",
+    "downstream_payment"
+  ]
+};
+
+async function hasExactContractResponsibility(
+  tx: Prisma.TransactionClient,
+  actorUserId: string,
+  projectId: string,
+  projection: TransactionProjection,
+  stage: "owner_settlement_completed" | "downstream_cost_confirmed",
+  lock: boolean
+) {
+  const relevantFactKinds = new Set(CONTRACT_RESPONSIBILITY_FACT_KINDS[stage]);
+  const factIds = Array.from(new Set(
+    projection.projection.details
+      .filter((detail) => relevantFactKinds.has(detail.factKind))
+      .map((detail) => detail.factId)
+  )).sort();
+  if (factIds.length === 0) return false;
+
+  const facts = await tx.operatingFact.findMany({
+    where: { id: { in: factIds }, projectId, status: "confirmed" },
+    select: { id: true, sourceSnapshot: true },
+    orderBy: { id: "asc" }
+  });
+  if (facts.length !== factIds.length) return false;
+  const contractVersionIds = Array.from(new Set(facts.flatMap((fact) => {
+    if (!isJsonObject(fact.sourceSnapshot)) return [];
+    const id = fact.sourceSnapshot.contractVersionId;
+    return typeof id === "string" && id.length > 0 ? [id] : [];
+  }))).sort();
+  if (contractVersionIds.length === 0 || facts.some((fact) =>
+    !isJsonObject(fact.sourceSnapshot) ||
+    typeof fact.sourceSnapshot.contractVersionId !== "string" ||
+    !contractVersionIds.includes(fact.sourceSnapshot.contractVersionId)
+  )) return false;
+
+  const baseQuery = Prisma.sql`
+    SELECT
+      cv."id" AS "contractVersionId",
+      c."id" AS "contractId",
+      c."ownerUserId" AS "ownerUserId",
+      u."isActive" AS "isActive"
+    FROM "ContractVersion" cv
+    INNER JOIN "Contract" c ON c."id" = cv."contractId"
+    INNER JOIN "User" u ON u."id" = c."ownerUserId"
+    WHERE cv."id" IN (${Prisma.join(contractVersionIds)})
+      AND cv."status" = 'effective'
+      AND c."projectId" = ${projectId}
+      AND c."voidedAt" IS NULL
+    ORDER BY cv."id"
+  `;
+  const rows = lock
+    ? await tx.$queryRaw<Array<{
+        contractVersionId: string;
+        contractId: string;
+        ownerUserId: string;
+        isActive: boolean;
+      }>>(Prisma.sql`${baseQuery} FOR SHARE OF cv, c, u`)
+    : await tx.$queryRaw<Array<{
+        contractVersionId: string;
+        contractId: string;
+        ownerUserId: string;
+        isActive: boolean;
+      }>>(baseQuery);
+  return rows.length === contractVersionIds.length && rows.every((row) =>
+    row.ownerUserId === actorUserId && row.isActive
+  );
+}
+
 async function lockCommandIdempotency(
   tx: Prisma.TransactionClient,
   idempotencyKey: string
@@ -1967,9 +2108,28 @@ function requiredMoney(value: unknown, message: string) {
   }
 }
 
-function requiredPositiveMoney(value: unknown, message: string) {
-  const amount = requiredMoney(value, message);
-  if (amount <= 0n) throw new BadRequestException(message);
+function requiredInputMoney(
+  value: unknown,
+  invalidMessage: string,
+  outOfRangeMessage: string
+) {
+  if (typeof value !== "string" || !/^-?(0|[1-9][0-9]*)$/u.test(value)) {
+    throw new BadRequestException(invalidMessage);
+  }
+  const amount = BigInt(value);
+  if (!isWithinPostgresBigIntRange(amount)) {
+    throw new BadRequestException(outOfRangeMessage);
+  }
+  return amount;
+}
+
+function requiredPositiveInputMoney(
+  value: unknown,
+  invalidMessage: string,
+  outOfRangeMessage: string
+) {
+  const amount = requiredInputMoney(value, invalidMessage, outOfRangeMessage);
+  if (amount <= 0n) throw new BadRequestException(invalidMessage);
   return amount;
 }
 
@@ -1992,7 +2152,11 @@ function normalizeDistributionLines(lines: SubmitDistributionInput["lines"] | un
     seen.add(projectParticipatingCompanyId);
     return {
       projectParticipatingCompanyId,
-      finalShareCents: requiredMoney(line?.finalShareCents, "公司分配金额无效")
+      finalShareCents: requiredInputMoney(
+        line?.finalShareCents,
+        "公司分配金额无效",
+        "公司分配金额超出系统可保存范围"
+      )
     };
   }).sort((left, right) =>
     left.projectParticipatingCompanyId.localeCompare(right.projectParticipatingCompanyId)
@@ -2250,13 +2414,26 @@ function prerequisiteStageVersionIds(
 }
 
 function assertFrozenPrerequisites(value: Prisma.JsonValue, expected: readonly string[]) {
-  if (
-    !Array.isArray(value) ||
-    value.length !== expected.length ||
-    value.some((id, index) => typeof id !== "string" || id !== expected[index])
-  ) {
+  if (!frozenPrerequisitesMatch(value, expected)) {
     throw new ConflictException("财务提交绑定的前置收口版本已过期，请重新制作");
   }
+}
+
+function frozenPrerequisitesMatch(value: Prisma.JsonValue, expected: readonly string[]) {
+  return Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((id, index) => typeof id === "string" && id === expected[index]);
+}
+
+function currentPrerequisiteStageVersionIds(
+  latest: ReadonlyMap<ProjectStage, MinimalStageVersion>,
+  stage: ProjectStage
+) {
+  const requiredStages = PROJECT_STAGES.slice(0, PROJECT_STAGES.indexOf(stage));
+  const versions = requiredStages.map((requiredStageKey) => latest.get(requiredStageKey));
+  return versions.every((version) => version?.status === "completed")
+    ? versions.map((version) => version!.id)
+    : null;
 }
 
 function availableStageActions(
@@ -2266,12 +2443,14 @@ function availableStageActions(
   context: Readonly<{
     hasFinalProfitSubmission: boolean;
     hasDistributionSubmission: boolean;
+    contractResponsibilityStages: ReadonlySet<ProjectStage>;
   }>
 ) {
   if (status !== "ready") return [];
   if (stage === "downstream_cost_confirmed") {
     return [
-      ...(roleKeys.includes("contract_director")
+      ...(roleKeys.includes("contract_director") ||
+      context.contractResponsibilityStages.has(stage)
         ? ["attest_contract_cost" as const]
         : []),
       ...(roleKeys.includes("finance_director") ? ["attest_finance_cost" as const] : [])
@@ -2300,7 +2479,8 @@ function availableStageActions(
     ];
   }
   return GENERIC_COMPLETION_STAGES.has(stage) &&
-    STAGE_CONFIRMATION_ROLES[stage].some((role) => roleKeys.includes(role))
+    (STAGE_CONFIRMATION_ROLES[stage].some((role) => roleKeys.includes(role)) ||
+      context.contractResponsibilityStages.has(stage))
     ? ["complete" as const]
     : [];
 }

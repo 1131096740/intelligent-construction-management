@@ -347,6 +347,34 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     )).status).toBe(201);
 
     current = await workbench(financeDirector);
+    const temporaryOverflowCounts = async () => ({
+      temporaryDistributions: await prisma.projectTemporaryProfitDistribution.count({
+        where: { projectId }
+      }),
+      authorizations: await prisma.projectProfitDistributionAuthorization.count({
+        where: { projectId }
+      }),
+      receipts: await prisma.projectCloseCommandReceipt.count({ where: { projectId } }),
+      stageVersions: await prisma.projectCloseStageVersion.count({ where: { projectId } }),
+      audits: await prisma.auditLog.count({
+        where: { action: "project_close.temporary_distribution.create" }
+      })
+    });
+    const beforeTemporaryOverflow = await temporaryOverflowCounts();
+    const temporaryOverflow = await request(
+      `/projects/${projectId}/close-profit/temporary-distributions`,
+      financeDirector,
+      "POST",
+      {
+        ...commandBody(current.projection.fingerprint),
+        projectParticipatingCompanyId: current.participatingCompanies[0].id,
+        amountCents: "9223372036854775808"
+      }
+    );
+    expect(temporaryOverflow.status).toBe(400);
+    expect(temporaryOverflow.body.message).toBe("暂分金额超出系统可保存范围");
+    expect(await temporaryOverflowCounts()).toEqual(beforeTemporaryOverflow);
+
     const distributable = BigInt(current.projection.view.distribution.currentDistributableProfitCents);
     if (distributable > 0n) {
       const idempotencyKey = randomUUID();
@@ -453,6 +481,48 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       { ...commandBody(current.projection.fingerprint), lines: [] }
     )).status).toBe(400);
     expect(lines).toHaveLength(2);
+    const distributionOverflowCounts = async () => ({
+      submissions: await prisma.projectCloseDecisionSubmission.count({
+        where: { projectId, decisionKind: "distribution" }
+      }),
+      distributions: await prisma.projectCloseDistribution.count({ where: { projectId } }),
+      lines: await prisma.projectCloseDistributionLine.count({
+        where: { distribution: { projectId } }
+      }),
+      authorizations: await prisma.projectProfitDistributionAuthorization.count({
+        where: { projectId }
+      }),
+      receipts: await prisma.projectCloseCommandReceipt.count({ where: { projectId } }),
+      stageVersions: await prisma.projectCloseStageVersion.count({ where: { projectId } }),
+      audits: await prisma.auditLog.count({
+        where: { action: "project_close.distribution.submit" }
+      })
+    });
+    const beforeDistributionOverflow = await distributionOverflowCounts();
+    for (const outOfRangeLines of [
+      [
+        { projectParticipatingCompanyId: lines[0].projectParticipatingCompanyId,
+          finalShareCents: "9223372036854775808" },
+        { projectParticipatingCompanyId: lines[1].projectParticipatingCompanyId,
+          finalShareCents: (BigInt(finalProfitCents) - 9_223_372_036_854_775_808n).toString() }
+      ],
+      [
+        { projectParticipatingCompanyId: lines[0].projectParticipatingCompanyId,
+          finalShareCents: "-9223372036854775809" },
+        { projectParticipatingCompanyId: lines[1].projectParticipatingCompanyId,
+          finalShareCents: (BigInt(finalProfitCents) + 9_223_372_036_854_775_809n).toString() }
+      ]
+    ]) {
+      const overflowResponse = await request(
+        `/projects/${projectId}/close-profit/distributions/submissions`,
+        financeDirector,
+        "POST",
+        { ...commandBody(current.projection.fingerprint), lines: outOfRangeLines }
+      );
+      expect(overflowResponse.status).toBe(400);
+      expect(overflowResponse.body.message).toBe("公司分配金额超出系统可保存范围");
+      expect(await distributionOverflowCounts()).toEqual(beforeDistributionOverflow);
+    }
     expect((await request(
       `/projects/${projectId}/close-profit/distributions/submissions`,
       financeDirector,

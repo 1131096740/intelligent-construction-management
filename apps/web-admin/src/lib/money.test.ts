@@ -41,6 +41,22 @@ describe("signedYuanTextToCentsText", () => {
       );
     }
   );
+
+  it.each([
+    ["-92233720368547758.08", "-9223372036854775808"],
+    ["92233720368547758.07", "9223372036854775807"]
+  ])("accepts the exact PostgreSQL bigint boundary %p", (value, expected) => {
+    expect(signedYuanTextToCentsText(value)).toBe(expected);
+  });
+
+  it.each(["-92233720368547758.09", "92233720368547758.08"])(
+    "rejects a signed amount outside the PostgreSQL bigint range %p",
+    (value) => {
+      expect(() => signedYuanTextToCentsText(value)).toThrow(
+        "金额超出系统可保存范围"
+      );
+    }
+  );
 });
 
 describe("centsTextToYuanText", () => {
