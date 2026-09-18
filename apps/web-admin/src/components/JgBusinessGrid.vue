@@ -9,7 +9,10 @@ import Grid, {
 import JgBusinessGridSelectEditor from "./JgBusinessGridSelectEditor.vue";
 import {
   applyJgBusinessGridEdit,
+  expandJgBusinessGridPaste,
   JG_BUSINESS_SEARCH_SELECT_EDITOR,
+  parseJgBusinessGridClipboardText,
+  resolveJgBusinessGridPasteFocus,
   type JgBusinessGridColumn,
   type JgBusinessGridRow
 } from "./jg-business-grid.config";
@@ -19,9 +22,11 @@ const props = withDefaults(defineProps<{
   columns: JgBusinessGridColumn[];
   readonly?: boolean;
   minHeight?: number;
+  expandPasteRows?: boolean;
 }>(), {
   readonly: false,
-  minHeight: 240
+  minHeight: 240,
+  expandPasteRows: false
 });
 
 const emit = defineEmits<{
@@ -42,6 +47,7 @@ interface RevoGridElement extends HTMLElement {
 }
 
 const gridRef = ref<{ $el?: RevoGridElement } | null>(null);
+const focusedCell = ref<{ rowIndex: number; colIndex: number } | null>(null);
 
 function onAfterEdit(event: CustomEvent<AfterEditEvent>) {
   const detail = event.detail;
@@ -63,8 +69,31 @@ function onAfterEdit(event: CustomEvent<AfterEditEvent>) {
 
 function onAfterFocus(event: CustomEvent<FocusAfterRenderEvent>) {
   if (event.detail.rowType === "rgRow" && Number.isInteger(event.detail.rowIndex)) {
+    focusedCell.value = {
+      rowIndex: event.detail.rowIndex,
+      colIndex: event.detail.colIndex
+    };
     emit("focus-row", event.detail.rowIndex);
   }
+}
+
+function onPaste(event: ClipboardEvent) {
+  if (!props.expandPasteRows || props.readonly) return;
+  const focus = resolveJgBusinessGridPasteFocus(event.composedPath(), focusedCell.value);
+  if (!focus) return;
+  const parsed = parseJgBusinessGridClipboardText(
+    event.clipboardData?.getData("text/plain") ?? ""
+  );
+  if (!parsed) return;
+  const expanded = expandJgBusinessGridPaste(
+    props.source,
+    props.columns,
+    focus,
+    parsed
+  );
+  if (!expanded) return;
+  event.preventDefault();
+  emit("update:source", expanded);
 }
 
 async function focusCell(rowIndex: number, columnProp: string): Promise<boolean> {
@@ -96,6 +125,7 @@ defineExpose({ focusCell });
     class="jg-business-grid"
     :style="{ minHeight: `${minHeight}px` }"
     :aria-readonly="readonly"
+    @paste.capture="onPaste"
   >
     <Grid
       ref="gridRef"

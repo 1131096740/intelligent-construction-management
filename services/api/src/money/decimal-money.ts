@@ -396,3 +396,9 @@ export function formatMoneyCentsAsYuan(value: bigint): string {
   const cents = (absolute % 100n).toString().padStart(2, "0");
   return `${negative ? "-" : ""}${yuan}.${cents}`;
 }
+
+export function formatMoneyCentsAsPlainYuan(value: bigint): string {
+  const negative = value < 0n;
+  const absolute = negative ? -value : value;
+  return `${negative ? "-" : ""}${absolute / 100n}.${(absolute % 100n).toString().padStart(2, "0")}`;
+}

@@ -48,10 +48,10 @@ describe("contract change Web closure", () => {
     );
     const exactVersionMismatch = loadExistingSource.slice(
       loadExistingSource.indexOf(
-        "error.message.includes(\"响应版本与请求版本不一致\")"
+        "message.includes(\"响应版本与请求版本不一致\")"
       ),
       loadExistingSource.indexOf(
-        "errorMessage.value = error instanceof Error ? \"工作台加载失败\""
+        "errorMessage.value = formatUnknownApiError(error, \"工作台加载失败\")"
       )
     );
     expect(exactVersionMismatch).toContain("clearAuthoritySnapshot();");

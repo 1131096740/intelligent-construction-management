@@ -148,6 +148,7 @@ export interface ContractTemplateSchema {
 // ---------------------------------------------------------------------------
 
 export interface ContractBillReadModel {
+  businessEntryDefinition?: import("./business-entry-definition").BusinessEntrySceneDefinition;
   id: string;
   billKey: string;
   name: string;
@@ -223,6 +224,19 @@ export function contractPricingPolicy(input: {
 }
 
 export interface ContractWorkbenchReadModel {
+  settlementModeEntry?: {
+    definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
+    values: { settlementMode: ContractSettlementMode | null };
+    history: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
+  };
+  templateEntry?: {
+    definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
+    values: Record<string, unknown>;
+  } | null;
+  businessEntry?: {
+    definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
+    values: Record<string, unknown>;
+  };
   contractLifecycleStage?: ContractLifecycleStage;
   contractLifecycleCapabilities?: ContractLifecycleCapabilities;
   lifecycleKind?: "pristine_draft" | "approval_draft";

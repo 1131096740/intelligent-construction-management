@@ -223,6 +223,27 @@ describe("SpotProcurementController real-form input", () => {
     );
   });
 
+  it("serves create definitions through the original project create capability", () => {
+    const applications = { getCreateEntryDefinitions: jest.fn() };
+    const controller = new SpotProcurementController(
+      applications as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+
+    controller.createEntryDefinitions("project-1", { id: "material-1" } as never);
+
+    expect(applications.getCreateEntryDefinitions).toHaveBeenCalledWith(
+      "material-1",
+      "project-1"
+    );
+    expect(Reflect.getMetadata(
+      REQUIRED_PROJECT_ACTION_KEY,
+      SpotProcurementController.prototype.createEntryDefinitions
+    )).toBe("spot_procurement.create");
+  });
+
   it("exposes the scoped project options before the procurement id route", () => {
     const reads = { createProjectOptions: jest.fn() };
     const controller = new SpotProcurementController(

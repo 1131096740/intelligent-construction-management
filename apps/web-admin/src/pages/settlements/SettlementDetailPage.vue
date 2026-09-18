@@ -121,6 +121,33 @@
           </dl>
         </section>
 
+        <section
+          v-if="settlementDetail.businessEntryHistory?.length"
+          class="content-panel"
+          aria-label="结算提交记录"
+        >
+          <header class="section-heading">
+            <div>
+              <h2>提交记录</h2>
+              <p>按提交时冻结的字段定义和值展示，不跟随后续单据修改。</p>
+            </div>
+          </header>
+          <div class="entry-history">
+            <section
+              v-for="snapshot in settlementDetail.businessEntryHistory"
+              :key="`${snapshot.sceneKey}:${snapshot.revision}:${snapshot.frozenAt}`"
+              class="entry-history__item"
+            >
+              <p>{{ snapshot.definition.name }} · {{ formatFrozenAt(snapshot.frozenAt) }}</p>
+              <BusinessEntryGrid
+                :definition="snapshot.definition"
+                :model-value="[frozenSnapshotDraft(snapshot)]"
+                :readonly="true"
+              />
+            </section>
+          </div>
+        </section>
+
         <section class="content-panel overview-grid">
           <div class="overview-section">
             <header class="section-heading">
@@ -743,7 +770,12 @@
 </template>
 
 <script setup lang="ts">
-import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-domain";
+import type {
+  BusinessEntryDraftPayload,
+  BusinessEntryFrozenSnapshot,
+  CoreFlowTone,
+  SettlementDetailReadModel
+} from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -780,6 +812,7 @@ import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
@@ -1941,6 +1974,23 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   return tone;
 }
 
+function frozenSnapshotDraft(snapshot: BusinessEntryFrozenSnapshot): BusinessEntryDraftPayload {
+  return {
+    sceneKey: snapshot.sceneKey,
+    definitionVersion: snapshot.definitionVersion,
+    target: snapshot.target,
+    expectedRevision: snapshot.revision,
+    values: snapshot.values
+  };
+}
+
+function formatFrozenAt(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
+
 onMounted(async () => {
   const [, users] = await Promise.all([
     reloadSettlementDetail(),
@@ -2051,6 +2101,23 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   gap: var(--jg-space-xl);
+}
+
+.entry-history {
+  display: grid;
+  gap: var(--jg-space-lg);
+}
+
+.entry-history__item {
+  display: grid;
+  min-width: 0;
+  gap: var(--jg-space-sm);
+}
+
+.entry-history__item > p {
+  margin: 0;
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
 }
 
 .overview-section {

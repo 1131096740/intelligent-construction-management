@@ -1,5 +1,6 @@
 import { forwardRef, Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { AuthModule } from "../auth/auth.module";
 import { BusinessPartyModule } from "../business-party/business-party.module";
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
@@ -22,6 +23,7 @@ import {
 @Module({
   imports: [
     AuditModule,
+    BusinessEntryTransactionModule,
     AuthModule,
     BusinessPartyModule,
     ContractBillModule,

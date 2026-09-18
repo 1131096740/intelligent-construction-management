@@ -2,6 +2,7 @@
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   abandonSpotProcurementPaymentDraft,
   executeSpotProcurementPaymentReviewAction,
@@ -10,6 +11,8 @@ import {
   prepareSpotProcurementPaymentReviewAction,
   recordSpotProcurementPaymentExecution,
   submitSpotProcurementPayment,
+  recordSpotProcurementRefundForPayment,
+  uploadSpotProcurementRefundVoucherForPayment,
   uploadSpotProcurementExecutionVoucherFile,
   uploadSpotProcurementPaymentDraftFile,
   updateSpotProcurementPaymentDraft,
@@ -58,6 +61,7 @@ import {
 import { spotPaymentStatusSemantic } from "./spot-payment-workbench.config";
 import {
   prepareSpotPaymentDraft,
+  prepareSpotRefundWithUpload,
   prepareSpotExecutionWithUploads,
   prepareSpotPaymentDraftWithUploads
 } from "./spot-procurement-write-validation";
@@ -106,6 +110,19 @@ const companies = ref<CompanyEntityModel[]>([]);
 const historicalMerchants = ref<string[]>([]);
 const attachmentFiles = ref<UploadFile[]>([]);
 const executionAttempt = ref<ExecutionAttempt | null>(null);
+const refundFiles = ref<UploadFile[]>([]);
+const refundAttempt = ref<{
+  paymentId: string;
+  procurementId: string;
+  payload: Parameters<typeof recordSpotProcurementRefundForPayment>[2];
+} | null>(null);
+const refundCompletedReceipt = ref<{ amountCents: string; receivedAt: string; status: string } | null>(null);
+const refundDetailRefreshed = ref(false);
+let refundOperationSequence = 0;
+const refundForm = reactive({
+  receivedAt: new Date().toISOString().slice(0, 10),
+  refundMethod: "bank_transfer" as "bank_transfer" | "cash"
+});
 const retainedAttachmentIds = ref<string[]>([]);
 const editForm = reactive<PaymentApplicationDraft>({
   paymentType: "company_direct" as "company_direct" | "handler_reimbursement",
@@ -248,6 +265,14 @@ watch(
   { immediate: true }
 );
 
+watch(paymentId, () => {
+  refundOperationSequence += 1;
+  refundAttempt.value = null;
+  refundCompletedReceipt.value = null;
+  refundDetailRefreshed.value = false;
+  refundFiles.value = [];
+});
+
 watch(() => editForm.paymentType, (type) => {
   if (type === "handler_reimbursement") {
     editForm.payeeName = payment.value?.handler.name ?? "";
@@ -293,7 +318,7 @@ function actionLabel(key: string) {
 }
 
 function showSuccess(message: string) { actionState.value = "success"; actionMessage.value = message; }
-function showError(error: unknown, fallback: string) { actionState.value = "error"; actionMessage.value = error instanceof Error ? error.message : fallback; }
+function showError(error: unknown, fallback: string) { actionState.value = "error"; actionMessage.value = formatUnknownApiError(error, fallback); }
 function stopStaleApplicationOperation() {
   showError(new Error("页面已切换到另一张付款申请，原操作已停止，请在当前单据重新办理。"), "原付款申请操作已停止");
 }
@@ -322,7 +347,7 @@ async function loadDetail() {
     if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
     spotProcurementPaymentCapability.value = null;
     detail.value = null;
-    loadError.value = error instanceof Error ? error.message : "付款申请读取失败";
+    loadError.value = formatUnknownApiError(error, "付款申请读取失败");
   } finally {
     if (requestId === latestDetailRequestId && requestedPaymentId === paymentId.value) {
       loading.value = false;
@@ -473,7 +498,7 @@ async function saveApplicationDraft(
       await restoreApplicationTriggerFocus();
       return "local" as const;
     }
-    applicationError.value = error instanceof Error ? error.message : "付款草稿保存失败";
+    applicationError.value = formatUnknownApiError(error, "付款草稿保存失败");
     return "failed" as const;
   } finally {
     if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false;
@@ -503,7 +528,7 @@ async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
     await restoreApplicationTriggerFocus();
   } catch (error) {
     if (error instanceof StaleApplicationOperationError) return;
-    applicationError.value = error instanceof Error ? error.message : "付款申请提交失败";
+    applicationError.value = formatUnknownApiError(error, "付款申请提交失败");
   } finally {
     if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false;
   }
@@ -543,7 +568,7 @@ async function loadCompanies() {
       )?.id ?? "";
     }
   } catch (error) {
-    payerError.value = error instanceof Error ? error.message : "付款主体选项读取失败";
+    payerError.value = formatUnknownApiError(error, "付款主体选项读取失败");
   }
 }
 async function savePayer() {
@@ -572,7 +597,7 @@ async function savePayer() {
     await restorePayerTriggerFocus();
   } catch (error) {
     if (paymentId.value !== operationPaymentId) return;
-    const message = error instanceof Error ? error.message : "付款主体保存失败";
+    const message = formatUnknownApiError(error, "付款主体保存失败");
     if (
       error instanceof SpotProcurementApiError &&
       error.code === "SPOT_PAYMENT_PAYER_TASK_COMPLETED"
@@ -853,10 +878,10 @@ function capturePaymentReviewContext(
         legacyAdjustedSupplierBalanceAmountYuan.value.trim()
       );
     } catch (error) {
-      confirmationError.value =
-        error instanceof Error
-          ? error.message
-          : "请填写有效的调整后供应商余额抵扣金额";
+      confirmationError.value = formatUnknownApiError(
+        error,
+        "请填写有效的调整后供应商余额抵扣金额"
+      );
       return null;
     }
   }
@@ -964,7 +989,7 @@ function failPaymentReview(
 ) {
   if (!paymentReviewContextIsCurrent(context)) return;
   const message =
-    error instanceof Error ? error.message : "付款审批提交失败";
+    formatUnknownApiError(error, "付款审批提交失败");
   if (context.paymentForm === "real_payment") {
     approvalError.value = message;
   } else {
@@ -1132,7 +1157,7 @@ async function confirmAction(values: { reason: string; password: string }) {
       return;
     }
     await loadDetail();
-  } catch (error) { confirmationError.value = error instanceof Error ? error.message : "操作失败"; showError(error, "操作失败"); }
+  } catch (error) { confirmationError.value = formatUnknownApiError(error, "操作失败"); showError(error, "操作失败"); }
   finally { actionBusy.value = false; }
 }
 
@@ -1215,7 +1240,7 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
     await restoreExecutionTriggerFocus();
   } catch (error) {
     if (paymentId.value !== operationPaymentId) return;
-    executionError.value = error instanceof Error ? error.message : "实际付款登记失败";
+    executionError.value = formatUnknownApiError(error, "实际付款登记失败");
   } finally {
     if (paymentId.value === operationPaymentId) actionBusy.value = false;
   }
@@ -1446,6 +1471,9 @@ onBeforeUnmount(() => {
   paymentReviewComponentActive = false;
   paymentReviewBusyOwnerId = 0;
   invalidatePaymentReviewSelection(true);
+  refundOperationSequence += 1;
+  refundAttempt.value = null;
+  actionBusy.value = false;
 });
 
 function handleCurrentTaskAction(
@@ -1459,13 +1487,95 @@ function handleCurrentTaskAction(
   }
   else if (key === "complete_payer") openPayer(trigger);
   else if (key === "record_execution") openExecution(trigger);
-  else if (
-    key === "record_refund" &&
-    detail.value?.currentTask.key === "record_refund" &&
-    detail.value.currentTask.enabled
-  ) {
-    const procurementId = payment.value?.procurement.id;
-    if (procurementId) void router.push(`/零星采购收货/${procurementId}`);
+  else if (key === "record_refund") {
+    document.querySelector(".payment-refund-form")?.scrollIntoView({ block: "center" });
+  }
+}
+
+async function submitRefund() {
+  const current = detail.value;
+  const operationId = ++refundOperationSequence;
+  const file = selectedUploadFiles(refundFiles.value)[0];
+  if (!current || !file) {
+    actionState.value = "error";
+    actionMessage.value = file ? "付款详情尚未读取，请刷新后重试" : "请选择退款到账凭证";
+    return;
+  }
+  actionBusy.value = true;
+  actionMessage.value = "";
+  try {
+    const paymentIdCoordinate = current.payment.id;
+    const procurementId = current.payment.procurement.id;
+    const operationCurrent = () =>
+      operationId === refundOperationSequence &&
+      paymentId.value === paymentIdCoordinate &&
+      detail.value?.payment.procurement.id === procurementId;
+    const fresh = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+    if (!operationCurrent()) return;
+    const operationAllowed =
+      fresh.currentTask.key === "record_refund" &&
+      fresh.currentTask.enabled === true;
+    const expected = fresh.discrepancy?.refundExpectedAmountCents;
+    if (
+      fresh.payment.id !== paymentIdCoordinate ||
+      fresh.payment.procurement.id !== procurementId ||
+      !expected
+    ) {
+      throw new Error("当前付款已不可登记退款，请刷新后重试");
+    }
+    if (!operationAllowed) throw new Error("当前付款已不可登记退款，请刷新后重试");
+    const retained = refundAttempt.value;
+    if (retained && (retained.paymentId !== paymentIdCoordinate || retained.procurementId !== procurementId)) {
+      refundAttempt.value = null;
+      throw new Error("退款办理对象已变化，请重新选择凭证");
+    }
+    if (retained && retained.payload.amountCents !== expected) {
+      refundAttempt.value = null;
+      throw new Error("待退款金额已变化，请刷新后重试");
+    }
+    const payload = retained?.payload ?? await prepareSpotRefundWithUpload(
+      {
+        amountYuan: centsTextToYuanText(expected),
+        receivedAt: refundForm.receivedAt,
+        refundMethod: refundForm.refundMethod,
+        randomUUID: globalThis.crypto?.randomUUID ? () => globalThis.crypto.randomUUID() : null
+      },
+      file,
+      (uploadFile, fileName) =>
+        uploadSpotProcurementRefundVoucherForPayment(
+          paymentIdCoordinate, procurementId, uploadFile, fileName, undefined, operationCurrent
+        )
+    );
+    if (!operationCurrent()) return;
+    refundAttempt.value = { paymentId: paymentIdCoordinate, procurementId, payload };
+    const result = await recordSpotProcurementRefundForPayment(paymentIdCoordinate, procurementId, payload, operationCurrent) as {
+      refund: { amountCents: string; receivedAt: string };
+      discrepancy: { status: string };
+    };
+    if (!operationCurrent()) return;
+    refundCompletedReceipt.value = {
+      ...result.refund,
+      status: result.discrepancy.status
+    };
+    refundDetailRefreshed.value = false;
+    refundAttempt.value = null;
+    actionState.value = "success";
+    actionMessage.value = "退款到账事实和凭证已登记";
+    refundFiles.value = [];
+    try {
+      const refreshed = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+      if (operationCurrent() && refreshed.payment.id === current.payment.id && refreshed.payment.procurement.id === procurementId) {
+        detail.value = structuredClone(refreshed);
+        spotProcurementPaymentCapability.value = refreshed;
+        refundDetailRefreshed.value = true;
+      }
+    } catch { /* keep the exact 201 business receipt without presenting stale payment totals */ }
+  } catch (error) {
+    if (operationId !== refundOperationSequence || paymentId.value !== current?.payment.id) return;
+    actionState.value = "error";
+    actionMessage.value = formatUnknownApiError(error, "退款登记失败");
+  } finally {
+    if (operationId === refundOperationSequence && paymentId.value === current?.payment.id) actionBusy.value = false;
   }
 }
 function cancelConfirmation() {
@@ -1731,6 +1841,38 @@ watch(
           :busy="actionBusy"
           @action="handleCurrentTaskAction"
         />
+        <t-card
+          v-if="!refundCompletedReceipt && detail.currentTask.key === 'record_refund' && detail.currentTask.enabled && detail.discrepancy?.status === 'awaiting_refund'"
+          class="payment-refund-form"
+          title="登记退款"
+        >
+          <t-alert
+            theme="info"
+            title="待退款整笔差额"
+            :message="money(detail.discrepancy.refundExpectedAmountCents)"
+          />
+          <div class="form-grid">
+            <label><span>退款到账金额</span><t-input :value="money(detail.discrepancy.refundExpectedAmountCents)" readonly /></label>
+            <label><span>到账日期</span><t-date-picker v-model="refundForm.receivedAt" value-type="YYYY-MM-DD" /></label>
+            <label><span>到账方式</span><t-radio-group v-model="refundForm.refundMethod"><t-radio value="bank_transfer">银行转账</t-radio><t-radio value="cash">现金</t-radio></t-radio-group></label>
+            <label><span>退款到账凭证</span><t-upload v-model="refundFiles" theme="file-flow" :auto-upload="false" :multiple="false" /></label>
+          </div>
+          <t-popconfirm content="退款金额必须等于待退款差额，确认后写入到账事实。" @confirm="submitRefund">
+            <t-button theme="primary" :loading="actionBusy">确认登记退款</t-button>
+          </t-popconfirm>
+        </t-card>
+        <t-card
+          v-else-if="refundCompletedReceipt || (detail.discrepancy?.status === 'resolved' && detail.discrepancy.refund)"
+          class="payment-refund-receipt"
+          title="退款回执"
+        >
+          <dl class="fact-list">
+            <div><dt>退款金额</dt><dd>{{ money(refundCompletedReceipt?.amountCents ?? detail.discrepancy?.refund?.amountCents) }}</dd></div>
+            <div><dt>到账日期</dt><dd>{{ (refundCompletedReceipt?.receivedAt ?? detail.discrepancy?.refund?.receivedAt ?? '').slice(0, 10) }}</dd></div>
+            <div><dt>当前状态</dt><dd>{{ refundCompletedReceipt?.status === 'resolved' ? '已办结' : (detail.discrepancy?.statusLabel ?? '已办结') }}</dd></div>
+            <div><dt>净实付</dt><dd>{{ refundCompletedReceipt && !refundDetailRefreshed ? '刷新后读取' : money(detail.payment.netPaidAmountCents) }}</dd></div>
+          </dl>
+        </t-card>
         <PaymentApplicationStepper
           v-if="applicationVisible"
           :key="detail.payment.id"
@@ -1968,7 +2110,7 @@ watch(
       >
         <header><h2>归档资料</h2><p>展示不可变 A5 审批文件、A4 采购来源、PDF 与追加归档包。</p></header>
         <section>
-          <header><h3>关联采购原单</h3><p>以 A4 冻结版本和采购材料为准，不与 A5 付款材料、价格或票据条件混合。</p></header>
+          <header><h3>关联采购原单</h3><p>以 A4 提交时内容和采购材料为准，不与 A5 付款材料、价格或票据条件混合。</p></header>
           <dl class="detail-grid">
             <div><dt>A4 申请编号 / 版本</dt><dd>{{ payment.procurement.code }} / V{{ detail.procurementVersion.versionNo }}</dd></div>
             <div><dt>采购项目</dt><dd>{{ payment.project.name }}</dd></div>

@@ -657,7 +657,7 @@ describe("SpotProcurementReceiptService workflow", () => {
         findFirst: jest.fn().mockResolvedValue(
           options?.resetBlocker === "review"
             ? { id: "review-reset-blocker" }
-            : null
+            : options?.latestReview ?? null
         ),
         create: jest.fn().mockImplementation(({ data }) =>
           Promise.resolve({
@@ -670,6 +670,16 @@ describe("SpotProcurementReceiptService workflow", () => {
         )
       },
       spotProcurementDiscrepancy: {
+        findMany: jest.fn().mockResolvedValue(
+          options?.activeDiscrepancy
+            ? [{
+                procurementId: "procurement-1",
+                procurementVersionId: "version-1",
+                receiptRevisionNo: 1,
+                receiptReviewId: options.latestReview?.id ?? "review-approved"
+              }]
+            : []
+        ),
         findFirst: jest.fn().mockImplementation(
           ({ where }: { where: Record<string, unknown> }) =>
             Promise.resolve(
@@ -687,6 +697,9 @@ describe("SpotProcurementReceiptService workflow", () => {
             )
         ),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([{ id: "payment-1", procurementId: "procurement-1", procurementVersionId: "version-1", status: "settled", createdAt: new Date("2026-07-17T10:00:00.000Z") }])
       },
       spotProcurementRefund: {
         findFirst: jest.fn().mockResolvedValue(
@@ -819,7 +832,8 @@ describe("SpotProcurementReceiptService workflow", () => {
     const access = {
       resolveReceiptViewAccess: jest
         .fn()
-        .mockResolvedValue("allowed")
+        .mockResolvedValue("allowed"),
+      resolvePaymentViewAccess: jest.fn().mockResolvedValue("allowed")
     };
     const receiptPdfs = {
       tryRefreshLatest: jest.fn().mockResolvedValue(undefined),
@@ -1095,6 +1109,64 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(enabledFinanceActions).toContain("record_refund");
     expect(enabledFinanceActions).not.toContain("review_receipt");
     expect(enabledFinanceActions).not.toContain("edit_receipt");
+  });
+
+  it("checks refund upload against the current reviewed coordinates without granting receipt view", async () => {
+    const reviewedAt = new Date("2026-07-17T08:30:00.000Z");
+    const harness = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: reviewedAt,
+      actionProjectRoleKeys: ["finance_staff"],
+      activeDiscrepancy: { status: "awaiting_refund", resolutionType: "full_refund" },
+      latestReview: {
+        id: "review-approved", receiptId: "receipt-1", receiptRevisionNo: 1,
+        procurementId: "procurement-1", procurementVersionId: "version-1",
+        sequenceNo: 1, decision: "approved", comment: null,
+        reviewedByUserId: "material-director-1", reviewedByNameSnapshot: "物资主管",
+        submissionDelegationId: null, targetReviewId: null, createdAt: reviewedAt
+      }
+    });
+
+    await expect(harness.service.assertActionAvailable("procurement-1", "refund-finance", "record_refund"))
+      .resolves.toMatchObject({ receipt: { procurementId: "procurement-1" } });
+    expect(harness.access.resolveReceiptViewAccess).not.toHaveBeenCalled();
+    expect(harness.tx.spotProcurementPayment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { procurementId: "procurement-1", invalidatedAt: null } })
+    );
+
+    harness.tx.spotProcurementDiscrepancy.findMany.mockResolvedValueOnce([]);
+    await expect(harness.service.assertActionAvailable("procurement-1", "refund-finance", "record_refund"))
+      .rejects.toThrow("当前账号不能执行该零星采购退款操作");
+
+    harness.tx.spotProcurementDiscrepancy.findMany.mockResolvedValueOnce([{}, {}]);
+    await expect(harness.service.assertActionAvailable("procurement-1", "refund-finance", "record_refund"))
+      .rejects.toThrow("当前账号不能执行该零星采购退款操作");
+  });
+
+  it.each([
+    ["unreviewed receipt", (h: ReturnType<typeof createHarness>) => { h.receipt.status = "submitted"; }],
+    ["cross-project receipt", (h: ReturnType<typeof createHarness>) => { h.receipt.projectId = "project-other"; }],
+    ["stale version", (h: ReturnType<typeof createHarness>) => { h.receipt.procurementVersionId = "version-old"; }],
+    ["stale review", (h: ReturnType<typeof createHarness>) => { h.tx.spotProcurementReceiptReview.findFirst.mockResolvedValue({ id: "review-old", decision: "approved", receiptRevisionNo: 0, procurementId: "procurement-1", procurementVersionId: "version-1" }); }],
+    ["wrong owner payment", (h: ReturnType<typeof createHarness>) => { h.access.resolvePaymentViewAccess.mockResolvedValue("denied"); }],
+    ["only invalidated payments", (h: ReturnType<typeof createHarness>) => { h.tx.spotProcurementPayment.findMany.mockResolvedValue([]); }]
+  ])("rejects refund upload capability for %s", async (_label, mutate) => {
+    const reviewedAt = new Date("2026-07-17T08:30:00.000Z");
+    const harness = createHarness({
+      receiptStatus: "reviewed", revisionSubmittedAt: reviewedAt,
+      actionProjectRoleKeys: ["finance_staff"],
+      activeDiscrepancy: { status: "awaiting_refund", resolutionType: "full_refund" },
+      latestReview: {
+        id: "review-approved", receiptId: "receipt-1", receiptRevisionNo: 1,
+        procurementId: "procurement-1", procurementVersionId: "version-1", sequenceNo: 1,
+        decision: "approved", comment: null, reviewedByUserId: "material-director-1",
+        reviewedByNameSnapshot: "物资主管", submissionDelegationId: null,
+        targetReviewId: null, createdAt: reviewedAt
+      }
+    });
+    mutate(harness);
+    await expect(harness.service.assertActionAvailable("procurement-1", "refund-finance", "record_refund"))
+      .rejects.toThrow("当前账号不能执行该零星采购退款操作");
   });
 
   it("advertises manual receipt PDF refresh only for the current approved review and material director", async () => {

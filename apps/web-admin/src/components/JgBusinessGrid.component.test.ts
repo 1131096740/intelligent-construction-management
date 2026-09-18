@@ -1,6 +1,7 @@
 /* eslint-disable vue/one-component-per-file */
 import { createSSRApp } from "vue";
 import { renderToString } from "vue/server-renderer";
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Editors } from "@revolist/vue3-datagrid";
 import {
@@ -51,5 +52,19 @@ describe("JgBusinessGrid editor registry", () => {
     harness.emitEdit?.({ rowIndex: 0, prop: "name", val: "新值" });
     expect(updates).toEqual([[{ name: "新值" }]]);
     expect(source).toEqual([{ name: "原值" }]);
+  });
+
+  it("keeps expanding paste opt-in and enables it only for procurement lines", () => {
+    const gridSource = readFileSync(new URL("./JgBusinessGrid.vue", import.meta.url), "utf8");
+    const procurementSource = readFileSync(
+      new URL("../pages/spot-procurement/components/ProcurementLineEditor.vue", import.meta.url),
+      "utf8"
+    );
+    expect(gridSource).toContain("expandPasteRows: false");
+    expect(gridSource).toContain('@paste.capture="onPaste"');
+    expect(gridSource).not.toContain('addEventListener("paste"');
+    expect(procurementSource).toContain("expand-paste-rows");
+    expect(procurementSource.match(/:model-value="line\.(materialName|specification|unit|quantity|note)"/gu)).toHaveLength(5);
+    expect(procurementSource).not.toMatch(/:value="line\.(materialName|specification|unit|quantity|note)"/u);
   });
 });

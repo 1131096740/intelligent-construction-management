@@ -220,6 +220,9 @@ function buildFixture() {
         Promise.resolve(versions.find((row) => row.id === where.id) ?? null)
       )
     },
+    businessEntrySubmissionSnapshot: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     spotProcurementLine: {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -456,6 +459,56 @@ function buildFixture() {
 }
 
 describe("SpotProcurementReadService", () => {
+  it("projects frozen entry history by business version and line number without raw target ids", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.businessEntrySubmissionSnapshot.findMany.mockResolvedValue([
+      {
+        id: "snapshot-1",
+        projectId: "project-1",
+        sceneKey: "spot_procurement.application",
+        entityType: "spot_procurement_version",
+        entityId: "version-1",
+        revision: 1,
+        definitionVersion: 1,
+        definitionSnapshot: { key: "spot_procurement.application", fields: [] },
+        valuesSnapshot: { reason: "现场补料" },
+        frozenAt: now,
+        frozenByUserId: "applicant-1",
+        createdAt: now
+      },
+      {
+        id: "snapshot-2",
+        projectId: "project-1",
+        sceneKey: "spot_procurement.application_line",
+        entityType: "spot_procurement_line",
+        entityId: "line-1",
+        revision: 1,
+        definitionVersion: 1,
+        definitionSnapshot: { key: "spot_procurement.application_line", fields: [] },
+        valuesSnapshot: { materialName: "免烧砖", quantity: "100" },
+        frozenAt: now,
+        frozenByUserId: "applicant-1",
+        createdAt: now
+      }
+    ]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    const detail = await service.getProcurement("procurement-1", "applicant-1");
+
+    expect(detail.entrySnapshots).toEqual([
+      expect.objectContaining({ sceneKey: "spot_procurement.application", versionNo: 1, lineNumber: null }),
+      expect.objectContaining({ sceneKey: "spot_procurement.application_line", versionNo: 1, lineNumber: 1 })
+    ]);
+    expect(JSON.stringify(detail.entrySnapshots)).not.toContain("version-1");
+    expect(JSON.stringify(detail.entrySnapshots)).not.toContain("line-1");
+    expect(JSON.stringify(detail.entrySnapshots)).not.toContain("snapshot-1");
+  });
+
   it("exposes frozen review coordinates only to the legal non-applicant reviewer", async () => {
     const fixture = buildFixture();
     fixture.prisma.spotProcurement.findUnique.mockResolvedValue(

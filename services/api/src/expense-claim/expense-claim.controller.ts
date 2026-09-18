@@ -75,14 +75,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "attach_expense_claim_attachment",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "费用草稿附件"
     );
   }
@@ -98,14 +98,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "append_expense_claim_attachment",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "费用追加资料"
     );
   }
@@ -121,14 +121,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "record_expense_claim_payment",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "费用付款凭证"
     );
   }
@@ -144,14 +144,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "record_expense_claim_loan_disbursement",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "借款放款凭证"
     );
   }
@@ -167,14 +167,14 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
       "record_expense_claim_loan_repayment",
       file,
-      idempotencyKey,
+      body.idempotencyKey,
       "员工还款凭证"
     );
   }

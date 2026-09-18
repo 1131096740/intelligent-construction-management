@@ -108,6 +108,7 @@ export function normalizeBusinessEntryValues(
   rawValues: Readonly<Record<string, unknown>>,
   optionsByField: BusinessEntryOptionsByField = {}
 ): Record<string, unknown> {
+  if (definition.source?.kind === "contract_business_template_version") return { ...rawValues };
   const fields = new Map(definition.fields.map((field) => [field.key, field]));
   return Object.fromEntries(Object.entries(rawValues).map(([key, value]) => {
     const field = fields.get(key);
@@ -142,6 +143,7 @@ export function visibleBusinessEntryValues(
   definition: BusinessEntrySceneDefinition,
   values: Readonly<Record<string, unknown>>
 ) {
+  if (definition.source?.kind === "contract_business_template_version") return { ...values };
   const knownFieldKeys = new Set(definition.fields.map((field) => field.key));
   let filteredValues = { ...values };
   for (let iteration = 0; iteration <= definition.fields.length; iteration += 1) {

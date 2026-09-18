@@ -259,6 +259,120 @@ describe("business entry definition registry", () => {
     }, ["finance_staff"]).errors).toContainEqual(expect.objectContaining({ code: "invalid_format" }));
   });
 
+  it("keeps exact decimal string fields opt-in and preserves their submitted representation", () => {
+    const definition: BusinessEntrySceneDefinition = {
+      ...profileDefinition,
+      key: "exact_decimal_entry",
+      fields: [
+        {
+          ...profileDefinition.fields[0],
+          key: "quantity",
+          label: "数量",
+          type: "number",
+          precision: 2,
+          exactDecimalString: { sign: "nonnegative", maximumExclusive: "1000000000000000000" }
+        },
+        {
+          ...profileDefinition.fields[0],
+          key: "adjustmentAmountYuan",
+          label: "调整金额",
+          type: "money",
+          precision: 2,
+          exactDecimalString: { sign: "signed" }
+        }
+      ]
+    };
+    const registry = createBusinessEntryDefinitionRegistry([definition]);
+    const payload = {
+      sceneKey: definition.key,
+      definitionVersion: definition.version,
+      target: { entityType: "project", entityId: "project-1" },
+      values: { quantity: "2.50", adjustmentAmountYuan: "-5000.00" }
+    };
+
+    expect(registry.validateDraft(payload, ["finance_staff"])).toMatchObject({
+      valid: true,
+      values: payload.values
+    });
+    expect(registry.freezeSubmissionSnapshot(payload, ["finance_staff"]).values).toEqual(payload.values);
+    for (const zero of ["0", "0.00"]) {
+      expect(registry.validateDraft({ ...payload, values: { ...payload.values, quantity: zero } }, ["finance_staff"]).valid).toBe(true);
+    }
+  });
+
+  it.each([
+    ["1e3", "quantity"],
+    ["-1", "quantity"],
+    ["1.001", "quantity"],
+    ["1000000000000000000", "quantity"]
+  ])("rejects non-canonical exact quantity %s", (value, fieldKey) => {
+    const registry = createBusinessEntryDefinitionRegistry([{
+      ...profileDefinition,
+      key: "exact_quantity_entry",
+      fields: [{
+        ...profileDefinition.fields[0], key: fieldKey, label: "数量", type: "number", precision: 2,
+        exactDecimalString: { sign: "nonnegative", maximumExclusive: "1000000000000000000" }
+      }]
+    }]);
+    expect(registry.validateDraft({
+      sceneKey: "exact_quantity_entry", definitionVersion: 1, target: { entityType: "project", entityId: "project-1" },
+      values: { [fieldKey]: value }
+    }, ["finance_staff"]).valid).toBe(false);
+  });
+
+  it("does not allow signed money text without the field opt-in", () => {
+    const registry = createBusinessEntryDefinitionRegistry([{
+      ...profileDefinition,
+      key: "ordinary_money_entry",
+      fields: [{ ...profileDefinition.fields[0], key: "amountYuan", label: "金额", type: "money", precision: 2 }]
+    }]);
+    expect(registry.validateDraft({
+      sceneKey: "ordinary_money_entry", definitionVersion: 1, target: { entityType: "project", entityId: "project-1" },
+      values: { amountYuan: "-1.00" }
+    }, ["finance_staff"]).valid).toBe(false);
+  });
+
+  it.each(["0", "0.00", "-0", "-0.00", "+1", "1e3", " 1", "1 ", "1000000000000000000"])(
+    "supports a reusable strictly-positive exact decimal field and rejects %s",
+    (value) => {
+      const registry = createBusinessEntryDefinitionRegistry([{
+        ...profileDefinition,
+        key: "positive_exact_quantity_entry",
+        fields: [{
+          ...profileDefinition.fields[0], key: "quantity", label: "数量", type: "number", precision: 2,
+          exactDecimalString: {
+            sign: "nonnegative", minimumExclusive: "0", maximumExclusive: "1000000000000000000"
+          }
+        }]
+      }]);
+      const target = { entityType: "project", entityId: "project-1" };
+      expect(registry.validateDraft({ sceneKey: "positive_exact_quantity_entry", definitionVersion: 1, target, values: { quantity: value } }, ["finance_staff"]).valid).toBe(false);
+      const accepted = registry.validateDraft({ sceneKey: "positive_exact_quantity_entry", definitionVersion: 1, target, values: { quantity: "0.01" } }, ["finance_staff"]);
+      expect(accepted.errors).toEqual([]);
+      expect(accepted.valid).toBe(true);
+    }
+  );
+
+  it.each([
+    { type: "text", rule: { sign: "nonnegative" } },
+    { type: "number", rule: { sign: "positive" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "-1" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "01" } },
+    { type: "number", rule: { sign: "nonnegative", maximumExclusive: "1e3" } },
+    { type: "money", rule: { sign: "signed", maximumExclusive: "100" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "1", maximumExclusive: "1" } },
+    { type: "number", rule: { sign: "nonnegative", minimumExclusive: "2", maximumExclusive: "1" } }
+  ])("rejects an invalid exact decimal definition %#", ({ type, rule }) => {
+    expect(() => createBusinessEntryDefinitionRegistry([{
+      ...profileDefinition,
+      key: "invalid_exact_decimal_definition",
+      fields: [{
+        ...profileDefinition.fields[0], key: "quantity", type,
+        exactDecimalString: rule
+      }]
+    } as BusinessEntrySceneDefinition])).toThrow("精确十进制");
+  });
+
   it("fails closed for an unknown scene, unknown field, and stale definition", () => {
     const registry = createBusinessEntryDefinitionRegistry([profileDefinition]);
 

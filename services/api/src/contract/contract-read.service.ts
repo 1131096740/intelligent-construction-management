@@ -1566,7 +1566,28 @@ export class ContractReadService {
             expectedStatus: version.status as ContractSigningMaterialChangeStatus
           }
         : null;
+    const entryReceipts = await this.prisma.contractDraftSubmissionRequest.findMany({
+      where: { contractVersionId: version.id },
+      orderBy: { createdAt: "asc" },
+      select: { approvalInstanceId: true, responseSnapshot: true }
+    });
+    const businessEntrySubmissions = entryReceipts.flatMap((receipt) => {
+      const response = receipt.responseSnapshot;
+      if (!response || typeof response !== "object" || Array.isArray(response)) return [];
+      const billSnapshots = Array.isArray(response.billEntrySnapshots) ? response.billEntrySnapshots : [];
+      const partySnapshots = Array.isArray(response.partyEntrySnapshots) ? response.partyEntrySnapshots : [];
+      const paymentStageSnapshots = Array.isArray(response.paymentStageEntrySnapshots) ? response.paymentStageEntrySnapshots : [];
+      return [response.businessEntrySnapshot, response.templateEntrySnapshot, ...billSnapshots,
+        response.commercialEntrySnapshot, ...partySnapshots, response.paymentTermsEntrySnapshot, ...paymentStageSnapshots].flatMap((snapshot) => {
+        if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return [];
+        return [{
+        approvalInstanceId: receipt.approvalInstanceId,
+        snapshot: snapshot as unknown as NonNullable<ContractDetailReadModel["businessEntrySubmissions"]>[number]["snapshot"]
+        }];
+      });
+    });
     return {
+      businessEntrySubmissions,
       id: contractCode,
       contractVersionId: version.id,
       title: `${contractCode} · ${contract.name}`,

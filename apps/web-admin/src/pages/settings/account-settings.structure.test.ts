@@ -12,9 +12,9 @@ describe("self-service account settings", () => {
 
   it("lets every signed-in user update their own profile and password or sign out", () => {
     expect(settingsPage).toContain('title="我的账号"');
-    expect(settingsPage).toContain('label="真实姓名"');
-    expect(settingsPage).toContain('label="登录手机号"');
-    expect(settingsPage).toContain("auth.updateProfile(");
+    expect(settingsPage).toContain("<BusinessEntryForm");
+    expect(settingsPage).toContain('"user_self_profile"');
+    expect(settingsPage).toContain("updateProfile(");
     expect(settingsPage).toContain("auth.changePassword(");
     expect(settingsPage).toContain("auth.logout()");
     expect(settingsPage).toContain("退出登录");

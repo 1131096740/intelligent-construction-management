@@ -10,6 +10,7 @@ import {
   BusinessEntryDefinitionError,
   BusinessEntryDraftValidationError,
   canPerform,
+  createBusinessEntryDefinitionRegistry,
   isBusinessEntryProjectOwnedTarget,
   type BusinessEntryDefinitionRegistry,
   type BusinessEntryDraftPayload,
@@ -66,11 +67,6 @@ export class BusinessEntryTransactionService {
     }
 
     const operation = input.operation ?? "edit";
-    const definition = this.registeredDefinition(input.sceneKey);
-    if (definition.entityType !== scene.entityType) {
-      throw new BadRequestException("事务业务场景目标类型与定义不一致");
-    }
-
     const context: BusinessEntryTransactionResolverContext = {
       tx,
       sceneKey: input.sceneKey,
@@ -88,9 +84,18 @@ export class BusinessEntryTransactionService {
       throw new ForbiddenException("当前账号无权执行事务业务场景动作");
     }
 
+    const definition = scene.resolveDefinition
+      ? await scene.resolveDefinition(context)
+      : this.registeredDefinition(input.sceneKey);
+    if (definition.entityType !== scene.entityType || definition.key !== scene.sceneKey) {
+      throw new BadRequestException("事务业务场景目标类型与定义不一致");
+    }
+    const definitions = scene.resolveDefinition
+      ? createBusinessEntryDefinitionRegistry([definition]) : this.definitions;
+
     let snapshot: BusinessEntryFrozenSnapshot;
     try {
-      snapshot = this.definitions.freezeSubmissionSnapshot(
+      snapshot = definitions.freezeSubmissionSnapshot(
         input,
         effectiveRoleKeys,
         { frozenAt, operation }

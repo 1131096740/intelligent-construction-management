@@ -5,32 +5,24 @@
     </h2>
 
     <div class="field-grid">
-      <label
-        v-if="mode !== 'settlement'"
-        class="field"
-      >
-        <span class="field-label">合同名称</span>
-        <t-input
-          :value="model.contractName"
-          :disabled="nameDisabled ?? disabled"
-          placeholder="请输入合同名称"
-          @change="(value: string) => emit('update', { contractName: value })"
-        />
-      </label>
+      <BusinessEntryForm
+        v-if="mode !== 'settlement' && basicDefinition"
+        :definition="basicDefinition"
+        :model-value="basicEntry"
+        :readonly="disabled"
+        :options-by-field="{ companyEntityId: companyOptions }"
+        @update:model-value="updateBasicEntry"
+      />
+      <t-alert
+        v-else-if="mode !== 'settlement'"
+        theme="warning"
+        message="基础信息填写规则尚未加载，请刷新后再填写。"
+      />
 
-      <label
+      <div
         v-if="mode !== 'settlement'"
         class="field"
       >
-        <span class="field-label">我方签约主体</span>
-        <t-select
-          :value="model.companyEntityId"
-          :options="companyOptions"
-          :disabled="companyDisabled ?? disabled"
-          :loading="loading"
-          placeholder="请选择我方公司主体"
-          @change="selectCompany"
-        />
         <span
           v-if="displayCompany"
           class="field-help"
@@ -80,19 +72,23 @@
           theme="info"
           message="暂无可用的我方公司主体，请先到主体台账完善并启用资料。"
         />
-      </label>
+      </div>
 
       <div
         v-if="mode !== 'basic'"
         class="field"
       >
-        <span class="field-label">结算方式</span>
-        <t-select
-          :value="settlementMode.value ?? undefined"
-          :options="settlementModeOptions"
-          :disabled="disabled || !settlementMode.canConfirm || settlementModeBusy"
-          placeholder="等待系统建议"
-          @change="onSettlementModeChange"
+        <BusinessEntryForm
+          v-if="settlementDefinition"
+          :definition="settlementDefinition"
+          :model-value="settlementEntry"
+          :readonly="disabled || !settlementMode.canConfirm || settlementModeBusy"
+          @update:model-value="updateSettlementEntry"
+        />
+        <t-alert
+          v-else
+          theme="warning"
+          message="结算方式填写规则尚未加载，请刷新后再确认。"
         />
         <span class="field-help">
           <template v-if="settlementMode.confirmationRequired">
@@ -114,7 +110,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import type { ContractSettlementMode } from "@jiangkong/shared-domain";
+import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition, ContractSettlementMode } from "@jiangkong/shared-domain";
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
+import { formatUnknownApiError } from "../../../api/error-message";
 import {
   fetchActiveCompanyEntities,
   type CompanyEntityModel
@@ -132,6 +130,8 @@ const emit = defineEmits<{
 }>();
 const props = withDefaults(defineProps<{
   model: ContractDraftModel;
+  definition?: BusinessEntrySceneDefinition;
+  settlementDefinition?: BusinessEntrySceneDefinition;
   disabled: boolean;
   mode?: "all" | "basic" | "settlement";
   nameDisabled?: boolean;
@@ -143,9 +143,38 @@ const props = withDefaults(defineProps<{
   };
   settlementModeBusy?: boolean;
 }>(), {
+  definition: undefined,
+  settlementDefinition: undefined,
   mode: "all"
 });
 const candidates = ref<CompanyEntityModel[]>([]);
+const basicDefinition = computed(() => props.definition ? {
+  ...props.definition,
+  fields: props.definition.fields.map((field) => ({
+    ...field,
+    readOnly: field.readOnly || (field.key === "contractName"
+      ? props.nameDisabled ?? props.disabled
+      : props.companyDisabled ?? props.disabled)
+  }))
+} : null);
+const basicEntry = computed<BusinessEntryDraftPayload>(() => ({
+  sceneKey: props.definition?.key ?? "contract_basic",
+  definitionVersion: props.definition?.version,
+  values: { contractName: props.model.contractName, companyEntityId: props.model.companyEntityId }
+}));
+
+function updateBasicEntry(entry: BusinessEntryDraftPayload) {
+  if (props.disabled) return;
+  const patch: Partial<ContractDraftModel> = {};
+  if (!(props.nameDisabled ?? props.disabled) && typeof entry.values.contractName === "string") {
+    patch.contractName = entry.values.contractName;
+  }
+  if (!(props.companyDisabled ?? props.disabled) && typeof entry.values.companyEntityId === "string" &&
+      entry.values.companyEntityId !== props.model.companyEntityId) {
+    Object.assign(patch, companyEntitySyncPatch(entry.values.companyEntityId));
+  }
+  emit("update", patch);
+}
 const loading = ref(false);
 const loaded = ref(false);
 const loadError = ref("");
@@ -153,10 +182,11 @@ const companyOptions = computed(() => candidates.value.map((candidate) => ({
   value: candidate.id,
   label: `${candidate.name}（${candidate.unifiedSocialCreditCode ?? "信用代码待补全"}）`
 })));
-const settlementModeOptions = [
-  { value: "settlement_required", label: "需要结算" },
-  { value: "direct_payment", label: "按合同直接付款" }
-] satisfies Array<{ value: ContractSettlementMode; label: string }>;
+const settlementEntry = computed<BusinessEntryDraftPayload>(() => ({
+  sceneKey: props.settlementDefinition?.key ?? "contract_settlement_mode",
+  definitionVersion: props.settlementDefinition?.version,
+  values: { settlementMode: props.settlementMode.value }
+}));
 const selectedCandidate = computed(() =>
   candidates.value.find((candidate) => candidate.id === props.model.companyEntityId) ?? null
 );
@@ -180,7 +210,9 @@ function syncCompany() {
   if (selectedCandidate.value) selectCompany(selectedCandidate.value.id);
 }
 
-function onSettlementModeChange(value: string) {
+function updateSettlementEntry(entry: BusinessEntryDraftPayload) {
+  if (props.disabled || !props.settlementMode.canConfirm || props.settlementModeBusy) return;
+  const value = entry.values.settlementMode;
   if (value === "settlement_required" || value === "direct_payment") {
     emit("confirm-settlement-mode", value);
   }
@@ -193,9 +225,10 @@ async function loadCandidates() {
   try {
     candidates.value = await fetchActiveCompanyEntities();
   } catch (error) {
-    loadError.value = error instanceof Error
-      ? error.message
-      : "加载可选我方公司主体失败，请稍后重试";
+    loadError.value = formatUnknownApiError(
+      error,
+      "加载可选我方公司主体失败，请稍后重试"
+    );
   } finally {
     loaded.value = true;
     loading.value = false;

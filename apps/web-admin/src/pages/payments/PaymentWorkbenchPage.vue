@@ -113,7 +113,7 @@
         </label>
 
         <label class="create-field">
-          <span>付款编号 <b aria-hidden="true">*</b></span>
+          <span>{{ paymentEntryFieldLabel("code", "付款编号") }} <b aria-hidden="true">*</b></span>
           <t-input
             v-model="createForm.code"
             placeholder="FK-2026-007"
@@ -124,7 +124,7 @@
         <MoneyInput
           v-model="createForm.requestedAmountYuan"
           class="create-field"
-          label="申请金额"
+          :label="paymentEntryFieldLabel('requestedAmountYuan', '申请金额')"
           placeholder="请输入申请金额"
           required
         />
@@ -297,6 +297,7 @@ import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
@@ -345,6 +346,7 @@ const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const loadingProjects = ref(false);
 const loadingContracts = ref(false);
 const contractPaymentPreview = ref<Awaited<ReturnType<typeof fetchContractPaymentApplication>> | null>(null);
+const paymentEntryDefinition = ref<Awaited<ReturnType<typeof fetchPaymentCreateCapability>>["businessEntry"]>();
 const previewContractVersionId = ref("");
 const baselineFormSnapshot = ref("");
 const leaveDialogVisible = ref(false);
@@ -679,7 +681,7 @@ async function loadContractPaymentPreview() {
   } catch (error) {
     contractPaymentPreview.value = null;
     previewContractVersionId.value = "";
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `可付款额度校验失败：${reason}。当前无法确认可申请金额，请核对合同状态和权限后重试。`;
     messageState.value = "error";
   } finally {
@@ -721,7 +723,7 @@ async function loadProjects() {
     createForm.projectId = matchedProject?.id ?? projects.value[0]?.id ?? "";
     if (createForm.projectId) await loadPaymentContracts();
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `未能加载项目与合同：${reason}。请检查网络与账号项目权限后重试。`;
     messageState.value = "error";
   } finally {
@@ -738,14 +740,23 @@ async function loadPaymentContracts() {
   loadingContracts.value = true;
   message.value = "";
   try {
-    contracts.value = await fetchPaymentContractOptions(createForm.projectId);
+    const [paymentContracts, capability] = await Promise.all([
+      fetchPaymentContractOptions(createForm.projectId),
+      fetchPaymentCreateCapability(createForm.projectId)
+    ]);
+    contracts.value = paymentContracts;
+    paymentEntryDefinition.value = capability.businessEntry;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `未能加载项目合同：${reason}。请确认项目权限后重试。`;
     messageState.value = "error";
   } finally {
     loadingContracts.value = false;
   }
+}
+
+function paymentEntryFieldLabel(key: string, fallback: string) {
+  return paymentEntryDefinition.value?.definition.fields.find((field) => field.key === key)?.label ?? fallback;
 }
 
 async function createPaymentRequestWithCapability(
@@ -773,7 +784,7 @@ async function submitCreatePayment() {
     await MessagePlugin.success("付款申请已创建，正在打开详情。");
     await router.push(`/payments/${payment.code}`);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     message.value = `付款申请未创建：${reason}。已保留本页填写内容，请修正后再次提交。`;
     messageState.value = "error";
   } finally {

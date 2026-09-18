@@ -1,66 +1,7 @@
-<template>
-  <div class="workbench-section">
-    <h2 class="section-title">
-      专业字段
-    </h2>
-    <p
-      v-if="fields.length === 0"
-      class="empty"
-    >
-      当前合同模板未定义专业字段。
-    </p>
-
-    <div
-      v-else
-      class="field-grid"
-    >
-      <label
-        v-for="field in fields"
-        :key="field.key"
-        class="field"
-      >
-        <span class="field-label">
-          {{ field.label }}
-          <em
-            v-if="field.required"
-            class="required"
-          >*</em>
-        </span>
-
-        <t-select
-          v-if="field.type === 'single_select'"
-          :value="stringValue(field.key)"
-          :data-field-key="field.key"
-          :options="field.options ?? []"
-          :disabled="fieldDisabled(field.key)"
-          :placeholder="`选择${field.label}`"
-          @change="(value: string) => update(field.key, value)"
-        />
-        <t-textarea
-          v-else-if="field.type === 'long_text'"
-          :value="stringValue(field.key)"
-          :data-field-key="field.key"
-          :disabled="fieldDisabled(field.key)"
-          :placeholder="`请输入${field.label}`"
-          @change="(value: string) => update(field.key, value)"
-        />
-        <t-input
-          v-else
-          :value="stringValue(field.key)"
-          :data-field-key="field.key"
-          :disabled="fieldDisabled(field.key)"
-          :placeholder="`请输入${field.label}`"
-          @change="(value: string) => update(field.key, value)"
-        />
-      </label>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
+import type { BusinessEntryDraftPayload, ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed } from "vue";
-import { contractProfessionalFields } from "./contract-tax-facts.state";
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
@@ -69,70 +10,56 @@ const props = defineProps<{
   disabled: boolean;
   editableKeys?: string[];
 }>();
-
 const emit = defineEmits<{
   (event: "update", patch: Partial<ContractDraftModel>): void;
 }>();
-
-const fields = computed(() =>
-  contractProfessionalFields(
-    props.workbench?.version.templateSnapshot.fieldSchema ?? [],
-    props.workbench?.contract.contractTypeKey
-  )
-);
-
-function stringValue(key: string): string {
-  const value = props.model.fieldValues[key];
-  return typeof value === "string" ? value : value == null ? "" : String(value);
-}
-
-function update(key: string, value: unknown) {
-  emit("update", { fieldValues: { ...props.model.fieldValues, [key]: value } });
-}
-
-function fieldDisabled(key: string) {
-  return props.disabled || (props.editableKeys !== undefined && !props.editableKeys.includes(key));
+const definition = computed(() => {
+  const source = props.workbench?.templateEntry?.definition;
+  return source ? {
+    ...source,
+    fields: source.fields.filter((field) => !["invoiceType", "taxRatePercent"].includes(field.key))
+      .map((field) => ({ ...field, readOnly: props.disabled ||
+        (props.editableKeys !== undefined && !props.editableKeys.includes(field.key)) }))
+  } : null;
+});
+const entry = computed<BusinessEntryDraftPayload>(() => ({
+  sceneKey: definition.value?.key ?? "contract_template_fields",
+  definitionVersion: definition.value?.version,
+  values: props.model.fieldValues
+}));
+function updateEntry(value: BusinessEntryDraftPayload) {
+  if (props.disabled || !definition.value) return;
+  const values = { ...props.model.fieldValues };
+  for (const field of definition.value.fields) {
+    if (!field.readOnly && Object.hasOwn(value.values, field.key)) values[field.key] = value.values[field.key];
+  }
+  emit("update", { fieldValues: values });
 }
 </script>
 
+<template>
+  <div class="workbench-section">
+    <h2 class="section-title">
+      专业字段
+    </h2>
+    <BusinessEntryForm
+      v-if="definition && definition.fields.length > 0"
+      :definition="definition"
+      :model-value="entry"
+      :readonly="disabled"
+      @update:model-value="updateEntry"
+    />
+    <p
+      v-else
+      class="empty"
+    >
+      {{ definition ? '当前合同模板未定义专业字段。' : '合同字段定义尚未加载，请刷新后重试。' }}
+    </p>
+  </div>
+</template>
+
 <style scoped>
-.workbench-section {
-  display: grid;
-  gap: 16px;
-}
-
-.section-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: #151922;
-}
-
-.empty {
-  margin: 0;
-  color: #767f8d;
-  font-size: 12px;
-}
-
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-}
-
-.field {
-  display: grid;
-  gap: 8px;
-}
-
-.field-label {
-  color: #767f8d;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.required {
-  color: #b51d2a;
-  font-style: normal;
-}
+.workbench-section { display: grid; gap: var(--jg-space-md); }
+.section-title { margin: 0; font-size: 16px; font-weight: 700; }
+.empty { margin: 0; font-size: 12px; }
 </style>

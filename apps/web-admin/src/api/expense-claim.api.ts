@@ -1,4 +1,5 @@
 import { apiFetch } from "./api-fetch";
+import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import { formatApiErrorMessage } from "./error-message";
 
 export type ExpenseClaimWorkbenchView = "all" | "drafts" | "in_progress" | "pending_funds";
@@ -28,6 +29,7 @@ export interface ExpenseClaimListItemReadModel {
 }
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  entrySnapshots: ExpenseClaimEntrySnapshotReadModel[];
   applicantPhoneSnapshot: string | null;
   handledByNameSnapshot: string;
   proxyReason: string | null;
@@ -93,7 +95,15 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
 }
 
+export interface ExpenseClaimEntrySnapshotReadModel {
+  id: string;
+  frozenAt: string;
+  definitionSnapshot: BusinessEntrySceneDefinition;
+  valuesSnapshot: Record<string, unknown>;
+}
+
 export interface ExpenseClaimCreateOptions {
+  entryDefinition: BusinessEntrySceneDefinition;
   companyEntities: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; name: string }>;
   canProxy: boolean;

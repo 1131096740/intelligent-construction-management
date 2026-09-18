@@ -7,10 +7,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
+import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PermissionGuard } from "../auth/guards/permission.guard";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { AuditService } from "../audit/audit.service";
+import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/business-entry-definition.snapshot-store";
+import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
@@ -27,6 +31,10 @@ import { ContractFormalFileService } from "../contract/contract-formal-file.serv
 import { ContractReadService } from "../contract/contract-read.service";
 import { ContractService } from "../contract/contract.service";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
+import {
+  CONTRACT_BASIC_ENTRY_DEFINITION,
+  CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION
+} from "../contract-workbench/contract-business-entry-definition";
 import { FileCleanupSeamService } from "../file/file-cleanup-seam.service";
 import { InMemoryVersionedObjectStorage } from "../file/versioned-object-storage";
 import { PrismaService } from "./prisma.service";
@@ -111,8 +119,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       );
       const deletionFormalCode = `HT-DELETE-${suffix}`;
       const tombstoneRaceFormalCode = `HT-RACE-${suffix}`;
-      const tombstoneRaceSourceVersionId =
-        `lifecycle-route-tombstone-race-source-${suffix}-submission-v1`;
+      const tombstoneRaceSourceContractId =
+        `lifecycle-route-tombstone-race-source-${suffix}-submission`;
+      const tombstoneRaceSourceVersionId = `${tombstoneRaceSourceContractId}-v1`;
       const deletionExclusiveFileId = `lifecycle-route-delete-exclusive-file-${suffix}`;
       const deletionSharedFileId = `lifecycle-route-delete-shared-file-${suffix}`;
       const deletionExclusiveObjectKey = `uploads/${deletionExclusiveFileId}.pdf`;
@@ -414,6 +423,14 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           formalFiles,
           authorizations
         );
+        Reflect.set(contractService, "businessEntry", new BusinessEntryTransactionService(
+          createBusinessEntryDefinitionRegistry([
+            CONTRACT_BASIC_ENTRY_DEFINITION,
+            CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION
+          ]),
+          BUSINESS_ENTRY_TRANSACTION_REGISTRY,
+          new PrismaBusinessEntrySnapshotStore(prisma as never, audit)
+        ));
         const deletion = new PristineDraftDeletionService(
           prisma as never,
           new FileCleanupSeamService(prisma as never),
@@ -854,7 +871,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const conflictedContractId = `lifecycle-route-conflict-${submissionSuffix}`;
         const rollbackContractId = `lifecycle-route-rollback-${submissionSuffix}`;
         const tombstonedContractId = `lifecycle-route-tombstoned-${submissionSuffix}`;
-        const tombstoneRaceSourceContractId = `lifecycle-route-tombstone-race-source-${submissionSuffix}`;
         const tombstoneRaceTargetContractId = `lifecycle-route-tombstone-race-target-${submissionSuffix}`;
         const submittedVersionId = `${submittedContractId}-v1`;
         const conflictedVersionId = `${conflictedContractId}-v1`;
@@ -941,6 +957,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               invoiceType: "vat_special",
               taxMode: "single_rate",
               defaultTaxRatePercent: 13,
+              taxFactSource: "contract_document",
               contractGovernanceVersion: 1,
               documentContentRevision: 1,
               documentContentFingerprint: canonicalDocumentContentFingerprint,
@@ -1239,7 +1256,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
 
           const submittedIdempotencyKey = randomUUID();
           const submitted = await submit(submittedFixture, submittedIdempotencyKey);
-          expect(submitted.status).toBe(201);
           const submittedBody = await submitted.json() as {
             approvalInstanceId: string;
             contractVersionId: string;
@@ -1248,6 +1264,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             formalCode: string;
             status: string;
           };
+          expect({ status: submitted.status, body: submittedBody }).toMatchObject({
+            status: 201
+          });
           expect(submittedBody).toMatchObject({
             approvalInstanceId: expect.any(String),
             contractVersionId: submittedVersionId,
@@ -1598,10 +1617,37 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           where: { id: deletionSharedFileId }
         });
         await prisma.contractVersion.deleteMany({
-          where: { contractId: { in: [...contractIds, formalDraftContractId] } }
+          where: {
+            contractId: {
+              in: [
+                ...contractIds,
+                formalDraftContractId,
+                tombstoneRaceSourceContractId
+              ]
+            }
+          }
         });
         await prisma.contract.deleteMany({
-          where: { id: { in: [...contractIds, formalDraftContractId] } }
+          where: {
+            id: {
+              in: [
+                ...contractIds,
+                formalDraftContractId,
+                tombstoneRaceSourceContractId
+              ]
+            }
+          }
+        });
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(
+            "SET LOCAL session_replication_role = replica"
+          );
+          await tx.businessEntrySubmissionSnapshot.deleteMany({
+            where: { projectId }
+          });
+          await tx.$executeRawUnsafe(
+            "SET LOCAL session_replication_role = origin"
+          );
         });
         await prisma.project.deleteMany({ where: { id: projectId } });
         await prisma.position.deleteMany({

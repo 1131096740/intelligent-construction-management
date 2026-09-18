@@ -10,21 +10,17 @@
       </p>
       <div class="account-grid">
         <form
+          v-if="loadedDefinition?.key === 'user_self_profile'"
           class="account-form"
           @submit.prevent="submitProfile"
         >
           <h3>基本资料</h3>
-          <t-input
-            v-model="profileForm.name"
-            label="真实姓名"
-            placeholder="请输入真实姓名"
-            autocomplete="name"
-          />
-          <t-input
-            v-model="profileForm.phone"
-            label="登录手机号"
-            placeholder="请输入中国大陆手机号"
-            autocomplete="tel"
+          <BusinessEntryForm
+            v-if="loadedDefinition?.key === 'user_self_profile'"
+            v-model="profileDraft"
+            :definition="loadedDefinition"
+            :errors="profileErrors"
+            :readonly="profileBusy"
           />
           <t-input
             v-model="profileForm.currentPassword"
@@ -42,6 +38,7 @@
             theme="primary"
             type="submit"
             :loading="profileBusy"
+            :disabled="loadedDefinition?.key !== 'user_self_profile'"
           >
             保存基本资料
           </t-button>
@@ -285,6 +282,11 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
+import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
+import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../api/business-entry.api";
+import { updateProfile } from "../../lib/user-self-profile";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   fetchDraftRetentionPreview,
   getCanvasSignatureCapabilities,
@@ -326,9 +328,10 @@ async function loadRetentionPreview() {
   try {
     retentionPreview.value = await fetchDraftRetentionPreview();
   } catch (error) {
-    retentionError.value = error instanceof Error
-      ? `技术临时数据预览失败：${error.message}`
-      : "技术临时数据预览失败，请稍后重试。";
+    retentionError.value = `技术临时数据预览失败：${formatUnknownApiError(
+      error,
+      "请稍后重试"
+    )}`;
   } finally {
     retentionLoading.value = false;
   }
@@ -345,9 +348,14 @@ const signatureAvailableActions = shallowRef<Array<
 let canvasSignaturePromise: Promise<void> | null = null;
 
 const profileForm = reactive({
-  name: auth.user?.name ?? "",
-  phone: auth.user?.phone ?? "",
   currentPassword: ""
+});
+const loadedDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const profileErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
+const profileDraft = ref<BusinessEntryDraftPayload>({
+  sceneKey: "user_self_profile",
+  target: { entityType: "user_self_profile", entityId: auth.user?.id ?? "" },
+  values: { name: auth.user?.name ?? "", phone: auth.user?.phone ?? "" }
 });
 const profileBusy = ref(false);
 const profileMessage = ref("");
@@ -380,9 +388,7 @@ async function loadSignatureCapabilities() {
   } catch (error) {
     signatureAvailableActions.value = null;
     signatureTone.value = "danger";
-    signatureMessage.value = error instanceof Error
-      ? error.message
-      : "读取手写签名权限失败";
+    signatureMessage.value = formatUnknownApiError(error, "读取手写签名权限失败");
   }
 }
 
@@ -397,6 +403,7 @@ onMounted(async () => {
   updateSignatureMode();
   window.addEventListener("resize", updateSignatureMode);
   await Promise.all([
+    loadProfileDefinition(),
     loadSignature(),
     loadSignatureCapabilities(),
     loadRetentionPreview()
@@ -412,28 +419,75 @@ function clearProfilePassword() {
   profileForm.currentPassword = "";
 }
 
+async function loadProfileDefinition() {
+  try {
+    const loadedProfileDefinition = await fetchBusinessEntryDefinition(
+      "user_self_profile", { scope: "global" }, profileDraft.value.target!, "edit"
+    );
+    if (loadedProfileDefinition.key !== "user_self_profile") throw new Error("本人资料字段暂不可用，请刷新后重试");
+    loadedDefinition.value = loadedProfileDefinition;
+    profileDraft.value = { ...profileDraft.value, definitionVersion: loadedProfileDefinition.version };
+    return loadedProfileDefinition;
+  } catch (error) {
+    loadedDefinition.value = null;
+    profileTone.value = "error";
+    profileMessage.value = formatUnknownApiError(error, "读取本人资料字段失败，请刷新后重试");
+    return null;
+  }
+}
+
 function clearPasswordForm() {
   passwordForm.currentPassword = "";
   passwordForm.newPassword = "";
   passwordForm.confirmPassword = "";
 }
 
+async function readFreshUserSelfProfileDefinition() {
+  return fetchBusinessEntryDefinition(
+    "user_self_profile",
+    { scope: "global" },
+    profileDraft.value.target!,
+    "edit"
+  );
+}
+
+function assertFreshUserSelfProfileDefinition(
+  candidate: BusinessEntrySceneDefinition & { entityId?: string; revision?: number },
+  expectedRevision: number
+) {
+  if (
+    candidate.key !== "user_self_profile" ||
+    (candidate.entityId ?? candidate.entityType) !== "user_self_profile" ||
+    (candidate.revision ?? candidate.version) !== expectedRevision
+  ) {
+    throw new Error("本人资料填写规则已变化，请刷新后重试");
+  }
+}
+
+async function validateUserSelfProfileWithDefinition(payload: BusinessEntryDraftPayload, expectedRevision: number) {
+  const definition = await readFreshUserSelfProfileDefinition();
+  assertFreshUserSelfProfileDefinition(definition, expectedRevision);
+  return validateBusinessEntryDraft({ scope: "global" }, {
+    ...payload,
+    definitionVersion: definition.version
+  }, "edit");
+}
+
+async function commitUserSelfProfileWithDefinition(
+  name: string,
+  phone: string,
+  currentPassword: string,
+  expectedRevision: number
+) {
+  const definition = await readFreshUserSelfProfileDefinition();
+  assertFreshUserSelfProfileDefinition(definition, expectedRevision);
+  return updateProfile(name, phone, currentPassword);
+}
+
 async function submitProfile() {
+  if (profileBusy.value) return;
   profileMessage.value = "";
-  const name = profileForm.name.trim();
-  const phone = profileForm.phone.trim();
-  if (!name) {
-    profileTone.value = "error";
-    profileMessage.value = "请输入真实姓名";
-    clearProfilePassword();
-    return;
-  }
-  if (!/^1[3-9]\d{9}$/u.test(phone)) {
-    profileTone.value = "error";
-    profileMessage.value = "请输入正确的中国大陆手机号";
-    clearProfilePassword();
-    return;
-  }
+  profileErrors.value = [];
   if (!profileForm.currentPassword) {
     profileTone.value = "error";
     profileMessage.value = "请输入当前密码";
@@ -442,14 +496,37 @@ async function submitProfile() {
 
   profileBusy.value = true;
   try {
-    await auth.updateProfile(name, phone, profileForm.currentPassword);
-    profileForm.name = auth.user?.name ?? name;
-    profileForm.phone = auth.user?.phone ?? phone;
+    if (!loadedDefinition.value) throw new Error("本人资料填写规则尚未加载");
+    const expectedRevision = loadedDefinition.value.version;
+    const payload = {
+      ...profileDraft.value,
+      definitionVersion: expectedRevision,
+      values: {
+        name: String(profileDraft.value.values.name ?? "").trim(),
+        phone: String(profileDraft.value.values.phone ?? "").trim()
+      }
+    };
+    const validation = await validateUserSelfProfileWithDefinition(payload, expectedRevision);
+    profileErrors.value = validation.errors;
+    if (!validation.valid) {
+      profileTone.value = "error";
+      profileMessage.value = validation.errors
+        .map((validationError) => validationError.message)
+        .join("；");
+      return;
+    }
+    await commitUserSelfProfileWithDefinition(
+      String(payload.values.name ?? ""),
+      String(payload.values.phone ?? ""),
+      profileForm.currentPassword,
+      expectedRevision
+    );
+    profileDraft.value = { ...payload, values: { name: auth.user?.name ?? payload.values.name, phone: auth.user?.phone ?? payload.values.phone } };
     profileTone.value = "success";
     profileMessage.value = "基本资料已更新，下次请使用新手机号登录。";
   } catch (error) {
     profileTone.value = "error";
-    profileMessage.value = error instanceof Error ? error.message : "修改账号资料失败";
+    profileMessage.value = formatUnknownApiError(error, "修改账号资料失败，请稍后重试");
   } finally {
     clearProfilePassword();
     profileBusy.value = false;
@@ -484,7 +561,7 @@ async function submitPassword() {
     passwordMessage.value = "登录密码已更新。";
   } catch (error) {
     passwordTone.value = "error";
-    passwordMessage.value = error instanceof Error ? error.message : "修改密码失败";
+    passwordMessage.value = formatUnknownApiError(error, "修改密码失败");
   } finally {
     clearPasswordForm();
     passwordBusy.value = false;
@@ -510,7 +587,7 @@ function submitCanvasSignature(signature: File) {
     })
     .catch((error: unknown) => {
       signatureTone.value = "danger";
-      signatureMessage.value = error instanceof Error ? error.message : "保存手写签名失败";
+      signatureMessage.value = formatUnknownApiError(error, "保存手写签名失败");
     })
     .finally(() => {
       signatureBusy.value = false;

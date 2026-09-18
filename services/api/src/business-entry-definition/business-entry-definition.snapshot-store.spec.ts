@@ -189,6 +189,48 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
     expect(saved).toEqual(snapshot);
   });
 
+  it("creates revision 1 when a new target explicitly expects revision 0", async () => {
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(prisma)),
+      businessEntrySubmissionSnapshot: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue(record)
+      }
+    } as unknown as PrismaService;
+    const store = new PrismaBusinessEntrySnapshotStore(
+      prisma,
+      { record: jest.fn() } as never,
+      { updateProfileInTransaction: jest.fn() } as never
+    );
+
+    await expect(store.saveStandalone("project-1", "user-1", snapshot, 0))
+      .resolves.toMatchObject({ revision: 1 });
+    expect(prisma.businessEntrySubmissionSnapshot.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ revision: 1 }) })
+    );
+  });
+
+  it("rejects a stale revision 0 expectation when the target already has a snapshot", async () => {
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(prisma)),
+      businessEntrySubmissionSnapshot: {
+        findMany: jest.fn().mockResolvedValue([record]),
+        create: jest.fn()
+      }
+    } as unknown as PrismaService;
+    const store = new PrismaBusinessEntrySnapshotStore(
+      prisma,
+      { record: jest.fn() } as never,
+      { updateProfileInTransaction: jest.fn() } as never
+    );
+
+    await expect(store.saveStandalone("project-1", "user-1", {
+      ...snapshot,
+      values: { takeoverStatus: "takeover_completed" }
+    }, 0)).rejects.toThrow("冻结业务字段快照并发竞争未能收敛，请重试");
+    expect(prisma.businessEntrySubmissionSnapshot.create).not.toHaveBeenCalled();
+  });
+
   it("preserves and enforces the explicit project-owned target contract", async () => {
     const formalSnapshot: BusinessEntryFrozenSnapshot = {
       ...snapshot,

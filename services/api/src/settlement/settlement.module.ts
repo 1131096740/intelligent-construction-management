@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
@@ -31,6 +32,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
 
 @Module({
   imports: [
+    BusinessEntryTransactionModule,
     ApprovalModule,
     AuditModule,
     AuthModule,

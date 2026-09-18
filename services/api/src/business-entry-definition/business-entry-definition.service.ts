@@ -46,6 +46,7 @@ import {
 } from "./business-entry-create-target.service";
 import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
+import { validateUserSelfProfile } from "./user-self-profile-validation";
 
 export const BUSINESS_ENTRY_DEFINITION_REGISTRY = Symbol(
   "BUSINESS_ENTRY_DEFINITION_REGISTRY"
@@ -167,6 +168,30 @@ export class BusinessEntryDefinitionService {
       roleKeys,
       actorUserId,
       input
+    );
+  }
+
+  async validateDraftInTransaction(
+    tx: Prisma.TransactionClient,
+    sceneKey: string,
+    projectId: string,
+    actorUserId: string,
+    input: BusinessEntryDraftRequest
+  ): Promise<BusinessEntryValidationResult> {
+    const { access, roleKeys } = await this.authorizeScene(
+      sceneKey,
+      projectId,
+      actorUserId,
+      tx
+    );
+    return this.validateDraftWithAuthorizedRoles(
+      sceneKey,
+      projectId,
+      access,
+      roleKeys,
+      actorUserId,
+      input,
+      tx
     );
   }
 
@@ -467,6 +492,9 @@ export class BusinessEntryDefinitionService {
       values: input.values,
       tx
     });
+    if (sceneKey === "project_create" || sceneKey === "project_participating_company_deactivate") {
+      throw new BadRequestException("该场景须通过原领域提交入口在同一事务中冻结");
+    }
     try {
       const snapshot = this.registry.freezeSubmissionSnapshot(
         payload,
@@ -526,7 +554,8 @@ export class BusinessEntryDefinitionService {
     access: BusinessEntrySceneAccessPolicy,
     roleKeys: readonly BusinessEntryPermissionKey[],
     actorUserId: string,
-    input: BusinessEntryDraftRequest
+    input: BusinessEntryDraftRequest,
+    tx?: Prisma.TransactionClient
   ) {
     const payload = this.payload(sceneKey, input);
     await this.assertTargetScope(
@@ -536,7 +565,8 @@ export class BusinessEntryDefinitionService {
       access,
       payload.target,
       input.operation ?? "edit",
-      sceneKey === "business_party" ? "submission" : undefined
+      sceneKey === "business_party" ? "submission" : undefined,
+      tx
     );
     await this.authorization.assertAuthorized({
       sceneKey,
@@ -545,13 +575,15 @@ export class BusinessEntryDefinitionService {
       operation: input.operation ?? "edit",
       scope: access.target.scope,
       target: payload.target!,
-      values: input.values
+      values: input.values,
+      tx
     });
-    return this.registry.validateDraft(
+    const result = this.registry.validateDraft(
       payload,
       roleKeys as readonly RoleKey[],
       input.operation ?? "edit"
     );
+    return sceneKey === "user_self_profile" ? validateUserSelfProfile(result) : result;
   }
 
   private async authorizeScene(
@@ -685,7 +717,22 @@ export class BusinessEntryDefinitionService {
       if (!isBusinessEntryExistingTarget(target)) {
         throw new BadRequestException("项目业务场景必须绑定已存在的业务对象");
       }
-      if (target.entityId !== projectId) {
+      const belongsToProject = access.target.resolve
+        ? await access.target.resolve({
+            target,
+            projectId,
+            actorUserId,
+            operation,
+            scene: sceneKey,
+            scope: access.target.scope,
+            prisma: tx ?? this.prisma
+          })
+        : sceneKey === "project_participating_company_deactivate"
+          ? Boolean(await (tx ?? this.prisma).projectParticipatingCompany.findFirst({
+              where: { id: target.entityId, projectId }, select: { id: true }
+            }))
+          : target.entityId === projectId;
+      if (!belongsToProject) {
         throw new BadRequestException("提交对象不属于当前项目");
       }
     }
@@ -715,6 +762,7 @@ export class BusinessEntryDefinitionService {
     }
     if (access.target.scope === "global" && !await access.target.resolve!({
       target,
+      projectId,
       actorUserId,
       operation,
       scene: sceneKey,

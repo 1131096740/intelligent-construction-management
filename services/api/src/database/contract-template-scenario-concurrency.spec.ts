@@ -472,7 +472,10 @@ describe("contract template scenario PostgreSQL concurrency", () => {
     expect(runner).toMatch(/dockerCommand\(\s*\[\s*"exec"/u);
     expect(runner).toMatch(/dockerCommand\(\s*\["rm"/u);
     expect(runner).toContain(
-      "waitForPostgres(containerName, dockerCommand)"
+      "waitForPostgres(\n        containerName,\n        databasePort,\n        dockerCommand\n      )"
+    );
+    expect(runner).toContain(
+      "waitForHost({ host: \"127.0.0.1\", port: databasePort })"
     );
     expect(runner).not.toMatch(/command\(\s*docker\s*,/u);
   });

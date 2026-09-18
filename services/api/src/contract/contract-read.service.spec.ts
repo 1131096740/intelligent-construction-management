@@ -1243,6 +1243,7 @@ describe("ContractReadService", () => {
 
   it("displays temporaryCode when contract has no formal code and tolerates empty payment stages", async () => {
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-draft-1",
@@ -1326,6 +1327,7 @@ describe("ContractReadService", () => {
   it("selects the readable effective version when a newer private draft belongs to another handler", async () => {
     const now = new Date("2026-08-05T02:00:00.000Z");
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1423,6 +1425,7 @@ describe("ContractReadService", () => {
   it("returns a permissioned ended application history with no edit capability", async () => {
     const now = new Date("2026-08-08T10:00:00.000Z");
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-ended",
@@ -1503,6 +1506,7 @@ describe("ContractReadService", () => {
 
   it("builds contract detail from persisted contract version and payment terms", async () => {
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1819,6 +1823,7 @@ describe("ContractReadService", () => {
       cumulativeDecreaseCents: 0n
     };
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1866,6 +1871,7 @@ describe("ContractReadService", () => {
 
   it("exposes enabled archive confirmation action for contract directors", async () => {
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1981,6 +1987,7 @@ describe("ContractReadService", () => {
 
   it("summarizes contract settlement and payment ledger without inventing payment term availability", async () => {
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -2164,6 +2171,7 @@ describe("ContractReadService", () => {
   it("separates historical takeover amounts in contract settlement payment summary", async () => {
     const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -2262,6 +2270,7 @@ describe("ContractReadService", () => {
 
   it("labels contract advance payment rows without settlement", async () => {
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -3099,6 +3108,7 @@ describe("ContractReadService", () => {
       contractGovernanceVersion: null
     };
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-takeover",
@@ -3195,6 +3205,7 @@ describe("ContractReadService", () => {
       contractGovernanceVersion: null
     };
     const prisma = {
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-submitted",

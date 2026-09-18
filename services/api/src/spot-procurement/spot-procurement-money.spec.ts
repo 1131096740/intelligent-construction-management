@@ -355,6 +355,28 @@ describe("spot procurement runtime DTO validation", () => {
     expect(result).not.toHaveProperty("totalAmountCents");
   });
 
+  it("accepts both entry definition versions together and rejects partial or forged coordinates", async () => {
+    await expect(validateBody({
+      projectId: "project-1",
+      ...validDraft,
+      entryDefinitionVersions: { application: 1, line: 1 }
+    }, CreateSpotProcurementDto)).resolves.toBeInstanceOf(CreateSpotProcurementDto);
+
+    const partial = await getValidationResponse({
+      projectId: "project-1",
+      ...validDraft,
+      entryDefinitionVersions: { application: 1 }
+    }, CreateSpotProcurementDto);
+    const forged = await getValidationResponse({
+      projectId: "project-1",
+      ...validDraft,
+      target: { entityType: "spot_procurement_version", entityId: "forged" }
+    }, CreateSpotProcurementDto);
+
+    expect(partial.errors).toContain("明细定义版本必须是整数");
+    expect(forged.errors).toContain("target 不是允许提交的字段");
+  });
+
   it("lets draft updates reuse draft content without accepting project or code", async () => {
     await expect(
       validateBody(validDraft, UpdateSpotProcurementDraftDto)

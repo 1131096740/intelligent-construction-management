@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type {
+  BusinessEntryFrozenSnapshot,
+  BusinessEntrySceneDefinition,
   ContractPaymentApplicationPreviewReadModel,
   CoreFlowTone,
   DetailActionReadModel,
@@ -7,6 +9,7 @@ import type {
   RoleKey
 } from "@jiangkong/shared-domain";
 import {
+  canPerform,
   directPaymentAmountNature,
   isContractSettlementMode
 } from "@jiangkong/shared-domain";
@@ -41,6 +44,7 @@ import {
   sumMoneyCents
 } from "./settlement-payment-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
+import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
 
 type PaymentDetailLifecycleProjection = {
   lifecycleKind: "approval_draft" | "formal_record";
@@ -1098,8 +1102,39 @@ export class PaymentReadService {
       blockedReasons.push("付款申请版本信息未读取，刷新详情后再试");
     }
 
+    const financeSnapshots = financeRecords.length && canPerform("payment.finance_record", roleKeys)
+      ? await this.prisma.businessEntrySubmissionSnapshot.findMany({
+          where: { projectId: payment.projectId, sceneKey: "payment_finance_record", entityType: "finance_record", entityId: { in: financeRecords.map((record) => record.id) } },
+          orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
+        }) : [];
+    const financeHistory: BusinessEntryFrozenSnapshot[] = financeSnapshots.map((snapshot) => ({
+      sceneKey: snapshot.sceneKey,
+      target: { projectId: payment.projectId, entityType: snapshot.entityType, entityId: snapshot.entityId },
+      revision: snapshot.revision, definitionVersion: snapshot.definitionVersion,
+      definition: snapshot.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
+      values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
+    }));
+    const requestSnapshotStore = (this.prisma as unknown as { businessEntrySubmissionSnapshot?: {
+      findMany(args: object): Promise<Array<{
+        sceneKey: string; entityType: string; entityId: string; revision: number; definitionVersion: number;
+        definitionSnapshot: unknown; valuesSnapshot: unknown; frozenAt: Date;
+      }>>;
+    } }).businessEntrySubmissionSnapshot;
+    const requestSnapshots = requestSnapshotStore ? await requestSnapshotStore.findMany({
+      where: { projectId: payment.projectId, sceneKey: { in: ["payment_request", "payment_approval_amount"] }, entityType: "payment_request", entityId: payment.id },
+      orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
+    }) : [];
+    const businessEntryHistory: BusinessEntryFrozenSnapshot[] = requestSnapshots.map((snapshot) => ({
+      sceneKey: snapshot.sceneKey,
+      target: { projectId: payment.projectId, entityType: snapshot.entityType, entityId: snapshot.entityId },
+      revision: snapshot.revision, definitionVersion: snapshot.definitionVersion,
+      definition: snapshot.definitionSnapshot as unknown as BusinessEntrySceneDefinition,
+      values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
+    }));
     return {
       id: payment.code,
+      businessEntryHistory,
+      financeEntry: { definition: PAYMENT_FINANCE_ENTRY_DEFINITION, history: financeHistory },
       title: isContractAdvance
         ? `${payment.code} · 合同预付款申请`
         : payment.sourceType === "contract_due"
@@ -1142,6 +1177,9 @@ export class PaymentReadService {
         { label: "付款账期", value: stage ? `${stage.dueDays}天` : "-" },
         { label: "发票要求", value: stage?.requiresInvoice ? "需提供发票" : "不要求发票" },
         { label: "申请金额", value: this.formatMoney(payment.requestedAmountCents) },
+        ...(payment.approvedAmountCents === null
+          ? []
+          : [{ label: "批准金额", value: this.formatMoney(payment.approvedAmountCents) }]),
         ...(paymentDirectSummary?.unlimitedTotal
           ? [
               {

@@ -4,15 +4,18 @@ import type { UploadFile } from "tdesign-vue-next";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
+  fetchSpotProcurementApplicationDefinitions,
   fetchSpotProcurementCapabilities,
   fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurements,
   uploadSpotProcurementCreateFile,
   type SpotProcurementAttachmentPayload,
   type SpotProcurementApplicationTextSuggestionReadModel,
+  type SpotProcurementApplicationDefinitionsReadModel,
   type SpotProcurementCapabilitiesReadModel,
   type SpotProcurementCreateProjectOptionReadModel,
   type SpotProcurementListItemReadModel,
@@ -45,6 +48,7 @@ const applicationTextSuggestions = ref<
   SpotProcurementApplicationTextSuggestionReadModel[]
 >([]);
 const capabilities = ref<SpotProcurementCapabilitiesReadModel | null>(null);
+const entryDefinitions = ref<SpotProcurementApplicationDefinitionsReadModel | null>(null);
 const capabilityBusy = ref(false);
 const createVisible = ref(false);
 const createBusy = ref(false);
@@ -135,6 +139,7 @@ const createDisabledReason = computed(() => {
   if (!capabilities.value.canCreate) {
     return capabilities.value.unavailableReason ?? "当前账号无权在该项目新建零星采购。";
   }
+  if (!entryDefinitions.value) return "零采填写定义尚未读取完成。";
   if (!createForm.applicationDepartment.trim()) return "请填写申请部门。";
   if (!createForm.applicationName.trim()) return "请填写申请人。";
   if (!createForm.requestedArrivalAt) return "请选择要求采购到位日期。";
@@ -244,7 +249,7 @@ async function loadWorkbench(page = 1) {
     listMeta.value = result.pagination;
     serverStatistics.value = result.statistics;
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "零星采购工作台读取失败";
+    loadError.value = formatUnknownApiError(error, "零星采购工作台读取失败");
   } finally {
     loading.value = false;
   }
@@ -255,7 +260,7 @@ async function loadReferenceData() {
   try {
     projects.value = await fetchSpotProcurementCreateProjectOptions();
   } catch (error) {
-    referenceError.value = error instanceof Error ? error.message : "零星采购项目读取失败";
+    referenceError.value = formatUnknownApiError(error, "零星采购项目读取失败");
   }
 }
 
@@ -286,6 +291,7 @@ async function openCreate() {
   if (createForm.projectId) {
     await Promise.all([
       loadCapabilities(createForm.projectId),
+      loadEntryDefinitions(createForm.projectId),
       loadApplicationTextSuggestions(createForm.projectId)
     ]);
   }
@@ -294,12 +300,26 @@ async function openCreate() {
 async function handleCreateProjectChange(value: unknown) {
   createForm.projectId = typeof value === "string" ? value : "";
   capabilities.value = null;
+  entryDefinitions.value = null;
   applicationTextSuggestions.value = [];
   if (createForm.projectId) {
     await Promise.all([
       loadCapabilities(createForm.projectId),
+      loadEntryDefinitions(createForm.projectId),
       loadApplicationTextSuggestions(createForm.projectId)
     ]);
+  }
+}
+
+async function loadEntryDefinitions(projectId: string) {
+  try {
+    const result = await fetchSpotProcurementApplicationDefinitions(projectId);
+    if (projectId === createForm.projectId) entryDefinitions.value = result;
+  } catch (error) {
+    if (projectId === createForm.projectId) {
+      entryDefinitions.value = null;
+      createError.value = formatUnknownApiError(error, "零采填写定义读取失败");
+    }
   }
 }
 
@@ -330,7 +350,7 @@ async function loadCapabilities(projectId: string) {
   } catch (error) {
     if (requestId !== capabilityRequestId) return;
     capabilities.value = null;
-    createError.value = error instanceof Error ? error.message : "项目发起权限读取失败";
+    createError.value = formatUnknownApiError(error, "项目发起权限读取失败");
   } finally {
     if (requestId === capabilityRequestId) capabilityBusy.value = false;
   }
@@ -364,6 +384,12 @@ async function saveDraft() {
     }
     const result = await createSpotProcurementDraftWithCapability(projectId, {
       projectId,
+      entryDefinitionVersions: entryDefinitions.value
+        ? {
+            application: entryDefinitions.value.application.version,
+            line: entryDefinitions.value.line.version
+          }
+        : undefined,
       applicationDepartment: requiredText(createForm.applicationDepartment, "申请部门"),
       applicationName: requiredText(createForm.applicationName, "申请人"),
       requestedArrivalAt: createForm.requestedArrivalAt,
@@ -383,7 +409,7 @@ async function saveDraft() {
     await MessagePlugin.success(`零星材料采购草稿已保存，采购申请单号为 ${result.code}。`);
     await router.push(`/零星采购/${encodeURIComponent(result.procurementId)}`);
   } catch (error) {
-    createError.value = error instanceof Error ? error.message : "零星采购草稿保存失败";
+    createError.value = formatUnknownApiError(error, "零星采购草稿保存失败");
   } finally {
     createBusy.value = false;
   }

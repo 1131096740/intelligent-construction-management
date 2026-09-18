@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { ColumnRegular } from "@revolist/vue3-datagrid";
-import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
+import { computed } from "vue";
+import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import BusinessEntryGrid from "../../../components/BusinessEntryGrid.vue";
 
 export interface ExpenseClaimLineDraft extends Record<string, string> {
   expenseCategory: string;
@@ -13,19 +14,16 @@ export interface ExpenseClaimLineDraft extends Record<string, string> {
   remark: string;
 }
 
-const props = defineProps<{ modelValue: ExpenseClaimLineDraft[]; readonly?: boolean }>();
+const props = defineProps<{ definition: BusinessEntrySceneDefinition; modelValue: ExpenseClaimLineDraft[]; readonly?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: ExpenseClaimLineDraft[]] }>();
 
-const columns: ColumnRegular[] = [
-  { prop: "expenseCategory", name: "费用类别", size: 130 },
-  { prop: "occurredOn", name: "发生日期", size: 130 },
-  { prop: "purpose", name: "用途说明", size: 220 },
-  { prop: "receiptCount", name: "单据张数", size: 110 },
-  { prop: "amountYuan", name: "金额（元，2 位）", size: 150 },
-  { prop: "evidenceType", name: "证据类型", size: 140 },
-  { prop: "noEvidenceReason", name: "无凭证原因", size: 180 },
-  { prop: "remark", name: "备注", size: 160 }
-];
+const definition = computed(() => ({ ...props.definition, fields: props.definition.fields.filter((field) => field.scope === "line") }));
+const drafts = computed<BusinessEntryDraftPayload[]>({
+  get: () => props.modelValue.map((line) => ({ sceneKey: definition.value.key, definitionVersion: definition.value.version, values: { ...line } })),
+  set: (value) => replaceLines(value.map((draft) => Object.fromEntries(
+    Object.entries(draft.values).map(([key, item]) => [key, String(item ?? "")])
+  )))
+});
 
 function emptyLine(): ExpenseClaimLineDraft {
   return {
@@ -79,12 +77,10 @@ defineExpose({ emptyLine });
         添加费用行
       </t-button>
     </header>
-    <JgBusinessGrid
-      :source="modelValue"
-      :columns="columns"
+    <BusinessEntryGrid
+      v-model="drafts"
+      :definition="definition"
       :readonly="readonly"
-      :min-height="280"
-      @update:source="replaceLines"
     />
     <div
       v-if="!readonly && modelValue.length > 1"

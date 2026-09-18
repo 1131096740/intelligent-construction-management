@@ -51,12 +51,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
       };
       const controller = new ExpenseClaimController(claims as never, files as never);
 
-      await controller[method](
-        "claim-1",
-        uploadedFile,
-        { id: "user-1" } as never,
-        "idempotency-1"
-      );
+      await controller[method]("claim-1", uploadedFile, { id: "user-1" } as never, { idempotencyKey: "idempotency-1" });
 
       expect(claims.assertActionAvailable).toHaveBeenCalledWith(
         "claim-1",

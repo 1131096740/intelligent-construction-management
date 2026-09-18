@@ -41,6 +41,12 @@ export interface BusinessEntryFormatRule {
   maxLength?: number;
 }
 
+export interface BusinessEntryExactDecimalStringRule {
+  sign: "nonnegative" | "signed";
+  minimumExclusive?: string;
+  maximumExclusive?: string;
+}
+
 export interface BusinessEntryBulkRule {
   enabled: boolean;
   maxRows?: number;
@@ -75,6 +81,7 @@ export interface BusinessEntryFieldDefinition {
   permissions: BusinessEntryPermissionPolicy;
   visibleWhen?: BusinessEntryVisibilityCondition;
   format?: BusinessEntryFormatRule;
+  exactDecimalString?: BusinessEntryExactDecimalStringRule;
   bulk: BusinessEntryBulkRule;
   excel: BusinessEntryExcelRule;
   group?: string;
@@ -117,6 +124,12 @@ export interface BusinessEntrySceneDefinition {
   name: string;
   description: string;
   version: number;
+  source?: {
+    kind: "contract_business_template_version";
+    id: string;
+    version: number;
+    billKey?: string;
+  };
   fields: readonly BusinessEntryFieldDefinition[];
   rules: readonly BusinessEntryRule[];
   permissions?: BusinessEntryPermissionPolicy;
@@ -334,7 +347,45 @@ function matchesNumericStringPrecision(value: string, precision: number): boolea
   return match !== null && (match[1]?.length ?? 0) <= precision;
 }
 
-function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown): BusinessEntryValidationError | null {
+function compareUnsignedDecimalStrings(left: string, right: string): number | null {
+  const leftMatch = /^(\d+)(?:\.(\d+))?$/.exec(left);
+  const rightMatch = /^(\d+)(?:\.(\d+))?$/.exec(right);
+  if (!leftMatch || !rightMatch) return null;
+  const leftInteger = leftMatch[1].replace(/^0+(?=\d)/, "");
+  const rightInteger = rightMatch[1].replace(/^0+(?=\d)/, "");
+  if (leftInteger.length !== rightInteger.length) return leftInteger.length < rightInteger.length ? -1 : 1;
+  if (leftInteger !== rightInteger) return leftInteger < rightInteger ? -1 : 1;
+  const scale = Math.max(leftMatch[2]?.length ?? 0, rightMatch[2]?.length ?? 0);
+  const leftFraction = (leftMatch[2] ?? "").padEnd(scale, "0");
+  const rightFraction = (rightMatch[2] ?? "").padEnd(scale, "0");
+  return leftFraction === rightFraction ? 0 : leftFraction < rightFraction ? -1 : 1;
+}
+
+function isCanonicalUnsignedDecimalBoundary(value: string): boolean {
+  return /^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/.test(value);
+}
+
+function validateExactDecimalString(
+  value: unknown,
+  precision: number,
+  rule: BusinessEntryExactDecimalStringRule
+): "valid" | "invalid_type" | "invalid_format" {
+  if (typeof value !== "string") return "invalid_type";
+  const match = (rule.sign === "signed" ? /^-?(\d+)(?:\.(\d+))?$/ : /^(\d+)(?:\.(\d+))?$/).exec(value);
+  if (!match) return "invalid_type";
+  if ((match[2]?.length ?? 0) > precision) return "invalid_format";
+  if (rule.minimumExclusive) {
+    const comparison = value.startsWith("-") ? null : compareUnsignedDecimalStrings(value, rule.minimumExclusive);
+    if (comparison === null || comparison <= 0) return "invalid_format";
+  }
+  if (rule.maximumExclusive) {
+    const comparison = value.startsWith("-") ? null : compareUnsignedDecimalStrings(value, rule.maximumExclusive);
+    if (comparison === null || comparison >= 0) return "invalid_format";
+  }
+  return "valid";
+}
+
+function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown, contractTemplateScalar = false): BusinessEntryValidationError | null {
   const invalid = (
     code: "invalid_type" | "invalid_option" | "invalid_format",
     message: string
@@ -343,6 +394,20 @@ function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown)
     message,
     fieldKey: field.key
   });
+
+  // Existing contract templates have their own published scalar contract. Do not
+  // retrofit static-scene precision/date/option restrictions onto that contract.
+  if (contractTemplateScalar) {
+    const valid = field.type === "boolean"
+      ? typeof value === "boolean"
+      : field.type === "multi_select"
+        ? Array.isArray(value) && value.every((item) => typeof item === "string")
+        : field.type === "number" || field.type === "money"
+          ? (typeof value === "number" && Number.isFinite(value)) ||
+            (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)))
+          : typeof value === "string";
+    return valid ? null : invalid("invalid_type", `${field.label}填写类型不正确`);
+  }
 
   if (field.type === "text" || field.type === "long_text") {
     if (typeof value !== "string") return invalid("invalid_type", `${field.label}必须填写文本`);
@@ -358,6 +423,16 @@ function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown)
     return null;
   }
   if (field.type === "number" || field.type === "money") {
+    if (field.exactDecimalString) {
+      const exactResult = validateExactDecimalString(value, field.precision, field.exactDecimalString);
+      if (exactResult === "valid") return null;
+      return invalid(
+        exactResult,
+        exactResult === "invalid_format"
+          ? `${field.label}超出精度或取值范围`
+          : `${field.label}必须填写普通十进制数字文本`
+      );
+    }
     if (field.type === "money" && typeof value === "string") {
       const trimmed = value.trim();
       const numeric = /^\d+(?:\.\d+)?$/.test(trimmed);
@@ -414,6 +489,14 @@ function validateDefinition(definition: BusinessEntrySceneDefinition): BusinessE
   if (!Number.isSafeInteger(definition.version) || definition.version < 1) {
     throw new BusinessEntryDefinitionError("invalid_definition", "业务场景定义版本必须是正整数");
   }
+  if (definition.source && (
+    definition.source.kind !== "contract_business_template_version" ||
+    !((definition.key === "contract_template_fields" && definition.entityType === "contract_version") ||
+      (definition.key === "contract_bill_row" && definition.entityType === "contract_bill_row" && definition.source.billKey?.trim())) ||
+    !definition.source.id.trim() || definition.source.version !== definition.version
+  )) {
+    throw new BusinessEntryDefinitionError("invalid_definition", "合同模板字段来源不合法");
+  }
 
   const fieldKeys = new Set<string>();
   for (const field of definition.fields) {
@@ -435,6 +518,22 @@ function validateDefinition(definition: BusinessEntrySceneDefinition): BusinessE
     }
     if (!Number.isSafeInteger(field.precision) || field.precision < 0) {
       throw new BusinessEntryDefinitionError("invalid_definition", `业务字段精度不合法：${field.key}`);
+    }
+    if (field.exactDecimalString) {
+      const exact = field.exactDecimalString;
+      const bounds = [exact.minimumExclusive, exact.maximumExclusive].filter(
+        (value): value is string => value !== undefined
+      );
+      if (
+        (field.type !== "number" && field.type !== "money") ||
+        (exact.sign !== "nonnegative" && exact.sign !== "signed") ||
+        bounds.some((value) => !isCanonicalUnsignedDecimalBoundary(value)) ||
+        (bounds.length > 0 && exact.sign !== "nonnegative") ||
+        (exact.minimumExclusive !== undefined && exact.maximumExclusive !== undefined &&
+          (compareUnsignedDecimalStrings(exact.minimumExclusive, exact.maximumExclusive) ?? 0) >= 0)
+      ) {
+        throw new BusinessEntryDefinitionError("invalid_definition", `业务字段精确十进制规则不合法：${field.key}`);
+      }
     }
     if (
       !field.display ||
@@ -628,14 +727,15 @@ export class BusinessEntryDefinitionRegistry {
       }
     }
 
+    const contractTemplateScalar = definition.source?.kind === "contract_business_template_version";
     for (const field of definition.fields) {
-      if (!(field.key in values) && field.defaultValue !== undefined) {
+      if (!contractTemplateScalar && !(field.key in values) && field.defaultValue !== undefined) {
         values[field.key] = cloneValue(field.defaultValue);
       }
       const value = values[field.key];
       const visible = !field.visibleWhen || conditionMatches(field.visibleWhen, values);
       if (!visible) {
-        if (isPresent(value)) {
+        if (!contractTemplateScalar && isPresent(value)) {
           errors.push({
             code: "hidden_field",
             fieldKey: field.key,
@@ -681,7 +781,7 @@ export class BusinessEntryDefinitionRegistry {
         continue;
       }
       if (isPresent(value)) {
-        const error = validateFieldValue(field, value);
+        const error = validateFieldValue(field, value, contractTemplateScalar);
         if (error) errors.push(error);
       }
     }

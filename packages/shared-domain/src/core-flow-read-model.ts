@@ -238,6 +238,10 @@ export interface ProjectExpenseApprovalDetailReadModel {
 }
 
 export interface ContractDetailReadModel {
+  businessEntrySubmissions?: Array<{
+    approvalInstanceId: string;
+    snapshot: import("./business-entry-definition").BusinessEntryFrozenSnapshot;
+  }>;
   id: string;
   contractVersionId: string;
   title: string;
@@ -363,6 +367,7 @@ export interface SettlementLineReadModel {
 }
 
 export interface SettlementDetailReadModel {
+  businessEntryHistory?: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
   id: string;
   settlementId: string;
   title: string;
@@ -387,6 +392,11 @@ export interface SettlementDetailReadModel {
 }
 
 export interface PaymentDetailReadModel {
+  businessEntryHistory?: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
+  financeEntry?: {
+    definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
+    history: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
+  };
   id: string;
   title: string;
   meta: DetailMetaItem[];

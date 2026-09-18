@@ -587,6 +587,7 @@
                 <ContractOverviewSection :workbench="workbench" />
                 <ContractBasicSection
                   mode="basic"
+                  :definition="workbench?.businessEntry?.definition"
                   :model="model"
                   :disabled="editorDisabled"
                   :name-disabled="editorDisabled || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
@@ -667,6 +668,7 @@
               >
                 <ContractBasicSection
                   mode="settlement"
+                  :settlement-definition="workbench?.settlementModeEntry?.definition"
                   :model="model"
                   :disabled="editorDisabled"
                   :settlement-mode="workbench?.settlementMode ?? emptySettlementMode"
@@ -1045,6 +1047,7 @@ import {
   watch
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
 import {
   applyContractTypeChange,
@@ -2063,7 +2066,7 @@ async function loadTemplatesForType(contractTypeKey: string) {
     templateRecords.value = [];
     templateOptions.value = [];
     initializeDraft.setBusinessTemplateVersionId("");
-    errorMessage.value = error instanceof Error ? error.message : "模板加载失败";
+    errorMessage.value = formatUnknownApiError(error, "模板加载失败");
   }
 }
 
@@ -2084,7 +2087,7 @@ async function loadContractTypeOptions() {
       value: typeKey
     }));
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "合同类型加载失败";
+    errorMessage.value = formatUnknownApiError(error, "合同类型加载失败");
   }
 }
 
@@ -2104,7 +2107,7 @@ async function loadProjectOptions() {
     initializeDraft.setProjectId(nextProjectId);
     await loadScenariosForProject(nextProjectId);
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "项目加载失败";
+    errorMessage.value = formatUnknownApiError(error, "项目加载失败");
     projectOptions.value = [];
   } finally {
     projectOptionsLoaded.value = true;
@@ -2143,7 +2146,7 @@ async function loadScenariosForProject(projectId: string) {
       coordinates,
       [initializeDraft.projectId.value]
     )) return;
-    errorMessage.value = error instanceof Error ? error.message : "业务场景加载失败";
+    errorMessage.value = formatUnknownApiError(error, "业务场景加载失败");
   } finally {
     if (canApplyContractScenarioResponse(
       requestId,
@@ -2205,7 +2208,7 @@ async function loadScenarioRecommendation() {
       currentRecommendationCoordinates()
     )) return;
     initializeDraft.setBusinessScenarioSelection(scenarioId, "");
-    errorMessage.value = error instanceof Error ? error.message : "场景模板推荐加载失败";
+    errorMessage.value = formatUnknownApiError(error, "场景模板推荐加载失败");
   } finally {
     if (canApplyContractScenarioResponse(
       requestId,
@@ -2379,7 +2382,7 @@ async function onExistingTypeChange(value: string) {
     migrationVisible.value = true;
   } catch (error) {
     failClosedForAuthorityRefresh(error);
-    errorMessage.value = error instanceof Error ? error.message : "迁移预览失败";
+    errorMessage.value = formatUnknownApiError(error, "迁移预览失败");
   } finally {
     migrationBusy.value = false;
   }
@@ -2422,7 +2425,7 @@ async function onConfirmMigration() {
     await loadExpectedWorkbench(contractId.value);
   } catch (error) {
     failClosedForAuthorityRefresh(error);
-    errorMessage.value = error instanceof Error ? error.message : "合同类型迁移失败";
+    errorMessage.value = formatUnknownApiError(error, "合同类型迁移失败");
   } finally {
     migrationBusy.value = false;
   }
@@ -2438,7 +2441,7 @@ async function onCreateDraft() {
   try {
     await initializeDraft.commit();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "创建草稿失败";
+    errorMessage.value = formatUnknownApiError(error, "创建草稿失败");
   } finally {
     creating.value = false;
   }
@@ -2458,9 +2461,10 @@ async function onSave() {
   try {
     saved = await saveNow();
   } catch (error) {
-    errorMessage.value = error instanceof Error
-      ? error.message
-      : "合同草稿未保存成功，已保留当前内容，请重试。";
+    errorMessage.value = formatUnknownApiError(
+      error,
+      "合同草稿未保存成功，已保留当前内容，请重试。"
+    );
     return;
   }
   if (!saved) {
@@ -2473,9 +2477,10 @@ async function onSave() {
       await loadExpectedWorkbench(contractId.value);
       refreshedAuthorityAfterSave = true;
     } catch (error) {
-      errorMessage.value = error instanceof Error
-        ? `合同内容已保存，但工作台刷新失败：${error.message}`
-        : "合同内容已保存，但工作台刷新失败，请刷新页面后继续编辑。";
+      errorMessage.value = `合同内容已保存，但工作台刷新失败：${formatUnknownApiError(
+        error,
+        "请刷新页面后继续编辑"
+      )}`;
       return;
     }
   }
@@ -2516,9 +2521,10 @@ async function onSave() {
     try {
       await loadExpectedWorkbench(contractId.value);
     } catch (error) {
-      errorMessage.value = error instanceof Error
-        ? `合同内容已保存，但正式编号读取失败：${error.message}`
-        : "合同内容已保存，但正式编号读取失败，请刷新页面重试。";
+      errorMessage.value = `合同内容已保存，但正式编号读取失败：${formatUnknownApiError(
+        error,
+        "请刷新页面重试"
+      )}`;
     }
   }
 }
@@ -2542,9 +2548,10 @@ async function onConfirmSettlementMode(mode: ContractSettlementMode) {
   } catch (error) {
     failClosedForAuthorityRefresh(error);
     await completeGovernanceMutation(false);
-    errorMessage.value = error instanceof Error
-      ? error.message
-      : "确认合同结算方式失败，请稍后重试。";
+    errorMessage.value = formatUnknownApiError(
+      error,
+      "确认合同结算方式失败，请稍后重试。"
+    );
   } finally {
     settlementModeConfirming.value = false;
   }
@@ -2639,9 +2646,7 @@ function executeFocusedBillRemainderCancellation(
         } catch (error) {
           return {
             saved: false,
-            error: error instanceof Error
-              ? error.message
-              : "合同草稿未保存成功"
+            error: formatUnknownApiError(error, "合同草稿未保存成功")
           };
         }
       },
@@ -2763,9 +2768,10 @@ async function confirmLeaseTakeover(values: { password: string }) {
     }
     leaseTakeoverVisible.value = false;
   } catch (error) {
-    leaseTakeoverError.value = error instanceof Error
-      ? error.message
-      : "编辑租约接管失败，请稍后重试。";
+    leaseTakeoverError.value = formatUnknownApiError(
+      error,
+      "编辑租约接管失败，请稍后重试。"
+    );
   } finally {
     leaseTakeoverBusy.value = false;
   }
@@ -2813,9 +2819,10 @@ async function confirmSubmission() {
     await router.push(`/contracts/${latest.contract.id}`);
   } catch (error) {
     failClosedForAuthorityRefresh(error);
-    submissionError.value = error instanceof Error
-      ? error.message
-      : "合同提交失败，已保留当前草稿，请按提示处理后重试。";
+    submissionError.value = formatUnknownApiError(
+      error,
+      "合同提交失败，已保留当前草稿，请按提示处理后重试。"
+    );
   } finally {
     submissionBusy.value = false;
     governanceMutationLocked.value = false;
@@ -2854,7 +2861,7 @@ async function onConfirmTransfer() {
     await loadExpectedWorkbench(id);
   } catch (error) {
     failClosedForAuthorityRefresh(error);
-    errorMessage.value = error instanceof Error ? error.message : "转移失败";
+    errorMessage.value = formatUnknownApiError(error, "转移失败");
   }
 }
 
@@ -2876,7 +2883,7 @@ async function loadExisting() {
     const code = error && typeof error === "object" && "code" in error
       ? String(error.code)
       : "";
-    const message = error instanceof Error ? error.message : "";
+    const message = formatUnknownApiError(error, "");
     if (
       code === "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED" ||
       message.includes("历史接管草稿必须在历史接管工作台办理")
@@ -2892,13 +2899,13 @@ async function loadExisting() {
     }
     if (
       error instanceof Error &&
-      error.message.includes("响应版本与请求版本不一致")
+      message.includes("响应版本与请求版本不一致")
     ) {
       exactVersionError.value =
         "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
       clearAuthoritySnapshot();
     }
-    errorMessage.value = error instanceof Error ? error.message : "工作台加载失败";
+    errorMessage.value = formatUnknownApiError(error, "工作台加载失败");
   }
 }
 

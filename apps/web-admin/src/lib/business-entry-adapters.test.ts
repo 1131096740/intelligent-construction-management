@@ -105,6 +105,17 @@ afterEach(() => {
 });
 
 describe("business entry adapters", () => {
+  it("preserves exact contract template scalar values including hidden values", () => {
+    const templateDefinition: BusinessEntrySceneDefinition = {
+      ...definition, key: "contract_template_fields", entityType: "contract_version",
+      source: { kind: "contract_business_template_version", id: "template-v3", version: 3 },
+      fields: [{ ...definition.fields[0]!, type: "number", key: "quantity",
+        visibleWhen: { fieldKey: "enabled", operator: "eq", value: true } }]
+    };
+    const values = { quantity: " -1.234e-7 ", enabled: false };
+    expect(businessEntryDraftFromForm(templateDefinition, target, values).values).toEqual(values);
+    expect(visibleBusinessEntryValues(templateDefinition, values)).toEqual(values);
+  });
   it("keeps local date-only values on the selected Shanghai calendar day", () => {
     vi.stubEnv("TZ", "Asia/Shanghai");
     const dateDefinition: BusinessEntrySceneDefinition = {

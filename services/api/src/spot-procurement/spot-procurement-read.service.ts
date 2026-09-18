@@ -658,6 +658,30 @@ export class SpotProcurementReadService {
     if (!currentVersion) {
       throw new ConflictException("零星采购当前版本不存在，请联系管理员核对");
     }
+    const allVersionLines = await this.prisma.spotProcurementLine.findMany({
+      where: { versionId: { in: versions.map((version) => version.id) } },
+      select: { id: true, versionId: true, sortOrder: true }
+    });
+    const versionById = new Map(versions.map((version) => [version.id, version]));
+    const lineById = new Map(allVersionLines.map((line) => [line.id, line]));
+    const entrySnapshots = await this.prisma.businessEntrySubmissionSnapshot.findMany({
+      where: {
+        projectId: procurement.projectId,
+        OR: [
+          {
+            sceneKey: "spot_procurement.application",
+            entityType: "spot_procurement_version",
+            entityId: { in: versions.map((version) => version.id) }
+          },
+          {
+            sceneKey: "spot_procurement.application_line",
+            entityType: "spot_procurement_line",
+            entityId: { in: allVersionLines.map((line) => line.id) }
+          }
+        ]
+      },
+      orderBy: [{ frozenAt: "asc" }, { sceneKey: "asc" }, { entityId: "asc" }]
+    });
     const actualPayment = allPayments.length
       ? await this.prisma.spotProcurementPaymentExecution.findFirst({
           where: {
@@ -914,6 +938,25 @@ export class SpotProcurementReadService {
       versions: versions.map((version) =>
         versionReadModel(version, isRealProcurementForm(version))
       ),
+      entrySnapshots: entrySnapshots.flatMap((snapshot) => {
+        const version = snapshot.sceneKey === "spot_procurement.application"
+          ? versionById.get(snapshot.entityId)
+          : versionById.get(lineById.get(snapshot.entityId)?.versionId ?? "");
+        if (!version) return [];
+        const line = snapshot.sceneKey === "spot_procurement.application_line"
+          ? lineById.get(snapshot.entityId)
+          : undefined;
+        return [{
+          sceneKey: snapshot.sceneKey,
+          versionNo: version.versionNo,
+          lineNumber: line?.sortOrder ?? null,
+          revision: snapshot.revision,
+          definitionVersion: snapshot.definitionVersion,
+          definitionSnapshot: snapshot.definitionSnapshot,
+          valuesSnapshot: snapshot.valuesSnapshot,
+          frozenAt: snapshot.frozenAt.toISOString()
+        }];
+      }),
       lines: lines.map((line) => lineReadModel(line, usesRealProcurementForm)),
       attachments: attachments.flatMap((attachment) => {
         const file = fileById.get(attachment.fileId);

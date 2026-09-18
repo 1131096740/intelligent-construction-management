@@ -530,10 +530,11 @@ describe("PaymentController authorization wiring", () => {
   it("returns a project-scoped payment create capability", () => {
     const controller = new PaymentController({} as never, {} as never, {} as never);
 
-    expect(controller.createCapability("project-1")).toEqual({
+    expect(controller.createCapability("project-1")).toEqual(expect.objectContaining({
       projectId: "project-1",
-      availableActions: ["create_payment"]
-    });
+      availableActions: ["create_payment"],
+      businessEntry: { definition: expect.objectContaining({ key: "payment_request" }) }
+    }));
   });
 
   it("returns fresh payment actions for a visible payment", async () => {

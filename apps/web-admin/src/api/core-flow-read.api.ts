@@ -1,4 +1,6 @@
 import type {
+  BusinessEntrySceneDefinition,
+  BusinessEntryValidationResult,
   ContractBusinessOptionReadModel,
   ContractApprovalWithdrawalContextReadModel,
   ContractWorkbenchLedgerPage,
@@ -361,6 +363,7 @@ export function fetchPaymentDetail(paymentId: string) {
 export interface PaymentCreateCapabilityReadModel {
   projectId: string;
   availableActions: string[];
+  businessEntry?: { definition: import("@jiangkong/shared-domain").BusinessEntrySceneDefinition };
 }
 
 export function fetchPaymentCreateCapability(projectId: string) {
@@ -1665,6 +1668,7 @@ export interface ProjectRosterRowReadModel {
 export interface CreateProjectPayload {
   code: string;
   name: string;
+  definitionVersion?: number;
 }
 
 export interface UpdateProjectPayload {
@@ -2632,6 +2636,11 @@ export function createProject(body: CreateProjectPayload) {
 export interface ProjectActionCapabilityReadModel {
   projectId?: string;
   availableActions: string[];
+  definition?: BusinessEntrySceneDefinition;
+}
+
+export function validateProjectCreation(body: CreateProjectPayload) {
+  return postJson<BusinessEntryValidationResult>("/projects/create-validation", body);
 }
 
 export function fetchProjectCreateCapability() {

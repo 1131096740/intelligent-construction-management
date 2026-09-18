@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import { paymentApprovalAmountEntryValues } from "./payment-approval-amount-business-entry-definition";
+import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
+import { PAYMENT_REQUEST_ENTRY_DEFINITION, paymentRequestEntryValues } from "./payment-request-business-entry-definition";
 import {
   BadRequestException,
   ConflictException,
@@ -350,6 +354,8 @@ const PROJECT_CASH_POOL_PAYMENT_STATUSES = [
 
 @Injectable()
 export class PaymentRequestService {
+  @Inject(BusinessEntryTransactionService)
+  private readonly businessEntry!: BusinessEntryTransactionService;
   constructor(
     private readonly amount: PaymentAmountService,
     @Optional()
@@ -750,7 +756,9 @@ export class PaymentRequestService {
           status: "approval_pending",
           requestedAmountCents: normalizedInput.requestedAmountCents,
           approvedAmountCents: null,
-          paidAmountCents: 0n
+          paidAmountCents: 0n,
+          ...(optionalTrimmedText(normalizedInput.paymentMatter) ? { paymentMatter: optionalTrimmedText(normalizedInput.paymentMatter) } : {}),
+          ...(optionalTrimmedText(normalizedInput.amountCalculationExplanation) ? { amountCalculationExplanation: optionalTrimmedText(normalizedInput.amountCalculationExplanation) } : {})
         }
       });
 
@@ -769,7 +777,15 @@ export class PaymentRequestService {
       }
 
       await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
-      return payment;
+      if (!applicantUserId || !this.businessEntry) return payment;
+      const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+        sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key,
+        definitionVersion: PAYMENT_REQUEST_ENTRY_DEFINITION.version,
+        target: { projectId: payment.projectId, entityType: "payment_request", entityId: payment.id },
+        expectedRevision: 0,
+        values: paymentRequestEntryValues(payment)
+      });
+      return { ...payment, businessEntrySnapshot };
     });
 
     return paymentPostResponseToApi(payment);
@@ -2573,6 +2589,23 @@ export class PaymentRequestService {
           approvedAmountCents,
           actorUserId
         );
+        if (this.businessEntry) {
+          const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(
+            tx,
+            actorUserId,
+            {
+              sceneKey: "payment_approval_amount",
+              definitionVersion: 1,
+              target: {
+                projectId: payment.projectId,
+                entityType: "payment_request",
+                entityId: payment.id
+              },
+              values: paymentApprovalAmountEntryValues(approvedAmountCents)
+            }
+          );
+          Object.assign(approved, { businessEntrySnapshot });
+        }
       }
       await this.audit.record(tx, {
         actorUserId,
@@ -4173,6 +4206,16 @@ export class PaymentRequestService {
           createdByUserId: actorUserId
         }
       });
+      const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, actorUserId, {
+        sceneKey: PAYMENT_FINANCE_ENTRY_DEFINITION.key,
+        definitionVersion: PAYMENT_FINANCE_ENTRY_DEFINITION.version,
+        target: { projectId: payment.projectId, entityType: "finance_record", entityId: financeRecord.id },
+        expectedRevision: 0,
+        values: {
+          amountYuan: `${amountCents / 100n}.${(amountCents % 100n).toString().padStart(2, "0")}`,
+          occurredAt: financeRecord.occurredAt.toISOString()
+        }
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: "payment.finance.record",
@@ -4184,7 +4227,7 @@ export class PaymentRequestService {
           direction: "outflow"
         }
       });
-      return financeRecord;
+      return { ...financeRecord, businessEntrySnapshot };
     });
 
     return paymentPostResponseToApi(financeRecord);

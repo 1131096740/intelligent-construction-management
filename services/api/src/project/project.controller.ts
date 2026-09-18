@@ -55,6 +55,7 @@ import { ProjectAffiliateBusinessService } from "./project-affiliate-business.se
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectService } from "./project.service";
 import { ProjectOperatingProfileService } from "./project-operating-profile.service";
+import { PROJECT_CREATE_DEFINITION } from "./project-base-entry";
 
 @Controller("projects")
 export class ProjectController {
@@ -100,7 +101,13 @@ export class ProjectController {
   @Get("create-capability")
   @RequirePositions("chairman", "general_manager")
   createCapability() {
-    return { availableActions: ["create_project"] };
+    return { availableActions: ["create_project"], definition: PROJECT_CREATE_DEFINITION };
+  }
+
+  @Post("create-validation")
+  @RequirePositions("chairman", "general_manager")
+  validateCreation(@Body() body: CreateProjectDto) {
+    return this.projects.validateCreation(body);
   }
 
   @Patch(":projectId")
@@ -220,6 +227,17 @@ export class ProjectController {
       user.id,
       body
     );
+  }
+
+  @Post(":projectId/participating-companies/:participantId/deactivation/validate")
+  @RequireProjectRole("project.operating_profile.manage")
+  validateParticipatingCompanyDeactivation(
+    @Param("projectId") projectId: string,
+    @Param("participantId") participantId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: DeactivateProjectParticipatingCompanyDto
+  ) {
+    return this.operatingProfileService().validateParticipatingCompanyDeactivation(projectId, participantId, user.id, body);
   }
 
   @Delete(":projectId/participating-companies/:participantId")

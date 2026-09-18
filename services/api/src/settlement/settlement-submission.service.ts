@@ -3,10 +3,21 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Inject,
   Optional,
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
+import {
+  SETTLEMENT_BASIC_ENTRY_DEFINITION,
+  settlementBasicEntryValues
+} from "./settlement-business-entry-definition";
+import { SETTLEMENT_LINE_ENTRY_DEFINITION, settlementLineEntryValues } from "./settlement-line-business-entry-definition";
+import {
+  SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION,
+  settlementLineAttachmentPurposeEntryValues
+} from "./settlement-line-attachment-business-entry-definition";
 import { PrismaService } from "../database/prisma.service";
 import type {
   CreateSettlementDto,
@@ -25,6 +36,9 @@ import {
 
 @Injectable()
 export class SettlementSubmissionService {
+  @Inject(BusinessEntryTransactionService)
+  private readonly businessEntry!: BusinessEntryTransactionService;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementService,
@@ -151,13 +165,47 @@ export class SettlementSubmissionService {
               }
             }
           );
+          const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+            sceneKey: SETTLEMENT_BASIC_ENTRY_DEFINITION.key,
+            definitionVersion: SETTLEMENT_BASIC_ENTRY_DEFINITION.version,
+            target: { projectId, entityType: "settlement", entityId: created.id },
+            expectedRevision: 0,
+            values: settlementBasicEntryValues(draft)
+          });
+          const formalLines = await tx.settlementLine.findMany({
+            where: { settlementId: created.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+          });
+          const businessEntryLineSnapshots = [];
+          for (const line of formalLines) {
+            businessEntryLineSnapshots.push(await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+              sceneKey: SETTLEMENT_LINE_ENTRY_DEFINITION.key,
+              definitionVersion: SETTLEMENT_LINE_ENTRY_DEFINITION.version,
+              target: { projectId, entityType: "settlement_line", entityId: line.id },
+              expectedRevision: 0,
+              values: settlementLineEntryValues(line)
+            }));
+          }
+          const businessEntryLineAttachmentSnapshots = [];
           if (this.lineAttachments) {
-            await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
+            const formalAttachments = await this.lineAttachments.copyActiveDraftAttachmentsToSettlement(
               tx,
               draft.id,
               created.id,
               applicantUserId
             );
+            for (const attachment of formalAttachments) {
+              businessEntryLineAttachmentSnapshots.push(await this.businessEntry.freezeSubmissionSnapshotInTransaction(
+                tx,
+                applicantUserId,
+                {
+                  sceneKey: SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION.key,
+                  definitionVersion: SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION.version,
+                  target: { projectId, entityType: "settlement_line_attachment", entityId: attachment.id },
+                  expectedRevision: 0,
+                  values: settlementLineAttachmentPurposeEntryValues(attachment)
+                }
+              ));
+            }
           }
           const marked = await tx.settlementDraft.updateMany({
             where: {
@@ -177,7 +225,7 @@ export class SettlementSubmissionService {
           if (draft.processId) {
             await this.processes?.linkSettlement(tx, draft.processId, draft.id, created.id);
           }
-          return created;
+          return { ...created, businessEntrySnapshot, businessEntryLineSnapshots, businessEntryLineAttachmentSnapshots };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );

@@ -10,6 +10,7 @@ function transactionPrisma(tx: object) {
 describe("ProjectOperatingProfileService", () => {
   it("reads the two independent dates, locked construction enterprise, and participant history", async () => {
     const prisma = {
+      businessEntrySubmissionSnapshot: { findMany: jest.fn().mockResolvedValue([]) },
       project: { findUnique: jest.fn().mockResolvedValue({
         id: "project-1",
         operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z"),
@@ -41,7 +42,7 @@ describe("ProjectOperatingProfileService", () => {
     };
     const service = new ProjectOperatingProfileService(prisma as never);
 
-    await expect(service.getProfile("project-1", "finance-1")).resolves.toEqual({
+    await expect(service.getProfile("project-1", "finance-1")).resolves.toMatchObject({
       projectId: "project-1",
       operatingLedgerEffectiveDate: "2026-08-01",
       takeoverCompletedDate: "2026-08-12",
@@ -428,6 +429,7 @@ describe("ProjectOperatingProfileService", () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-08-14T00:00:00.000Z"));
     const endedAt = new Date("2026-08-20T00:00:00.000Z");
     const tx = {
+      businessEntrySubmissionSnapshot: { create: jest.fn().mockResolvedValue({ id: "snapshot-1" }) },
       user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -525,6 +527,7 @@ describe("ProjectOperatingProfileService", () => {
   it("marks a participant inactive from the start of its Shanghai business stop date", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-08-19T17:00:00.000Z"));
     const prisma = {
+      businessEntrySubmissionSnapshot: { findMany: jest.fn().mockResolvedValue([]) },
       project: { findUnique: jest.fn().mockResolvedValue({
         id: "project-1", operatingLedgerEffectiveDate: null, takeoverCompletedDate: null,
         takeoverStatus: "preparing", constructionEnterpriseLockedAt: null
@@ -552,6 +555,7 @@ describe("ProjectOperatingProfileService", () => {
   it("marks a future participation start as awaiting activation", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-08-14T00:00:00.000Z"));
     const prisma = {
+      businessEntrySubmissionSnapshot: { findMany: jest.fn().mockResolvedValue([]) },
       project: { findUnique: jest.fn().mockResolvedValue({
         id: "project-1", operatingLedgerEffectiveDate: null, takeoverCompletedDate: null,
         takeoverStatus: "preparing", constructionEnterpriseLockedAt: null

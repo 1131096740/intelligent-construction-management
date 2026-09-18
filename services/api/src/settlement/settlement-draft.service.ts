@@ -29,6 +29,11 @@ import {
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 import { settlementSourceSnapshotToken } from "./settlement-line-occupancy";
 import {
+  settlementBasicEntryDefinition,
+  settlementBasicEntryValues
+} from "./settlement-business-entry-definition";
+import { settlementLineEntryDefinition, settlementLineEntryValues } from "./settlement-line-business-entry-definition";
+import {
   isSettlementDraftSerializationConflict,
   loadSettlementDraftLifecycle,
   loadSettlementDraftLifecycles,
@@ -244,13 +249,25 @@ export class SettlementDraftService {
       this.draftDocuments(draftId),
       loadSettlementDraftLifecycle(this.prisma, draft!)
     ]);
+    const draftLines = await this.prisma.settlementDraftLine.findMany({
+      where: { settlementDraftId: draftId, status: "active" }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+    });
     return {
       ...this.readModel(
         draft!,
         settlementContractTypeBlockReason(contract?.contractTypeKey),
         lifecycle
       ),
-      documents
+      documents,
+      businessEntry: {
+        definition: settlementBasicEntryDefinition(draft!),
+        values: settlementBasicEntryValues(draft!)
+      },
+      businessEntryLines: draftLines.map((line) => ({
+        lineKey: line.lineKey,
+        definition: settlementLineEntryDefinition(line),
+        values: settlementLineEntryValues(line)
+      }))
     };
   }
 

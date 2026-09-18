@@ -302,6 +302,64 @@
       ]
     },
     {
+      "id": "user-self-profile.update",
+      "usage": "background",
+      "routePaths": ["/系统配置"],
+      "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "validateUserSelfProfileWithDefinition" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "fresh actor",
+            "company": "fresh company",
+            "scene": "fresh scene",
+            "action": "fresh action",
+            "definitionRevision": "fresh definition revision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/business-entry.api.ts", "name": "validateBusinessEntryDraft" }
+      ]
+    },
+    {
+      "id": "user-self-profile.update.commit",
+      "usage": "background",
+      "routePaths": ["/系统配置"],
+      "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "commitUserSelfProfileWithDefinition" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "fresh actor",
+            "company": "fresh company",
+            "scene": "fresh scene",
+            "action": "fresh action",
+            "definitionRevision": "fresh definition revision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/lib/user-self-profile.ts", "name": "updateProfile" }
+      ]
+    },
+    {
       "id": "signature.upload-canvas",
       "usage": "page_action",
       "routePaths": [
@@ -3140,6 +3198,35 @@
       ]
     },
     {
+      "id": "spot-procurement-payment.refund.record",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "submitRefund"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "fresh.currentTask",
+        "key": "record_refund"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "uploadSpotProcurementRefundVoucherForPayment"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "recordSpotProcurementRefundForPayment"
+        }
+      ]
+    },
+    {
       "id": "spot-procurement-payment.review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -4173,6 +4260,18 @@
       ]
     },
     {
+      "id": "project-create.validate",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "validateProjectCreationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_project" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "validateProjectCreation" }
+      ]
+    },
+    {
       "id": "project.create",
       "usage": "background",
       "routePaths": ["/项目经营"],
@@ -4414,6 +4513,35 @@
       ]
     },
     {
+      "id": "project.rename.validate",
+      "usage": "page_action",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+      "trigger": { "element": "t-button", "event": "click", "handler": "submit" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "fresh actor",
+            "company": "fresh company",
+            "scene": "fresh scene",
+            "action": "fresh action",
+            "definitionRevision": "fresh definition revision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/business-entry.api.ts", "name": "validateBusinessEntryDraft" }
+      ]
+    },
+    {
       "id": "project-operating-profile.save",
       "usage": "page_action",
       "routePaths": ["/项目经营"],
@@ -4422,6 +4550,7 @@
       "semantic": "business_write",
       "capability": { "kind": "server_boolean", "source": "profile.canManage" },
       "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/business-entry.api.ts", "name": "validateBusinessEntryDraft" },
         { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "updateProjectOperatingProfile" }
       ]
     },
@@ -4434,6 +4563,7 @@
       "semantic": "business_write",
       "capability": { "kind": "server_boolean", "source": "profile.canManage" },
       "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/business-entry.api.ts", "name": "validateBusinessEntryDraft" },
         { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "assignProjectConstructionEnterprise" }
       ]
     },
@@ -4446,6 +4576,7 @@
       "semantic": "business_write",
       "capability": { "kind": "server_boolean", "source": "profile.canManage" },
       "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/business-entry.api.ts", "name": "validateBusinessEntryDraft" },
         { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "addProjectParticipatingCompany" }
       ]
     },
@@ -4458,6 +4589,7 @@
       "semantic": "business_write",
       "capability": { "kind": "server_boolean", "source": "profile.canManage" },
       "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "validateProjectParticipatingCompanyDeactivation" },
         { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "deactivateProjectParticipatingCompany" }
       ]
     },

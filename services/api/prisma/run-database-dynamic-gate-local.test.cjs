@@ -26,6 +26,12 @@ const {
   probePostgresReady
 } = require("./verify-fund-execution-v7.cjs");
 const {
+  waitForLocalTcpReady
+} = require("./wait-for-local-tcp-ready.cjs");
+const {
+  waitForPostgres: waitForContractTemplateScenarioPostgres
+} = require("./run-contract-template-scenario-concurrency-local.cjs");
+const {
   CURRENT_PROCESS_DYNAMIC_TESTS,
   assertCanonicalMigrationBaseline: assertPol275CanonicalMigrationBaseline,
   assertSafeEnvironment: assertPol275SafeEnvironment,
@@ -68,18 +74,78 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(finalCalls[1].includes("pg_isready"), true);
 });
 
-test("manifest derives all 243 pending tests as executable local coverage", () => {
+test("POL-115 host-port readiness retries until the published loopback port accepts", async () => {
+  let probes = 0;
+  let sleeps = 0;
+
+  await waitForLocalTcpReady({
+    host: "127.0.0.1",
+    port: 54321,
+    attempts: 3,
+    probe: async () => ++probes === 3,
+    sleep: async () => {
+      sleeps += 1;
+    }
+  });
+
+  assert.equal(probes, 3);
+  assert.equal(sleeps, 2);
+  await assert.rejects(
+    waitForLocalTcpReady({
+      host: "127.0.0.1",
+      port: 54321,
+      attempts: 2,
+      probe: async () => false,
+      sleep: async () => {}
+    }),
+    /本机端口未就绪/u
+  );
+  await assert.rejects(
+    waitForLocalTcpReady({
+      host: "0.0.0.0",
+      port: 54321,
+      attempts: 1,
+      probe: async () => true,
+      sleep: async () => {}
+    }),
+    /127\.0\.0\.1/u
+  );
+});
+
+test("contract template scenario waits for the published loopback port after container readiness", async () => {
+  const dockerCalls = [];
+  const hostWaitCalls = [];
+
+  await waitForContractTemplateScenarioPostgres(
+    "contract-template-postgres",
+    43210,
+    async (args) => {
+      dockerCalls.push(args);
+    },
+    async (options) => {
+      hostWaitCalls.push(options);
+    }
+  );
+
+  assert.equal(dockerCalls.length, 1);
+  assert.equal(dockerCalls[0].includes("pg_isready"), true);
+  assert.deepEqual(hostWaitCalls, [
+    { host: "127.0.0.1", port: 43210 }
+  ]);
+});
+
+test("manifest derives all 290 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 53,
-    fullyPendingSuites: 42,
+    pendingFiles: 58,
+    fullyPendingSuites: 47,
     partiallyPendingSuites: 11,
-    pendingTests: 243,
-    coveredFiles: 53,
-    coveredTests: 243,
+    pendingTests: 290,
+    coveredFiles: 58,
+    coveredTests: 290,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -108,6 +174,50 @@ test("canonical manifest executes all 14 POL-108 PG16 tests", () => {
       kind: "workspaceScript",
       script: "verify:pol108-operating-projection:local",
       path: "services/api/prisma/run-pol108-operating-projection-local.cjs"
+    },
+    state: "executable_local_runner"
+  });
+});
+
+test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "pol113_pol115_business_entries"
+  );
+
+  assert.deepEqual(group, {
+    id: "pol113_pol115_business_entries",
+    pendingTests: 47,
+    testFiles: [
+      {
+        path: "services/api/src/database/base-entry-http-postgres.spec.ts",
+        pendingTests: 23,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/database/contract-business-entry-http.spec.ts",
+        pendingTests: 3,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+        pendingTests: 15,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+        pendingTests: 3,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
+        pendingTests: 3,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "node",
+      path: "services/api/prisma/run-pol113-pol115-entry-local.cjs"
     },
     state: "executable_local_runner"
   });
@@ -370,7 +480,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=243/u
+    /inventory\.coveredTests=26，派生值=290/u
   );
 });
 
@@ -644,6 +754,32 @@ test("child runner preserves the explicitly configured pnpm binary", () => {
   );
 
   assert.equal(child.PNPM_BIN, "/tmp/task-tools/pnpm");
+});
+
+test("child runner preserves only an absolute Playwright browser cache path", () => {
+  const child = createChildEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/tmp/local-home",
+      PLAYWRIGHT_BROWSERS_PATH: "/tmp/task-playwright"
+    },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+
+  assert.equal(child.PLAYWRIGHT_BROWSERS_PATH, "/tmp/task-playwright");
+  assert.throws(
+    () => createChildEnvironment(
+      {
+        PATH: "/usr/bin",
+        HOME: "/tmp/local-home",
+        PLAYWRIGHT_BROWSERS_PATH: "relative/playwright"
+      },
+      "/tmp/dynamic-gate",
+      "unix:///var/run/docker.sock"
+    ),
+    /PLAYWRIGHT_BROWSERS_PATH.*绝对路径/u
+  );
 });
 
 test("preserves an explicitly configured Corepack cache location", () => {

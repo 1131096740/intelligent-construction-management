@@ -589,6 +589,9 @@ describe("SettlementReadService", () => {
           }
         ])
       },
+      settlementLineAttachment: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       settlementArchiveFile: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -625,6 +628,9 @@ describe("SettlementReadService", () => {
             { id: "deduction-1", amountCents: 10_000_000n }
           ])
           .mockResolvedValueOnce([])
+      },
+      businessEntrySubmissionSnapshot: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new SettlementReadService(prisma as never);
@@ -803,6 +809,9 @@ describe("SettlementReadService", () => {
       },
       user: {
         findMany: jest.fn().mockResolvedValue([{ id: "user-upload", name: "合同员" }])
+      },
+      businessEntrySubmissionSnapshot: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new SettlementReadService(prisma as never);
@@ -900,6 +909,9 @@ describe("SettlementReadService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      businessEntrySubmissionSnapshot: {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
