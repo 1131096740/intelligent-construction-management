@@ -26,7 +26,9 @@
 
 - [~] #109 业务语言补充：候选 `83b0f68b02b152dab61b567372db804efef458a3` 已再次通过独立 PG16 171 条迁移、数据库/HTTP 8/8 与 Chromium 4/4；完整 `release:local` 通过 CI 编排 99/99、安装、Prisma、迁移基线、依赖审计、类型与 lint 后，在业务语言安全门因页面两处“冻结版本”技术术语 fail-closed。当前仅将用户文案改为“高管只能确认本次提交内容”，不改冻结事实、提交 lineage、权限或业务语义；该 SHA 已作废，本条所在新候选须从头重跑全部精确 SHA 门禁与双审。
 
-- [~] #109 Spec 终审补充：候选 `24b5a5b8edf7f677193517dea8945aae8750987d` 已通过独立 PG16 171 条迁移、数据库/HTTP 8/8、Chromium 4/4，Standards 终审无 finding；但 Spec 终审发现 3 个 Medium，故在完整门禁早期主动停止并作废该 SHA。当前仅在 #109 边界闭合：项目级收口无法从既有模型解析精确相关合同集合时 fail-closed，仅保留既有 `contract_director` 岗位，不再新增“单人拥有项目全部合同”规则；最终盈亏提交冻结阶段 1–4 精确版本，公司分配提交冻结对应最终盈亏确认及阶段版本，应用与数据库均阻断旧谱系复用；真实 PG16 验收扩展为正盈利、亏损、零盈亏三套完整提交—确认—分配—回读，浏览器实际点击合同/财务双专业与税费清算。未扩大共享权限、未修改其他领域业务语义；新 SHA 冻结后须从头重跑全部门禁与 Spec/Standards 双审。
+- [~] #109 Spec 终审补充：候选 `24b5a5b8edf7f677193517dea8945aae8750987d` 已通过独立 PG16 171 条迁移、数据库/HTTP 8/8、Chromium 4/4，Standards 终审无 finding；但 Spec 终审发现 3 个 Medium，故在完整门禁早期主动停止并作废该 SHA。当前仅在 #109 边界闭合：项目级收口无法从既有模型解析精确相关合同集合时 fail-closed，仅保留既有 `contract_director` 岗位，不再新增“单人拥有项目全部合同”规则；最终盈亏提交冻结阶段 1–4 精确版本，公司分配提交冻结对应最终盈亏确认及阶段版本，应用与数据库均阻断旧谱系复用；真实 PG16 验收扩展为正盈利、亏损、零盈亏三套完整提交—确认—分配—回读，浏览器实际点击合同/财务双专业确认。未扩大共享权限、未修改其他领域业务语义；新 SHA 冻结后须从头重跑全部门禁与 Spec/Standards 双审。
+
+- [~] #109 三态动态补充：候选 `29cc39a2a8abbb51d150f676e521ee43f2f91c18` 完成 171 条迁移且 DB 硬门 7/7 通过，新增亏损链在真实 HTTP 中因验收重复办理未被 `confirmed_cost` 影响策略重开的阶段 4 而收到后端正确 409，容器已清理且零生产写入。当前仅删除该重复阶段 4 操作；亏损链继续真实重做被影响的合同/财务专业阶段及 5/6 提交确认，浏览器亦只点击实际被重开的双专业动作，不修改既有影响策略或阶段语义。该 SHA 已作废，新 SHA 须从头重跑全部精确 SHA 门禁与双审。
 
 - [~] PR #288 已以 squash merge `1faddc7f2228ff2f453e3968190e50d52e75fd7c` 合入 `main`；原 fixed-head `b5f4f60bd732113c66e9b462c6305d38d20c5652` 的完整本机 `release:local`、Spec/Standards 双审和 GitHub fixed-head CI 均通过。merge-head CI run `35314697597` 随后在 `invoice_ledger_pol260` 分片暴露宿主随机回环端口尚未接受连接即执行 Prisma migration 的启动竞态，精确错误为 `FATAL: the database system is starting up`；其余已完成分片不能覆盖该失败。当前独立热修仅让原 POL-260 runner 在容器内 `pg_isready` 后复用既有 loopback-only、有界、失败关闭 TCP 就绪探针，再执行原迁移；不改 Schema、迁移、权限、业务代码或业务语义。热修须绑定新 SHA 完成定向 PostgreSQL 16、完整门禁、双审、fixed-head CI 和 merge-head CI 后，才可完成 #107/#113/#114/#115 与 #93 回执。
 

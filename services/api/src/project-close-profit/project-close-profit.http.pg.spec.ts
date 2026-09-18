@@ -780,13 +780,6 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       "POST",
       commandBody(current.projection.fingerprint)
     )).status).toBe(201);
-    current = await workbench(financeDirector);
-    expect((await request(
-      `/projects/${projectId}/close-profit/stages/tax_and_enterprise_clearing_completed/complete`,
-      financeDirector,
-      "POST",
-      commandBody(current.projection.fingerprint)
-    )).status).toBe(201);
     await completeSubmittedDecisionCycle("-10000");
 
     await appendAdjustment("zero-income", "owner_settlement", 10_000n, "inflow", "confirmed_income");

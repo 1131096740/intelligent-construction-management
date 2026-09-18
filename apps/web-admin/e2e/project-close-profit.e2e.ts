@@ -111,11 +111,6 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
     .fill("浏览器验收：财务专业重新确认成本");
   await page.getByRole("button", { name: "确认财务成本" }).click();
   await expect(page.getByText("操作已完成", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "确认完成" })).toBeVisible();
-  await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
-    .fill("浏览器验收：财务确认税费与施工企业清算");
-  await page.getByRole("button", { name: "确认完成" }).click();
-  await expect(page.getByText("操作已完成", { exact: true })).toBeVisible();
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作最终盈亏");
   await page.getByRole("button", { name: "制作并提交最终盈亏" }).click();
