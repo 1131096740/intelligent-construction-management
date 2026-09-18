@@ -141,6 +141,15 @@ test("CI fans out independent static and database gates behind one stable summar
     dynamic,
     /if: \$\{\{ matrix\.group == 'pol113_pol115_business_entries' \}\}[\s\S]*?browser_path="\$RUNNER_TEMP\/pol113-pol115-playwright"[\s\S]*?echo "PLAYWRIGHT_BROWSERS_PATH=\$browser_path" >> "\$GITHUB_ENV"[\s\S]*?PLAYWRIGHT_BROWSERS_PATH="\$browser_path" pnpm --filter @jiangkong\/web-admin exec playwright install --with-deps chromium webkit/u
   );
+  assert.match(
+    dynamic,
+    /if: \$\{\{ matrix\.group == 'pol113_pol115_business_entries' \}\}[\s\S]*?sudo apt-get install --yes --no-install-recommends libreoffice-writer[\s\S]*?command -v soffice/u
+  );
+  assert.equal(
+    dynamic.match(/libreoffice-writer/gu)?.length,
+    1,
+    "document conversion runtime must remain isolated to the entry shard"
+  );
 
   assert.match(summary, /name: Release gates/u);
   assert.match(summary, /if: \$\{\{ always\(\) \}\}/u);
