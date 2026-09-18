@@ -114,7 +114,16 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
   await login(page, "13800001007");
   await openCloseProfit(page);
   const decision = await page.evaluate(async (expectedProjectId) => {
-    const response = await fetch(`/api/projects/${expectedProjectId}/close-profit`);
+    const rawSession = localStorage.getItem("jiangkong-web-admin-auth");
+    const session = rawSession
+      ? JSON.parse(rawSession) as { accessToken?: string }
+      : null;
+    const response = await fetch(`/api/projects/${expectedProjectId}/close-profit`, {
+      headers: session?.accessToken
+        ? { Authorization: `Bearer ${session.accessToken}` }
+        : {}
+    });
+    if (!response.ok) throw new Error(`项目收口工作台读取失败：${response.status}`);
     const workbench = await response.json() as {
       currentProfitConfirmation: { finalProfitCents: string };
       participatingCompanies: Array<{ id: string }>;
