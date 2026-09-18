@@ -231,6 +231,13 @@ jobs:
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 
+      - name: Install POL-109 browser runtime
+        if: ${{ matrix.group == 'project_close_profit_pol109' }}
+        run: |
+          browser_path="$RUNNER_TEMP/pol109-playwright"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+
       - name: Verify migration baseline
         run: pnpm check:migration-baseline
 
