@@ -299,6 +299,7 @@ model ProjectCloseStageVersion {
   attestationLinks   ProjectCloseStageAttestationLink[]
   profitConfirmation ProjectCloseProfitConfirmation?
   distribution       ProjectCloseDistribution?
+  decisionSubmissionsAsProfitStage ProjectCloseDecisionSubmission[] @relation("ProjectCloseDecisionSubmissionProfitStageBasis")
 
   @@unique([projectId, stageKey, revision], map: "ProjectCloseStageVersion_project_stage_revision_key")
   @@unique([projectId, id], map: "ProjectCloseStageVersion_project_id_key")
@@ -384,6 +385,9 @@ model ProjectCloseDecisionSubmission {
   decisionKind          String
   revision              Int
   previousSubmissionId  String?
+  prerequisiteStageVersionIds Json     @default("[]")
+  profitConfirmationId  String?
+  profitStageVersionId  String?
   projectionReadAt      DateTime
   projectionCutoffAt    DateTime
   projectionFingerprint String
@@ -403,12 +407,16 @@ model ProjectCloseDecisionSubmission {
   aggregate          ProjectCloseAggregate             @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseDecisionSubmission_aggregate_fkey")
   previousSubmission ProjectCloseDecisionSubmission?   @relation("ProjectCloseDecisionSubmissionHistory", fields: [projectId, previousSubmissionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDecisionSubmission_previous_project_fkey")
   nextSubmissions    ProjectCloseDecisionSubmission[]  @relation("ProjectCloseDecisionSubmissionHistory")
+  profitConfirmationBasis ProjectCloseProfitConfirmation? @relation("ProjectCloseDecisionSubmissionProfitBasis", fields: [projectId, profitConfirmationId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDecisionSubmission_profit_project_fkey")
+  profitStageVersionBasis ProjectCloseStageVersion? @relation("ProjectCloseDecisionSubmissionProfitStageBasis", fields: [projectId, profitStageVersionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDecisionSubmission_profit_stage_project_fkey")
   profitConfirmation ProjectCloseProfitConfirmation?
   distribution       ProjectCloseDistribution?
 
   @@unique([projectId, decisionKind, revision], map: "ProjectCloseDecisionSubmission_project_kind_revision_key")
   @@unique([projectId, id], map: "ProjectCloseDecisionSubmission_project_id_key")
   @@index([previousSubmissionId], map: "ProjectCloseDecisionSubmission_previous_idx")
+  @@index([profitConfirmationId], map: "ProjectCloseDecisionSubmission_profit_idx")
+  @@index([profitStageVersionId], map: "ProjectCloseDecisionSubmission_profit_stage_idx")
 }
 
 model ProjectCloseStageAttestationLink {
@@ -448,6 +456,7 @@ model ProjectCloseProfitConfirmation {
   submission           ProjectCloseDecisionSubmission   @relation(fields: [projectId, submissionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_submission_project_fkey")
   previousConfirmation ProjectCloseProfitConfirmation?  @relation("ProjectCloseProfitConfirmationHistory", fields: [projectId, previousConfirmationId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_previous_project_fkey")
   nextConfirmations    ProjectCloseProfitConfirmation[] @relation("ProjectCloseProfitConfirmationHistory")
+  distributionSubmissions ProjectCloseDecisionSubmission[] @relation("ProjectCloseDecisionSubmissionProfitBasis")
   distributions        ProjectCloseDistribution[]
 
   @@unique([projectId, revision], map: "ProjectCloseProfitConfirmation_project_revision_key")

@@ -82,6 +82,11 @@ describe("POL-16 project close stage schema", () => {
     expect(migration).toContain('CREATE TRIGGER "ProjectCloseDecisionSubmission_immutable"');
     expect(migration).toContain('CREATE FUNCTION "pol109_validate_decision_submission_lineage"()');
     expect(migration).toContain("POL-109 decision submission lineage is not contiguous");
+    expect(schema).toContain("prerequisiteStageVersionIds Json");
+    expect(schema).toMatch(/profitConfirmationId\s+String\?/);
+    expect(schema).toMatch(/profitStageVersionId\s+String\?/);
+    expect(migration).toContain("POL-109 final profit submission prerequisites are not exact");
+    expect(migration).toContain("POL-109 distribution submission profit basis is stale");
     expect(migration).toContain('FOREIGN KEY ("projectId", "submissionId")');
     expect(schema).toContain("authorizationKind");
     expect(migration).toContain('CREATE FUNCTION "pol109_validate_stage_lineage"()');

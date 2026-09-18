@@ -112,7 +112,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     await prisma.$disconnect();
   });
 
-  it("completes all seven stages with separated roles, temporary distribution, exact company conservation and immutable history", async () => {
+  it("completes seven stages and real positive, loss, and zero submit-confirm decision cycles", async () => {
     const financeStaffPosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_staff" } });
     const movementSubmitterPhone = `109${Date.now()}`;
     const movementSubmitterUser = await prisma.user.create({
@@ -672,5 +672,133 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       "needs_reconfirmation",
       "needs_reconfirmation"
     ]);
+
+    const appendAdjustment = async (
+      suffix: string,
+      factKind: "expense" | "owner_settlement",
+      amountCents: bigint,
+      direction: "outflow" | "inflow",
+      impactKind: "confirmed_cost" | "confirmed_income"
+    ) => ledger.appendFromSource({
+      ...commonFact,
+      sourceType: `pol109_acceptance_${suffix}`,
+      sourceBusinessId: `pol109-${suffix}`,
+      sourceBusinessCode: `POL109-${suffix.toUpperCase()}`,
+      idempotencyKey: `pol109:acceptance:${suffix}:fact`,
+      factKind,
+      amountCents,
+      direction,
+      sourceSnapshot: { fixture: `POL-109 ${suffix}` },
+      subjects: factKind === "expense"
+        ? { costBearingCompany: enterprise }
+        : { debtor: { kind: "owner", id: "pol109-owner" }, creditor: enterprise },
+      impacts: [{
+        idempotencyKey: `pol109:acceptance:${suffix}:impact`,
+        sourceImpactKey: suffix,
+        impactKind,
+        amountCents,
+        direction: "increase",
+        ...(factKind === "expense" ? {
+          subjectRole: "cost_bearing_company",
+          subject: enterprise,
+          costCategoryCode: "other_project_cost"
+        } : {})
+      }]
+    } as never, "seed-user-finance-director");
+
+    const completeSubmittedDecisionCycle = async (expectedProfitCents: string) => {
+      let financeView = await workbench(financeDirector);
+      const profitSubmission = await request(
+        `/projects/${projectId}/close-profit/final-profit/submissions`,
+        financeDirector,
+        "POST",
+        commandBody(financeView.projection.fingerprint)
+      );
+      expect(profitSubmission).toMatchObject({
+        status: 201,
+        body: { decisionKind: "final_profit", proposalSnapshot: { finalProfitCents: expectedProfitCents } }
+      });
+      let executiveView = await workbench(chairman);
+      expect((await request(
+        `/projects/${projectId}/close-profit/final-profit/confirm`,
+        chairman,
+        "POST",
+        confirmationBody(executiveView.projection.fingerprint, profitSubmission.body.id)
+      )).status).toBe(201);
+      financeView = await workbench(financeDirector);
+      expect(financeView.currentProfitConfirmation.finalProfitCents).toBe(expectedProfitCents);
+      const cycleLines = financeView.participatingCompanies.map(
+        (company: { id: string }, index: number) => ({
+          projectParticipatingCompanyId: company.id,
+          finalShareCents: index === 0 ? expectedProfitCents : "0"
+        })
+      );
+      const distributionDraft = await request(
+        `/projects/${projectId}/close-profit/distributions/submissions`,
+        financeDirector,
+        "POST",
+        { ...commandBody(financeView.projection.fingerprint), lines: cycleLines }
+      );
+      expect(distributionDraft).toMatchObject({ status: 201, body: { decisionKind: "distribution" } });
+      executiveView = await workbench(generalManager);
+      expect((await request(
+        `/projects/${projectId}/close-profit/distributions/confirm`,
+        generalManager,
+        "POST",
+        confirmationBody(executiveView.projection.fingerprint, distributionDraft.body.id)
+      )).status).toBe(201);
+      const readback = await workbench(generalManager);
+      expect(readback.currentProfitConfirmation.finalProfitCents).toBe(expectedProfitCents);
+      expect(readback.currentDistribution.totalProfitCents).toBe(expectedProfitCents);
+      expect(readback.currentDistribution.lines.reduce(
+        (sum: bigint, line: { finalShareCents: string }) => sum + BigInt(line.finalShareCents), 0n
+      )).toBe(BigInt(expectedProfitCents));
+    };
+
+    const profitBeforeLoss = BigInt(
+      afterExecution.projection.view.profitAndLoss.currentEstimatedProfitCents
+    );
+    expect(profitBeforeLoss).toBeGreaterThan(0n);
+    await appendAdjustment(
+      "loss-cost",
+      "expense",
+      profitBeforeLoss + 10_000n,
+      "outflow",
+      "confirmed_cost"
+    );
+    current = await workbench(contractDirector);
+    expect((await request(
+      `/projects/${projectId}/close-profit/downstream-cost/attestations/contract`,
+      contractDirector,
+      "POST",
+      commandBody(current.projection.fingerprint)
+    )).status).toBe(201);
+    current = await workbench(financeDirector);
+    expect((await request(
+      `/projects/${projectId}/close-profit/downstream-cost/attestations/finance`,
+      financeDirector,
+      "POST",
+      commandBody(current.projection.fingerprint)
+    )).status).toBe(201);
+    current = await workbench(financeDirector);
+    expect((await request(
+      `/projects/${projectId}/close-profit/stages/tax_and_enterprise_clearing_completed/complete`,
+      financeDirector,
+      "POST",
+      commandBody(current.projection.fingerprint)
+    )).status).toBe(201);
+    await completeSubmittedDecisionCycle("-10000");
+
+    await appendAdjustment("zero-income", "owner_settlement", 10_000n, "inflow", "confirmed_income");
+    current = await workbench(contractDirector);
+    expect((await request(
+      `/projects/${projectId}/close-profit/stages/owner_settlement_completed/complete`,
+      contractDirector,
+      "POST",
+      commandBody(current.projection.fingerprint)
+    )).status).toBe(201);
+    await completeSubmittedDecisionCycle("0");
+
+    await appendAdjustment("browser-reopen", "expense", 1n, "outflow", "confirmed_cost");
   });
 });

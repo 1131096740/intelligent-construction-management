@@ -159,8 +159,7 @@ export class ProjectCloseProfitService {
         participatingCompanies,
         temporaryDistributions,
         impacts,
-        decisionSubmissions,
-        activeContractOwners
+        decisionSubmissions
       ] = await Promise.all([
         this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
         tx.projectCloseStageVersion.findMany({
@@ -246,10 +245,6 @@ export class ProjectCloseProfitService {
         tx.projectCloseDecisionSubmission.findMany({
           where: { projectId },
           orderBy: [{ decisionKind: "asc" }, { revision: "desc" }]
-        }),
-        tx.contract.findMany({
-          where: { projectId, voidedAt: null },
-          select: { ownerUserId: true }
         })
       ]);
       const latestByStage = latestStageVersions(versions);
@@ -261,9 +256,6 @@ export class ProjectCloseProfitService {
       );
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const technicalAdministrator = roleKeys.includes("super_admin");
-      const hasContractResponsibility =
-        activeContractOwners.length > 0 &&
-        activeContractOwners.every((row) => row.ownerUserId === actorUserId);
       const timeline = buildProjectCloseStageTimeline(completedStages, affectedStages);
       const currentProfitConfirmation = profitConfirmations.find(
         (row) => row.stageVersionId === latestByStage.get("final_profit_confirmed")?.id
@@ -294,8 +286,7 @@ export class ProjectCloseProfitService {
                 roleKeys,
                 {
                   hasFinalProfitSubmission: Boolean(currentFinalProfitSubmission),
-                  hasDistributionSubmission: Boolean(currentDistributionSubmission),
-                  hasContractResponsibility
+                  hasDistributionSubmission: Boolean(currentDistributionSubmission)
                 }
               )
             ))],
@@ -320,8 +311,7 @@ export class ProjectCloseProfitService {
                 roleKeys,
                 {
                   hasFinalProfitSubmission: Boolean(currentFinalProfitSubmission),
-                  hasDistributionSubmission: Boolean(currentDistributionSubmission),
-                  hasContractResponsibility
+                  hasDistributionSubmission: Boolean(currentDistributionSubmission)
                 }
               )
         })),
@@ -454,12 +444,8 @@ export class ProjectCloseProfitService {
       const latestByStage = latestStageVersions(versions);
       assertStageReady(versions, stageKey);
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
-      const hasContractResponsibility = stageKey === "owner_settlement_completed"
-        ? await hasLockedProjectContractResponsibility(tx, actorUserId, projectId)
-        : false;
       if (roleKeys.includes("super_admin") || (
-        !STAGE_CONFIRMATION_ROLES[stageKey].some((role) => roleKeys.includes(role)) &&
-        !hasContractResponsibility
+        !STAGE_CONFIRMATION_ROLES[stageKey].some((role) => roleKeys.includes(role))
       )) {
         throw new ForbiddenException("当前岗位不能确认该项目收口阶段");
       }
@@ -572,13 +558,10 @@ export class ProjectCloseProfitService {
       assertProjectionFingerprint(projection.fingerprint, expectedProjectionFingerprint);
       assertStageReady(versions, "downstream_cost_confirmed");
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
-      const hasContractResponsibility = specialty === "contract"
-        ? await hasLockedProjectContractResponsibility(tx, actorUserId, projectId)
-        : false;
       if (specialty === "contract") {
         if (
           roleKeys.includes("super_admin") ||
-          (!roleKeys.includes("contract_director") && !hasContractResponsibility)
+          !roleKeys.includes("contract_director")
         ) {
           throw new ForbiddenException("当前岗位不能完成该专业成本确认");
         }
@@ -726,12 +709,19 @@ export class ProjectCloseProfitService {
         "当前预计盈亏金额无效"
       );
       const participantSnapshot = participantDecisionSnapshot(participants, projection.cutoffAt);
+      const latestVersions = latestStageVersions(versions);
       const submission = await tx.projectCloseDecisionSubmission.create({
         data: {
           projectId,
           decisionKind: "final_profit",
           revision: (previous?.revision ?? 0) + 1,
           previousSubmissionId: previous?.id,
+          prerequisiteStageVersionIds: prerequisiteStageVersionIds(
+            latestVersions,
+            "final_profit_confirmed"
+          ),
+          profitConfirmationId: null,
+          profitStageVersionId: null,
           projectionReadAt: projection.readAt,
           projectionCutoffAt: projection.cutoffAt,
           projectionFingerprint: projection.fingerprint,
@@ -823,6 +813,13 @@ export class ProjectCloseProfitService {
         projectId,
         "final_profit",
         projection.fingerprint
+      );
+      assertFrozenPrerequisites(
+        submission!.prerequisiteStageVersionIds,
+        prerequisiteStageVersionIds(
+          latestStageVersions(versions),
+          "final_profit_confirmed"
+        )
       );
       const finalProfitCents = decision.finalProfitCents;
       const stageVersion = await appendCompletedStage(tx, {
@@ -1370,6 +1367,9 @@ export class ProjectCloseProfitService {
           decisionKind: "distribution",
           revision: (previous?.revision ?? 0) + 1,
           previousSubmissionId: previous?.id,
+          prerequisiteStageVersionIds: [],
+          profitConfirmationId: profitConfirmation.id,
+          profitStageVersionId: profitConfirmation.stageVersionId,
           projectionReadAt: projection.readAt,
           projectionCutoffAt: projection.cutoffAt,
           projectionFingerprint: projection.fingerprint,
@@ -1509,6 +1509,12 @@ export class ProjectCloseProfitService {
         "distribution",
         projection.fingerprint
       );
+      if (
+        submission!.profitConfirmationId !== profitConfirmation.id ||
+        submission!.profitStageVersionId !== profitConfirmation.stageVersionId
+      ) {
+        throw new ConflictException("财务提交绑定的最终盈亏版本已过期，请重新制作");
+      }
       const requestedLines = decision.lines;
       const totalProfitCents = BigInt(profitConfirmation.finalProfitCents);
       const participantById = effectiveParticipantById(participants, projection.cutoffAt);
@@ -1743,22 +1749,6 @@ async function lockProjectCloseAggregate(
     WHERE "projectId" = ${projectId}
     FOR UPDATE
   `);
-}
-
-async function hasLockedProjectContractResponsibility(
-  tx: Prisma.TransactionClient,
-  actorUserId: string,
-  projectId: string
-) {
-  const rows = await tx.$queryRaw<Array<{ ownerUserId: string | null }>>(Prisma.sql`
-    SELECT "ownerUserId"
-    FROM "Contract"
-    WHERE "projectId" = ${projectId}
-      AND "voidedAt" IS NULL
-    ORDER BY "id"
-    FOR SHARE
-  `);
-  return rows.length > 0 && rows.every((row) => row.ownerUserId === actorUserId);
 }
 
 async function readCommandReplay(
@@ -2094,6 +2084,9 @@ type DecisionSubmissionLike = Readonly<{
   decisionKind: string;
   revision: number;
   previousSubmissionId: string | null;
+  prerequisiteStageVersionIds: Prisma.JsonValue;
+  profitConfirmationId: string | null;
+  profitStageVersionId: string | null;
   projectionReadAt: Date;
   projectionCutoffAt: Date;
   projectionFingerprint: string;
@@ -2114,6 +2107,9 @@ function decisionSubmissionReadModel(row: DecisionSubmissionLike) {
     decisionKind: row.decisionKind,
     revision: row.revision,
     previousSubmissionId: row.previousSubmissionId,
+    prerequisiteStageVersionIds: row.prerequisiteStageVersionIds,
+    profitConfirmationId: row.profitConfirmationId,
+    profitStageVersionId: row.profitStageVersionId,
     projectionReadAt: row.projectionReadAt.toISOString(),
     projectionCutoffAt: row.projectionCutoffAt.toISOString(),
     projectionFingerprint: row.projectionFingerprint,
@@ -2244,6 +2240,16 @@ function prerequisiteStageVersionIds(
   });
 }
 
+function assertFrozenPrerequisites(value: Prisma.JsonValue, expected: readonly string[]) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== expected.length ||
+    value.some((id, index) => typeof id !== "string" || id !== expected[index])
+  ) {
+    throw new ConflictException("财务提交绑定的前置收口版本已过期，请重新制作");
+  }
+}
+
 function availableStageActions(
   stage: ProjectStage,
   status: "pending" | "ready" | "completed" | "needs_reconfirmation",
@@ -2251,13 +2257,12 @@ function availableStageActions(
   context: Readonly<{
     hasFinalProfitSubmission: boolean;
     hasDistributionSubmission: boolean;
-    hasContractResponsibility: boolean;
   }>
 ) {
   if (status !== "ready") return [];
   if (stage === "downstream_cost_confirmed") {
     return [
-      ...(roleKeys.includes("contract_director") || context.hasContractResponsibility
+      ...(roleKeys.includes("contract_director")
         ? ["attest_contract_cost" as const]
         : []),
       ...(roleKeys.includes("finance_director") ? ["attest_finance_cost" as const] : [])
@@ -2286,8 +2291,7 @@ function availableStageActions(
     ];
   }
   return GENERIC_COMPLETION_STAGES.has(stage) &&
-    (STAGE_CONFIRMATION_ROLES[stage].some((role) => roleKeys.includes(role)) ||
-      (stage === "owner_settlement_completed" && context.hasContractResponsibility))
+    STAGE_CONFIRMATION_ROLES[stage].some((role) => roleKeys.includes(role))
     ? ["complete" as const]
     : [];
 }

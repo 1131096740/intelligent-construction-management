@@ -164,16 +164,22 @@ describePg("POL-109 project close PostgreSQL 16 hard gates", () => {
     };
     const projectA = await createProject("A");
     const projectB = await createProject("B");
+    const prerequisitesA = await createFinalProfitPrerequisites(prisma, projectA);
+    const prerequisitesB = await createFinalProfitPrerequisites(prisma, projectB);
     const first = await prisma.projectCloseDecisionSubmission.create({
-      data: decisionSubmissionData(projectA, 1, null)
+      data: decisionSubmissionData(projectA, 1, null, prerequisitesA)
     });
     await prisma.projectCloseDecisionSubmission.create({
-      data: decisionSubmissionData(projectB, 1, null)
+      data: decisionSubmissionData(projectB, 1, null, prerequisitesB)
     });
 
     await expect(prisma.projectCloseDecisionSubmission.create({
-      data: decisionSubmissionData(projectB, 2, first.id)
+      data: decisionSubmissionData(projectB, 2, first.id, prerequisitesB)
     })).rejects.toThrow(/lineage|foreign key|previous_project_fkey/u);
+
+    await expect(prisma.projectCloseDecisionSubmission.create({
+      data: decisionSubmissionData(projectA, 2, first.id, prerequisitesA.slice(0, 3))
+    })).rejects.toThrow(/prerequisites are not exact/u);
   });
 
 });
@@ -181,7 +187,8 @@ describePg("POL-109 project close PostgreSQL 16 hard gates", () => {
 function decisionSubmissionData(
   projectId: string,
   revision: number,
-  previousSubmissionId: string | null
+  previousSubmissionId: string | null,
+  prerequisiteStageVersionIds: string[]
 ) {
   const now = new Date("2026-09-18T09:00:00.000Z");
   return {
@@ -189,6 +196,9 @@ function decisionSubmissionData(
     decisionKind: "final_profit",
     revision,
     previousSubmissionId,
+    prerequisiteStageVersionIds,
+    profitConfirmationId: null,
+    profitStageVersionId: null,
     projectionReadAt: now,
     projectionCutoffAt: now,
     projectionFingerprint: `submission-${projectId}-${revision}`,
@@ -212,10 +222,12 @@ function stageData(input: {
   revision: number;
   previousVersionId: string | null;
   idempotencyKey: string;
+  prerequisiteStageVersionIds?: string[];
 }) {
   const now = new Date("2026-09-18T09:00:00.000Z");
   return {
     ...input,
+    prerequisiteStageVersionIds: input.prerequisiteStageVersionIds ?? [],
     status: "completed",
     projectionReadAt: now,
     projectionCutoffAt: now,
@@ -227,4 +239,52 @@ function stageData(input: {
     confirmedAt: now,
     payloadFingerprint: `payload-${input.idempotencyKey}`
   };
+}
+
+async function createFinalProfitPrerequisites(prisma: PrismaClient, projectId: string) {
+  const ids: string[] = [];
+  for (const stageKey of [
+    "construction_completed",
+    "owner_settlement_completed",
+    "downstream_cost_confirmed",
+    "tax_and_enterprise_clearing_completed"
+  ]) {
+    const stage = await prisma.$transaction(async (tx) => {
+      const created = await tx.projectCloseStageVersion.create({
+        data: stageData({
+          projectId,
+          stageKey,
+          revision: 1,
+          previousVersionId: null,
+          prerequisiteStageVersionIds: [...ids],
+          idempotencyKey: randomUUID()
+        })
+      });
+      if (stageKey === "downstream_cost_confirmed") {
+        for (const specialty of ["contract", "finance"]) {
+          const attestation = await tx.projectCloseProfessionalAttestation.create({
+            data: {
+              projectId,
+              specialty,
+              revision: 1,
+              projectionReadAt: created.projectionReadAt,
+              projectionCutoffAt: created.projectionCutoffAt,
+              projectionFingerprint: created.projectionFingerprint,
+              basisSnapshot: {},
+              attestedByUserId: "pg16-attestor",
+              attestedAt: created.confirmedAt,
+              idempotencyKey: randomUUID(),
+              payloadFingerprint: randomUUID()
+            }
+          });
+          await tx.projectCloseStageAttestationLink.create({
+            data: { stageVersionId: created.id, attestationId: attestation.id, specialty }
+          });
+        }
+      }
+      return created;
+    });
+    ids.push(stage.id);
+  }
+  return ids;
 }

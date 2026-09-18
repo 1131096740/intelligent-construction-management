@@ -242,6 +242,16 @@ describe("ProjectCloseProfitService", () => {
       status: "ready",
       availableActions: ["attest_contract_cost"]
     });
+
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(
+      new Map([["project-1", ["contract_staff"]]])
+    );
+    const contractStaffView = await service.getWorkbench("contract-owner-1", "project-1");
+    expect(contractStaffView.stages[2]).toMatchObject({
+      key: "downstream_cost_confirmed",
+      status: "ready",
+      availableActions: []
+    });
   });
 
   it.each([
@@ -389,6 +399,9 @@ describe("ProjectCloseProfitService", () => {
       projectionReadAt: readAt,
       projectionCutoffAt: readAt,
       projectionFingerprint: "projection-fingerprint",
+      prerequisiteStageVersionIds: ["stage-1", "stage-2", "stage-3", "stage-4"],
+      profitConfirmationId: null,
+      profitStageVersionId: null,
       amountSnapshot: {},
       stateSnapshot: {},
       participantsSnapshot: [],
@@ -448,6 +461,7 @@ describe("ProjectCloseProfitService", () => {
         preparedByUserId: "finance-user",
         submittedByUserId: "finance-user",
         proposalSnapshot: { finalProfitCents: "6000" },
+        prerequisiteStageVersionIds: ["stage-1", "stage-2", "stage-3", "stage-4"],
         basisSnapshot: submission.basisSnapshot
       })
     });
@@ -487,6 +501,48 @@ describe("ProjectCloseProfitService", () => {
       ]
     })).rejects.toThrow("公司分配合计必须精确等于最终盈亏");
     expect(tx.projectCloseDistribution.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a final-profit submission bound to stale prerequisite stages", async () => {
+    const readAt = new Date("2026-09-18T09:50:00.000Z");
+    const tx = finalConfirmationTx(readAt);
+    tx.projectCloseDecisionSubmission.findUnique.mockResolvedValue({
+      id: "3a648f91-5085-4dad-b6fb-d5b9aac5d9f7",
+      projectId: "project-1",
+      decisionKind: "final_profit",
+      revision: 1,
+      previousSubmissionId: null,
+      prerequisiteStageVersionIds: ["stage-1", "stage-2", "stage-3", "stale-stage-4"],
+      profitConfirmationId: null,
+      profitStageVersionId: null,
+      projectionReadAt: readAt,
+      projectionCutoffAt: readAt,
+      projectionFingerprint: "projection-fingerprint",
+      amountSnapshot: {},
+      stateSnapshot: {},
+      participantsSnapshot: [],
+      proposalSnapshot: { finalProfitCents: "6000" },
+      basisSnapshot: { summary: "财务复核完成" },
+      preparedByUserId: "finance-user",
+      preparedAt: readAt,
+      submittedByUserId: "finance-user",
+      submittedAt: readAt
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
+      { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
+      { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+        new Map([["project-1", ["chairman"]]])
+      ) } as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.confirmFinalProfit("chairman-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "6a648f91-5085-4dad-b6fb-d5b9aac5d9f7",
+      submissionId: "3a648f91-5085-4dad-b6fb-d5b9aac5d9f7"
+    })).rejects.toThrow("财务提交绑定的前置收口版本已过期");
+    expect(tx.projectCloseProfitConfirmation.create).not.toHaveBeenCalled();
   });
 
   it("requires distribution lines for every company effective at the projection cutoff", async () => {
@@ -574,6 +630,31 @@ describe("ProjectCloseProfitService", () => {
     expect(tx.projectProfitDistributionAuthorization.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ authorizedAmountCents: 2500n })]
     });
+  });
+
+  it("rejects a distribution submission bound to a stale profit confirmation", async () => {
+    const readAt = new Date("2026-09-18T10:15:00.000Z");
+    const tx = distributionTx(readAt);
+    const submission = await tx.projectCloseDecisionSubmission.findUnique();
+    tx.projectCloseDecisionSubmission.findUnique.mockResolvedValue({
+      ...submission,
+      profitConfirmationId: "stale-profit-confirmation"
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
+      { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
+      { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
+        new Map([["project-1", ["general_manager"]]])
+      ) } as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.confirmDistribution("gm-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "1aa4526f-d5a1-423e-b417-784759d2a7f2",
+      submissionId: "5a648f91-5085-4dad-b6fb-d5b9aac5d9f7"
+    })).rejects.toThrow("财务提交绑定的最终盈亏版本已过期");
+    expect(tx.projectCloseDistribution.create).not.toHaveBeenCalled();
   });
 
   it("calculates receive, return and loss bearing from confirmed transfers only", () => {
@@ -819,6 +900,9 @@ function distributionTx(readAt: Date) {
         projectionReadAt: readAt,
         projectionCutoffAt: readAt,
         projectionFingerprint: "projection-fingerprint",
+        prerequisiteStageVersionIds: [],
+        profitConfirmationId: "profit-confirmation-1",
+        profitStageVersionId: "stage-5",
         amountSnapshot: {},
         stateSnapshot: {},
         participantsSnapshot: [],

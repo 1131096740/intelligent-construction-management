@@ -221,6 +221,9 @@ CREATE TABLE "ProjectCloseDecisionSubmission" (
   "decisionKind" TEXT NOT NULL,
   "revision" INTEGER NOT NULL,
   "previousSubmissionId" TEXT,
+  "prerequisiteStageVersionIds" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "profitConfirmationId" TEXT,
+  "profitStageVersionId" TEXT,
   "projectionReadAt" TIMESTAMP(3) NOT NULL,
   "projectionCutoffAt" TIMESTAMP(3) NOT NULL,
   "projectionFingerprint" TEXT NOT NULL,
@@ -243,14 +246,20 @@ CREATE TABLE "ProjectCloseDecisionSubmission" (
     AND "revision" > 0
     AND "projectionCutoffAt" <= "projectionReadAt"
     AND "preparedAt" <= "submittedAt"
+    AND jsonb_typeof("prerequisiteStageVersionIds") = 'array'
     AND jsonb_typeof("participantsSnapshot") = 'array'
+    AND (("decisionKind" = 'final_profit' AND "profitConfirmationId" IS NULL AND "profitStageVersionId" IS NULL)
+      OR ("decisionKind" = 'distribution' AND "profitConfirmationId" IS NOT NULL AND "profitStageVersionId" IS NOT NULL
+        AND "prerequisiteStageVersionIds" = '[]'::jsonb))
     AND length(btrim("projectionFingerprint")) > 0
     AND length(btrim("payloadFingerprint")) > 0
   ),
   CONSTRAINT "ProjectCloseDecisionSubmission_aggregate_fkey"
     FOREIGN KEY ("projectId") REFERENCES "ProjectCloseAggregate"("projectId") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "ProjectCloseDecisionSubmission_previous_project_fkey"
-    FOREIGN KEY ("projectId", "previousSubmissionId") REFERENCES "ProjectCloseDecisionSubmission"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE
+    FOREIGN KEY ("projectId", "previousSubmissionId") REFERENCES "ProjectCloseDecisionSubmission"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseDecisionSubmission_profit_stage_project_fkey"
+    FOREIGN KEY ("projectId", "profitStageVersionId") REFERENCES "ProjectCloseStageVersion"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX "ProjectCloseDecisionSubmission_idempotencyKey_key"
   ON "ProjectCloseDecisionSubmission"("idempotencyKey");
@@ -258,6 +267,10 @@ CREATE UNIQUE INDEX "ProjectCloseDecisionSubmission_project_kind_revision_key"
   ON "ProjectCloseDecisionSubmission"("projectId", "decisionKind", "revision");
 CREATE INDEX "ProjectCloseDecisionSubmission_previous_idx"
   ON "ProjectCloseDecisionSubmission"("previousSubmissionId");
+CREATE INDEX "ProjectCloseDecisionSubmission_profit_idx"
+  ON "ProjectCloseDecisionSubmission"("profitConfirmationId");
+CREATE INDEX "ProjectCloseDecisionSubmission_profit_stage_idx"
+  ON "ProjectCloseDecisionSubmission"("profitStageVersionId");
 
 CREATE TABLE "ProjectCloseProfitConfirmation" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
@@ -310,6 +323,12 @@ CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_project_revision_key"
   ON "ProjectCloseProfitConfirmation"("projectId", "revision");
 CREATE INDEX "ProjectCloseProfitConfirmation_previous_idx"
   ON "ProjectCloseProfitConfirmation"("previousConfirmationId");
+
+ALTER TABLE "ProjectCloseDecisionSubmission"
+  ADD CONSTRAINT "ProjectCloseDecisionSubmission_profit_project_fkey"
+  FOREIGN KEY ("projectId", "profitConfirmationId")
+  REFERENCES "ProjectCloseProfitConfirmation"("projectId", "id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE TABLE "ProjectCloseDistribution" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
@@ -494,6 +513,10 @@ AS $$
 DECLARE
   latest_id TEXT;
   latest_revision INTEGER;
+  expected_prerequisites TEXT[];
+  current_profit_stage_id TEXT;
+  current_profit_stage_status TEXT;
+  current_profit_confirmation_id TEXT;
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended(
     'pol109-decision-submission:' || NEW."projectId" || ':' || NEW."decisionKind", 0
@@ -509,6 +532,48 @@ BEGIN
   ELSIF NEW."revision" <> latest_revision + 1
      OR NEW."previousSubmissionId" IS DISTINCT FROM latest_id THEN
     RAISE EXCEPTION 'POL-109 decision submission lineage is not contiguous' USING ERRCODE = '23514';
+  END IF;
+  IF NEW."decisionKind" = 'final_profit' THEN
+    SELECT array_agg(current_stage."id" ORDER BY current_stage.stage_order)
+      INTO expected_prerequisites
+    FROM (
+      SELECT DISTINCT ON (v."stageKey") v."id",
+        CASE v."stageKey"
+          WHEN 'construction_completed' THEN 1
+          WHEN 'owner_settlement_completed' THEN 2
+          WHEN 'downstream_cost_confirmed' THEN 3
+          WHEN 'tax_and_enterprise_clearing_completed' THEN 4
+        END AS stage_order,
+        v."status"
+      FROM "ProjectCloseStageVersion" v
+      WHERE v."projectId" = NEW."projectId"
+        AND v."stageKey" IN (
+          'construction_completed', 'owner_settlement_completed',
+          'downstream_cost_confirmed', 'tax_and_enterprise_clearing_completed'
+        )
+      ORDER BY v."stageKey", v."revision" DESC
+    ) current_stage
+    WHERE current_stage."status" = 'completed';
+    IF COALESCE(array_length(expected_prerequisites, 1), 0) <> 4
+       OR NEW."prerequisiteStageVersionIds" <> to_jsonb(expected_prerequisites) THEN
+      RAISE EXCEPTION 'POL-109 final profit submission prerequisites are not exact' USING ERRCODE = '23514';
+    END IF;
+  ELSIF NEW."decisionKind" = 'distribution' THEN
+    SELECT v."id", v."status" INTO current_profit_stage_id, current_profit_stage_status
+    FROM "ProjectCloseStageVersion" v
+    WHERE v."projectId" = NEW."projectId"
+      AND v."stageKey" = 'final_profit_confirmed'
+    ORDER BY v."revision" DESC LIMIT 1;
+    SELECT c."id" INTO current_profit_confirmation_id
+    FROM "ProjectCloseProfitConfirmation" c
+    WHERE c."projectId" = NEW."projectId"
+      AND c."stageVersionId" = current_profit_stage_id
+    ORDER BY c."revision" DESC LIMIT 1;
+    IF current_profit_stage_status IS DISTINCT FROM 'completed'
+       OR NEW."profitStageVersionId" IS DISTINCT FROM current_profit_stage_id
+       OR NEW."profitConfirmationId" IS DISTINCT FROM current_profit_confirmation_id THEN
+      RAISE EXCEPTION 'POL-109 distribution submission profit basis is stale' USING ERRCODE = '23514';
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -655,6 +720,7 @@ BEGIN
         AND p."projectionFingerprint" = NEW."projectionFingerprint"
         AND s."projectId" = NEW."projectId" AND s."decisionKind" = 'final_profit'
         AND s."projectionFingerprint" = NEW."projectionFingerprint"
+        AND s."prerequisiteStageVersionIds" = NEW."prerequisiteStageVersionIds"
     ) THEN
       RAISE EXCEPTION 'POL-109 final profit stage requires confirmation' USING ERRCODE = '23514';
     END IF;
@@ -666,6 +732,11 @@ BEGIN
         AND d."projectionFingerprint" = NEW."projectionFingerprint"
         AND s."projectId" = NEW."projectId" AND s."decisionKind" = 'distribution'
         AND s."projectionFingerprint" = NEW."projectionFingerprint"
+        AND s."profitConfirmationId" = d."profitConfirmationId"
+        AND s."profitStageVersionId" = (
+          SELECT p."stageVersionId" FROM "ProjectCloseProfitConfirmation" p
+          WHERE p."id" = d."profitConfirmationId" AND p."projectId" = d."projectId"
+        )
     ) THEN
       RAISE EXCEPTION 'POL-109 distribution stage requires distribution version' USING ERRCODE = '23514';
     END IF;
