@@ -118,6 +118,54 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingImpactEntry.create).not.toHaveBeenCalled();
   });
 
+  it("invalidates completed close stages in the same transaction when a new economic impact is appended", async () => {
+    // The business confirmation date in baseInput is historical. Reopening must
+    // use the database insertion watermark, not that older business date.
+    const completedAt = new Date("2026-09-17T00:00:00.000Z");
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord(),
+      closeAggregate: { projectId: "project-1" },
+      closeStages: [
+        closeStage("downstream_cost_confirmed", completedAt),
+        closeStage("final_profit_confirmed", completedAt),
+        closeStage("profit_distribution_completed", completedAt)
+      ]
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await service.appendFromSource(baseInput(), "actor-1");
+
+    expect(prisma.projectCloseImpact.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        sourceType: "expense_claim",
+        sourceId: "expense-1:cost",
+        reason: "下游成本、应付款或待清算费用发生变化",
+        affectedStages: [
+          "downstream_cost_confirmed",
+          "final_profit_confirmed",
+          "profit_distribution_completed"
+        ]
+      })
+    });
+    expect(prisma.projectCloseStageVersion.create).toHaveBeenCalledTimes(3);
+    expect(prisma.projectCloseStageVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stageKey: "downstream_cost_confirmed",
+        revision: 2,
+        status: "needs_reconfirmation",
+        previousVersionId: "stage-downstream_cost_confirmed"
+      })
+    });
+
+    await service.appendFromSource(baseInput(), "actor-1");
+    expect(prisma.projectCloseImpact.create).toHaveBeenCalledTimes(1);
+    expect(prisma.projectCloseStageVersion.create).toHaveBeenCalledTimes(3);
+  });
+
   it("keeps the original fact and rejects a correction that crosses projects", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
@@ -740,6 +788,25 @@ function assignmentRecord() {
   };
 }
 
+function closeStage(stageKey: string, projectionCutoffAt: Date) {
+  return {
+    id: `stage-${stageKey}`,
+    projectId: "project-1",
+    stageKey,
+    revision: 1,
+    status: "completed",
+    previousVersionId: null,
+    projectionReadAt: projectionCutoffAt,
+    projectionCutoffAt,
+    projectionFingerprint: "old-projection",
+    amountSnapshot: {},
+    stateSnapshot: {},
+    basisSnapshot: {},
+    confirmedByUserId: "old-actor",
+    confirmedAt: projectionCutoffAt
+  };
+}
+
 function createPrismaMock(options: {
   user?: { id: string; isActive: boolean } | null;
   projectMembers?: Array<{ positionKey: string }>;
@@ -747,6 +814,8 @@ function createPrismaMock(options: {
   assignment?: ReturnType<typeof assignmentRecord> | null;
   existingFact?: unknown;
   originalFact?: unknown;
+  closeAggregate?: { projectId: string } | null;
+  closeStages?: Array<ReturnType<typeof closeStage>>;
 }) {
   let storedFact = (options.existingFact as Record<string, unknown> | null) ?? null;
   const storedImpacts: Array<Record<string, unknown>> = [];
@@ -826,6 +895,7 @@ function createPrismaMock(options: {
               costCategoryCode: "project_daily_expense",
               fundPurpose: null,
               description: null,
+              createdAt: new Date("2026-09-18T12:00:00.000Z"),
               impactSnapshot: {
                 subjectSnapshot: {
                   kind: "participating_company",
@@ -837,7 +907,10 @@ function createPrismaMock(options: {
                 }
               }
             }
-          : { id: `impact-${controlledWriteCount}` };
+          : {
+              id: `impact-${controlledWriteCount}`,
+              createdAt: new Date("2026-09-18T12:00:00.000Z")
+            };
       controlledWriteCount += 1;
       storedImpacts.push(created);
       storedFact.impacts = storedImpacts;
@@ -891,6 +964,19 @@ function createPrismaMock(options: {
         if (storedFact) storedFact.impacts = storedImpacts;
         return created;
       })
+    },
+    projectCloseAggregate: {
+      findUnique: jest.fn().mockResolvedValue(options.closeAggregate ?? null),
+      upsert: jest.fn().mockResolvedValue(options.closeAggregate ?? { projectId: "project-1" }),
+      update: jest.fn().mockResolvedValue({})
+    },
+    projectCloseImpact: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: "close-impact-1" })
+    },
+    projectCloseStageVersion: {
+      findMany: jest.fn().mockResolvedValue(options.closeStages ?? []),
+      create: jest.fn().mockResolvedValue({})
     }
   };
 

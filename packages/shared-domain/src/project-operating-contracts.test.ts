@@ -23,6 +23,8 @@ import {
   PRIMARY_COST_CATEGORY_CODES,
   PROJECT_OPERATING_TAKEOVER_STATUS_LABELS,
   PROJECT_OPERATING_TAKEOVER_STATUSES,
+  buildProjectCloseStageTimeline,
+  calculateCurrentDistributableProfit,
   PROJECT_STAGE_LABELS,
   PROJECT_STAGES
 } from "./project-operating-contracts";
@@ -72,6 +74,66 @@ describe("project operating shared contracts", () => {
       takeover_completed: "经营接管完成",
       supplemental_review: "需要补充复核"
     });
+  });
+
+  it("opens only the first incomplete close stage", () => {
+    expect(buildProjectCloseStageTimeline([])).toEqual([
+      { stage: "construction_completed", status: "ready" },
+      { stage: "owner_settlement_completed", status: "pending" },
+      { stage: "downstream_cost_confirmed", status: "pending" },
+      { stage: "tax_and_enterprise_clearing_completed", status: "pending" },
+      { stage: "final_profit_confirmed", status: "pending" },
+      { stage: "profit_distribution_completed", status: "pending" },
+      { stage: "project_funds_cleared", status: "pending" }
+    ]);
+  });
+
+  it("keeps completed snapshots while marking affected profit stages for reconfirmation", () => {
+    expect(buildProjectCloseStageTimeline(PROJECT_STAGES, [
+      "final_profit_confirmed",
+      "profit_distribution_completed",
+      "project_funds_cleared"
+    ])).toEqual([
+      { stage: "construction_completed", status: "completed" },
+      { stage: "owner_settlement_completed", status: "completed" },
+      { stage: "downstream_cost_confirmed", status: "completed" },
+      { stage: "tax_and_enterprise_clearing_completed", status: "completed" },
+      { stage: "final_profit_confirmed", status: "needs_reconfirmation" },
+      { stage: "profit_distribution_completed", status: "needs_reconfirmation" },
+      { stage: "project_funds_cleared", status: "needs_reconfirmation" }
+    ]);
+  });
+
+  it("limits current distributable profit by both usable cash and undistributed expected profit", () => {
+    expect(calculateCurrentDistributableProfit({
+      availableProjectCashCents: 1_000_00n,
+      unpaidDownstreamCents: 200_00n,
+      unsettledExpenseCents: 50_00n,
+      necessaryReserveCents: 100_00n,
+      restrictedFundsCents: 25_00n,
+      unresolvedDifferenceCents: 25_00n,
+      companyAdvanceCents: 100_00n,
+      temporaryDistributedCents: 50_00n,
+      currentExpectedProfitCents: 600_00n
+    })).toEqual({
+      cashConstraintCents: 450_00n,
+      profitConstraintCents: 550_00n,
+      currentDistributableProfitCents: 450_00n
+    });
+  });
+
+  it("rejects a negative distributable-profit deduction instead of increasing the result", () => {
+    expect(() => calculateCurrentDistributableProfit({
+      availableProjectCashCents: 100_00n,
+      unpaidDownstreamCents: -1n,
+      unsettledExpenseCents: 0n,
+      necessaryReserveCents: 0n,
+      restrictedFundsCents: 0n,
+      unresolvedDifferenceCents: 0n,
+      companyAdvanceCents: 0n,
+      temporaryDistributedCents: 0n,
+      currentExpectedProfitCents: 100_00n
+    })).toThrow("可分配利润扣减项不能为负数");
   });
 
   it("locks the eight company-wide primary cost categories and their names", () => {

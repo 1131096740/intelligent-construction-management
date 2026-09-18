@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `a24a55ae0e650b926c92150a84f2be9719f94219ec8ea0576712ee1f70fd47d8` |
-| webApiWrappers | ready | `298eb7b234b9a7df13eb50ef776257bef6c780220810a824da4279f3f0f07996` |
-| webPageActions | ready | `2a7b5ecd23d8ff6fe037061ff7fe05611fb83b297cb22e32e591b7fb7920cff3` |
-| routeUsage | ready | `3727022fb253a70b0974c8be3c3f1cb1540f3b936c8d7c382a6fac23fe6a4289` |
+| nestRoutes | ready | `dd889da07b46a3426485d050d3530d87fa5bec380bca1bb05f3f7ac0608d3de8` |
+| webApiWrappers | ready | `b979f8d91be02ae0f3c1347c13612263ffda3ba5548c2694edc5f4572d4b093a` |
+| webPageActions | ready | `8e760c437953b59e500be8f60cc37cfb8f19d12c450ac4aa2638a1d3bc572c65` |
+| routeUsage | ready | `738607116934b3e8182f387c70447307494d367e2e0bd09469c39fd984ded040` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 596 |
-| pageRouteCount | 379 |
+| routeCount | 606 |
+| pageRouteCount | 389 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 574 |
+| mainRequestBindingCount | 584 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 307 |
-| actionBindingCount | 349 |
-| acceptedActionBindingCount | 327 |
+| registeredActionCount | 316 |
+| actionBindingCount | 358 |
+| acceptedActionBindingCount | 336 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 298 |
-| coveredProductionMutationConsumerPairCount | 298 |
+| productionMutationConsumerPairCount | 307 |
+| coveredProductionMutationConsumerPairCount | 307 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -152,6 +152,7 @@
 | GET | /projects/:projectId/affiliate-business-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateBusinessFacts | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateRecordCapability | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-company-contracts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateCompanyContracts | — | not_applicable | — |
+| GET | /projects/:projectId/close-profit | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#fetchProjectCloseProfitWorkbench | — | not_applicable | — |
 | GET | /projects/:projectId/construction-enterprise-options | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectConstructionEnterpriseOptions | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId/detail-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverDetailExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getContractTakeover | — | not_applicable | — |
@@ -460,6 +461,15 @@
 | POST | /projects/:projectId/affiliate-settlement-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateSettlementFact | project.affiliate-settlement.confirm | covered | — |
 | POST | /projects/:projectId/affiliate-settlement-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliateSettlementPrivateFile | project.affiliate-settlement.evidence-upload | covered | — |
 | POST | /projects/:projectId/affiliate-settlement-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateSettlementFact | project.affiliate-settlement.record | covered | — |
+| POST | /projects/:projectId/close-profit/distributions/confirm | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#confirmProjectProfitDistribution | project-close-profit.distribution.confirm | covered | — |
+| POST | /projects/:projectId/close-profit/distributions/submissions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#submitProjectProfitDistribution | project-close-profit.distribution.submit | covered | — |
+| POST | /projects/:projectId/close-profit/downstream-cost/attestations/contract | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#attestProjectDownstreamContractCost | project-close-profit.downstream-cost.attest | covered | — |
+| POST | /projects/:projectId/close-profit/downstream-cost/attestations/finance | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#attestProjectDownstreamFinanceCost | project-close-profit.downstream-cost.attest-finance | covered | — |
+| POST | /projects/:projectId/close-profit/final-profit/confirm | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#confirmProjectFinalProfit | project-close-profit.final-profit.confirm | covered | — |
+| POST | /projects/:projectId/close-profit/final-profit/submissions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#submitProjectFinalProfit | project-close-profit.final-profit.submit | covered | — |
+| POST | /projects/:projectId/close-profit/impacts/reconcile | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#reconcileProjectCloseImpacts | project-close-profit.impacts.reconcile | covered | — |
+| POST | /projects/:projectId/close-profit/stages/:stageKey/complete | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#completeProjectCloseStage | project-close-profit.stage.complete | covered | — |
+| POST | /projects/:projectId/close-profit/temporary-distributions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#postTemporaryProfitDistribution | project-close-profit.temporary-distribution.create | covered | — |
 | POST | /projects/:projectId/construction-enterprise | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#assignProjectConstructionEnterprise | project-operating-profile.set-construction-enterprise | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/abandonment | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonContractTakeover | contract-takeover.abandon | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverChangeBaseline | contract-takeover.confirm-change-baseline | covered | — |

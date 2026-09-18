@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 170,
-    "terminalMigration": "20260917090000_pol115_domain_entry_snapshots",
-    "terminalMigrationChecksum": "3c7e022e14b3aa87c58c588d487741fb744a60c0b50c82857dbac3222496794f",
+    "expectedDirectoryCount": 171,
+    "terminalMigration": "20260918170000_pol109_project_close_stages",
+    "terminalMigrationChecksum": "fd49fc3ddb72fa63a5826ad1be6193a13a339904d1ec20d81f9ba2da6d38ce7f",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 58,
-    "fullyPendingSuites": 47,
+    "pendingFiles": 60,
+    "fullyPendingSuites": 49,
     "partiallyPendingSuites": 11,
-    "pendingTests": 290,
-    "coveredFiles": 58,
-    "coveredTests": 290,
+    "pendingTests": 294,
+    "coveredFiles": 60,
+    "coveredTests": 294,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -276,6 +276,28 @@
         "kind": "workspaceScript",
         "script": "verify:pol108-operating-projection:local",
         "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "project_close_profit_pol109",
+      "pendingTests": 4,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/project-close-profit-postgresql.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol109-project-close-profit:local",
+        "path": "services/api/prisma/run-pol109-project-close-profit-local.cjs"
       },
       "state": "executable_local_runner"
     },

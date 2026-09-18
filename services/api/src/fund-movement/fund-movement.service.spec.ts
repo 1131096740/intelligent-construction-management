@@ -136,7 +136,54 @@ function createHarness(roleKeys: string[] = ["finance_staff"]) {
         relationshipEntries: []
       }),
       update: jest.fn().mockResolvedValue({ id: "movement-1", status: "submitted", revision: 2 }),
-      findMany: jest.fn().mockResolvedValue([])
+      findMany: jest.fn().mockResolvedValue([]),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { paymentAmountCents: 0n } })
+    },
+    projectProfitDistributionAuthorization: {
+      findFirst: jest.fn().mockResolvedValue({ id: "client-supplied-109" }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: "client-supplied-109",
+        authorizationKind: "final",
+        temporaryDistributionId: null,
+        projectId: "project-1",
+        distributionId: "distribution-1",
+        distributionLineId: "distribution-line-1",
+        companyEntityId: "company-1",
+        authorizedAmountCents: 100n,
+        projectionFingerprint: "projection-fingerprint",
+        authorizedAt: new Date("2026-08-29T00:00:00.000Z"),
+        temporaryDistribution: null,
+        distribution: {
+          id: "distribution-1",
+          projectId: "project-1",
+          stageVersionId: "distribution-stage-1",
+          projectionFingerprint: "projection-fingerprint",
+          profitConfirmation: {
+            stageVersionId: "profit-stage-1"
+          },
+          stageVersion: {
+            id: "distribution-stage-1",
+            status: "completed"
+          }
+        }
+      })
+    },
+    projectCloseStageVersion: {
+      findFirst: jest.fn().mockImplementation(({ where }: { where: { stageKey: string } }) =>
+        Promise.resolve(where.stageKey === "final_profit_confirmed"
+          ? {
+              id: "profit-stage-1",
+              status: "completed",
+              projectionFingerprint: "projection-fingerprint"
+            }
+          : {
+              id: "distribution-stage-1",
+              status: "completed",
+              projectionFingerprint: "projection-fingerprint"
+          }))
+    },
+    projectCloseImpact: {
+      findFirst: jest.fn().mockResolvedValue(null)
     },
     fundMovementLeg: {
       create: jest.fn().mockImplementation(({ data }: { data: { role: string; projectId: string; companyEntityId: string } }) => {
@@ -168,7 +215,8 @@ function createHarness(roleKeys: string[] = ["finance_staff"]) {
       })
     },
     projectParticipatingCompany: {
-      findFirst: jest.fn().mockResolvedValue({ companyEntityId: "company-a" })
+      findFirst: jest.fn().mockImplementation(({ where }: { where?: { OR?: unknown[] } }) =>
+        Promise.resolve(where?.OR ? null : { companyEntityId: "company-a" }))
     },
     projectFinancingQuota: {
       findMany: jest.fn().mockResolvedValue([])
@@ -723,8 +771,22 @@ describe("FundMovementService", () => {
     expect(context.source.sourceSnapshot.projectId).toBe("project-beneficiary");
   });
 
-  it("keeps profit execution fail-closed while #109 has no server authority", async () => {
-    const { service, prisma } = createHarness();
+  it("accepts profit execution only after resolving the effective #109 authorization on the server", async () => {
+    const { service, prisma, tx } = createHarness();
+    tx.projectCloseStageVersion.findFirst.mockImplementation(
+      ({ where }: { where: { stageKey: string } }) =>
+        Promise.resolve(where.stageKey === "final_profit_confirmed"
+          ? {
+              id: "profit-stage-1",
+              status: "completed",
+              projectionFingerprint: "profit-before-participant-reconfirmation"
+            }
+          : {
+              id: "distribution-stage-1",
+              status: "completed",
+              projectionFingerprint: "projection-fingerprint"
+            })
+    );
     await expect(service.create("actor-1", {
       ...crossProjectInput(),
       kind: "profit_distribution_execution",
@@ -733,13 +795,75 @@ describe("FundMovementService", () => {
       beneficiaryProjectId: "project-1",
       sourceCompanyEntityId: "company-1",
       beneficiaryCompanyEntityId: "company-1",
-      profitAuthorizationId: "client-supplied-109",
       legs: [
         { ...crossProjectInput().legs[0], projectId: "project-1", companyEntityId: "company-1" },
         { ...crossProjectInput().legs[1], projectId: "project-1", companyEntityId: "company-1", direction: "increase" }
       ]
-    })).rejects.toThrow("#109");
+    })).resolves.toEqual({ movementId: "movement-1", status: "draft", revision: 1 });
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(tx.projectProfitDistributionAuthorization.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: "project-1", companyEntityId: "company-1" }
+      })
+    );
+    expect(tx.projectProfitDistributionAuthorization.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "client-supplied-109" } })
+    );
+    expect(tx.fundMovement.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ profitAuthorizationId: "client-supplied-109" })
+    }));
+    expect(tx.fundMovementRelationshipEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a client-supplied #109 profit authorization before opening a transaction", async () => {
+    const { service, prisma } = createHarness();
+    await expect(service.create("actor-1", {
+      ...crossProjectInput(),
+      kind: "profit_distribution_execution",
+      paymentExecutionId: undefined,
+      profitAuthorizationId: "client-supplied-109"
+    })).rejects.toThrow("客户端不得指定");
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a #109 authorization when a newer operating impact exists", async () => {
+    const { service, tx } = createHarness();
+    tx.projectCloseImpact.findFirst.mockResolvedValueOnce({ id: "impact-after-authorization" });
+
+    await expect(service.create("actor-1", {
+      ...crossProjectInput(),
+      kind: "profit_distribution_execution",
+      paymentExecutionId: undefined,
+      sourceProjectId: "project-1",
+      beneficiaryProjectId: "project-1",
+      sourceCompanyEntityId: "company-1",
+      beneficiaryCompanyEntityId: "company-1",
+      legs: [
+        { ...crossProjectInput().legs[0], projectId: "project-1", companyEntityId: "company-1" },
+        { ...crossProjectInput().legs[1], projectId: "project-1", companyEntityId: "company-1", direction: "increase" }
+      ]
+    })).rejects.toThrow("授权后项目经营事实或参与公司已变化");
+    expect(tx.fundMovement.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a #109 authorization when project participation changed after authorization", async () => {
+    const { service, tx } = createHarness();
+    tx.projectParticipatingCompany.findFirst.mockResolvedValueOnce({ id: "participant-after-authorization" });
+
+    await expect(service.create("actor-1", {
+      ...crossProjectInput(),
+      kind: "profit_distribution_execution",
+      paymentExecutionId: undefined,
+      sourceProjectId: "project-1",
+      beneficiaryProjectId: "project-1",
+      sourceCompanyEntityId: "company-1",
+      beneficiaryCompanyEntityId: "company-1",
+      legs: [
+        { ...crossProjectInput().legs[0], projectId: "project-1", companyEntityId: "company-1" },
+        { ...crossProjectInput().legs[1], projectId: "project-1", companyEntityId: "company-1", direction: "increase" }
+      ]
+    })).rejects.toThrow("授权后项目经营事实或参与公司已变化");
+    expect(tx.fundMovement.create).not.toHaveBeenCalled();
   });
 
   it("creates one draft movement with two stable legs and one relationship atomically", async () => {
@@ -811,13 +935,26 @@ describe("FundMovementService", () => {
 
   it("enforces submit SoD before changing lifecycle", async () => {
     const { service, tx } = createHarness();
-    tx.fundMovement.findUniqueOrThrow.mockResolvedValueOnce({
+    const movement = {
       id: "movement-1",
+      kind: "cross_project_payment",
       status: "draft",
       revision: 1,
+      paymentExecutionId: "execution-1",
+      sourceProjectId: "project-source",
+      beneficiaryProjectId: "project-beneficiary",
+      sourceCompanyEntityId: "company-source",
+      beneficiaryCompanyEntityId: "company-beneficiary",
+      paymentAmountCents: 100n,
+      projectFundUsedCents: 100n,
+      companyAdvanceCents: 0n,
+      profitAuthorizationId: null,
       createdByUserId: "actor-1",
+      submittedByUserId: null,
       createdAt: new Date("2026-08-29T00:00:00.000Z")
-    });
+    };
+    tx.fundMovement.findUnique.mockResolvedValueOnce(movement);
+    tx.fundMovement.findUniqueOrThrow.mockResolvedValueOnce(movement);
     await expect(service.submit("actor-1", {
       movementId: "movement-1",
       expectedRevision: 1,
@@ -828,13 +965,26 @@ describe("FundMovementService", () => {
 
   it("enforces submit SoD across an active delegation edge", async () => {
     const { service, tx } = createHarness();
-    tx.fundMovement.findUniqueOrThrow.mockResolvedValueOnce({
+    const movement = {
       id: "movement-1",
+      kind: "cross_project_payment",
       status: "draft",
       revision: 1,
+      paymentExecutionId: "execution-1",
+      sourceProjectId: "project-source",
+      beneficiaryProjectId: "project-beneficiary",
+      sourceCompanyEntityId: "company-source",
+      beneficiaryCompanyEntityId: "company-beneficiary",
+      paymentAmountCents: 100n,
+      projectFundUsedCents: 100n,
+      companyAdvanceCents: 0n,
+      profitAuthorizationId: null,
       createdByUserId: "creator-1",
+      submittedByUserId: null,
       createdAt: new Date("2026-08-29T00:00:00.000Z")
-    });
+    };
+    tx.fundMovement.findUnique.mockResolvedValueOnce(movement);
+    tx.fundMovement.findUniqueOrThrow.mockResolvedValueOnce(movement);
     tx.approvalDelegation.findMany.mockResolvedValueOnce([
       { fromUserId: "creator-1", toUserId: "actor-1" }
     ]);

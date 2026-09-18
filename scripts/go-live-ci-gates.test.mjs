@@ -145,6 +145,10 @@ test("CI fans out independent static and database gates behind one stable summar
     dynamic,
     /if: \$\{\{ matrix\.group == 'pol113_pol115_business_entries' \}\}[\s\S]*?sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc[\s\S]*?command -v soffice/u
   );
+  assert.match(
+    dynamic,
+    /if: \$\{\{ matrix\.group == 'project_close_profit_pol109' \}\}[\s\S]*?browser_path="\$RUNNER_TEMP\/pol109-playwright"[\s\S]*?echo "PLAYWRIGHT_BROWSERS_PATH=\$browser_path" >> "\$GITHUB_ENV"[\s\S]*?PLAYWRIGHT_BROWSERS_PATH="\$browser_path" pnpm --filter @jiangkong\/web-admin exec playwright install --with-deps chromium/u
+  );
   assert.equal(
     dynamic.match(/libreoffice-writer/gu)?.length,
     1,

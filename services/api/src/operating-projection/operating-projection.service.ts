@@ -133,6 +133,14 @@ type ProjectionReadContext = {
   projectionContextFingerprint: string;
 };
 
+export type OperatingProjectionTransactionProjectRead = Readonly<{
+  projection: OperatingProjectionReadModel;
+  aggregate: OperatingProjectionAggregateView;
+  readAt: Date;
+  cutoffAt: Date;
+  fingerprint: string;
+}>;
+
 @Injectable()
 export class OperatingProjectionService {
   private readonly detailCursor = new OperatingProjectionCursorCodec();
@@ -148,6 +156,37 @@ export class OperatingProjectionService {
 
   acquireCompatibilityReadSlot(actorUserId: string): () => void {
     return this.readLimiter.acquire(actorUserId);
+  }
+
+  async readProjectInTransaction(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    input: { projectId: string; fixedReadAt?: Date }
+  ): Promise<OperatingProjectionTransactionProjectRead> {
+    const projectId = required(input.projectId, "项目标识不能为空");
+    const releaseReadSlot = this.readLimiter.acquire(actorUserId);
+    try {
+      const result = await this.readProjectionBundleWithAcquiredSlot({
+        actorUserId,
+        scope: { kind: "project", projectId, filters: {} },
+        requireOverviewPermission: true,
+        fixedReadAt: input.fixedReadAt,
+        transactionClient: tx
+      }, async (_client, _projectIds, context) => ({
+        readAt: context.readAt,
+        cutoffAt: context.cutoffAt,
+        fingerprint: context.projectionContextFingerprint
+      }));
+      return Object.freeze({
+        projection: result.projection,
+        aggregate: toOperatingProjectionAggregate(result.projection),
+        readAt: result.additional.readAt,
+        cutoffAt: result.additional.cutoffAt,
+        fingerprint: result.additional.fingerprint
+      });
+    } finally {
+      releaseReadSlot();
+    }
   }
 
   async getProjectView(
@@ -704,6 +743,7 @@ export class OperatingProjectionService {
     collectSourceReferenceTotals?: boolean;
     fixedReadAt?: Date;
     fixedCutoffAt?: Date;
+    transactionClient?: Prisma.TransactionClient;
   }, readAdditional?: (
     tx: Prisma.TransactionClient,
     projectIds: string[],
@@ -714,8 +754,10 @@ export class OperatingProjectionService {
     additional: T;
   }> {
     try {
-      return await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+      const readWithinTransaction = async (tx: Prisma.TransactionClient) => {
+      if (!input.transactionClient) {
+        await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+      }
       const databaseReadAt = (await tx.$queryRaw<Array<{ readAt: Date }>>(Prisma.sql`
         SELECT CURRENT_TIMESTAMP AS "readAt",
           set_config('statement_timeout', ${String(STATEMENT_TIMEOUT_MS)}, true)
@@ -1230,11 +1272,14 @@ export class OperatingProjectionService {
           }, projection)
         : undefined as T;
       return { projection, additional };
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
-      maxWait: TRANSACTION_MAX_WAIT_MS,
-      timeout: TRANSACTION_TIMEOUT_MS
-      });
+      };
+      return input.transactionClient
+        ? await readWithinTransaction(input.transactionClient)
+        : await this.prisma.$transaction(readWithinTransaction, {
+            isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+            maxWait: TRANSACTION_MAX_WAIT_MS,
+            timeout: TRANSACTION_TIMEOUT_MS
+          });
     } catch (error) {
       if (
         error instanceof ProjectionResourceBudgetExceededError ||

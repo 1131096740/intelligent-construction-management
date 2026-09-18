@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { PROJECT_OPERATING_TAKEOVER_STATUSES } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { invalidateProjectCloseForParticipationChange } from "../project-close-profit/project-close-impact-invalidation";
 import { translateOperatingProfileConstraint } from "./project-operating-constraint";
 import { PARTICIPANT_DEACTIVATION_DEFINITION, freezeParticipantDeactivation, validateParticipantDeactivation } from "./project-base-entry";
 
@@ -333,6 +334,17 @@ export class ProjectOperatingProfileService {
           addedByUserId: actorUserId
         }
       });
+      await invalidateProjectCloseForParticipationChange(tx, {
+        projectId,
+        participantId: participant.id,
+        companyEntityId: participant.companyEntityId,
+        companyEntityVersionId: participant.companyEntityVersionId,
+        effectiveFrom: participant.effectiveFrom,
+        endedAt: participant.endedAt,
+        mutation: "added",
+        observedAt: participant.createdAt,
+        actorUserId
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: "project.participating_company.add",
@@ -357,10 +369,11 @@ export class ProjectOperatingProfileService {
           projectId: string;
           companyEntityId: string;
           companyEntityVersionId: string;
+          effectiveFrom: Date;
           endedAt: Date | null;
         }>
       >(Prisma.sql`
-        SELECT "id", "projectId", "companyEntityId", "companyEntityVersionId", "endedAt"
+        SELECT "id", "projectId", "companyEntityId", "companyEntityVersionId", "effectiveFrom", "endedAt"
         FROM "ProjectParticipatingCompany"
         WHERE "id" = ${participantId} AND "projectId" = ${projectId}
         FOR UPDATE
@@ -445,7 +458,24 @@ export class ProjectOperatingProfileService {
         throw new BadRequestException("启用经营账前必须至少设置一家我方参与公司");
       }
 
+      const [mutationClock] = await tx.$queryRaw<Array<{ observedAt: Date }>>(Prisma.sql`
+        SELECT CURRENT_TIMESTAMP AS "observedAt"
+      `);
+      if (!mutationClock?.observedAt) {
+        throw new Error("无法取得参与公司删除的数据库时间水位");
+      }
       await tx.projectParticipatingCompany.delete({ where: { id: participant.id } });
+      await invalidateProjectCloseForParticipationChange(tx, {
+        projectId,
+        participantId: participant.id,
+        companyEntityId: participant.companyEntityId,
+        companyEntityVersionId: participant.companyEntityVersionId,
+        effectiveFrom: participant.effectiveFrom,
+        endedAt: participant.endedAt,
+        mutation: "removed",
+        observedAt: mutationClock.observedAt,
+        actorUserId
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: "project.participating_company.remove",
@@ -558,6 +588,17 @@ export class ProjectOperatingProfileService {
       const updated = await tx.projectParticipatingCompany.update({
         where: { id: participant.id },
         data: { endedAt, endedByUserId: actorUserId, changeReason }
+      });
+      await invalidateProjectCloseForParticipationChange(tx, {
+        projectId,
+        participantId: updated.id,
+        companyEntityId: updated.companyEntityId,
+        companyEntityVersionId: updated.companyEntityVersionId,
+        effectiveFrom: updated.effectiveFrom,
+        endedAt: updated.endedAt,
+        mutation: "ended",
+        observedAt: updated.updatedAt,
+        actorUserId
       });
       const entrySnapshot = await freezeParticipantDeactivation(tx, this.audit, actorUserId, participant,
         { endedOn: dateOnly(endedAt), changeReason }, input.definitionVersion);

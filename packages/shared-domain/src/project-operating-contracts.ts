@@ -200,6 +200,102 @@ export const PROJECT_STAGE_LABELS = Object.freeze({
   project_funds_cleared: "项目资金结清"
 } as const satisfies Readonly<Record<ProjectStage, string>>);
 
+export const PROJECT_CLOSE_STAGE_STATUSES = Object.freeze([
+  "pending",
+  "ready",
+  "completed",
+  "needs_reconfirmation"
+] as const);
+
+export type ProjectCloseStageStatus =
+  (typeof PROJECT_CLOSE_STAGE_STATUSES)[number];
+
+export type ProjectCloseStageTimelineItem = Readonly<{
+  stage: ProjectStage;
+  status: ProjectCloseStageStatus;
+}>;
+
+export function buildProjectCloseStageTimeline(
+  completedStages: readonly ProjectStage[],
+  affectedStages: readonly ProjectStage[] = []
+): readonly ProjectCloseStageTimelineItem[] {
+  const completed = new Set(completedStages);
+  const affected = new Set(affectedStages);
+  const firstIncomplete = PROJECT_STAGES.findIndex((stage) => !completed.has(stage));
+
+  return PROJECT_STAGES.map((stage, index) => Object.freeze({
+    stage,
+    status: affected.has(stage)
+      ? "needs_reconfirmation"
+      : completed.has(stage)
+        ? "completed"
+      : index === firstIncomplete
+        ? "ready"
+        : "pending"
+  }));
+}
+
+export type CurrentDistributableProfitInput = Readonly<{
+  availableProjectCashCents: bigint;
+  unpaidDownstreamCents: bigint;
+  unsettledExpenseCents: bigint;
+  necessaryReserveCents: bigint;
+  restrictedFundsCents: bigint;
+  unresolvedDifferenceCents: bigint;
+  companyAdvanceCents: bigint;
+  temporaryDistributedCents: bigint;
+  currentExpectedProfitCents: bigint;
+}>;
+
+export type CurrentDistributableProfit = Readonly<{
+  cashConstraintCents: bigint;
+  profitConstraintCents: bigint;
+  currentDistributableProfitCents: bigint;
+}>;
+
+export function calculateCurrentDistributableProfit(
+  input: CurrentDistributableProfitInput
+): CurrentDistributableProfit {
+  const deductions = [
+    input.unpaidDownstreamCents,
+    input.unsettledExpenseCents,
+    input.necessaryReserveCents,
+    input.restrictedFundsCents,
+    input.unresolvedDifferenceCents,
+    input.companyAdvanceCents,
+    input.temporaryDistributedCents
+  ];
+  if (deductions.some((value) => value < 0n)) {
+    throw new Error("可分配利润扣减项不能为负数");
+  }
+  const cashConstraintCents = maxZero(
+    maxZero(input.availableProjectCashCents) -
+      input.unpaidDownstreamCents -
+      input.unsettledExpenseCents -
+      input.necessaryReserveCents -
+      input.restrictedFundsCents -
+      input.unresolvedDifferenceCents -
+      input.companyAdvanceCents -
+      input.temporaryDistributedCents
+  );
+  const profitConstraintCents = maxZero(
+    input.currentExpectedProfitCents - input.temporaryDistributedCents
+  );
+
+  return Object.freeze({
+    cashConstraintCents,
+    profitConstraintCents,
+    currentDistributableProfitCents:
+      cashConstraintCents < profitConstraintCents
+        ? cashConstraintCents
+        : profitConstraintCents
+  });
+}
+
+function maxZero(value: bigint) {
+  return value > 0n ? value : 0n;
+}
+
 export const PROJECT_OPERATING_TAKEOVER_STATUSES = Object.freeze([
   "preparing",
   "operating_with_takeover",

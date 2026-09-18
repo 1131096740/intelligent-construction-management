@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "a24a55ae0e650b926c92150a84f2be9719f94219ec8ea0576712ee1f70fd47d8",
+      "sha256": "dd889da07b46a3426485d050d3530d87fa5bec380bca1bb05f3f7ac0608d3de8",
       "status": "ready",
       "summary": {
-        "routeCount": 596
+        "routeCount": 606
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "298eb7b234b9a7df13eb50ef776257bef6c780220810a824da4279f3f0f07996",
+      "sha256": "b979f8d91be02ae0f3c1347c13612263ffda3ba5548c2694edc5f4572d4b093a",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 27,
-        "exportedFunctionCount": 570,
-        "transportWrapperCount": 550,
+        "apiModuleCount": 28,
+        "exportedFunctionCount": 580,
+        "transportWrapperCount": 560,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 574,
+        "mainRequestBindingCount": 584,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 574,
-        "productionConsumerCount": 445,
+        "requestEdgeCount": 584,
+        "productionConsumerCount": 455,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "2a7b5ecd23d8ff6fe037061ff7fe05611fb83b297cb22e32e591b7fb7920cff3",
+      "sha256": "8e760c437953b59e500be8f60cc37cfb8f19d12c450ac4aa2638a1d3bc572c65",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 307,
+        "registeredActionCount": 316,
         "pageActionCount": 56,
-        "backgroundActionCount": 251,
-        "reachableVueFileCount": 152,
+        "backgroundActionCount": 260,
+        "reachableVueFileCount": 153,
         "routeRootCount": 59,
-        "totalVueFileCount": 171,
-        "parsedVueFileCount": 171,
-        "reachableProductionModuleCount": 271,
-        "templateEventDirectiveCount": 975,
+        "totalVueFileCount": 172,
+        "parsedVueFileCount": 172,
+        "reachableProductionModuleCount": 273,
+        "templateEventDirectiveCount": 978,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 298,
-        "candidateProductionMutationConsumerCount": 298,
-        "acceptedProductionMutationConsumerCount": 298,
-        "productionMutationConsumerPairCount": 298,
+        "coveredProductionMutationConsumerCount": 307,
+        "candidateProductionMutationConsumerCount": 307,
+        "acceptedProductionMutationConsumerCount": 307,
+        "productionMutationConsumerPairCount": 307,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "3727022fb253a70b0974c8be3c3f1cb1540f3b936c8d7c382a6fac23fe6a4289",
+      "sha256": "738607116934b3e8182f387c70447307494d367e2e0bd09469c39fd984ded040",
       "status": "ready",
       "summary": {
-        "routeCount": 596,
-        "exactRouteCount": 596,
-        "normalizedRouteCount": 596,
+        "routeCount": 606,
+        "exactRouteCount": 606,
+        "normalizedRouteCount": 606,
         "classificationOverrideCount": 221,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
         "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-        "derivedProductionPageCount": 375,
-        "pageRouteCount": 379,
+        "derivedProductionPageCount": 385,
+        "pageRouteCount": 389,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 432,
+          "web_api_wrapper": 442,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 596,
-    "pageRouteCount": 379,
+    "routeCount": 606,
+    "pageRouteCount": 389,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 574,
+    "mainRequestBindingCount": 584,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 307,
-    "actionBindingCount": 349,
-    "acceptedActionBindingCount": 327,
+    "registeredActionCount": 316,
+    "actionBindingCount": 358,
+    "acceptedActionBindingCount": 336,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 298,
-    "coveredProductionMutationConsumerPairCount": 298,
+    "productionMutationConsumerPairCount": 307,
+    "coveredProductionMutationConsumerPairCount": 307,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -5396,6 +5396,61 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/close-profit",
+        "normalizedKey": "GET /projects/:param/close-profit",
+        "controller": "ProjectCloseProfitController",
+        "handler": "getWorkbench",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "fetchProjectCloseProfitWorkbench",
+          "method": "GET",
+          "path": "/projects/:param/close-profit",
+          "normalizedKey": "GET /projects/:param/close-profit",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
           ]
         }
       ],
@@ -23645,6 +23700,730 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/distributions/confirm",
+        "normalizedKey": "POST /projects/:param/close-profit/distributions/confirm",
+        "controller": "ProjectCloseProfitController",
+        "handler": "confirmDistribution",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "confirmProjectProfitDistribution",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/distributions/confirm",
+          "normalizedKey": "POST /projects/:param/close-profit/distributions/confirm",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.distribution.confirm",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.distribution.confirm\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000confirmProjectProfitDistribution\u0000POST\u0000POST /projects/:param/close-profit/distributions/confirm\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_distribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "confirmProjectProfitDistribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/distributions/submissions",
+        "normalizedKey": "POST /projects/:param/close-profit/distributions/submissions",
+        "controller": "ProjectCloseProfitController",
+        "handler": "submitDistribution",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "submitProjectProfitDistribution",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/distributions/submissions",
+          "normalizedKey": "POST /projects/:param/close-profit/distributions/submissions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.distribution.submit",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.distribution.submit\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000submitProjectProfitDistribution\u0000POST\u0000POST /projects/:param/close-profit/distributions/submissions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "submit_distribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "submitProjectProfitDistribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/downstream-cost/attestations/contract",
+        "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/contract",
+        "controller": "ProjectCloseProfitController",
+        "handler": "attestContractDownstreamCost",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "attestProjectDownstreamContractCost",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/downstream-cost/attestations/contract",
+          "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/contract",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.downstream-cost.attest",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.downstream-cost.attest\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000attestProjectDownstreamContractCost\u0000POST\u0000POST /projects/:param/close-profit/downstream-cost/attestations/contract\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "attest_contract_cost",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "attestProjectDownstreamContractCost",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/downstream-cost/attestations/finance",
+        "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/finance",
+        "controller": "ProjectCloseProfitController",
+        "handler": "attestFinanceDownstreamCost",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "attestProjectDownstreamFinanceCost",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/downstream-cost/attestations/finance",
+          "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/finance",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.downstream-cost.attest-finance",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.downstream-cost.attest-finance\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000attestProjectDownstreamFinanceCost\u0000POST\u0000POST /projects/:param/close-profit/downstream-cost/attestations/finance\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "attest_finance_cost",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "attestProjectDownstreamFinanceCost",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/final-profit/confirm",
+        "normalizedKey": "POST /projects/:param/close-profit/final-profit/confirm",
+        "controller": "ProjectCloseProfitController",
+        "handler": "confirmFinalProfit",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "confirmProjectFinalProfit",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/final-profit/confirm",
+          "normalizedKey": "POST /projects/:param/close-profit/final-profit/confirm",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.final-profit.confirm",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.final-profit.confirm\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000confirmProjectFinalProfit\u0000POST\u0000POST /projects/:param/close-profit/final-profit/confirm\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_final_profit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "confirmProjectFinalProfit",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/final-profit/submissions",
+        "normalizedKey": "POST /projects/:param/close-profit/final-profit/submissions",
+        "controller": "ProjectCloseProfitController",
+        "handler": "submitFinalProfit",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "submitProjectFinalProfit",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/final-profit/submissions",
+          "normalizedKey": "POST /projects/:param/close-profit/final-profit/submissions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.final-profit.submit",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.final-profit.submit\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000submitProjectFinalProfit\u0000POST\u0000POST /projects/:param/close-profit/final-profit/submissions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "submit_final_profit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "submitProjectFinalProfit",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/impacts/reconcile",
+        "normalizedKey": "POST /projects/:param/close-profit/impacts/reconcile",
+        "controller": "ProjectCloseProfitController",
+        "handler": "reconcileImpacts",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "reconcileProjectCloseImpacts",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/impacts/reconcile",
+          "normalizedKey": "POST /projects/:param/close-profit/impacts/reconcile",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.impacts.reconcile",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.impacts.reconcile\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000reconcileProjectCloseImpacts\u0000POST\u0000POST /projects/:param/close-profit/impacts/reconcile\u00000",
+          "usage": "background",
+          "semantic": "technical_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canReconcileImpacts",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "reconcileProjectCloseImpacts",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/stages/:stageKey/complete",
+        "normalizedKey": "POST /projects/:param/close-profit/stages/:param/complete",
+        "controller": "ProjectCloseProfitController",
+        "handler": "completeStage",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "completeProjectCloseStage",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/stages/:param/complete",
+          "normalizedKey": "POST /projects/:param/close-profit/stages/:param/complete",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.stage.complete",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.stage.complete\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000completeProjectCloseStage\u0000POST\u0000POST /projects/:param/close-profit/stages/:param/complete\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "complete",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "completeProjectCloseStage",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/close-profit/temporary-distributions",
+        "normalizedKey": "POST /projects/:param/close-profit/temporary-distributions",
+        "controller": "ProjectCloseProfitController",
+        "handler": "createTemporaryDistribution",
+        "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "postTemporaryProfitDistribution",
+          "method": "POST",
+          "path": "/projects/:param/close-profit/temporary-distributions",
+          "normalizedKey": "POST /projects/:param/close-profit/temporary-distributions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-close-profit.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-close-profit.temporary-distribution.create",
+          "bindingIndex": 0,
+          "identity": "project-close-profit.temporary-distribution.create\u0000apps/web-admin/src/api/project-close-profit.api.ts\u0000postTemporaryProfitDistribution\u0000POST\u0000POST /projects/:param/close-profit/temporary-distributions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_temporary_distribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+          "wrapper": "postTemporaryProfitDistribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
           ],
           "causalVerified": true,
           "accepted": true,

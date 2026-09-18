@@ -24,6 +24,7 @@ import {
 
 import { PrismaService } from "../database/prisma.service";
 import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
+import { invalidateProjectCloseForOperatingImpact } from "../project-close-profit/project-close-impact-invalidation";
 
 export async function translateOperatingLedgerWriteConstraint<T>(
   operation: Promise<T>
@@ -266,8 +267,8 @@ export class OperatingLedgerService {
     tx: OperatingLedgerTransaction,
     data: Record<string, unknown>,
     actorUserId: string
-  ): Promise<{ id: string }> {
-    const rows = await translateOperatingLedgerWriteConstraint(tx.$queryRaw<Array<{ id: string }>>(
+  ): Promise<{ id: string; createdAt?: Date }> {
+    const rows = await translateOperatingLedgerWriteConstraint(tx.$queryRaw<Array<{ id: string; createdAt?: Date }>>(
       Prisma.sql`
         SELECT *
         FROM public."appendOperatingImpactThroughService"(
@@ -731,7 +732,7 @@ export class OperatingLedgerService {
       return existing;
     }
 
-    return this.appendImpactRow(
+    const created = await this.appendImpactRow(
       tx,
       {
         id: randomUUID(),
@@ -758,6 +759,29 @@ export class OperatingLedgerService {
       },
       actorUserId
     );
+    const persisted = created.createdAt
+      ? created
+      : await tx.operatingImpactEntry.findUnique({
+        where: { id: created.id },
+        select: { id: true, createdAt: true }
+      });
+    if (!persisted?.createdAt) {
+      throw new Error("经营影响写入未返回数据库创建时间，已拒绝继续项目收口失效处理");
+    }
+    await invalidateProjectCloseForOperatingImpact(tx, {
+      id: created.id,
+      projectId,
+      sourceType: input.sourceType,
+      sourceBusinessId: input.sourceBusinessId,
+      sourceImpactKey: impact.sourceImpactKey,
+      impactKind: impact.impactKind,
+      amountCents: impact.amountCents,
+      direction: impact.direction,
+      subjectId: impact.subject?.id,
+      observedAt: persisted.createdAt,
+      actorUserId
+    });
+    return created;
   }
 
   private async impactSnapshotWithSubject(

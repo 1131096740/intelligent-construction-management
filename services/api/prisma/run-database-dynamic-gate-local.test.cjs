@@ -3,6 +3,7 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const {
@@ -159,18 +160,18 @@ test("invoice ledger waits for the published loopback port after container readi
   ]);
 });
 
-test("manifest derives all 290 pending tests as executable local coverage", () => {
+test("manifest derives all 294 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 58,
-    fullyPendingSuites: 47,
+    pendingFiles: 60,
+    fullyPendingSuites: 49,
     partiallyPendingSuites: 11,
-    pendingTests: 290,
-    coveredFiles: 58,
-    coveredTests: 290,
+    pendingTests: 294,
+    coveredFiles: 60,
+    coveredTests: 294,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -202,6 +203,48 @@ test("canonical manifest executes all 14 POL-108 PG16 tests", () => {
     },
     state: "executable_local_runner"
   });
+});
+
+test("canonical manifest executes the POL-109 project close PG16 and HTTP acceptance", () => {
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(
+    (candidate) => candidate.id === "project_close_profit_pol109"
+  );
+
+  assert.deepEqual(group, {
+    id: "project_close_profit_pol109",
+    pendingTests: 4,
+    testFiles: [
+      {
+        path: "services/api/src/database/project-close-profit-postgresql.spec.ts",
+        pendingTests: 3,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
+        pendingTests: 1,
+        suiteStatus: "fully_pending"
+      }
+    ],
+    runner: {
+      kind: "workspaceScript",
+      script: "verify:pol109-project-close-profit:local",
+      path: "services/api/prisma/run-pol109-project-close-profit-local.cjs"
+    },
+    state: "executable_local_runner"
+  });
+});
+
+test("POL-109 runner resolves Playwright from the Web workspace", () => {
+  const source = readFileSync(
+    path.join(__dirname, "run-pol109-project-close-profit-local.cjs"),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /require\.resolve\("@playwright\/test\/cli",\s*\{\s*paths:\s*\[path\.join\(root,\s*"apps\/web-admin"\)\]\s*\}\)/u
+  );
 });
 
 test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", () => {
@@ -505,7 +548,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=290/u
+    /inventory\.coveredTests=26，派生值=294/u
   );
 });
 

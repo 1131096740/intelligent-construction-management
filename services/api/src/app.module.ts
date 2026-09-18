@@ -34,6 +34,7 @@ import { PayableRegistryModule } from "./payable-registry/payable-registry.modul
 import { PaymentModule } from "./payment/payment.module";
 import { PdfModule } from "./pdf/pdf.module";
 import { ProjectExpenseModule } from "./project-expense/project-expense.module";
+import { ProjectCloseProfitModule } from "./project-close-profit/project-close-profit.module";
 import { ProjectModule } from "./project/project.module";
 import { ProjectOperatingConstraintFilter } from "./project/project-operating-constraint.filter";
 import { SettlementModule } from "./settlement/settlement.module";
@@ -64,6 +65,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     SettlementModule,
     PaymentModule,
     ProjectExpenseModule,
+    ProjectCloseProfitModule,
     ExpenseClaimModule,
     FundsWorkbenchModule,
     FundMovementModule,

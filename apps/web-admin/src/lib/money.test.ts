@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateSpotProcurementLineAmountCents,
   centsTextToYuanText,
+  signedYuanTextToCentsText,
   yuanTextToCentsText
 } from "./money";
 
@@ -19,6 +20,41 @@ describe("yuanTextToCentsText", () => {
     "rejects invalid yuan input %p",
     (value) => {
       expect(() => yuanTextToCentsText(value)).toThrow("金额必须是非负数字，最多保留两位小数");
+    }
+  );
+});
+
+describe("signedYuanTextToCentsText", () => {
+  it.each([
+    ["-0.01", "-1"],
+    ["0", "0"],
+    ["21000000.01", "2100000001"]
+  ])("converts signed project profit allocation %p exactly", (value, expected) => {
+    expect(signedYuanTextToCentsText(value)).toBe(expected);
+  });
+
+  it.each(["", " ", "-", "-01", "1.234", "1e3", "abc"])(
+    "rejects invalid signed yuan input %p",
+    (value) => {
+      expect(() => signedYuanTextToCentsText(value)).toThrow(
+        "金额必须是数字，最多保留两位小数；承担亏损时可填写负数"
+      );
+    }
+  );
+
+  it.each([
+    ["-92233720368547758.08", "-9223372036854775808"],
+    ["92233720368547758.07", "9223372036854775807"]
+  ])("accepts the exact PostgreSQL bigint boundary %p", (value, expected) => {
+    expect(signedYuanTextToCentsText(value)).toBe(expected);
+  });
+
+  it.each(["-92233720368547758.09", "92233720368547758.08"])(
+    "rejects a signed amount outside the PostgreSQL bigint range %p",
+    (value) => {
+      expect(() => signedYuanTextToCentsText(value)).toThrow(
+        "金额超出系统可保存范围"
+      );
     }
   );
 });

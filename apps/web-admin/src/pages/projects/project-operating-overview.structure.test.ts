@@ -42,6 +42,15 @@ describe("project operating overview structure", () => {
     expect(source).toContain("auth.user?.globalRoleKeys.some");
   });
 
+  it("serializes the close-profit projection after companion reads complete", () => {
+    const companionReadsCompleted = source.indexOf("] = await companionRequests;");
+    const closeProfitRead = source.indexOf(
+      "const nextCloseProfit = await fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId)"
+    );
+    expect(companionReadsCompleted).toBeGreaterThan(-1);
+    expect(closeProfitRead).toBeGreaterThan(companionReadsCompleted);
+  });
+
   it("loads the cross-project executive total through one project-set projection", () => {
     expect(source).toContain("await fetchProjectSetOperatingProjection()");
     expect(source).not.toContain("fetchProjectSetOperatingProjection(\n      projects.value.map");

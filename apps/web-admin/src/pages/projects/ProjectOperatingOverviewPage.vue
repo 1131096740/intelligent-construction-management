@@ -297,6 +297,20 @@
       </t-tab-panel>
 
       <t-tab-panel
+        v-if="selectedProjectId"
+        value="close-profit"
+        label="项目收口与盈亏"
+      >
+        <ProjectCloseProfitPanel
+          :project-id="selectedProjectId"
+          :workbench="closeProfitWorkbench"
+          :loading="closeProfitLoading"
+          :error="closeProfitError"
+          @updated="handleCloseProfitUpdated"
+        />
+      </t-tab-panel>
+
+      <t-tab-panel
         v-if="financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && (overview || selectedProjectId))"
         value="operations"
         label="资金办理"
@@ -976,6 +990,11 @@ import {
   fetchProjectParticipatingCompanyOptions,
   type ProjectParticipatingCompanyOption
 } from "../../api/project-operating-profile.api";
+import {
+  fetchProjectCloseProfitWorkbench,
+  reconcileProjectCloseImpacts,
+  type ProjectCloseProfitWorkbenchReadModel
+} from "../../api/project-close-profit.api";
 import { useAuthStore } from "../../auth/auth.store";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -986,6 +1005,7 @@ import ProjectCreateForm from "./components/ProjectCreateForm.vue";
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
+import ProjectCloseProfitPanel from "./components/ProjectCloseProfitPanel.vue";
 import OperatingMetricPanel from "./components/OperatingMetricPanel.vue";
 import { loadOptionalProjectUpstreamFundFacts } from "./project-operating-overview.loader";
 import {
@@ -1066,6 +1086,9 @@ const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const financingQuotaWorkbench = ref<ProjectFinancingQuotaWorkbenchReadModel | null>(null);
 const financingQuotaError = ref("");
+const closeProfitWorkbench = ref<ProjectCloseProfitWorkbenchReadModel | null>(null);
+const closeProfitLoading = ref(false);
+const closeProfitError = ref("");
 const overviewRequestOwner = createProjectOverviewRequestOwner();
 const selectedProjectId = ref("");
 const loadedProjectId = ref("");
@@ -1605,6 +1628,46 @@ async function handleOperatingTabChange(value: string | number) {
   activeTab.value = nextTab;
 }
 
+async function fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId: string) {
+  const workbench = await fetchProjectCloseProfitWorkbench(projectId);
+  const hasProjectionDrift = workbench.stages.some((stage) =>
+    stage.currentVersion?.status === "completed" &&
+    stage.currentVersion.projectionFingerprint !== workbench.projection.fingerprint
+  );
+  if (!hasProjectionDrift || !workbench.canReconcileImpacts) return workbench;
+  await reconcileProjectCloseImpactsWithCapability(projectId, workbench.projection.fingerprint);
+  return fetchProjectCloseProfitWorkbench(projectId);
+}
+
+async function reconcileProjectCloseImpactsWithCapability(
+  projectId: string,
+  expectedProjectionFingerprint: string
+) {
+  const capability = await fetchProjectCloseProfitWorkbench(projectId);
+  const operationAllowed = capability.canReconcileImpacts;
+  if (!operationAllowed) throw new Error("当前用户不能同步项目收口影响");
+  return reconcileProjectCloseImpacts(projectId, {
+    expectedProjectionFingerprint,
+    idempotencyKey: crypto.randomUUID(),
+    basis: { summary: "页面刷新检测到新的经营事实", evidenceFileIds: [] }
+  });
+}
+
+async function handleCloseProfitUpdated() {
+  if (!selectedProjectId.value) return;
+  closeProfitLoading.value = true;
+  closeProfitError.value = "";
+  try {
+    closeProfitWorkbench.value = await fetchReconciledProjectCloseProfitWorkbenchWithCapability(
+      selectedProjectId.value
+    );
+  } catch (error) {
+    closeProfitError.value = formatUnknownApiError(error, "刷新项目收口与盈亏失败");
+  } finally {
+    closeProfitLoading.value = false;
+  }
+}
+
 function go(path: string) {
   void router.push(path);
 }
@@ -1690,6 +1753,9 @@ async function loadOverview() {
   projectExpenses.value = null;
   financingQuotaWorkbench.value = null;
   financingQuotaError.value = "";
+  closeProfitWorkbench.value = null;
+  closeProfitError.value = "";
+  closeProfitLoading.value = true;
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
   participatingCompanyError.value = "";
@@ -1701,6 +1767,7 @@ async function loadOverview() {
     overview.value = null;
     selectedExpenseRow.value = null;
     loadingOverview.value = false;
+    closeProfitLoading.value = false;
     return;
   }
 
@@ -1759,6 +1826,12 @@ async function loadOverview() {
       nextParticipatingCompanies,
       nextUpstreamFundReferenceOptions
     ] = await companionRequests;
+    const nextCloseProfit = await fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId)
+      .then((workbench) => ({ workbench, error: "" }))
+      .catch((error: unknown) => ({
+        workbench: null,
+        error: formatUnknownApiError(error, "读取项目收口与盈亏失败")
+      }));
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
       selectedProjectId.value === projectId
@@ -1776,6 +1849,9 @@ async function loadOverview() {
       projectExpenses.value = nextExpenses;
       financingQuotaWorkbench.value = nextFinancingQuota.workbench;
       financingQuotaError.value = nextFinancingQuota.error;
+      closeProfitWorkbench.value = nextCloseProfit.workbench;
+      closeProfitError.value = nextCloseProfit.error;
+      closeProfitLoading.value = false;
       spotProcurementEnabled.value = spotCapability.enabled;
       if (!nextOverview && nextFinancingQuota.workbench) {
         activeTab.value = "operations";
@@ -1802,6 +1878,9 @@ async function loadOverview() {
       upstreamFundFactsNextCursor.value = null;
       financingQuotaWorkbench.value = null;
       financingQuotaError.value = "";
+      closeProfitWorkbench.value = null;
+      closeProfitError.value = "";
+      closeProfitLoading.value = false;
       selectedExpenseRow.value = null;
       message.value = formatUnknownApiError(error, "加载项目经营数据失败");
     }
@@ -1811,6 +1890,7 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       loadingOverview.value = false;
+      closeProfitLoading.value = false;
     }
   }
 }
