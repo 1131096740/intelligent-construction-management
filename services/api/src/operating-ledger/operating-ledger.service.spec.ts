@@ -967,6 +967,7 @@ function createPrismaMock(options: {
     },
     projectCloseAggregate: {
       findUnique: jest.fn().mockResolvedValue(options.closeAggregate ?? null),
+      upsert: jest.fn().mockResolvedValue(options.closeAggregate ?? { projectId: "project-1" }),
       update: jest.fn().mockResolvedValue({})
     },
     projectCloseImpact: {

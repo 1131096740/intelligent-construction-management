@@ -187,6 +187,7 @@ describe("ProjectOperatingProfileService", () => {
       },
       position: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      $executeRaw: jest.fn(),
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -224,6 +225,9 @@ describe("ProjectOperatingProfileService", () => {
           changeReason: "项目开始由该公司承担现场支出"
         })
       },
+      projectCloseAggregate: { upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      projectCloseImpact: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      projectCloseStageVersion: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
@@ -436,6 +440,7 @@ describe("ProjectOperatingProfileService", () => {
         findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
       },
       position: { findMany: jest.fn().mockResolvedValue([]) },
+      $executeRaw: jest.fn(),
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{
@@ -460,6 +465,9 @@ describe("ProjectOperatingProfileService", () => {
           changeReason: "该公司停止承接本项目新增业务"
         })
       },
+      projectCloseAggregate: { upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      projectCloseImpact: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      projectCloseStageVersion: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
