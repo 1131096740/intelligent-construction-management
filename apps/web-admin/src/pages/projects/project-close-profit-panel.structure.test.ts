@@ -46,7 +46,7 @@ describe("project close profit panel structure", () => {
     expect(panel).toContain('includes("submit_final_profit")');
     expect(panel).toContain('includes("submit_distribution")');
     expect(panel).toContain("confirmationBody(submissionId)");
-    expect(panel).toContain("高管只能确认该冻结版本");
+    expect(panel).toContain("高管只能确认本次提交内容");
     expect(panel).toContain('v-if="canSubmitDistribution"');
     expect(panel).toContain(':data="visibleDistribution.lines"');
     expect(panel).toContain("expectedProjectionFingerprint: props.workbench!.projection.fingerprint");

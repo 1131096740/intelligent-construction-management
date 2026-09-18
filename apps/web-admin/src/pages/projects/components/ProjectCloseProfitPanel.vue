@@ -116,7 +116,7 @@
 
       <div v-if="latestFinalProfitSubmission" class="submitted-decision">
         <strong>待高管确认：最终盈亏第 {{ latestFinalProfitSubmission.revision }} 版</strong>
-        <span>财务已于 {{ formatDateTime(latestFinalProfitSubmission.submittedAt) }} 提交；高管只能确认该冻结版本。</span>
+        <span>财务已于 {{ formatDateTime(latestFinalProfitSubmission.submittedAt) }} 提交；高管只能确认本次提交内容。</span>
       </div>
 
       <section
@@ -228,7 +228,7 @@
         </div>
         <div v-if="latestDistributionSubmission" class="submitted-decision">
           <strong>待高管确认：公司分配第 {{ latestDistributionSubmission.revision }} 版</strong>
-          <span>财务已于 {{ formatDateTime(latestDistributionSubmission.submittedAt) }} 提交；高管只能确认该冻结版本。</span>
+          <span>财务已于 {{ formatDateTime(latestDistributionSubmission.submittedAt) }} 提交；高管只能确认本次提交内容。</span>
         </div>
         <div
           v-if="visibleDistribution"
