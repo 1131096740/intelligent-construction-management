@@ -32,6 +32,9 @@ const {
   waitForPostgres: waitForContractTemplateScenarioPostgres
 } = require("./run-contract-template-scenario-concurrency-local.cjs");
 const {
+  waitForPostgres: waitForInvoiceLedgerPostgres
+} = require("../src/invoice-ledger/run-invoice-ledger-postgresql16-local.cjs");
+const {
   CURRENT_PROCESS_DYNAMIC_TESTS,
   assertCanonicalMigrationBaseline: assertPol275CanonicalMigrationBaseline,
   assertSafeEnvironment: assertPol275SafeEnvironment,
@@ -131,6 +134,28 @@ test("contract template scenario waits for the published loopback port after con
   assert.equal(dockerCalls[0].includes("pg_isready"), true);
   assert.deepEqual(hostWaitCalls, [
     { host: "127.0.0.1", port: 43210 }
+  ]);
+});
+
+test("invoice ledger waits for the published loopback port after container readiness", async () => {
+  const dockerCalls = [];
+  const hostWaitCalls = [];
+
+  await waitForInvoiceLedgerPostgres(
+    "invoice-ledger-postgres",
+    43211,
+    async (args) => {
+      dockerCalls.push(args);
+    },
+    async (options) => {
+      hostWaitCalls.push(options);
+    }
+  );
+
+  assert.equal(dockerCalls.length, 1);
+  assert.equal(dockerCalls[0].includes("pg_isready"), true);
+  assert.deepEqual(hostWaitCalls, [
+    { host: "127.0.0.1", port: 43211 }
   ]);
 });
 
