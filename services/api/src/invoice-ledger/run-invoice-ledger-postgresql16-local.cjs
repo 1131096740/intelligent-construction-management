@@ -11,6 +11,9 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("../../prisma/money-bigint-runner-runtime.cjs");
+const {
+  waitForLocalTcpReady
+} = require("../../prisma/wait-for-local-tcp-ready.cjs");
 
 const DATABASE_NAME = "jiangkong_invoice_ledger_pol260";
 const root = path.resolve(__dirname, "../../../..");
@@ -37,16 +40,24 @@ function freePort() {
   });
 }
 
-async function waitForPostgres(containerName) {
+async function waitForPostgres(
+  containerName,
+  databasePort,
+  dockerCommand = (args, options) => command(docker, args, options),
+  waitForHost = waitForLocalTcpReady
+) {
+  let containerReady = false;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await command(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", DATABASE_NAME]);
-      return;
+      await dockerCommand(["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", DATABASE_NAME]);
+      containerReady = true;
+      break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
-  fail("临时 PostgreSQL 16 未在 30 秒内就绪");
+  if (!containerReady) fail("临时 PostgreSQL 16 未在 30 秒内就绪");
+  await waitForHost({ host: "127.0.0.1", port: databasePort });
 }
 
 async function main() {
@@ -99,7 +110,7 @@ async function main() {
       "--env", `POSTGRES_DB=${DATABASE_NAME}`,
       "--publish", `127.0.0.1:${port}:5432`, "postgres:16"
     ], { env: { ...process.env, POSTGRES_PASSWORD: password }, forwardOutput: true });
-    await waitForPostgres(containerName);
+    await waitForPostgres(containerName, port);
     await command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", path.join(root, "services/api/prisma/schema.prisma")], {
       env: runtimeEnv,
       forwardOutput: true,
@@ -123,4 +134,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main };
+module.exports = { main, waitForPostgres };
