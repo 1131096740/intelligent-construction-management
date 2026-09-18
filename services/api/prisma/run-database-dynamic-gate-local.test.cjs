@@ -26,6 +26,9 @@ const {
   probePostgresReady
 } = require("./verify-fund-execution-v7.cjs");
 const {
+  waitForLocalTcpReady
+} = require("./wait-for-local-tcp-ready.cjs");
+const {
   CURRENT_PROCESS_DYNAMIC_TESTS,
   assertCanonicalMigrationBaseline: assertPol275CanonicalMigrationBaseline,
   assertSafeEnvironment: assertPol275SafeEnvironment,
@@ -66,6 +69,44 @@ test("fund execution verifier waits for the final postgres PID 1", () => {
   assert.equal(probePostgresReady("fund-v7", finalSpawn), true);
   assert.equal(finalCalls.length, 2);
   assert.equal(finalCalls[1].includes("pg_isready"), true);
+});
+
+test("POL-115 host-port readiness retries until the published loopback port accepts", async () => {
+  let probes = 0;
+  let sleeps = 0;
+
+  await waitForLocalTcpReady({
+    host: "127.0.0.1",
+    port: 54321,
+    attempts: 3,
+    probe: async () => ++probes === 3,
+    sleep: async () => {
+      sleeps += 1;
+    }
+  });
+
+  assert.equal(probes, 3);
+  assert.equal(sleeps, 2);
+  await assert.rejects(
+    waitForLocalTcpReady({
+      host: "127.0.0.1",
+      port: 54321,
+      attempts: 2,
+      probe: async () => false,
+      sleep: async () => {}
+    }),
+    /本机端口未就绪/u
+  );
+  await assert.rejects(
+    waitForLocalTcpReady({
+      host: "0.0.0.0",
+      port: 54321,
+      attempts: 1,
+      probe: async () => true,
+      sleep: async () => {}
+    }),
+    /127\.0\.0\.1/u
+  );
 });
 
 test("manifest derives all 290 pending tests as executable local coverage", () => {
