@@ -203,7 +203,7 @@
       </section>
 
       <section
-        v-if="canSubmitDistribution || canConfirmDistribution || workbench.currentDistribution"
+        v-if="canSubmitDistribution || canConfirmDistribution || visibleDistribution"
         class="distribution-section"
       >
         <div class="panel-head">
@@ -231,13 +231,13 @@
           <span>财务已于 {{ formatDateTime(latestDistributionSubmission.submittedAt) }} 提交；高管只能确认该冻结版本。</span>
         </div>
         <div
-          v-if="workbench.currentDistribution"
+          v-if="visibleDistribution"
           class="distribution-table-wrap jg-workspace-scroll"
         >
           <t-table
             row-key="id"
             :columns="distributionColumns"
-            :data="workbench.currentDistribution.lines"
+            :data="visibleDistribution.lines"
           >
             <template #finalShareCents="{ row }">{{ formatCents(row.finalShareCents) }}</template>
             <template #temporaryDistributedCents="{ row }">{{ formatCents(row.temporaryDistributedCents) }}</template>
@@ -351,12 +351,22 @@ const canSubmitDistribution = computed(() =>
     stage.availableActions.includes("submit_distribution")) ?? false
 );
 
-const latestFinalProfitSubmission = computed(() =>
-  props.workbench?.currentDecisionSubmissions?.finalProfit ?? latestSubmission("final_profit")
-);
+const latestFinalProfitSubmission = computed(() => {
+  if (props.workbench?.currentDecisionSubmissions) {
+    return props.workbench.currentDecisionSubmissions.finalProfit;
+  }
+  return latestSubmission("final_profit");
+});
 
-const latestDistributionSubmission = computed(() =>
-  props.workbench?.currentDecisionSubmissions?.distribution ?? latestSubmission("distribution")
+const latestDistributionSubmission = computed(() => {
+  if (props.workbench?.currentDecisionSubmissions) {
+    return props.workbench.currentDecisionSubmissions.distribution;
+  }
+  return latestSubmission("distribution");
+});
+
+const visibleDistribution = computed(() =>
+  props.workbench?.currentDistribution ?? props.workbench?.history.distributions[0] ?? null
 );
 
 const canCreateTemporaryDistribution = computed(() =>

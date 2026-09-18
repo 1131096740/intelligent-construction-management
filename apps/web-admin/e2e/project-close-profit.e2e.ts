@@ -102,6 +102,7 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作最终盈亏");
   await page.getByRole("button", { name: "制作并提交最终盈亏" }).click();
+  await expect(page.getByText("操作已完成", { exact: true })).toBeVisible();
   await expect(page.getByText(/待高管确认：最终盈亏第/u)).toBeVisible();
 
   await page.evaluate(() => localStorage.removeItem("jiangkong-web-admin-auth"));
@@ -140,6 +141,7 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作公司分配");
   await page.getByRole("button", { name: "制作并提交公司分配" }).click();
+  await expect(page.getByText("操作已完成", { exact: true })).toBeVisible();
   await expect(page.getByText(/待高管确认：公司分配第/u)).toBeVisible();
 
   await page.evaluate(() => localStorage.removeItem("jiangkong-web-admin-auth"));

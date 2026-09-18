@@ -18,7 +18,7 @@ describe("project close profit panel structure", () => {
     expect(page).toContain("fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId)");
     expect(panel).toContain("七阶段逐项确认");
     expect(panel).toContain("workbench.stages");
-    expect(panel).toContain("workbench.currentDistribution.lines");
+    expect(panel).toContain("visibleDistribution.lines");
     expect(panel).toContain("workbench.temporaryDistributions");
     expect(panel).toContain("workbench.impacts");
     expect(panel).toContain("暂分利润");
@@ -29,6 +29,8 @@ describe("project close profit panel structure", () => {
     expect(panel).toContain("workbench.history.stageVersions");
     expect(panel).toContain("workbench.history.profitConfirmations");
     expect(panel).toContain("workbench.history.distributions");
+    expect(panel).toContain("visibleDistribution");
+    expect(panel).toContain("props.workbench?.currentDistribution ?? props.workbench?.history.distributions[0]");
     expect(panel).toContain("双专业确认");
     expect(panel).toContain("确认主体已留存于审计记录");
     expect(panel).toContain("basisText(");
@@ -46,6 +48,7 @@ describe("project close profit panel structure", () => {
     expect(panel).toContain("confirmationBody(submissionId)");
     expect(panel).toContain("高管只能确认该冻结版本");
     expect(panel).toContain('v-if="canSubmitDistribution"');
+    expect(panel).toContain(':data="visibleDistribution.lines"');
     expect(panel).toContain("expectedProjectionFingerprint: props.workbench!.projection.fingerprint");
     expect(panel).not.toContain("roleKeys");
     expect(panel).not.toContain("sourceBusinessId");
