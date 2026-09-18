@@ -15,9 +15,11 @@ describe("ProjectCloseProfitService", () => {
       projectCloseProfessionalAttestation: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseProfitConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseDistribution: { findMany: jest.fn().mockResolvedValue([]) },
+      projectCloseDecisionSubmission: { findMany: jest.fn().mockResolvedValue([]) },
       projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       projectTemporaryProfitDistribution: { findMany: jest.fn().mockResolvedValue([]) },
-      projectCloseImpact: { findMany: jest.fn().mockResolvedValue([]) }
+      projectCloseImpact: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const prisma = {
       $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
@@ -203,9 +205,11 @@ describe("ProjectCloseProfitService", () => {
       projectCloseProfessionalAttestation: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseProfitConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
       projectCloseDistribution: { findMany: jest.fn().mockResolvedValue([]) },
+      projectCloseDecisionSubmission: { findMany: jest.fn().mockResolvedValue([]) },
       projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       projectTemporaryProfitDistribution: { findMany: jest.fn().mockResolvedValue([]) },
-      projectCloseImpact: { findMany: jest.fn().mockResolvedValue([]) }
+      projectCloseImpact: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const prisma = {
       $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
@@ -359,18 +363,102 @@ describe("ProjectCloseProfitService", () => {
       { readProjectInTransaction: jest.fn().mockResolvedValue(projection) } as never,
       {
         effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
-          new Map([["project-1", ["chairman"]]])
+          new Map([["project-1", ["finance_director"]]])
         )
       } as never,
       { record: jest.fn() } as never
     );
 
-    await expect(service.confirmFinalProfit("chair-user", "project-1", {
+    await expect(service.submitFinalProfit("finance-user", "project-1", {
       expectedProjectionFingerprint: "projection-fingerprint",
       idempotencyKey: "99aa72f6-e48c-4907-ae1b-5cd85c734a78",
       basis: { summary: "确认最终盈亏", evidenceFileIds: [] }
     })).rejects.toThrow("经营金额或来源仍不完整");
     expect(tx.projectCloseProfitConfirmation.create).not.toHaveBeenCalled();
+  });
+
+  it("freezes the finance submission before a chairman confirms the exact version", async () => {
+    const readAt = new Date("2026-09-18T09:40:00.000Z");
+    const tx = finalConfirmationTx(readAt);
+    const submission = {
+      id: "3a648f91-5085-4dad-b6fb-d5b9aac5d9f7",
+      projectId: "project-1",
+      decisionKind: "final_profit",
+      revision: 1,
+      previousSubmissionId: null,
+      projectionReadAt: readAt,
+      projectionCutoffAt: readAt,
+      projectionFingerprint: "projection-fingerprint",
+      amountSnapshot: {},
+      stateSnapshot: {},
+      participantsSnapshot: [],
+      proposalSnapshot: { finalProfitCents: "6000" },
+      basisSnapshot: { summary: "财务复核完成", evidenceFileIds: [] },
+      preparedByUserId: "finance-user",
+      preparedAt: readAt,
+      submittedByUserId: "finance-user",
+      submittedAt: readAt
+    };
+    tx.projectCloseDecisionSubmission.create.mockResolvedValue(submission);
+    tx.projectCloseDecisionSubmission.findUnique.mockResolvedValue(submission);
+    tx.projectCloseStageVersion.create.mockResolvedValue({
+      id: "stage-5",
+      stageKey: "final_profit_confirmed",
+      revision: 1,
+      status: "completed",
+      confirmedAt: readAt
+    });
+    tx.projectCloseProfitConfirmation.create.mockResolvedValue({
+      id: "confirmation-1",
+      revision: 1,
+      finalProfitCents: 6000n,
+      confirmedAt: readAt
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
+      { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
+      {
+        effectiveRoleKeysByProjectInTransaction: jest.fn()
+          .mockResolvedValueOnce(new Map([["project-1", ["finance_director"]]]))
+          .mockResolvedValueOnce(new Map([["project-1", ["chairman"]]]))
+      } as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.submitFinalProfit("finance-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "4a648f91-5085-4dad-b6fb-d5b9aac5d9f7",
+      basis: submission.basisSnapshot
+    })).resolves.toMatchObject({
+      id: submission.id,
+      decisionKind: "final_profit",
+      submittedByUserId: "finance-user"
+    });
+    await expect(service.confirmFinalProfit("chairman-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "5a648f91-5085-4dad-b6fb-d5b9aac5d9f7",
+      submissionId: submission.id
+    })).resolves.toMatchObject({
+      confirmationId: "confirmation-1",
+      stageVersionId: "stage-5",
+      finalProfitCents: "6000"
+    });
+    expect(tx.projectCloseDecisionSubmission.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        preparedByUserId: "finance-user",
+        submittedByUserId: "finance-user",
+        proposalSnapshot: { finalProfitCents: "6000" },
+        basisSnapshot: submission.basisSnapshot
+      })
+    });
+    expect(tx.projectCloseProfitConfirmation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        submissionId: submission.id,
+        confirmedByUserId: "chairman-user",
+        basisSnapshot: submission.basisSnapshot
+      }),
+      select: expect.any(Object)
+    });
   });
 
   it("rejects a company distribution whose signed lines do not conserve final profit", async () => {
@@ -384,13 +472,13 @@ describe("ProjectCloseProfitService", () => {
       { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
       {
         effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
-          new Map([["project-1", ["general_manager"]]])
+          new Map([["project-1", ["finance_director"]]])
         )
       } as never,
       { record: jest.fn() } as never
     );
 
-    await expect(service.confirmDistribution("gm-user", "project-1", {
+    await expect(service.submitDistribution("finance-user", "project-1", {
       expectedProjectionFingerprint: "projection-fingerprint",
       idempotencyKey: "8a4526fd-d5a1-423e-b417-784759d2a7f2",
       basis: { summary: "确认公司分配", evidenceFileIds: [] },
@@ -420,12 +508,12 @@ describe("ProjectCloseProfitService", () => {
       { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
       { readProjectInTransaction: jest.fn().mockResolvedValue(completeProjection(readAt)) } as never,
       { effectiveRoleKeysByProjectInTransaction: jest.fn().mockResolvedValue(
-        new Map([["project-1", ["general_manager"]]])
+        new Map([["project-1", ["finance_director"]]])
       ) } as never,
       { record: jest.fn() } as never
     );
 
-    await expect(service.confirmDistribution("gm-user", "project-1", {
+    await expect(service.submitDistribution("finance-user", "project-1", {
       expectedProjectionFingerprint: "projection-fingerprint",
       idempotencyKey: "9a4526fd-d5a1-423e-b417-784759d2a7f2",
       basis: { summary: "确认公司分配", evidenceFileIds: [] },
@@ -472,8 +560,7 @@ describe("ProjectCloseProfitService", () => {
     await service.confirmDistribution("gm-user", "project-1", {
       expectedProjectionFingerprint: "projection-fingerprint",
       idempotencyKey: "0aa4526f-d5a1-423e-b417-784759d2a7f2",
-      basis: { summary: "确认公司分配", evidenceFileIds: [] },
-      lines: [{ projectParticipatingCompanyId: "participant-1", finalShareCents: "6000" }]
+      submissionId: "5a648f91-5085-4dad-b6fb-d5b9aac5d9f7"
     });
 
     expect(tx.projectCloseDistributionLine.createMany).toHaveBeenCalledWith({
@@ -673,7 +760,18 @@ function finalConfirmationTx(_readAt: Date) {
         "owner_settlement_completed",
         "downstream_cost_confirmed",
         "tax_and_enterprise_clearing_completed"
-      ].map((stageKey) => ({ stageKey, revision: 1, status: "completed" }))),
+      ].map((stageKey, index) => ({
+        id: `stage-${index + 1}`,
+        stageKey,
+        revision: 1,
+        status: "completed"
+      }))),
+      create: jest.fn()
+    },
+    projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
+    projectCloseDecisionSubmission: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn(),
       create: jest.fn()
     },
     projectCloseProfitConfirmation: {
@@ -709,6 +807,35 @@ function distributionTx(readAt: Date) {
         finalProfitCents: 6000n,
         projectionFingerprint: "projection-fingerprint"
       })
+    },
+    projectCloseDecisionSubmission: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue({
+        id: "5a648f91-5085-4dad-b6fb-d5b9aac5d9f7",
+        projectId: "project-1",
+        decisionKind: "distribution",
+        revision: 1,
+        previousSubmissionId: null,
+        projectionReadAt: readAt,
+        projectionCutoffAt: readAt,
+        projectionFingerprint: "projection-fingerprint",
+        amountSnapshot: {},
+        stateSnapshot: {},
+        participantsSnapshot: [],
+        proposalSnapshot: {
+          totalProfitCents: "6000",
+          lines: [{
+            projectParticipatingCompanyId: "participant-1",
+            finalShareCents: "6000"
+          }]
+        },
+        basisSnapshot: { summary: "财务已提交", evidenceFileIds: [] },
+        preparedByUserId: "finance-user",
+        preparedAt: readAt,
+        submittedByUserId: "finance-user",
+        submittedAt: readAt
+      }),
+      create: jest.fn()
     },
     projectParticipatingCompany: {
       findMany: jest.fn().mockResolvedValue([

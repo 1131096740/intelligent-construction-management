@@ -32,10 +32,39 @@ describe("project close automatic impact invalidation", () => {
       })
     });
     expect(tx.projectCloseStageVersion.create).toHaveBeenCalledTimes(2);
+    expect(tx.projectCloseAggregate.upsert.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$executeRaw.mock.invocationCallOrder[0]
+    );
     expect(tx.projectCloseAggregate.update).toHaveBeenCalledWith({
       where: { projectId: "project-1" },
       data: { revision: { increment: 2 } }
     });
+  });
+
+  it("creates and locks the aggregate coordinate before checking whether close history exists", async () => {
+    const tx = transactionMock([]);
+
+    await invalidateProjectCloseForOperatingImpact(tx as never, {
+      id: "impact-first",
+      projectId: "project-new",
+      sourceType: "owner_settlement",
+      sourceBusinessId: "settlement-1",
+      sourceImpactKey: "income",
+      impactKind: "confirmed_income",
+      amountCents: 1000n,
+      direction: "increase",
+      observedAt: new Date("2026-09-18T02:00:00.000Z"),
+      actorUserId: "finance-director"
+    });
+
+    expect(tx.projectCloseAggregate.upsert).toHaveBeenCalledWith({
+      where: { projectId: "project-new" },
+      create: { projectId: "project-new" },
+      update: {}
+    });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.projectCloseStageVersion.findMany).toHaveBeenCalled();
+    expect(tx.projectCloseImpact.create).not.toHaveBeenCalled();
   });
 
   it("does not turn an attachment-only impact into a close impact or stale authorization", async () => {
@@ -53,7 +82,7 @@ describe("project close automatic impact invalidation", () => {
       actorUserId: "finance-director"
     });
 
-    expect(tx.projectCloseAggregate.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectCloseAggregate.upsert).not.toHaveBeenCalled();
     expect(tx.projectCloseImpact.create).not.toHaveBeenCalled();
     expect(tx.projectCloseStageVersion.create).not.toHaveBeenCalled();
   });
@@ -63,7 +92,7 @@ function transactionMock(stages: ReturnType<typeof stage>[]) {
   return {
     $executeRaw: jest.fn(),
     projectCloseAggregate: {
-      findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }),
+      upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
       update: jest.fn().mockResolvedValue({})
     },
     projectCloseImpact: {

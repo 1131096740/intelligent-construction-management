@@ -18,6 +18,7 @@ CREATE TABLE "ProjectCloseStageVersion" (
   "revision" INTEGER NOT NULL,
   "status" TEXT NOT NULL,
   "previousVersionId" TEXT,
+  "prerequisiteStageVersionIds" JSONB NOT NULL DEFAULT '[]'::jsonb,
   "projectionReadAt" TIMESTAMP(3) NOT NULL,
   "projectionCutoffAt" TIMESTAMP(3) NOT NULL,
   "projectionFingerprint" TEXT NOT NULL,
@@ -30,6 +31,7 @@ CREATE TABLE "ProjectCloseStageVersion" (
   "payloadFingerprint" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "ProjectCloseStageVersion_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ProjectCloseStageVersion_project_id_key" UNIQUE ("projectId", "id"),
   CONSTRAINT "ProjectCloseStageVersion_stage_check" CHECK ("stageKey" IN (
     'construction_completed',
     'owner_settlement_completed',
@@ -45,12 +47,13 @@ CREATE TABLE "ProjectCloseStageVersion" (
     length(btrim("projectionFingerprint")) > 0
     AND length(btrim("idempotencyKey")) > 0
     AND length(btrim("payloadFingerprint")) > 0
+    AND jsonb_typeof("prerequisiteStageVersionIds") = 'array'
     AND "projectionCutoffAt" <= "projectionReadAt"
   ),
   CONSTRAINT "ProjectCloseStageVersion_aggregate_fkey"
     FOREIGN KEY ("projectId") REFERENCES "ProjectCloseAggregate"("projectId") ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT "ProjectCloseStageVersion_previous_fkey"
-    FOREIGN KEY ("previousVersionId") REFERENCES "ProjectCloseStageVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  CONSTRAINT "ProjectCloseStageVersion_previous_project_fkey"
+    FOREIGN KEY ("projectId", "previousVersionId") REFERENCES "ProjectCloseStageVersion"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX "ProjectCloseStageVersion_idempotencyKey_key"
@@ -212,10 +215,55 @@ CREATE TABLE "ProjectCloseStageAttestationLink" (
 CREATE UNIQUE INDEX "ProjectCloseStageAttestationLink_attestationId_key"
   ON "ProjectCloseStageAttestationLink"("attestationId");
 
+CREATE TABLE "ProjectCloseDecisionSubmission" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "projectId" TEXT NOT NULL,
+  "decisionKind" TEXT NOT NULL,
+  "revision" INTEGER NOT NULL,
+  "previousSubmissionId" TEXT,
+  "projectionReadAt" TIMESTAMP(3) NOT NULL,
+  "projectionCutoffAt" TIMESTAMP(3) NOT NULL,
+  "projectionFingerprint" TEXT NOT NULL,
+  "amountSnapshot" JSONB NOT NULL,
+  "stateSnapshot" JSONB NOT NULL,
+  "participantsSnapshot" JSONB NOT NULL,
+  "proposalSnapshot" JSONB NOT NULL,
+  "basisSnapshot" JSONB NOT NULL,
+  "preparedByUserId" TEXT NOT NULL,
+  "preparedAt" TIMESTAMP(3) NOT NULL,
+  "submittedByUserId" TEXT NOT NULL,
+  "submittedAt" TIMESTAMP(3) NOT NULL,
+  "idempotencyKey" TEXT NOT NULL,
+  "payloadFingerprint" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ProjectCloseDecisionSubmission_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ProjectCloseDecisionSubmission_project_id_key" UNIQUE ("projectId", "id"),
+  CONSTRAINT "ProjectCloseDecisionSubmission_payload_check" CHECK (
+    "decisionKind" IN ('final_profit', 'distribution')
+    AND "revision" > 0
+    AND "projectionCutoffAt" <= "projectionReadAt"
+    AND "preparedAt" <= "submittedAt"
+    AND jsonb_typeof("participantsSnapshot") = 'array'
+    AND length(btrim("projectionFingerprint")) > 0
+    AND length(btrim("payloadFingerprint")) > 0
+  ),
+  CONSTRAINT "ProjectCloseDecisionSubmission_aggregate_fkey"
+    FOREIGN KEY ("projectId") REFERENCES "ProjectCloseAggregate"("projectId") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseDecisionSubmission_previous_project_fkey"
+    FOREIGN KEY ("projectId", "previousSubmissionId") REFERENCES "ProjectCloseDecisionSubmission"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX "ProjectCloseDecisionSubmission_idempotencyKey_key"
+  ON "ProjectCloseDecisionSubmission"("idempotencyKey");
+CREATE UNIQUE INDEX "ProjectCloseDecisionSubmission_project_kind_revision_key"
+  ON "ProjectCloseDecisionSubmission"("projectId", "decisionKind", "revision");
+CREATE INDEX "ProjectCloseDecisionSubmission_previous_idx"
+  ON "ProjectCloseDecisionSubmission"("previousSubmissionId");
+
 CREATE TABLE "ProjectCloseProfitConfirmation" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
   "projectId" TEXT NOT NULL,
   "stageVersionId" TEXT NOT NULL,
+  "submissionId" TEXT NOT NULL,
   "revision" INTEGER NOT NULL,
   "previousConfirmationId" TEXT,
   "finalProfitCents" BIGINT NOT NULL,
@@ -232,6 +280,7 @@ CREATE TABLE "ProjectCloseProfitConfirmation" (
   "payloadFingerprint" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "ProjectCloseProfitConfirmation_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ProjectCloseProfitConfirmation_project_id_key" UNIQUE ("projectId", "id"),
   CONSTRAINT "ProjectCloseProfitConfirmation_revision_check" CHECK ("revision" > 0),
   CONSTRAINT "ProjectCloseProfitConfirmation_snapshot_check" CHECK (
     length(btrim("projectionFingerprint")) > 0
@@ -240,13 +289,21 @@ CREATE TABLE "ProjectCloseProfitConfirmation" (
   ),
   CONSTRAINT "ProjectCloseProfitConfirmation_aggregate_fkey"
     FOREIGN KEY ("projectId") REFERENCES "ProjectCloseAggregate"("projectId") ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT "ProjectCloseProfitConfirmation_stage_fkey"
-    FOREIGN KEY ("stageVersionId") REFERENCES "ProjectCloseStageVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT "ProjectCloseProfitConfirmation_previous_fkey"
-    FOREIGN KEY ("previousConfirmationId") REFERENCES "ProjectCloseProfitConfirmation"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  CONSTRAINT "ProjectCloseProfitConfirmation_stage_project_fkey"
+    FOREIGN KEY ("projectId", "stageVersionId") REFERENCES "ProjectCloseStageVersion"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseProfitConfirmation_submission_project_fkey"
+    FOREIGN KEY ("projectId", "submissionId") REFERENCES "ProjectCloseDecisionSubmission"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseProfitConfirmation_previous_project_fkey"
+    FOREIGN KEY ("projectId", "previousConfirmationId") REFERENCES "ProjectCloseProfitConfirmation"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_stageVersionId_key"
   ON "ProjectCloseProfitConfirmation"("stageVersionId");
+CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_submissionId_key"
+  ON "ProjectCloseProfitConfirmation"("submissionId");
+CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_project_stage_key"
+  ON "ProjectCloseProfitConfirmation"("projectId", "stageVersionId");
+CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_project_submission_key"
+  ON "ProjectCloseProfitConfirmation"("projectId", "submissionId");
 CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_idempotencyKey_key"
   ON "ProjectCloseProfitConfirmation"("idempotencyKey");
 CREATE UNIQUE INDEX "ProjectCloseProfitConfirmation_project_revision_key"
@@ -258,6 +315,7 @@ CREATE TABLE "ProjectCloseDistribution" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
   "projectId" TEXT NOT NULL,
   "stageVersionId" TEXT NOT NULL,
+  "submissionId" TEXT NOT NULL,
   "profitConfirmationId" TEXT NOT NULL,
   "revision" INTEGER NOT NULL,
   "previousDistributionId" TEXT,
@@ -272,6 +330,7 @@ CREATE TABLE "ProjectCloseDistribution" (
   "payloadFingerprint" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "ProjectCloseDistribution_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ProjectCloseDistribution_project_id_key" UNIQUE ("projectId", "id"),
   CONSTRAINT "ProjectCloseDistribution_revision_check" CHECK ("revision" > 0),
   CONSTRAINT "ProjectCloseDistribution_snapshot_check" CHECK (
     length(btrim("projectionFingerprint")) > 0
@@ -279,15 +338,23 @@ CREATE TABLE "ProjectCloseDistribution" (
   ),
   CONSTRAINT "ProjectCloseDistribution_aggregate_fkey"
     FOREIGN KEY ("projectId") REFERENCES "ProjectCloseAggregate"("projectId") ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT "ProjectCloseDistribution_stage_fkey"
-    FOREIGN KEY ("stageVersionId") REFERENCES "ProjectCloseStageVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT "ProjectCloseDistribution_profit_fkey"
-    FOREIGN KEY ("profitConfirmationId") REFERENCES "ProjectCloseProfitConfirmation"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT "ProjectCloseDistribution_previous_fkey"
-    FOREIGN KEY ("previousDistributionId") REFERENCES "ProjectCloseDistribution"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  CONSTRAINT "ProjectCloseDistribution_stage_project_fkey"
+    FOREIGN KEY ("projectId", "stageVersionId") REFERENCES "ProjectCloseStageVersion"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseDistribution_submission_project_fkey"
+    FOREIGN KEY ("projectId", "submissionId") REFERENCES "ProjectCloseDecisionSubmission"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseDistribution_profit_project_fkey"
+    FOREIGN KEY ("projectId", "profitConfirmationId") REFERENCES "ProjectCloseProfitConfirmation"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "ProjectCloseDistribution_previous_project_fkey"
+    FOREIGN KEY ("projectId", "previousDistributionId") REFERENCES "ProjectCloseDistribution"("projectId", "id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX "ProjectCloseDistribution_stageVersionId_key"
   ON "ProjectCloseDistribution"("stageVersionId");
+CREATE UNIQUE INDEX "ProjectCloseDistribution_submissionId_key"
+  ON "ProjectCloseDistribution"("submissionId");
+CREATE UNIQUE INDEX "ProjectCloseDistribution_project_stage_key"
+  ON "ProjectCloseDistribution"("projectId", "stageVersionId");
+CREATE UNIQUE INDEX "ProjectCloseDistribution_project_submission_key"
+  ON "ProjectCloseDistribution"("projectId", "submissionId");
 CREATE UNIQUE INDEX "ProjectCloseDistribution_idempotencyKey_key"
   ON "ProjectCloseDistribution"("idempotencyKey");
 CREATE UNIQUE INDEX "ProjectCloseDistribution_project_revision_key"
@@ -416,6 +483,39 @@ CREATE TRIGGER "ProjectCloseCommandReceipt_immutable"
 CREATE TRIGGER "ProjectCloseProfessionalAttestation_immutable"
   BEFORE UPDATE OR DELETE ON "ProjectCloseProfessionalAttestation"
   FOR EACH ROW EXECUTE FUNCTION "pol109_immutable_history_guard"();
+CREATE TRIGGER "ProjectCloseDecisionSubmission_immutable"
+  BEFORE UPDATE OR DELETE ON "ProjectCloseDecisionSubmission"
+  FOR EACH ROW EXECUTE FUNCTION "pol109_immutable_history_guard"();
+
+CREATE FUNCTION "pol109_validate_decision_submission_lineage"() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  latest_id TEXT;
+  latest_revision INTEGER;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'pol109-decision-submission:' || NEW."projectId" || ':' || NEW."decisionKind", 0
+  ));
+  SELECT s."id", s."revision" INTO latest_id, latest_revision
+  FROM "ProjectCloseDecisionSubmission" s
+  WHERE s."projectId" = NEW."projectId" AND s."decisionKind" = NEW."decisionKind"
+  ORDER BY s."revision" DESC LIMIT 1;
+  IF latest_revision IS NULL THEN
+    IF NEW."revision" <> 1 OR NEW."previousSubmissionId" IS NOT NULL THEN
+      RAISE EXCEPTION 'POL-109 first decision submission revision must start at one' USING ERRCODE = '23514';
+    END IF;
+  ELSIF NEW."revision" <> latest_revision + 1
+     OR NEW."previousSubmissionId" IS DISTINCT FROM latest_id THEN
+    RAISE EXCEPTION 'POL-109 decision submission lineage is not contiguous' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER "ProjectCloseDecisionSubmission_validate_lineage"
+  BEFORE INSERT ON "ProjectCloseDecisionSubmission"
+  FOR EACH ROW EXECUTE FUNCTION "pol109_validate_decision_submission_lineage"();
 CREATE TRIGGER "ProjectCloseStageAttestationLink_immutable"
   BEFORE UPDATE OR DELETE ON "ProjectCloseStageAttestationLink"
   FOR EACH ROW EXECUTE FUNCTION "pol109_immutable_history_guard"();
@@ -509,21 +609,29 @@ DECLARE
   current_position INTEGER;
   required_stage TEXT;
   latest_status TEXT;
+  latest_id TEXT;
   linked_count INTEGER;
+  prerequisite_count INTEGER;
 BEGIN
   IF NEW."status" <> 'completed' THEN
     RETURN NULL;
   END IF;
   current_position := array_position(stage_order, NEW."stageKey");
+  SELECT count(*)::INTEGER INTO prerequisite_count
+  FROM jsonb_array_elements_text(NEW."prerequisiteStageVersionIds");
+  IF prerequisite_count <> current_position - 1 THEN
+    RAISE EXCEPTION 'POL-109 prerequisite stage snapshot is not exact' USING ERRCODE = '23514';
+  END IF;
   IF current_position > 1 THEN
     FOREACH required_stage IN ARRAY stage_order[1:current_position - 1]
     LOOP
-      SELECT v."status" INTO latest_status
+      SELECT v."id", v."status" INTO latest_id, latest_status
       FROM "ProjectCloseStageVersion" v
       WHERE v."projectId" = NEW."projectId" AND v."stageKey" = required_stage
       ORDER BY v."revision" DESC
       LIMIT 1;
-      IF latest_status IS DISTINCT FROM 'completed' THEN
+      IF latest_status IS DISTINCT FROM 'completed'
+         OR NOT (NEW."prerequisiteStageVersionIds" ? latest_id) THEN
         RAISE EXCEPTION 'POL-109 prerequisite stage is not completed' USING ERRCODE = '23514';
       END IF;
     END LOOP;
@@ -542,16 +650,22 @@ BEGIN
   ELSIF NEW."stageKey" = 'final_profit_confirmed' THEN
     IF NOT EXISTS (
       SELECT 1 FROM "ProjectCloseProfitConfirmation" p
+      JOIN "ProjectCloseDecisionSubmission" s ON s."id" = p."submissionId"
       WHERE p."stageVersionId" = NEW."id" AND p."projectId" = NEW."projectId"
         AND p."projectionFingerprint" = NEW."projectionFingerprint"
+        AND s."projectId" = NEW."projectId" AND s."decisionKind" = 'final_profit'
+        AND s."projectionFingerprint" = NEW."projectionFingerprint"
     ) THEN
       RAISE EXCEPTION 'POL-109 final profit stage requires confirmation' USING ERRCODE = '23514';
     END IF;
   ELSIF NEW."stageKey" = 'profit_distribution_completed' THEN
     IF NOT EXISTS (
       SELECT 1 FROM "ProjectCloseDistribution" d
+      JOIN "ProjectCloseDecisionSubmission" s ON s."id" = d."submissionId"
       WHERE d."stageVersionId" = NEW."id" AND d."projectId" = NEW."projectId"
         AND d."projectionFingerprint" = NEW."projectionFingerprint"
+        AND s."projectId" = NEW."projectId" AND s."decisionKind" = 'distribution'
+        AND s."projectionFingerprint" = NEW."projectionFingerprint"
     ) THEN
       RAISE EXCEPTION 'POL-109 distribution stage requires distribution version' USING ERRCODE = '23514';
     END IF;
@@ -780,11 +894,13 @@ $$;
 REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON TABLE
   "ProjectCloseStageVersion", "ProjectCloseCommandReceipt",
   "ProjectCloseImpact", "ProjectTemporaryProfitDistribution",
+  "ProjectCloseDecisionSubmission",
   "ProjectCloseProfessionalAttestation", "ProjectCloseStageAttestationLink",
   "ProjectCloseProfitConfirmation", "ProjectCloseDistribution",
   "ProjectCloseDistributionLine", "ProjectProfitDistributionAuthorization"
   FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol109_immutable_history_guard"() FROM PUBLIC;
+REVOKE ALL ON FUNCTION "pol109_validate_decision_submission_lineage"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol109_validate_stage_lineage"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol109_validate_temporary_distribution"() FROM PUBLIC;
 REVOKE ALL ON FUNCTION "pol109_validate_stage_completion"() FROM PUBLIC;

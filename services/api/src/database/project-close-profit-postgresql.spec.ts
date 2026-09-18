@@ -154,7 +154,57 @@ describePg("POL-109 project close PostgreSQL 16 hard gates", () => {
     )).rejects.toThrow(/immutable history/u);
   });
 
+  it("rejects cross-project immutable decision lineage", async () => {
+    const createProject = async (label: string) => {
+      const project = await prisma.project.create({
+        data: { code: `POL109-LINEAGE-${label}-${randomUUID().slice(0, 8)}`, name: `谱系项目${label}` }
+      });
+      await prisma.projectCloseAggregate.create({ data: { projectId: project.id } });
+      return project.id;
+    };
+    const projectA = await createProject("A");
+    const projectB = await createProject("B");
+    const first = await prisma.projectCloseDecisionSubmission.create({
+      data: decisionSubmissionData(projectA, 1, null)
+    });
+    await prisma.projectCloseDecisionSubmission.create({
+      data: decisionSubmissionData(projectB, 1, null)
+    });
+
+    await expect(prisma.projectCloseDecisionSubmission.create({
+      data: decisionSubmissionData(projectB, 2, first.id)
+    })).rejects.toThrow(/lineage|foreign key|previous_project_fkey/u);
+  });
+
 });
+
+function decisionSubmissionData(
+  projectId: string,
+  revision: number,
+  previousSubmissionId: string | null
+) {
+  const now = new Date("2026-09-18T09:00:00.000Z");
+  return {
+    projectId,
+    decisionKind: "final_profit",
+    revision,
+    previousSubmissionId,
+    projectionReadAt: now,
+    projectionCutoffAt: now,
+    projectionFingerprint: `submission-${projectId}-${revision}`,
+    amountSnapshot: {},
+    stateSnapshot: {},
+    participantsSnapshot: [],
+    proposalSnapshot: {},
+    basisSnapshot: {},
+    preparedByUserId: "pg16-finance",
+    preparedAt: now,
+    submittedByUserId: "pg16-finance",
+    submittedAt: now,
+    idempotencyKey: randomUUID(),
+    payloadFingerprint: randomUUID()
+  };
+}
 
 function stageData(input: {
   projectId: string;

@@ -410,15 +410,26 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       )).status).toBe(400);
     }
 
+    current = await workbench(financeDirector);
+    const finalProfitSubmission = await request(
+      `/projects/${projectId}/close-profit/final-profit/submissions`,
+      financeDirector,
+      "POST",
+      commandBody(current.projection.fingerprint)
+    );
+    expect(finalProfitSubmission.status).toBe(201);
     current = await workbench(chairman);
     expect((await request(
       `/projects/${projectId}/close-profit/final-profit/confirm`,
       chairman,
       "POST",
-      commandBody(current.projection.fingerprint)
+      {
+        ...commandBody(current.projection.fingerprint),
+        submissionId: finalProfitSubmission.body.id
+      }
     )).status).toBe(201);
 
-    current = await workbench(generalManager);
+    current = await workbench(financeDirector);
     const finalProfitCents = current.currentProfitConfirmation.finalProfitCents as string;
     const lines = current.participatingCompanies.map((company: { id: string }, index: number) => ({
       projectParticipatingCompanyId: company.id,
@@ -427,23 +438,34 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     expect(lines.reduce((sum: bigint, line: { finalShareCents: string }) =>
       sum + BigInt(line.finalShareCents), 0n)).toBe(BigInt(finalProfitCents));
     expect((await request(
-      `/projects/${projectId}/close-profit/distributions/confirm`,
-      generalManager,
+      `/projects/${projectId}/close-profit/distributions/submissions`,
+      financeDirector,
       "POST",
       { ...commandBody(current.projection.fingerprint), lines: [] }
     )).status).toBe(400);
     expect(lines).toHaveLength(2);
     expect((await request(
-      `/projects/${projectId}/close-profit/distributions/confirm`,
-      generalManager,
+      `/projects/${projectId}/close-profit/distributions/submissions`,
+      financeDirector,
       "POST",
       { ...commandBody(current.projection.fingerprint), lines: lines.slice(0, 1) }
     )).status).toBe(400);
+    const distributionSubmission = await request(
+      `/projects/${projectId}/close-profit/distributions/submissions`,
+      financeDirector,
+      "POST",
+      { ...commandBody(current.projection.fingerprint), lines }
+    );
+    expect(distributionSubmission.status).toBe(201);
+    current = await workbench(generalManager);
     expect((await request(
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      { ...commandBody(current.projection.fingerprint), lines }
+      {
+        ...commandBody(current.projection.fingerprint),
+        submissionId: distributionSubmission.body.id
+      }
     )).status).toBe(201);
 
     current = await workbench(financeDirector);
@@ -490,7 +512,10 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      { ...commandBody(refreshed.projection.fingerprint), lines }
+      {
+        ...commandBody(refreshed.projection.fingerprint),
+        submissionId: distributionSubmission.body.id
+      }
     );
     const concurrentNewFact = operatingProfile.addParticipatingCompany(
       projectId,
@@ -525,7 +550,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     expect(affected.stages[5].status).toBe("needs_reconfirmation");
     expect(affected.stages[6].status).toBe("needs_reconfirmation");
 
-    const afterProfitReconfirmation = await workbench(generalManager);
+    const afterProfitReconfirmation = await workbench(financeDirector);
     const reconfirmLines = afterProfitReconfirmation.participatingCompanies.map(
       (company: { id: string; companyEntityId: string }) => ({
         projectParticipatingCompanyId: company.id,
@@ -534,11 +559,29 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
           : "0"
       })
     );
+    const reconfirmDistributionSubmission = await request(
+      `/projects/${projectId}/close-profit/distributions/submissions`,
+      financeDirector,
+      "POST",
+      {
+        ...commandBody(afterProfitReconfirmation.projection.fingerprint),
+        lines: reconfirmLines
+      }
+    );
+    if (reconfirmDistributionSubmission.status !== 201) {
+      throw new Error(
+        `公司分配重新提交失败：${JSON.stringify(reconfirmDistributionSubmission)}`
+      );
+    }
+    const distributionConfirmationWorkbench = await workbench(generalManager);
     const reconfirmDistribution = await request(
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      { ...commandBody(afterProfitReconfirmation.projection.fingerprint), lines: reconfirmLines }
+      {
+        ...commandBody(distributionConfirmationWorkbench.projection.fingerprint),
+        submissionId: reconfirmDistributionSubmission.body.id
+      }
     );
     if (reconfirmDistribution.status !== 201) {
       throw new Error(`公司分配重新确认失败：${JSON.stringify(reconfirmDistribution)}`);
@@ -620,20 +663,31 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
       where: { id: movementId }, select: { profitAuthorizationId: true }
     })).toEqual({ profitAuthorizationId: executableLine.profitAuthorizationId });
 
-    const afterExecution = await workbench(chairman);
+    const afterExecution = await workbench(financeDirector);
     expect(afterExecution.stages.slice(4).map((stage: { status: string }) => stage.status)).toEqual([
       "needs_reconfirmation",
       "needs_reconfirmation",
       "needs_reconfirmation"
     ]);
+    const executionProfitSubmission = await request(
+      `/projects/${projectId}/close-profit/final-profit/submissions`,
+      financeDirector,
+      "POST",
+      commandBody(afterExecution.projection.fingerprint)
+    );
+    expect(executionProfitSubmission.status).toBe(201);
+    const executionProfitConfirmationWorkbench = await workbench(chairman);
     expect((await request(
       `/projects/${projectId}/close-profit/final-profit/confirm`,
       chairman,
       "POST",
-      commandBody(afterExecution.projection.fingerprint)
+      {
+        ...commandBody(executionProfitConfirmationWorkbench.projection.fingerprint),
+        submissionId: executionProfitSubmission.body.id
+      }
     )).status).toBe(201);
 
-    const afterExecutionProfit = await workbench(generalManager);
+    const afterExecutionProfit = await workbench(financeDirector);
     const executionReconfirmLines = afterExecutionProfit.participatingCompanies.map(
       (company: { id: string; companyEntityId: string }) => ({
         projectParticipatingCompanyId: company.id,
@@ -642,11 +696,25 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
           : "0"
       })
     );
+    const executionDistributionSubmission = await request(
+      `/projects/${projectId}/close-profit/distributions/submissions`,
+      financeDirector,
+      "POST",
+      {
+        ...commandBody(afterExecutionProfit.projection.fingerprint),
+        lines: executionReconfirmLines
+      }
+    );
+    expect(executionDistributionSubmission.status).toBe(201);
+    const executionDistributionConfirmationWorkbench = await workbench(generalManager);
     expect((await request(
       `/projects/${projectId}/close-profit/distributions/confirm`,
       generalManager,
       "POST",
-      { ...commandBody(afterExecutionProfit.projection.fingerprint), lines: executionReconfirmLines }
+      {
+        ...commandBody(executionDistributionConfirmationWorkbench.projection.fingerprint),
+        submissionId: executionDistributionSubmission.body.id
+      }
     )).status).toBe(201);
 
     const afterExecutionDistribution = await workbench(financeDirector);

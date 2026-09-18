@@ -10,7 +10,9 @@ import {
   CreateTemporaryProfitDistributionDto,
   ConfirmFinalProfitDto,
   ConfirmProjectCloseDistributionDto,
-  ReconcileProjectCloseImpactsDto
+  ReconcileProjectCloseImpactsDto,
+  SubmitFinalProfitDto,
+  SubmitProjectCloseDistributionDto
 } from "./dto/project-close-profit.dto";
 import { ProjectCloseProfitService } from "./project-close-profit.service";
 
@@ -73,6 +75,15 @@ export class ProjectCloseProfitController {
     return this.closeProfit.confirmFinalProfit(user.id, projectId, body);
   }
 
+  @Post("final-profit/submissions")
+  submitFinalProfit(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Body() body: SubmitFinalProfitDto
+  ) {
+    return this.closeProfit.submitFinalProfit(user.id, projectId, body);
+  }
+
   @Post("temporary-distributions")
   createTemporaryDistribution(
     @CurrentUser() user: AuthenticatedUser,
@@ -98,5 +109,14 @@ export class ProjectCloseProfitController {
     @Body() body: ConfirmProjectCloseDistributionDto
   ) {
     return this.closeProfit.confirmDistribution(user.id, projectId, body);
+  }
+
+  @Post("distributions/submissions")
+  submitDistribution(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Body() body: SubmitProjectCloseDistributionDto
+  ) {
+    return this.closeProfit.submitDistribution(user.id, projectId, body);
   }
 }

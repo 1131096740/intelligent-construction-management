@@ -12,7 +12,9 @@ export type ProjectCloseAction =
   | "attest_contract_cost"
   | "attest_finance_cost"
   | "create_temporary_distribution"
+  | "submit_final_profit"
   | "confirm_final_profit"
+  | "submit_distribution"
   | "confirm_distribution";
 
 export interface ProjectCloseStageReadModel {
@@ -75,6 +77,20 @@ export interface ProjectCloseImpactReadModel {
   occurredAt: string;
 }
 
+export interface ProjectCloseDecisionSubmissionReadModel {
+  id: string;
+  decisionKind: "final_profit" | "distribution";
+  revision: number;
+  projectionFingerprint: string;
+  proposalSnapshot: {
+    finalProfitCents?: string;
+    lines?: Array<{ projectParticipatingCompanyId: string; finalShareCents: string }>;
+  };
+  basisSnapshot: unknown;
+  preparedAt: string;
+  submittedAt: string;
+}
+
 export interface ProjectCloseProfitWorkbenchReadModel {
   schema: "project_close_profit/V1";
   projectId: string;
@@ -102,6 +118,10 @@ export interface ProjectCloseProfitWorkbenchReadModel {
     confirmedAt: string;
   };
   currentDistribution: ProjectCloseDistributionReadModel | null;
+  currentDecisionSubmissions?: {
+    finalProfit: ProjectCloseDecisionSubmissionReadModel | null;
+    distribution: ProjectCloseDecisionSubmissionReadModel | null;
+  };
   temporaryDistributions?: ProjectTemporaryDistributionReadModel[];
   impacts?: ProjectCloseImpactReadModel[];
   participatingCompanies: Array<{
@@ -116,11 +136,24 @@ export interface ProjectCloseProfitWorkbenchReadModel {
     revision: number;
     projectionFingerprint: string;
     attestedAt: string;
+    attestedByUserId?: string;
+    basisSnapshot?: unknown;
   }>;
   history: {
-    stageVersions: unknown[];
-    profitConfirmations: unknown[];
+    stageVersions: Array<NonNullable<ProjectCloseStageReadModel["currentVersion"]> & {
+      stageKey: string;
+      confirmedByUserId: string;
+    }>;
+    profitConfirmations: Array<{
+      id: string;
+      revision: number;
+      finalProfitCents: string;
+      confirmedByUserId: string;
+      confirmedAt: string;
+      basisSnapshot: unknown;
+    }>;
     distributions: ProjectCloseDistributionReadModel[];
+    decisionSubmissions?: ProjectCloseDecisionSubmissionReadModel[];
   };
 }
 
@@ -128,6 +161,12 @@ export interface ProjectCloseCommandBody {
   expectedProjectionFingerprint: string;
   idempotencyKey: string;
   basis: { summary: string; evidenceFileIds: string[] };
+}
+
+export interface ProjectCloseConfirmationBody {
+  expectedProjectionFingerprint: string;
+  idempotencyKey: string;
+  submissionId: string;
 }
 
 export class ProjectCloseProfitApiError extends Error {
@@ -185,9 +224,16 @@ export function attestProjectDownstreamFinanceCost(
 
 export function confirmProjectFinalProfit(
   projectId: string,
-  body: ProjectCloseCommandBody
+  body: ProjectCloseConfirmationBody
 ) {
   return post(`${path(projectId)}/final-profit/confirm`, body, "确认项目最终盈亏失败");
+}
+
+export function submitProjectFinalProfit(
+  projectId: string,
+  body: ProjectCloseCommandBody
+) {
+  return post(`${path(projectId)}/final-profit/submissions`, body, "提交项目最终盈亏失败");
 }
 
 export function postTemporaryProfitDistribution(
@@ -202,11 +248,18 @@ export function postTemporaryProfitDistribution(
 
 export function confirmProjectProfitDistribution(
   projectId: string,
+  body: ProjectCloseConfirmationBody
+) {
+  return post(`${path(projectId)}/distributions/confirm`, body, "确认项目盈亏分配失败");
+}
+
+export function submitProjectProfitDistribution(
+  projectId: string,
   body: ProjectCloseCommandBody & {
     lines: Array<{ projectParticipatingCompanyId: string; finalShareCents: string }>;
   }
 ) {
-  return post(`${path(projectId)}/distributions/confirm`, body, "确认项目盈亏分配失败");
+  return post(`${path(projectId)}/distributions/submissions`, body, "提交项目盈亏分配失败");
 }
 
 function path(projectId: string) {

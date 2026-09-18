@@ -104,13 +104,11 @@ async function appendProjectCloseInvalidation(
   tx: Prisma.TransactionClient,
   source: InvalidationSource
 ): Promise<void> {
-  if (!tx.projectCloseAggregate?.findUnique) return;
-  const aggregate = await tx.projectCloseAggregate.findUnique({
+  await tx.projectCloseAggregate.upsert({
     where: { projectId: source.projectId },
-    select: { projectId: true }
+    create: { projectId: source.projectId },
+    update: {}
   });
-  if (!aggregate) return;
-
   await tx.$executeRaw(Prisma.sql`
     SELECT 1 FROM "ProjectCloseAggregate"
     WHERE "projectId" = ${source.projectId}

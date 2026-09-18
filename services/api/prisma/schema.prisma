@@ -269,6 +269,7 @@ model ProjectCloseAggregate {
   profitAuthorizations   ProjectProfitDistributionAuthorization[]
   temporaryDistributions ProjectTemporaryProfitDistribution[]
   impacts                ProjectCloseImpact[]
+  decisionSubmissions    ProjectCloseDecisionSubmission[]
 }
 
 model ProjectCloseStageVersion {
@@ -278,6 +279,7 @@ model ProjectCloseStageVersion {
   revision              Int
   status                String
   previousVersionId     String?
+  prerequisiteStageVersionIds Json     @default("[]")
   projectionReadAt      DateTime
   projectionCutoffAt    DateTime
   projectionFingerprint String
@@ -291,7 +293,7 @@ model ProjectCloseStageVersion {
   createdAt             DateTime @default(now())
 
   aggregate          ProjectCloseAggregate              @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseStageVersion_aggregate_fkey")
-  previousVersion    ProjectCloseStageVersion?          @relation("ProjectCloseStageVersionHistory", fields: [previousVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseStageVersion_previous_fkey")
+  previousVersion    ProjectCloseStageVersion?          @relation("ProjectCloseStageVersionHistory", fields: [projectId, previousVersionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseStageVersion_previous_project_fkey")
   nextVersions       ProjectCloseStageVersion[]         @relation("ProjectCloseStageVersionHistory")
   receipts           ProjectCloseCommandReceipt[]
   attestationLinks   ProjectCloseStageAttestationLink[]
@@ -299,6 +301,7 @@ model ProjectCloseStageVersion {
   distribution       ProjectCloseDistribution?
 
   @@unique([projectId, stageKey, revision], map: "ProjectCloseStageVersion_project_stage_revision_key")
+  @@unique([projectId, id], map: "ProjectCloseStageVersion_project_id_key")
   @@index([projectId, stageKey, createdAt], map: "ProjectCloseStageVersion_project_stage_created_idx")
   @@index([previousVersionId], map: "ProjectCloseStageVersion_previous_idx")
 }
@@ -375,6 +378,39 @@ model ProjectCloseProfessionalAttestation {
   @@index([projectId, specialty, createdAt], map: "ProjectCloseAttestation_project_specialty_created_idx")
 }
 
+model ProjectCloseDecisionSubmission {
+  id                    String   @id @default(uuid())
+  projectId             String
+  decisionKind          String
+  revision              Int
+  previousSubmissionId  String?
+  projectionReadAt      DateTime
+  projectionCutoffAt    DateTime
+  projectionFingerprint String
+  amountSnapshot        Json
+  stateSnapshot         Json
+  participantsSnapshot  Json
+  proposalSnapshot      Json
+  basisSnapshot         Json
+  preparedByUserId      String
+  preparedAt            DateTime
+  submittedByUserId     String
+  submittedAt           DateTime
+  idempotencyKey        String   @unique
+  payloadFingerprint    String
+  createdAt             DateTime @default(now())
+
+  aggregate          ProjectCloseAggregate             @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseDecisionSubmission_aggregate_fkey")
+  previousSubmission ProjectCloseDecisionSubmission?   @relation("ProjectCloseDecisionSubmissionHistory", fields: [projectId, previousSubmissionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDecisionSubmission_previous_project_fkey")
+  nextSubmissions    ProjectCloseDecisionSubmission[]  @relation("ProjectCloseDecisionSubmissionHistory")
+  profitConfirmation ProjectCloseProfitConfirmation?
+  distribution       ProjectCloseDistribution?
+
+  @@unique([projectId, decisionKind, revision], map: "ProjectCloseDecisionSubmission_project_kind_revision_key")
+  @@unique([projectId, id], map: "ProjectCloseDecisionSubmission_project_id_key")
+  @@index([previousSubmissionId], map: "ProjectCloseDecisionSubmission_previous_idx")
+}
+
 model ProjectCloseStageAttestationLink {
   stageVersionId String
   attestationId  String @unique
@@ -390,6 +426,7 @@ model ProjectCloseProfitConfirmation {
   id                     String   @id @default(uuid())
   projectId              String
   stageVersionId         String   @unique
+  submissionId           String   @unique
   revision               Int
   previousConfirmationId String?
   finalProfitCents       BigInt
@@ -407,12 +444,16 @@ model ProjectCloseProfitConfirmation {
   createdAt              DateTime @default(now())
 
   aggregate            ProjectCloseAggregate            @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_aggregate_fkey")
-  stageVersion         ProjectCloseStageVersion         @relation(fields: [stageVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_stage_fkey")
-  previousConfirmation ProjectCloseProfitConfirmation?  @relation("ProjectCloseProfitConfirmationHistory", fields: [previousConfirmationId], references: [id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_previous_fkey")
+  stageVersion         ProjectCloseStageVersion         @relation(fields: [projectId, stageVersionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_stage_project_fkey")
+  submission           ProjectCloseDecisionSubmission   @relation(fields: [projectId, submissionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_submission_project_fkey")
+  previousConfirmation ProjectCloseProfitConfirmation?  @relation("ProjectCloseProfitConfirmationHistory", fields: [projectId, previousConfirmationId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseProfitConfirmation_previous_project_fkey")
   nextConfirmations    ProjectCloseProfitConfirmation[] @relation("ProjectCloseProfitConfirmationHistory")
   distributions        ProjectCloseDistribution[]
 
   @@unique([projectId, revision], map: "ProjectCloseProfitConfirmation_project_revision_key")
+  @@unique([projectId, id], map: "ProjectCloseProfitConfirmation_project_id_key")
+  @@unique([projectId, stageVersionId], map: "ProjectCloseProfitConfirmation_project_stage_key")
+  @@unique([projectId, submissionId], map: "ProjectCloseProfitConfirmation_project_submission_key")
   @@index([previousConfirmationId], map: "ProjectCloseProfitConfirmation_previous_idx")
 }
 
@@ -420,6 +461,7 @@ model ProjectCloseDistribution {
   id                     String   @id @default(uuid())
   projectId              String
   stageVersionId         String   @unique
+  submissionId           String   @unique
   profitConfirmationId   String
   revision               Int
   previousDistributionId String?
@@ -435,14 +477,18 @@ model ProjectCloseDistribution {
   createdAt              DateTime @default(now())
 
   aggregate            ProjectCloseAggregate                    @relation(fields: [projectId], references: [projectId], onDelete: Restrict, map: "ProjectCloseDistribution_aggregate_fkey")
-  stageVersion         ProjectCloseStageVersion                 @relation(fields: [stageVersionId], references: [id], onDelete: Restrict, map: "ProjectCloseDistribution_stage_fkey")
-  profitConfirmation   ProjectCloseProfitConfirmation           @relation(fields: [profitConfirmationId], references: [id], onDelete: Restrict, map: "ProjectCloseDistribution_profit_fkey")
-  previousDistribution ProjectCloseDistribution?                @relation("ProjectCloseDistributionHistory", fields: [previousDistributionId], references: [id], onDelete: Restrict, map: "ProjectCloseDistribution_previous_fkey")
+  stageVersion         ProjectCloseStageVersion                 @relation(fields: [projectId, stageVersionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDistribution_stage_project_fkey")
+  submission           ProjectCloseDecisionSubmission           @relation(fields: [projectId, submissionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDistribution_submission_project_fkey")
+  profitConfirmation   ProjectCloseProfitConfirmation           @relation(fields: [projectId, profitConfirmationId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDistribution_profit_project_fkey")
+  previousDistribution ProjectCloseDistribution?                @relation("ProjectCloseDistributionHistory", fields: [projectId, previousDistributionId], references: [projectId, id], onDelete: Restrict, map: "ProjectCloseDistribution_previous_project_fkey")
   nextDistributions    ProjectCloseDistribution[]               @relation("ProjectCloseDistributionHistory")
   lines                ProjectCloseDistributionLine[]
   authorizations       ProjectProfitDistributionAuthorization[]
 
   @@unique([projectId, revision], map: "ProjectCloseDistribution_project_revision_key")
+  @@unique([projectId, id], map: "ProjectCloseDistribution_project_id_key")
+  @@unique([projectId, stageVersionId], map: "ProjectCloseDistribution_project_stage_key")
+  @@unique([projectId, submissionId], map: "ProjectCloseDistribution_project_submission_key")
   @@index([profitConfirmationId], map: "ProjectCloseDistribution_profit_idx")
   @@index([previousDistributionId], map: "ProjectCloseDistribution_previous_idx")
 }

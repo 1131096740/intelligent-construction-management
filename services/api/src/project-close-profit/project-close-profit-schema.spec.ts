@@ -76,9 +76,23 @@ describe("POL-16 project close stage schema", () => {
   it("serializes stage lineage and temporary profit authorization under database locks", () => {
     expect(schema).toContain("model ProjectTemporaryProfitDistribution {");
     expect(schema).toContain("model ProjectCloseImpact {");
+    expect(schema).toContain("model ProjectCloseDecisionSubmission {");
+    expect(migration).toContain('CREATE TABLE "ProjectCloseDecisionSubmission"');
+    expect(migration).toContain("'final_profit', 'distribution'");
+    expect(migration).toContain('CREATE TRIGGER "ProjectCloseDecisionSubmission_immutable"');
+    expect(migration).toContain('CREATE FUNCTION "pol109_validate_decision_submission_lineage"()');
+    expect(migration).toContain("POL-109 decision submission lineage is not contiguous");
+    expect(migration).toContain('FOREIGN KEY ("projectId", "submissionId")');
     expect(schema).toContain("authorizationKind");
     expect(migration).toContain('CREATE FUNCTION "pol109_validate_stage_lineage"()');
     expect(migration).toContain("POL-109 stage lineage is not contiguous");
+    expect(schema).toContain("prerequisiteStageVersionIds Json");
+    expect(migration).toContain('"prerequisiteStageVersionIds" JSONB NOT NULL');
+    expect(migration).toContain("POL-109 prerequisite stage snapshot is not exact");
+    expect(migration).toContain('FOREIGN KEY ("projectId", "previousVersionId")');
+    expect(migration).toContain('FOREIGN KEY ("projectId", "previousConfirmationId")');
+    expect(migration).toContain('FOREIGN KEY ("projectId", "profitConfirmationId")');
+    expect(migration).toContain('FOREIGN KEY ("projectId", "previousDistributionId")');
     expect(migration).toContain('CREATE FUNCTION "pol109_validate_temporary_distribution"()');
     expect(migration).toContain("pg_advisory_xact_lock");
     expect(migration).toContain("authorizedCumulativeCents");

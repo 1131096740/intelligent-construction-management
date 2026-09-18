@@ -29,6 +29,7 @@ type StageVersionSnapshot = Pick<
   | "stageKey"
   | "revision"
   | "status"
+  | "prerequisiteStageVersionIds"
   | "projectionReadAt"
   | "projectionCutoffAt"
   | "projectionFingerprint"
@@ -62,10 +63,16 @@ export type AttestDownstreamCostInput = Readonly<{
 export type ConfirmFinalProfitInput = Readonly<{
   expectedProjectionFingerprint: string;
   idempotencyKey: string;
+  submissionId: string;
+}>;
+
+export type SubmitFinalProfitInput = Readonly<{
+  expectedProjectionFingerprint: string;
+  idempotencyKey: string;
   basis: ConfirmationBasis;
 }>;
 
-export type ConfirmDistributionInput = Readonly<{
+export type SubmitDistributionInput = Readonly<{
   expectedProjectionFingerprint: string;
   idempotencyKey: string;
   basis: ConfirmationBasis;
@@ -73,6 +80,12 @@ export type ConfirmDistributionInput = Readonly<{
     projectParticipatingCompanyId: string;
     finalShareCents: string;
   }>[];
+}>;
+
+export type ConfirmDistributionInput = Readonly<{
+  expectedProjectionFingerprint: string;
+  idempotencyKey: string;
+  submissionId: string;
 }>;
 
 export type CreateTemporaryDistributionInput = Readonly<{
@@ -145,7 +158,9 @@ export class ProjectCloseProfitService {
         distributions,
         participatingCompanies,
         temporaryDistributions,
-        impacts
+        impacts,
+        decisionSubmissions,
+        activeContractOwners
       ] = await Promise.all([
         this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
         tx.projectCloseStageVersion.findMany({
@@ -156,6 +171,7 @@ export class ProjectCloseProfitService {
             stageKey: true,
             revision: true,
             status: true,
+            prerequisiteStageVersionIds: true,
             projectionReadAt: true,
             projectionCutoffAt: true,
             projectionFingerprint: true,
@@ -226,6 +242,14 @@ export class ProjectCloseProfitService {
         tx.projectCloseImpact.findMany({
           where: { projectId },
           orderBy: { observedAt: "desc" }
+        }),
+        tx.projectCloseDecisionSubmission.findMany({
+          where: { projectId },
+          orderBy: [{ decisionKind: "asc" }, { revision: "desc" }]
+        }),
+        tx.contract.findMany({
+          where: { projectId, voidedAt: null },
+          select: { ownerUserId: true }
         })
       ]);
       const latestByStage = latestStageVersions(versions);
@@ -237,12 +261,23 @@ export class ProjectCloseProfitService {
       );
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const technicalAdministrator = roleKeys.includes("super_admin");
+      const hasContractResponsibility =
+        activeContractOwners.length > 0 &&
+        activeContractOwners.every((row) => row.ownerUserId === actorUserId);
       const timeline = buildProjectCloseStageTimeline(completedStages, affectedStages);
       const currentProfitConfirmation = profitConfirmations.find(
         (row) => row.stageVersionId === latestByStage.get("final_profit_confirmed")?.id
       );
       const currentDistribution = distributions.find(
         (row) => row.stageVersionId === latestByStage.get("profit_distribution_completed")?.id
+      );
+      const currentFinalProfitSubmission = decisionSubmissions.find(
+        (row) => row.decisionKind === "final_profit" &&
+          row.projectionFingerprint === projection.fingerprint
+      );
+      const currentDistributionSubmission = decisionSubmissions.find(
+        (row) => row.decisionKind === "distribution" &&
+          row.projectionFingerprint === projection.fingerprint
       );
 
       return {
@@ -256,7 +291,12 @@ export class ProjectCloseProfitService {
               availableStageActions(
                 item.stage,
                 stageActionStatus(timeline, index),
-                roleKeys
+                roleKeys,
+                {
+                  hasFinalProfitSubmission: Boolean(currentFinalProfitSubmission),
+                  hasDistributionSubmission: Boolean(currentDistributionSubmission),
+                  hasContractResponsibility
+                }
               )
             ))],
         projection: {
@@ -277,7 +317,12 @@ export class ProjectCloseProfitService {
             : availableStageActions(
                 item.stage,
                 stageActionStatus(timeline, index),
-                roleKeys
+                roleKeys,
+                {
+                  hasFinalProfitSubmission: Boolean(currentFinalProfitSubmission),
+                  hasDistributionSubmission: Boolean(currentDistributionSubmission),
+                  hasContractResponsibility
+                }
               )
         })),
         downstreamCostAttestations: attestations.map((row) => ({
@@ -294,6 +339,14 @@ export class ProjectCloseProfitService {
         currentDistribution: currentDistribution
           ? distributionReadModel(currentDistribution)
           : null,
+        currentDecisionSubmissions: {
+          finalProfit: currentFinalProfitSubmission
+            ? decisionSubmissionReadModel(currentFinalProfitSubmission)
+            : null,
+          distribution: currentDistributionSubmission
+            ? decisionSubmissionReadModel(currentDistributionSubmission)
+            : null
+        },
         temporaryDistributions: temporaryDistributions.map((row) => ({
           id: row.id,
           projectParticipatingCompanyId: row.projectParticipatingCompanyId,
@@ -325,7 +378,8 @@ export class ProjectCloseProfitService {
             finalProfitCents: row.finalProfitCents.toString(),
             confirmedAt: row.confirmedAt.toISOString()
           })),
-          distributions: distributions.map(distributionReadModel)
+          distributions: distributions.map(distributionReadModel),
+          decisionSubmissions: decisionSubmissions.map(decisionSubmissionReadModel)
         }
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
@@ -400,10 +454,13 @@ export class ProjectCloseProfitService {
       const latestByStage = latestStageVersions(versions);
       assertStageReady(versions, stageKey);
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
-      if (
-        roleKeys.includes("super_admin") ||
-        !STAGE_CONFIRMATION_ROLES[stageKey].some((role) => roleKeys.includes(role))
-      ) {
+      const hasContractResponsibility = stageKey === "owner_settlement_completed"
+        ? await hasLockedProjectContractResponsibility(tx, actorUserId, projectId)
+        : false;
+      if (roleKeys.includes("super_admin") || (
+        !STAGE_CONFIRMATION_ROLES[stageKey].some((role) => roleKeys.includes(role)) &&
+        !hasContractResponsibility
+      )) {
         throw new ForbiddenException("当前岗位不能确认该项目收口阶段");
       }
 
@@ -416,6 +473,7 @@ export class ProjectCloseProfitService {
           revision,
           status: "completed",
           previousVersionId: previous?.id,
+          prerequisiteStageVersionIds: prerequisiteStageVersionIds(latestByStage, stageKey),
           projectionReadAt: projection.readAt,
           projectionCutoffAt: projection.cutoffAt,
           projectionFingerprint: projection.fingerprint,
@@ -513,11 +571,20 @@ export class ProjectCloseProfitService {
       ]);
       assertProjectionFingerprint(projection.fingerprint, expectedProjectionFingerprint);
       assertStageReady(versions, "downstream_cost_confirmed");
-      assertExactRole(
-        roleKeysByProject.get(projectId) ?? [],
-        specialty === "contract" ? ["contract_director"] : ["finance_director"],
-        "当前岗位不能完成该专业成本确认"
-      );
+      const roleKeys = roleKeysByProject.get(projectId) ?? [];
+      const hasContractResponsibility = specialty === "contract"
+        ? await hasLockedProjectContractResponsibility(tx, actorUserId, projectId)
+        : false;
+      if (specialty === "contract") {
+        if (
+          roleKeys.includes("super_admin") ||
+          (!roleKeys.includes("contract_director") && !hasContractResponsibility)
+        ) {
+          throw new ForbiddenException("当前岗位不能完成该专业成本确认");
+        }
+      } else {
+        assertExactRole(roleKeys, ["finance_director"], "当前岗位不能完成该专业成本确认");
+      }
 
       const latestAttestations = latestProfessionalAttestations(attestations);
       const previousSameSpecialty = latestAttestations.get(specialty);
@@ -609,10 +676,10 @@ export class ProjectCloseProfitService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  async confirmFinalProfit(
+  async submitFinalProfit(
     actorUserId: string,
     projectId: string,
-    input: ConfirmFinalProfitInput
+    input: SubmitFinalProfitInput
   ) {
     const idempotencyKey = requiredUuid(input.idempotencyKey);
     const expectedProjectionFingerprint = requiredText(
@@ -621,7 +688,7 @@ export class ProjectCloseProfitService {
     );
     const basis = normalizedBasis(input.basis);
     const payloadFingerprint = fingerprint({
-      action: "project_close.final_profit.confirm",
+      action: "project_close.final_profit.submit",
       projectId,
       expectedProjectionFingerprint,
       basis
@@ -632,7 +699,104 @@ export class ProjectCloseProfitService {
       await lockProjectCloseAggregate(tx, projectId);
       const replay = await readCommandReplay(tx, idempotencyKey, payloadFingerprint);
       if (replay) return replay;
-      const [projection, versions, roleKeysByProject, previous] = await Promise.all([
+      const [projection, versions, roleKeysByProject, participants, previous] =
+        await Promise.all([
+          this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
+          tx.projectCloseStageVersion.findMany({
+            where: { projectId },
+            orderBy: [{ stageKey: "asc" }, { revision: "desc" }]
+          }),
+          this.visibility.effectiveRoleKeysByProjectInTransaction(tx, actorUserId, [projectId]),
+          tx.projectParticipatingCompany.findMany({ where: { projectId } }),
+          tx.projectCloseDecisionSubmission.findFirst({
+            where: { projectId, decisionKind: "final_profit" },
+            orderBy: { revision: "desc" }
+          })
+        ]);
+      assertProjectionFingerprint(projection.fingerprint, expectedProjectionFingerprint);
+      assertStageReady(versions, "final_profit_confirmed");
+      assertExactRole(
+        roleKeysByProject.get(projectId) ?? [],
+        ["finance_director"],
+        "仅财务负责人可以制作并提交最终盈亏确认单"
+      );
+      assertProjectionFinalizable(projection.projection);
+      const finalProfitCents = requiredMoney(
+        projection.projection.profitAndLoss.currentEstimatedProfitCents,
+        "当前预计盈亏金额无效"
+      );
+      const participantSnapshot = participantDecisionSnapshot(participants, projection.cutoffAt);
+      const submission = await tx.projectCloseDecisionSubmission.create({
+        data: {
+          projectId,
+          decisionKind: "final_profit",
+          revision: (previous?.revision ?? 0) + 1,
+          previousSubmissionId: previous?.id,
+          projectionReadAt: projection.readAt,
+          projectionCutoffAt: projection.cutoffAt,
+          projectionFingerprint: projection.fingerprint,
+          amountSnapshot: projectionAmountSnapshot(projection.projection),
+          stateSnapshot: projectionStateSnapshot(projection.projection),
+          participantsSnapshot: participantSnapshot,
+          proposalSnapshot: { finalProfitCents: finalProfitCents.toString() },
+          basisSnapshot: basis,
+          preparedByUserId: actorUserId,
+          preparedAt: projection.readAt,
+          submittedByUserId: actorUserId,
+          submittedAt: projection.readAt,
+          idempotencyKey,
+          payloadFingerprint
+        }
+      });
+      const response = decisionSubmissionReadModel(submission);
+      await tx.projectCloseCommandReceipt.create({
+        data: {
+          projectId,
+          action: "submit_final_profit",
+          idempotencyKey,
+          payloadFingerprint,
+          responseSnapshot: response
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project_close.final_profit.submit",
+        businessType: "project_close_decision_submission",
+        businessId: submission.id,
+        metadata: {
+          projectId,
+          revision: submission.revision,
+          projectionFingerprint: submission.projectionFingerprint
+        }
+      });
+      return response;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async confirmFinalProfit(
+    actorUserId: string,
+    projectId: string,
+    input: ConfirmFinalProfitInput
+  ) {
+    const idempotencyKey = requiredUuid(input.idempotencyKey);
+    const expectedProjectionFingerprint = requiredText(
+      input.expectedProjectionFingerprint,
+      "经营投影版本不能为空"
+    );
+    const submissionId = requiredUuid(input.submissionId);
+    const payloadFingerprint = fingerprint({
+      action: "project_close.final_profit.confirm",
+      projectId,
+      expectedProjectionFingerprint,
+      submissionId
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      await lockCommandIdempotency(tx, idempotencyKey);
+      await lockProjectCloseAggregate(tx, projectId);
+      const replay = await readCommandReplay(tx, idempotencyKey, payloadFingerprint);
+      if (replay) return replay;
+      const [projection, versions, roleKeysByProject, previous, submission] = await Promise.all([
         this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
         tx.projectCloseStageVersion.findMany({
           where: { projectId },
@@ -642,6 +806,9 @@ export class ProjectCloseProfitService {
         tx.projectCloseProfitConfirmation.findFirst({
           where: { projectId },
           orderBy: { revision: "desc" }
+        }),
+        tx.projectCloseDecisionSubmission.findUnique({
+          where: { id: submissionId }
         })
       ]);
       assertProjectionFingerprint(projection.fingerprint, expectedProjectionFingerprint);
@@ -651,11 +818,13 @@ export class ProjectCloseProfitService {
         ["chairman", "general_manager"],
         "仅董事长或总经理可以最终确认项目盈亏"
       );
-      assertProjectionFinalizable(projection.projection);
-      const finalProfitCents = requiredMoney(
-        projection.projection.profitAndLoss.currentEstimatedProfitCents,
-        "当前预计盈亏金额无效"
+      const decision = assertDecisionSubmission(
+        submission,
+        projectId,
+        "final_profit",
+        projection.fingerprint
       );
+      const finalProfitCents = decision.finalProfitCents;
       const stageVersion = await appendCompletedStage(tx, {
         projectId,
         stageKey: "final_profit_confirmed",
@@ -664,12 +833,13 @@ export class ProjectCloseProfitService {
         payloadFingerprint,
         projection,
         versions,
-        basis
+        basis: decision.basisSnapshot
       });
       const confirmation = await tx.projectCloseProfitConfirmation.create({
         data: {
           projectId,
           stageVersionId: stageVersion.stageVersionId,
+          submissionId: submission!.id,
           revision: (previous?.revision ?? 0) + 1,
           previousConfirmationId: previous?.id,
           finalProfitCents,
@@ -679,7 +849,7 @@ export class ProjectCloseProfitService {
           formulaVersion: "operating_projection/V1-final-profit",
           amountSnapshot: projectionAmountSnapshot(projection.projection),
           sourceSnapshot: projectionStateSnapshot(projection.projection),
-          basisSnapshot: basis,
+          basisSnapshot: decision.basisSnapshot,
           confirmedByUserId: actorUserId,
           confirmedAt: projection.readAt,
           idempotencyKey,
@@ -1094,6 +1264,7 @@ export class ProjectCloseProfitService {
             revision: previous.revision + 1,
             status: "needs_reconfirmation",
             previousVersionId: previous.id,
+            prerequisiteStageVersionIds: prerequisiteStageVersionIds(latest, stage),
             projectionReadAt: projection.readAt,
             projectionCutoffAt: projection.cutoffAt,
             projectionFingerprint: projection.fingerprint,
@@ -1130,10 +1301,10 @@ export class ProjectCloseProfitService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  async confirmDistribution(
+  async submitDistribution(
     actorUserId: string,
     projectId: string,
-    input: ConfirmDistributionInput
+    input: SubmitDistributionInput
   ) {
     const idempotencyKey = requiredUuid(input.idempotencyKey);
     const expectedProjectionFingerprint = requiredText(
@@ -1143,7 +1314,7 @@ export class ProjectCloseProfitService {
     const basis = normalizedBasis(input.basis);
     const requestedLines = normalizeDistributionLines(input.lines);
     const payloadFingerprint = fingerprint({
-      action: "project_close.distribution.confirm",
+      action: "project_close.distribution.submit",
       projectId,
       expectedProjectionFingerprint,
       basis,
@@ -1161,9 +1332,124 @@ export class ProjectCloseProfitService {
         roleKeysByProject,
         profitConfirmation,
         participants,
+        previous
+      ] = await Promise.all([
+        this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
+        tx.projectCloseStageVersion.findMany({
+          where: { projectId },
+          orderBy: [{ stageKey: "asc" }, { revision: "desc" }]
+        }),
+        this.visibility.effectiveRoleKeysByProjectInTransaction(tx, actorUserId, [projectId]),
+        tx.projectCloseProfitConfirmation.findFirst({
+          where: { projectId },
+          orderBy: { revision: "desc" }
+        }),
+        tx.projectParticipatingCompany.findMany({ where: { projectId } }),
+        tx.projectCloseDecisionSubmission.findFirst({
+          where: { projectId, decisionKind: "distribution" },
+          orderBy: { revision: "desc" }
+        })
+      ]);
+      assertProjectionFingerprint(projection.fingerprint, expectedProjectionFingerprint);
+      assertStageReady(versions, "profit_distribution_completed");
+      assertExactRole(
+        roleKeysByProject.get(projectId) ?? [],
+        ["finance_director"],
+        "仅财务负责人可以制作并提交盈亏分配确认单"
+      );
+      if (!profitConfirmation) throw new ConflictException("项目最终盈亏尚未确认");
+      const latestVersions = latestStageVersions(versions);
+      if (latestVersions.get("final_profit_confirmed")?.id !== profitConfirmation.stageVersionId) {
+        throw new ConflictException("最终盈亏确认已不是当前经营版本，请先重新确认");
+      }
+      const participantById = effectiveParticipantById(participants, projection.cutoffAt);
+      assertDistributionProposal(requestedLines, participantById, profitConfirmation.finalProfitCents);
+      const submission = await tx.projectCloseDecisionSubmission.create({
+        data: {
+          projectId,
+          decisionKind: "distribution",
+          revision: (previous?.revision ?? 0) + 1,
+          previousSubmissionId: previous?.id,
+          projectionReadAt: projection.readAt,
+          projectionCutoffAt: projection.cutoffAt,
+          projectionFingerprint: projection.fingerprint,
+          amountSnapshot: projectionAmountSnapshot(projection.projection),
+          stateSnapshot: projectionStateSnapshot(projection.projection),
+          participantsSnapshot: participantDecisionSnapshot(participants, projection.cutoffAt),
+          proposalSnapshot: {
+            totalProfitCents: profitConfirmation.finalProfitCents.toString(),
+            lines: requestedLines.map((line) => ({
+              projectParticipatingCompanyId: line.projectParticipatingCompanyId,
+              finalShareCents: line.finalShareCents.toString()
+            }))
+          },
+          basisSnapshot: basis,
+          preparedByUserId: actorUserId,
+          preparedAt: projection.readAt,
+          submittedByUserId: actorUserId,
+          submittedAt: projection.readAt,
+          idempotencyKey,
+          payloadFingerprint
+        }
+      });
+      const response = decisionSubmissionReadModel(submission);
+      await tx.projectCloseCommandReceipt.create({
+        data: {
+          projectId,
+          action: "submit_distribution",
+          idempotencyKey,
+          payloadFingerprint,
+          responseSnapshot: response
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project_close.distribution.submit",
+        businessType: "project_close_decision_submission",
+        businessId: submission.id,
+        metadata: {
+          projectId,
+          revision: submission.revision,
+          projectionFingerprint: submission.projectionFingerprint
+        }
+      });
+      return response;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async confirmDistribution(
+    actorUserId: string,
+    projectId: string,
+    input: ConfirmDistributionInput
+  ) {
+    const idempotencyKey = requiredUuid(input.idempotencyKey);
+    const expectedProjectionFingerprint = requiredText(
+      input.expectedProjectionFingerprint,
+      "经营投影版本不能为空"
+    );
+    const submissionId = requiredUuid(input.submissionId);
+    const payloadFingerprint = fingerprint({
+      action: "project_close.distribution.confirm",
+      projectId,
+      expectedProjectionFingerprint,
+      submissionId
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      await lockCommandIdempotency(tx, idempotencyKey);
+      await lockProjectCloseAggregate(tx, projectId);
+      const replay = await readCommandReplay(tx, idempotencyKey, payloadFingerprint);
+      if (replay) return replay;
+      const [
+        projection,
+        versions,
+        roleKeysByProject,
+        profitConfirmation,
+        participants,
         previous,
         priorAuthorizations,
-        temporaryDistributions
+        temporaryDistributions,
+        submission
       ] =
         await Promise.all([
           this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
@@ -1196,6 +1482,9 @@ export class ProjectCloseProfitService {
           tx.projectTemporaryProfitDistribution.findMany({
             where: { projectId },
             select: { companyEntityId: true, amountCents: true }
+          }),
+          tx.projectCloseDecisionSubmission.findUnique({
+            where: { id: submissionId }
           })
         ]);
       assertProjectionFingerprint(projection.fingerprint, expectedProjectionFingerprint);
@@ -1214,31 +1503,16 @@ export class ProjectCloseProfitService {
       ) {
         throw new ConflictException("最终盈亏确认已不是当前经营版本，请先重新确认");
       }
-      const totalProfitCents = BigInt(profitConfirmation.finalProfitCents);
-      const allocated = requestedLines.reduce((sum, line) => sum + line.finalShareCents, 0n);
-      if (allocated !== totalProfitCents) {
-        throw new BadRequestException("公司分配合计必须精确等于最终盈亏");
-      }
-      const participantById = new Map(
-        participants
-          .filter((row) => participantEffectiveAt(row, projection.cutoffAt))
-          .map((row) => [row.id, row])
+      const decision = assertDecisionSubmission(
+        submission,
+        projectId,
+        "distribution",
+        projection.fingerprint
       );
-      const unknown = requestedLines.find((line) => !participantById.has(line.projectParticipatingCompanyId));
-      if (unknown) {
-        throw new BadRequestException("分配对象必须是当前有效的项目参与公司");
-      }
-      if (
-        requestedLines.length !== participantById.size ||
-        [...participantById.keys()].some(
-          (participantId) =>
-            !requestedLines.some(
-              (line) => line.projectParticipatingCompanyId === participantId
-            )
-        )
-      ) {
-        throw new BadRequestException("公司分配必须覆盖投影截止日全部有效参与公司");
-      }
+      const requestedLines = decision.lines;
+      const totalProfitCents = BigInt(profitConfirmation.finalProfitCents);
+      const participantById = effectiveParticipantById(participants, projection.cutoffAt);
+      assertDistributionProposal(requestedLines, participantById, totalProfitCents);
       const stageVersion = await appendCompletedStage(tx, {
         projectId,
         stageKey: "profit_distribution_completed",
@@ -1247,12 +1521,13 @@ export class ProjectCloseProfitService {
         payloadFingerprint,
         projection,
         versions,
-        basis
+        basis: decision.basisSnapshot
       });
       const distribution = await tx.projectCloseDistribution.create({
         data: {
           projectId,
           stageVersionId: stageVersion.stageVersionId,
+          submissionId: submission!.id,
           profitConfirmationId: profitConfirmation.id,
           revision: (previous?.revision ?? 0) + 1,
           previousDistributionId: previous?.id,
@@ -1260,7 +1535,7 @@ export class ProjectCloseProfitService {
           projectionReadAt: projection.readAt,
           projectionCutoffAt: projection.cutoffAt,
           projectionFingerprint: projection.fingerprint,
-          basisSnapshot: basis,
+          basisSnapshot: decision.basisSnapshot,
           confirmedByUserId: actorUserId,
           confirmedAt: projection.readAt,
           idempotencyKey,
@@ -1407,7 +1682,7 @@ function latestStageVersions(rows: readonly StageVersionSnapshot[]) {
 }
 
 type MinimalStageVersion = Readonly<{
-  id?: string;
+  id: string;
   stageKey: string;
   revision: number;
   status: string;
@@ -1468,6 +1743,22 @@ async function lockProjectCloseAggregate(
     WHERE "projectId" = ${projectId}
     FOR UPDATE
   `);
+}
+
+async function hasLockedProjectContractResponsibility(
+  tx: Prisma.TransactionClient,
+  actorUserId: string,
+  projectId: string
+) {
+  const rows = await tx.$queryRaw<Array<{ ownerUserId: string | null }>>(Prisma.sql`
+    SELECT "ownerUserId"
+    FROM "Contract"
+    WHERE "projectId" = ${projectId}
+      AND "voidedAt" IS NULL
+    ORDER BY "id"
+    FOR SHARE
+  `);
+  return rows.length > 0 && rows.every((row) => row.ownerUserId === actorUserId);
 }
 
 async function readCommandReplay(
@@ -1618,6 +1909,7 @@ async function appendCompletedStage(
       revision,
       status: "completed",
       previousVersionId: previous?.id,
+      prerequisiteStageVersionIds: prerequisiteStageVersionIds(latest, input.stageKey),
       projectionReadAt: input.projection.readAt,
       projectionCutoffAt: input.projection.cutoffAt,
       projectionFingerprint: input.projection.fingerprint,
@@ -1682,12 +1974,15 @@ function requiredPositiveMoney(value: unknown, message: string) {
   return amount;
 }
 
-function normalizeDistributionLines(lines: ConfirmDistributionInput["lines"]) {
+function normalizeDistributionLines(lines: SubmitDistributionInput["lines"] | unknown) {
   if (!Array.isArray(lines) || lines.length === 0 || lines.length > 100) {
     throw new BadRequestException("公司分配明细数量无效");
   }
   const seen = new Set<string>();
-  return lines.map((line) => {
+  return (lines as Array<{
+    projectParticipatingCompanyId?: unknown;
+    finalShareCents?: unknown;
+  }>).map((line) => {
     const projectParticipatingCompanyId = requiredText(
       line?.projectParticipatingCompanyId,
       "项目参与公司不能为空"
@@ -1778,8 +2073,10 @@ function stageVersionReadModel(row: StageVersionSnapshot | undefined) {
   if (!row) return null;
   return {
     id: row.id,
+    stageKey: row.stageKey,
     revision: row.revision,
     status: row.status,
+    prerequisiteStageVersionIds: row.prerequisiteStageVersionIds,
     projectionReadAt: row.projectionReadAt.toISOString(),
     projectionCutoffAt: row.projectionCutoffAt.toISOString(),
     projectionFingerprint: row.projectionFingerprint,
@@ -1791,35 +2088,206 @@ function stageVersionReadModel(row: StageVersionSnapshot | undefined) {
   };
 }
 
+type DecisionSubmissionLike = Readonly<{
+  id: string;
+  projectId: string;
+  decisionKind: string;
+  revision: number;
+  previousSubmissionId: string | null;
+  projectionReadAt: Date;
+  projectionCutoffAt: Date;
+  projectionFingerprint: string;
+  amountSnapshot: Prisma.JsonValue;
+  stateSnapshot: Prisma.JsonValue;
+  participantsSnapshot: Prisma.JsonValue;
+  proposalSnapshot: Prisma.JsonValue;
+  basisSnapshot: Prisma.JsonValue;
+  preparedByUserId: string;
+  preparedAt: Date;
+  submittedByUserId: string;
+  submittedAt: Date;
+}>;
+
+function decisionSubmissionReadModel(row: DecisionSubmissionLike) {
+  return {
+    id: row.id,
+    decisionKind: row.decisionKind,
+    revision: row.revision,
+    previousSubmissionId: row.previousSubmissionId,
+    projectionReadAt: row.projectionReadAt.toISOString(),
+    projectionCutoffAt: row.projectionCutoffAt.toISOString(),
+    projectionFingerprint: row.projectionFingerprint,
+    amountSnapshot: row.amountSnapshot,
+    stateSnapshot: row.stateSnapshot,
+    participantsSnapshot: row.participantsSnapshot,
+    proposalSnapshot: row.proposalSnapshot,
+    basisSnapshot: row.basisSnapshot,
+    preparedByUserId: row.preparedByUserId,
+    preparedAt: row.preparedAt.toISOString(),
+    submittedByUserId: row.submittedByUserId,
+    submittedAt: row.submittedAt.toISOString()
+  };
+}
+
+function assertDecisionSubmission(
+  submission: DecisionSubmissionLike | null,
+  projectId: string,
+  expectedKind: "final_profit" | "distribution",
+  projectionFingerprint: string
+) {
+  if (!submission || submission.projectId !== projectId || submission.decisionKind !== expectedKind) {
+    throw new ConflictException("财务提交版本不存在或不属于当前项目");
+  }
+  if (submission.projectionFingerprint !== projectionFingerprint) {
+    throw new ConflictException("财务提交版本已过期，请由财务负责人重新制作");
+  }
+  if (!isJsonObject(submission.proposalSnapshot)) {
+    throw new ConflictException("财务提交方案快照无效");
+  }
+  if (!isJsonObject(submission.basisSnapshot)) {
+    throw new ConflictException("财务提交依据快照无效");
+  }
+  if (expectedKind === "final_profit") {
+    return {
+      finalProfitCents: requiredMoney(
+        submission.proposalSnapshot.finalProfitCents,
+        "财务提交的最终盈亏金额无效"
+      ),
+      lines: [] as ReturnType<typeof normalizeDistributionLines>,
+      basisSnapshot: submission.basisSnapshot
+    };
+  }
+  return {
+    finalProfitCents: requiredMoney(
+      submission.proposalSnapshot.totalProfitCents,
+      "财务提交的分配总额无效"
+    ),
+    lines: normalizeDistributionLines(submission.proposalSnapshot.lines),
+    basisSnapshot: submission.basisSnapshot
+  };
+}
+
+function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function participantDecisionSnapshot(
+  participants: readonly Readonly<{
+    id: string;
+    companyEntityId: string;
+    companyEntityVersionId: string;
+    companyNameSnapshot: string;
+    effectiveFrom: Date;
+    endedAt: Date | null;
+  }>[],
+  cutoffAt: Date
+) {
+  return participants
+    .filter((row) => participantEffectiveAt(row, cutoffAt))
+    .map((row) => ({
+      projectParticipatingCompanyId: row.id,
+      companyEntityId: row.companyEntityId,
+      companyEntityVersionId: row.companyEntityVersionId,
+      companyName: row.companyNameSnapshot
+    }))
+    .sort((left, right) =>
+      left.projectParticipatingCompanyId.localeCompare(right.projectParticipatingCompanyId)
+    );
+}
+
+function effectiveParticipantById<T extends Readonly<{
+  id: string;
+  effectiveFrom: Date;
+  endedAt: Date | null;
+}>>(participants: readonly T[], cutoffAt: Date) {
+  return new Map(
+    participants
+      .filter((row) => participantEffectiveAt(row, cutoffAt))
+      .map((row) => [row.id, row] as const)
+  );
+}
+
+function assertDistributionProposal<T>(
+  lines: ReturnType<typeof normalizeDistributionLines>,
+  participantById: ReadonlyMap<string, T>,
+  totalProfitValue: bigint
+) {
+  const allocated = lines.reduce((sum, line) => sum + line.finalShareCents, 0n);
+  if (allocated !== BigInt(totalProfitValue)) {
+    throw new BadRequestException("公司分配合计必须精确等于最终盈亏");
+  }
+  if (lines.some((line) => !participantById.has(line.projectParticipatingCompanyId))) {
+    throw new BadRequestException("分配对象必须是当前有效的项目参与公司");
+  }
+  if (
+    lines.length !== participantById.size ||
+    [...participantById.keys()].some(
+      (participantId) =>
+        !lines.some((line) => line.projectParticipatingCompanyId === participantId)
+    )
+  ) {
+    throw new BadRequestException("公司分配必须覆盖投影截止日全部有效参与公司");
+  }
+}
+
+function prerequisiteStageVersionIds(
+  latest: ReadonlyMap<ProjectStage, MinimalStageVersion>,
+  stage: ProjectStage
+) {
+  const index = PROJECT_STAGES.indexOf(stage);
+  return PROJECT_STAGES.slice(0, index).map((requiredStageKey) => {
+    const version = latest.get(requiredStageKey);
+    if (!version || version.status !== "completed") {
+      throw new ConflictException("前置项目收口阶段尚未全部完成");
+    }
+    return version.id;
+  });
+}
+
 function availableStageActions(
   stage: ProjectStage,
   status: "pending" | "ready" | "completed" | "needs_reconfirmation",
-  roleKeys: readonly RoleKey[]
+  roleKeys: readonly RoleKey[],
+  context: Readonly<{
+    hasFinalProfitSubmission: boolean;
+    hasDistributionSubmission: boolean;
+    hasContractResponsibility: boolean;
+  }>
 ) {
   if (status !== "ready") return [];
   if (stage === "downstream_cost_confirmed") {
     return [
-      ...(roleKeys.includes("contract_director") ? ["attest_contract_cost" as const] : []),
+      ...(roleKeys.includes("contract_director") || context.hasContractResponsibility
+        ? ["attest_contract_cost" as const]
+        : []),
       ...(roleKeys.includes("finance_director") ? ["attest_finance_cost" as const] : [])
     ];
   }
   if (stage === "final_profit_confirmed") {
     return [
       ...(roleKeys.includes("finance_director")
-        ? ["create_temporary_distribution" as const]
+        ? ["create_temporary_distribution" as const, "submit_final_profit" as const]
         : []),
-      ...(roleKeys.some((role) => role === "chairman" || role === "general_manager")
+      ...(context.hasFinalProfitSubmission &&
+      roleKeys.some((role) => role === "chairman" || role === "general_manager")
         ? ["confirm_final_profit" as const]
         : [])
     ];
   }
   if (stage === "profit_distribution_completed") {
-    return roleKeys.some((role) => role === "chairman" || role === "general_manager")
-      ? ["confirm_distribution" as const]
-      : [];
+    return [
+      ...(roleKeys.includes("finance_director")
+        ? ["submit_distribution" as const]
+        : []),
+      ...(context.hasDistributionSubmission &&
+      roleKeys.some((role) => role === "chairman" || role === "general_manager")
+        ? ["confirm_distribution" as const]
+        : [])
+    ];
   }
   return GENERIC_COMPLETION_STAGES.has(stage) &&
-    STAGE_CONFIRMATION_ROLES[stage].some((role) => roleKeys.includes(role))
+    (STAGE_CONFIRMATION_ROLES[stage].some((role) => roleKeys.includes(role)) ||
+      (stage === "owner_settlement_completed" && context.hasContractResponsibility))
     ? ["complete" as const]
     : [];
 }

@@ -35,7 +35,21 @@ export class CompleteProjectCloseStageDto {
 
 export class AttestDownstreamCostDto extends CompleteProjectCloseStageDto {}
 
-export class ConfirmFinalProfitDto extends CompleteProjectCloseStageDto {}
+export class SubmitFinalProfitDto extends CompleteProjectCloseStageDto {}
+
+export class ConfirmProjectCloseDecisionDto {
+  @IsString()
+  @Length(1, 128)
+  expectedProjectionFingerprint!: string;
+
+  @IsUUID("4")
+  idempotencyKey!: string;
+
+  @IsUUID("4")
+  submissionId!: string;
+}
+
+export class ConfirmFinalProfitDto extends ConfirmProjectCloseDecisionDto {}
 
 export class CreateTemporaryProfitDistributionDto extends CompleteProjectCloseStageDto {
   @IsString()
@@ -59,10 +73,12 @@ export class ProjectCloseDistributionLineDto {
   finalShareCents!: string;
 }
 
-export class ConfirmProjectCloseDistributionDto extends CompleteProjectCloseStageDto {
+export class SubmitProjectCloseDistributionDto extends CompleteProjectCloseStageDto {
   @IsArray()
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => ProjectCloseDistributionLineDto)
   lines!: ProjectCloseDistributionLineDto[];
 }
+
+export class ConfirmProjectCloseDistributionDto extends ConfirmProjectCloseDecisionDto {}

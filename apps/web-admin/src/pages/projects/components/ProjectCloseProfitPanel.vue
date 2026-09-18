@@ -20,6 +20,17 @@
         </article>
       </div>
 
+      <details class="projection-drilldown">
+        <summary>查看统一经营投影事实</summary>
+        <p>以下金额与本页确认共用同一投影指纹和截止时间，不另行计算。</p>
+        <dl>
+          <div v-for="item in projectionFactItems" :key="item.label">
+            <dt>{{ item.label }}</dt>
+            <dd>{{ item.value }}</dd>
+          </div>
+        </dl>
+      </details>
+
       <t-alert
         v-if="!workbench.projection.view.integrity.moneyComplete"
         theme="warning"
@@ -90,6 +101,24 @@
         </li>
       </ol>
 
+      <section class="professional-proof-section">
+        <h3>双专业确认</h3>
+        <p v-if="workbench.downstreamCostAttestations.length === 0">尚无合同与财务专业确认。</p>
+        <ul v-else>
+          <li v-for="proof in workbench.downstreamCostAttestations" :key="proof.id">
+            <strong>{{ proof.specialty === "contract" ? "合同专业" : "财务专业" }}</strong>
+            <span>第 {{ proof.revision }} 版 · {{ formatDateTime(proof.attestedAt) }}</span>
+            <span>确认主体已留存于审计记录</span>
+            <span>依据：{{ basisText(proof.basisSnapshot) }}</span>
+          </li>
+        </ul>
+      </section>
+
+      <div v-if="latestFinalProfitSubmission" class="submitted-decision">
+        <strong>待高管确认：最终盈亏第 {{ latestFinalProfitSubmission.revision }} 版</strong>
+        <span>财务已于 {{ formatDateTime(latestFinalProfitSubmission.submittedAt) }} 提交；高管只能确认该冻结版本。</span>
+      </div>
+
       <section
         v-if="canCreateTemporaryDistribution || (workbench.temporaryDistributions ?? []).length"
         class="distribution-section"
@@ -137,8 +166,44 @@
         </div>
       </section>
 
+      <section class="close-history-section">
+        <h3>收口历史版本</h3>
+        <div class="history-grid">
+          <article>
+            <h4>阶段确认</h4>
+            <ul>
+              <li v-for="version in workbench.history.stageVersions" :key="version.id">
+                <strong>{{ stageLabel(version.stageKey) }} · 第 {{ version.revision }} 版</strong>
+                <span>{{ formatDateTime(version.confirmedAt) }} · 确认主体已留存于审计记录</span>
+                <span>依据：{{ basisText(version.basisSnapshot) }}</span>
+              </li>
+            </ul>
+          </article>
+          <article>
+            <h4>最终盈亏确认</h4>
+            <ul>
+              <li v-for="confirmation in workbench.history.profitConfirmations" :key="confirmation.id">
+                <strong>第 {{ confirmation.revision }} 版 · {{ formatCents(confirmation.finalProfitCents) }}</strong>
+                <span>{{ formatDateTime(confirmation.confirmedAt) }} · 确认主体已留存于审计记录</span>
+                <span>依据：{{ basisText(confirmation.basisSnapshot) }}</span>
+              </li>
+            </ul>
+          </article>
+          <article>
+            <h4>历史公司分配</h4>
+            <ul>
+              <li v-for="distribution in workbench.history.distributions" :key="distribution.id">
+                <strong>第 {{ distribution.revision }} 版 · {{ formatCents(distribution.totalProfitCents) }}</strong>
+                <span>{{ formatDateTime(distribution.confirmedAt) }} · {{ distribution.lines.length }} 家公司</span>
+                <span>{{ distribution.lines.map((line) => `${line.companyName} ${formatCents(line.finalShareCents)}`).join("；") }}</span>
+              </li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
       <section
-        v-if="canConfirmDistribution || workbench.currentDistribution"
+        v-if="canSubmitDistribution || canConfirmDistribution || workbench.currentDistribution"
         class="distribution-section"
       >
         <div class="panel-head">
@@ -150,7 +215,7 @@
             最终盈亏：{{ formatCents(workbench.currentProfitConfirmation.finalProfitCents) }}
           </strong>
         </div>
-        <div v-if="canConfirmDistribution" class="distribution-editor">
+        <div v-if="canSubmitDistribution" class="distribution-editor">
           <label v-for="company in workbench.participatingCompanies" :key="company.id">
             <span>{{ company.companyName }}</span>
             <t-input
@@ -160,6 +225,10 @@
             />
           </label>
           <p>当前填写合计：{{ distributionTotalText }}</p>
+        </div>
+        <div v-if="latestDistributionSubmission" class="submitted-decision">
+          <strong>待高管确认：公司分配第 {{ latestDistributionSubmission.revision }} 版</strong>
+          <span>财务已于 {{ formatDateTime(latestDistributionSubmission.submittedAt) }} 提交；高管只能确认该冻结版本。</span>
         </div>
         <div
           v-if="workbench.currentDistribution"
@@ -202,6 +271,8 @@ import {
   completeProjectCloseStage,
   confirmProjectFinalProfit,
   confirmProjectProfitDistribution,
+  submitProjectFinalProfit,
+  submitProjectProfitDistribution,
   postTemporaryProfitDistribution,
   fetchProjectCloseProfitWorkbench,
   type ProjectCloseAction,
@@ -245,6 +316,7 @@ const profitSummary = computed(() => {
   const projection = props.workbench?.projection.view;
   return [
     { label: "当前经营盈亏", value: formatCents(projection?.profitAndLoss.currentOperatingProfitCents) },
+    { label: "预计待清算费用", value: formatCents(projection?.profitAndLoss.estimatedClearingExpenseCents) },
     { label: "当前预计盈亏", value: formatCents(projection?.profitAndLoss.currentEstimatedProfitCents) },
     {
       label: "最终确认盈亏",
@@ -258,9 +330,33 @@ const profitSummary = computed(() => {
   ];
 });
 
+const projectionFactItems = computed(() => {
+  const projection = props.workbench?.projection;
+  return [
+    { label: "投影截止时间", value: projection ? formatDateTime(projection.cutoffAt) : "—" },
+    { label: "完整性", value: projection?.view.integrity.statusLabel ?? "—" },
+    { label: "已确认收入", value: formatCents(projection?.view.operating.confirmedIncomeCents) },
+    { label: "已确认成本", value: formatCents(projection?.view.operating.confirmedCostCents) },
+    { label: "预计待清算费用", value: formatCents(projection?.view.profitAndLoss.estimatedClearingExpenseCents) }
+  ];
+});
+
 const canConfirmDistribution = computed(() =>
   props.workbench?.stages.some((stage) =>
     stage.availableActions.includes("confirm_distribution")) ?? false
+);
+
+const canSubmitDistribution = computed(() =>
+  props.workbench?.stages.some((stage) =>
+    stage.availableActions.includes("submit_distribution")) ?? false
+);
+
+const latestFinalProfitSubmission = computed(() =>
+  props.workbench?.currentDecisionSubmissions?.finalProfit ?? latestSubmission("final_profit")
+);
+
+const latestDistributionSubmission = computed(() =>
+  props.workbench?.currentDecisionSubmissions?.distribution ?? latestSubmission("distribution")
 );
 
 const canCreateTemporaryDistribution = computed(() =>
@@ -311,7 +407,8 @@ const distributionTotalText = computed(() => {
 
 async function runAction(stageKey: string, action: ProjectCloseAction) {
   if (!props.workbench || busyAction.value) return;
-  if (!basisSummary.value.trim()) {
+  const confirmsSubmittedVersion = action === "confirm_final_profit" || action === "confirm_distribution";
+  if (!confirmsSubmittedVersion && !basisSummary.value.trim()) {
     messageTone.value = "danger";
     message.value = "请先填写本次确认依据";
     return;
@@ -325,10 +422,14 @@ async function runAction(stageKey: string, action: ProjectCloseAction) {
       await attestProjectDownstreamContractCostWithCapability(basisSummary.value.trim());
     } else if (action === "attest_finance_cost") {
       await attestProjectDownstreamFinanceCostWithCapability(basisSummary.value.trim());
+    } else if (action === "submit_final_profit") {
+      await submitProjectFinalProfitWithCapability(basisSummary.value.trim());
     } else if (action === "confirm_final_profit") {
-      await confirmProjectFinalProfitWithCapability(basisSummary.value.trim());
+      await confirmProjectFinalProfitWithCapability();
+    } else if (action === "submit_distribution") {
+      await submitProjectProfitDistributionWithCapability(basisSummary.value.trim());
     } else {
-      await confirmProjectProfitDistributionWithCapability(basisSummary.value.trim());
+      await confirmProjectProfitDistributionWithCapability();
     }
     basisSummary.value = "";
     messageTone.value = "success";
@@ -413,17 +514,28 @@ async function attestProjectDownstreamFinanceCostWithCapability(summary: string)
   return attestProjectDownstreamFinanceCost(props.projectId, commandBody(summary));
 }
 
-async function confirmProjectFinalProfitWithCapability(summary: string) {
+async function confirmProjectFinalProfitWithCapability() {
   const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
   const operationAllowed = capability.availableActions.includes("confirm_final_profit");
   if (!operationAllowed) throw new Error("当前用户不能确认项目最终盈亏");
-  return confirmProjectFinalProfit(props.projectId, commandBody(summary));
+  const submissionId = latestFinalProfitSubmission.value?.id;
+  if (!submissionId) throw new Error("没有可供确认的财务提交版本");
+  return confirmProjectFinalProfit(props.projectId, confirmationBody(submissionId));
 }
 
-async function confirmProjectProfitDistributionWithCapability(summary: string) {
+async function submitProjectFinalProfitWithCapability(summary: string) {
   const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
-  const operationAllowed = capability.availableActions.includes("confirm_distribution");
-  if (!operationAllowed) throw new Error("当前用户不能确认项目盈亏分配");
+  if (!capability.availableActions.includes("submit_final_profit")) {
+    throw new Error("当前用户不能制作并提交最终盈亏");
+  }
+  return submitProjectFinalProfit(props.projectId, commandBody(summary));
+}
+
+async function submitProjectProfitDistributionWithCapability(summary: string) {
+  const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
+  if (!capability.availableActions.includes("submit_distribution")) {
+    throw new Error("当前用户不能制作并提交公司分配");
+  }
   const lines = props.workbench!.participatingCompanies.map((company) => {
     const amount = distributionYuanByParticipant.value[company.id]?.trim();
     if (!amount) throw new Error(`请填写${company.companyName}的分配金额`);
@@ -432,9 +544,21 @@ async function confirmProjectProfitDistributionWithCapability(summary: string) {
       finalShareCents: yuanTextToCentsText(amount)
     };
   });
-  return confirmProjectProfitDistribution(props.projectId, {
+  return submitProjectProfitDistribution(props.projectId, {
     ...commandBody(summary),
     lines
+  });
+}
+
+async function confirmProjectProfitDistributionWithCapability() {
+  const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
+  if (!capability.availableActions.includes("confirm_distribution")) {
+    throw new Error("当前用户不能确认项目盈亏分配");
+  }
+  const submissionId = latestDistributionSubmission.value?.id;
+  if (!submissionId) throw new Error("没有可供确认的财务分配版本");
+  return confirmProjectProfitDistribution(props.projectId, {
+    ...confirmationBody(submissionId)
   });
 }
 
@@ -446,15 +570,31 @@ function commandBody(summary: string) {
   };
 }
 
+function confirmationBody(submissionId: string) {
+  return {
+    expectedProjectionFingerprint: props.workbench!.projection.fingerprint,
+    idempotencyKey: crypto.randomUUID(),
+    submissionId
+  };
+}
+
 function actionLabel(action: ProjectCloseAction) {
   return ({
     complete: "确认完成",
     attest_contract_cost: "确认合同成本",
     attest_finance_cost: "确认财务成本",
     create_temporary_distribution: "登记暂分利润",
+    submit_final_profit: "制作并提交最终盈亏",
     confirm_final_profit: "最终确认盈亏",
+    submit_distribution: "制作并提交公司分配",
     confirm_distribution: "确认公司分配"
   } as const)[action];
+}
+
+function latestSubmission(decisionKind: "final_profit" | "distribution") {
+  return [...(props.workbench?.history.decisionSubmissions ?? [])]
+    .filter((submission) => submission.decisionKind === decisionKind)
+    .sort((left, right) => right.revision - left.revision)[0] ?? null;
 }
 
 function stageLabel(stageKey: string) {
@@ -485,6 +625,12 @@ function formatCents(value: unknown) {
 function formatDateTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function basisText(value: unknown) {
+  if (!value || typeof value !== "object") return "未填写文字说明";
+  const summary = (value as { summary?: unknown }).summary;
+  return typeof summary === "string" && summary.trim() ? summary : "未填写文字说明";
 }
 </script>
 
@@ -595,9 +741,63 @@ function formatDateTime(value: string) {
 
 .stage-content,
 .distribution-section,
-.history-impact-section {
+.history-impact-section,
+.professional-proof-section,
+.close-history-section,
+.projection-drilldown {
   display: grid;
   gap: 12px;
+}
+
+.projection-drilldown {
+  padding: 12px 14px;
+  border: 1px solid var(--jg-border-color);
+  border-radius: var(--jg-radius-md);
+}
+
+.projection-drilldown summary {
+  cursor: pointer;
+  color: var(--jg-color-brand);
+  font-weight: 600;
+}
+
+.projection-drilldown dl,
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.projection-drilldown dl div,
+.professional-proof-section li,
+.close-history-section li,
+.submitted-decision {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: var(--jg-radius-md);
+  background: var(--jg-surface-secondary);
+}
+
+.projection-drilldown dt,
+.professional-proof-section span,
+.close-history-section span {
+  color: var(--jg-text-secondary);
+}
+
+.projection-drilldown dd,
+.professional-proof-section ul,
+.close-history-section ul,
+.close-history-section h4 {
+  margin: 0;
+}
+
+.professional-proof-section ul,
+.close-history-section ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
 }
 
 .history-impact-section ul,
@@ -693,6 +893,8 @@ function formatDateTime(value: string) {
   }
 
   .profit-summary,
+  .projection-drilldown dl,
+  .history-grid,
   .distribution-editor,
   .temporary-distribution-editor {
     grid-template-columns: 1fr;
