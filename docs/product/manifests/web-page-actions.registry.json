@@ -42,6 +42,16 @@
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "attestProjectDownstreamFinanceCost" }]
     },
     {
+      "id": "project-close-profit.final-profit.submit",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitProjectFinalProfitWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_final_profit" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "submitProjectFinalProfit" }]
+    },
+    {
       "id": "project-close-profit.final-profit.confirm",
       "usage": "background",
       "routePaths": ["/项目经营"],
@@ -50,6 +60,16 @@
       "semantic": "business_write",
       "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_final_profit" },
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "confirmProjectFinalProfit" }]
+    },
+    {
+      "id": "project-close-profit.distribution.submit",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitProjectProfitDistributionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_distribution" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts", "name": "submitProjectProfitDistribution" }]
     },
     {
       "id": "project-close-profit.distribution.confirm",

@@ -532,24 +532,26 @@ async function confirmProjectFinalProfitWithCapability() {
   const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
   const operationAllowed = capability.availableActions.includes("confirm_final_profit");
   if (!operationAllowed) throw new Error("当前用户不能确认项目最终盈亏");
-  const submissionId = latestFinalProfitSubmission.value?.id;
-  if (!submissionId) throw new Error("没有可供确认的财务提交版本");
-  return confirmProjectFinalProfit(props.projectId, confirmationBody(submissionId));
+  const submission = latestFinalProfitSubmission.value;
+  if (!submission) throw new Error("没有可供确认的财务提交版本");
+  return confirmProjectFinalProfit(props.projectId, confirmationBody(submission.id));
 }
 
 async function submitProjectFinalProfitWithCapability(summary: string) {
   const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
-  if (!capability.availableActions.includes("submit_final_profit")) {
-    throw new Error("当前用户不能制作并提交最终盈亏");
-  }
+  const operationAllowed = capability.availableActions.includes("submit_final_profit");
+  if (!operationAllowed) throw new Error("当前用户不能制作并提交最终盈亏");
   return submitProjectFinalProfit(props.projectId, commandBody(summary));
 }
 
 async function submitProjectProfitDistributionWithCapability(summary: string) {
   const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
-  if (!capability.availableActions.includes("submit_distribution")) {
-    throw new Error("当前用户不能制作并提交公司分配");
-  }
+  const operationAllowed = capability.availableActions.includes("submit_distribution");
+  if (!operationAllowed) throw new Error("当前用户不能制作并提交公司分配");
+  return submitProjectProfitDistribution(props.projectId, distributionSubmissionBody(summary));
+}
+
+function distributionSubmissionBody(summary: string) {
   const lines = props.workbench!.participatingCompanies.map((company) => {
     const amount = distributionYuanByParticipant.value[company.id]?.trim();
     if (!amount) throw new Error(`请填写${company.companyName}的分配金额`);
@@ -558,22 +560,19 @@ async function submitProjectProfitDistributionWithCapability(summary: string) {
       finalShareCents: signedYuanTextToCentsText(amount)
     };
   });
-  return submitProjectProfitDistribution(props.projectId, {
+  return {
     ...commandBody(summary),
     lines
-  });
+  };
 }
 
 async function confirmProjectProfitDistributionWithCapability() {
   const capability = await fetchProjectCloseProfitWorkbench(props.projectId);
-  if (!capability.availableActions.includes("confirm_distribution")) {
-    throw new Error("当前用户不能确认项目盈亏分配");
-  }
-  const submissionId = latestDistributionSubmission.value?.id;
-  if (!submissionId) throw new Error("没有可供确认的财务分配版本");
-  return confirmProjectProfitDistribution(props.projectId, {
-    ...confirmationBody(submissionId)
-  });
+  const operationAllowed = capability.availableActions.includes("confirm_distribution");
+  if (!operationAllowed) throw new Error("当前用户不能确认项目盈亏分配");
+  const submission = latestDistributionSubmission.value;
+  if (!submission) throw new Error("没有可供确认的财务分配版本");
+  return confirmProjectProfitDistribution(props.projectId, confirmationBody(submission.id));
 }
 
 function commandBody(summary: string) {

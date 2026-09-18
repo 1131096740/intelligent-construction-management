@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 604,
-    "exactRouteCount": 604,
-    "normalizedRouteCount": 604,
+    "routeCount": 606,
+    "exactRouteCount": 606,
+    "normalizedRouteCount": 606,
     "classificationOverrideCount": 221,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-    "derivedProductionPageCount": 383,
-    "pageRouteCount": 387,
+    "derivedProductionPageCount": 385,
+    "pageRouteCount": 389,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 108,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 440,
+      "web_api_wrapper": 442,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 440,
+    "productionWrapperRouteCount": 442,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -17287,6 +17287,59 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/close-profit/distributions/submissions",
+      "normalizedKey": "POST /projects/:param/close-profit/distributions/submissions",
+      "controller": "ProjectCloseProfitController",
+      "handler": "submitDistribution",
+      "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "budget_director",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "engineering_department_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "material_director",
+        "project_manager",
+        "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+            "wrapper": "submitProjectProfitDistribution",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/close-profit/distributions/submissions",
+            "normalizedKey": "POST /projects/:param/close-profit/distributions/submissions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/close-profit/downstream-cost/attestations/contract",
       "normalizedKey": "POST /projects/:param/close-profit/downstream-cost/attestations/contract",
       "controller": "ProjectCloseProfitController",
@@ -17432,6 +17485,59 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/close-profit/final-profit/confirm",
             "normalizedKey": "POST /projects/:param/close-profit/final-profit/confirm",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/close-profit/final-profit/submissions",
+      "normalizedKey": "POST /projects/:param/close-profit/final-profit/submissions",
+      "controller": "ProjectCloseProfitController",
+      "handler": "submitFinalProfit",
+      "sourceFile": "services/api/src/project-close-profit/project-close-profit.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "budget_director",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "engineering_department_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "material_director",
+        "project_manager",
+        "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-close-profit.api.ts",
+            "wrapper": "submitProjectFinalProfit",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/close-profit/final-profit/submissions",
+            "normalizedKey": "POST /projects/:param/close-profit/final-profit/submissions",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
             ]

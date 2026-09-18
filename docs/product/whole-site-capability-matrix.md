@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `6b5b579ed2d91056664738d8600a7e17f5c426b1d71708c01975891b974d6178` |
-| webApiWrappers | ready | `56eabe53734ce42b8033c9f8c038801b242ff9cb5246bb7f936f8d61c132f222` |
-| webPageActions | ready | `5c3739b8d985502885550c8389ac42f95f690a81d18af4864e0d472742b0f1bb` |
-| routeUsage | ready | `2c1b9184745fcf83e59c8a29e25584cf6284372003649d77ea0932f373071aa2` |
+| nestRoutes | ready | `dd889da07b46a3426485d050d3530d87fa5bec380bca1bb05f3f7ac0608d3de8` |
+| webApiWrappers | ready | `b979f8d91be02ae0f3c1347c13612263ffda3ba5548c2694edc5f4572d4b093a` |
+| webPageActions | ready | `8e760c437953b59e500be8f60cc37cfb8f19d12c450ac4aa2638a1d3bc572c65` |
+| routeUsage | ready | `738607116934b3e8182f387c70447307494d367e2e0bd09469c39fd984ded040` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 604 |
-| pageRouteCount | 387 |
+| routeCount | 606 |
+| pageRouteCount | 389 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 582 |
+| mainRequestBindingCount | 584 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 314 |
-| actionBindingCount | 356 |
-| acceptedActionBindingCount | 334 |
+| registeredActionCount | 316 |
+| actionBindingCount | 358 |
+| acceptedActionBindingCount | 336 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 305 |
-| coveredProductionMutationConsumerPairCount | 305 |
+| productionMutationConsumerPairCount | 307 |
+| coveredProductionMutationConsumerPairCount | 307 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -462,9 +462,11 @@
 | POST | /projects/:projectId/affiliate-settlement-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliateSettlementPrivateFile | project.affiliate-settlement.evidence-upload | covered | — |
 | POST | /projects/:projectId/affiliate-settlement-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateSettlementFact | project.affiliate-settlement.record | covered | — |
 | POST | /projects/:projectId/close-profit/distributions/confirm | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#confirmProjectProfitDistribution | project-close-profit.distribution.confirm | covered | — |
+| POST | /projects/:projectId/close-profit/distributions/submissions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#submitProjectProfitDistribution | project-close-profit.distribution.submit | covered | — |
 | POST | /projects/:projectId/close-profit/downstream-cost/attestations/contract | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#attestProjectDownstreamContractCost | project-close-profit.downstream-cost.attest | covered | — |
 | POST | /projects/:projectId/close-profit/downstream-cost/attestations/finance | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#attestProjectDownstreamFinanceCost | project-close-profit.downstream-cost.attest-finance | covered | — |
 | POST | /projects/:projectId/close-profit/final-profit/confirm | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#confirmProjectFinalProfit | project-close-profit.final-profit.confirm | covered | — |
+| POST | /projects/:projectId/close-profit/final-profit/submissions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#submitProjectFinalProfit | project-close-profit.final-profit.submit | covered | — |
 | POST | /projects/:projectId/close-profit/impacts/reconcile | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#reconcileProjectCloseImpacts | project-close-profit.impacts.reconcile | covered | — |
 | POST | /projects/:projectId/close-profit/stages/:stageKey/complete | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#completeProjectCloseStage | project-close-profit.stage.complete | covered | — |
 | POST | /projects/:projectId/close-profit/temporary-distributions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#postTemporaryProfitDistribution | project-close-profit.temporary-distribution.create | covered | — |
