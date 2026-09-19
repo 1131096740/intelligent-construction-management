@@ -25,4 +25,9 @@ describe("business entry adapter components", () => {
     expect(choice).toContain("新建草稿");
     expect(choice).toContain("追加到当前草稿");
   });
+
+  it("renders invoice references through the searchable business selector", () => {
+    expect(read("./BusinessEntryFieldControl.vue")).toContain('"invoice"');
+    expect(read("./BusinessEntryGrid.vue")).toContain('"invoice"');
+  });
 });

@@ -34,6 +34,23 @@ const businessPartyCreateRoles = [
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
 const spotProcurementCreateRoles = ["material_staff", "material_director"] as const;
+const upstreamFundFactTypes = [
+  { value: "owner_payment_to_affiliate", label: "业主向施工企业付款" },
+  { value: "affiliate_remittance_to_company", label: "施工企业向我方拨款" },
+  { value: "affiliate_deduction", label: "施工企业扣款" },
+  { value: "unreconciled_receipt_difference", label: "待核对到账差额" }
+] as const;
+const upstreamFundBasisTypes = [
+  { value: "written", label: "书面依据" },
+  { value: "oral", label: "口头通知" }
+] as const;
+const upstreamFundDeductionCategories = [
+  { value: "management_fee", label: "管理费" },
+  { value: "tax", label: "税费" },
+  { value: "deposit", label: "保证金" },
+  { value: "insurance", label: "保险费" },
+  { value: "other", label: "其他" }
+] as const;
 
 function textField(
   key: string,
@@ -186,6 +203,59 @@ export const PARTICIPANT_DEACTIVATION_DEFINITION: BusinessEntrySceneDefinition =
   fields: projectBaseFields([["endedOn", "停止新增业务日期", "date"], ["changeReason", "停止新增业务原因", "long_text"]], projectFinanceRoles), rules: []
 };
 
+const remittanceOnly = {
+  fieldKey: "factType",
+  operator: "eq" as const,
+  value: "affiliate_remittance_to_company"
+};
+
+export const PROJECT_UPSTREAM_FUND_FACT_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "project_upstream_fund_fact",
+  entityType: "project_upstream_fund_fact",
+  name: "施工企业资金事实",
+  description: "业主付款、施工企业向我方拨款、施工企业扣款及待核对到账差额共用的统一填写定义。",
+  version: 1,
+  fields: [
+    textField("factType", "事实类型", projectFinanceRoles, {
+      type: "single_select", required: true, options: upstreamFundFactTypes
+    }),
+    textField("basisType", "依据类型", projectFinanceRoles, {
+      type: "single_select", required: true, options: upstreamFundBasisTypes
+    }),
+    textField("occurredAt", "发生日期", projectFinanceRoles, {
+      type: "date", required: true
+    }),
+    textField("amountYuan", "金额", projectFinanceRoles, {
+      type: "money", unit: "元", precision: 2, required: true
+    }),
+    textField("counterpartyName", "交易对方", projectFinanceRoles, { required: true }),
+    textField("companyEntityId", "拨款我方公司", projectFinanceRoles, {
+      type: "company", required: true, visibleWhen: remittanceOnly
+    }),
+    textField("affiliateCompanyContractId", "施工企业—我方合同", projectFinanceRoles, {
+      type: "contract", required: true, visibleWhen: remittanceOnly
+    }),
+    textField("affiliateSettlementFactId", "施工企业—我方结算", projectFinanceRoles, {
+      type: "settlement", required: true, visibleWhen: remittanceOnly
+    }),
+    textField("invoiceRecordId", "我方开具发票", projectFinanceRoles, {
+      type: "invoice", required: true, visibleWhen: remittanceOnly
+    }),
+    textField("upstreamSettlementId", "对应业主结算", projectFinanceRoles, {
+      type: "settlement",
+      visibleWhen: { fieldKey: "factType", operator: "eq", value: "owner_payment_to_affiliate" }
+    }),
+    textField("deductionCategory", "扣款类型", projectFinanceRoles, {
+      type: "single_select",
+      required: true,
+      options: upstreamFundDeductionCategories,
+      visibleWhen: { fieldKey: "factType", operator: "eq", value: "affiliate_deduction" }
+    }),
+    textField("description", "事实说明", projectFinanceRoles, { type: "long_text" })
+  ],
+  rules: []
+};
+
 export const resolveSpotProcurementVersion = async ({
   target,
   projectId,
@@ -238,6 +308,7 @@ export const resolveSpotProcurementLine = async (
 };
 
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
+  PROJECT_UPSTREAM_FUND_FACT_DEFINITION,
   globalDefinition("project_construction_enterprise", "project", "项目施工企业", [
     textField("businessPartyVersionId", "施工企业", projectFinanceRoles, { type: "counterparty", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
     textField("effectiveFrom", "生效日", projectFinanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
@@ -452,6 +523,15 @@ export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionR
 
 export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAccessPolicy[] =
   Object.freeze([
+    {
+      sceneKey: "project_upstream_fund_fact",
+      target: { scope: "project", entityType: "project_upstream_fund_fact" },
+      permission: {
+        kind: "business_action",
+        action: "project.upstream_fund_fact.record",
+        roleScope: "project"
+      }
+    },
     {
       sceneKey: "project_construction_enterprise",
       target: { scope: "project", entityType: "project" },

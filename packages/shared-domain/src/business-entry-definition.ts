@@ -10,6 +10,7 @@ export const BUSINESS_ENTRY_FIELD_TYPES = [
   "counterparty",
   "contract",
   "settlement",
+  "invoice",
   "single_select",
   "multi_select",
   "boolean"

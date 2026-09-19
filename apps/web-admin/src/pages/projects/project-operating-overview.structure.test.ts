@@ -156,12 +156,11 @@ describe("project operating overview structure", () => {
   });
 
   it("separates upstream owner payments, company remittances, deductions, and unresolved differences", () => {
-    expect(source).toContain('value="owner_payment_to_affiliate"');
-    expect(source).toContain('value="affiliate_remittance_to_company"');
-    expect(source).toContain('value="affiliate_deduction"');
-    expect(source).toContain('value="unreconciled_receipt_difference"');
-    expect(source).toContain('value="written"');
-    expect(source).toContain('value="oral"');
+    expect(source).toContain("<BusinessEntryForm");
+    expect(source).toContain('"project_upstream_fund_fact"');
+    expect(source).toContain("fetchBusinessEntryDefinition(");
+    expect(source).toContain("validateBusinessEntryDraft(");
+    expect(source).toContain(':options-by-field="receiptEntryOptionsByField"');
     expect(source).toContain("recordProjectUpstreamFundFact");
     expect(source).toContain("confirmProjectUpstreamFundFact");
     expect(source).toContain("<SensitiveActionDialog");
@@ -170,10 +169,10 @@ describe("project operating overview structure", () => {
   });
 
   it("uses readable business selectors instead of editable internal identifiers", () => {
-    expect(source).toContain(':options="affiliateCompanyContractSelectOptions"');
-    expect(source).toContain(':options="affiliateSettlementSelectOptions"');
-    expect(source).toContain(':options="invoiceRecordSelectOptions"');
-    expect(source).toContain(':options="upstreamSettlementSelectOptions"');
+    expect(source).toContain("affiliateCompanyContractId: affiliateCompanyContractSelectOptions.value");
+    expect(source).toContain("affiliateSettlementFactId: affiliateSettlementSelectOptions.value");
+    expect(source).toContain("invoiceRecordId: invoiceRecordSelectOptions.value");
+    expect(source).toContain("upstreamSettlementId: upstreamSettlementSelectOptions.value");
     expect(source).toContain("fetchProjectUpstreamFundReferenceOptions");
     expect(source).not.toMatch(
       /<t-input[\s\S]*?v-model="receiptForm\.(?:affiliateCompanyContractId|affiliateSettlementFactId|invoiceRecordId|upstreamSettlementId)"/

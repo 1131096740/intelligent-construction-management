@@ -56,15 +56,10 @@
         </ul>
       </section>
 
-      <label class="basis-field">
-        <span>本次确认依据</span>
-        <t-textarea
-          v-model.trim="basisSummary"
-          :autosize="{ minRows: 3, maxRows: 5 }"
-          :maxlength="500"
-          placeholder="请说明核对范围、依据和结论；系统会与本次经营快照一起冻结"
-        />
-      </label>
+      <BusinessEntryForm
+        v-model="basisEntryPayload"
+        :definition="PROJECT_CLOSE_BASIS_ENTRY_DEFINITION"
+      />
 
       <ol class="stage-list">
         <li
@@ -216,14 +211,11 @@
           </strong>
         </div>
         <div v-if="canSubmitDistribution" class="distribution-editor">
-          <label v-for="company in workbench.participatingCompanies" :key="company.id">
-            <span>{{ company.companyName }}</span>
-            <t-input
-              v-model.trim="distributionYuanByParticipant[company.id]"
-              inputmode="decimal"
-              placeholder="0.00"
-            />
-          </label>
+          <BusinessEntryGrid
+            v-model="distributionEntryRows"
+            :definition="PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION"
+            :options-by-field="distributionEntryOptions"
+          />
           <p>当前填写合计：{{ distributionTotalText }}</p>
         </div>
         <div v-if="latestDistributionSubmission" class="submitted-decision">
@@ -263,8 +255,11 @@
 </template>
 
 <script setup lang="ts">
+import type { BusinessEntryDraftPayload } from "@jiangkong/shared-domain";
 import { computed, ref, watch } from "vue";
 
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
+import BusinessEntryGrid from "../../../components/BusinessEntryGrid.vue";
 import {
   attestProjectDownstreamContractCost,
   attestProjectDownstreamFinanceCost,
@@ -286,6 +281,10 @@ import {
   signedYuanTextToCentsText,
   yuanTextToCentsText
 } from "../../../lib/money";
+import {
+  PROJECT_CLOSE_BASIS_ENTRY_DEFINITION,
+  PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION
+} from "./project-close-entry-definitions";
 
 const props = defineProps<{
   projectId: string;
@@ -302,6 +301,19 @@ const messageTone = ref<"success" | "danger">("success");
 const distributionYuanByParticipant = ref<Record<string, string>>({});
 const temporaryParticipantId = ref("");
 const temporaryDistributionYuan = ref("");
+
+const basisEntryPayload = computed<BusinessEntryDraftPayload>({
+  get: () => ({
+    sceneKey: PROJECT_CLOSE_BASIS_ENTRY_DEFINITION.key,
+    definitionVersion: PROJECT_CLOSE_BASIS_ENTRY_DEFINITION.version,
+    values: { basisSummary: basisSummary.value }
+  }),
+  set: (payload) => {
+    basisSummary.value = typeof payload.values.basisSummary === "string"
+      ? payload.values.basisSummary
+      : "";
+  }
+});
 
 watch(
   () => props.workbench?.participatingCompanies,
@@ -384,6 +396,30 @@ const temporaryParticipantOptions = computed(() =>
     value: company.id
   }))
 );
+const distributionEntryOptions = computed(() => ({
+  companyEntityId: temporaryParticipantOptions.value
+}));
+const distributionEntryRows = computed<BusinessEntryDraftPayload[]>({
+  get: () => (props.workbench?.participatingCompanies ?? []).map((company) => ({
+    sceneKey: PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION.key,
+    definitionVersion: PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION.version,
+    values: {
+      companyEntityId: company.id,
+      finalShareYuan: distributionYuanByParticipant.value[company.id] ?? ""
+    }
+  })),
+  set: (rows) => {
+    distributionYuanByParticipant.value = Object.fromEntries(rows.flatMap((row) => {
+      const companyId = typeof row.values.companyEntityId === "string"
+        ? row.values.companyEntityId
+        : "";
+      if (!companyId) return [];
+      return [[companyId, typeof row.values.finalShareYuan === "string"
+        ? row.values.finalShareYuan
+        : ""]];
+    }));
+  }
+});
 
 const temporaryDistributionColumns = [
   { colKey: "companyName", title: "公司" },

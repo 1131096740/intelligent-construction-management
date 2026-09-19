@@ -94,6 +94,7 @@ import {
   ProjectUpstreamFundFactCursorCodec,
   type ProjectUpstreamFundFactCursorPosition
 } from "./project-upstream-fund-fact-cursor";
+import { ProjectUpstreamFundBusinessEntryService } from "./project-upstream-fund-business-entry.service";
 import {
   assertSettlementEffectiveAmountCoversExistingPayments,
   lockSettlementLedger
@@ -308,7 +309,9 @@ export class ProjectService {
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService(),
     @Optional()
-    private readonly operatingProjection?: OperatingProjectionService
+    private readonly operatingProjection?: OperatingProjectionService,
+    @Optional()
+    private readonly upstreamFundBusinessEntry?: ProjectUpstreamFundBusinessEntryService
   ) {}
 
   async assertCanRenameBusinessEntry(projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
@@ -1481,6 +1484,10 @@ export class ProjectService {
           }
         });
 
+        const entrySnapshot = this.upstreamFundBusinessEntry
+          ? await this.upstreamFundBusinessEntry.freeze(tx, actorUserId, created)
+          : undefined;
+
         await this.audit.record(tx, {
           actorUserId,
           action: "project.upstream_fund_fact.record",
@@ -1507,7 +1514,10 @@ export class ProjectService {
             status
           }
         });
-        return toUpstreamFundFactReadModel(created);
+        return {
+          ...toUpstreamFundFactReadModel(created),
+          ...(entrySnapshot ? { entrySnapshot } : {})
+        };
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {

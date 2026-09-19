@@ -147,6 +147,7 @@ export class OperatingTakeoverService {
       definition.permissions?.view?.some((role) => roles.includes(role))
     ).map((definition) => ({
         key: definition.key,
+        entityType: definition.entityType,
         name: definition.name,
         description: definition.description,
         version: definition.version,

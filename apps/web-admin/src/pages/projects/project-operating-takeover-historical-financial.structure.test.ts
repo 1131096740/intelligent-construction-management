@@ -11,6 +11,17 @@ const apiSource = readFileSync(
 );
 
 describe("POL-224 historical payable and fund takeover page", () => {
+  it("opens the generic operating takeover write workbench without opening the manifest workflow", () => {
+    expect(pageSource).toContain("const POL_215_WRITE_UI_ENABLED = true;");
+    expect(pageSource).toContain("页面录入 / 粘贴 / Excel 预检");
+    expect(pageSource).toContain("生成整批草稿");
+    expect(pageSource).toContain("财务确认");
+    expect(pageSource).toContain("合同确认");
+    expect(pageSource).toContain("激活批次");
+    expect(pageSource).toContain("<BusinessEntryForm");
+    expect(pageSource).not.toContain("粘贴 JSON 数组");
+  });
+
   it("exposes the project-scoped manifest list through the API wrapper", () => {
     expect(apiSource).toContain("fetchHistoricalFinancialTakeoverBatches");
     expect(apiSource).toContain('path(projectId, "/historical-financial/manifests")');

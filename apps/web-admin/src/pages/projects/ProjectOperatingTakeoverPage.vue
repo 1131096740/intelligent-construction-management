@@ -4,7 +4,7 @@
       <div>
         <span class="page-eyebrow">项目经营</span>
         <h1>历史经营接管</h1>
-        <p>当前仅查看既有接管记录；写入操作待后续具备权威来源与批次隔离后开放。</p>
+        <p>按项目完成页面录入、粘贴或 Excel 预检，整批复核后再激活正式经营事实。</p>
       </div>
       <div class="actions">
         <t-button
@@ -36,7 +36,7 @@
       theme="warning"
       :close="false"
     >
-      当前页面仅提供接管记录查看；历史应付与资金 manifest 的导入、inactive apply、复核、激活与补偿操作未在页面开放。
+      通用历史经营接管可在本页办理；历史应付与资金 manifest 的导入、inactive apply、复核、激活与补偿仍未在页面开放。
     </t-alert>
 
     <t-card
@@ -97,11 +97,6 @@
       class="panel"
       title="页面录入 / 粘贴 / Excel 预检"
     >
-      <t-textarea
-        v-model="payloadText"
-        :autosize="{ minRows: 5, maxRows: 12 }"
-        placeholder="粘贴 JSON 数组，例如：[{&quot;businessRef&quot;:&quot;历史-001&quot;,...}]"
-      />
       <div class="form-actions">
         <t-button
           variant="outline"
@@ -110,7 +105,7 @@
         >
           新增页面业务行
         </t-button>
-        <span class="helper-text">可直接录入多行，也可以继续粘贴 JSON 或上传 Excel。</span>
+        <span class="helper-text">可直接录入多行；批量复制粘贴和 Excel 预检使用同一套场景字段与校验。</span>
       </div>
       <t-table
         v-if="draftRows.length"
@@ -321,23 +316,11 @@
       <t-form-item label="接管场景">
         <t-select v-model="draftSceneKey" :options="sceneOptions" :disabled="draftRowIndex !== null" />
       </t-form-item>
-      <t-form-item v-for="field in draftScene?.fields ?? []" :key="field.key" :label="field.label">
-        <t-textarea
-          v-if="field.type === 'long_text'"
-          v-model="draftValues[field.key]"
-          :autosize="{ minRows: 2, maxRows: 4 }"
-        />
-        <t-select
-          v-else-if="field.type === 'single_select'"
-          v-model="draftValues[field.key]"
-          :options="field.options ?? []"
-        />
-        <t-date-picker
-          v-else-if="field.type === 'date'"
-          v-model="draftValues[field.key]"
-        />
-        <t-input v-else v-model="draftValues[field.key]" />
-      </t-form-item>
+      <BusinessEntryForm
+        v-if="draftScene"
+        v-model="draftPayload"
+        :definition="draftScene"
+      />
     </t-form>
   </t-dialog>
 
@@ -349,23 +332,11 @@
     @confirm="saveRowEdit"
   >
     <t-form label-align="top">
-      <t-form-item v-for="field in editingScene?.fields ?? []" :key="field.key" :label="field.label">
-        <t-textarea
-          v-if="field.type === 'long_text'"
-          v-model="editingValues[field.key]"
-          :autosize="{ minRows: 2, maxRows: 4 }"
-        />
-        <t-select
-          v-else-if="field.type === 'single_select'"
-          v-model="editingValues[field.key]"
-          :options="field.options ?? []"
-        />
-        <t-date-picker
-          v-else-if="field.type === 'date'"
-          v-model="editingValues[field.key]"
-        />
-        <t-input v-else v-model="editingValues[field.key]" />
-      </t-form-item>
+      <BusinessEntryForm
+        v-if="editingScene"
+        v-model="editingPayload"
+        :definition="editingScene"
+      />
       <t-form-item label="重复说明">
         <t-input v-model="editingDuplicateNote" />
       </t-form-item>
@@ -399,8 +370,10 @@
 </template>
 
 <script setup lang="ts">
+import type { BusinessEntryDraftPayload } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
+import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -426,7 +399,7 @@ import {
   precheckOperatingTakeover
 } from "../../api/operating-takeover.api";
 
-const POL_215_WRITE_UI_ENABLED = false;
+const POL_215_WRITE_UI_ENABLED = true;
 
 const projectOptions = ref<Array<{ label: string; value: string }>>([]);
 const projects = ref<ProjectOptionReadModel[]>([]);
@@ -436,7 +409,6 @@ const financialBatches = ref<HistoricalFinancialTakeoverBatchReadModel[]>([]);
 const detail = ref<OperatingTakeoverDetailReadModel | null>(null);
 const selectedProjectId = ref("");
 const selectedSceneKey = ref("");
-const payloadText = ref("[]");
 const excelFiles = ref<UploadFile[]>([]);
 const pendingSourceFile = ref<File | null>(null);
 const pendingSceneKey = ref<string | undefined>();
@@ -471,6 +443,14 @@ const canActivate = computed(() => actions.value.activate === true && detail.val
 const canCreate = computed(() => actions.value.create === true);
 const draftScene = computed(() => scenes.value.find((scene) => scene.key === draftSceneKey.value));
 const editingScene = computed(() => scenes.value.find((scene) => scene.key === editingRow.value?.sceneKey));
+const draftPayload = computed<BusinessEntryDraftPayload>({
+  get: () => ({ sceneKey: draftSceneKey.value, definitionVersion: draftScene.value?.version ?? 0, values: draftValues.value }),
+  set: (payload) => { draftValues.value = stringValues(payload.values); }
+});
+const editingPayload = computed<BusinessEntryDraftPayload>({
+  get: () => ({ sceneKey: editingRow.value?.sceneKey ?? "", definitionVersion: editingScene.value?.version ?? 0, values: editingValues.value }),
+  set: (payload) => { editingValues.value = stringValues(payload.values); }
+});
 const attachmentTargetRow = computed(() => detail.value?.rows.find((row) => row.id === attachmentTargetRowId.value) ?? null);
 const batchColumns = [
   { colKey: "batchNo", title: "批次编号", minWidth: 180 },
@@ -558,9 +538,8 @@ async function loadProject() {
 async function precheck() {
   try {
     submitting.value = true;
-    const values: Array<{ sceneKey?: string; definitionVersion?: number; values: Record<string, unknown> }> = draftRows.value.length
-      ? draftRows.value
-      : (JSON.parse(payloadText.value) as Array<Record<string, unknown>>).map((value) => ({ sceneKey: selectedSceneKey.value, values: value }));
+    if (!draftRows.value.length) throw new Error("请先新增页面业务行或上传 Excel 文件");
+    const values: Array<{ sceneKey?: string; definitionVersion?: number; values: Record<string, unknown> }> = draftRows.value;
     draftRows.value = values.map((row) => ({
       sceneKey: row.sceneKey ?? selectedSceneKey.value,
       definitionVersion: row.definitionVersion ?? scenes.value.find((scene) => scene.key === (row.sceneKey ?? selectedSceneKey.value))?.version,
@@ -704,7 +683,6 @@ function saveDraftRow() {
   };
   if (draftRowIndex.value === null) draftRows.value.push(row);
   else draftRows.value.splice(draftRowIndex.value, 1, row);
-  payloadText.value = JSON.stringify(draftRows.value.map((item) => item.values), null, 2);
   precheckResult.value = null;
   pendingRows.value = [];
   draftDialogVisible.value = false;

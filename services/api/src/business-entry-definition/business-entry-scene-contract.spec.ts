@@ -16,6 +16,46 @@ const POL19P3_SCENES = [
 ] as const;
 
 describe("POL-19P3 explicit scene contract", () => {
+  it("registers the construction-enterprise upstream fund entry with exact payment routing fields", () => {
+    const definition = BUSINESS_ENTRY_SCENE_DEFINITIONS.find(
+      (scene) => scene.key === "project_upstream_fund_fact"
+    );
+
+    expect(definition).toMatchObject({
+      entityType: "project_upstream_fund_fact",
+      version: 1
+    });
+    expect(definition?.fields.map((field) => field.key)).toEqual([
+      "factType",
+      "basisType",
+      "occurredAt",
+      "amountYuan",
+      "counterpartyName",
+      "companyEntityId",
+      "affiliateCompanyContractId",
+      "affiliateSettlementFactId",
+      "invoiceRecordId",
+      "upstreamSettlementId",
+      "deductionCategory",
+      "description"
+    ]);
+    for (const fieldKey of [
+      "companyEntityId",
+      "affiliateCompanyContractId",
+      "affiliateSettlementFactId",
+      "invoiceRecordId"
+    ]) {
+      expect(definition?.fields.find((field) => field.key === fieldKey)?.visibleWhen)
+        .toEqual({ fieldKey: "factType", operator: "eq", value: "affiliate_remittance_to_company" });
+    }
+    expect(BUSINESS_ENTRY_ACCESS_REGISTRY.get("project_upstream_fund_fact").permission)
+      .toEqual({
+        kind: "business_action",
+        action: "project.upstream_fund_fact.record",
+        roleScope: "project"
+      });
+  });
+
   it("discovers project creation and participant deactivation with explicit project policies", () => {
     for (const [sceneKey, entityType, keys] of [
       ["project_create", "project", ["code", "name"]],

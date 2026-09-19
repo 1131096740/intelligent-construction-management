@@ -1,22 +1,8 @@
+import type { OperatingTakeoverSceneDefinition } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
-export interface OperatingTakeoverSceneReadModel {
-  key: string;
-  name: string;
-  description: string;
-  version: number;
-  defaultFactKind: string;
-  requiredProfessions: string[];
-  fields: Array<{
-    key: string;
-    label: string;
-    type: string;
-    required: boolean;
-    options?: Array<{ value: string; label: string }>;
-    excel: { column: string };
-  }>;
-}
+export type OperatingTakeoverSceneReadModel = OperatingTakeoverSceneDefinition;
 
 export type OperatingTakeoverProfession = "contract" | "finance";
 

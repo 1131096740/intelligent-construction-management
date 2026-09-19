@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BUSINESS_ENTRY_FIELD_TYPES,
   createBusinessEntryDefinitionRegistry,
   isBusinessEntryCreateTarget,
   isBusinessEntryExistingTarget,
@@ -63,6 +64,10 @@ const profileDefinition: BusinessEntrySceneDefinition = {
 };
 
 describe("business entry definition registry", () => {
+  it("supports invoice business selectors without exposing an internal id text box", () => {
+    expect(BUSINESS_ENTRY_FIELD_TYPES).toContain("invoice");
+  });
+
   it("distinguishes a project-owned formal target from legacy project/global targets", () => {
     const formalTarget = {
       projectId: "project-1",
