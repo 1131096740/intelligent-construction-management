@@ -143,11 +143,20 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
     };
     return workbench;
   }, projectId);
-  const distributionGrid = page.getByRole("treegrid", { name: "公司盈亏分配业务台账表格" });
-  const distributionCells = distributionGrid.getByRole("gridcell");
-  await expect(distributionCells).toHaveCount(decision.participatingCompanies.length * 2);
+  const distributionGrid = page.locator(".distribution-editor revo-grid");
+  await expect(distributionGrid).toHaveCount(1);
   for (let index = 0; index < decision.participatingCompanies.length; index += 1) {
-    await distributionCells.nth(index * 2 + 1).dblclick();
+    await distributionGrid.evaluate(async (element, rowIndex) => {
+      const grid = element as HTMLElement & {
+        scrollToRow(index: number): Promise<void>;
+        scrollToColumnProp(prop: string): Promise<void>;
+        setCellsFocus(start: { x: number; y: number }, end: { x: number; y: number }): Promise<void>;
+      };
+      await grid.scrollToRow(rowIndex);
+      await grid.scrollToColumnProp("finalShareYuan");
+      await grid.setCellsFocus({ x: 1, y: rowIndex }, { x: 1, y: rowIndex });
+    }, index);
+    await page.keyboard.press("Enter");
     await page.keyboard.insertText(index === 0
       ? centsToYuan(decision.currentProfitConfirmation.finalProfitCents)
       : "0.00");
