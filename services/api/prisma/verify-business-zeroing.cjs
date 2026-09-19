@@ -401,7 +401,7 @@ async function verifyBusinessZeroing(
   prisma,
   temporaryRoot,
   codeIdentity,
-  { trustedRunner = false, createVerifiedBackupRestore } = {}
+  { trustedRunner = false, createVerifiedBackupRestore, preflightOnly = false } = {}
 ) {
   assert.equal(trustedRunner, true, "POL-22 动态验证器只能由已清洗的隔离 runner 调用");
   assert.match(codeIdentity?.codeSha ?? "", /^[0-9a-f]{40}$/u);
@@ -793,6 +793,42 @@ async function verifyBusinessZeroing(
   const dryRun = await createDryRunReceipt({ report, currentReport: await buildReport(prisma) });
   assert.equal(dryRun.executed, false);
   assert.deepEqual(await counts(prisma), beforeCounts);
+
+  if (preflightOnly) {
+    return {
+      mode: "read_only_preflight",
+      status: "passed",
+      executed: false,
+      environment: ENVIRONMENT,
+      databaseFingerprint: report.databaseFingerprint,
+      codeSha: codeIdentity.codeSha,
+      executionCodeSha256: codeIdentity.executionCodeSha256,
+      migrationHead: report.migrationHead,
+      migrationCount: beforeCounts.migrations,
+      reportSha256: report.reportSha256,
+      candidateSha256: report.candidateSha256,
+      deletionCandidateCount: report.deletionCandidates.length,
+      blockerCount: report.blockers.length,
+      dryRunSteps: dryRun.steps.length,
+      formalRecordProtection,
+      unknownOwnershipBlockers,
+      mixedOwnershipBlockers,
+      backupRestore: {
+        database: {
+          status: backup.databaseBackup.restoreStatus,
+          format: backup.databaseBackup.format,
+          restoreEvidence: backup.databaseBackup.restoreEvidence
+        },
+        privateFiles: {
+          status: backup.privateFileBackup.restoreStatus,
+          sourceObjects: backup.privateFileBackup.sourceObjects,
+          restoreEvidence: backup.privateFileBackup.restoreEvidence
+        },
+        artifactsVerified: true
+      },
+      productionAccessed: false
+    };
+  }
 
   const batchId = "pol22-isolated-001";
   const authorizationKeys = generateKeyPairSync("ed25519");

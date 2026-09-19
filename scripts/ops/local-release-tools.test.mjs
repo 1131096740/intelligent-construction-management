@@ -27,6 +27,7 @@ const requiredChecks = [
   "web-ui-governance",
   "release-manifests",
   "exact-sha-postgresql-16",
+  "pol22-readonly-preflight",
   "playwright-p0",
   "playwright-rc06-mock"
 ];

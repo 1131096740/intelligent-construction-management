@@ -251,10 +251,56 @@ async function writeFinalDynamicReceipt(
   return finalReceipt;
 }
 
+async function writeFinalPreflightReceipt(
+  receipt,
+  { cleanup, migrationRecords, write = (chunk) => process.stdout.write(chunk) }
+) {
+  if (
+    receipt?.mode !== "read_only_preflight" ||
+    receipt.status !== "passed" ||
+    receipt.executed !== false ||
+    receipt.productionAccessed !== false ||
+    receipt.blockerCount !== 0 ||
+    !Number.isInteger(receipt.deletionCandidateCount) ||
+    !Number.isInteger(receipt.dryRunSteps)
+  ) {
+    throw new Error("POL-22 只读预检收据最终状态无效");
+  }
+  const migrationReceipt = await verifyAppliedMigrationReceipt(migrationRecords);
+  if (
+    receipt.migrationCount !== migrationReceipt.appliedMigrationCount ||
+    receipt.migrationHead !== migrationReceipt.migrationHead
+  ) {
+    throw new Error("POL-22 只读预检迁移坐标无效");
+  }
+  assertDynamicReceiptSection(receipt, "formalRecordProtection", "formal record protection");
+  assertDynamicReceiptSection(receipt, "unknownOwnershipBlockers", "unknown ownership blockers");
+  assertDynamicReceiptSection(receipt, "mixedOwnershipBlockers", "mixed ownership blockers");
+  if (
+    receipt.backupRestore?.database?.status !== "passed" ||
+    receipt.backupRestore?.privateFiles?.status !== "passed" ||
+    receipt.backupRestore?.artifactsVerified !== true
+  ) {
+    throw new Error("POL-22 只读预检备份恢复验证无效");
+  }
+  await cleanup();
+  const finalReceipt = {
+    ...receipt,
+    migrationReceipt,
+    containerRemoved: true,
+    temporaryFilesRemoved: true
+  };
+  write(`${JSON.stringify(finalReceipt)}\n`);
+  return finalReceipt;
+}
+
 async function main() {
+  const preflightOnly = process.argv.slice(2).includes("--preflight-only");
   if (process.argv.slice(2).includes("--help")) {
     process.stdout.write(
-      "sh services/api/scripts/run-business-zeroing-cli.sh dynamic\n"
+      preflightOnly
+        ? "只读预检：sh services/api/scripts/run-business-zeroing-cli.sh preflight-dynamic\n"
+        : "sh services/api/scripts/run-business-zeroing-cli.sh dynamic\n"
     );
     return;
   }
@@ -381,6 +427,7 @@ async function main() {
       );
       finalReceipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity, {
         trustedRunner: true,
+        preflightOnly,
         createVerifiedBackupRestore: async ({
           storageRoot,
           sourceCounts,
@@ -500,7 +547,11 @@ async function main() {
       if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = previousDatabaseUrl;
     }
-    await writeFinalDynamicReceipt(finalReceipt, { cleanup, migrationRecords });
+    if (preflightOnly) {
+      await writeFinalPreflightReceipt(finalReceipt, { cleanup, migrationRecords });
+    } else {
+      await writeFinalDynamicReceipt(finalReceipt, { cleanup, migrationRecords });
+    }
   } finally {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
@@ -516,5 +567,6 @@ module.exports = {
   main,
   runMain,
   waitForPostgres,
-  writeFinalDynamicReceipt
+  writeFinalDynamicReceipt,
+  writeFinalPreflightReceipt
 };

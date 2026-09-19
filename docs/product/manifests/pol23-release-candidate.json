@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "issue": 121,
+  "prerequisites": [119, 120],
+  "requiredReleaseChecks": [
+    "release-manifests",
+    "exact-sha-postgresql-16",
+    "pol22-readonly-preflight",
+    "playwright-p0",
+    "playwright-rc06-mock"
+  ],
+  "prohibitedActions": [
+    "test_business_zeroing_apply",
+    "production_deployment",
+    "production_migration",
+    "formal_opening"
+  ]
+}

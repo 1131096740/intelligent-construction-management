@@ -57,7 +57,8 @@ const { verifyBackupArtifacts } = require("./inspect-test-business-zeroing.cjs")
 const {
   createPinnedDockerEnvironment,
   waitForPostgres,
-  writeFinalDynamicReceipt
+  writeFinalDynamicReceipt,
+  writeFinalPreflightReceipt
 } = require("../prisma/run-business-zeroing-local.cjs");
 const {
   setFixtureSignatureBinding
@@ -1256,6 +1257,35 @@ test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", 
   );
 });
 
+test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", () => {
+  const legacyProtected = new Set([
+    "_prisma_migrations",
+    "AuditLog",
+    "ContractEndedApplicationRetentionPolicy",
+    "ContractEndedApplicationPurgeReceipt",
+    "ContractPristineDraftDeletionReceipt",
+    "OperatingLedgerWriteContext",
+    "OperatingLedgerWriteSecret"
+  ]);
+  const addedProtected = BUSINESS_ZEROING_POLICY.tables.filter(
+    (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
+  );
+
+  assert.equal(addedProtected.length, 107);
+  for (const representative of [
+    "ClearingCase",
+    "FundExecution",
+    "ProjectCloseAggregate",
+    "WageStatement",
+    "PayableSettlementCase"
+  ]) {
+    assert.equal(
+      addedProtected.find((item) => item.name === representative)?.disposition,
+      "protected"
+    );
+  }
+});
+
 test("新增主线 Prisma 模型均有唯一显式中文归类", () => {
   const policyByName = new Map(
     BUSINESS_ZEROING_POLICY.tables.map((item) => [item.name, item])
@@ -2407,11 +2437,13 @@ test("隔离 PostgreSQL 必须同时通过容器内和宿主 Prisma 协议 readi
 
 test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输出", async () => {
   const migrationRecords = successfulMigrationRecords();
+  const migrationCount = migrationRecords.length;
+  const migrationHead = migrationRecords.at(-1).migrationName;
   const completeReceipt = {
     mode: "isolated_postgresql16_and_local_private_files",
     status: "passed",
-    migrationCount: 136,
-    migrationHead: "20260816120000_pol08_contract_lineage_operating_sources",
+    migrationCount,
+    migrationHead,
     productionAccessed: false,
     dryRunSteps: 4,
     executionSteps: {
@@ -2441,8 +2473,8 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
         format: "postgresql_custom",
         restoreEvidence: {
           status: "passed",
-          migrationCount: 136,
-          migrationHead: "20260816120000_pol08_contract_lineage_operating_sources"
+          migrationCount,
+          migrationHead
         }
       },
       privateFiles: {
@@ -2550,13 +2582,13 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
   assert.equal(parsed.containerRemoved, true);
   assert.equal(parsed.temporaryFilesRemoved, true);
   assert.equal(parsed.migrationReceipt.status, "passed");
-  assert.equal(parsed.migrationReceipt.expectedDirectoryCount, 136);
-  assert.equal(parsed.migrationReceipt.appliedMigrationCount, 136);
+  assert.equal(parsed.migrationReceipt.expectedDirectoryCount, migrationCount);
+  assert.equal(parsed.migrationReceipt.appliedMigrationCount, migrationCount);
   assert.equal(
     parsed.migrationReceipt.migrationHead,
-    "20260816120000_pol08_contract_lineage_operating_sources"
+    migrationHead
   );
-  assert.equal(parsed.migrationReceipt.successfulMigrations.length, 136);
+  assert.equal(parsed.migrationReceipt.successfulMigrations.length, migrationCount);
   assert.ok(
     parsed.migrationReceipt.successfulMigrations.every(
       (migration) => migration.status === "applied" && /^[0-9a-f]{64}$/u.test(migration.checksum)
@@ -2580,6 +2612,61 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
     /cleanup failed/u
   );
   assert.equal(wroteAfterCleanupFailure, false);
+});
+
+test("动态只读预检收据明确未执行且只在 cleanup 成功后输出", async () => {
+  const migrationRecords = successfulMigrationRecords();
+  const migrationCount = migrationRecords.length;
+  const migrationHead = migrationRecords.at(-1).migrationName;
+  let cleanupCompleted = false;
+  let output = "";
+  const receipt = {
+    mode: "read_only_preflight",
+    status: "passed",
+    executed: false,
+    productionAccessed: false,
+    blockerCount: 0,
+    deletionCandidateCount: 4,
+    dryRunSteps: 4,
+    migrationCount,
+    migrationHead,
+    formalRecordProtection: {
+      status: "blocked",
+      blockers: ["FORMAL_RECORD_PROTECTED"],
+      candidateCount: 0
+    },
+    unknownOwnershipBlockers: {
+      status: "blocked",
+      blockers: ["UNKNOWN_FILE_OWNER"],
+      candidateCount: 0
+    },
+    mixedOwnershipBlockers: {
+      status: "blocked",
+      blockers: ["MIXED_FILE_OWNERSHIP"],
+      candidateCount: 0
+    },
+    backupRestore: {
+      database: { status: "passed" },
+      privateFiles: { status: "passed" },
+      artifactsVerified: true
+    }
+  };
+  await writeFinalPreflightReceipt(receipt, {
+    cleanup: async () => {
+      cleanupCompleted = true;
+    },
+    migrationRecords,
+    write: (chunk) => {
+      assert.equal(cleanupCompleted, true);
+      output += chunk;
+    }
+  });
+  const parsed = JSON.parse(output);
+  assert.equal(parsed.executed, false);
+  assert.equal(parsed.productionAccessed, false);
+  assert.equal(parsed.containerRemoved, true);
+  assert.equal(parsed.temporaryFilesRemoved, true);
+  assert.equal(parsed.migrationReceipt.appliedMigrationCount, migrationCount);
 });
 
 test("动态混合归属夹具清理后保留行完整指纹不漂移", async () => {
@@ -2637,7 +2724,14 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
       ].join("\n"),
       "utf8"
     );
-    for (const command of ["inspect", "execute", "verify", "sign", "dynamic"]) {
+    for (const command of [
+      "inspect",
+      "execute",
+      "verify",
+      "sign",
+      "dynamic",
+      "preflight-dynamic"
+    ]) {
       const rejected = spawnSync(
         "/bin/sh",
         [launcher, command, "--help"],
@@ -2704,7 +2798,8 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
       ["execute", /dry-run/u],
       ["verify", /只读后置核验/u],
       ["sign", /run-business-zeroing-cli\.sh sign/u],
-      ["dynamic", /run-business-zeroing-cli\.sh dynamic/u]
+      ["dynamic", /run-business-zeroing-cli\.sh dynamic/u],
+      ["preflight-dynamic", /只读预检/u]
     ]) {
       const accepted = spawnSync("/bin/sh", [launcher, command, "--help"], {
         encoding: "utf8",

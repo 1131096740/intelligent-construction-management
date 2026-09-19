@@ -12,13 +12,13 @@ fi
 
 command_name=${1-}
 if [ -z "$command_name" ]; then
-  echo "用法：run-business-zeroing-cli.sh <inspect|execute|verify|sign|dynamic> [参数]" >&2
+  echo "用法：run-business-zeroing-cli.sh <inspect|execute|verify|sign|dynamic|preflight-dynamic> [参数]" >&2
   exit 64
 fi
 shift
 
 case "$command_name" in
-  inspect|execute|verify|sign|dynamic) ;;
+  inspect|execute|verify|sign|dynamic|preflight-dynamic) ;;
   *)
     echo "归零工具启动器不支持命令：$command_name" >&2
     exit 64
