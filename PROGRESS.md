@@ -12,7 +12,7 @@
 
 ## POL 全树本地集成（2026-09-20）
 
-- [~] #119 正在 `codex/pol119-cross-domain-release-gate`、精确基线 `main@2cdcbc8749cab2695baf9db36abbafb7ef4cbd88` 推进：新增 fail-closed POL-21 跨域验收清单与检查器，将正式规格第 28 节 15/15 主线逐条绑定已登记的真实 PostgreSQL 16 分片、精确 SHA 门、必要浏览器门及金额、主体、来源、权限、外部核对五类跨域约束；任一主线、动态分片或必需发布门缺失均失败关闭。该检查已纳入 `inspect:release-manifests` 和 CI 编排自测；定向 CI 编排 105/105、全仓 lint 0 error 及公开 CLI 15/15 通过。不改 Schema、权限或业务语义；尚需冻结候选 SHA、完整 `release:local`、双审和 GitHub 交付。未执行部署、迁移或生产写入。
+- [~] #119 已由 PR #293 以 `main@a8206285c6e10e9b62253ff9df53fcbde4bb80c3` 合入并自动关闭：最终候选 `f610277d1ae9d0ebd1ce84f8993907633460d9b1` 的完整本机 `release:local`、真实 PostgreSQL 16、Spec/Standards 双审和 fixed-head CI 均通过。merge-head CI run `35463985160` 的 19 个实质作业中 18 个通过，POL-109 真实页面链连续两次在项目已自动选中且选择器正确禁用时，验收 helper 仍无条件点击而超时；后端 8/8 及其他浏览器用例均通过。当前独立热修仅在禁用态精确核对已选项目标签，可编辑态仍必须走真实下拉选择；不改 Schema、权限、业务语义或产品代码。新 SHA 须重跑 POL-109 PG16、完整本机门、双审、fixed-head 与 merge-head CI 后才发布最终回执。未执行部署、迁移或生产写入。
 
 - [x] #112（POL-19）已于 `main@2cdcbc8749cab2695baf9db36abbafb7ef4cbd88` 完成汇总验收并关闭：#111/#113/#114/#115/#116/#117 全部闭包，用户填写入口、旧写入口退役、桌面/移动验收、PG16、fixed-head/merge-head CI 与双审证据已聚合；无需额外 ledger-only PR。未执行部署、迁移或生产写入。
 
