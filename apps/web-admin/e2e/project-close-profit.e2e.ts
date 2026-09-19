@@ -143,12 +143,15 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
     };
     return workbench;
   }, projectId);
-  const inputs = page.locator(".distribution-editor input");
-  await expect(inputs).toHaveCount(decision.participatingCompanies.length);
+  const distributionGrid = page.getByRole("treegrid", { name: "公司盈亏分配业务台账表格" });
+  const amountCells = distributionGrid.getByRole("gridcell").filter({ hasNotText: /\S/u });
+  await expect(amountCells).toHaveCount(decision.participatingCompanies.length);
   for (let index = 0; index < decision.participatingCompanies.length; index += 1) {
-    await inputs.nth(index).fill(index === 0
+    await amountCells.nth(index).dblclick();
+    await page.keyboard.insertText(index === 0
       ? centsToYuan(decision.currentProfitConfirmation.finalProfitCents)
       : "0.00");
+    await page.keyboard.press("Enter");
   }
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作公司分配");
