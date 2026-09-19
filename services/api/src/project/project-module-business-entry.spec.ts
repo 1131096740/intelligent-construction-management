@@ -1,4 +1,5 @@
 import { MODULE_METADATA } from "@nestjs/common/constants";
+import { readFileSync } from "node:fs";
 
 import { ProjectModule } from "./project.module";
 import { ProjectService } from "./project.service";
@@ -12,5 +13,17 @@ describe("ProjectModule business-entry wiring", () => {
       ProjectService,
       ProjectUpstreamFundBusinessEntryService
     ]));
+  });
+
+  it("requires and unconditionally invokes the upstream-fund snapshot dependency", () => {
+    const source = readFileSync(`${__dirname}/project.service.ts`, "utf8");
+
+    expect(source).not.toMatch(
+      /@Optional\(\)\s*private readonly upstreamFundBusinessEntry\?/
+    );
+    expect(source).toMatch(
+      /await this\.upstreamFundBusinessEntry\.freeze\(\s*tx,\s*actorUserId,\s*created\s*\)/
+    );
+    expect(source).not.toContain("this.upstreamFundBusinessEntry\n          ?");
   });
 });

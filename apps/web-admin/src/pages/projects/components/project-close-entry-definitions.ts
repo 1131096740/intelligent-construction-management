@@ -67,3 +67,21 @@ export const PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION: BusinessEntrySceneDef
   ],
   rules: []
 };
+
+export const PROJECT_TEMPORARY_PROFIT_DISTRIBUTION_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "project_temporary_profit_distribution",
+  entityType: "project",
+  name: "暂分利润",
+  description: "最终盈亏确认前登记参与公司的本次暂分金额。",
+  version: 1,
+  fields: [
+    field("companyEntityId", "参与公司", { type: "company" }),
+    field("amountYuan", "暂分金额", {
+      type: "money",
+      unit: "元",
+      precision: 2,
+      exactDecimalString: { sign: "nonnegative", maximumExclusive: "1000000000000000000" }
+    })
+  ],
+  rules: []
+};

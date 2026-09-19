@@ -292,6 +292,15 @@ const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprova
   { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ];
+
+function missingProjectUpstreamFundBusinessEntryService(): ProjectUpstreamFundBusinessEntryService {
+  return {
+    freeze: async () => {
+      throw new InternalServerErrorException("上游资金统一录入快照服务未配置");
+    }
+  } as unknown as ProjectUpstreamFundBusinessEntryService;
+}
+
 @Injectable()
 export class ProjectService {
   private readonly upstreamFundFactCursor = new ProjectUpstreamFundFactCursorCodec();
@@ -310,8 +319,8 @@ export class ProjectService {
       missingOperatingSourceReplayService(),
     @Optional()
     private readonly operatingProjection?: OperatingProjectionService,
-    @Optional()
-    private readonly upstreamFundBusinessEntry?: ProjectUpstreamFundBusinessEntryService
+    private readonly upstreamFundBusinessEntry: ProjectUpstreamFundBusinessEntryService =
+      missingProjectUpstreamFundBusinessEntryService()
   ) {}
 
   async assertCanRenameBusinessEntry(projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
@@ -1501,9 +1510,11 @@ export class ProjectService {
           }
         });
 
-        const entrySnapshot = this.upstreamFundBusinessEntry
-          ? await this.upstreamFundBusinessEntry.freeze(tx, actorUserId, created)
-          : undefined;
+        const entrySnapshot = await this.upstreamFundBusinessEntry.freeze(
+          tx,
+          actorUserId,
+          created
+        );
 
         await this.audit.record(tx, {
           actorUserId,
@@ -1533,7 +1544,7 @@ export class ProjectService {
         });
         return {
           ...toUpstreamFundFactReadModel(created),
-          ...(entrySnapshot ? { entrySnapshot } : {})
+          entrySnapshot
         };
       });
     } catch (error) {

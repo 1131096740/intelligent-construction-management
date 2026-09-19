@@ -31,6 +31,7 @@ import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
   CLEARING_AUTHORITY_EVENT_ENTRY_DEFINITION,
   CLEARING_CASE_ENTRY_DEFINITION,
+  CLEARING_CONFIRMATION_ENTRY_DEFINITION,
   CLEARING_EVENT_ENTRY_DEFINITION
 } from "./clearing-entry-definitions";
 import {
@@ -79,17 +80,17 @@ const eventForm = reactive({
   kind: "estimated",
   amountYuan: "",
   evidenceLevel: "A",
-  payableRef: "",
-  payloadText: "{}",
   businessReason: "",
   evidenceRef: ""
 });
+const editingPayableRef = ref("");
+const editingPayloadSnapshot = ref<Record<string, unknown>>({});
 const confirmationForm = reactive({
   sourceKind: "authority_cap",
   sourceEventVersionId: "",
   sourceSelectionRef: "",
-  amountCents: "",
-  pairedWithheldAmountCents: ""
+  amountYuan: "",
+  pairedWithheldAmountYuan: ""
 });
 
 const projectOptions = computed(() =>
@@ -121,6 +122,18 @@ const visibleSourceKindOptions = computed(() =>
     : sourceKindOptions
 );
 const visibleAllocationOptions = computed(() => allocationOptions.value.filter((option) => option.sourceKind === confirmationForm.sourceKind));
+const sourceEventVersionOptions = computed(() =>
+  (detail.value?.events ?? []).flatMap((event) =>
+    event.kind === confirmationForm.sourceKind
+      ? event.versions
+        .filter((version) => Boolean(version.confirmation) && version.id !== selectedEvent.value?.id)
+        .map((version) => ({
+          value: version.id,
+          label: `${clearingKindLabel(event.kind)} · 第 ${version.versionNo} 版 · ¥${centsTextToYuanText(version.amountCents)}`
+        }))
+      : []
+  )
+);
 const timeline = computed(() => detail.value ? clearingTimeline(detail.value) : []);
 const actionTitle = computed(() => ({
   submit: "提交清分事件",
@@ -175,6 +188,39 @@ const eventEntryPayload = computed<BusinessEntryDraftPayload>({
     values: { ...eventForm }
   }),
   set: (payload) => assignStringValues(eventForm, payload.values)
+});
+const activeConfirmationDefinition = computed<BusinessEntrySceneDefinition>(() => {
+  const fieldKeys = new Set<string>();
+  if (requiresAllocation.value) {
+    fieldKeys.add("sourceKind");
+    fieldKeys.add("amountYuan");
+    if (confirmationForm.sourceKind !== "authority_cap") {
+      fieldKeys.add(isAuthorityCase.value ? "sourceSelectionRef" : "sourceEventVersionId");
+    }
+  }
+  if (selectedEvent.value?.kind === "pending_reconciliation") {
+    fieldKeys.add("pairedWithheldAmountYuan");
+  }
+  return {
+    ...CLEARING_CONFIRMATION_ENTRY_DEFINITION,
+    fields: CLEARING_CONFIRMATION_ENTRY_DEFINITION.fields.filter((field) => fieldKeys.has(field.key))
+  };
+});
+const confirmationEntryOptions = computed(() => ({
+  sourceKind: visibleSourceKindOptions.value,
+  sourceEventVersionId: sourceEventVersionOptions.value,
+  sourceSelectionRef: visibleAllocationOptions.value.map((option) => ({
+    value: option.selectionRef,
+    label: `${option.sourceKind === "withheld" ? "暂扣" : option.sourceKind === "final_confirmed" ? "最终扣项" : "补扣"} · 可用 ¥${centsTextToYuanText(option.remainingCents)}`
+  }))
+}));
+const confirmationEntryPayload = computed<BusinessEntryDraftPayload>({
+  get: () => ({
+    sceneKey: CLEARING_CONFIRMATION_ENTRY_DEFINITION.key,
+    definitionVersion: CLEARING_CONFIRMATION_ENTRY_DEFINITION.version,
+    values: { ...confirmationForm }
+  }),
+  set: (payload) => assignStringValues(confirmationForm, payload.values)
 });
 
 const caseColumns = [
@@ -315,10 +361,10 @@ function openEventCreate() {
   eventForm.kind = "estimated";
   eventForm.amountYuan = "";
   eventForm.evidenceLevel = "A";
-  eventForm.payableRef = "";
-  eventForm.payloadText = "{}";
   eventForm.businessReason = "";
   eventForm.evidenceRef = "";
+  editingPayableRef.value = "";
+  editingPayloadSnapshot.value = {};
   eventDialogVisible.value = true;
 }
 
@@ -330,10 +376,10 @@ function openEventRevision(event: ClearingEventReadModel) {
   eventForm.kind = event.kind;
   eventForm.amountYuan = centsTextToYuanText(current.amountCents);
   eventForm.evidenceLevel = current.evidenceLevel;
-  eventForm.payableRef = current.payableRef ?? "";
-  eventForm.payloadText = JSON.stringify(current.payloadSnapshot, null, 2);
   eventForm.businessReason = typeof current.payloadSnapshot.businessReason === "string" ? current.payloadSnapshot.businessReason : "";
   eventForm.evidenceRef = typeof current.payloadSnapshot.evidenceRef === "string" ? current.payloadSnapshot.evidenceRef : "";
+  editingPayableRef.value = current.payableRef ?? "";
+  editingPayloadSnapshot.value = { ...current.payloadSnapshot };
   eventDialogVisible.value = true;
 }
 
@@ -360,8 +406,16 @@ async function saveEvent() {
           ...base,
           amountCents: yuanTextToCentsText(eventForm.amountYuan),
           evidenceLevel: eventForm.evidenceLevel,
-          payableRef: eventForm.payableRef.trim() || undefined,
-          payload: JSON.parse(eventForm.payloadText) as Record<string, unknown>
+          payableRef: editingPayableRef.value || undefined,
+          payload: {
+            ...editingPayloadSnapshot.value,
+            ...(eventForm.businessReason.trim()
+              ? { businessReason: eventForm.businessReason.trim() }
+              : {}),
+            ...(eventForm.evidenceRef.trim()
+              ? { evidenceRef: eventForm.evidenceRef.trim() }
+              : {})
+          }
         };
     const isRevision = Boolean(editingEvent.value);
     if (editingEvent.value) await reviseClearingEventWithCapability(editingEvent.value.id, body);
@@ -386,8 +440,10 @@ function requestAction(action: "submit" | "attest" | "confirm" | "return" | "reo
     : event.kind === "returned" ? "final_confirmed" : "authority_cap";
   confirmationForm.sourceEventVersionId = "";
   confirmationForm.sourceSelectionRef = "";
-  confirmationForm.amountCents = current?.amountCents ?? "";
-  confirmationForm.pairedWithheldAmountCents = event.kind === "pending_reconciliation" ? current?.amountCents ?? "" : "";
+  confirmationForm.amountYuan = current ? centsTextToYuanText(current.amountCents) : "";
+  confirmationForm.pairedWithheldAmountYuan = event.kind === "pending_reconciliation" && current
+    ? centsTextToYuanText(current.amountCents)
+    : "";
   actionDialogVisible.value = true;
 }
 
@@ -428,14 +484,14 @@ async function executeAction(values: { reason: string }) {
             sourceSelectionRef: isAuthorityCase.value && confirmationForm.sourceKind !== "authority_cap"
               ? confirmationForm.sourceSelectionRef
               : undefined,
-            amountCents: confirmationForm.amountCents
+            amountCents: yuanTextToCentsText(confirmationForm.amountYuan)
           }]
         : [];
       await confirmClearingEventWithCapability(event.id, {
         ...base,
         allocations,
         pairedWithheldAmountCents: event.kind === "pending_reconciliation"
-          ? confirmationForm.pairedWithheldAmountCents
+          ? yuanTextToCentsText(confirmationForm.pairedWithheldAmountYuan)
           : undefined
       });
     }
@@ -673,32 +729,11 @@ function formatDate(value: string | null) {
       @confirm="executeAction"
     >
       <div v-if="pendingAction === 'confirm'" class="confirmation-fields">
-        <template v-if="requiresAllocation">
-          <label>
-            <span>分配来源</span>
-            <t-select v-model="confirmationForm.sourceKind" :options="visibleSourceKindOptions" />
-          </label>
-          <label v-if="confirmationForm.sourceKind !== 'authority_cap' && !isAuthorityCase">
-            <span>来源事件版本 ID</span>
-            <t-input v-model="confirmationForm.sourceEventVersionId" />
-          </label>
-          <label v-if="confirmationForm.sourceKind !== 'authority_cap' && isAuthorityCase">
-            <span>服务端分配业务选项</span>
-            <t-select
-              v-model="confirmationForm.sourceSelectionRef"
-              :options="visibleAllocationOptions.map((option) => ({ value: option.selectionRef, label: `${option.sourceKind === 'withheld' ? '暂扣' : option.sourceKind === 'final_confirmed' ? '最终扣项' : '补扣'} · 可用 ${option.remainingCents} 分` }))"
-              placeholder="选择服务端已确认余额"
-            />
-          </label>
-          <label>
-            <span>本次分配金额（分）</span>
-            <t-input v-model="confirmationForm.amountCents" />
-          </label>
-        </template>
-        <label v-if="selectedEvent?.kind === 'pending_reconciliation'">
-          <span>无暂扣余额时同事务配对暂扣金额（分）</span>
-          <t-input v-model="confirmationForm.pairedWithheldAmountCents" />
-        </label>
+        <BusinessEntryForm
+          v-model="confirmationEntryPayload"
+          :definition="activeConfirmationDefinition"
+          :options-by-field="confirmationEntryOptions"
+        />
       </div>
     </SensitiveActionDialog>
   </section>

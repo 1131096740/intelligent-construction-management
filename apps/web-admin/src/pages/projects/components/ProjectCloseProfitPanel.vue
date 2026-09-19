@@ -126,22 +126,11 @@
           <strong>当前可分配：{{ formatCents(workbench.projection.view.distribution.currentDistributableProfitCents) }}</strong>
         </div>
         <div v-if="canCreateTemporaryDistribution" class="temporary-distribution-editor">
-          <label>
-            <span>参与公司</span>
-            <t-select
-              v-model="temporaryParticipantId"
-              :options="temporaryParticipantOptions"
-              placeholder="请选择"
-            />
-          </label>
-          <label>
-            <span>暂分金额（元）</span>
-            <t-input
-              v-model.trim="temporaryDistributionYuan"
-              inputmode="decimal"
-              placeholder="0.00"
-            />
-          </label>
+          <BusinessEntryForm
+            v-model="temporaryDistributionEntryPayload"
+            :definition="PROJECT_TEMPORARY_PROFIT_DISTRIBUTION_ENTRY_DEFINITION"
+            :options-by-field="distributionEntryOptions"
+          />
           <t-button
             :disabled="busyAction !== ''"
             @click="runTemporaryDistribution"
@@ -283,7 +272,8 @@ import {
 } from "../../../lib/money";
 import {
   PROJECT_CLOSE_BASIS_ENTRY_DEFINITION,
-  PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION
+  PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION,
+  PROJECT_TEMPORARY_PROFIT_DISTRIBUTION_ENTRY_DEFINITION
 } from "./project-close-entry-definitions";
 
 const props = defineProps<{
@@ -399,6 +389,24 @@ const temporaryParticipantOptions = computed(() =>
 const distributionEntryOptions = computed(() => ({
   companyEntityId: temporaryParticipantOptions.value
 }));
+const temporaryDistributionEntryPayload = computed<BusinessEntryDraftPayload>({
+  get: () => ({
+    sceneKey: PROJECT_TEMPORARY_PROFIT_DISTRIBUTION_ENTRY_DEFINITION.key,
+    definitionVersion: PROJECT_TEMPORARY_PROFIT_DISTRIBUTION_ENTRY_DEFINITION.version,
+    values: {
+      companyEntityId: temporaryParticipantId.value,
+      amountYuan: temporaryDistributionYuan.value
+    }
+  }),
+  set: (payload) => {
+    temporaryParticipantId.value = typeof payload.values.companyEntityId === "string"
+      ? payload.values.companyEntityId
+      : "";
+    temporaryDistributionYuan.value = typeof payload.values.amountYuan === "string"
+      ? payload.values.amountYuan
+      : "";
+  }
+});
 const distributionEntryRows = computed<BusinessEntryDraftPayload[]>({
   get: () => (props.workbench?.participatingCompanies ?? []).map((company) => ({
     sceneKey: PROJECT_PROFIT_DISTRIBUTION_ENTRY_DEFINITION.key,
@@ -888,7 +896,7 @@ function basisText(value: unknown) {
 
 .temporary-distribution-editor {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 12px;
 }

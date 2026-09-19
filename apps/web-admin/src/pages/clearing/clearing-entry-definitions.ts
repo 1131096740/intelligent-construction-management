@@ -90,8 +90,43 @@ export const CLEARING_EVENT_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
       required: true,
       options: [{ value: "A", label: "A 级" }, { value: "B", label: "B 级" }]
     }),
-    field("payableRef", "应付引用"),
-    field("payloadText", "冻结业务快照 JSON", { type: "long_text", required: true })
+    field("businessReason", "业务说明", { type: "long_text" }),
+    field("evidenceRef", "依据说明")
+  ],
+  rules: []
+};
+
+export const CLEARING_CONFIRMATION_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  key: "clearing_confirmation_entry",
+  entityType: "clearing_event",
+  name: "清分确认与分配",
+  description: "确认清分事件时使用的业务化分配字段。",
+  version: 1,
+  fields: [
+    field("sourceKind", "分配来源", {
+      type: "single_select",
+      required: true,
+      options: [
+        { value: "authority_cap", label: "权威毛额上限" },
+        { value: "withheld", label: "已确认暂扣" },
+        { value: "final_confirmed", label: "已确认最终扣项" },
+        { value: "supplemental", label: "已确认补扣" }
+      ]
+    }),
+    field("sourceEventVersionId", "来源清分版本", { type: "single_select", required: true }),
+    field("sourceSelectionRef", "可用确认余额", { type: "single_select", required: true }),
+    field("amountYuan", "本次分配金额", {
+      type: "money",
+      unit: "元",
+      precision: 2,
+      required: true
+    }),
+    field("pairedWithheldAmountYuan", "同事务配对暂扣金额", {
+      type: "money",
+      unit: "元",
+      precision: 2,
+      required: true
+    })
   ],
   rules: []
 };

@@ -51,6 +51,17 @@ function roleTables(roleKey: "finance_staff" | "finance_director") {
   };
 }
 
+function upstreamFundEntrySnapshotService() {
+  return {
+    freeze: jest.fn().mockResolvedValue({
+      sceneKey: "project_upstream_fund_fact",
+      definitionVersion: 1,
+      revision: 1,
+      values: { amountYuan: "100.00" }
+    })
+  };
+}
+
 describe("ProjectService upstream fund facts", () => {
   it("lists only confirmed readable references for upstream fund entry", async () => {
     const prisma = {
@@ -224,7 +235,16 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never) as ProjectService & {
+    const entrySnapshots = upstreamFundEntrySnapshotService();
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      entrySnapshots as never
+    ) as ProjectService & {
       recordUpstreamFundFact(
         projectId: string,
         actorUserId: string,
@@ -254,7 +274,11 @@ describe("ProjectService upstream fund facts", () => {
       id: "fund-fact-1",
       factType: "owner_payment_to_affiliate",
       status: "pending_confirm",
-      cashEffectCents: "0"
+      cashEffectCents: "0",
+      entrySnapshot: expect.objectContaining({
+        sceneKey: "project_upstream_fund_fact",
+        revision: 1
+      })
     });
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledWith({
@@ -269,6 +293,24 @@ describe("ProjectService upstream fund facts", () => {
         idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637"
       })
     });
+    expect(entrySnapshots.freeze).toHaveBeenCalledWith(
+      tx,
+      "finance-1",
+      expect.objectContaining({ id: "fund-fact-1" })
+    );
+
+    entrySnapshots.freeze.mockRejectedValueOnce(new Error("snapshot freeze failed"));
+    tx.auditLog.create.mockClear();
+    await expect(service.recordUpstreamFundFact("project-1", "finance-1", {
+      factType: "owner_payment_to_affiliate",
+      basisType: "written",
+      occurredAt: "2026-07-29T00:00:00.000Z",
+      amountCents: "10000",
+      counterpartyName: "建设单位",
+      evidenceFileId: "file-1",
+      idempotencyKey: "snapshot-freeze-failure"
+    })).rejects.toThrow("snapshot freeze failed");
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects an owner payment whose counterparty differs from the linked upstream settlement", async () => {
@@ -300,7 +342,15 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never);
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      upstreamFundEntrySnapshotService() as never
+    );
 
     await expect(
       service.recordUpstreamFundFact("project-1", "finance-1", {
@@ -358,7 +408,15 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never);
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      upstreamFundEntrySnapshotService() as never
+    );
 
     await service.recordUpstreamFundFact("project-1", "finance-1", {
       factType: "owner_payment_to_affiliate",
@@ -444,7 +502,15 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never);
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      upstreamFundEntrySnapshotService() as never
+    );
 
     const result = await service.recordUpstreamFundFact("project-1", "finance-director-1", {
       factType: "unreconciled_receipt_difference",
@@ -978,7 +1044,15 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never);
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      upstreamFundEntrySnapshotService() as never
+    );
     const input = {
       factType: "affiliate_remittance_to_company" as const,
       basisType: "oral" as const,
@@ -995,7 +1069,14 @@ describe("ProjectService upstream fund facts", () => {
     const first = await service.recordUpstreamFundFact("project-1", "finance-1", input);
     const replay = await service.recordUpstreamFundFact("project-1", "finance-1", input);
 
-    expect(replay).toEqual(first);
+    const { entrySnapshot: frozenOnCreate, ...createdFact } = first as typeof first & {
+      entrySnapshot: { sceneKey: string; revision: number };
+    };
+    expect(frozenOnCreate).toMatchObject({
+      sceneKey: "project_upstream_fund_fact",
+      revision: 1
+    });
+    expect(replay).toEqual(createdFact);
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
