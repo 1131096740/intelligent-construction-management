@@ -529,7 +529,7 @@
         "event": "call",
         "handler": "createClearingCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 459,
+        "sourceLine": 515,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -594,7 +594,7 @@
         "event": "call",
         "handler": "attestClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 506,
+        "sourceLine": 562,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -659,7 +659,7 @@
         "event": "call",
         "handler": "confirmClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 496,
+        "sourceLine": 552,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -724,7 +724,7 @@
         "event": "call",
         "handler": "createClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 466,
+        "sourceLine": 522,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -789,7 +789,7 @@
         "event": "call",
         "handler": "reopenClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 526,
+        "sourceLine": 582,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -854,7 +854,7 @@
         "event": "call",
         "handler": "returnClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 516,
+        "sourceLine": 572,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -919,7 +919,7 @@
         "event": "call",
         "handler": "reviseClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 476,
+        "sourceLine": 532,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -984,7 +984,7 @@
         "event": "call",
         "handler": "submitClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 486,
+        "sourceLine": 542,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11858,7 +11858,7 @@
         "event": "call",
         "handler": "confirmProjectProfitDistributionWithCapability",
         "kind": "background_call",
-        "sourceLine": 605,
+        "sourceLine": 613,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11935,7 +11935,7 @@
         "event": "call",
         "handler": "submitProjectProfitDistributionWithCapability",
         "kind": "background_call",
-        "sourceLine": 583,
+        "sourceLine": 591,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12012,7 +12012,7 @@
         "event": "call",
         "handler": "attestProjectDownstreamContractCostWithCapability",
         "kind": "background_call",
-        "sourceLine": 553,
+        "sourceLine": 561,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12089,7 +12089,7 @@
         "event": "call",
         "handler": "attestProjectDownstreamFinanceCostWithCapability",
         "kind": "background_call",
-        "sourceLine": 560,
+        "sourceLine": 568,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12166,7 +12166,7 @@
         "event": "call",
         "handler": "confirmProjectFinalProfitWithCapability",
         "kind": "background_call",
-        "sourceLine": 567,
+        "sourceLine": 575,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12243,7 +12243,7 @@
         "event": "call",
         "handler": "submitProjectFinalProfitWithCapability",
         "kind": "background_call",
-        "sourceLine": 576,
+        "sourceLine": 584,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12396,7 +12396,7 @@
         "event": "call",
         "handler": "completeProjectCloseStageWithCapability",
         "kind": "background_call",
-        "sourceLine": 546,
+        "sourceLine": 554,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12473,7 +12473,7 @@
         "event": "call",
         "handler": "persistTemporaryProfitWithCapability",
         "kind": "background_call",
-        "sourceLine": 528,
+        "sourceLine": 536,
         "sourceColumn": 0
       },
       "semantic": "business_write",
