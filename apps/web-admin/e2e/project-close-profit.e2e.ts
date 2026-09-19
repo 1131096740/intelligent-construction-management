@@ -35,10 +35,17 @@ async function openCloseProfit(page: Page) {
     return projects.find((project) => project.id === expectedId) ?? null;
   }, projectId);
   expect(selectedProject, "真实 seed 项目必须可见").not.toBeNull();
-  await page.locator(".project-picker input").click();
-  await page.locator(".t-select__dropdown:visible")
-    .getByText(`${selectedProject!.code} · ${selectedProject!.name}`, { exact: true })
-    .click();
+  const expectedProjectLabel = `${selectedProject!.code} · ${selectedProject!.name}`;
+  const projectPicker = page.locator(".project-picker input");
+  await expect(projectPicker).toBeVisible();
+  if (await projectPicker.isDisabled()) {
+    await expect(projectPicker).toHaveValue(expectedProjectLabel);
+  } else {
+    await projectPicker.click();
+    await page.locator(".t-select__dropdown:visible")
+      .getByText(expectedProjectLabel, { exact: true })
+      .click();
+  }
   await page.getByText("项目收口与盈亏", { exact: true }).click();
   await expect(page.locator(".close-profit-panel")).toBeVisible();
 }
