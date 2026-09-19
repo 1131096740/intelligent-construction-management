@@ -48,14 +48,19 @@ export function buildUserFillEntryInventory({
       usage: action.usage,
       routePaths: action.routePaths,
       sourceFile: action.sourceFile,
-      trigger: action.trigger,
-      capability: action.capability,
-      bindings: action.bindings.map((binding) => ({
-        normalizedKey: binding.normalizedKey,
-        acceptedProductionConsumers:
-          binding.acceptedProductionConsumers,
-        causalVerified: binding.causalVerified
-      }))
+      capabilityKind: action.capability.kind,
+      bindingKeys: action.bindings
+        .map((binding) => binding.normalizedKey)
+        .sort(compare),
+      bindingCount: action.bindings.length,
+      productionConsumerCount: new Set(
+        action.bindings.flatMap(
+          (binding) => binding.acceptedProductionConsumers
+        )
+      ).size,
+      causalVerified: action.bindings.every(
+        (binding) => binding.causalVerified === true
+      )
     }))
     .sort((left, right) => compare(left.id, right.id));
 
@@ -81,12 +86,9 @@ export function buildUserFillEntryInventory({
     invalidActiveEntries: activeEntries
       .filter(
         (entry) =>
-          entry.bindings.length === 0 ||
-          entry.bindings.some(
-            (binding) =>
-              binding.causalVerified !== true ||
-              binding.acceptedProductionConsumers.length === 0
-          )
+          entry.bindingCount === 0 ||
+          entry.productionConsumerCount === 0 ||
+          entry.causalVerified !== true
       )
       .map((entry) => entry.id),
     uncoveredRetiredWrites: [...expectedKeys]
@@ -113,7 +115,7 @@ export function buildUserFillEntryInventory({
       activeBusinessActionCount: activeEntries.length,
       technicalActionCount: technicalActions.length,
       activeBindingCount: activeEntries.reduce(
-        (total, entry) => total + entry.bindings.length,
+        (total, entry) => total + entry.bindingCount,
         0
       ),
       retiredWriteEntryCount: retiredRoutes.length,
@@ -130,41 +132,42 @@ export function buildUserFillEntryInventory({
         usage: action.usage,
         routePaths: action.routePaths,
         sourceFile: action.sourceFile,
-        trigger: action.trigger,
-        capability: action.capability,
-        bindings: action.bindings.map((binding) => ({
-          normalizedKey: binding.normalizedKey,
-          acceptedProductionConsumers:
-            binding.acceptedProductionConsumers,
-          causalVerified: binding.causalVerified
-        }))
+        capabilityKind: action.capability.kind,
+        bindingKeys: action.bindings
+          .map((binding) => binding.normalizedKey)
+          .sort(compare),
+        bindingCount: action.bindings.length,
+        productionConsumerCount: new Set(
+          action.bindings.flatMap(
+            (binding) => binding.acceptedProductionConsumers
+          )
+        ).size,
+        causalVerified: action.bindings.every(
+          (binding) => binding.causalVerified === true
+        )
       }))
       .sort((left, right) => compare(left.id, right.id)),
     retiredEntries: retiredRoutes
       .map((route) => ({
         method: route.method,
         path: route.path,
-        normalizedKey: route.normalizedKey,
         controller: route.controller,
         handler: route.handler,
-        sourceFile: route.sourceFile,
         status: "gone"
       }))
       .sort((left, right) =>
-        compare(left.normalizedKey, right.normalizedKey)
+        compare(`${left.method} ${left.path}`, `${right.method} ${right.path}`)
       ),
     readonlyLegacyEntries: readonlyExitRoutes
       .map((route) => ({
         method: route.method,
         path: route.path,
-        normalizedKey: route.normalizedKey,
         controller: route.controller,
         handler: route.handler,
-        sourceFile: route.sourceFile,
         status: "readonly"
       }))
       .sort((left, right) =>
-        compare(left.normalizedKey, right.normalizedKey)
+        compare(`${left.method} ${left.path}`, `${right.method} ${right.path}`)
       ),
     blockers
   };
