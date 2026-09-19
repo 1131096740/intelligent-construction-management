@@ -237,8 +237,8 @@ async function insertFixture(prisma, storageRoot) {
   );
   await prisma.$executeRawUnsafe(
     `INSERT INTO "BusinessParty" (
-       "id", "name", "status", "createdByUserId", "updatedAt"
-     ) VALUES ($1, $2, 'active', $3, NOW())`,
+       "id", "name", "normalizedName", "status", "createdByUserId", "updatedAt"
+     ) VALUES ($1, $2, $2, 'active', $3, NOW())`,
     AFFILIATE_PARTY_ID,
     AFFILIATE_NAME,
     ACTOR_ID
