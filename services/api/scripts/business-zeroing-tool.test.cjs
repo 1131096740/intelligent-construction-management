@@ -1219,7 +1219,8 @@ test("真实 Prisma 正式聚合关系必须全部登记父生命周期保护", 
 test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", () => {
   const runtimeControlTables = [
     "OperatingLedgerWriteContext",
-    "OperatingLedgerWriteSecret"
+    "OperatingLedgerWriteSecret",
+    "PaymentExecutionPayerVerificationIssuerContext"
   ];
   const schema = readFileSync(
     path.resolve(__dirname, "../prisma/schema.prisma"),
@@ -1265,7 +1266,8 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     "ContractEndedApplicationPurgeReceipt",
     "ContractPristineDraftDeletionReceipt",
     "OperatingLedgerWriteContext",
-    "OperatingLedgerWriteSecret"
+    "OperatingLedgerWriteSecret",
+    "PaymentExecutionPayerVerificationIssuerContext"
   ]);
   const addedProtected = BUSINESS_ZEROING_POLICY.tables.filter(
     (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
@@ -2625,9 +2627,25 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
     status: "passed",
     executed: false,
     productionAccessed: false,
-    blockerCount: 0,
-    deletionCandidateCount: 4,
-    dryRunSteps: 4,
+    zeroingReadiness: "blocked",
+    dryRunEligible: false,
+    blockerCount: 2,
+    deletionCandidateCount: 0,
+    dryRunSteps: 0,
+    blockers: [
+      {
+        code: "DELETE_GUARD_TRIGGER",
+        table: "FileObject",
+        trigger: "PaymentExecutionPayerAttestation_evidence_immutable",
+        enabledState: "O"
+      },
+      {
+        code: "DELETE_GUARD_TRIGGER",
+        table: "FileObject",
+        trigger: "VerifiedBankTransactionObservation_evidence_immutable",
+        enabledState: "O"
+      }
+    ],
     migrationCount,
     migrationHead,
     formalRecordProtection: {
@@ -2663,6 +2681,8 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
   });
   const parsed = JSON.parse(output);
   assert.equal(parsed.executed, false);
+  assert.equal(parsed.zeroingReadiness, "blocked");
+  assert.equal(parsed.dryRunEligible, false);
   assert.equal(parsed.productionAccessed, false);
   assert.equal(parsed.containerRemoved, true);
   assert.equal(parsed.temporaryFilesRemoved, true);

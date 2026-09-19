@@ -655,11 +655,28 @@ async function verifyBusinessZeroing(
     )
   );
   const report = await buildReport(prisma);
-  assert.equal(report.status, "ready", JSON.stringify(report.blockers));
-  assert.deepEqual(
-    report.deletionCandidates.map((item) => item.table).sort(),
-    ["Contract", "ContractDraftAttachment", "ContractVersion", "FileObject"]
-  );
+  const expectedReadOnlyGuardTriggers = [
+    "PaymentExecutionPayerAttestation_evidence_immutable",
+    "VerifiedBankTransactionObservation_evidence_immutable"
+  ];
+  if (preflightOnly) {
+    assert.equal(report.status, "blocked");
+    assert.deepEqual(report.deletionCandidates, []);
+    assert.deepEqual(
+      report.blockers.map((item) => item.code),
+      ["DELETE_GUARD_TRIGGER", "DELETE_GUARD_TRIGGER"]
+    );
+    assert.deepEqual(
+      report.blockers.map((item) => item.details?.trigger).sort(),
+      expectedReadOnlyGuardTriggers
+    );
+  } else {
+    assert.equal(report.status, "ready", JSON.stringify(report.blockers));
+    assert.deepEqual(
+      report.deletionCandidates.map((item) => item.table).sort(),
+      ["Contract", "ContractDraftAttachment", "ContractVersion", "FileObject"]
+    );
+  }
   assert.equal(report.summary.migrationHistoryDeletionCandidates, 0);
   assert.equal(report.summary.databaseDeletionCandidates, 0);
 
@@ -790,15 +807,14 @@ async function verifyBusinessZeroing(
     }
   };
 
-  const dryRun = await createDryRunReceipt({ report, currentReport: await buildReport(prisma) });
-  assert.equal(dryRun.executed, false);
-  assert.deepEqual(await counts(prisma), beforeCounts);
-
   if (preflightOnly) {
+    assert.deepEqual(await counts(prisma), beforeCounts);
     return {
       mode: "read_only_preflight",
       status: "passed",
       executed: false,
+      zeroingReadiness: "blocked",
+      dryRunEligible: false,
       environment: ENVIRONMENT,
       databaseFingerprint: report.databaseFingerprint,
       codeSha: codeIdentity.codeSha,
@@ -807,9 +823,15 @@ async function verifyBusinessZeroing(
       migrationCount: beforeCounts.migrations,
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
-      deletionCandidateCount: report.deletionCandidates.length,
+      deletionCandidateCount: 0,
       blockerCount: report.blockers.length,
-      dryRunSteps: dryRun.steps.length,
+      blockers: report.blockers.map((item) => ({
+        code: item.code,
+        table: item.details?.table,
+        trigger: item.details?.trigger,
+        enabledState: item.details?.enabledState
+      })),
+      dryRunSteps: 0,
       formalRecordProtection,
       unknownOwnershipBlockers,
       mixedOwnershipBlockers,
@@ -829,6 +851,10 @@ async function verifyBusinessZeroing(
       productionAccessed: false
     };
   }
+
+  const dryRun = await createDryRunReceipt({ report, currentReport: await buildReport(prisma) });
+  assert.equal(dryRun.executed, false);
+  assert.deepEqual(await counts(prisma), beforeCounts);
 
   const batchId = "pol22-isolated-001";
   const authorizationKeys = generateKeyPairSync("ed25519");

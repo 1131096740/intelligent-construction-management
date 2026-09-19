@@ -11,6 +11,7 @@ const protectedTables = Object.freeze({
   ContractPristineDraftDeletionReceipt: "原始合同草稿删除审计",
   OperatingLedgerWriteContext: "经营账事务写入授权上下文",
   OperatingLedgerWriteSecret: "经营账写入授权密钥摘要",
+  PaymentExecutionPayerVerificationIssuerContext: "付款执行付款方核验签发上下文",
   PaymentExecutionPayerVerification: "付款执行付款方核验",
   ProjectParticipatingCompanyMutationFence: "项目参与公司变更围栏",
   ProjectCloseAggregate: "项目收口汇总",
@@ -547,6 +548,21 @@ const ISSUE_151_BUSINESS_RELATIONS = Object.freeze([
 
 const BUSINESS_ZEROING_LOGICAL_RELATIONS = Object.freeze([
   ...ISSUE_151_BUSINESS_RELATIONS,
+  ...[
+    ["OperatingFact_payment_execution_fkey", "OperatingFact", "paymentExecutionId", "PaymentExecution"],
+    ["OperatingImpactEntry_payment_execution_fkey", "OperatingImpactEntry", "paymentExecutionId", "PaymentExecution"]
+  ].map(([sourceForeignKey, childTable, childColumn, parentTable]) =>
+    Object.freeze({
+      sourceIssue: 121,
+      sourceForeignKey,
+      childTable,
+      childColumn,
+      parentTable,
+      parentColumn: "id",
+      protectsChildLifecycle: false,
+      dispositionReason: "付款执行坐标用于经营事实追溯，不取得经营记录的生命周期归属"
+    })
+  ),
   ...[
     ["User", "departmentId", "Department", "id"],
     ["HandwrittenSignatureVersion", "userId", "User", "id"],

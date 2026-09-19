@@ -12,7 +12,7 @@
 
 ## POL 全树本地集成（2026-09-20）
 
-- [~] #121 正在 `codex/pol121-release-candidate`、精确基线 `main@7b11a2755d78e15906ae4a20db6fd497a05ca921` 推进统一切换候选：POL-23 fail-closed 清单已绑定 #119/#120、15 条主线、97 个已退役旧写入口、精确 SHA PostgreSQL 16、页面门和新增 `pol22-readonly-preflight`；现行 Schema 新增的 107 个业务模型只登记为受保护，不扩大归零删除面。只读预检仅在一次性本机 PG16 合成环境执行备份恢复、归属阻断与 dry-run 证明，最终收据必须为 `executed:false`，且已明确分离 #122/#123/#124 的归零、生产迁移、部署和正式开放。当前公共清单、CI 编排与 POL22 工具测试通过；尚未冻结候选 SHA、执行完整 `release:local`、PR/CI/合并或关票。未执行数据归零、生产部署、生产迁移或正式开放。
+- [~] #121 正在 `codex/pol121-release-candidate`、精确基线 `main@7b11a2755d78e15906ae4a20db6fd497a05ca921` 推进统一切换候选：POL-23 fail-closed 清单已绑定 #119/#120、15 条主线、97 个已退役旧写入口、精确 SHA PostgreSQL 16、页面门和新增 `pol22-readonly-preflight`；现行 Schema 新增的 107 个业务模型只登记为受保护，不扩大归零删除面。只读预检仅在一次性本机 PG16 合成环境执行迁移、备份恢复与归属阻断证明；两个证据文件不可变守卫必须保持 `zeroingReadiness:blocked`，最终收据只能为 `executed:false`、删除候选 0，不得签发 dry-run 或调用 apply。#122/#123/#124 的归零、生产迁移、部署和正式开放继续分离。当前公共清单、CI 编排与 POL22 工具测试通过；尚未形成新冻结候选 SHA、执行完整 `release:local`、PR/CI/合并或关票。未执行数据归零、生产部署、生产迁移或正式开放。
 
 - [x] #119 已由后续 PR #294 完成修复并合入 `main@7b11a2755d78e15906ae4a20db6fd497a05ca921`：最终候选 `a5beb7e33f5ca6677657203aad0d34dca8480fed` 的完整本机 `release:local`、真实 PostgreSQL 16、Spec/Standards 双审和 fixed-head CI run `35467853865` attempt 2 全部通过；merge-head CI run `35469690625` attempt 2 全部通过，Issue #119 已关闭并完成 #93 精确 SHA 回执。未执行部署、迁移或生产写入。
 

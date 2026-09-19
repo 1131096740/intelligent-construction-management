@@ -260,9 +260,23 @@ async function writeFinalPreflightReceipt(
     receipt.status !== "passed" ||
     receipt.executed !== false ||
     receipt.productionAccessed !== false ||
-    receipt.blockerCount !== 0 ||
-    !Number.isInteger(receipt.deletionCandidateCount) ||
-    !Number.isInteger(receipt.dryRunSteps)
+    receipt.zeroingReadiness !== "blocked" ||
+    receipt.dryRunEligible !== false ||
+    receipt.blockerCount !== 2 ||
+    receipt.deletionCandidateCount !== 0 ||
+    receipt.dryRunSteps !== 0 ||
+    !Array.isArray(receipt.blockers) ||
+    JSON.stringify(receipt.blockers.map((item) => item.trigger).sort()) !==
+      JSON.stringify([
+        "PaymentExecutionPayerAttestation_evidence_immutable",
+        "VerifiedBankTransactionObservation_evidence_immutable"
+      ]) ||
+    receipt.blockers.some(
+      (item) =>
+        item.code !== "DELETE_GUARD_TRIGGER" ||
+        item.table !== "FileObject" ||
+        !["O", "A"].includes(item.enabledState)
+    )
   ) {
     throw new Error("POL-22 只读预检收据最终状态无效");
   }

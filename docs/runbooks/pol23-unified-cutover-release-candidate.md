@@ -12,7 +12,7 @@
 ## 现有快照恢复与迁移验证
 
 - 只在本机隔离环境中验证备份工件可恢复，并核对恢复库的迁移坐标与表计数。
-- `pol22-readonly-preflight` 只生成 `executed: false` 的预检收据；不得调用 apply。
+- `pol22-readonly-preflight` 只生成 `executed: false` 的预检收据；现有两个证据文件不可变守卫必须保持 `zeroingReadiness: blocked`，不得签发 dry-run 或调用 apply。
 - 新增业务表在 POL-22 中保持受保护，未经过逐模型审查不得成为删除候选。
 
 ## 回退兼容与受影响功能暂停
