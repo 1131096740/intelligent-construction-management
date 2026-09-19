@@ -94,13 +94,12 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   async function participatingCompany() {
     if (participatingCompanyId) return participatingCompanyId;
     const contract = await actor("contract_staff");
-    const created = await request("/company-entities", "POST", {
-      name: "参与主体合成验收公司",
-      // Existing checksum test vector, not an issued business identifier.
-      unifiedSocialCreditCode: "9135A211M100100YD0"
-    }, contract);
-    expect(created).toMatchObject({ status: 201 });
-    participatingCompanyId = created.body.entity.id;
+    const activeCompanies = await request("/company-entities", "GET", undefined, contract);
+    expect(activeCompanies.status).toBe(200);
+    expect(activeCompanies.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: expect.any(String) })
+    ]));
+    participatingCompanyId = activeCompanies.body[0].id;
     return participatingCompanyId;
   }
 
