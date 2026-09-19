@@ -10,7 +10,13 @@
 
 ---
 
-## POL 全树本地集成（2026-09-19）
+## POL 全树本地集成（2026-09-20）
+
+- [~] #119 正在 `codex/pol119-cross-domain-release-gate`、精确基线 `main@2cdcbc8749cab2695baf9db36abbafb7ef4cbd88` 推进：新增 fail-closed POL-21 跨域验收清单与检查器，将正式规格第 28 节 15/15 主线逐条绑定已登记的真实 PostgreSQL 16 分片、精确 SHA 门、必要浏览器门及金额、主体、来源、权限、外部核对五类跨域约束；任一主线、动态分片或必需发布门缺失均失败关闭。该检查已纳入 `inspect:release-manifests` 和 CI 编排自测；定向 CI 编排 105/105、全仓 lint 0 error 及公开 CLI 15/15 通过。不改 Schema、权限或业务语义；尚需冻结候选 SHA、完整 `release:local`、双审和 GitHub 交付。未执行部署、迁移或生产写入。
+
+- [x] #112（POL-19）已于 `main@2cdcbc8749cab2695baf9db36abbafb7ef4cbd88` 完成汇总验收并关闭：#111/#113/#114/#115/#116/#117 全部闭包，用户填写入口、旧写入口退役、桌面/移动验收、PG16、fixed-head/merge-head CI 与双审证据已聚合；无需额外 ledger-only PR。未执行部署、迁移或生产写入。
+
+- [x] #117 已由 PR #292 合入 `main@2cdcbc8749cab2695baf9db36abbafb7ef4cbd88`：最终候选 `ff9a9c37afa7581755741de1e6638fab03393957` 与合并提交 tree 一致，完整本机 `release:local`、PG16 294 项、P0/RC06、3 份正式清单、Spec/Standards 双审、fixed-head CI 与 merge-head CI attempt 2 均通过；Issue #117 已关闭并回执 #93。未执行部署、迁移或生产写入。
 
 - [x] #109 已由 PR #290 合入 `main@315dc736f2f47ee8eed491cd74898c07b9f87828`；fixed-head 与 merge-head CI 均通过，merge-head run `35384498232` 为 20/20 SUCCESS，Issue #109 及 #93 精确 SHA 回执已完成。未部署、未迁移生产、未写生产数据或对象存储。
 

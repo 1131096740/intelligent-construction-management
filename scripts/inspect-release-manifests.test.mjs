@@ -60,6 +60,11 @@ test("release manifest orchestration builds once then runs each required check o
         "--require-ready"
       ],
       [
+        "scripts/inspect-pol21-cross-domain-acceptance.mjs",
+        "--check",
+        "--require-ready"
+      ],
+      [
         "scripts/inspect-contract-mutation-authority-manifest.mjs",
         "--check"
       ],
