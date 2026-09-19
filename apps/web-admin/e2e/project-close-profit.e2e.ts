@@ -144,10 +144,10 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
     return workbench;
   }, projectId);
   const distributionGrid = page.getByRole("treegrid", { name: "公司盈亏分配业务台账表格" });
-  const amountCells = distributionGrid.getByRole("gridcell").filter({ hasNotText: /\S/u });
-  await expect(amountCells).toHaveCount(decision.participatingCompanies.length);
+  const distributionCells = distributionGrid.getByRole("gridcell");
+  await expect(distributionCells).toHaveCount(decision.participatingCompanies.length * 2);
   for (let index = 0; index < decision.participatingCompanies.length; index += 1) {
-    await amountCells.nth(index).dblclick();
+    await distributionCells.nth(index * 2 + 1).dblclick();
     await page.keyboard.insertText(index === 0
       ? centsToYuan(decision.currentProfitConfirmation.finalProfitCents)
       : "0.00");
