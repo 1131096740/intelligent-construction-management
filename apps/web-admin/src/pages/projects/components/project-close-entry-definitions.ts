@@ -36,7 +36,15 @@ export const PROJECT_CLOSE_BASIS_ENTRY_DEFINITION: BusinessEntrySceneDefinition 
   name: "项目阶段与盈亏确认依据",
   description: "项目阶段、最终盈亏和分配提交共用的确认依据字段。",
   version: 1,
-  fields: [field("basisSummary", "本次确认依据", { type: "long_text" })],
+  fields: [field("basisSummary", "本次确认依据", {
+    type: "long_text",
+    display: {
+      formHint: "请说明核对范围、依据和结论；系统会与本次经营快照一起冻结",
+      gridColumn: "本次确认依据",
+      mobilePriority: 1,
+      readonlyText: "以本次提交冻结的本次确认依据为准"
+    }
+  })],
   rules: []
 };
 
