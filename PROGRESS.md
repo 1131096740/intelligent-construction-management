@@ -14,7 +14,7 @@
 
 - [x] #109 已由 PR #290 合入 `main@315dc736f2f47ee8eed491cd74898c07b9f87828`；fixed-head 与 merge-head CI 均通过，merge-head run `35384498232` 为 20/20 SUCCESS，Issue #109 及 #93 精确 SHA 回执已完成。未部署、未迁移生产、未写生产数据或对象存储。
 
-- [~] #116 正在独立候选 `codex/pol116-entry-migration` 推进：施工企业上游资金事实与通用历史接管已接入统一业务录入；上游资金事实在原事务内冻结既有不可变提交快照；清分及项目收口/公司分配仅增加不参与授权判断的展示/填写定义并接入 `BusinessEntryForm/Grid`，所有写动作继续由原服务端 capability 唯一授权；工资页面继续保持聚合预览和敏感明细边界。当前组合回归为 API 12 suites / 175 tests、Web 13 files / 73 tests，API/Web typecheck、lint（0 error）与 UI 规则均通过。pnpm 11 误写的本地锁文件噪声不会进入候选提交；须先冻结不含该噪声的新 SHA，再在干净工作树从头执行 PostgreSQL 16、完整 `release:local`、真实页面验收与双轴审查，通过后方可 PR/CI/合并/关票。未部署、未迁移生产、未写生产数据或对象存储。
+- [~] #116 正在独立候选 `codex/pol116-entry-migration` 推进：施工企业上游资金事实与通用历史接管已接入统一业务录入；上游资金事实在原事务内冻结既有不可变提交快照；清分及项目收口/公司分配仅增加不参与授权判断的展示/填写定义并接入 `BusinessEntryForm/Grid`，所有写动作继续由原服务端 capability 唯一授权；工资页面继续保持聚合预览和敏感明细边界。首个冻结 SHA `280ce155898758926e7e03eef9b4a8bc12fd9678` 的完整门在 API 全量 7,856 passed 后发现新增上游资金场景缺少领域授权解析器，2 suites / 4 tests fail-closed，未进入 PostgreSQL 16 且无成功收据；该 SHA 已作废。当前仅补齐同场景解析器，复用既有 `project.upstream_fund_fact.record` 权限矩阵及全局/当前项目岗位范围，不新增权限或业务语义；定向 3 suites / 22 tests、API typecheck/lint 已通过。pnpm 11 误写的本地锁文件噪声不会进入候选提交；新 SHA 冻结后须在干净工作树从头执行 PostgreSQL 16、完整 `release:local`、真实页面验收与双轴审查，通过后方可 PR/CI/合并/关票。未部署、未迁移生产、未写生产数据或对象存储。
 
 - [x] #107/#113/#114/#115 历史候选演进记录（已由 PR #289 和上述 #109 当前结论覆盖）：#107/#113/#114/#115 已由 PR #289 合入 `main@60c0269f88f86e589f0327fcc99e622ff3ff3dc9`，merge-head CI `35323357033` 20/20 通过并完成四票及 #93 精确 SHA 回执。其后 #109 的候选演进如下；各废止 SHA 的成功子项均不得继承。
 

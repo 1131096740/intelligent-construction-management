@@ -161,6 +161,19 @@ export class BusinessEntrySceneAuthorizationService {
           }
         },
         {
+          sceneKey: "project_upstream_fund_fact",
+          resolve: (context) => {
+            if (context.scope !== "project" || !context.projectId || this.targetId(context) !== context.projectId) {
+              throw new BadRequestException("上游资金事实目标与当前项目不一致");
+            }
+            return projects.assertCanRecordUpstreamFundBusinessEntry(
+              context.projectId,
+              context.actorUserId,
+              context.tx
+            );
+          }
+        },
+        {
           sceneKey: "spot_procurement.application",
           resolve: async (context) => {
             if (!await resolveSpotProcurementVersion({

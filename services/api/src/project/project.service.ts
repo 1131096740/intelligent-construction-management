@@ -327,6 +327,23 @@ export class ProjectService {
     }
   }
 
+  async assertCanRecordUpstreamFundBusinessEntry(
+    projectId: string,
+    actorUserId: string,
+    tx?: Prisma.TransactionClient
+  ) {
+    // Reuse the exact permission matrix and global/current-project role scope
+    // enforced by the existing upstream-fund route guard.
+    const visibility = new ProjectVisibilityService(this.prisma);
+    const scopes = tx
+      ? await visibility.effectiveRoleScopesInTransaction(tx, actorUserId, projectId)
+      : await visibility.effectiveRoleScopes(actorUserId, projectId);
+    const roles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+    if (!canPerform("project.upstream_fund_fact.record", roles)) {
+      throw new ForbiddenException("当前岗位无权登记项目上游资金事实");
+    }
+  }
+
   validateCreation(input: CreateProjectDto) {
     const code = requiredTrimmed(input.code, "请填写项目编号");
     const name = requiredTrimmed(input.name, "请填写项目名称");
