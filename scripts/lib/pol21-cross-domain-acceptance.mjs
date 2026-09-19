@@ -1,3 +1,10 @@
+import { createRequire } from "node:module";
+
+const requireFromApiWorkspace = createRequire(
+  new URL("../../services/api/package.json", import.meta.url)
+);
+const ts = requireFromApiWorkspace("typescript");
+
 const EXPECTED_MAINLINE_COUNT = 15;
 const REQUIRED_ASPECTS = Object.freeze([
   "amount_integrity",
@@ -30,6 +37,87 @@ function normalizedStatement(value) {
     : "";
 }
 
+function isTestRegistrar(node, aliases = new Set()) {
+  if (ts.isParenthesizedExpression(node)) {
+    return isTestRegistrar(node.expression, aliases);
+  }
+  if (ts.isIdentifier(node)) {
+    return node.text === "it" || node.text === "test" || aliases.has(node.text);
+  }
+  if (ts.isPropertyAccessExpression(node)) {
+    return (
+      ["skip", "only", "todo", "concurrent", "each"].includes(
+        node.name.text
+      ) && isTestRegistrar(node.expression, aliases)
+    );
+  }
+  if (ts.isCallExpression(node)) {
+    return isTestRegistrar(node.expression, aliases);
+  }
+  if (ts.isConditionalExpression(node)) {
+    return (
+      isTestRegistrar(node.whenTrue, aliases) &&
+      isTestRegistrar(node.whenFalse, aliases)
+    );
+  }
+  return false;
+}
+
+export function extractRegisteredTestNames(source) {
+  if (typeof source !== "string") return new Set();
+  const sourceFile = ts.createSourceFile(
+    "pol21-evidence.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const names = new Set();
+  const declarations = [];
+  function collectDeclarations(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      declarations.push(node);
+    }
+    ts.forEachChild(node, collectDeclarations);
+  }
+  collectDeclarations(sourceFile);
+  const aliases = new Set();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const declaration of declarations) {
+      if (
+        !aliases.has(declaration.name.text) &&
+        isTestRegistrar(declaration.initializer, aliases)
+      ) {
+        aliases.add(declaration.name.text);
+        changed = true;
+      }
+    }
+  }
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      isTestRegistrar(node.expression, aliases)
+    ) {
+      const name = node.arguments[0];
+      if (
+        name &&
+        (ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name))
+      ) {
+        names.add(name.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return names;
+}
+
 export function extractSection28Mainlines(specificationSource) {
   if (typeof specificationSource !== "string") return [];
   const section = specificationSource.match(
@@ -57,6 +145,7 @@ export function inspectPol21CrossDomainAcceptance({
     (dynamicGateManifest?.coveredGroups ?? []).map((group) => [group.id, group])
   );
   const knownReleaseChecks = new Set(releaseChecks ?? []);
+  const registeredTestNames = new Map();
 
   if (manifest?.schemaVersion !== 1 || manifest?.specSection !== 28) {
     blockers.push("POL21_MANIFEST_IDENTITY_INVALID");
@@ -128,10 +217,19 @@ export function inspectPol21CrossDomainAcceptance({
           }
           const evidenceSource = evidenceSources[evidence.testFile];
           if (
+            typeof evidenceSource === "string" &&
+            !registeredTestNames.has(evidence.testFile)
+          ) {
+            registeredTestNames.set(
+              evidence.testFile,
+              extractRegisteredTestNames(evidenceSource)
+            );
+          }
+          if (
             typeof evidence.testName !== "string" ||
             evidence.testName.length === 0 ||
             typeof evidenceSource !== "string" ||
-            !evidenceSource.includes(JSON.stringify(evidence.testName))
+            !registeredTestNames.get(evidence.testFile)?.has(evidence.testName)
           ) {
             blockers.push(
               `POL21_ASPECT_TEST_NAME_MISSING:${expectedId}:${aspect}:${evidence?.testName ?? "missing"}`

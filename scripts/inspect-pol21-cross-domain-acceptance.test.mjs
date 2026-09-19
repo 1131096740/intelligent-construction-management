@@ -133,6 +133,7 @@ test("fails closed when aspect evidence is not registered in its PG16 group or i
   fixture.manifest.aspectEvidenceByMainline["POL21-MAINLINE-03"].authorization = [
     "missing_name"
   ];
+  fixture.evidenceSources["test-3.spec.ts"] += '\n// "missing exact test"';
 
   const report = inspectPol21CrossDomainAcceptance(fixture);
 
