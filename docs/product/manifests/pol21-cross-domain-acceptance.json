@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "specSection": 28,
+  "requiredReleaseChecks": [
+    "workspace-test",
+    "business-errors-and-operations-safety",
+    "release-manifests",
+    "exact-sha-postgresql-16",
+    "playwright-p0",
+    "playwright-rc06-mock"
+  ],
+  "mainlines": [
+    {
+      "id": "POL21-MAINLINE-01",
+      "statement": "在建项目接管真实历史合同、无合同已付款费用、员工垫资、工资和未付债务",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["remaining_dynamic_postgresql16"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-02",
+      "statement": "业主向施工企业付款，施工企业暂扣及最终扣费、向我方公司付款、直接支付下游并形成可勾稽余额",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["clearing_reconciliation_pol275", "fund_execution_v7", "remaining_dynamic_postgresql16"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-03",
+      "statement": "多家我方公司收取项目资金、支付下游、相互调拨、临时使用项目资金并形成主体分账",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["operating_projection_pol108", "remaining_dynamic_postgresql16"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-04",
+      "statement": "新业务完成合同、结算、付款审批、实际付款、零星采购、报销、凭证和归档",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["contract_settlement_v2", "payment_execution", "project_expense_execution", "project_expense_receipt", "pol113_pol115_business_entries"],
+      "releaseChecks": ["exact-sha-postgresql-16", "playwright-p0"]
+    },
+    {
+      "id": "POL21-MAINLINE-05",
+      "statement": "项目确认最终盈亏、分配给多家我方公司，并处理后续新事实和重新确认",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["project_close_profit_pol109", "operating_projection_pol108"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-06",
+      "statement": "同一业务分别通过单条表单、页面表格、复制粘贴和 Excel 草稿进入系统，产生一致业务结果",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["pol113_pol115_business_entries"],
+      "releaseChecks": ["exact-sha-postgresql-16", "playwright-p0", "playwright-rc06-mock"]
+    },
+    {
+      "id": "POL21-MAINLINE-07",
+      "statement": "确定重复阻断、疑似重复说明、部分付款、多结算核销、代付、退款和例外补录",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["pol113_pol115_business_entries", "payment_execution", "clearing_reconciliation_pol275"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-08",
+      "statement": "中文页面、错误、Excel、PDF、导出和审计业务详情不暴露技术字段",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["pol113_pol115_business_entries"],
+      "releaseChecks": ["exact-sha-postgresql-16", "business-errors-and-operations-safety", "release-manifests", "playwright-p0", "playwright-rc06-mock"]
+    },
+    {
+      "id": "POL21-MAINLINE-09",
+      "statement": "项目汇总和公司汇总均能从逐笔正式事实重新推导",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["operating_projection_pol108", "remaining_dynamic_postgresql16"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-10",
+      "statement": "项目、公司、人员工资、银行账户和附件权限在后台失败关闭",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["remaining_dynamic_postgresql16", "pol113_pol115_business_entries"],
+      "releaseChecks": ["exact-sha-postgresql-16", "release-manifests", "playwright-p0"]
+    },
+    {
+      "id": "POL21-MAINLINE-11",
+      "statement": "跨我方公司、施工企业和我方公司之间代付时，原债务、实际付款和主体间往来分别正确，后续归还不重复形成成本",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["remaining_dynamic_postgresql16", "operating_projection_pol108", "clearing_reconciliation_pol275"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-12",
+      "statement": "我方公司项目收付款能够按项目、公司、相对方和期间与财务资料核对，差异保留且不覆盖正式事实",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["operating_projection_pol108", "clearing_reconciliation_pol275"],
+      "releaseChecks": ["exact-sha-postgresql-16"]
+    },
+    {
+      "id": "POL21-MAINLINE-13",
+      "statement": "任意查询基准日、页面筛选和导出汇总都能映射到同口径明细",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["operating_projection_pol108"],
+      "releaseChecks": ["exact-sha-postgresql-16", "playwright-p0"]
+    },
+    {
+      "id": "POL21-MAINLINE-14",
+      "statement": "七个项目阶段遵守前置关系并保留确认人、时间、依据和快照",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["project_close_profit_pol109"],
+      "releaseChecks": ["exact-sha-postgresql-16", "playwright-p0"]
+    },
+    {
+      "id": "POL21-MAINLINE-15",
+      "statement": "用户可填写入口清单没有遗漏，旧入口不能新增正式事实，多行多列粘贴、草稿追加和单元格错误定位符合统一规则",
+      "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
+      "dynamicGroups": ["pol113_pol115_business_entries"],
+      "releaseChecks": ["exact-sha-postgresql-16", "release-manifests", "playwright-p0", "playwright-rc06-mock"]
+    }
+  ]
+}

@@ -58,6 +58,14 @@ export const RELEASE_MANIFEST_COMMANDS = [
   },
   {
     command: process.execPath,
+    args: [
+      "scripts/inspect-pol21-cross-domain-acceptance.mjs",
+      "--check",
+      "--require-ready"
+    ]
+  },
+  {
+    command: process.execPath,
     args: ["scripts/inspect-contract-mutation-authority-manifest.mjs", "--check"]
   },
   {
