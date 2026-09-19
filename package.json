@@ -14,6 +14,7 @@
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
     "inspect:contract-workbench-capabilities": "node scripts/inspect-contract-workbench-capabilities.mjs --check docs/product/contract-workbench-capability-matrix.md",
     "inspect:release-manifests": "node scripts/inspect-release-manifests.mjs",
+    "inspect:user-fill-entry-inventory": "node scripts/inspect-user-fill-entry-inventory.mjs --check --require-ready",
     "preinspect:whole-site-capabilities": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:whole-site-capabilities": "node scripts/inspect-whole-site-capabilities.mjs --check",
     "inspect:whole-site-web-api": "node scripts/inspect-whole-site-web-api-manifest.mjs --check",

@@ -50,6 +50,14 @@ export const RELEASE_MANIFEST_COMMANDS = [
   },
   {
     command: process.execPath,
+    args: [
+      "scripts/inspect-user-fill-entry-inventory.mjs",
+      "--check",
+      "--require-ready"
+    ]
+  },
+  {
+    command: process.execPath,
     args: ["scripts/inspect-contract-mutation-authority-manifest.mjs", "--check"]
   },
   {

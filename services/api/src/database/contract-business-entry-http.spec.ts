@@ -47,7 +47,6 @@ if (enabled) {
   let actorPhone: string;
   let actorPassword: string;
   let prisma: PrismaService;
-  let receiptFailure: { contractVersionId: string; triggered: boolean } | null = null;
   let settlementAttachmentSnapshotFailure = false;
   const identities = new Map<string, { phone: string; password: string }>();
   jest.setTimeout(60_000);
@@ -122,12 +121,6 @@ if (enabled) {
     // Test-only database-boundary fault; all earlier writes use the real PG transaction.
     // No production service is replaced and no persistent database object is installed.
     prisma.$use(async (params, next) => {
-      if (receiptFailure && !receiptFailure.triggered &&
-          params.model === "ContractDraftSubmissionRequest" && params.action === "create" &&
-          params.args?.data?.contractVersionId === receiptFailure.contractVersionId) {
-        receiptFailure.triggered = true;
-        throw new Error("POL114_SYNTHETIC_RECEIPT_WRITE_FAILURE");
-      }
       if (settlementAttachmentSnapshotFailure &&
           params.model === "BusinessEntrySubmissionSnapshot" && params.action === "create" &&
           params.args?.data?.sceneKey === "settlement_line_attachment_purpose") {
@@ -157,7 +150,7 @@ if (enabled) {
 
   afterAll(async () => { await app?.close(); });
 
-  it.each(["aggregate", "legacy", "legacy-ownerless"] as const)("合同真实提交与字段历史冻结：%s", async (entryMode) => {
+  it.each(["aggregate", "legacy", "legacy-ownerless"] as const)("合同现役提交与旧入口退出：%s", async (entryMode) => {
     token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", {
       phone: actorPhone, password: actorPassword
     })).tokens.accessToken;
@@ -201,21 +194,27 @@ if (enabled) {
         await prisma.userPosition.create({ data: { userId: reviewer.id, positionId: uploadPosition.id, projectId: project.id } });
       }
     }
-    const template = await request<{ version: Identified }>("POST", "/contract-templates", {
-      code: `POL114-${randomUUID()}`, businessCode: `合同录入验证${Date.now()}`,
-      name: "合同录入验证模板", contractTypeKey,
-      schema: {
-        fields: [{ key: "deliveryLocation", label: "交货地点", type: "text", required: true }, { key: "adjustment", label: "调整系数", type: "number" }],
-        bills: [{ key: "reference", name: "参考清单", amountRole: "reference", pricingMode: "tax_inclusive",
-          quantityScale: 2, unitPriceScale: 2,
-          columns: [{ key: "brand", label: "指定品牌", type: "text", required: true }] }],
-        clauses: [], attachments: [], validations: []
-      }
-    });
-    await request("POST", `/contract-template-versions/${template.version.id}/submission`);
-    await request("POST", `/contract-template-versions/${template.version.id}/publication`, {
+    const templateSchema = {
+      fields: [{ key: "deliveryLocation", label: "交货地点", type: "text", required: true }, { key: "adjustment", label: "调整系数", type: "number" }],
+      bills: [{ key: "reference", name: "参考清单", amountRole: "reference", pricingMode: "tax_inclusive",
+        quantityScale: 2, unitPriceScale: 2,
+        columns: [{ key: "brand", label: "指定品牌", type: "text", required: true }] }],
+      clauses: [], attachments: [], validations: []
+    };
+    // Synthetic published master-data bootstrap only: retired template write routes stay unavailable.
+    const templateRecord = await prisma.contractBusinessTemplate.create({ data: {
+      code: `POL114-${randomUUID()}`, businessCode: `合同录入验证${randomUUID()}`,
+      name: "合同录入验证模板", contractTypeKey, status: "published", createdByUserId: actorUserId
+    } });
+    const templateVersion = await prisma.contractBusinessTemplateVersion.create({ data: {
+      templateId: templateRecord.id, versionNo: 1, status: "published",
+      fieldSchema: templateSchema.fields, billSchema: templateSchema.bills,
+      clauseSchema: templateSchema.clauses, attachmentSchema: templateSchema.attachments,
+      validationSchema: templateSchema.validations, submittedByUserId: actorUserId,
+      publishedByUserId: actorUserId, publishedAt: new Date(),
       changeSummary: "合成数据公开接口验证"
-    });
+    } });
+    const template = { version: { id: templateVersion.id } };
     const draft = await request<CreatedDraft>("POST", "/contracts", {
       projectId: project.id, contractTypeKey,
       businessTemplateVersionId: template.version.id, signingSubjectType: "our_company"
@@ -255,13 +254,24 @@ if (enabled) {
     const excel = new ExcelJS.Workbook();
     await excel.xlsx.load(await excelResponse.arrayBuffer());
     expect(JSON.stringify(excel.getWorksheet("填写说明")!.getSheetValues())).toContain("请填写指定品牌，正式提交后保留本次填写内容。");
+    const creditCode = "91350211M000100Y46";
+    let companyRecord = await prisma.companyEntity.findFirst({ where: { unifiedSocialCreditCode: creditCode } });
+    if (!companyRecord) {
+      companyRecord = await prisma.companyEntity.create({ data: {
+        name: "统一录入合成我方公司", unifiedSocialCreditCode: creditCode,
+        dataStatus: "complete", currentVersionNo: 1, isActive: true
+      } });
+      await prisma.companyEntityVersion.create({ data: {
+        companyEntityId: companyRecord.id, versionNo: 1, name: companyRecord.name,
+        unifiedSocialCreditCode: creditCode, isActive: true,
+        action: "test_master", actorUserId, actorRoleKey: "contract_director"
+      } });
+    }
     const companies = await request<Array<Identified & { unifiedSocialCreditCode: string }>>("GET", "/company-entities");
-    const company = Object.values(companies).find((item) =>
-      item.unifiedSocialCreditCode === "91350211M000100Y46"
-    ) ?? (await request<{ entity: Identified }>("POST", "/company-entities", {
-      name: "统一录入合成我方公司", unifiedSocialCreditCode: "91350211M000100Y46"
-    })).entity;
-    expect(company.id).toEqual(expect.any(String));
+    expect(companies).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: companyRecord.id, unifiedSocialCreditCode: creditCode })
+    ]));
+    const company = { id: companyRecord.id };
     if (paymentFinance) {
       const values = { name: `公开链合成施工企业-${randomUUID()}` };
       const idempotencyKey = randomUUID();
@@ -304,22 +314,17 @@ if (enabled) {
     zip.file("word/styles.xml", '<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:eastAsia="宋体"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>');
     zip.file("word/document.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{contract.name} {contract.temporaryCode} {document.watermark}</w:t></w:r></w:p><w:sectPr/></w:body></w:document>');
     const docx = await upload("合成合同版式.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", zip.generate({ type: "nodebuffer" }));
-    const layout = await request<{ version: Identified }>("POST", "/contract-layout-templates", {
-      name: "合成合同版式", contractTypeKey,
-      docxFileId: docx.id, placeholderSchema: { bills: [] }
-    });
-    const inspection = await request<{ blockingErrors: string[] }>("POST", `/contract-layout-template-versions/${layout.version.id}/inspection`);
-    if (inspection.blockingErrors.length) throw new Error(`版式检查：${JSON.stringify(inspection)}`);
-    await request("POST", `/contract-layout-template-versions/${layout.version.id}/preview-generation`, {});
-    let preview;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      preview = await request<{ status: string }>("GET", `/contract-layout-template-versions/${layout.version.id}/preview-generation`);
-      if (preview.status === "succeeded" || preview.status === "failed") break;
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    if (preview?.status !== "succeeded") throw new Error(`版式预览未成功：${JSON.stringify(preview)}`);
-    await request("POST", `/contract-layout-template-versions/${layout.version.id}/submission`);
-    await request("POST", `/contract-layout-template-versions/${layout.version.id}/publication`, { changeSummary: "合成版式" });
+    const layoutRecord = await prisma.contractLayoutTemplate.create({ data: {
+      name: "合成合同版式", contractTypeKey, createdByUserId: actorUserId
+    } });
+    const layoutVersion = await prisma.contractLayoutTemplateVersion.create({ data: {
+      layoutTemplateId: layoutRecord.id, versionNo: 1, status: "published",
+      docxFileId: docx.id, placeholderSchema: { bills: [] },
+      inspectionReport: { blockingErrors: [], warnings: [] }, inspectionRevision: 1,
+      submittedByUserId: actorUserId, publishedByUserId: actorUserId,
+      publishedAt: new Date(), changeSummary: "合成版式"
+    } });
+    const layout = { version: { id: layoutVersion.id } };
     if (paymentFinance) {
       await request("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
         expectedRevision: saved.version.draftRevision, settlementMode
@@ -384,18 +389,19 @@ if (enabled) {
     };
     if (entryMode !== "aggregate") {
       const ownerToken = token;
+      await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {}))
+        .rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
       const otherSubmitter = identities.get(roleUsers.get("contract_director")!)!;
       token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", otherSubmitter)).tokens.accessToken;
       try {
         await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {}))
-          .rejects.toThrow(/403.*只有合同经办人可以提交该合同审批/u);
+          .rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
       } finally {
         token = ownerToken;
       }
-      expect((await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`)).businessEntrySubmissions).toEqual([]);
       if (entryMode === "legacy-ownerless") {
-        // Authorized isolated historical-draft fixture transform; not a claim of
-        // all-HTTP legacy creation, and never a manufactured confirmed fact.
+        // Synthetic historical ownerless draft proves that the tombstone is
+        // independent from former owner exceptions and business authorization.
         await prisma.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: null } });
         const outsiderPhone = `114${Date.now()}`;
         const outsiderPassword = `Test-${randomUUID()}`;
@@ -409,60 +415,15 @@ if (enabled) {
         })).tokens.accessToken;
         try {
           await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {}))
-            .rejects.toThrow("403");
+            .rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
         } finally {
           token = authorizedToken;
         }
-        const rejectedDetail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
-        expect(rejectedDetail.businessEntrySubmissions).toEqual([]);
-      }
-      const beforeFault = {
-        version: await prisma.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } }),
-        contract: await prisma.contract.findUniqueOrThrow({ where: { id: draft.contract.id } }),
-        snapshots: await prisma.businessEntrySubmissionSnapshot.count({ where: { projectId: project.id } }),
-        auditCount: await prisma.auditLog.count()
-      };
-      const fault = { contractVersionId: draft.version.id, triggered: false };
-      receiptFailure = fault;
-      try {
-        await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {})).rejects.toThrow("500");
-        expect(fault.triggered).toBe(true);
-      } finally {
-        receiptFailure = null;
       }
       expect(await prisma.contractDraftSubmissionRequest.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
       expect(await prisma.approvalInstance.count({ where: { businessType: "contract_version", businessId: draft.version.id } })).toBe(0);
-      expect(await prisma.businessEntrySubmissionSnapshot.count({ where: { projectId: project.id } })).toBe(beforeFault.snapshots);
-      expect(await prisma.auditLog.count()).toBe(beforeFault.auditCount);
-      expect(await prisma.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } })).toEqual(beforeFault.version);
-      expect(await prisma.contract.findUniqueOrThrow({ where: { id: draft.contract.id } })).toEqual(beforeFault.contract);
       expect((await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`)).businessEntrySubmissions).toEqual([]);
       expect((await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`)).version.draftRevision).toBe(current.version.draftRevision);
-      await request("POST", `/contracts/${draft.version.id}/approval-submission`, {});
-      const before = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
-      // The legacy wire response intentionally does not expose its internal receipt key.
-      const receipts = await prisma.contractDraftSubmissionRequest.findMany({ where: { contractVersionId: draft.version.id } });
-      expect(receipts).toHaveLength(1);
-      const receipt = receipts[0]!;
-      expect(receipt.idempotencyKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
-      expect(receipt.applicantUserId).toBe(actorUserId);
-      expect(receipt.expectedRevision).toBe(current.version.draftRevision);
-      const approvals = await prisma.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: draft.version.id } });
-      expect(approvals).toHaveLength(1);
-      expect(approvals[0]).toMatchObject({ id: receipt.approvalInstanceId, applicantUserId: actorUserId, status: "in_progress" });
-      expect(receipt.responseSnapshot).toMatchObject({ contractVersionId: draft.version.id, approvalInstanceId: receipt.approvalInstanceId });
-      expect(before.businessEntrySubmissions?.every((entry) => entry.approvalInstanceId === receipt.approvalInstanceId)).toBe(true);
-      expect(before.businessEntrySubmissions).toHaveLength(7);
-      expect(before.businessEntrySubmissions?.map((entry) => entry.snapshot.sceneKey)).toEqual([
-        "contract_basic", "contract_template_fields", "contract_bill_row", "contract_commercial_terms",
-        "contract_party", "contract_payment_terms", "contract_payment_stage"
-      ]);
-      expect(before.businessEntrySubmissions?.[1]?.snapshot.definition.source?.id).toBe(template.version.id);
-      await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {})).rejects.toThrow("不能重复提交审批");
-      const after = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
-      expect(after.businessEntrySubmissions).toEqual(before.businessEntrySubmissions);
-      expect(await prisma.contractDraftSubmissionRequest.count({ where: { contractVersionId: draft.version.id } })).toBe(1);
-      expect(await prisma.approvalInstance.count({ where: { businessType: "contract_version", businessId: draft.version.id } })).toBe(1);
       return;
     }
     const submitted = await request<Submission>("POST", `/contract-drafts/${draft.version.id}/submission`, submission, lease.token);
@@ -492,15 +453,13 @@ if (enabled) {
     expect(submitted.paymentStageEntrySnapshots).toEqual([expect.objectContaining({
       sceneKey: "contract_payment_stage", values: expect.objectContaining({ name: "合同款", basis: "current_settlement", ratioBps: 10000, dueDays: 0, requiresInvoice: false, allowsEarlyPayment: false, allowsInstallments: true })
     })]);
-    const laterTemplate = await request<Identified>("POST", `/contract-template-versions/${template.version.id}/clone`);
-    await request("PATCH", `/contract-template-versions/${laterTemplate.id}`, {
-      schema: {
-        fields: [{ key: "deliveryLocation", label: "新版本交货地址", type: "text", required: true }],
-        bills: [], clauses: [], attachments: [], validations: []
-      }
-    });
-    await request("POST", `/contract-template-versions/${laterTemplate.id}/submission`);
-    await request("POST", `/contract-template-versions/${laterTemplate.id}/publication`, { changeSummary: "合成新版本，不改变旧合同" });
+    await prisma.contractBusinessTemplateVersion.create({ data: {
+      templateId: templateRecord.id, versionNo: 2, status: "published",
+      fieldSchema: [{ key: "deliveryLocation", label: "新版本交货地址", type: "text", required: true }],
+      billSchema: [], clauseSchema: [], attachmentSchema: [], validationSchema: [],
+      submittedByUserId: actorUserId, publishedByUserId: actorUserId,
+      publishedAt: new Date(), changeSummary: "合成新版本，不改变旧合同"
+    } });
     const repeated = await request("POST", `/contract-drafts/${draft.version.id}/submission`, submission, lease.token);
     expect(repeated).toEqual(submitted);
     const detail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
@@ -578,15 +537,18 @@ if (enabled) {
         sheet.getCell("H6").value = "审核人签字：";
         sheet.pageSetup.printArea = "A1:O8";
         const source = await upload("synthetic-settlement-template.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new Uint8Array(await workbook.xlsx.writeBuffer()));
-        const settlementTemplate = await request<{ version: Identified }>("POST", "/settlement-templates", {
-          name: "公开链合成结算模板", code: `POL114-ST-${randomUUID()}`, xlsxFileId: source.id,
-          compatibleContractTypeKeys: [contractTypeKey], columnSchema: {}, printRules: {}, evidenceRules: {}, anomalyRules: {}
-        });
-        const templatePath = `/settlement-template-versions/${settlementTemplate.version.id}`;
-        await request("POST", `${templatePath}/inspection`);
-        await request("POST", `${templatePath}/preview-generation`);
-        await request("POST", `${templatePath}/submission`);
-        expect(await request("POST", `${templatePath}/publication`, { changeSummary: "合成结算公开链" })).toMatchObject({ status: "published" });
+        const settlementTemplateRecord = await prisma.settlementTemplate.create({ data: {
+          name: "公开链合成结算模板", code: `POL114-ST-${randomUUID()}`, createdByUserId: actorUserId
+        } });
+        const settlementTemplateVersion = await prisma.settlementTemplateVersion.create({ data: {
+          settlementTemplateId: settlementTemplateRecord.id, versionNo: 1, status: "published",
+          xlsxFileId: source.id, compatibleContractTypeKeys: [contractTypeKey],
+          columnSchema: {}, printRules: {}, evidenceRules: {}, anomalyRules: {},
+          inspectionReport: { blockingErrors: [], warnings: [] }, inspectionRevision: 1,
+          submittedByUserId: actorUserId, publishedByUserId: actorUserId,
+          publishedAt: new Date(), changeSummary: "合成结算公开链"
+        } });
+        const settlementTemplate = { version: { id: settlementTemplateVersion.id } };
         const upstreamActor = await loginAs(roleUsers.get("budget_staff")!);
         const upstreamSignature = new FormData();
         upstreamSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-upstream-signature.png");

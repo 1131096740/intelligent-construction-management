@@ -12,6 +12,7 @@ import { JwtTokenService } from "./jwt-token.service";
 import { ProjectVisibilityService } from "./project-visibility.service";
 import { CompanyRoleResolverService } from "./company-role-resolver.service";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
 
 @Module({
   imports: [AuditModule, SpotProcurementAccessModule],
@@ -23,6 +24,7 @@ import { OperationalWriteFreezeService } from "../operational-write-freeze/opera
     OperationalWriteFreezeService,
     ProjectVisibilityService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RetiredWriteEntryGuard },
     { provide: APP_GUARD, useClass: OperationalWriteFreezeGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_GUARD, useClass: ContractCutoverGuard }
