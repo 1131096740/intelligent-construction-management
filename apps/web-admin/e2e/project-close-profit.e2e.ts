@@ -157,10 +157,13 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
       await grid.setCellsFocus({ x: 1, y: rowIndex }, { x: 1, y: rowIndex });
     }, index);
     await page.keyboard.press("Enter");
-    await page.keyboard.insertText(index === 0
+    const editor = distributionGrid.locator("input");
+    await expect(editor).toHaveCount(1);
+    await editor.fill(index === 0
       ? centsToYuan(decision.currentProfitConfirmation.finalProfitCents)
       : "0.00");
-    await page.keyboard.press("Enter");
+    await editor.press("Enter");
+    await expect(editor).toHaveCount(0);
   }
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作公司分配");
