@@ -237,8 +237,8 @@ async function insertFixture(prisma, storageRoot) {
   );
   await prisma.$executeRawUnsafe(
     `INSERT INTO "BusinessParty" (
-       "id", "name", "status", "createdByUserId", "updatedAt"
-     ) VALUES ($1, $2, 'active', $3, NOW())`,
+       "id", "name", "normalizedName", "status", "createdByUserId", "updatedAt"
+     ) VALUES ($1, $2, $2, 'active', $3, NOW())`,
     AFFILIATE_PARTY_ID,
     AFFILIATE_NAME,
     ACTOR_ID
@@ -401,7 +401,7 @@ async function verifyBusinessZeroing(
   prisma,
   temporaryRoot,
   codeIdentity,
-  { trustedRunner = false, createVerifiedBackupRestore } = {}
+  { trustedRunner = false, createVerifiedBackupRestore, preflightOnly = false } = {}
 ) {
   assert.equal(trustedRunner, true, "POL-22 动态验证器只能由已清洗的隔离 runner 调用");
   assert.match(codeIdentity?.codeSha ?? "", /^[0-9a-f]{40}$/u);
@@ -655,11 +655,28 @@ async function verifyBusinessZeroing(
     )
   );
   const report = await buildReport(prisma);
-  assert.equal(report.status, "ready", JSON.stringify(report.blockers));
-  assert.deepEqual(
-    report.deletionCandidates.map((item) => item.table).sort(),
-    ["Contract", "ContractDraftAttachment", "ContractVersion", "FileObject"]
-  );
+  const expectedReadOnlyGuardTriggers = [
+    "PaymentExecutionPayerAttestation_evidence_immutable",
+    "VerifiedBankTransactionObservation_evidence_immutable"
+  ];
+  if (preflightOnly) {
+    assert.equal(report.status, "blocked");
+    assert.deepEqual(report.deletionCandidates, []);
+    assert.deepEqual(
+      report.blockers.map((item) => item.code),
+      ["DELETE_GUARD_TRIGGER", "DELETE_GUARD_TRIGGER"]
+    );
+    assert.deepEqual(
+      report.blockers.map((item) => item.details?.trigger).sort(),
+      expectedReadOnlyGuardTriggers
+    );
+  } else {
+    assert.equal(report.status, "ready", JSON.stringify(report.blockers));
+    assert.deepEqual(
+      report.deletionCandidates.map((item) => item.table).sort(),
+      ["Contract", "ContractDraftAttachment", "ContractVersion", "FileObject"]
+    );
+  }
   assert.equal(report.summary.migrationHistoryDeletionCandidates, 0);
   assert.equal(report.summary.databaseDeletionCandidates, 0);
 
@@ -789,6 +806,51 @@ async function verifyBusinessZeroing(
       )
     }
   };
+
+  if (preflightOnly) {
+    assert.deepEqual(await counts(prisma), beforeCounts);
+    return {
+      mode: "read_only_preflight",
+      status: "passed",
+      executed: false,
+      zeroingReadiness: "blocked",
+      dryRunEligible: false,
+      environment: ENVIRONMENT,
+      databaseFingerprint: report.databaseFingerprint,
+      codeSha: codeIdentity.codeSha,
+      executionCodeSha256: codeIdentity.executionCodeSha256,
+      migrationHead: report.migrationHead,
+      migrationCount: beforeCounts.migrations,
+      reportSha256: report.reportSha256,
+      candidateSha256: report.candidateSha256,
+      deletionCandidateCount: 0,
+      blockerCount: report.blockers.length,
+      blockers: report.blockers.map((item) => ({
+        code: item.code,
+        table: item.details?.table,
+        trigger: item.details?.trigger,
+        enabledState: item.details?.enabledState
+      })),
+      dryRunSteps: 0,
+      formalRecordProtection,
+      unknownOwnershipBlockers,
+      mixedOwnershipBlockers,
+      backupRestore: {
+        database: {
+          status: backup.databaseBackup.restoreStatus,
+          format: backup.databaseBackup.format,
+          restoreEvidence: backup.databaseBackup.restoreEvidence
+        },
+        privateFiles: {
+          status: backup.privateFileBackup.restoreStatus,
+          sourceObjects: backup.privateFileBackup.sourceObjects,
+          restoreEvidence: backup.privateFileBackup.restoreEvidence
+        },
+        artifactsVerified: true
+      },
+      productionAccessed: false
+    };
+  }
 
   const dryRun = await createDryRunReceipt({ report, currentReport: await buildReport(prisma) });
   assert.equal(dryRun.executed, false);

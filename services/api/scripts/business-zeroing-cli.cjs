@@ -158,13 +158,20 @@ async function dispatchTrustedLauncher(argv) {
     execute: "execute-test-business-zeroing.cjs",
     verify: "verify-test-business-zeroing.cjs",
     sign: "sign-business-zeroing-input.cjs",
-    dynamic: "../prisma/run-business-zeroing-local.cjs"
+    dynamic: "../prisma/run-business-zeroing-local.cjs",
+    "preflight-dynamic": "../prisma/run-business-zeroing-local.cjs"
   };
   const relativeEntrypoint = entrypoints[commandName];
   invariant(relativeEntrypoint, `归零工具启动器不支持命令：${commandName ?? ""}`);
   const entrypoint = resolve(__dirname, relativeEntrypoint);
   const command = require(entrypoint);
-  return runTrustedCommand(command, { entrypoint, argv: commandArguments });
+  return runTrustedCommand(command, {
+    entrypoint,
+    argv:
+      commandName === "preflight-dynamic"
+        ? ["--preflight-only", ...commandArguments]
+        : commandArguments
+  });
 }
 
 function parseOptions(argv, definition) {
