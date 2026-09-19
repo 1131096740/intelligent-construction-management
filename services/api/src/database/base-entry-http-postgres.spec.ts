@@ -93,13 +93,26 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
 
   async function participatingCompany() {
     if (participatingCompanyId) return participatingCompanyId;
+    const prisma = app.get(PrismaService);
+    const suffix = randomUUID().replaceAll("-", "");
+    // Synthetic master-data bootstrap only: the retired company write route stays unavailable.
+    const company = await prisma.companyEntity.create({ data: {
+      name: "参与主体合成验收公司",
+      unifiedSocialCreditCode: `POL113${suffix.slice(0, 12)}`,
+      dataStatus: "complete", currentVersionNo: 1, isActive: true
+    } });
+    await prisma.companyEntityVersion.create({ data: {
+      companyEntityId: company.id, versionNo: 1, name: company.name,
+      unifiedSocialCreditCode: company.unifiedSocialCreditCode,
+      isActive: true, action: "test_master", actorUserId: userId
+    } });
     const contract = await actor("contract_staff");
     const activeCompanies = await request("/company-entities", "GET", undefined, contract);
     expect(activeCompanies.status).toBe(200);
     expect(activeCompanies.body).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: expect.any(String) })
+      expect.objectContaining({ id: company.id, name: company.name })
     ]));
-    participatingCompanyId = activeCompanies.body[0].id;
+    participatingCompanyId = company.id;
     return participatingCompanyId;
   }
 
