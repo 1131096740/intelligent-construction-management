@@ -4446,6 +4446,35 @@
       ]
     },
     {
+      "id": "project.upstream-fund.validate",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "validateProjectUpstreamFundDraftWithDefinition" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "fresh actor",
+            "company": "fresh company",
+            "scene": "fresh scene",
+            "action": "fresh action",
+            "definitionRevision": "fresh definition revision"
+          },
+          "submissionTarget": "independent"
+        }
+      },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/business-entry.api.ts", "name": "validateBusinessEntryDraft" }
+      ]
+    },
+    {
       "id": "project.upstream-fund.confirm",
       "usage": "background",
       "routePaths": ["/项目经营"],

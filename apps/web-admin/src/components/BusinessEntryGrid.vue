@@ -77,6 +77,7 @@ const columns = computed<JgBusinessGridColumn[]>(() => visibleFields.value.map((
     "counterparty",
     "contract",
     "settlement",
+    "invoice",
     "single_select",
     "multi_select"
   ].includes(field.type);

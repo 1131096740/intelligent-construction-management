@@ -66,6 +66,12 @@ describe("BusinessEntrySceneAccessRegistry", () => {
               action: "project.operating_profile.manage",
               roleScope: "project"
             }
+          : definition.key === "project_upstream_fund_fact"
+            ? {
+                kind: "business_action",
+                action: "project.upstream_fund_fact.record",
+                roleScope: "project"
+              }
           : OPERATING_TAKEOVER_SCENE_DEFINITIONS.some((item) => item.key === definition.key)
             ? {
               kind: "business_action",
@@ -87,6 +93,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
 
   it("registers production access only from the explicit spot, profile, takeover, and global scene families", () => {
     expect(BUSINESS_ENTRY_SCENE_ACCESS_POLICIES.map((policy) => policy.sceneKey)).toEqual([
+      "project_upstream_fund_fact",
       "project_construction_enterprise",
       "project_participating_company_add",
       "project_rename",

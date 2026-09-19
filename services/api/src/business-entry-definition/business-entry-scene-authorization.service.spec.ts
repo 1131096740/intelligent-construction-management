@@ -14,6 +14,10 @@ describe("BusinessEntrySceneAuthorizationService", () => {
     const contractTemplates = { assertCanMaintainBusinessEntry: jest.fn() };
     const layouts = { assertCanMaintainBusinessEntry: jest.fn() };
     const settlementTemplates = { assertCanMaintainBusinessEntry: jest.fn() };
+    const projects = {
+      assertCanRenameBusinessEntry: jest.fn(),
+      assertCanRecordUpstreamFundBusinessEntry: jest.fn()
+    };
     return {
       service: new BusinessEntrySceneAuthorizationService(
         organization as never,
@@ -27,7 +31,7 @@ describe("BusinessEntrySceneAuthorizationService", () => {
           assertCanMaintainBusinessEntry: jest.fn(),
           assertCanDeactivateBusinessEntry: jest.fn()
         } as never,
-        { assertCanRenameBusinessEntry: jest.fn() } as never,
+        projects as never,
         {} as never
       ),
       organization,
@@ -36,7 +40,8 @@ describe("BusinessEntrySceneAuthorizationService", () => {
       businessParties,
       contractTemplates,
       layouts,
-      settlementTemplates
+      settlementTemplates,
+      projects
     };
   }
 
@@ -70,6 +75,28 @@ describe("BusinessEntrySceneAuthorizationService", () => {
     expect(businessParties.assertCanMaintainBusinessEntry).toHaveBeenCalledWith("actor-1");
     expect(contractTemplates.assertCanMaintainBusinessEntry).toHaveBeenCalledWith("actor-1");
     expect(settlementTemplates.assertCanMaintainBusinessEntry).toHaveBeenCalledWith("actor-1");
+  });
+
+  it("delegates upstream-fund validation to the existing project permission boundary", async () => {
+    const { service, projects } = createService();
+    const tx = { marker: "caller-tx" } as unknown as Prisma.TransactionClient;
+
+    await service.assertAuthorized({
+      sceneKey: "project_upstream_fund_fact",
+      actorUserId: "finance-1",
+      projectId: "project-1",
+      operation: "edit",
+      scope: "project",
+      target: { entityType: "project_upstream_fund_fact", entityId: "project-1" },
+      values: { amountYuan: "10.00" },
+      tx
+    });
+
+    expect(projects.assertCanRecordUpstreamFundBusinessEntry).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1",
+      tx
+    );
   });
 
   it("does not let a self-profile command cross the authenticated actor boundary", async () => {

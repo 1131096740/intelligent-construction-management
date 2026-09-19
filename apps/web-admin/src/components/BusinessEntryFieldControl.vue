@@ -24,7 +24,8 @@ const usesSearchSelect = computed(() => [
   "company",
   "counterparty",
   "contract",
-  "settlement"
+  "settlement",
+  "invoice"
 ].includes(props.field.type));
 </script>
 

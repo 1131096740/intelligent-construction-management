@@ -94,6 +94,7 @@ import {
   ProjectUpstreamFundFactCursorCodec,
   type ProjectUpstreamFundFactCursorPosition
 } from "./project-upstream-fund-fact-cursor";
+import { ProjectUpstreamFundBusinessEntryService } from "./project-upstream-fund-business-entry.service";
 import {
   assertSettlementEffectiveAmountCoversExistingPayments,
   lockSettlementLedger
@@ -291,6 +292,15 @@ const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprova
   { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ];
+
+function missingProjectUpstreamFundBusinessEntryService(): ProjectUpstreamFundBusinessEntryService {
+  return {
+    freeze: async () => {
+      throw new InternalServerErrorException("上游资金统一录入快照服务未配置");
+    }
+  } as unknown as ProjectUpstreamFundBusinessEntryService;
+}
+
 @Injectable()
 export class ProjectService {
   private readonly upstreamFundFactCursor = new ProjectUpstreamFundFactCursorCodec();
@@ -308,7 +318,9 @@ export class ProjectService {
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService(),
     @Optional()
-    private readonly operatingProjection?: OperatingProjectionService
+    private readonly operatingProjection?: OperatingProjectionService,
+    private readonly upstreamFundBusinessEntry: ProjectUpstreamFundBusinessEntryService =
+      missingProjectUpstreamFundBusinessEntryService()
   ) {}
 
   async assertCanRenameBusinessEntry(projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
@@ -321,6 +333,23 @@ export class ProjectService {
     const roles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
     if (!roles.some((role) => role === "chairman" || role === "general_manager")) {
       throw new ForbiddenException("当前账号缺少执行该操作所需的岗位权限");
+    }
+  }
+
+  async assertCanRecordUpstreamFundBusinessEntry(
+    projectId: string,
+    actorUserId: string,
+    tx?: Prisma.TransactionClient
+  ) {
+    // Reuse the exact permission matrix and global/current-project role scope
+    // enforced by the existing upstream-fund route guard.
+    const visibility = new ProjectVisibilityService(this.prisma);
+    const scopes = tx
+      ? await visibility.effectiveRoleScopesInTransaction(tx, actorUserId, projectId)
+      : await visibility.effectiveRoleScopes(actorUserId, projectId);
+    const roles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+    if (!canPerform("project.upstream_fund_fact.record", roles)) {
+      throw new ForbiddenException("当前岗位无权登记项目上游资金事实");
     }
   }
 
@@ -1481,6 +1510,12 @@ export class ProjectService {
           }
         });
 
+        const entrySnapshot = await this.upstreamFundBusinessEntry.freeze(
+          tx,
+          actorUserId,
+          created
+        );
+
         await this.audit.record(tx, {
           actorUserId,
           action: "project.upstream_fund_fact.record",
@@ -1507,7 +1542,10 @@ export class ProjectService {
             status
           }
         });
-        return toUpstreamFundFactReadModel(created);
+        return {
+          ...toUpstreamFundFactReadModel(created),
+          entrySnapshot
+        };
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {

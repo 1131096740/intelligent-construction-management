@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 316,
+    "registeredActionCount": 317,
     "pageActionCount": 56,
-    "backgroundActionCount": 260,
+    "backgroundActionCount": 261,
     "reachableVueFileCount": 153,
     "routeRootCount": 59,
     "totalVueFileCount": 172,
     "parsedVueFileCount": 172,
-    "reachableProductionModuleCount": 273,
-    "templateEventDirectiveCount": 978,
+    "reachableProductionModuleCount": 275,
+    "templateEventDirectiveCount": 976,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 307,
-    "candidateProductionMutationConsumerCount": 307,
-    "acceptedProductionMutationConsumerCount": 307,
-    "productionMutationConsumerPairCount": 307,
+    "coveredProductionMutationConsumerCount": 308,
+    "candidateProductionMutationConsumerCount": 308,
+    "acceptedProductionMutationConsumerCount": 308,
+    "productionMutationConsumerPairCount": 308,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 300,
-    "reachableProductionModuleCount": 273,
+    "totalProductionModuleCount": 302,
+    "reachableProductionModuleCount": 275,
     "totalVueFileCount": 172,
     "parsedVueFileCount": 172
   },
@@ -529,7 +529,7 @@
         "event": "call",
         "handler": "createClearingCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 426,
+        "sourceLine": 515,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -594,7 +594,7 @@
         "event": "call",
         "handler": "attestClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 473,
+        "sourceLine": 562,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -659,7 +659,7 @@
         "event": "call",
         "handler": "confirmClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 463,
+        "sourceLine": 552,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -724,7 +724,7 @@
         "event": "call",
         "handler": "createClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 433,
+        "sourceLine": 522,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -789,7 +789,7 @@
         "event": "call",
         "handler": "reopenClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 493,
+        "sourceLine": 582,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -854,7 +854,7 @@
         "event": "call",
         "handler": "returnClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 483,
+        "sourceLine": 572,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -919,7 +919,7 @@
         "event": "call",
         "handler": "reviseClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 443,
+        "sourceLine": 532,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -984,7 +984,7 @@
         "event": "call",
         "handler": "submitClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 453,
+        "sourceLine": 542,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9922,7 +9922,7 @@
         "event": "call",
         "handler": "activateOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 848,
+        "sourceLine": 826,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9987,7 +9987,7 @@
         "event": "call",
         "handler": "addOperatingTakeoverAttachmentGroupWithCapability",
         "kind": "background_call",
-        "sourceLine": 884,
+        "sourceLine": 862,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10052,7 +10052,7 @@
         "event": "call",
         "handler": "confirmOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 835,
+        "sourceLine": 813,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10117,7 +10117,7 @@
         "event": "call",
         "handler": "createOperatingTakeoverBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 823,
+        "sourceLine": 801,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10182,7 +10182,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 798,
+        "sourceLine": 776,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10247,7 +10247,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverXlsxWithCapability",
         "kind": "background_call",
-        "sourceLine": 810,
+        "sourceLine": 788,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10312,7 +10312,7 @@
         "event": "call",
         "handler": "updateOperatingTakeoverRowWithCapability",
         "kind": "background_call",
-        "sourceLine": 870,
+        "sourceLine": 848,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10377,7 +10377,7 @@
         "event": "call",
         "handler": "uploadOperatingTakeoverFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 861,
+        "sourceLine": 839,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11858,7 +11858,7 @@
         "event": "call",
         "handler": "confirmProjectProfitDistributionWithCapability",
         "kind": "background_call",
-        "sourceLine": 569,
+        "sourceLine": 613,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11935,7 +11935,7 @@
         "event": "call",
         "handler": "submitProjectProfitDistributionWithCapability",
         "kind": "background_call",
-        "sourceLine": 547,
+        "sourceLine": 591,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12012,7 +12012,7 @@
         "event": "call",
         "handler": "attestProjectDownstreamContractCostWithCapability",
         "kind": "background_call",
-        "sourceLine": 517,
+        "sourceLine": 561,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12089,7 +12089,7 @@
         "event": "call",
         "handler": "attestProjectDownstreamFinanceCostWithCapability",
         "kind": "background_call",
-        "sourceLine": 524,
+        "sourceLine": 568,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12166,7 +12166,7 @@
         "event": "call",
         "handler": "confirmProjectFinalProfitWithCapability",
         "kind": "background_call",
-        "sourceLine": 531,
+        "sourceLine": 575,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12243,7 +12243,7 @@
         "event": "call",
         "handler": "submitProjectFinalProfitWithCapability",
         "kind": "background_call",
-        "sourceLine": 540,
+        "sourceLine": 584,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12320,7 +12320,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 1642,
+        "sourceLine": 1604,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -12396,7 +12396,7 @@
         "event": "call",
         "handler": "completeProjectCloseStageWithCapability",
         "kind": "background_call",
-        "sourceLine": 510,
+        "sourceLine": 554,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12473,7 +12473,7 @@
         "event": "call",
         "handler": "persistTemporaryProfitWithCapability",
         "kind": "background_call",
-        "sourceLine": 492,
+        "sourceLine": 536,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12618,7 +12618,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2597,
+        "sourceLine": 2626,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12683,7 +12683,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2558,
+        "sourceLine": 2587,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12748,7 +12748,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2017,
+        "sourceLine": 1998,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12813,7 +12813,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2001,
+        "sourceLine": 1982,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13116,7 +13116,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2517,
+        "sourceLine": 2546,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14993,7 +14993,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 912,
+        "sourceLine": 828,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -15746,7 +15746,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1555,
+        "sourceLine": 1517,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15892,7 +15892,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1564,
+        "sourceLine": 1526,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15960,7 +15960,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2296,
+        "sourceLine": 2325,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16025,7 +16025,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2235,
+        "sourceLine": 2264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16090,7 +16090,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2219,
+        "sourceLine": 2212,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16134,6 +16134,88 @@
             "localCallChain": [
               "recordProjectUpstreamFundFactWithCapability",
               "recordProjectUpstreamFundFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.validate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "validateProjectUpstreamFundDraftWithDefinition",
+        "kind": "background_call",
+        "sourceLine": 2228,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_definition",
+        "source": "definition.key",
+        "freshRead": {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "name": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "mode": "read_only_probe",
+          "binding": {
+            "actor": "fresh actor",
+            "company": "fresh company",
+            "scene": "fresh scene",
+            "action": "fresh action",
+            "definitionRevision": "fresh definition revision"
+          },
+          "submissionTarget": "independent"
+        },
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/validate",
+          "normalizedKey": "POST /business-entry-definitions/:param/validate",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/business-entry-definitions/:sceneKey/validate",
+            "normalizedKey": "POST /business-entry-definitions/:param/validate",
+            "controller": "BusinessEntryDefinitionController",
+            "handler": "validateDraft",
+            "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "validateProjectUpstreamFundDraftWithDefinition",
+              "validateBusinessEntryDraft"
             ]
           },
           "ticketFollowups": []

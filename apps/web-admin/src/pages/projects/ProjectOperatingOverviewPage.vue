@@ -352,99 +352,19 @@
               class="receipt-form"
               @submit.prevent="submitReceipt"
             >
-              <label>
-                <span>事实类型</span>
-                <select v-model="receiptForm.factType">
-                  <option value="owner_payment_to_affiliate">业主向施工企业付款</option>
-                  <option value="affiliate_remittance_to_company">施工企业向我方拨款</option>
-                  <option value="affiliate_deduction">施工企业扣款</option>
-                  <option value="unreconciled_receipt_difference">待核对到账差额</option>
-                </select>
-              </label>
-              <label>
-                <span>依据类型</span>
-                <select v-model="receiptForm.basisType">
-                  <option value="written">书面依据</option>
-                  <option value="oral">口头通知</option>
-                </select>
-              </label>
-              <label>
-                <span>发生日期</span>
-                <input
-                  v-model="receiptForm.occurredAt"
-                  type="date"
-                  required
-                >
-              </label>
-              <label>
-                <span>金额(元)</span>
-                <input
-                  v-model.trim="receiptForm.amountYuan"
-                  inputmode="decimal"
-                  placeholder="0.00"
-                  required
-                >
-              </label>
-              <label>
-                <span>交易对方</span>
-                <input
-                  v-model.trim="receiptForm.counterpartyName"
-                  required
-                >
-              </label>
-              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>拨款我方公司</span>
-                <t-select
-                  v-model="receiptForm.companyEntityId"
-                  :options="participatingCompanySelectOptions"
-                  placeholder="请选择我方参与公司"
-                  @change="handleRemittanceCompanyChange"
-                />
-              </label>
-              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>施工企业—我方合同</span>
-                <t-select
-                  v-model="receiptForm.affiliateCompanyContractId"
-                  :options="affiliateCompanyContractSelectOptions"
-                  placeholder="请选择已确认合同"
-                  @change="handleAffiliateCompanyContractChange"
-                />
-              </label>
-              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>施工企业—我方结算</span>
-                <t-select
-                  v-model="receiptForm.affiliateSettlementFactId"
-                  :options="affiliateSettlementSelectOptions"
-                  placeholder="请选择已确认结算"
-                />
-              </label>
-              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>我方开具发票</span>
-                <t-select
-                  v-model="receiptForm.invoiceRecordId"
-                  :options="invoiceRecordSelectOptions"
-                  placeholder="请选择有效发票"
-                />
-              </label>
-              <label v-if="receiptForm.factType === 'owner_payment_to_affiliate'">
-                <span>对应业主结算（选填）</span>
-                <t-select
-                  v-model="receiptForm.upstreamSettlementId"
-                  :options="upstreamSettlementSelectOptions"
-                  placeholder="请选择已确认业主结算"
-                  clearable
-                />
-              </label>
-              <label v-if="receiptForm.factType === 'affiliate_deduction'">
-                <span>扣款类型</span>
-                <select v-model="receiptForm.deductionCategory">
-                  <option value="management_fee">管理费</option>
-                  <option value="tax">税费</option>
-                  <option value="deposit">保证金</option>
-                  <option value="insurance">保险费</option>
-                  <option value="other">其他</option>
-                </select>
-              </label>
+              <BusinessEntryForm
+                v-if="receiptEntryDefinition"
+                v-model="receiptEntryPayload"
+                :definition="receiptEntryDefinition"
+                :errors="receiptEntryErrors"
+                :options-by-field="receiptEntryOptionsByField"
+              />
+              <t-alert
+                v-else
+                theme="error"
+                title="施工企业资金事实字段读取失败"
+                :message="receiptEntryDefinitionError || '请刷新后重试'"
+              />
               <label>
                 <span>{{ receiptForm.basisType === "written" ? "书面依据" : "补充文件（选填）" }}</span>
                 <input
@@ -454,10 +374,6 @@
                   :required="receiptForm.basisType === 'written'"
                   @change="selectReceiptVoucher"
                 >
-              </label>
-              <label class="receipt-description">
-                <span>事实说明</span>
-                <input v-model.trim="receiptForm.description">
               </label>
             </form>
             <t-alert
@@ -977,7 +893,9 @@ import {
   type OperatingProjectionExportKind
 } from "../../api/core-flow-read.api";
 import { OPERATING_PROJECTION_ROW_STATUSES, OPERATING_PROJECTION_ROW_STATUS_LABELS,
+  type BusinessEntryDraftPayload, type BusinessEntrySceneDefinition,
   type OperatingProjectionRowStatus, type DraftLedgerView, type RoleKey } from "@jiangkong/shared-domain";
+import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../api/business-entry.api";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -997,6 +915,7 @@ import {
 } from "../../api/project-close-profit.api";
 import { useAuthStore } from "../../auth/auth.store";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
@@ -1109,6 +1028,9 @@ const receiptSubmitting = ref(false);
 const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
+const receiptEntryDefinition = ref<BusinessEntrySceneDefinition | null>(null);
+const receiptEntryDefinitionError = ref("");
+const receiptEntryErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const participatingCompanyOptions = ref<ProjectParticipatingCompanyOption[]>([]);
 const participatingCompanyError = ref("");
 const upstreamFundReferenceOptions = ref<ProjectUpstreamFundReferenceOptionsReadModel | null>(null);
@@ -1259,6 +1181,46 @@ const upstreamSettlementSelectOptions = computed(() =>
     })
   )
 );
+
+const receiptEntryOptionsByField = computed(() => ({
+  companyEntityId: participatingCompanySelectOptions.value,
+  affiliateCompanyContractId: affiliateCompanyContractSelectOptions.value,
+  affiliateSettlementFactId: affiliateSettlementSelectOptions.value,
+  invoiceRecordId: invoiceRecordSelectOptions.value,
+  upstreamSettlementId: upstreamSettlementSelectOptions.value
+}));
+
+const receiptEntryPayload = computed<BusinessEntryDraftPayload>({
+  get: () => ({
+    sceneKey: "project_upstream_fund_fact",
+    definitionVersion: receiptEntryDefinition.value?.version,
+    target: {
+      entityType: "project_upstream_fund_fact",
+      entityId: selectedProjectId.value
+    },
+    values: Object.fromEntries(
+      Object.entries(receiptForm.value).filter(([key]) => key !== "voucherFile")
+    )
+  }),
+  set: (payload) => {
+    const values = payload.values;
+    const previousCompany = receiptForm.value.companyEntityId;
+    const previousContract = receiptForm.value.affiliateCompanyContractId;
+    for (const key of Object.keys(receiptForm.value) as Array<keyof ReceiptFormState>) {
+      if (key === "voucherFile" || !(key in values)) continue;
+      const value = values[key];
+      if (typeof value === "string") {
+        (receiptForm.value[key] as string) = value;
+      }
+    }
+    if (receiptForm.value.companyEntityId !== previousCompany) {
+      handleRemittanceCompanyChange();
+    } else if (receiptForm.value.affiliateCompanyContractId !== previousContract) {
+      handleAffiliateCompanyContractChange();
+    }
+    receiptEntryErrors.value = [];
+  }
+});
 
 const projectBusinessEntries = computed(() =>
   buildProjectBusinessEntries(overview.value?.project.name ?? selectedProjectName.value, {
@@ -1758,6 +1720,9 @@ async function loadOverview() {
   closeProfitLoading.value = true;
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
+  receiptEntryDefinition.value = null;
+  receiptEntryDefinitionError.value = "";
+  receiptEntryErrors.value = [];
   participatingCompanyError.value = "";
   upstreamFundFactsError.value = "";
   upstreamFundReferenceOptionsError.value = "";
@@ -1812,7 +1777,20 @@ async function loadOverview() {
               options: null,
               error: formatUnknownApiError(error, "读取上游资金业务关联选项失败")
             }))
-        : Promise.resolve({ options: null, error: "" })
+        : Promise.resolve({ options: null, error: "" }),
+      canRecordUpstreamFunds.value
+        ? fetchBusinessEntryDefinition(
+            "project_upstream_fund_fact",
+            { scope: "project", projectId },
+            { entityType: "project_upstream_fund_fact", entityId: projectId },
+            "edit"
+          )
+            .then((definition) => ({ definition, error: "" }))
+            .catch((error: unknown) => ({
+              definition: null,
+              error: formatUnknownApiError(error, "读取施工企业资金事实字段失败")
+            }))
+        : Promise.resolve({ definition: null, error: "" })
     ]);
     let nextOverview: ProjectOperatingOverviewReadModel | null = null;
     if (canReadProjectOverview.value) {
@@ -1824,7 +1802,8 @@ async function loadOverview() {
       spotCapability,
       nextFinancingQuota,
       nextParticipatingCompanies,
-      nextUpstreamFundReferenceOptions
+      nextUpstreamFundReferenceOptions,
+      nextReceiptEntryDefinition
     ] = await companionRequests;
     const nextCloseProfit = await fetchReconciledProjectCloseProfitWorkbenchWithCapability(projectId)
       .then((workbench) => ({ workbench, error: "" }))
@@ -1845,6 +1824,8 @@ async function loadOverview() {
       upstreamFundReferenceOptions.value = nextUpstreamFundReferenceOptions.options;
       upstreamFundReferenceOptionsError.value =
         nextUpstreamFundReferenceOptions.error;
+      receiptEntryDefinition.value = nextReceiptEntryDefinition.definition;
+      receiptEntryDefinitionError.value = nextReceiptEntryDefinition.error;
       normalizeReceiptReferenceSelections();
       projectExpenses.value = nextExpenses;
       financingQuotaWorkbench.value = nextFinancingQuota.workbench;
@@ -2097,6 +2078,18 @@ async function submitReceipt() {
   receiptMessage.value = "";
   try {
     const form = receiptForm.value;
+    if (!receiptEntryDefinition.value) {
+      throw new Error(receiptEntryDefinitionError.value || "施工企业资金事实字段尚未就绪");
+    }
+    const validation = await validateProjectUpstreamFundDraftWithDefinition(
+      projectId,
+      receiptEntryPayload.value,
+      receiptEntryDefinition.value.version
+    );
+    receiptEntryErrors.value = validation.errors;
+    if (!validation.valid) {
+      throw new Error("请先修正施工企业资金事实中的填写问题");
+    }
     if (form.basisType === "written" && !form.voucherFile) {
       throw new Error("书面依据的上游资金事实必须上传依据文件");
     }
@@ -2230,6 +2223,42 @@ async function recordProjectUpstreamFundFactWithCapability(
   );
   if (!operationAllowed) throw new Error("当前用户不能登记该项目上游资金事实");
   return recordProjectUpstreamFundFact(projectId, body);
+}
+
+async function validateProjectUpstreamFundDraftWithDefinition(
+  projectId: string,
+  payload: BusinessEntryDraftPayload,
+  expectedRevision: number
+) {
+  const definition = await readFreshProjectUpstreamFundDefinition(projectId);
+  assertFreshProjectUpstreamFundDefinition(definition, expectedRevision);
+  return validateBusinessEntryDraft(
+    { scope: "project", projectId },
+    { ...payload, definitionVersion: definition.version },
+    "edit"
+  );
+}
+
+async function readFreshProjectUpstreamFundDefinition(projectId: string) {
+  return fetchBusinessEntryDefinition(
+    "project_upstream_fund_fact",
+    { scope: "project", projectId },
+    { entityType: "project_upstream_fund_fact", entityId: projectId },
+    "edit"
+  );
+}
+
+function assertFreshProjectUpstreamFundDefinition(
+  candidate: BusinessEntrySceneDefinition & { entityId?: string; revision?: number },
+  expectedRevision: number
+) {
+  if (
+    candidate.key !== "project_upstream_fund_fact" ||
+    (candidate.entityId ?? candidate.entityType) !== "project_upstream_fund_fact" ||
+    (candidate.revision ?? candidate.version) !== expectedRevision
+  ) {
+    throw new Error("施工企业资金事实填写规则已变化，请刷新后重试");
+  }
 }
 
 async function uploadProjectUpstreamFundEvidenceWithCapability(

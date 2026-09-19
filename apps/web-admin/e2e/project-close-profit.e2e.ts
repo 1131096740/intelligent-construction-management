@@ -143,12 +143,27 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
     };
     return workbench;
   }, projectId);
-  const inputs = page.locator(".distribution-editor input");
-  await expect(inputs).toHaveCount(decision.participatingCompanies.length);
+  const distributionGrid = page.locator(".distribution-editor revo-grid");
+  await expect(distributionGrid).toHaveCount(1);
   for (let index = 0; index < decision.participatingCompanies.length; index += 1) {
-    await inputs.nth(index).fill(index === 0
+    await distributionGrid.evaluate(async (element, rowIndex) => {
+      const grid = element as HTMLElement & {
+        scrollToRow(index: number): Promise<void>;
+        scrollToColumnProp(prop: string): Promise<void>;
+        setCellsFocus(start: { x: number; y: number }, end: { x: number; y: number }): Promise<void>;
+      };
+      await grid.scrollToRow(rowIndex);
+      await grid.scrollToColumnProp("finalShareYuan");
+      await grid.setCellsFocus({ x: 1, y: rowIndex }, { x: 1, y: rowIndex });
+    }, index);
+    await page.keyboard.press("Enter");
+    const editor = distributionGrid.locator("input");
+    await expect(editor).toHaveCount(1);
+    await editor.fill(index === 0
       ? centsToYuan(decision.currentProfitConfirmation.finalProfitCents)
       : "0.00");
+    await editor.press("Enter");
+    await expect(editor).toHaveCount(0);
   }
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务重新制作公司分配");

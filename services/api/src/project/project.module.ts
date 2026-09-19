@@ -10,6 +10,7 @@ import { ProjectAffiliateCompanyContractService } from "./project-affiliate-comp
 import { ProjectController } from "./project.controller";
 import { ProjectService } from "./project.service";
 import { ProjectOperatingProfileService } from "./project-operating-profile.service";
+import { ProjectUpstreamFundBusinessEntryService } from "./project-upstream-fund-business-entry.service";
 
 @Module({
   imports: [
@@ -25,7 +26,8 @@ import { ProjectOperatingProfileService } from "./project-operating-profile.serv
     ProjectService,
     ProjectAffiliateBusinessService,
     ProjectAffiliateCompanyContractService,
-    ProjectOperatingProfileService
+    ProjectOperatingProfileService,
+    ProjectUpstreamFundBusinessEntryService
   ],
   exports: [ProjectOperatingProfileService, ProjectService]
 })

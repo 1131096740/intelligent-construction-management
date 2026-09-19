@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `dd889da07b46a3426485d050d3530d87fa5bec380bca1bb05f3f7ac0608d3de8` |
-| webApiWrappers | ready | `b979f8d91be02ae0f3c1347c13612263ffda3ba5548c2694edc5f4572d4b093a` |
-| webPageActions | ready | `8e760c437953b59e500be8f60cc37cfb8f19d12c450ac4aa2638a1d3bc572c65` |
-| routeUsage | ready | `738607116934b3e8182f387c70447307494d367e2e0bd09469c39fd984ded040` |
+| webApiWrappers | ready | `8dc4a99c85afe5144bcc254d20b419eb20f1ebe06778e5dcaefd8d66f6876f74` |
+| webPageActions | ready | `60211da209e982166c1448642b25093fa8da732f3acec5941dec025ce8364b6f` |
+| routeUsage | ready | `a81e3070839720c3f0473d47a04582340d42d99362fb5c786ee77a8e71a9ff4e` |
 
 ## 汇总
 
@@ -26,12 +26,12 @@
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 316 |
-| actionBindingCount | 358 |
-| acceptedActionBindingCount | 336 |
+| registeredActionCount | 317 |
+| actionBindingCount | 359 |
+| acceptedActionBindingCount | 337 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 307 |
-| coveredProductionMutationConsumerPairCount | 307 |
+| productionMutationConsumerPairCount | 308 |
+| coveredProductionMutationConsumerPairCount | 308 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -274,7 +274,7 @@
 | POST | /business-entry-definitions/:sceneKey/excel-preview | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#previewBusinessEntryExcel | — | not_applicable | — |
 | POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#freezeBusinessEntrySnapshot | business-party.create | covered | — |
 | POST | /business-entry-definitions/:sceneKey/submission-target | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#issueBusinessEntrySubmissionTarget | — | not_applicable | — |
-| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | project-operating-profile.add-participating-company<br>project-operating-profile.save<br>project-operating-profile.set-construction-enterprise<br>project.rename.validate<br>user-self-profile.update | covered | — |
+| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | project-operating-profile.add-participating-company<br>project-operating-profile.save<br>project-operating-profile.set-construction-enterprise<br>project.rename.validate<br>project.upstream-fund.validate<br>user-self-profile.update | covered | — |
 | POST | /business-entry-definitions/business-party/create/probe | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartyDefinitionProbe | business-party.create.prepare | covered | — |
 | POST | /business-entry-definitions/business-party/create/submission-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartySubmissionTarget | business-party.create.prepare | covered | — |
 | POST | /business-entry-definitions/business-party/create/validate | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessPartyDraft | business-party.create.prepare | covered | — |

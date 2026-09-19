@@ -674,6 +674,7 @@
             "normalizedKey": "GET /business-entry-definitions/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
               "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
               "apps/web-admin/src/pages/settings/SettingsPage.vue"
@@ -10020,6 +10021,7 @@
             "normalizedPath": "/business-entry-definitions/:param/validate",
             "normalizedKey": "POST /business-entry-definitions/:param/validate",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
               "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
               "apps/web-admin/src/pages/settings/SettingsPage.vue"
