@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "b979f8d91be02ae0f3c1347c13612263ffda3ba5548c2694edc5f4572d4b093a",
+      "sha256": "8dc4a99c85afe5144bcc254d20b419eb20f1ebe06778e5dcaefd8d66f6876f74",
       "status": "ready",
       "summary": {
         "apiModuleCount": 28,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "8e760c437953b59e500be8f60cc37cfb8f19d12c450ac4aa2638a1d3bc572c65",
+      "sha256": "28228ce70f8fed50913199b769c0dc004fcb40fe973502b222b9b9bb4552c22a",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 316,
+        "registeredActionCount": 317,
         "pageActionCount": 56,
-        "backgroundActionCount": 260,
+        "backgroundActionCount": 261,
         "reachableVueFileCount": 153,
         "routeRootCount": 59,
         "totalVueFileCount": 172,
         "parsedVueFileCount": 172,
-        "reachableProductionModuleCount": 273,
-        "templateEventDirectiveCount": 978,
+        "reachableProductionModuleCount": 275,
+        "templateEventDirectiveCount": 976,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 307,
-        "candidateProductionMutationConsumerCount": 307,
-        "acceptedProductionMutationConsumerCount": 307,
-        "productionMutationConsumerPairCount": 307,
+        "coveredProductionMutationConsumerCount": 308,
+        "candidateProductionMutationConsumerCount": 308,
+        "acceptedProductionMutationConsumerCount": 308,
+        "productionMutationConsumerPairCount": 308,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "738607116934b3e8182f387c70447307494d367e2e0bd09469c39fd984ded040",
+      "sha256": "a81e3070839720c3f0473d47a04582340d42d99362fb5c786ee77a8e71a9ff4e",
       "status": "ready",
       "summary": {
         "routeCount": 606,
@@ -104,12 +104,12 @@
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 316,
-    "actionBindingCount": 358,
-    "acceptedActionBindingCount": 336,
+    "registeredActionCount": 317,
+    "actionBindingCount": 359,
+    "acceptedActionBindingCount": 337,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 307,
-    "coveredProductionMutationConsumerPairCount": 307,
+    "productionMutationConsumerPairCount": 308,
+    "coveredProductionMutationConsumerPairCount": 308,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -929,6 +929,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
             "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
@@ -11844,6 +11845,7 @@
           "normalizedKey": "POST /business-entry-definitions/:param/validate",
           "bodyKind": "json",
           "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
             "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
@@ -11963,6 +11965,49 @@
             "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project.upstream-fund.validate",
+          "bindingIndex": 0,
+          "identity": "project.upstream-fund.validate\u0000apps/web-admin/src/api/business-entry.api.ts\u0000validateBusinessEntryDraft\u0000POST\u0000POST /business-entry-definitions/:param/validate\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_definition",
+            "source": "definition.key",
+            "freshRead": {
+              "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+              "name": "fetchBusinessEntryDefinition",
+              "method": "GET",
+              "mode": "read_only_probe",
+              "binding": {
+                "actor": "fresh actor",
+                "company": "fresh company",
+                "scene": "fresh scene",
+                "action": "fresh action",
+                "definitionRevision": "fresh definition revision"
+              },
+              "submissionTarget": "independent"
+            },
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
             "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
           ],
           "causalVerified": true,

@@ -160,6 +160,9 @@ describe("project operating overview structure", () => {
     expect(source).toContain('"project_upstream_fund_fact"');
     expect(source).toContain("fetchBusinessEntryDefinition(");
     expect(source).toContain("validateBusinessEntryDraft(");
+    expect(source).toContain("validateProjectUpstreamFundDraftWithDefinition(");
+    expect(source).toContain("readFreshProjectUpstreamFundDefinition(projectId)");
+    expect(source).toContain("(candidate.revision ?? candidate.version) !== expectedRevision");
     expect(source).toContain(':options-by-field="receiptEntryOptionsByField"');
     expect(source).toContain("recordProjectUpstreamFundFact");
     expect(source).toContain("confirmProjectUpstreamFundFact");

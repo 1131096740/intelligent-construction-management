@@ -2081,10 +2081,10 @@ async function submitReceipt() {
     if (!receiptEntryDefinition.value) {
       throw new Error(receiptEntryDefinitionError.value || "施工企业资金事实字段尚未就绪");
     }
-    const validation = await validateBusinessEntryDraft(
-      { scope: "project", projectId },
+    const validation = await validateProjectUpstreamFundDraftWithDefinition(
+      projectId,
       receiptEntryPayload.value,
-      "edit"
+      receiptEntryDefinition.value.version
     );
     receiptEntryErrors.value = validation.errors;
     if (!validation.valid) {
@@ -2223,6 +2223,42 @@ async function recordProjectUpstreamFundFactWithCapability(
   );
   if (!operationAllowed) throw new Error("当前用户不能登记该项目上游资金事实");
   return recordProjectUpstreamFundFact(projectId, body);
+}
+
+async function validateProjectUpstreamFundDraftWithDefinition(
+  projectId: string,
+  payload: BusinessEntryDraftPayload,
+  expectedRevision: number
+) {
+  const definition = await readFreshProjectUpstreamFundDefinition(projectId);
+  assertFreshProjectUpstreamFundDefinition(definition, expectedRevision);
+  return validateBusinessEntryDraft(
+    { scope: "project", projectId },
+    { ...payload, definitionVersion: definition.version },
+    "edit"
+  );
+}
+
+async function readFreshProjectUpstreamFundDefinition(projectId: string) {
+  return fetchBusinessEntryDefinition(
+    "project_upstream_fund_fact",
+    { scope: "project", projectId },
+    { entityType: "project_upstream_fund_fact", entityId: projectId },
+    "edit"
+  );
+}
+
+function assertFreshProjectUpstreamFundDefinition(
+  candidate: BusinessEntrySceneDefinition & { entityId?: string; revision?: number },
+  expectedRevision: number
+) {
+  if (
+    candidate.key !== "project_upstream_fund_fact" ||
+    (candidate.entityId ?? candidate.entityType) !== "project_upstream_fund_fact" ||
+    (candidate.revision ?? candidate.version) !== expectedRevision
+  ) {
+    throw new Error("施工企业资金事实填写规则已变化，请刷新后重试");
+  }
 }
 
 async function uploadProjectUpstreamFundEvidenceWithCapability(
