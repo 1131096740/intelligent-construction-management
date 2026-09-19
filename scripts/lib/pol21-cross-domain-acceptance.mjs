@@ -45,7 +45,8 @@ export function inspectPol21CrossDomainAcceptance({
   manifest,
   dynamicGateManifest,
   releaseChecks,
-  specificationSource
+  specificationSource,
+  evidenceSources = {}
 }) {
   const blockers = [];
   const mainlines = Array.isArray(manifest?.mainlines)
@@ -93,14 +94,51 @@ export function inspectPol21CrossDomainAcceptance({
     ) {
       blockers.push(`POL21_MAINLINE_STATEMENT_DRIFT:${expectedId}`);
     }
+    const aspectEvidence = manifest?.aspectEvidenceByMainline?.[expectedId];
+    const evidenceCatalog = manifest?.evidenceCatalog ?? {};
     if (
-      !Array.isArray(mainline.requiredAspects) ||
-      mainline.requiredAspects.length !== REQUIRED_ASPECTS.length ||
+      aspectEvidence === null ||
+      typeof aspectEvidence !== "object" ||
+      Array.isArray(aspectEvidence) ||
+      Object.keys(aspectEvidence).length !== REQUIRED_ASPECTS.length ||
       REQUIRED_ASPECTS.some(
-        (aspect) => !mainline.requiredAspects.includes(aspect)
+        (aspect) =>
+          !Array.isArray(aspectEvidence[aspect]) ||
+          aspectEvidence[aspect].length === 0
       )
     ) {
       blockers.push(`POL21_MAINLINE_ASPECTS_INCOMPLETE:${expectedId}`);
+    } else {
+      for (const aspect of REQUIRED_ASPECTS) {
+        for (const evidenceId of aspectEvidence[aspect]) {
+          const evidence = evidenceCatalog[evidenceId];
+          const group = knownGroups.get(evidence?.groupId);
+          const testFiles = new Set(
+            (group?.testFiles ?? []).map((testFile) => testFile.path)
+          );
+          if (
+            !Array.isArray(mainline.dynamicGroups) ||
+            !mainline.dynamicGroups.includes(evidence?.groupId) ||
+            !testFiles.has(evidence?.testFile)
+          ) {
+            blockers.push(
+              `POL21_ASPECT_TEST_NOT_IN_GROUP:${expectedId}:${aspect}:${evidence?.testFile ?? evidenceId}`
+            );
+            continue;
+          }
+          const evidenceSource = evidenceSources[evidence.testFile];
+          if (
+            typeof evidence.testName !== "string" ||
+            evidence.testName.length === 0 ||
+            typeof evidenceSource !== "string" ||
+            !evidenceSource.includes(JSON.stringify(evidence.testName))
+          ) {
+            blockers.push(
+              `POL21_ASPECT_TEST_NAME_MISSING:${expectedId}:${aspect}:${evidence?.testName ?? "missing"}`
+            );
+          }
+        }
+      }
     }
     if (!Array.isArray(mainline.dynamicGroups) || mainline.dynamicGroups.length === 0) {
       blockers.push(`POL21_MAINLINE_DYNAMIC_EVIDENCE_MISSING:${expectedId}`);

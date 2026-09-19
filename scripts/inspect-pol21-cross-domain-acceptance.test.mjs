@@ -42,23 +42,40 @@ function readyFixture() {
     "playwright-p0",
     "playwright-rc06-mock"
   ];
+  const evidenceSources = {};
+  const evidenceCatalog = {};
+  const aspectEvidenceByMainline = {};
+  const mainlines = statements.map((statement, index) => {
+    const groupId = `group_${String(index + 1).padStart(2, "0")}`;
+    const testFile = `test-${index + 1}.spec.ts`;
+    const testName = `proves mainline ${index + 1}`;
+    const evidenceId = `evidence_${String(index + 1).padStart(2, "0")}`;
+    evidenceSources[testFile] = `test(${JSON.stringify(testName)}, async () => {});`;
+    evidenceCatalog[evidenceId] = { groupId, testFile, testName };
+    const mainlineId = `POL21-MAINLINE-${String(index + 1).padStart(2, "0")}`;
+    aspectEvidenceByMainline[mainlineId] = Object.fromEntries(
+      requiredAspects.map((aspect) => [aspect, [evidenceId]])
+    );
+    return {
+      id: mainlineId,
+      statement,
+      dynamicGroups: [groupId],
+      releaseChecks: [
+        "exact-sha-postgresql-16",
+        ...([3, 5, 7, 9, 12, 13, 14].includes(index)
+          ? ["playwright-p0"]
+          : [])
+      ]
+    };
+  });
   return {
     manifest: {
       schemaVersion: 1,
       specSection: 28,
       requiredReleaseChecks: releaseChecks,
-      mainlines: statements.map((statement, index) => ({
-        id: `POL21-MAINLINE-${String(index + 1).padStart(2, "0")}`,
-        statement,
-        requiredAspects,
-        dynamicGroups: [`group_${String(index + 1).padStart(2, "0")}`],
-        releaseChecks: [
-          "exact-sha-postgresql-16",
-          ...([3, 5, 7, 9, 12, 13, 14].includes(index)
-            ? ["playwright-p0"]
-            : [])
-        ]
-      }))
+      evidenceCatalog,
+      aspectEvidenceByMainline,
+      mainlines
     },
     dynamicGateManifest: {
       inventory: { remainingFiles: 0, remainingTests: 0 },
@@ -70,7 +87,8 @@ function readyFixture() {
       }))
     },
     releaseChecks,
-    specificationSource
+    specificationSource,
+    evidenceSources
   };
 }
 
@@ -84,7 +102,8 @@ test("accepts all 15 authoritative mainlines only when each has executable Postg
 
 test("fails closed when a mainline loses a cross-domain invariant or required browser proof", () => {
   const fixture = readyFixture();
-  fixture.manifest.mainlines[0].requiredAspects = requiredAspects.slice(0, -1);
+  delete fixture.manifest.aspectEvidenceByMainline["POL21-MAINLINE-01"]
+    .external_reconciliation;
   fixture.manifest.mainlines[3].releaseChecks = ["exact-sha-postgresql-16"];
 
   const report = inspectPol21CrossDomainAcceptance(fixture);
@@ -98,6 +117,34 @@ test("fails closed when a mainline loses a cross-domain invariant or required br
   assert.ok(
     report.blockers.includes(
       "POL21_MAINLINE_BROWSER_EVIDENCE_MISSING:POL21-MAINLINE-04"
+    )
+  );
+});
+
+test("fails closed when aspect evidence is not registered in its PG16 group or its exact test name is absent", () => {
+  const fixture = readyFixture();
+  fixture.manifest.evidenceCatalog.evidence_02.testFile = "unregistered.spec.ts";
+  fixture.evidenceSources["unregistered.spec.ts"] =
+    'test("proves mainline 2", async () => {});';
+  fixture.manifest.evidenceCatalog.missing_name = {
+    ...fixture.manifest.evidenceCatalog.evidence_03,
+    testName: "missing exact test"
+  };
+  fixture.manifest.aspectEvidenceByMainline["POL21-MAINLINE-03"].authorization = [
+    "missing_name"
+  ];
+
+  const report = inspectPol21CrossDomainAcceptance(fixture);
+
+  assert.equal(report.status, "blocked");
+  assert.ok(
+    report.blockers.includes(
+      "POL21_ASPECT_TEST_NOT_IN_GROUP:POL21-MAINLINE-02:amount_integrity:unregistered.spec.ts"
+    )
+  );
+  assert.ok(
+    report.blockers.includes(
+      "POL21_ASPECT_TEST_NAME_MISSING:POL21-MAINLINE-03:authorization:missing exact test"
     )
   );
 });

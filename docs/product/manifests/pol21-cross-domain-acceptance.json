@@ -9,6 +9,200 @@
     "playwright-p0",
     "playwright-rc06-mock"
   ],
+  "evidenceCatalog": {
+    "source_replay_closed": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/database/operating-source-replay-consistency.spec.ts",
+      "testName": "keeps formal source replay, permission, status, amount, concurrency and read-only comparison closed"
+    },
+    "takeover_mapping_immutable": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/database/operating-takeover-constraints.spec.ts",
+      "testName": "enforces unique source/target bridges and preserves append-only history"
+    },
+    "historical_wage_identity": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/operating-takeover/historical-wage-takeover.pg.spec.ts",
+      "testName": "accepts legal B dual attestation, rejects identity reuse with zero writes, and creates reconciliation-only refs"
+    },
+    "clearing_public_v1": {
+      "groupId": "clearing_reconciliation_pol275",
+      "testFile": "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
+      "testName": "confirms the public V1 workflow with one typed relation set and DecisionSeal"
+    },
+    "fund_refund_cumulative": {
+      "groupId": "fund_execution_v7",
+      "testFile": "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
+      "testName": "同一原执行按 4000+6000 两次累计反向并逐轴精确切片"
+    },
+    "projection_rebuild": {
+      "groupId": "operating_projection_pol108",
+      "testFile": "services/api/src/database/operating-projection-postgresql.spec.ts",
+      "testName": "通过公开写入缝与同一只读快照重算项目四层投影、追溯事实和可分配上限"
+    },
+    "projection_drilldown": {
+      "groupId": "operating_projection_pol108",
+      "testFile": "services/api/src/database/operating-projection-postgresql.spec.ts",
+      "testName": "保持项目/项目集/公司/施工企业/往来方/成本分类/来源下钻与中文导出共用同一投影结果"
+    },
+    "fund_coordinate_drift": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/database/fund-movement-concurrency.spec.ts",
+      "testName": "rejects project, contract, settlement and relationship coordinate drift"
+    },
+    "contract_entry_exit": {
+      "groupId": "pol113_pol115_business_entries",
+      "testFile": "services/api/src/database/contract-business-entry-http.spec.ts",
+      "testName": "合同现役提交与旧入口退出：%s"
+    },
+    "expense_definition_snapshot": {
+      "groupId": "pol113_pol115_business_entries",
+      "testFile": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+      "testName": "填写选项提供与提交快照相同的统一字段定义，非项目报销不借用个人资料授权"
+    },
+    "expense_concurrent_snapshot": {
+      "groupId": "pol113_pol115_business_entries",
+      "testFile": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+      "testName": "零星费用竞争提交只生成一份审批快照并保持原付款金额"
+    },
+    "spot_refund": {
+      "groupId": "pol113_pol115_business_entries",
+      "testFile": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
+      "testName": "公开链从实付与少货收货到财务登记退款"
+    },
+    "project_close_cycle": {
+      "groupId": "project_close_profit_pol109",
+      "testFile": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
+      "testName": "completes seven stages and real positive, loss, and zero submit-confirm decision cycles"
+    },
+    "project_close_lineage": {
+      "groupId": "project_close_profit_pol109",
+      "testFile": "services/api/src/database/project-close-profit-postgresql.spec.ts",
+      "testName": "rejects cross-project immutable decision lineage"
+    },
+    "wage_sensitive_authorization": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/database/wage-statement-constraints.spec.ts",
+      "testName": "rechecks a wage-evidence ticket after role revocation or account disable and persists reason-only deny audits"
+    },
+    "file_binding_authority": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/database/file-binding-manifest.spec.ts",
+      "testName": "resolves version-owned bindings and classifies shared vs exclusive against real PostgreSQL"
+    },
+    "payable_cross_company": {
+      "groupId": "remaining_dynamic_postgresql16",
+      "testFile": "services/api/src/database/payable-settlement-concurrency.spec.ts",
+      "testName": "confirms a cross-company service path while reusing voucher and authorization evidence"
+    }
+  },
+  "aspectEvidenceByMainline": {
+    "POL21-MAINLINE-01": {
+      "amount_integrity": ["source_replay_closed"],
+      "subject_isolation": ["historical_wage_identity"],
+      "source_traceability": ["takeover_mapping_immutable"],
+      "authorization": ["historical_wage_identity"],
+      "external_reconciliation": ["source_replay_closed"]
+    },
+    "POL21-MAINLINE-02": {
+      "amount_integrity": ["fund_refund_cumulative"],
+      "subject_isolation": ["clearing_public_v1"],
+      "source_traceability": ["clearing_public_v1"],
+      "authorization": ["clearing_public_v1"],
+      "external_reconciliation": ["clearing_public_v1"]
+    },
+    "POL21-MAINLINE-03": {
+      "amount_integrity": ["projection_rebuild"],
+      "subject_isolation": ["projection_drilldown"],
+      "source_traceability": ["fund_coordinate_drift"],
+      "authorization": ["fund_coordinate_drift"],
+      "external_reconciliation": ["projection_drilldown"]
+    },
+    "POL21-MAINLINE-04": {
+      "amount_integrity": ["expense_concurrent_snapshot"],
+      "subject_isolation": ["contract_entry_exit"],
+      "source_traceability": ["contract_entry_exit"],
+      "authorization": ["expense_definition_snapshot"],
+      "external_reconciliation": ["contract_entry_exit"]
+    },
+    "POL21-MAINLINE-05": {
+      "amount_integrity": ["project_close_cycle"],
+      "subject_isolation": ["project_close_lineage"],
+      "source_traceability": ["project_close_cycle"],
+      "authorization": ["project_close_cycle"],
+      "external_reconciliation": ["project_close_cycle"]
+    },
+    "POL21-MAINLINE-06": {
+      "amount_integrity": ["expense_definition_snapshot"],
+      "subject_isolation": ["contract_entry_exit"],
+      "source_traceability": ["contract_entry_exit"],
+      "authorization": ["expense_definition_snapshot"],
+      "external_reconciliation": ["contract_entry_exit"]
+    },
+    "POL21-MAINLINE-07": {
+      "amount_integrity": ["spot_refund"],
+      "subject_isolation": ["spot_refund"],
+      "source_traceability": ["spot_refund"],
+      "authorization": ["expense_definition_snapshot"],
+      "external_reconciliation": ["clearing_public_v1"]
+    },
+    "POL21-MAINLINE-08": {
+      "amount_integrity": ["contract_entry_exit"],
+      "subject_isolation": ["contract_entry_exit"],
+      "source_traceability": ["contract_entry_exit"],
+      "authorization": ["expense_definition_snapshot"],
+      "external_reconciliation": ["contract_entry_exit"]
+    },
+    "POL21-MAINLINE-09": {
+      "amount_integrity": ["projection_rebuild"],
+      "subject_isolation": ["projection_drilldown"],
+      "source_traceability": ["source_replay_closed"],
+      "authorization": ["source_replay_closed"],
+      "external_reconciliation": ["projection_drilldown"]
+    },
+    "POL21-MAINLINE-10": {
+      "amount_integrity": ["source_replay_closed"],
+      "subject_isolation": ["wage_sensitive_authorization"],
+      "source_traceability": ["file_binding_authority"],
+      "authorization": ["wage_sensitive_authorization"],
+      "external_reconciliation": ["source_replay_closed"]
+    },
+    "POL21-MAINLINE-11": {
+      "amount_integrity": ["payable_cross_company"],
+      "subject_isolation": ["payable_cross_company"],
+      "source_traceability": ["fund_coordinate_drift"],
+      "authorization": ["payable_cross_company"],
+      "external_reconciliation": ["clearing_public_v1"]
+    },
+    "POL21-MAINLINE-12": {
+      "amount_integrity": ["projection_rebuild"],
+      "subject_isolation": ["projection_drilldown"],
+      "source_traceability": ["projection_drilldown"],
+      "authorization": ["source_replay_closed"],
+      "external_reconciliation": ["clearing_public_v1"]
+    },
+    "POL21-MAINLINE-13": {
+      "amount_integrity": ["projection_rebuild"],
+      "subject_isolation": ["projection_drilldown"],
+      "source_traceability": ["projection_drilldown"],
+      "authorization": ["source_replay_closed"],
+      "external_reconciliation": ["projection_drilldown"]
+    },
+    "POL21-MAINLINE-14": {
+      "amount_integrity": ["project_close_cycle"],
+      "subject_isolation": ["project_close_lineage"],
+      "source_traceability": ["project_close_cycle"],
+      "authorization": ["project_close_cycle"],
+      "external_reconciliation": ["project_close_cycle"]
+    },
+    "POL21-MAINLINE-15": {
+      "amount_integrity": ["expense_concurrent_snapshot"],
+      "subject_isolation": ["contract_entry_exit"],
+      "source_traceability": ["contract_entry_exit"],
+      "authorization": ["expense_definition_snapshot"],
+      "external_reconciliation": ["projection_drilldown"]
+    }
+  },
   "mainlines": [
     {
       "id": "POL21-MAINLINE-01",
@@ -91,14 +285,14 @@
       "id": "POL21-MAINLINE-12",
       "statement": "我方公司项目收付款能够按项目、公司、相对方和期间与财务资料核对，差异保留且不覆盖正式事实",
       "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
-      "dynamicGroups": ["operating_projection_pol108", "clearing_reconciliation_pol275"],
+      "dynamicGroups": ["operating_projection_pol108", "clearing_reconciliation_pol275", "remaining_dynamic_postgresql16"],
       "releaseChecks": ["exact-sha-postgresql-16"]
     },
     {
       "id": "POL21-MAINLINE-13",
       "statement": "任意查询基准日、页面筛选和导出汇总都能映射到同口径明细",
       "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
-      "dynamicGroups": ["operating_projection_pol108"],
+      "dynamicGroups": ["operating_projection_pol108", "remaining_dynamic_postgresql16"],
       "releaseChecks": ["exact-sha-postgresql-16", "playwright-p0"]
     },
     {
@@ -112,7 +306,7 @@
       "id": "POL21-MAINLINE-15",
       "statement": "用户可填写入口清单没有遗漏，旧入口不能新增正式事实，多行多列粘贴、草稿追加和单元格错误定位符合统一规则",
       "requiredAspects": ["amount_integrity", "subject_isolation", "source_traceability", "authorization", "external_reconciliation"],
-      "dynamicGroups": ["pol113_pol115_business_entries"],
+      "dynamicGroups": ["pol113_pol115_business_entries", "operating_projection_pol108"],
       "releaseChecks": ["exact-sha-postgresql-16", "release-manifests", "playwright-p0", "playwright-rc06-mock"]
     }
   ]

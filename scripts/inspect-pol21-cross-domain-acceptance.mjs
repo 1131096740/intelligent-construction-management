@@ -34,6 +34,28 @@ function loadReleaseChecks(root) {
   return result.stdout.split("\n").map((value) => value.trim()).filter(Boolean);
 }
 
+async function loadEvidenceSources(root, manifest) {
+  const paths = new Set();
+  for (const evidence of Object.values(manifest.evidenceCatalog ?? {})) {
+    const path = evidence?.testFile;
+    if (
+      typeof path !== "string" ||
+      !/^services\/api\/(?:src|prisma)\/[A-Za-z0-9_./-]+\.(?:ts|cjs)$/u.test(path) ||
+      path.split("/").includes("..")
+    ) {
+      const error = new Error("POL-21 evidence path is invalid");
+      error.code = "POL21_EVIDENCE_PATH_INVALID";
+      throw error;
+    }
+    paths.add(path);
+  }
+  return Object.fromEntries(
+    await Promise.all(
+      [...paths].map(async (path) => [path, await readFile(join(root, path), "utf8")])
+    )
+  );
+}
+
 export async function runPol21CrossDomainAcceptanceCli(
   arguments_,
   { root = defaultRoot } = {}
@@ -59,11 +81,13 @@ export async function runPol21CrossDomainAcceptanceCli(
         "utf8"
       )
     ]);
+  const manifest = JSON.parse(manifestSource);
   const report = inspectPol21CrossDomainAcceptance({
-    manifest: JSON.parse(manifestSource),
+    manifest,
     dynamicGateManifest: JSON.parse(dynamicGateSource),
     releaseChecks: loadReleaseChecks(root),
-    specificationSource
+    specificationSource,
+    evidenceSources: await loadEvidenceSources(root, manifest)
   });
   if (report.status !== "ready") {
     const error = new Error(
