@@ -664,11 +664,11 @@ function formatDate(value: string | null) {
         <t-button v-if="capabilities.prepare" theme="primary" @click="openEventCreate">新增事件草稿</t-button>
       </template>
       <t-descriptions bordered :column="2">
-        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="项目">{{ detail.projectId }}</t-descriptions-item>
-        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="施工企业档案">{{ detail.constructionEnterpriseAssignmentId }}</t-descriptions-item>
-        <t-descriptions-item v-if="detail.sourceDiscriminator" label="权威快照">{{ detail.authoritySnapshotRef }}</t-descriptions-item>
-        <t-descriptions-item v-if="detail.sourceDiscriminator" label="来源">{{ detail.sourceDiscriminator === "construction_enterprise_guarantee" ? "服务端保证金义务" : "服务端派驻工资" }}</t-descriptions-item>
-        <t-descriptions-item v-if="detail.sourceDiscriminator" label="覆盖方式">{{ detail.coverageKind === "ROLE_SUMMARY" ? "岗位汇总（不含人员）" : "服务端人员身份" }}</t-descriptions-item>
+        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="项目">{{ projectOptions.find((option) => option.value === detail?.projectId)?.label || "当前项目" }}</t-descriptions-item>
+        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="施工企业档案">已按当前项目档案确认</t-descriptions-item>
+        <t-descriptions-item v-if="detail.sourceDiscriminator" label="权威依据">已按系统权威资料冻结</t-descriptions-item>
+        <t-descriptions-item v-if="detail.sourceDiscriminator" label="来源">{{ detail.sourceDiscriminator === "construction_enterprise_guarantee" ? "保证金义务" : "派驻工资" }}</t-descriptions-item>
+        <t-descriptions-item v-if="detail.sourceDiscriminator" label="覆盖方式">{{ detail.coverageKind === "ROLE_SUMMARY" ? "岗位汇总（不含人员）" : "人员明细（系统核验）" }}</t-descriptions-item>
         <t-descriptions-item label="权威毛额（分）">{{ detail.authoritativeGrossCapCents }}</t-descriptions-item>
         <t-descriptions-item label="事项修订">{{ detail.revision }}</t-descriptions-item>
       </t-descriptions>
@@ -703,7 +703,7 @@ function formatDate(value: string | null) {
           :options-by-field="caseEntryOptions"
         />
         <template v-if="authorityCategoryValues.has(caseForm.category)">
-          <t-alert theme="info" :close="false" message="协议、人员/岗位、规则、上限和快照均由服务端派生；客户端只提交短效 selectionRef。" />
+          <t-alert theme="info" :close="false" message="协议、人员或岗位、适用规则、金额上限和业务依据均由系统确认；这里只选择当前有效的业务选项。" />
         </template>
       </t-form>
     </t-dialog>
@@ -715,7 +715,7 @@ function formatDate(value: string | null) {
           :definition="activeEventDefinition"
         />
         <template v-if="isAuthorityCase">
-          <t-alert theme="info" :close="false" message="正式金额、证据等级和冻结快照由服务端 authority case 派生；不接受客户端 JSON 或应付/付款引用。" />
+          <t-alert theme="info" :close="false" message="正式金额、证据等级和业务依据均由系统权威事项确认；页面不接受自行填写的技术内容或内部关联编号。" />
         </template>
       </t-form>
     </t-dialog>

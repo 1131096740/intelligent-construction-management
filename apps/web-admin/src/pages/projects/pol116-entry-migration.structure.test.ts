@@ -31,6 +31,13 @@ describe("POL-19D unified user entry migration", () => {
     expect(clearing).not.toContain("冻结业务快照 JSON");
     expect(clearing).not.toContain("来源事件版本 ID");
     expect(clearing).not.toContain("本次分配金额（分）");
+    expect(clearing).not.toContain("{{ detail.projectId }}");
+    expect(clearing).not.toContain("{{ detail.constructionEnterpriseAssignmentId }}");
+    expect(clearing).not.toContain("{{ detail.authoritySnapshotRef }}");
+    expect(clearing).not.toContain("authority case");
+    expect(clearing).not.toContain("客户端 JSON");
+    expect(clearing).toContain("已按系统权威资料冻结");
+    expect(clearing).toContain("这里只选择当前有效的业务选项");
   });
 
   it("migrates stage basis and distribution rows while retaining server actions", () => {
