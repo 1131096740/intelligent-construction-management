@@ -202,6 +202,19 @@ function tagBlocks(xml, tag) {
   return [...xml.matchAll(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "giu"))].map((match) => match[1]);
 }
 
+function parseVersionListing(xml) {
+  const document = xml.trim();
+  const root = document.match(
+    /^(?:<\?xml\s+[\s\S]*?\?>\s*)?<ListVersionsResult(?:\s+[^>]*)?>([\s\S]*)<\/ListVersionsResult>$/iu
+  );
+  if (!root) fail("COS version listing is not a complete ListVersionsResult document");
+  const truncatedValues = tagBlocks(root[1], "IsTruncated").map((value) => xmlDecode(value.trim()));
+  if (truncatedValues.length !== 1 || !["true", "false"].includes(truncatedValues[0])) {
+    fail("COS version listing requires exactly one true/false IsTruncated value");
+  }
+  return { body: root[1], truncated: truncatedValues[0] === "true" };
+}
+
 function queryEntries(query) {
   return Object.entries(query)
     .map(([rawKey, rawValue]) => ({
@@ -308,7 +321,8 @@ export async function listVersions(config, objectKey, requester = cosGet) {
       query["version-id-marker"] = versionIdMarker;
     }
     const xml = await (await requester(config, "/", query)).text();
-    for (const block of tagBlocks(xml, "Version")) {
+    const listing = parseVersionListing(xml);
+    for (const block of tagBlocks(listing.body, "Version")) {
       if (tagValue(block, "Key") !== objectKey) continue;
       const versionId = tagValue(block, "VersionId");
       if (!versionId) fail("COS version listing omitted VersionId");
@@ -323,7 +337,7 @@ export async function listVersions(config, objectKey, requester = cosGet) {
         sizeBytes: Number(tagValue(block, "Size"))
       });
     }
-    for (const block of tagBlocks(xml, "DeleteMarker")) {
+    for (const block of tagBlocks(listing.body, "DeleteMarker")) {
       if (tagValue(block, "Key") !== objectKey) continue;
       const versionId = tagValue(block, "VersionId");
       if (!versionId) fail("COS delete-marker listing omitted VersionId");
@@ -336,10 +350,10 @@ export async function listVersions(config, objectKey, requester = cosGet) {
         lastModified: tagValue(block, "LastModified")
       });
     }
-    truncated = tagValue(xml, "IsTruncated") === "true";
+    truncated = listing.truncated;
     if (truncated) {
-      const nextKeyMarker = tagValue(xml, "NextKeyMarker");
-      const nextVersionIdMarker = tagValue(xml, "NextVersionIdMarker") ?? "";
+      const nextKeyMarker = tagValue(listing.body, "NextKeyMarker");
+      const nextVersionIdMarker = tagValue(listing.body, "NextVersionIdMarker") ?? "";
       if (!nextKeyMarker) fail("truncated COS version listing omitted NextKeyMarker");
       const markerIdentity = `${nextKeyMarker}\0${nextVersionIdMarker}`;
       if (markerPairs.has(markerIdentity)) fail("COS version pagination did not advance");

@@ -176,6 +176,22 @@ test("version pagination fails closed when a page repeats", async () => {
   await assert.rejects(listVersions(CONFIG, OBJECT_KEY, requester), /repeated a generation|did not advance/u);
 });
 
+test("version pagination rejects incomplete or ambiguous completion metadata", async () => {
+  const version = `<Version><Key>${OBJECT_KEY}</Key><VersionId>version-1</VersionId><IsLatest>true</IsLatest><Size>1</Size></Version>`;
+  for (const xml of [
+    `<ListVersionsResult>${version}</ListVersionsResult>`,
+    `<ListVersionsResult><IsTruncated>complete</IsTruncated>${version}</ListVersionsResult>`,
+    `<ListVersionsResult><IsTruncated>false</IsTruncated><IsTruncated>false</IsTruncated>${version}</ListVersionsResult>`,
+    `<ListVersionsResult><IsTruncated>false</IsTruncated>${version}`
+  ]) {
+    const requester = async () => new Response(xml, { status: 200 });
+    await assert.rejects(
+      listVersions(CONFIG, OBJECT_KEY, requester),
+      /complete ListVersionsResult|exactly one true\/false IsTruncated/u
+    );
+  }
+});
+
 test("core capture fails closed when latest bytes drift from database metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "pol296-private-drift-"));
   const backupRoot = join(root, "backup");
