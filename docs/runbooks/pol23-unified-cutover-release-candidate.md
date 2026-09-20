@@ -37,3 +37,37 @@
 四张收据逐张绑定前序收据 SHA-256。各阶段必须分别取得对应生产授权，并重新核对候选
 SHA、数据库与私有对象备份、迁移、写冻结和门禁证据；本候选文档和本机收据不能替代
 生产授权。
+
+## POL-25A 私有对象本窗口备份
+
+#296 不得把“COS 已启用版本控制”或数据库中的 `FileObject` 行数当作可恢复证明。停写后必须由
+候选 SHA 中的受控入口逐一读取数据库冻结清单对应的对象版本，在 root-only 目录生成内容寻址
+备份，并恢复到另一个空目录复核。入口只拥有 COS `GET` / 版本枚举行为，不上传、不删除对象：
+
+```bash
+sudo -n node <candidate>/scripts/ops/private-object-backup.mjs capture-and-verify \
+  --inventory <root-only-file-object-inventory.json> \
+  --storage-env-file /etc/jiangkong/api.env \
+  --backup-root <new-root-only-backup-directory> \
+  --restore-root <new-empty-isolated-restore-directory> \
+  --candidate-sha <approved-40-character-sha> \
+  --confirm CAPTURE_AND_VERIFY_PRIVATE_OBJECT_BACKUP_<approved-40-character-sha>
+```
+
+硬门如下：
+
+- inventory 与环境文件必须是绝对路径、普通非符号链接、无 group/other 权限；正式执行时必须由
+  root 持有，工具本身必须以 root 运行。
+- inventory 每行只能包含 `id`、`bucket`、`objectKey`、`sizeBytes`、`contentSha256`、
+  `storageStatus`；bucket 必须与正式 COS 配置一致，所有行必须已有小写 SHA-256。
+- 每个物理对象必须枚举全部版本和删除标记；当前 latest 版本必须与数据库 size/SHA-256 一致。
+  任一缺失、漂移、重复键元数据冲突、分页异常或 COS 读取失败都不得生成通过回执。
+- 备份 blob 以内容 SHA-256 命名并固定 `0600`；manifest 和回执固定 `0600`。独立恢复必须逐版本
+  重算 size/SHA-256。stdout 回执不包含对象键、版本 ID、路径或凭据。
+- `private-object-backup-receipt.json` 的 `status=passed`、`restoreStatus=passed`、候选 SHA、
+  inventory/manifest/receipt 三类 SHA-256 和 `productionWriteExecuted=false` 必须进入
+  `schema_compatibility_receipt`。缺少该证据不得执行正式库迁移。
+
+本入口不创建数据库 inventory，也不读取迁移 owner 凭据；inventory 必须在全部写入者已停止后由
+POL-25A 执行控制面以只读事务冻结。`/etc/jiangkong/db-migration.env` 仍须由独立受控引导预置，
+不得用 API runtime 凭据、临时 `psql` 参数或 `postgres` 超级用户协议替代。
