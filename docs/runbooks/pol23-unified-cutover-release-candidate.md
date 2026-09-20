@@ -57,11 +57,13 @@ sudo -n node <candidate>/scripts/ops/private-object-backup.mjs capture-and-verif
 硬门如下：
 
 - inventory 与环境文件必须是绝对路径、普通非符号链接、无 group/other 权限；正式执行时必须由
-  root 持有，工具本身必须以 root 运行。
+  root 持有，工具本身必须以 root 运行；输入与输出路径必须全部位于候选仓库之外。
+- 工具必须自校验实际仓库 HEAD 精确等于 `--candidate-sha`，工具文件已跟踪且工作树为空；
+  `NODE_ENV` 或其他环境变量不得放宽 root、候选身份或正式 COS HTTPS 端点。
 - inventory 每行只能包含 `id`、`bucket`、`objectKey`、`sizeBytes`、`contentSha256`、
   `storageStatus`；bucket 必须与正式 COS 配置一致，所有行必须已有小写 SHA-256。
 - 每个物理对象必须枚举全部版本和删除标记；当前 latest 版本必须与数据库 size/SHA-256 一致。
-  任一缺失、漂移、重复键元数据冲突、分页异常或 COS 读取失败都不得生成通过回执。
+  每个对象下载后必须再次枚举并确认版本集未变；任一缺失、漂移、重复键元数据冲突、分页异常或 COS 读取失败都不得生成通过回执。
 - 备份 blob 以内容 SHA-256 命名并固定 `0600`；manifest 和回执固定 `0600`。独立恢复必须逐版本
   重算 size/SHA-256。stdout 回执不包含对象键、版本 ID、路径或凭据。
 - `private-object-backup-receipt.json` 的 `status=passed`、`restoreStatus=passed`、候选 SHA、

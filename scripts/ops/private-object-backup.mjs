@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash, createHmac } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import {
   chmod,
   copyFile,
@@ -12,6 +13,7 @@ import {
   writeFile
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const REQUIRED_ENV_KEYS = [
   "FILE_STORAGE_DRIVER",
@@ -22,6 +24,9 @@ const REQUIRED_ENV_KEYS = [
 ];
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const REPOSITORY_ROOT = resolve(dirname(SCRIPT_PATH), "../..");
+const SCRIPT_RELATIVE_PATH = "scripts/ops/private-object-backup.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -79,7 +84,30 @@ async function assertSafeInputFile(path, label) {
   const metadata = await lstat(path).catch(() => null);
   if (!metadata?.isFile() || metadata.isSymbolicLink()) fail(`${label} must be a regular non-symlink file`);
   if ((metadata.mode & 0o077) !== 0) fail(`${label} must not be accessible by group or others`);
-  if (process.env.NODE_ENV !== "test" && metadata.uid !== 0) fail(`${label} must be owned by root`);
+  if (metadata.uid !== 0) fail(`${label} must be owned by root`);
+}
+
+function gitOutput(repositoryRoot, args) {
+  try {
+    return execFileSync("git", ["-C", repositoryRoot, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    fail("candidate repository identity could not be verified");
+  }
+}
+
+export async function assertCandidateRepository(repositoryRoot, candidateSha, scriptRelativePath) {
+  const canonicalRoot = await realpath(repositoryRoot).catch(() => null);
+  if (!canonicalRoot || canonicalRoot !== repositoryRoot) fail("candidate repository root must be canonical");
+  const topLevel = gitOutput(canonicalRoot, ["rev-parse", "--show-toplevel"]);
+  if ((await realpath(topLevel).catch(() => null)) !== canonicalRoot) fail("candidate script is not inside the verified repository root");
+  if (gitOutput(canonicalRoot, ["rev-parse", "HEAD"]) !== candidateSha) fail("candidate repository HEAD does not match the approved SHA");
+  gitOutput(canonicalRoot, ["ls-files", "--error-unmatch", scriptRelativePath]);
+  if (gitOutput(canonicalRoot, ["status", "--porcelain=v1", "--untracked-files=all"])) {
+    fail("candidate repository must be clean before private-object backup");
+  }
 }
 
 async function prepareEmptyDirectory(path, label) {
@@ -126,7 +154,7 @@ function parseEnvFile(text) {
   return Object.fromEntries(values);
 }
 
-function validateInventory(value, configuredBucket) {
+export function validateInventory(value, configuredBucket) {
   if (!Array.isArray(value) || value.length === 0) fail("private-object inventory must be a non-empty JSON array");
   const identities = new Set();
   return value
@@ -141,8 +169,9 @@ function validateInventory(value, configuredBucket) {
       if (
         typeof row.objectKey !== "string" ||
         !row.objectKey ||
-        row.objectKey.includes("\0") ||
+        /[\u0000-\u001f\u007f]/u.test(row.objectKey) ||
         row.objectKey.includes("\\") ||
+        Buffer.byteLength(row.objectKey, "utf8") > 850 ||
         row.objectKey.split("/").some((segment) => !segment || segment === "." || segment === "..")
       ) {
         fail("private-object inventory contains an unsafe object key");
@@ -177,22 +206,36 @@ function queryEntries(query) {
   return Object.entries(query)
     .map(([rawKey, rawValue]) => ({
       rawKey,
-      encodedKey: encodeURIComponent(rawKey.toLowerCase()),
-      encodedValue: rawValue === undefined ? "" : encodeURIComponent(rawValue)
+      encodedKey: encodeRfc3986(rawKey.toLowerCase()),
+      encodedValue: rawValue === undefined ? "" : encodeRfc3986(rawValue)
     }))
     .sort((left, right) => left.encodedKey.localeCompare(right.encodedKey));
 }
 
-function requestUrl(endpoint, pathname, query) {
-  const base = `${endpoint}${pathname === "/" ? "/" : encodeURI(pathname)}`;
+function encodeRfc3986(value) {
+  return encodeURIComponent(value).replace(/[!'()*]/gu, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
+function encodeObjectPath(pathname) {
+  if (pathname === "/") return "/";
+  return pathname
+    .split("/")
+    .map(encodeRfc3986)
+    .join("/");
+}
+
+export function requestUrl(endpoint, pathname, query) {
+  const base = `${endpoint}${encodeObjectPath(pathname)}`;
   const parts = queryEntries(query).map(({ rawKey, encodedValue }) =>
-    encodedValue === "" ? encodeURIComponent(rawKey) : `${encodeURIComponent(rawKey)}=${encodedValue}`
+    encodedValue === "" ? encodeRfc3986(rawKey) : `${encodeRfc3986(rawKey)}=${encodedValue}`
   );
   return parts.length ? `${base}?${parts.join("&")}` : base;
 }
 
-function authorization(method, pathname, host, query, secretId, secretKey) {
-  const now = Math.floor(Date.now() / 1000);
+export function authorization(method, pathname, host, query, secretId, secretKey, nowSeconds) {
+  const now = nowSeconds ?? Math.floor(Date.now() / 1000);
   const keyTime = `${now};${now + 600}`;
   const entries = queryEntries(query);
   const urlParamList = entries.map((entry) => entry.encodedKey).join(";");
@@ -226,13 +269,7 @@ function authorization(method, pathname, host, query, secretId, secretKey) {
 }
 
 function objectEndpoint(config) {
-  const productionEndpoint = `https://${config.COS_BUCKET}.cos.${config.COS_REGION}.myqcloud.com`;
-  const testEndpoint = process.env.POL25A_PRIVATE_OBJECT_TEST_ENDPOINT;
-  if (!testEndpoint) return productionEndpoint;
-  if (process.env.NODE_ENV !== "test" || !/^http:\/\/127\.0\.0\.1:\d+$/u.test(testEndpoint)) {
-    fail("private-object endpoint override is restricted to loopback tests");
-  }
-  return testEndpoint;
+  return `https://${config.COS_BUCKET}.cos.${config.COS_REGION}.myqcloud.com`;
 }
 
 async function cosGet(config, pathname, query = {}) {
@@ -256,19 +293,27 @@ async function cosGet(config, pathname, query = {}) {
   return response;
 }
 
-async function listVersions(config, objectKey) {
+export async function listVersions(config, objectKey, requester = cosGet) {
   const versions = [];
-  let keyMarker;
-  let versionIdMarker;
+  const versionIdentities = new Set();
+  const markerPairs = new Set();
+  let keyMarker = "";
+  let versionIdMarker = "";
+  let hasPreviousPage = false;
+  let truncated;
   do {
     const query = { versions: undefined, prefix: objectKey, "max-keys": "1000" };
-    if (keyMarker) query["key-marker"] = keyMarker;
-    if (versionIdMarker) query["version-id-marker"] = versionIdMarker;
-    const xml = await (await cosGet(config, "/", query)).text();
+    if (hasPreviousPage) {
+      query["key-marker"] = keyMarker;
+      query["version-id-marker"] = versionIdMarker;
+    }
+    const xml = await (await requester(config, "/", query)).text();
     for (const block of tagBlocks(xml, "Version")) {
       if (tagValue(block, "Key") !== objectKey) continue;
       const versionId = tagValue(block, "VersionId");
       if (!versionId) fail("COS version listing omitted VersionId");
+      if (versionIdentities.has(`version\0${versionId}`)) fail("COS version listing repeated a generation");
+      versionIdentities.add(`version\0${versionId}`);
       versions.push({
         versionId,
         isDeleteMarker: false,
@@ -282,6 +327,8 @@ async function listVersions(config, objectKey) {
       if (tagValue(block, "Key") !== objectKey) continue;
       const versionId = tagValue(block, "VersionId");
       if (!versionId) fail("COS delete-marker listing omitted VersionId");
+      if (versionIdentities.has(`delete\0${versionId}`)) fail("COS version listing repeated a generation");
+      versionIdentities.add(`delete\0${versionId}`);
       versions.push({
         versionId,
         isDeleteMarker: true,
@@ -289,11 +336,19 @@ async function listVersions(config, objectKey) {
         lastModified: tagValue(block, "LastModified")
       });
     }
-    const truncated = tagValue(xml, "IsTruncated") === "true";
-    keyMarker = truncated ? tagValue(xml, "NextKeyMarker") : undefined;
-    versionIdMarker = truncated ? tagValue(xml, "NextVersionIdMarker") : undefined;
-    if (truncated && (!keyMarker || !versionIdMarker)) fail("truncated COS version listing omitted pagination markers");
-  } while (keyMarker || versionIdMarker);
+    truncated = tagValue(xml, "IsTruncated") === "true";
+    if (truncated) {
+      const nextKeyMarker = tagValue(xml, "NextKeyMarker");
+      const nextVersionIdMarker = tagValue(xml, "NextVersionIdMarker") ?? "";
+      if (!nextKeyMarker) fail("truncated COS version listing omitted NextKeyMarker");
+      const markerIdentity = `${nextKeyMarker}\0${nextVersionIdMarker}`;
+      if (markerPairs.has(markerIdentity)) fail("COS version pagination did not advance");
+      markerPairs.add(markerIdentity);
+      keyMarker = nextKeyMarker;
+      versionIdMarker = nextVersionIdMarker;
+      hasPreviousPage = true;
+    }
+  } while (truncated);
   if (versions.length === 0) fail("private-object inventory key has no recoverable COS versions");
   if (versions.filter((version) => version.isLatest).length !== 1) fail("private-object key must have exactly one latest COS generation");
   return versions.sort((left, right) => left.versionId.localeCompare(right.versionId));
@@ -306,7 +361,7 @@ async function writeAtomic(path, body) {
   await chmod(path, 0o600);
 }
 
-async function capture(config, inventory, backupRoot) {
+export async function capture(config, inventory, backupRoot, requester = cosGet) {
   const blobRoot = join(backupRoot, "blobs");
   await mkdir(blobRoot, { mode: 0o700 });
   const uniqueObjects = new Map();
@@ -321,14 +376,14 @@ async function capture(config, inventory, backupRoot) {
 
   const objects = [];
   for (const row of [...uniqueObjects.values()].sort((left, right) => left.objectKey.localeCompare(right.objectKey))) {
-    const versions = await listVersions(config, row.objectKey);
+    const versions = await listVersions(config, row.objectKey, requester);
     const capturedVersions = [];
     for (const version of versions) {
       if (version.isDeleteMarker) {
         capturedVersions.push(version);
         continue;
       }
-      const response = await cosGet(config, `/${row.objectKey}`, { versionId: version.versionId });
+      const response = await requester(config, `/${row.objectKey}`, { versionId: version.versionId });
       const bytes = Buffer.from(await response.arrayBuffer());
       const contentSha256 = sha256(bytes);
       const blobName = `${contentSha256}.blob`;
@@ -342,6 +397,10 @@ async function capture(config, inventory, backupRoot) {
         await writeAtomic(blobPath, bytes);
       }
       capturedVersions.push({ ...version, sizeBytes: bytes.length, contentSha256, blobName });
+    }
+    const verifiedVersions = await listVersions(config, row.objectKey, requester);
+    if (canonicalJson(verifiedVersions) !== canonicalJson(versions)) {
+      fail("private-object version set changed during backup capture");
     }
     const latest = capturedVersions.find((version) => version.isLatest);
     if (!latest || latest.isDeleteMarker) fail("active database FileObject points to a deleted latest COS generation");
@@ -359,7 +418,7 @@ async function capture(config, inventory, backupRoot) {
   return objects;
 }
 
-async function restoreAndVerify(manifest, backupRoot, restoreRoot) {
+export async function restoreAndVerify(manifest, backupRoot, restoreRoot) {
   const restoredBlobRoot = join(restoreRoot, "blobs");
   await mkdir(restoredBlobRoot, { mode: 0o700 });
   let restoredVersions = 0;
@@ -383,7 +442,7 @@ async function restoreAndVerify(manifest, backupRoot, restoreRoot) {
 }
 
 async function main() {
-  if (process.env.NODE_ENV !== "test" && typeof process.getuid === "function" && process.getuid() !== 0) {
+  if (typeof process.getuid !== "function" || process.getuid() !== 0) {
     fail("private-object backup must run as root");
   }
   const args = parseArgs(process.argv.slice(2));
@@ -391,6 +450,7 @@ async function main() {
   if (!SHA_PATTERN.test(candidateSha)) fail("candidate SHA must be a 40-character lowercase SHA");
   const requiredConfirmation = `CAPTURE_AND_VERIFY_PRIVATE_OBJECT_BACKUP_${candidateSha}`;
   if (args.confirm !== requiredConfirmation) fail("private-object backup confirmation does not match the exact candidate SHA");
+  await assertCandidateRepository(REPOSITORY_ROOT, candidateSha, SCRIPT_RELATIVE_PATH);
   await assertSafeInputFile(args.inventory, "inventory file");
   await assertSafeInputFile(args["storage-env-file"], "environment file");
   const config = parseEnvFile(await readFile(args["storage-env-file"], "utf8"));
@@ -398,6 +458,16 @@ async function main() {
   const requestedBackupRoot = resolve(args["backup-root"]);
   const requestedRestoreRoot = resolve(args["restore-root"]);
   if (requestedBackupRoot === requestedRestoreRoot) fail("backup and restore roots must differ");
+  for (const [path, label] of [
+    [resolve(args.inventory), "inventory file"],
+    [resolve(args["storage-env-file"]), "environment file"],
+    [requestedBackupRoot, "backup root"],
+    [requestedRestoreRoot, "restore root"]
+  ]) {
+    if (path === REPOSITORY_ROOT || path.startsWith(`${REPOSITORY_ROOT}${sep}`)) {
+      fail(`${label} must be outside the candidate repository`);
+    }
+  }
   const backupRoot = await prepareEmptyDirectory(requestedBackupRoot, "backup root");
   const restoreRoot = await prepareEmptyDirectory(requestedRestoreRoot, "restore root");
 
@@ -441,7 +511,9 @@ async function main() {
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`Private-object backup failed: ${error instanceof Error ? error.message : "unknown error"}\n`);
-  process.exitCode = 1;
-});
+if (resolve(process.argv[1] ?? "") === SCRIPT_PATH) {
+  main().catch((error) => {
+    process.stderr.write(`Private-object backup failed: ${error instanceof Error ? error.message : "unknown error"}\n`);
+    process.exitCode = 1;
+  });
+}
