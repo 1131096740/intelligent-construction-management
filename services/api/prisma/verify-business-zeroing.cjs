@@ -655,20 +655,15 @@ async function verifyBusinessZeroing(
     )
   );
   const report = await buildReport(prisma);
-  const expectedReadOnlyGuardTriggers = [
-    "PaymentExecutionPayerAttestation_evidence_immutable",
-    "VerifiedBankTransactionObservation_evidence_immutable"
-  ];
   if (preflightOnly) {
-    assert.equal(report.status, "blocked");
-    assert.deepEqual(report.deletionCandidates, []);
+    assert.equal(report.status, "ready", JSON.stringify(report.blockers));
     assert.deepEqual(
-      report.blockers.map((item) => item.code),
-      ["DELETE_GUARD_TRIGGER", "DELETE_GUARD_TRIGGER"]
+      report.deletionCandidates.map((item) => item.table).sort(),
+      ["Contract", "ContractDraftAttachment", "ContractVersion", "FileObject"]
     );
-    assert.deepEqual(
-      report.blockers.map((item) => item.details?.trigger).sort(),
-      expectedReadOnlyGuardTriggers
+    assert.equal(
+      report.blockers.some((item) => item.code === "DELETE_GUARD_TRIGGER"),
+      false
     );
   } else {
     assert.equal(report.status, "ready", JSON.stringify(report.blockers));
@@ -813,8 +808,8 @@ async function verifyBusinessZeroing(
       mode: "read_only_preflight",
       status: "passed",
       executed: false,
-      zeroingReadiness: "blocked",
-      dryRunEligible: false,
+      zeroingReadiness: "ready",
+      dryRunEligible: true,
       environment: ENVIRONMENT,
       databaseFingerprint: report.databaseFingerprint,
       codeSha: codeIdentity.codeSha,
@@ -823,8 +818,8 @@ async function verifyBusinessZeroing(
       migrationCount: beforeCounts.migrations,
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
-      deletionCandidateCount: 0,
-      blockerCount: report.blockers.length,
+      deletionCandidateCount: report.deletionCandidates.length,
+      blockerCount: 0,
       blockers: report.blockers.map((item) => ({
         code: item.code,
         table: item.details?.table,
