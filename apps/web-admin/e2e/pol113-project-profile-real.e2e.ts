@@ -213,11 +213,26 @@ test("项目财务统一填写施工企业版本日期原因，预检失败保�
   await expect(form).toBeVisible();
   await form.locator('[data-field="businessPartyVersionId"]').click();
   await page.getByText("浏览器施工企业验收 · 第 1 版", { exact: true }).last().click();
-  const effectiveFrom = await page.evaluate(() =>
-    new Intl.DateTimeFormat("en-CA").format(new Date(Date.now() - 24 * 60 * 60 * 1000)));
+  const effectiveDate = await page.evaluate(() => {
+    const today = new Date();
+    const previousDay = new Date(today);
+    previousDay.setDate(today.getDate() - 1);
+    return {
+      value: new Intl.DateTimeFormat("en-CA").format(previousDay),
+      day: String(previousDay.getDate()),
+      isPreviousMonth: previousDay.getMonth() !== today.getMonth()
+    };
+  });
+  const effectiveFrom = effectiveDate.value;
   await form.locator('[data-field="effectiveFrom"] input').click();
-  await page.locator(".t-date-picker__panel:visible .t-date-picker__cell--now")
-    .locator("xpath=preceding-sibling::*[1]")
+  const datePanel = page.locator(".t-date-picker__panel:visible");
+  await expect(datePanel).toBeVisible();
+  if (effectiveDate.isPreviousMonth) {
+    await datePanel.locator(".t-pagination-mini__prev").click();
+  }
+  await datePanel
+    .locator(".t-date-picker__cell:not(.t-date-picker__cell--additional)")
+    .getByText(effectiveDate.day, { exact: true })
     .click();
   await expect(form.locator('[data-field="effectiveFrom"] input')).toHaveValue(effectiveFrom);
   const reason = form.locator('[data-field="changeReason"] textarea');
