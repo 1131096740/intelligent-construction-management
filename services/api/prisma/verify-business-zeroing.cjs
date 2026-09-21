@@ -861,6 +861,17 @@ async function verifyBusinessZeroing(
         trigger: item.details?.trigger,
         enabledState: item.details?.enabledState
       })),
+      conditionalDeleteGuardProofs: report.conditionalDeleteGuardProofs.map(
+        (proof) => ({
+          triggerName: proof.triggerName,
+          triggerDefinitionSha256: proof.triggerDefinitionSha256,
+          functionName: proof.functionName,
+          functionDefinitionSha256: proof.functionDefinitionSha256,
+          fileForeignKeyCoverage: proof.fileForeignKeyCoverage,
+          protectedReferenceCount: proof.protectedReferenceCount,
+          candidateCount: proof.candidates.length
+        })
+      ),
       dryRunSteps: 0,
       formalRecordProtection,
       unknownOwnershipBlockers,

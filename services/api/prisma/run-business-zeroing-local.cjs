@@ -260,23 +260,38 @@ async function writeFinalPreflightReceipt(
     receipt.status !== "passed" ||
     receipt.executed !== false ||
     receipt.productionAccessed !== false ||
-    receipt.zeroingReadiness !== "blocked" ||
-    receipt.dryRunEligible !== false ||
-    receipt.blockerCount !== 2 ||
-    receipt.deletionCandidateCount !== 0 ||
+    receipt.zeroingReadiness !== "ready" ||
+    receipt.dryRunEligible !== true ||
+    receipt.blockerCount !== 0 ||
+    receipt.deletionCandidateCount !== 4 ||
     receipt.dryRunSteps !== 0 ||
     !Array.isArray(receipt.blockers) ||
-    JSON.stringify(receipt.blockers.map((item) => item.trigger).sort()) !==
+    receipt.blockers.length !== 0 ||
+    JSON.stringify(receipt.conditionalDeleteGuardProofs) !==
       JSON.stringify([
-        "PaymentExecutionPayerAttestation_evidence_immutable",
-        "VerifiedBankTransactionObservation_evidence_immutable"
-      ]) ||
-    receipt.blockers.some(
-      (item) =>
-        item.code !== "DELETE_GUARD_TRIGGER" ||
-        item.table !== "FileObject" ||
-        !["O", "A"].includes(item.enabledState)
-    )
+        {
+          triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+          triggerDefinitionSha256:
+            "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+          functionName: "guard_payment_execution_payer_evidence_immutable",
+          functionDefinitionSha256:
+            "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb",
+          fileForeignKeyCoverage: "complete",
+          protectedReferenceCount: 0,
+          candidateCount: 1
+        },
+        {
+          triggerName: "VerifiedBankTransactionObservation_evidence_immutable",
+          triggerDefinitionSha256:
+            "ebe8e609f42805af6f66a71a5695a2a09781a8214528cef3133f62c9f61456cd",
+          functionName: "guard_verified_bank_transaction_observation_evidence_immutable",
+          functionDefinitionSha256:
+            "ce42347a9999fa83189e4414b6452401a7e2df5ab59bf41749fd479f7b0e71a2",
+          fileForeignKeyCoverage: "complete",
+          protectedReferenceCount: 0,
+          candidateCount: 1
+        }
+      ])
   ) {
     throw new Error("POL-22 只读预检收据最终状态无效");
   }

@@ -2629,23 +2629,34 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
     status: "passed",
     executed: false,
     productionAccessed: false,
-    zeroingReadiness: "blocked",
-    dryRunEligible: false,
-    blockerCount: 2,
-    deletionCandidateCount: 0,
+    zeroingReadiness: "ready",
+    dryRunEligible: true,
+    blockerCount: 0,
+    deletionCandidateCount: 4,
     dryRunSteps: 0,
-    blockers: [
+    blockers: [],
+    conditionalDeleteGuardProofs: [
       {
-        code: "DELETE_GUARD_TRIGGER",
-        table: "FileObject",
-        trigger: "PaymentExecutionPayerAttestation_evidence_immutable",
-        enabledState: "O"
+        triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+        triggerDefinitionSha256:
+          "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+        functionName: "guard_payment_execution_payer_evidence_immutable",
+        functionDefinitionSha256:
+          "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb",
+        fileForeignKeyCoverage: "complete",
+        protectedReferenceCount: 0,
+        candidateCount: 1
       },
       {
-        code: "DELETE_GUARD_TRIGGER",
-        table: "FileObject",
-        trigger: "VerifiedBankTransactionObservation_evidence_immutable",
-        enabledState: "O"
+        triggerName: "VerifiedBankTransactionObservation_evidence_immutable",
+        triggerDefinitionSha256:
+          "ebe8e609f42805af6f66a71a5695a2a09781a8214528cef3133f62c9f61456cd",
+        functionName: "guard_verified_bank_transaction_observation_evidence_immutable",
+        functionDefinitionSha256:
+          "ce42347a9999fa83189e4414b6452401a7e2df5ab59bf41749fd479f7b0e71a2",
+        fileForeignKeyCoverage: "complete",
+        protectedReferenceCount: 0,
+        candidateCount: 1
       }
     ],
     migrationCount,
@@ -2683,8 +2694,10 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
   });
   const parsed = JSON.parse(output);
   assert.equal(parsed.executed, false);
-  assert.equal(parsed.zeroingReadiness, "blocked");
-  assert.equal(parsed.dryRunEligible, false);
+  assert.equal(parsed.zeroingReadiness, "ready");
+  assert.equal(parsed.dryRunEligible, true);
+  assert.equal(parsed.deletionCandidateCount, 4);
+  assert.equal(parsed.conditionalDeleteGuardProofs.length, 2);
   assert.equal(parsed.productionAccessed, false);
   assert.equal(parsed.containerRemoved, true);
   assert.equal(parsed.temporaryFilesRemoved, true);
