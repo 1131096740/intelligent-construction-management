@@ -645,7 +645,7 @@ async function inspectDatabaseInventory(client, { environment, lockTables = fals
       functionName,
       functionDefinition,
       functionDefinitionSha256: createHash("sha256")
-        .update(functionDefinition)
+        .update(functionDefinition.trimEnd())
         .digest("hex")
     }));
   const migrationHead = schema.migrations.at(-1)?.migrationName ?? null;
