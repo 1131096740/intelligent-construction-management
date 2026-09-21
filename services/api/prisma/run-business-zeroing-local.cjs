@@ -233,6 +233,7 @@ async function writeFinalDynamicReceipt(
   assertDynamicReceiptSection(receipt, "formalRecordProtection", "formal record protection");
   assertDynamicReceiptSection(receipt, "unknownOwnershipBlockers", "unknown ownership blockers");
   assertDynamicReceiptSection(receipt, "mixedOwnershipBlockers", "mixed ownership blockers");
+  assertConditionalDeleteGuardAcceptance(receipt);
   if (
     receipt.backupRestore?.database?.status !== "passed" ||
     receipt.backupRestore?.privateFiles?.status !== "passed" ||
@@ -305,6 +306,7 @@ async function writeFinalPreflightReceipt(
   assertDynamicReceiptSection(receipt, "formalRecordProtection", "formal record protection");
   assertDynamicReceiptSection(receipt, "unknownOwnershipBlockers", "unknown ownership blockers");
   assertDynamicReceiptSection(receipt, "mixedOwnershipBlockers", "mixed ownership blockers");
+  assertConditionalDeleteGuardAcceptance(receipt);
   if (
     receipt.backupRestore?.database?.status !== "passed" ||
     receipt.backupRestore?.privateFiles?.status !== "passed" ||
@@ -321,6 +323,28 @@ async function writeFinalPreflightReceipt(
   };
   write(`${JSON.stringify(finalReceipt)}\n`);
   return finalReceipt;
+}
+
+function assertConditionalDeleteGuardAcceptance(receipt) {
+  const acceptance = receipt?.conditionalDeleteGuardAcceptance;
+  if (
+    acceptance?.protectedEvidence?.status !== "blocked" ||
+    acceptance.protectedEvidence.blocker !== "MIXED_FILE_OWNERSHIP" ||
+    acceptance.protectedEvidence.fileCandidateCount !== 0 ||
+    JSON.stringify(acceptance.protectedEvidence.bindings) !==
+      JSON.stringify([
+        "PaymentExecutionPayerVerification.verificationEvidenceFileId",
+        "VerifiedBankTransactionObservation.transactionEvidenceFileId",
+        "VerifiedBankTransactionObservation.verificationEvidenceFileId"
+      ]) ||
+    acceptance?.triggerDrift?.status !== "blocked" ||
+    acceptance.triggerDrift.blocker !== "DELETE_GUARD_TRIGGER" ||
+    acceptance.triggerDrift.trigger !==
+      "PaymentExecutionPayerAttestation_evidence_immutable_drift" ||
+    acceptance.triggerDrift.candidateCount !== 0
+  ) {
+    throw new Error("POL-24A 条件删除守卫动态验收无效");
+  }
 }
 
 async function main() {

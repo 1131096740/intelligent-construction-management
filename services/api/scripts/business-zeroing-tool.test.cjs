@@ -111,6 +111,27 @@ function successfulMigrationRecords() {
       logs: null
     }));
 }
+
+function conditionalDeleteGuardAcceptanceReceipt() {
+  return {
+    protectedEvidence: {
+      status: "blocked",
+      blocker: "MIXED_FILE_OWNERSHIP",
+      fileCandidateCount: 0,
+      bindings: [
+        "PaymentExecutionPayerVerification.verificationEvidenceFileId",
+        "VerifiedBankTransactionObservation.transactionEvidenceFileId",
+        "VerifiedBankTransactionObservation.verificationEvidenceFileId"
+      ]
+    },
+    triggerDrift: {
+      status: "blocked",
+      blocker: "DELETE_GUARD_TRIGGER",
+      trigger: "PaymentExecutionPayerAttestation_evidence_immutable_drift",
+      candidateCount: 0
+    }
+  };
+}
 const FILE_SNAPSHOT = {
   ...FILE_SNAPSHOT_BODY,
   snapshotSha256: sha256(FILE_SNAPSHOT_BODY)
@@ -286,6 +307,8 @@ function resignReport(report) {
       expectedReleasedNumbers: withoutReportSha.expectedReleasedNumbers,
       deletionOrder: withoutReportSha.deletionOrder,
       fileBindings: withoutReportSha.fileBindings,
+      conditionalDeleteGuardDefinitions:
+        withoutReportSha.conditionalDeleteGuardDefinitions,
       conditionalDeleteGuardProofs:
         withoutReportSha.conditionalDeleteGuardProofs,
       blockers: withoutReportSha.blockers
@@ -2173,6 +2196,27 @@ test("后置核验要求候选清零、保留数量不漂移且无孤儿或悬�
     () => verifyPostcheck(before, resignReport({ ...after, schemaDigest: "0".repeat(64) })),
     /Schema digest/u
   );
+  assert.throws(
+    () =>
+      verifyPostcheck(
+        before,
+        resignReport({
+          ...after,
+          conditionalDeleteGuardDefinitions: [
+            {
+              tableName: "FileObject",
+              triggerName: "unexpected_file_delete_guard",
+              enabledState: "O",
+              triggerDefinitionSha256: "1".repeat(64),
+              functionSchema: "public",
+              functionName: "unexpected_file_delete_guard",
+              functionDefinitionSha256: "2".repeat(64)
+            }
+          ]
+        })
+      ),
+    /条件删除触发器或函数定义发生漂移/u
+  );
   assert.throws(() => verifyPostcheck({}, after), /归零预检报告 SHA-256/u);
 });
 
@@ -2456,6 +2500,8 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
       numberRuleResets: 0,
       total: 5
     },
+    conditionalDeleteGuardAcceptance:
+      conditionalDeleteGuardAcceptanceReceipt(),
     formalRecordProtection: {
       status: "blocked",
       blockers: ["FORMAL_RECORD_PROTECTED", "FORMAL_AGGREGATE_CHILD_PROTECTED"],
@@ -2659,6 +2705,8 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
         candidateCount: 1
       }
     ],
+    conditionalDeleteGuardAcceptance:
+      conditionalDeleteGuardAcceptanceReceipt(),
     migrationCount,
     migrationHead,
     formalRecordProtection: {
@@ -3954,6 +4002,13 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
         async appendAudit(event) {
           calls.push(["audit", event.status]);
         },
+        async assertConditionalFileDeleteCandidate(item, proofs) {
+          calls.push([
+            "file-delete-guard",
+            item.primaryKey,
+            proofs.map((proof) => proof.triggerName)
+          ]);
+        },
         async deleteExactRecord(item) {
           calls.push(["delete", item.table, item.primaryKey]);
           return 1;
@@ -4084,6 +4139,11 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     "transaction:start",
     ["audit", "started"],
     ["delete", "Contract", { id: "c1" }],
+    [
+      "file-delete-guard",
+      { id: "f1" },
+      []
+    ],
     ["delete", "FileObject", { id: "f1" }],
     "transaction:commit",
     ["object", "private", "uploads/f1.pdf"],
@@ -4102,6 +4162,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
           async transaction(work) {
             return work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4166,6 +4227,7 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
           async transaction(work) {
             return work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4339,6 +4401,7 @@ test("对象部分删除后失败会耐久记录已完成 disposition 与未完�
           async transaction(work) {
             return work({
               async appendAudit(event) { audits.push(event); },
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4449,6 +4512,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
           async transaction(work) {
             return work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4571,6 +4635,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
       async transaction(work) {
         return work({
           async appendAudit() {},
+          async assertConditionalFileDeleteCandidate() {},
           async deleteExactRecord() { return 1; },
           async resetExactSequence() { return 1; }
         });
@@ -4650,6 +4715,7 @@ test("候选删除若经触发器伤及保留资料会在同一事务提交前�
           async transaction(work) {
             const result = await work({
               async appendAudit() { calls.push("audit-started"); },
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord(item) { calls.push(`delete:${item.table}`); return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4719,6 +4785,7 @@ test("锁内删除后 lease 撤销会在事务提交前回滚且不进入对象�
           async transaction(work) {
             await work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });

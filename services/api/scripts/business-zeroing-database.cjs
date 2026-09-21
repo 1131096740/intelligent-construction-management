@@ -3,6 +3,7 @@
 
 const { createHash, randomUUID } = require("node:crypto");
 const {
+  CONDITIONAL_FILE_DELETE_GUARDS,
   selectFormalObservationFields,
   sha256
 } = require("./business-zeroing-core.cjs");
@@ -771,6 +772,96 @@ function createBusinessZeroingDatabase(prisma, policy) {
     );
   }
 
+  async function assertConditionalFileDeleteCandidateWithClient(
+    client,
+    candidate,
+    expectedProofs
+  ) {
+    invariant(
+      candidate.table === "FileObject" &&
+        Object.keys(candidate.primaryKey ?? {}).length === 1 &&
+        typeof candidate.primaryKey.id === "string" &&
+        candidate.primaryKey.id &&
+        /^[0-9a-f]{64}$/u.test(candidate.objectSnapshot?.snapshotSha256 ?? ""),
+      "FileObject 条件删除守卫复核候选无效"
+    );
+    const contracts = Object.entries(CONDITIONAL_FILE_DELETE_GUARDS);
+    invariant(
+      Array.isArray(expectedProofs) && expectedProofs.length === contracts.length,
+      "FileObject 条件删除守卫复核证明不完整"
+    );
+    const schema = await refreshSchema(client);
+    const manifestRows = await query(
+      client,
+      `SELECT "tableName", "columnName"
+         FROM jg_file_business_binding_columns()
+        ORDER BY "tableName", "columnName"`
+    );
+    const registeredBindings = new Set(
+      manifestRows.map((row) => `${row.tableName}.${row.columnName}`)
+    );
+    for (const foreignKey of schema.foreignKeys.filter(
+      (item) => item.parentTable === "FileObject"
+    )) {
+      invariant(
+        foreignKey.childColumns.every((column) =>
+          registeredBindings.has(`${foreignKey.childTable}.${column}`)
+        ),
+        "FileObject 条件删除守卫复核发现未登记文件外键"
+      );
+    }
+    for (const [triggerName, contract] of contracts) {
+      const proof = expectedProofs.find((item) => item.triggerName === triggerName);
+      invariant(
+        proof &&
+          proof.tableName === contract.tableName &&
+          proof.functionSchema === contract.functionSchema &&
+          proof.functionName === contract.functionName &&
+          proof.triggerDefinitionSha256 === contract.triggerDefinitionSha256 &&
+          proof.functionDefinitionSha256 === contract.functionDefinitionSha256 &&
+          proof.fileForeignKeyCoverage === "complete" &&
+          proof.protectedReferenceCount === 0 &&
+          proof.candidates.some(
+            (item) =>
+              item.primaryKey?.id === candidate.primaryKey.id &&
+              item.objectSnapshotSha256 === candidate.objectSnapshot.snapshotSha256
+          ),
+        `FileObject 条件删除守卫复核证明不匹配：${triggerName}`
+      );
+      const trigger = schema.triggers.find(
+        (item) => item.tableName === "FileObject" && item.triggerName === triggerName
+      );
+      invariant(
+        trigger &&
+          trigger.enabledState === "O" &&
+          trigger.functionSchema === contract.functionSchema &&
+          trigger.functionName === contract.functionName &&
+          createHash("sha256")
+            .update(trigger.triggerDefinition)
+            .digest("hex") === contract.triggerDefinitionSha256 &&
+          createHash("sha256")
+            .update(trigger.functionDefinition.trimEnd())
+            .digest("hex") === contract.functionDefinitionSha256,
+        `FileObject 条件删除守卫复核发现触发器或函数漂移：${triggerName}`
+      );
+      for (const reference of contract.protectedReferences) {
+        const rows = await query(
+          client,
+          `SELECT EXISTS (
+             SELECT 1
+               FROM ${quoteIdentifier(reference.tableName)}
+              WHERE ${quoteIdentifier(reference.columnName)}::text = $1
+           ) AS "referenced"`,
+          candidate.primaryKey.id
+        );
+        invariant(
+          rows[0]?.referenced === false,
+          `FileObject 条件删除守卫复核发现受保护证据引用：${reference.tableName}.${reference.columnName}`
+        );
+      }
+    }
+  }
+
   return {
     async transaction(work) {
       return prisma.$transaction(
@@ -779,6 +870,12 @@ function createBusinessZeroingDatabase(prisma, policy) {
           return work({
             client: tx,
             appendAudit: (event) => appendAuditWithClient(tx, event),
+            assertConditionalFileDeleteCandidate: (candidate, expectedProofs) =>
+              assertConditionalFileDeleteCandidateWithClient(
+                tx,
+                candidate,
+                expectedProofs
+              ),
             async deleteExactRecord(candidate) {
               const snapshotStatement = buildExactRowSnapshotStatement(
                 candidate,

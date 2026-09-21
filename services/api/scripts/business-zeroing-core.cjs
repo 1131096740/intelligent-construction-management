@@ -845,6 +845,8 @@ function reportStateFingerprint(report) {
     expectedReleasedNumbers: report.expectedReleasedNumbers,
     deletionOrder: report.deletionOrder,
     fileBindings: report.fileBindings,
+    conditionalDeleteGuardDefinitions:
+      report.conditionalDeleteGuardDefinitions,
     conditionalDeleteGuardProofs: report.conditionalDeleteGuardProofs,
     blockers: report.blockers
   });
@@ -1262,6 +1264,18 @@ function buildPreflightReport({
   }
 
   const deletionCandidateTables = new Set(deletionCandidates.map((item) => item.table));
+  const conditionalDeleteGuardDefinitions = (inventory.deleteGuardTriggers ?? [])
+    .filter((trigger) => trigger.tableName === "FileObject")
+    .map((trigger) => ({
+      tableName: trigger.tableName,
+      triggerName: trigger.triggerName,
+      enabledState: trigger.enabledState,
+      triggerDefinitionSha256: trigger.triggerDefinitionSha256,
+      functionSchema: trigger.functionSchema,
+      functionName: trigger.functionName,
+      functionDefinitionSha256: trigger.functionDefinitionSha256
+    }))
+    .sort((left, right) => left.triggerName.localeCompare(right.triggerName));
   const conditionalDeleteGuardProofs = [];
   for (const trigger of inventory.deleteGuardTriggers ?? []) {
     if (!deletionCandidateTables.has(trigger.tableName)) continue;
@@ -1430,6 +1444,7 @@ function buildPreflightReport({
     expectedReleasedNumbers: safeExpectedReleasedNumbers,
     candidateSha256,
     fileBindings,
+    conditionalDeleteGuardDefinitions,
     conditionalDeleteGuardProofs,
     orphanFiles,
     foreignKeys: inventory.foreignKeys ?? [],
@@ -2424,6 +2439,12 @@ function verifyPostcheck(
   if ((after.blockers ?? []).length > 0) errors.push("仍有阻断项");
   if ((after.orphanFiles ?? []).length > 0) errors.push("仍有孤儿文件");
   if ((after.danglingForeignKeys ?? []).length > 0) errors.push("仍有悬空外键");
+  if (
+    sha256(before.conditionalDeleteGuardDefinitions ?? []) !==
+    sha256(after.conditionalDeleteGuardDefinitions ?? [])
+  ) {
+    errors.push("FileObject 条件删除触发器或函数定义发生漂移");
+  }
   for (const [table, count] of Object.entries(before.preservationCounts ?? {})) {
     if (table === "AuditLog") {
       if ((after.preservationCounts?.[table] ?? 0) < count) {
@@ -2539,6 +2560,16 @@ async function executeBusinessZeroing({
     assertFreshReport(report, lockedReport, "锁内");
     await tx.appendAudit({ ...auditBase, status: "started" });
     for (const item of candidates) {
+      if (item.table === "FileObject") {
+        invariant(
+          typeof tx.assertConditionalFileDeleteCandidate === "function",
+          "FileObject 逐主键删除缺少条件删除守卫复核端"
+        );
+        await tx.assertConditionalFileDeleteCandidate(
+          item,
+          lockedReport.conditionalDeleteGuardProofs
+        );
+      }
       const deletedCount = await tx.deleteExactRecord(item);
       invariant(deletedCount === 1, `${item.table} 逐主键删除数量不是 1，事务必须回滚`);
     }
@@ -2792,6 +2823,7 @@ async function executeBusinessZeroing({
 }
 
 module.exports = {
+  CONDITIONAL_FILE_DELETE_GUARDS,
   POLICY_ID,
   WRITE_FREEZE_LEASE_PAYLOAD_FIELDS,
   buildPreflightReport,
