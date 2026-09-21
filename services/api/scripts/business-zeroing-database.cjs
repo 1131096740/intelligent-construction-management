@@ -801,7 +801,8 @@ function createBusinessZeroingDatabase(prisma, policy) {
       manifestRows.map((row) => `${row.tableName}.${row.columnName}`)
     );
     for (const foreignKey of schema.foreignKeys.filter(
-      (item) => item.parentTable === "FileObject"
+      (item) =>
+        item.parentTable === "FileObject" && item.childTable !== "FileObject"
     )) {
       invariant(
         foreignKey.childColumns.every((column) =>
