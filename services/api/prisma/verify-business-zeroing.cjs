@@ -665,6 +665,41 @@ async function verifyBusinessZeroing(
       report.blockers.some((item) => item.code === "DELETE_GUARD_TRIGGER"),
       false
     );
+    assert.deepEqual(
+      report.conditionalDeleteGuardProofs.map((proof) => ({
+        triggerName: proof.triggerName,
+        triggerDefinitionSha256: proof.triggerDefinitionSha256,
+        functionName: proof.functionName,
+        functionDefinitionSha256: proof.functionDefinitionSha256,
+        fileForeignKeyCoverage: proof.fileForeignKeyCoverage,
+        protectedReferenceCount: proof.protectedReferenceCount,
+        candidateCount: proof.candidates.length
+      })),
+      [
+        {
+          triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+          triggerDefinitionSha256:
+            "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+          functionName: "guard_payment_execution_payer_evidence_immutable",
+          functionDefinitionSha256:
+            "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb",
+          fileForeignKeyCoverage: "complete",
+          protectedReferenceCount: 0,
+          candidateCount: 1
+        },
+        {
+          triggerName: "VerifiedBankTransactionObservation_evidence_immutable",
+          triggerDefinitionSha256:
+            "ebe8e609f42805af6f66a71a5695a2a09781a8214528cef3133f62c9f61456cd",
+          functionName: "guard_verified_bank_transaction_observation_evidence_immutable",
+          functionDefinitionSha256:
+            "ce42347a9999fa83189e4414b6452401a7e2df5ab59bf41749fd479f7b0e71a2",
+          fileForeignKeyCoverage: "complete",
+          protectedReferenceCount: 0,
+          candidateCount: 1
+        }
+      ]
+    );
   } else {
     assert.equal(report.status, "ready", JSON.stringify(report.blockers));
     assert.deepEqual(

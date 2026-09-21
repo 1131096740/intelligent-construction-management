@@ -286,6 +286,8 @@ function resignReport(report) {
       expectedReleasedNumbers: withoutReportSha.expectedReleasedNumbers,
       deletionOrder: withoutReportSha.deletionOrder,
       fileBindings: withoutReportSha.fileBindings,
+      conditionalDeleteGuardProofs:
+        withoutReportSha.conditionalDeleteGuardProofs,
       blockers: withoutReportSha.blockers
     })
   };

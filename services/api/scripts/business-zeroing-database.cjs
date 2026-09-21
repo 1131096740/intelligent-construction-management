@@ -625,10 +625,28 @@ async function inspectDatabaseInventory(client, { environment, lockTables = fals
         /\bDELETE\b/iu.test(trigger.triggerDefinition) &&
         /\bRAISE\s+EXCEPTION\b/iu.test(trigger.functionDefinition)
     )
-    .map(({ tableName, triggerName, enabledState }) => ({
+    .map(({
       tableName,
       triggerName,
-      enabledState
+      enabledState,
+      triggerDefinition,
+      functionSchema,
+      functionName,
+      functionDefinition
+    }) => ({
+      tableName,
+      triggerName,
+      enabledState,
+      triggerDefinition,
+      triggerDefinitionSha256: createHash("sha256")
+        .update(triggerDefinition)
+        .digest("hex"),
+      functionSchema,
+      functionName,
+      functionDefinition,
+      functionDefinitionSha256: createHash("sha256")
+        .update(functionDefinition)
+        .digest("hex")
     }));
   const migrationHead = schema.migrations.at(-1)?.migrationName ?? null;
   const databaseFingerprint = sha256(schema.identity);
