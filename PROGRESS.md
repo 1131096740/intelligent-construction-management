@@ -10,13 +10,15 @@
 
 ---
 
-## POL 全树本地集成（2026-09-20）
+## POL 全树本地集成（2026-09-22）
+
+- [~] #301 正在 `codex/pol301-fileobject-trigger-proof` 以最小专票收敛 #122 发现的两个 FileObject 条件删除守卫：仅对 `PaymentExecutionPayerAttestation_evidence_immutable` 和 `VerifiedBankTransactionObservation_evidence_immutable` 的精确触发器/函数身份及固定摘要建立候选级证明；只有文件外键登记完整、对应候选无任何受保护证据引用、对象版本清单不漂移且写冻结有效时才可通过该项门禁。未知守卫、守卫缺失/禁用、名称/表/列/函数/定义摘要漂移、未登记文件外键或受保护引用仍以 `DELETE_GUARD_TRIGGER` 失败关闭。新候选已补齐每个 FileObject 删除前与锁内 postcheck 的写冻结、对象快照和守卫复核，定向工具测试 72/72 通过；尚须冻结新 SHA、重跑全部本机 PG16/门禁和双审后才可交付 PR/CI。本票不执行生产 inspect、dry-run、apply、数据库/COS 删除或 #122/#123/#124。
 
 - [~] #296 / POL-25A 两次获批生产尝试均在变更前只读绑定阶段失败关闭，零生产写入：第一次暴露执行 harness 语法与 root/ubuntu 身份错误；第二次已正确绑定 `ubuntu`、正式 checkout `a131188418b6913041f02ad1658d3bb28c173f58` 和 live `origin/main@118530bfb53e2374f88ddd21d13c2f343acb1341`，但正式机缺少 `/etc/jiangkong/db-migration.env`、候选受控 DB 助手、六项后续 POL-22 信任材料及私有对象恢复入口。当前在 fresh `main@118530bfb53e2374f88ddd21d13c2f343acb1341` 的 `codex/pol296-production-executor` 仅补齐 #296 私有对象全版本只读备份/隔离恢复能力：实际 clean HEAD 精确绑定、无环境旁路的 root-only 输入/输出、数据库 size/SHA 与 COS latest 双向核对、全版本双枚举防漂移、内容寻址 blob、独立恢复逐版本复核、脱敏回执及分页/特殊键/漂移失败关闭测试 6/6 通过。首个候选 `43575e57`的完整门禁因独立双审发现候选绑定、测试旁路、COS 分页和特殊键四类 P1 而主动中止，不作通过证据；修复后必须新建 SHA 并重跑全部门禁和原双审。未实现或执行迁移凭据引导、停写、数据库备份/恢复、Schema 迁移、grant、归零、部署或开放；形成新 SHA、完整门禁、审查和 GitHub 交付后，仍须新的生产授权。
 
 - [~] #211 与 #122 正式环境合并只读审计确认：正式库仍为 124 项迁移，而冻结候选为 171 项、POL-22 策略覆盖最终 281 张表，原 `#121 → #122 → #123 → #124` 顺序无法在旧 Schema 上生成可执行归零预检。用户已批准修订交付时序；本候选将权威规格改为 `#121 → #296/POL-25A Schema 兼容迁移与停写封存 → #122/POL-24 归零 → #123/POL-25B 同一 SHA 应用部署 → #124/POL-26 开放`，并以四张连续绑定收据隔离生产动作。#296 已以 `needs-info` 新建，明确当前只批准规格与依赖修订；#122/#123/#124 票面依赖在本次文档交付中同步。未生成备份、安装信任材料、迁移、归零、部署、开放或写入生产数据库/COS。
 
-- [~] #121 正在 `codex/pol121-release-candidate`、精确基线 `main@7b11a2755d78e15906ae4a20db6fd497a05ca921` 推进统一切换候选：POL-23 fail-closed 清单已绑定 #119/#120、15 条主线、97 个已退役旧写入口、精确 SHA PostgreSQL 16、页面门和新增 `pol22-readonly-preflight`；现行 Schema 新增的 107 个业务模型只登记为受保护，不扩大归零删除面。只读预检仅在一次性本机 PG16 合成环境执行迁移、备份恢复与归属阻断证明；两个证据文件不可变守卫必须保持 `zeroingReadiness:blocked`，最终收据只能为 `executed:false`、删除候选 0，不得签发 dry-run 或调用 apply。#122/#123/#124 的归零、生产迁移、部署和正式开放继续分离。当前公共清单、CI 编排与 POL22 工具测试通过；尚未形成新冻结候选 SHA、执行完整 `release:local`、PR/CI/合并或关票。未执行数据归零、生产部署、生产迁移或正式开放。
+- [~] #121 正在 `codex/pol121-release-candidate`、精确基线 `main@7b11a2755d78e15906ae4a20db6fd497a05ca921` 推进统一切换候选：POL-23 fail-closed 清单已绑定 #119/#120、15 条主线、97 个已退役旧写入口、精确 SHA PostgreSQL 16、页面门和新增 `pol22-readonly-preflight`；现行 Schema 新增的 107 个业务模型只登记为受保护，不扩大归零删除面。只读预检仅在一次性本机 PG16 合成环境执行迁移、备份恢复与归属阻断证明；当时对两个证据文件不可变守卫的 blanket blocker 结论已由后续 #301 专票取代，现行精确候选级证明规则以本节 #301 条目和当前 runbook 为准。#122/#123/#124 的归零、生产迁移、部署和正式开放继续分离。未执行数据归零、生产部署、生产迁移或正式开放。
 
 - [x] #119 已由后续 PR #294 完成修复并合入 `main@7b11a2755d78e15906ae4a20db6fd497a05ca921`：最终候选 `a5beb7e33f5ca6677657203aad0d34dca8480fed` 的完整本机 `release:local`、真实 PostgreSQL 16、Spec/Standards 双审和 fixed-head CI run `35467853865` attempt 2 全部通过；merge-head CI run `35469690625` attempt 2 全部通过，Issue #119 已关闭并完成 #93 精确 SHA 回执。未执行部署、迁移或生产写入。
 

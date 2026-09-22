@@ -43,6 +43,11 @@ const ATTACHMENT_ID = "00000000-0000-4000-8000-000000000006";
 const GUARDED_FACT_ID = "00000000-0000-4000-8000-000000000007";
 const BILL_ID = "00000000-0000-4000-8000-000000000008";
 const MIXED_FILE_ID = "00000000-0000-4000-8000-000000000009";
+const PROTECTED_COMPANY_ID = "00000000-0000-4000-8000-000000000010";
+const FINANCE_DIRECTOR_POSITION_ID = "00000000-0000-4000-8000-000000000011";
+const FINANCE_DIRECTOR_ASSIGNMENT_ID = "00000000-0000-4000-8000-000000000012";
+const PAYER_VERIFICATION_ID = "00000000-0000-4000-8000-000000000013";
+const BANK_OBSERVATION_ID = "00000000-0000-4000-8000-000000000014";
 const AFFILIATE_PARTY_ID = "isolated-party";
 const AFFILIATE_PARTY_VERSION_ID = "isolated-party-version";
 const AFFILIATE_ASSIGNMENT_ID = "isolated-assignment";
@@ -563,6 +568,235 @@ async function verifyBusinessZeroing(
     });
   };
 
+  const protectedEvidenceRollback = new Error(
+    "POL-24A protected evidence scenario rollback"
+  );
+  let protectedEvidenceReport;
+  let protectedEvidenceBindings;
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "CompanyEntity" (
+             "id", "name", "unifiedSocialCreditCode", "dataStatus",
+             "currentVersionNo", "isActive", "updatedAt"
+           ) VALUES ($1, '隔离受保护证据公司', '91310000POL301001',
+             'complete', 1, true, NOW())`,
+          PROTECTED_COMPANY_ID
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "Position" ("id", "key", "name", "updatedAt")
+           VALUES ($1, 'finance_director', '隔离财务负责人', NOW())`,
+          FINANCE_DIRECTOR_POSITION_ID
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "UserPosition" ("id", "userId", "positionId", "projectId")
+           VALUES ($1, $2, $3, NULL)`,
+          FINANCE_DIRECTOR_ASSIGNMENT_ID,
+          ACTOR_ID,
+          FINANCE_DIRECTOR_POSITION_ID
+        );
+        await tx.$queryRawUnsafe(
+          `SELECT * FROM public."jg_issue_payment_execution_payer_verification_trusted"($1::JSONB)`,
+          JSON.stringify({
+            id: PAYER_VERIFICATION_ID,
+            reference: "POL301-PAYER-VERIFICATION",
+            holderCompanyEntityId: PROTECTED_COMPANY_ID,
+            holderNameSnapshot: "隔离受保护证据公司",
+            holderCreditCodeSnapshot: "91310000POL301001",
+            verificationReference: "POL301-BANK-VERIFY",
+            verifiedByUserId: ACTOR_ID,
+            verifiedAt: "2026-01-01T00:00:00.000Z",
+            verificationEvidenceFileId: FILE_ID,
+            verificationEvidenceContentSha256: sha256("fixture"),
+            status: "verified",
+            sourceType: "bank_account_legal_holder",
+            sourceRecordId: "pol301-protected-evidence"
+          })
+        );
+        const writeSecret = "pol301-isolated-write-secret";
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
+           VALUES (1, crypt($1, gen_salt('bf')))
+           ON CONFLICT ("id") DO UPDATE SET "secretHash" = EXCLUDED."secretHash"`,
+          writeSecret
+        );
+        await tx.$executeRawUnsafe(
+          `SELECT public."authorizeOperatingLedgerWrite"($1, $2)`,
+          ACTOR_ID,
+          writeSecret
+        );
+        await tx.$executeRawUnsafe(
+          `SELECT set_config('app.fund_execution_actor', $1, true),
+                  set_config('app.fund_execution_request_id', $2, true),
+                  set_config('app.fund_execution_action', 'observe', true)`,
+          ACTOR_ID,
+          "00000000-0000-4000-8000-000000000015"
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "VerifiedBankTransactionObservation" (
+             "id", "reference", "payerVerificationId",
+             "payerVerificationReference", "holderCompanyEntityId",
+             "holderNameSnapshot", "holderCreditCodeSnapshot",
+             "verificationReference", "verifiedByUserId", "verifiedAt",
+             "verificationEvidenceFileId", "verificationEvidenceContentSha256",
+             "verificationSourceType", "verificationSourceRecordId",
+             "verificationIssuedByDatabaseRole", "transactionSourceType",
+             "transactionSourceId", "transactionSourceIdentity",
+             "transactionEvidenceFileId", "transactionEvidenceContentSha256",
+             "transactionExecutedByUserId", "amountCents", "currencyCode",
+             "direction", "occurredAt", "payloadFingerprint", "createdByUserId",
+             "auditAction", "auditRequestId", "createdTransactionId",
+             "createdBackendPid"
+           ) VALUES (
+             $1, 'POL301-BANK-OBSERVATION', $2,
+             'POL301-PAYER-VERIFICATION', $3,
+             '隔离受保护证据公司', '91310000POL301001',
+             'POL301-BANK-VERIFY', $4, '2026-01-01T00:00:00.000Z',
+             $5, $6,
+             'bank_account_legal_holder', 'pol301-protected-evidence',
+             'jg_payment_execution_payer_issuer', 'pol301_isolated_statement',
+             'pol301-statement-001', $7,
+             $5, $6,
+             $4, 100, 'CNY',
+             'inflow', '2026-01-01T00:01:00.000Z', $8, $4,
+             'observe', '00000000-0000-4000-8000-000000000015', 0, 0
+           )`,
+          BANK_OBSERVATION_ID,
+          PAYER_VERIFICATION_ID,
+          PROTECTED_COMPANY_ID,
+          ACTOR_ID,
+          FILE_ID,
+          sha256("fixture"),
+          "b".repeat(64),
+          "c".repeat(64)
+        );
+        const protectedInventory = await inspectDatabaseInventory(tx, {
+          environment: ENVIRONMENT
+        });
+        const protectedDecisions = createDecisions(
+          protectedInventory,
+          trustedFixtureKeys
+        );
+        const protectedProvenance = createTestProvenance(
+          protectedInventory,
+          protectedDecisions,
+          trustedFixtureKeys,
+          testProvenanceKeys.privateKey,
+          capturedAt
+        );
+        protectedEvidenceReport = await buildReport(
+          tx,
+          false,
+          false,
+          protectedDecisions,
+          protectedProvenance,
+          protectedProvenance.registrySha256
+        );
+        protectedEvidenceBindings = protectedInventory.fileBindings.filter(
+          (binding) =>
+            binding.fileId === FILE_ID &&
+            [
+              "PaymentExecutionPayerVerification.verificationEvidenceFileId",
+              "VerifiedBankTransactionObservation.verificationEvidenceFileId",
+              "VerifiedBankTransactionObservation.transactionEvidenceFileId"
+            ].includes(`${binding.ownerTable}.${binding.ownerColumn}`)
+        );
+        throw protectedEvidenceRollback;
+      },
+      { isolationLevel: "Serializable", timeout: 120_000 }
+    );
+  } catch (error) {
+    assert.equal(error, protectedEvidenceRollback);
+  }
+  assert.equal(protectedEvidenceReport.status, "blocked");
+  assert.equal(
+    protectedEvidenceReport.deletionCandidates.some(
+      (candidate) => candidate.table === "FileObject"
+    ),
+    false
+  );
+  assert.ok(
+    protectedEvidenceReport.blockers.some(
+      (blocker) => blocker.code === "MIXED_FILE_OWNERSHIP"
+    )
+  );
+  assert.deepEqual(
+    protectedEvidenceBindings.map(
+      (binding) => `${binding.ownerTable}.${binding.ownerColumn}`
+    ).sort(),
+    [
+      "PaymentExecutionPayerVerification.verificationEvidenceFileId",
+      "VerifiedBankTransactionObservation.transactionEvidenceFileId",
+      "VerifiedBankTransactionObservation.verificationEvidenceFileId"
+    ]
+  );
+  const triggerDriftRollback = new Error("POL-24A trigger drift scenario rollback");
+  let triggerDriftReport;
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `ALTER TRIGGER "PaymentExecutionPayerAttestation_evidence_immutable"
+             ON "FileObject"
+           RENAME TO "PaymentExecutionPayerAttestation_evidence_immutable_drift"`
+        );
+        const driftInventory = await inspectDatabaseInventory(tx, {
+          environment: ENVIRONMENT
+        });
+        const driftDecisions = createDecisions(driftInventory, trustedFixtureKeys);
+        const driftProvenance = createTestProvenance(
+          driftInventory,
+          driftDecisions,
+          trustedFixtureKeys,
+          testProvenanceKeys.privateKey,
+          capturedAt
+        );
+        triggerDriftReport = await buildReport(
+          tx,
+          false,
+          false,
+          driftDecisions,
+          driftProvenance,
+          driftProvenance.registrySha256
+        );
+        throw triggerDriftRollback;
+      },
+      { isolationLevel: "Serializable", timeout: 120_000 }
+    );
+  } catch (error) {
+    assert.equal(error, triggerDriftRollback);
+  }
+  assert.equal(triggerDriftReport.status, "blocked");
+  assert.deepEqual(triggerDriftReport.deletionCandidates, []);
+  assert.ok(
+    triggerDriftReport.blockers.some(
+      (blocker) =>
+        blocker.code === "DELETE_GUARD_TRIGGER" &&
+        blocker.details?.table === "FileObject" &&
+        blocker.details?.trigger ===
+          "PaymentExecutionPayerAttestation_evidence_immutable_drift"
+    )
+  );
+  const conditionalDeleteGuardAcceptance = {
+    protectedEvidence: {
+      status: protectedEvidenceReport.status,
+      blocker: "MIXED_FILE_OWNERSHIP",
+      fileCandidateCount: protectedEvidenceReport.deletionCandidates.filter(
+        (candidate) => candidate.table === "FileObject"
+      ).length,
+      bindings: protectedEvidenceBindings.map(
+        (binding) => `${binding.ownerTable}.${binding.ownerColumn}`
+      ).sort()
+    },
+    triggerDrift: {
+      status: triggerDriftReport.status,
+      blocker: "DELETE_GUARD_TRIGGER",
+      trigger: "PaymentExecutionPayerAttestation_evidence_immutable_drift",
+      candidateCount: triggerDriftReport.deletionCandidates.length
+    }
+  };
+
   await prisma.$executeRawUnsafe(
     `UPDATE "ContractVersion" SET "status" = 'effective' WHERE "id" = $1`,
     VERSION_ID
@@ -655,20 +889,50 @@ async function verifyBusinessZeroing(
     )
   );
   const report = await buildReport(prisma);
-  const expectedReadOnlyGuardTriggers = [
-    "PaymentExecutionPayerAttestation_evidence_immutable",
-    "VerifiedBankTransactionObservation_evidence_immutable"
-  ];
   if (preflightOnly) {
-    assert.equal(report.status, "blocked");
-    assert.deepEqual(report.deletionCandidates, []);
+    assert.equal(report.status, "ready", JSON.stringify(report.blockers));
     assert.deepEqual(
-      report.blockers.map((item) => item.code),
-      ["DELETE_GUARD_TRIGGER", "DELETE_GUARD_TRIGGER"]
+      report.deletionCandidates.map((item) => item.table).sort(),
+      ["Contract", "ContractDraftAttachment", "ContractVersion", "FileObject"]
+    );
+    assert.equal(
+      report.blockers.some((item) => item.code === "DELETE_GUARD_TRIGGER"),
+      false
     );
     assert.deepEqual(
-      report.blockers.map((item) => item.details?.trigger).sort(),
-      expectedReadOnlyGuardTriggers
+      report.conditionalDeleteGuardProofs.map((proof) => ({
+        triggerName: proof.triggerName,
+        triggerDefinitionSha256: proof.triggerDefinitionSha256,
+        functionName: proof.functionName,
+        functionDefinitionSha256: proof.functionDefinitionSha256,
+        fileForeignKeyCoverage: proof.fileForeignKeyCoverage,
+        protectedReferenceCount: proof.protectedReferenceCount,
+        candidateCount: proof.candidates.length
+      })),
+      [
+        {
+          triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+          triggerDefinitionSha256:
+            "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+          functionName: "guard_payment_execution_payer_evidence_immutable",
+          functionDefinitionSha256:
+            "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb",
+          fileForeignKeyCoverage: "complete",
+          protectedReferenceCount: 0,
+          candidateCount: 1
+        },
+        {
+          triggerName: "VerifiedBankTransactionObservation_evidence_immutable",
+          triggerDefinitionSha256:
+            "ebe8e609f42805af6f66a71a5695a2a09781a8214528cef3133f62c9f61456cd",
+          functionName: "guard_verified_bank_transaction_observation_evidence_immutable",
+          functionDefinitionSha256:
+            "ce42347a9999fa83189e4414b6452401a7e2df5ab59bf41749fd479f7b0e71a2",
+          fileForeignKeyCoverage: "complete",
+          protectedReferenceCount: 0,
+          candidateCount: 1
+        }
+      ]
     );
   } else {
     assert.equal(report.status, "ready", JSON.stringify(report.blockers));
@@ -813,8 +1077,8 @@ async function verifyBusinessZeroing(
       mode: "read_only_preflight",
       status: "passed",
       executed: false,
-      zeroingReadiness: "blocked",
-      dryRunEligible: false,
+      zeroingReadiness: "ready",
+      dryRunEligible: true,
       environment: ENVIRONMENT,
       databaseFingerprint: report.databaseFingerprint,
       codeSha: codeIdentity.codeSha,
@@ -823,15 +1087,27 @@ async function verifyBusinessZeroing(
       migrationCount: beforeCounts.migrations,
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
-      deletionCandidateCount: 0,
-      blockerCount: report.blockers.length,
+      deletionCandidateCount: report.deletionCandidates.length,
+      blockerCount: 0,
       blockers: report.blockers.map((item) => ({
         code: item.code,
         table: item.details?.table,
         trigger: item.details?.trigger,
         enabledState: item.details?.enabledState
       })),
+      conditionalDeleteGuardProofs: report.conditionalDeleteGuardProofs.map(
+        (proof) => ({
+          triggerName: proof.triggerName,
+          triggerDefinitionSha256: proof.triggerDefinitionSha256,
+          functionName: proof.functionName,
+          functionDefinitionSha256: proof.functionDefinitionSha256,
+          fileForeignKeyCoverage: proof.fileForeignKeyCoverage,
+          protectedReferenceCount: proof.protectedReferenceCount,
+          candidateCount: proof.candidates.length
+        })
+      ),
       dryRunSteps: 0,
+      conditionalDeleteGuardAcceptance,
       formalRecordProtection,
       unknownOwnershipBlockers,
       mixedOwnershipBlockers,
@@ -1127,6 +1403,7 @@ async function verifyBusinessZeroing(
       blocker: "TEST_PROVENANCE_NOT_VERIFIED",
       candidateCount: 0
     },
+    conditionalDeleteGuardAcceptance,
     formalRecordProtection,
     unknownOwnershipBlockers,
     mixedOwnershipBlockers,

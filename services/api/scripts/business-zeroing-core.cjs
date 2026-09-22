@@ -64,6 +64,58 @@ const FORMAL_LIFECYCLE_FIELD_TOKENS = new Set([
   "status", "submit", "submitted", "valid", "void", "voided", "workflow",
   "lifecycle", "phase", "apply", "applied", "terminate", "terminated"
 ]);
+const CONDITIONAL_FILE_DELETE_GUARDS = Object.freeze({
+  PaymentExecutionPayerAttestation_evidence_immutable: Object.freeze({
+    tableName: "FileObject",
+    functionSchema: "public",
+    functionName: "guard_payment_execution_payer_evidence_immutable",
+    triggerDefinitionSha256:
+      "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+    functionDefinitionSha256:
+      "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb",
+    protectedReferences: Object.freeze([
+      Object.freeze({
+        tableName: "PaymentExecutionPayerVerification",
+        columnName: "verificationEvidenceFileId"
+      }),
+      Object.freeze({
+        tableName: "PaymentExecutionPayerAttestation",
+        columnName: "verificationEvidenceFileId"
+      }),
+      Object.freeze({
+        tableName: "PaymentExecutionPayerAttestation",
+        columnName: "proxyAuthorizationEvidenceFileId"
+      }),
+      Object.freeze({
+        tableName: "InterEntityRelationshipEntry",
+        columnName: "authorizationEvidenceFileId"
+      }),
+      Object.freeze({
+        tableName: "InterEntityRelationshipEntry",
+        columnName: "actualPayerVerificationEvidenceFileId"
+      })
+    ])
+  }),
+  VerifiedBankTransactionObservation_evidence_immutable: Object.freeze({
+    tableName: "FileObject",
+    functionSchema: "public",
+    functionName: "guard_verified_bank_transaction_observation_evidence_immutable",
+    triggerDefinitionSha256:
+      "ebe8e609f42805af6f66a71a5695a2a09781a8214528cef3133f62c9f61456cd",
+    functionDefinitionSha256:
+      "ce42347a9999fa83189e4414b6452401a7e2df5ab59bf41749fd479f7b0e71a2",
+    protectedReferences: Object.freeze([
+      Object.freeze({
+        tableName: "VerifiedBankTransactionObservation",
+        columnName: "verificationEvidenceFileId"
+      }),
+      Object.freeze({
+        tableName: "VerifiedBankTransactionObservation",
+        columnName: "transactionEvidenceFileId"
+      })
+    ])
+  })
+});
 
 const NULLABLE_LIFECYCLE_EVENT_FIELD =
   /(?:At|ByUserId|Reason|Status|State|Phase)$/u;
@@ -167,6 +219,72 @@ function rowPrimaryKey(table, row) {
 
 function recordKey(table, primaryKey) {
   return `${table}:${sha256(primaryKey)}`;
+}
+
+function proveConditionalFileDeleteGuard(trigger, deletionCandidates, inventory) {
+  const contract = CONDITIONAL_FILE_DELETE_GUARDS[trigger.triggerName];
+  if (
+    !contract ||
+    trigger.tableName !== contract.tableName ||
+    trigger.enabledState !== "O" ||
+    trigger.functionSchema !== contract.functionSchema ||
+    trigger.functionName !== contract.functionName ||
+    trigger.triggerDefinitionSha256 !== contract.triggerDefinitionSha256 ||
+    trigger.functionDefinitionSha256 !== contract.functionDefinitionSha256
+  ) {
+    return null;
+  }
+  if (
+    (inventory.schemaBlockers ?? []).some(
+      (blocker) => blocker.code === "UNREGISTERED_FILE_BINDING"
+    )
+  ) {
+    return null;
+  }
+  const fileCandidates = deletionCandidates.filter(
+    (candidate) => candidate.table === "FileObject"
+  );
+  if (
+    fileCandidates.length === 0 ||
+    fileCandidates.some(
+      (candidate) =>
+        !candidate.objectSnapshot ||
+        !/^[0-9a-f]{64}$/u.test(candidate.objectSnapshot.snapshotSha256 ?? "")
+    )
+  ) {
+    return null;
+  }
+  const candidateFileIds = new Set(
+    fileCandidates.map((candidate) => String(candidate.primaryKey.id ?? ""))
+  );
+  const protectedReferencePairs = new Set(
+    contract.protectedReferences.map(
+      (reference) => `${reference.tableName}.${reference.columnName}`
+    )
+  );
+  const protectedReferences = (inventory.fileBindings ?? []).filter(
+    (binding) =>
+      candidateFileIds.has(String(binding.fileId)) &&
+      protectedReferencePairs.has(`${binding.ownerTable}.${binding.ownerColumn}`)
+  );
+  if (protectedReferences.length > 0) return null;
+
+  return {
+    tableName: trigger.tableName,
+    triggerName: trigger.triggerName,
+    enabledState: trigger.enabledState,
+    triggerDefinitionSha256: trigger.triggerDefinitionSha256,
+    functionSchema: trigger.functionSchema,
+    functionName: trigger.functionName,
+    functionDefinitionSha256: trigger.functionDefinitionSha256,
+    fileForeignKeyCoverage: "complete",
+    protectedReferenceCount: 0,
+    protectedReferences: contract.protectedReferences,
+    candidates: fileCandidates.map((candidate) => ({
+      primaryKey: candidate.primaryKey,
+      objectSnapshotSha256: candidate.objectSnapshot.snapshotSha256
+    }))
+  };
 }
 
 function verifySignedDocument(document, label) {
@@ -728,6 +846,9 @@ function reportStateFingerprint(report) {
     expectedReleasedNumbers: report.expectedReleasedNumbers,
     deletionOrder: report.deletionOrder,
     fileBindings: report.fileBindings,
+    conditionalDeleteGuardDefinitions:
+      report.conditionalDeleteGuardDefinitions,
+    conditionalDeleteGuardProofs: report.conditionalDeleteGuardProofs,
     blockers: report.blockers
   });
 }
@@ -1144,12 +1265,68 @@ function buildPreflightReport({
   }
 
   const deletionCandidateTables = new Set(deletionCandidates.map((item) => item.table));
+  const conditionalDeleteGuardDefinitions = (inventory.deleteGuardTriggers ?? [])
+    .filter((trigger) => trigger.tableName === "FileObject")
+    .map((trigger) => ({
+      tableName: trigger.tableName,
+      triggerName: trigger.triggerName,
+      enabledState: trigger.enabledState,
+      triggerDefinitionSha256: trigger.triggerDefinitionSha256,
+      functionSchema: trigger.functionSchema,
+      functionName: trigger.functionName,
+      functionDefinitionSha256: trigger.functionDefinitionSha256
+    }))
+    .sort((left, right) => left.triggerName.localeCompare(right.triggerName));
+  const conditionalDeleteGuardProofs = [];
+  const inventoryTableNames = new Set(
+    (inventory.tables ?? []).map((table) => table.name)
+  );
+  const observedDeleteGuardIdentities = new Set(
+    (inventory.deleteGuardTriggers ?? []).map(
+      (trigger) => `${trigger.tableName}\u0000${trigger.triggerName}`
+    )
+  );
+  for (const [triggerName, contract] of Object.entries(
+    CONDITIONAL_FILE_DELETE_GUARDS
+  )) {
+    const contractApplies = contract.protectedReferences.some((reference) =>
+      inventoryTableNames.has(reference.tableName)
+    );
+    if (
+      deletionCandidateTables.has(contract.tableName) &&
+      contractApplies &&
+      !observedDeleteGuardIdentities.has(`${contract.tableName}\u0000${triggerName}`)
+    ) {
+      addBlocker("DELETE_GUARD_TRIGGER", "候选表缺少登记的条件删除守卫", {
+        table: contract.tableName,
+        trigger: triggerName,
+        enabledState: "missing",
+        triggerDefinitionSha256: contract.triggerDefinitionSha256,
+        functionSchema: contract.functionSchema,
+        functionName: contract.functionName,
+        functionDefinitionSha256: contract.functionDefinitionSha256
+      });
+    }
+  }
   for (const trigger of inventory.deleteGuardTriggers ?? []) {
     if (!deletionCandidateTables.has(trigger.tableName)) continue;
+    const proof = proveConditionalFileDeleteGuard(
+      trigger,
+      deletionCandidates,
+      inventory
+    );
+    if (proof) {
+      conditionalDeleteGuardProofs.push(proof);
+      continue;
+    }
     addBlocker("DELETE_GUARD_TRIGGER", "候选表存在启用且可能拒绝删除的触发器", {
       table: trigger.tableName,
       trigger: trigger.triggerName,
-      enabledState: trigger.enabledState
+      enabledState: trigger.enabledState,
+      triggerDefinitionSha256: trigger.triggerDefinitionSha256,
+      functionSchema: trigger.functionSchema,
+      functionName: trigger.functionName,
+      functionDefinitionSha256: trigger.functionDefinitionSha256
     });
   }
 
@@ -1220,6 +1397,9 @@ function buildPreflightReport({
     addBlocker("FOREIGN_KEY_CYCLE", "本批逐主键候选存在循环依赖，禁止执行", cycle);
   }
   fileBindings.sort((left, right) => left.fileId.localeCompare(right.fileId));
+  conditionalDeleteGuardProofs.sort((left, right) =>
+    left.triggerName.localeCompare(right.triggerName)
+  );
   blockers.sort((left, right) =>
     `${left.code}:${JSON.stringify(left.details ?? {})}`.localeCompare(
       `${right.code}:${JSON.stringify(right.details ?? {})}`
@@ -1295,6 +1475,8 @@ function buildPreflightReport({
     expectedReleasedNumbers: safeExpectedReleasedNumbers,
     candidateSha256,
     fileBindings,
+    conditionalDeleteGuardDefinitions,
+    conditionalDeleteGuardProofs,
     orphanFiles,
     foreignKeys: inventory.foreignKeys ?? [],
     deletionOrder: safeDeletionOrder,
@@ -2288,6 +2470,12 @@ function verifyPostcheck(
   if ((after.blockers ?? []).length > 0) errors.push("仍有阻断项");
   if ((after.orphanFiles ?? []).length > 0) errors.push("仍有孤儿文件");
   if ((after.danglingForeignKeys ?? []).length > 0) errors.push("仍有悬空外键");
+  if (
+    sha256(before.conditionalDeleteGuardDefinitions ?? []) !==
+    sha256(after.conditionalDeleteGuardDefinitions ?? [])
+  ) {
+    errors.push("FileObject 条件删除触发器或函数定义发生漂移");
+  }
   for (const [table, count] of Object.entries(before.preservationCounts ?? {})) {
     if (table === "AuditLog") {
       if ((after.preservationCounts?.[table] ?? 0) < count) {
@@ -2372,6 +2560,22 @@ async function executeBusinessZeroing({
   let writeFreezeLease = await verifyActiveWriteFreeze();
   const candidates = orderedCandidates(report);
   const fileCandidates = candidates.filter((item) => item.table === "FileObject");
+  const verifyFrozenObjectSnapshot = async (file) => {
+    invariant(
+      typeof storage?.inspectExactObject === "function",
+      "FileObject 逐主键删除缺少精确对象快照复核端"
+    );
+    const currentSnapshot = await storage.inspectExactObject({
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      maxModifiedAt: report.backupRecovery?.privateFileBackup?.capturedAt
+    });
+    invariant(
+      JSON.stringify(canonicalize(currentSnapshot)) ===
+        JSON.stringify(canonicalize(file.objectSnapshot)),
+      "FileObject 逐主键删除前精确对象版本清单已漂移"
+    );
+  };
   const auditBase = {
     action: "test_business_zeroing",
     batchId: args.batchId,
@@ -2403,6 +2607,19 @@ async function executeBusinessZeroing({
     assertFreshReport(report, lockedReport, "锁内");
     await tx.appendAudit({ ...auditBase, status: "started" });
     for (const item of candidates) {
+      if (item.table === "FileObject") {
+        writeFreezeLease = await verifyActiveWriteFreeze();
+        validateApplyArguments(args, report, currentTime());
+        await verifyFrozenObjectSnapshot(item);
+        invariant(
+          typeof tx.assertConditionalFileDeleteCandidate === "function",
+          "FileObject 逐主键删除缺少条件删除守卫复核端"
+        );
+        await tx.assertConditionalFileDeleteCandidate(
+          item,
+          lockedReport.conditionalDeleteGuardProofs
+        );
+      }
       const deletedCount = await tx.deleteExactRecord(item);
       invariant(deletedCount === 1, `${item.table} 逐主键删除数量不是 1，事务必须回滚`);
     }
@@ -2411,6 +2628,15 @@ async function executeBusinessZeroing({
       invariant(updatedCount === 1, "合同编号规则 CAS 复位数量不是 1，事务必须回滚");
     }
     const lockedPostcheck = await buildLockedPostcheckReport(tx);
+    for (const file of fileCandidates) {
+      writeFreezeLease = await verifyActiveWriteFreeze();
+      validateApplyArguments(args, report, currentTime());
+      await verifyFrozenObjectSnapshot(file);
+      await tx.assertConditionalFileDeleteCandidate(
+        file,
+        lockedReport.conditionalDeleteGuardProofs
+      );
+    }
     verifyPostcheck(report, lockedPostcheck);
     writeFreezeLease = await verifyActiveWriteFreeze();
     validateApplyArguments(args, report, currentTime());
@@ -2656,6 +2882,7 @@ async function executeBusinessZeroing({
 }
 
 module.exports = {
+  CONDITIONAL_FILE_DELETE_GUARDS,
   POLICY_ID,
   WRITE_FREEZE_LEASE_PAYLOAD_FIELDS,
   buildPreflightReport,

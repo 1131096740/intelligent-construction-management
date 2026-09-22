@@ -111,6 +111,27 @@ function successfulMigrationRecords() {
       logs: null
     }));
 }
+
+function conditionalDeleteGuardAcceptanceReceipt() {
+  return {
+    protectedEvidence: {
+      status: "blocked",
+      blocker: "MIXED_FILE_OWNERSHIP",
+      fileCandidateCount: 0,
+      bindings: [
+        "PaymentExecutionPayerVerification.verificationEvidenceFileId",
+        "VerifiedBankTransactionObservation.transactionEvidenceFileId",
+        "VerifiedBankTransactionObservation.verificationEvidenceFileId"
+      ]
+    },
+    triggerDrift: {
+      status: "blocked",
+      blocker: "DELETE_GUARD_TRIGGER",
+      trigger: "PaymentExecutionPayerAttestation_evidence_immutable_drift",
+      candidateCount: 0
+    }
+  };
+}
 const FILE_SNAPSHOT = {
   ...FILE_SNAPSHOT_BODY,
   snapshotSha256: sha256(FILE_SNAPSHOT_BODY)
@@ -286,6 +307,10 @@ function resignReport(report) {
       expectedReleasedNumbers: withoutReportSha.expectedReleasedNumbers,
       deletionOrder: withoutReportSha.deletionOrder,
       fileBindings: withoutReportSha.fileBindings,
+      conditionalDeleteGuardDefinitions:
+        withoutReportSha.conditionalDeleteGuardDefinitions,
+      conditionalDeleteGuardProofs:
+        withoutReportSha.conditionalDeleteGuardProofs,
       blockers: withoutReportSha.blockers
     })
   };
@@ -1873,6 +1898,106 @@ test("候选表存在启用的拒绝删除触发器时预检提前阻断", () =>
   assert.deepEqual(report.deletionCandidates, []);
 });
 
+test("登记的 FileObject 条件守卫缺失时预检失败关闭", () => {
+  const report = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: [
+        ...inventory().tables,
+        {
+          name: "PaymentExecutionPayerAttestation",
+          primaryKey: ["id"],
+          rows: []
+        },
+        {
+          name: "VerifiedBankTransactionObservation",
+          primaryKey: ["id"],
+          rows: []
+        }
+      ],
+      deleteGuardTriggers: []
+    }),
+    decisions: decisionManifest([
+      {
+        businessType: "项目基本资料",
+        table: "Project",
+        primaryKey: { id: "p1" },
+        decision: "preserve",
+        reason: "正式项目保留"
+      }
+    ]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.deepEqual(
+    report.blockers
+      .filter((item) => item.code === "DELETE_GUARD_TRIGGER")
+      .map((item) => item.details?.trigger)
+      .sort(),
+    [
+      "PaymentExecutionPayerAttestation_evidence_immutable",
+      "VerifiedBankTransactionObservation_evidence_immutable"
+    ]
+  );
+  assert.deepEqual(report.deletionCandidates, []);
+});
+
+test("登记的 FileObject 条件守卫被禁用时预检失败关闭", () => {
+  const report = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: [
+        ...inventory().tables,
+        {
+          name: "PaymentExecutionPayerAttestation",
+          primaryKey: ["id"],
+          rows: []
+        }
+      ],
+      deleteGuardTriggers: [
+        {
+          tableName: "FileObject",
+          triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+          enabledState: "D",
+          triggerDefinitionSha256:
+            "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+          functionSchema: "public",
+          functionName: "guard_payment_execution_payer_evidence_immutable",
+          functionDefinitionSha256:
+            "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb"
+        }
+      ]
+    }),
+    decisions: decisionManifest([
+      {
+        businessType: "项目基本资料",
+        table: "Project",
+        primaryKey: { id: "p1" },
+        decision: "preserve",
+        reason: "正式项目保留"
+      }
+    ]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.ok(
+    report.blockers.some(
+      (item) =>
+        item.code === "DELETE_GUARD_TRIGGER" &&
+        item.details?.trigger ===
+          "PaymentExecutionPayerAttestation_evidence_immutable" &&
+        item.details?.enabledState === "D"
+    )
+  );
+  assert.deepEqual(report.deletionCandidates, []);
+});
+
 test("保留基础资料逻辑依赖待删除父资料时 fail-closed", () => {
   const policy = {
     ...smallPolicy,
@@ -2171,6 +2296,27 @@ test("后置核验要求候选清零、保留数量不漂移且无孤儿或悬�
     () => verifyPostcheck(before, resignReport({ ...after, schemaDigest: "0".repeat(64) })),
     /Schema digest/u
   );
+  assert.throws(
+    () =>
+      verifyPostcheck(
+        before,
+        resignReport({
+          ...after,
+          conditionalDeleteGuardDefinitions: [
+            {
+              tableName: "FileObject",
+              triggerName: "unexpected_file_delete_guard",
+              enabledState: "O",
+              triggerDefinitionSha256: "1".repeat(64),
+              functionSchema: "public",
+              functionName: "unexpected_file_delete_guard",
+              functionDefinitionSha256: "2".repeat(64)
+            }
+          ]
+        })
+      ),
+    /条件删除触发器或函数定义发生漂移/u
+  );
   assert.throws(() => verifyPostcheck({}, after), /归零预检报告 SHA-256/u);
 });
 
@@ -2454,6 +2600,8 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
       numberRuleResets: 0,
       total: 5
     },
+    conditionalDeleteGuardAcceptance:
+      conditionalDeleteGuardAcceptanceReceipt(),
     formalRecordProtection: {
       status: "blocked",
       blockers: ["FORMAL_RECORD_PROTECTED", "FORMAL_AGGREGATE_CHILD_PROTECTED"],
@@ -2627,25 +2775,38 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
     status: "passed",
     executed: false,
     productionAccessed: false,
-    zeroingReadiness: "blocked",
-    dryRunEligible: false,
-    blockerCount: 2,
-    deletionCandidateCount: 0,
+    zeroingReadiness: "ready",
+    dryRunEligible: true,
+    blockerCount: 0,
+    deletionCandidateCount: 4,
     dryRunSteps: 0,
-    blockers: [
+    blockers: [],
+    conditionalDeleteGuardProofs: [
       {
-        code: "DELETE_GUARD_TRIGGER",
-        table: "FileObject",
-        trigger: "PaymentExecutionPayerAttestation_evidence_immutable",
-        enabledState: "O"
+        triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+        triggerDefinitionSha256:
+          "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+        functionName: "guard_payment_execution_payer_evidence_immutable",
+        functionDefinitionSha256:
+          "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb",
+        fileForeignKeyCoverage: "complete",
+        protectedReferenceCount: 0,
+        candidateCount: 1
       },
       {
-        code: "DELETE_GUARD_TRIGGER",
-        table: "FileObject",
-        trigger: "VerifiedBankTransactionObservation_evidence_immutable",
-        enabledState: "O"
+        triggerName: "VerifiedBankTransactionObservation_evidence_immutable",
+        triggerDefinitionSha256:
+          "ebe8e609f42805af6f66a71a5695a2a09781a8214528cef3133f62c9f61456cd",
+        functionName: "guard_verified_bank_transaction_observation_evidence_immutable",
+        functionDefinitionSha256:
+          "ce42347a9999fa83189e4414b6452401a7e2df5ab59bf41749fd479f7b0e71a2",
+        fileForeignKeyCoverage: "complete",
+        protectedReferenceCount: 0,
+        candidateCount: 1
       }
     ],
+    conditionalDeleteGuardAcceptance:
+      conditionalDeleteGuardAcceptanceReceipt(),
     migrationCount,
     migrationHead,
     formalRecordProtection: {
@@ -2681,8 +2842,10 @@ test("动态只读预检收据明确未执行且只在 cleanup 成功后输出",
   });
   const parsed = JSON.parse(output);
   assert.equal(parsed.executed, false);
-  assert.equal(parsed.zeroingReadiness, "blocked");
-  assert.equal(parsed.dryRunEligible, false);
+  assert.equal(parsed.zeroingReadiness, "ready");
+  assert.equal(parsed.dryRunEligible, true);
+  assert.equal(parsed.deletionCandidateCount, 4);
+  assert.equal(parsed.conditionalDeleteGuardProofs.length, 2);
   assert.equal(parsed.productionAccessed, false);
   assert.equal(parsed.containerRemoved, true);
   assert.equal(parsed.temporaryFilesRemoved, true);
@@ -3939,6 +4102,13 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
         async appendAudit(event) {
           calls.push(["audit", event.status]);
         },
+        async assertConditionalFileDeleteCandidate(item, proofs) {
+          calls.push([
+            "file-delete-guard",
+            item.primaryKey,
+            proofs.map((proof) => proof.triggerName)
+          ]);
+        },
         async deleteExactRecord(item) {
           calls.push(["delete", item.table, item.primaryKey]);
           return 1;
@@ -3952,6 +4122,10 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     }
   };
   const storage = {
+    async inspectExactObject(input) {
+      calls.push(["object-snapshot", input.bucket, input.objectKey]);
+      return FILE_SNAPSHOT;
+    },
     async deleteExactObject(input) {
       calls.push(["object", input.bucket, input.objectKey]);
       return {
@@ -3967,6 +4141,10 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     }
   };
   const args = controlledArgs(before);
+  const verifyWriteFreezeLease = async (input) => {
+    calls.push("write-freeze");
+    return createWriteFreezeVerifier()(input);
+  };
   const receipt = await executeBusinessZeroing({
     args,
     report: before,
@@ -3976,7 +4154,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     buildLockedPostcheckReport: async () => after,
     buildPostcheckReport: async () => after,
     persistReceipt: async () => {},
-    verifyWriteFreezeLease: createWriteFreezeVerifier(),
+    verifyWriteFreezeLease,
     now: new Date("2026-08-13T01:05:00.000Z")
   });
 
@@ -4065,11 +4243,23 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       ),
     /删除记录数量|对象删除数量|编号复位数量|disposition/u
   );
-  assert.deepEqual(calls, [
+  assert.deepEqual(calls.filter((call) => call !== "write-freeze"), [
     "transaction:start",
     ["audit", "started"],
     ["delete", "Contract", { id: "c1" }],
+    ["object-snapshot", "private", "uploads/f1.pdf"],
+    [
+      "file-delete-guard",
+      { id: "f1" },
+      []
+    ],
     ["delete", "FileObject", { id: "f1" }],
+    ["object-snapshot", "private", "uploads/f1.pdf"],
+    [
+      "file-delete-guard",
+      { id: "f1" },
+      []
+    ],
     "transaction:commit",
     ["object", "private", "uploads/f1.pdf"],
     ["audit", "object_deletion_progress"],
@@ -4077,6 +4267,11 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     ["audit", "completion_pending"],
     ["audit", "terminal_committed"]
   ]);
+  assert.equal(
+    calls.filter((call) => call === "write-freeze").length,
+    13,
+    "每个 FileObject 删除前和锁内 postcheck 必须分别增加一次实时写冻结复核"
+  );
 
   await assert.rejects(
     () =>
@@ -4087,13 +4282,17 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
           async transaction(work) {
             return work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
           },
           async appendAudit() {}
         }),
-        storage: { async deleteExactObject() {} },
+        storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
+          async deleteExactObject() {}
+        },
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
@@ -4103,6 +4302,86 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       }),
     /未返回明确成功结果/u
   );
+
+  const snapshotDriftCalls = [];
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args,
+        report: before,
+        database: {
+          async transaction(work) {
+            return work({
+              async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
+              async deleteExactRecord(item) {
+                snapshotDriftCalls.push(`delete:${item.table}`);
+                return 1;
+              },
+              async resetExactSequence() { return 1; }
+            });
+          }
+        },
+        storage: {
+          async inspectExactObject() {
+            return { ...FILE_SNAPSHOT, snapshotSha256: "0".repeat(64) };
+          },
+          async deleteExactObject() {
+            snapshotDriftCalls.push("object");
+          }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /精确对象版本清单已漂移/u
+  );
+  assert.ok(!snapshotDriftCalls.includes("delete:FileObject"));
+  assert.ok(!snapshotDriftCalls.includes("object"));
+
+  let postcheckGuardCalls = 0;
+  let postcheckCommitted = false;
+  let postcheckObjectTouched = false;
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args,
+        report: before,
+        database: {
+          async transaction(work) {
+            await work({
+              async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {
+                postcheckGuardCalls += 1;
+                if (postcheckGuardCalls === 2) {
+                  throw new Error("锁内 postcheck 发现受保护证据引用");
+                }
+              },
+              async deleteExactRecord() { return 1; },
+              async resetExactSequence() { return 1; }
+            });
+            postcheckCommitted = true;
+          }
+        },
+        storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
+          async deleteExactObject() { postcheckObjectTouched = true; }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /锁内 postcheck 发现受保护证据引用/u
+  );
+  assert.equal(postcheckGuardCalls, 2);
+  assert.equal(postcheckCommitted, false);
+  assert.equal(postcheckObjectTouched, false);
 });
 
 test("完成审计写失败时完整收据仍先落已预留介质", async () => {
@@ -4151,6 +4430,7 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
           async transaction(work) {
             return work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4162,6 +4442,7 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
           }
         }),
         storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
           async deleteExactObject(input) {
             return {
               kind: "local_quarantine",
@@ -4324,6 +4605,7 @@ test("对象部分删除后失败会耐久记录已完成 disposition 与未完�
           async transaction(work) {
             return work({
               async appendAudit(event) { audits.push(event); },
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4331,6 +4613,11 @@ test("对象部分删除后失败会耐久记录已完成 disposition 与未完�
           async appendAudit(event) { audits.push(event); }
         },
         storage: {
+          async inspectExactObject(input) {
+            return input.objectKey === "uploads/f2.pdf"
+              ? secondSnapshot
+              : FILE_SNAPSHOT;
+          },
           async deleteExactObject(input) {
             deletionCount += 1;
             if (deletionCount === 2) throw new Error("isolated second object failure");
@@ -4434,6 +4721,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
           async transaction(work) {
             return work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4443,6 +4731,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
           }
         },
         storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
           async deleteExactObject(input) {
             return {
               kind: "local_quarantine",
@@ -4556,6 +4845,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
       async transaction(work) {
         return work({
           async appendAudit() {},
+          async assertConditionalFileDeleteCandidate() {},
           async deleteExactRecord() { return 1; },
           async resetExactSequence() { return 1; }
         });
@@ -4563,6 +4853,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
       async appendAudit() {}
     }),
     storage: {
+      async inspectExactObject() { return FILE_SNAPSHOT; },
       async deleteExactObject(input) {
         return {
           kind: "local_quarantine",
@@ -4635,6 +4926,7 @@ test("候选删除若经触发器伤及保留资料会在同一事务提交前�
           async transaction(work) {
             const result = await work({
               async appendAudit() { calls.push("audit-started"); },
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord(item) { calls.push(`delete:${item.table}`); return 1; },
               async resetExactSequence() { return 1; }
             });
@@ -4642,7 +4934,10 @@ test("候选删除若经触发器伤及保留资料会在同一事务提交前�
             return result;
           }
         },
-        storage: { async deleteExactObject() { calls.push("object"); } },
+        storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
+          async deleteExactObject() { calls.push("object"); }
+        },
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => damaged,
         buildPostcheckReport: async () => damaged,
@@ -4704,6 +4999,7 @@ test("锁内删除后 lease 撤销会在事务提交前回滚且不进入对象�
           async transaction(work) {
             await work({
               async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
               async deleteExactRecord() { return 1; },
               async resetExactSequence() { return 1; }
             });
