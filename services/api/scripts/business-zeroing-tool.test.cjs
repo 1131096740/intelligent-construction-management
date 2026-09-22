@@ -1898,6 +1898,106 @@ test("候选表存在启用的拒绝删除触发器时预检提前阻断", () =>
   assert.deepEqual(report.deletionCandidates, []);
 });
 
+test("登记的 FileObject 条件守卫缺失时预检失败关闭", () => {
+  const report = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: [
+        ...inventory().tables,
+        {
+          name: "PaymentExecutionPayerAttestation",
+          primaryKey: ["id"],
+          rows: []
+        },
+        {
+          name: "VerifiedBankTransactionObservation",
+          primaryKey: ["id"],
+          rows: []
+        }
+      ],
+      deleteGuardTriggers: []
+    }),
+    decisions: decisionManifest([
+      {
+        businessType: "项目基本资料",
+        table: "Project",
+        primaryKey: { id: "p1" },
+        decision: "preserve",
+        reason: "正式项目保留"
+      }
+    ]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.deepEqual(
+    report.blockers
+      .filter((item) => item.code === "DELETE_GUARD_TRIGGER")
+      .map((item) => item.details?.trigger)
+      .sort(),
+    [
+      "PaymentExecutionPayerAttestation_evidence_immutable",
+      "VerifiedBankTransactionObservation_evidence_immutable"
+    ]
+  );
+  assert.deepEqual(report.deletionCandidates, []);
+});
+
+test("登记的 FileObject 条件守卫被禁用时预检失败关闭", () => {
+  const report = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: [
+        ...inventory().tables,
+        {
+          name: "PaymentExecutionPayerAttestation",
+          primaryKey: ["id"],
+          rows: []
+        }
+      ],
+      deleteGuardTriggers: [
+        {
+          tableName: "FileObject",
+          triggerName: "PaymentExecutionPayerAttestation_evidence_immutable",
+          enabledState: "D",
+          triggerDefinitionSha256:
+            "650be4fc26e61e1fdd56e5e83da81e1d42fd8138277c6064185714629e74bc98",
+          functionSchema: "public",
+          functionName: "guard_payment_execution_payer_evidence_immutable",
+          functionDefinitionSha256:
+            "49ef690777d0524cdedfe9e5cb0fd8b7ca634abc5d91e40a05318b7a763141eb"
+        }
+      ]
+    }),
+    decisions: decisionManifest([
+      {
+        businessType: "项目基本资料",
+        table: "Project",
+        primaryKey: { id: "p1" },
+        decision: "preserve",
+        reason: "正式项目保留"
+      }
+    ]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.ok(
+    report.blockers.some(
+      (item) =>
+        item.code === "DELETE_GUARD_TRIGGER" &&
+        item.details?.trigger ===
+          "PaymentExecutionPayerAttestation_evidence_immutable" &&
+        item.details?.enabledState === "D"
+    )
+  );
+  assert.deepEqual(report.deletionCandidates, []);
+});
+
 test("保留基础资料逻辑依赖待删除父资料时 fail-closed", () => {
   const policy = {
     ...smallPolicy,

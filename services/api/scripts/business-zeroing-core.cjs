@@ -226,6 +226,7 @@ function proveConditionalFileDeleteGuard(trigger, deletionCandidates, inventory)
   if (
     !contract ||
     trigger.tableName !== contract.tableName ||
+    trigger.enabledState !== "O" ||
     trigger.functionSchema !== contract.functionSchema ||
     trigger.functionName !== contract.functionName ||
     trigger.triggerDefinitionSha256 !== contract.triggerDefinitionSha256 ||
@@ -1277,6 +1278,36 @@ function buildPreflightReport({
     }))
     .sort((left, right) => left.triggerName.localeCompare(right.triggerName));
   const conditionalDeleteGuardProofs = [];
+  const inventoryTableNames = new Set(
+    (inventory.tables ?? []).map((table) => table.name)
+  );
+  const observedDeleteGuardIdentities = new Set(
+    (inventory.deleteGuardTriggers ?? []).map(
+      (trigger) => `${trigger.tableName}\u0000${trigger.triggerName}`
+    )
+  );
+  for (const [triggerName, contract] of Object.entries(
+    CONDITIONAL_FILE_DELETE_GUARDS
+  )) {
+    const contractApplies = contract.protectedReferences.some((reference) =>
+      inventoryTableNames.has(reference.tableName)
+    );
+    if (
+      deletionCandidateTables.has(contract.tableName) &&
+      contractApplies &&
+      !observedDeleteGuardIdentities.has(`${contract.tableName}\u0000${triggerName}`)
+    ) {
+      addBlocker("DELETE_GUARD_TRIGGER", "候选表缺少登记的条件删除守卫", {
+        table: contract.tableName,
+        trigger: triggerName,
+        enabledState: "missing",
+        triggerDefinitionSha256: contract.triggerDefinitionSha256,
+        functionSchema: contract.functionSchema,
+        functionName: contract.functionName,
+        functionDefinitionSha256: contract.functionDefinitionSha256
+      });
+    }
+  }
   for (const trigger of inventory.deleteGuardTriggers ?? []) {
     if (!deletionCandidateTables.has(trigger.tableName)) continue;
     const proof = proveConditionalFileDeleteGuard(
