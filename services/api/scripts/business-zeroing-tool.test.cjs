@@ -4022,6 +4022,10 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     }
   };
   const storage = {
+    async inspectExactObject(input) {
+      calls.push(["object-snapshot", input.bucket, input.objectKey]);
+      return FILE_SNAPSHOT;
+    },
     async deleteExactObject(input) {
       calls.push(["object", input.bucket, input.objectKey]);
       return {
@@ -4037,6 +4041,10 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     }
   };
   const args = controlledArgs(before);
+  const verifyWriteFreezeLease = async (input) => {
+    calls.push("write-freeze");
+    return createWriteFreezeVerifier()(input);
+  };
   const receipt = await executeBusinessZeroing({
     args,
     report: before,
@@ -4046,7 +4054,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     buildLockedPostcheckReport: async () => after,
     buildPostcheckReport: async () => after,
     persistReceipt: async () => {},
-    verifyWriteFreezeLease: createWriteFreezeVerifier(),
+    verifyWriteFreezeLease,
     now: new Date("2026-08-13T01:05:00.000Z")
   });
 
@@ -4135,16 +4143,23 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       ),
     /删除记录数量|对象删除数量|编号复位数量|disposition/u
   );
-  assert.deepEqual(calls, [
+  assert.deepEqual(calls.filter((call) => call !== "write-freeze"), [
     "transaction:start",
     ["audit", "started"],
     ["delete", "Contract", { id: "c1" }],
+    ["object-snapshot", "private", "uploads/f1.pdf"],
     [
       "file-delete-guard",
       { id: "f1" },
       []
     ],
     ["delete", "FileObject", { id: "f1" }],
+    ["object-snapshot", "private", "uploads/f1.pdf"],
+    [
+      "file-delete-guard",
+      { id: "f1" },
+      []
+    ],
     "transaction:commit",
     ["object", "private", "uploads/f1.pdf"],
     ["audit", "object_deletion_progress"],
@@ -4152,6 +4167,11 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     ["audit", "completion_pending"],
     ["audit", "terminal_committed"]
   ]);
+  assert.equal(
+    calls.filter((call) => call === "write-freeze").length,
+    13,
+    "每个 FileObject 删除前和锁内 postcheck 必须分别增加一次实时写冻结复核"
+  );
 
   await assert.rejects(
     () =>
@@ -4169,7 +4189,10 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
           },
           async appendAudit() {}
         }),
-        storage: { async deleteExactObject() {} },
+        storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
+          async deleteExactObject() {}
+        },
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
@@ -4179,6 +4202,86 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       }),
     /未返回明确成功结果/u
   );
+
+  const snapshotDriftCalls = [];
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args,
+        report: before,
+        database: {
+          async transaction(work) {
+            return work({
+              async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {},
+              async deleteExactRecord(item) {
+                snapshotDriftCalls.push(`delete:${item.table}`);
+                return 1;
+              },
+              async resetExactSequence() { return 1; }
+            });
+          }
+        },
+        storage: {
+          async inspectExactObject() {
+            return { ...FILE_SNAPSHOT, snapshotSha256: "0".repeat(64) };
+          },
+          async deleteExactObject() {
+            snapshotDriftCalls.push("object");
+          }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /精确对象版本清单已漂移/u
+  );
+  assert.ok(!snapshotDriftCalls.includes("delete:FileObject"));
+  assert.ok(!snapshotDriftCalls.includes("object"));
+
+  let postcheckGuardCalls = 0;
+  let postcheckCommitted = false;
+  let postcheckObjectTouched = false;
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args,
+        report: before,
+        database: {
+          async transaction(work) {
+            await work({
+              async appendAudit() {},
+              async assertConditionalFileDeleteCandidate() {
+                postcheckGuardCalls += 1;
+                if (postcheckGuardCalls === 2) {
+                  throw new Error("锁内 postcheck 发现受保护证据引用");
+                }
+              },
+              async deleteExactRecord() { return 1; },
+              async resetExactSequence() { return 1; }
+            });
+            postcheckCommitted = true;
+          }
+        },
+        storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
+          async deleteExactObject() { postcheckObjectTouched = true; }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /锁内 postcheck 发现受保护证据引用/u
+  );
+  assert.equal(postcheckGuardCalls, 2);
+  assert.equal(postcheckCommitted, false);
+  assert.equal(postcheckObjectTouched, false);
 });
 
 test("完成审计写失败时完整收据仍先落已预留介质", async () => {
@@ -4239,6 +4342,7 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
           }
         }),
         storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
           async deleteExactObject(input) {
             return {
               kind: "local_quarantine",
@@ -4409,6 +4513,11 @@ test("对象部分删除后失败会耐久记录已完成 disposition 与未完�
           async appendAudit(event) { audits.push(event); }
         },
         storage: {
+          async inspectExactObject(input) {
+            return input.objectKey === "uploads/f2.pdf"
+              ? secondSnapshot
+              : FILE_SNAPSHOT;
+          },
           async deleteExactObject(input) {
             deletionCount += 1;
             if (deletionCount === 2) throw new Error("isolated second object failure");
@@ -4522,6 +4631,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
           }
         },
         storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
           async deleteExactObject(input) {
             return {
               kind: "local_quarantine",
@@ -4643,6 +4753,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
       async appendAudit() {}
     }),
     storage: {
+      async inspectExactObject() { return FILE_SNAPSHOT; },
       async deleteExactObject(input) {
         return {
           kind: "local_quarantine",
@@ -4723,7 +4834,10 @@ test("候选删除若经触发器伤及保留资料会在同一事务提交前�
             return result;
           }
         },
-        storage: { async deleteExactObject() { calls.push("object"); } },
+        storage: {
+          async inspectExactObject() { return FILE_SNAPSHOT; },
+          async deleteExactObject() { calls.push("object"); }
+        },
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => damaged,
         buildPostcheckReport: async () => damaged,

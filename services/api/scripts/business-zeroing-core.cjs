@@ -2529,6 +2529,22 @@ async function executeBusinessZeroing({
   let writeFreezeLease = await verifyActiveWriteFreeze();
   const candidates = orderedCandidates(report);
   const fileCandidates = candidates.filter((item) => item.table === "FileObject");
+  const verifyFrozenObjectSnapshot = async (file) => {
+    invariant(
+      typeof storage?.inspectExactObject === "function",
+      "FileObject 逐主键删除缺少精确对象快照复核端"
+    );
+    const currentSnapshot = await storage.inspectExactObject({
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      maxModifiedAt: report.backupRecovery?.privateFileBackup?.capturedAt
+    });
+    invariant(
+      JSON.stringify(canonicalize(currentSnapshot)) ===
+        JSON.stringify(canonicalize(file.objectSnapshot)),
+      "FileObject 逐主键删除前精确对象版本清单已漂移"
+    );
+  };
   const auditBase = {
     action: "test_business_zeroing",
     batchId: args.batchId,
@@ -2561,6 +2577,9 @@ async function executeBusinessZeroing({
     await tx.appendAudit({ ...auditBase, status: "started" });
     for (const item of candidates) {
       if (item.table === "FileObject") {
+        writeFreezeLease = await verifyActiveWriteFreeze();
+        validateApplyArguments(args, report, currentTime());
+        await verifyFrozenObjectSnapshot(item);
         invariant(
           typeof tx.assertConditionalFileDeleteCandidate === "function",
           "FileObject 逐主键删除缺少条件删除守卫复核端"
@@ -2578,6 +2597,15 @@ async function executeBusinessZeroing({
       invariant(updatedCount === 1, "合同编号规则 CAS 复位数量不是 1，事务必须回滚");
     }
     const lockedPostcheck = await buildLockedPostcheckReport(tx);
+    for (const file of fileCandidates) {
+      writeFreezeLease = await verifyActiveWriteFreeze();
+      validateApplyArguments(args, report, currentTime());
+      await verifyFrozenObjectSnapshot(file);
+      await tx.assertConditionalFileDeleteCandidate(
+        file,
+        lockedReport.conditionalDeleteGuardProofs
+      );
+    }
     verifyPostcheck(report, lockedPostcheck);
     writeFreezeLease = await verifyActiveWriteFreeze();
     validateApplyArguments(args, report, currentTime());
