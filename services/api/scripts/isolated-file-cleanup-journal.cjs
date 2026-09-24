@@ -83,7 +83,8 @@ function readJournal(root, batchId, readInput) {
     const allowed = previous === null ? ["prepared"] : {
       prepared: ["database_intent", "failed"], database_intent: ["database_deleted", "failed"],
       database_deleted: ["object_intent", "failed"], object_intent: ["object_deleted", "failed"],
-      object_deleted: ["object_intent", "completed", "failed"], completed: [], failed: []
+      object_deleted: ["object_intent", "postcheck_required", "failed"],
+      postcheck_required: ["completed", "failed"], completed: [], failed: []
     }[previous];
     if (!allowed?.includes(event.state)) reject();
   }
@@ -95,7 +96,8 @@ function appendJournal(root, batchId, readInput, state, details) {
   const previous = journal.events.at(-1);
   const transitions = { prepared: ["database_intent", "failed"], database_intent: ["database_deleted", "failed"],
     database_deleted: ["object_intent", "failed"], object_intent: ["object_deleted", "failed"],
-    object_deleted: ["object_intent", "completed", "failed"] };
+    object_deleted: ["object_intent", "postcheck_required", "failed"],
+    postcheck_required: ["completed", "failed"] };
   if (!transitions[previous.state]?.includes(state)) throw new Error("EXECUTION_JOURNAL_TRANSITION_INVALID");
   const body = { schemaVersion: 1, sequence: journal.events.length, previousEventSha256: previous.eventSha256,
     state, batchId, planSha256: journal.plan.reportSha256, applyAuthorizationSha256: sha256(journal.authorization),

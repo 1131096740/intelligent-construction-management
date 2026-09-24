@@ -3,11 +3,13 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
-const { mkdtempSync, writeFileSync, rmSync, symlinkSync, existsSync } = require("node:fs");
+const { mkdtempSync, writeFileSync, readFileSync, realpathSync, chmodSync, rmSync, symlinkSync, existsSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const { sha256 } = require("./business-zeroing-core.cjs");
+const { prepareJournal, readJournal, appendJournal } = require("./isolated-file-cleanup-journal.cjs");
+const { postcheckCleanup } = require("./isolated-file-cleanup-execution.cjs");
 const exactFiles = [
   { id: "11111111-1111-4111-8111-111111111111", rowSha256: "a".repeat(64) },
   { id: "22222222-2222-4222-8222-222222222222", rowSha256: "b".repeat(64) }
@@ -175,4 +177,43 @@ test("独立清理预检拒绝通配符以及没有完整行指纹的目标", ()
   ]) {
     assert.equal(inspectScope({ files: [first, second] }).code, "INVALID_EXACT_TARGET");
   }
+});
+
+test("独立后检失败不能留下完成日志或允许同批次重试", async () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "orphan-cleanup-postcheck-test-")));
+  chmodSync(root, 0o700);
+  const readInput = target => JSON.parse(readFileSync(target, "utf8"));
+  const batchId = "postcheck-failure-batch";
+  const authorization = { purpose: "unit-test" };
+  const operation = (id, versionId) => ({ database: { primaryKey: { id } },
+    object: { bucket: "isolated", objectKey: `object/${id}`, versions: [{ versionId }] } });
+  const operations = [operation(exactFiles[0].id, "v1"), operation(exactFiles[1].id, "v2")];
+  const body = { batchId, operations };
+  const plan = { ...body, reportSha256: sha256(body) };
+  const dispositions = operations.map(item => ({ fileId: item.database.primaryKey.id,
+    bucket: item.object.bucket, objectKey: item.object.objectKey,
+    versionId: item.object.versions[0].versionId, isDeleteMarker: false }));
+  try {
+    prepareJournal(root, batchId, plan, authorization, { envelopeSha256: sha256(authorization) });
+    appendJournal(root, batchId, readInput, "database_intent", {});
+    appendJournal(root, batchId, readInput, "database_deleted", {});
+    for (const disposition of dispositions) {
+      appendJournal(root, batchId, readInput, "object_intent", disposition);
+      appendJournal(root, batchId, readInput, "object_deleted", disposition);
+    }
+    appendJournal(root, batchId, readInput, "postcheck_required", {
+      databaseAudit: { auditId: "audit-1" }, completedVersions: dispositions
+    });
+    let completionCalls = 0;
+    const options = { client: {}, scope: {}, source: {}, plan, root, readInput,
+      verifyAuthority: async () => { throw new Error("LEASE_REVOKED"); },
+      listVersions: async () => [],
+      completeDatabase: async () => { completionCalls += 1; },
+      recordFailureAudit: async () => ({ auditId: "failure-1" }) };
+    await assert.rejects(postcheckCleanup(options), /LEASE_REVOKED/);
+    assert.equal(completionCalls, 0);
+    assert.equal(readJournal(root, batchId, readInput).events.at(-1).state, "failed");
+    assert.equal(readJournal(root, batchId, readInput).events.some(event => event.state === "completed"), false);
+    await assert.rejects(postcheckCleanup(options), /POSTCHECK_INCOMPLETE_JOURNAL/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

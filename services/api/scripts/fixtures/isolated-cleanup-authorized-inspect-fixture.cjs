@@ -122,9 +122,11 @@ async function verifyAuthorizedInspection({ test, directory, repository, runtime
     assert.equal(result.status, expectedStatus, `public CLI returned ${result.stdout.trim()} ${diagnostic}`);
     assert.equal(result.stderr, "");
     const value = JSON.parse(result.stdout);
-    const completedExecution = expectedStatus === 0 && ["execute", "postcheck"].includes(command);
-    assert.equal(value.executed, completedExecution);
-    assert.equal(value.status, completedExecution ? "completed" : expectedStatus === 0 ? "dry_run_verified" : "blocked");
+    const appliedExecution = expectedStatus === 0 && command === "execute";
+    const completedExecution = expectedStatus === 0 && command === "postcheck";
+    assert.equal(value.executed, appliedExecution || completedExecution);
+    assert.equal(value.status, appliedExecution ? "postcheck_required" :
+      completedExecution ? "completed" : expectedStatus === 0 ? "dry_run_verified" : "blocked");
     return value.code;
   };
   const readReport = name => JSON.parse(docker(["exec", runtimeName, "node", "-e",
@@ -372,6 +374,8 @@ async function verifyAuthorizedInspection({ test, directory, repository, runtime
       restoreEnvironment.ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL = originalRestoreUrl;
     }
     writeJson("cos-response.json", { ...boundManifest, deleteEnabled: !denyFirstDelete });
+    const count = sql => docker(["exec", databaseName, "psql", "-U", "postgres", "-d", "orphan_cleanup_test",
+      "-At", "-c", sql]);
     if (denyFirstDelete) {
       const attempt = spawnSync("docker", ["exec", ...gitEnvironment, "--env",
         "ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL", runtimeName, "/bin/sh",
@@ -393,8 +397,6 @@ async function verifyAuthorizedInspection({ test, directory, repository, runtime
         process.stdout.write(JSON.stringify(fs.readdirSync(root).filter(name => /^\\d{6}-/.test(name))
           .sort().map(name => JSON.parse(fs.readFileSync(root + '/' + name, 'utf8')).state)));`]));
       assert.deepEqual(states, ["prepared", "database_intent", "database_deleted", "object_intent", "failed"]);
-      const count = sql => docker(["exec", databaseName, "psql", "-U", "postgres", "-d", "orphan_cleanup_test",
-        "-At", "-c", sql]);
       assert.equal(count(`SELECT count(*) FROM "FileObject" WHERE id IN ('${boundScope.files[0].id}', '${boundScope.files[1].id}')`), "0");
       assert.equal(count(`SELECT count(*) FROM "AuditLog" WHERE "businessType" = 'isolated_orphan_file_cleanup' AND "businessId" = '${batchId}'`), "2");
       assert.equal(count(`SELECT count(*) FROM "AuditLog" WHERE "businessType" = 'isolated_orphan_file_cleanup' AND "businessId" = '${batchId}' AND action = 'isolated_orphan_file_cleanup.failed_after_database_commit'`), "1");
@@ -423,7 +425,15 @@ async function verifyAuthorizedInspection({ test, directory, repository, runtime
         [{ method: "DELETE", signed: true, exactTarget: true, allowed: false }]);
       return;
     }
-    assert.equal(inspect(args, true, "execute", 0), "EXECUTION_COMPLETED");
+    assert.equal(inspect(args, true, "execute", 0), "EXECUTION_APPLIED_PENDING_POSTCHECK");
+    const beforePostcheck = JSON.parse(docker(["exec", runtimeName, "node", "-e", `
+      const fs = require('node:fs');
+      const names = fs.readdirSync('${journalRoot}/${batchId}');
+      process.stdout.write(JSON.stringify(names.filter(name => /^\\d{6}-/.test(name)).sort()
+        .map(name => JSON.parse(fs.readFileSync('${journalRoot}/${batchId}/' + name, 'utf8')).state)));`]));
+    assert.equal(beforePostcheck.at(-1), "postcheck_required");
+    assert.ok(!beforePostcheck.includes("completed"));
+    assert.equal(count(`SELECT count(*) FROM "AuditLog" WHERE "businessType" = 'isolated_orphan_file_cleanup' AND "businessId" = '${batchId}' AND action = 'isolated_orphan_file_cleanup.completed'`), "0");
     const journal = JSON.parse(docker(["exec", runtimeName, "node", "-e",
       `process.stdout.write(require('node:fs').readFileSync('${journalRoot}/${batchId}/000000-prepared.json','utf8'))`]));
     const { eventSha256, ...event } = journal;
@@ -443,6 +453,13 @@ async function verifyAuthorizedInspection({ test, directory, repository, runtime
     assert.deepEqual(savedPlan, plan);
     assert.equal(inspect(args, true, "execute"), "EXECUTION_JOURNAL_EXISTS");
     assert.equal(inspect(args, true, "postcheck", 0), "POSTCHECK_PASSED");
+    const afterPostcheck = JSON.parse(docker(["exec", runtimeName, "node", "-e", `
+      const fs = require('node:fs');
+      const names = fs.readdirSync('${journalRoot}/${batchId}');
+      process.stdout.write(JSON.stringify(names.filter(name => /^\\d{6}-/.test(name)).sort()
+        .map(name => JSON.parse(fs.readFileSync('${journalRoot}/${batchId}/' + name, 'utf8')).state)));`]));
+    assert.equal(afterPostcheck.at(-1), "completed");
+    assert.equal(count(`SELECT count(*) FROM "AuditLog" WHERE "businessType" = 'isolated_orphan_file_cleanup' AND "businessId" = '${batchId}' AND action = 'isolated_orphan_file_cleanup.completed'`), "1");
     assert.equal(inspect(finalArgs), "TARGET_MISSING");
     const requests = JSON.parse(docker(["exec", runtimeName, "node", "-e",
       'process.stdout.write(JSON.stringify(require("node:fs").readFileSync("/tmp/cos-audit.jsonl","utf8").trim().split("\\n").map(JSON.parse)))']));

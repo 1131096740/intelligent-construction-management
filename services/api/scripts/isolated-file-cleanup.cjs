@@ -320,7 +320,8 @@ async function main(argv) {
           require("./isolated-file-cleanup-database.cjs").recordFailedAfterCommit(
             executionClient, envelope.payload, source, plan, audit, completionAudit, versions, guard) };
       await (command === "postcheck" ? postcheckCleanup(options) : executeCleanup(options));
-      process.stdout.write(`${JSON.stringify({ status: "completed", code: command === "postcheck" ? "POSTCHECK_PASSED" : "EXECUTION_COMPLETED", executed: true })}\n`);
+      process.stdout.write(`${JSON.stringify({ status: command === "postcheck" ? "completed" : "postcheck_required",
+        code: command === "postcheck" ? "POSTCHECK_PASSED" : "EXECUTION_APPLIED_PENDING_POSTCHECK", executed: true })}\n`);
     } catch (error) {
       const knownFailures = new Set(["POSTCHECK_AUDIT_PROOF_INVALID", "POSTCHECK_AUDIT_MISMATCH",
         "POSTCHECK_DATABASE_DRIFT", "POSTCHECK_RETAINED_ROWS_DRIFT", "EXECUTION_OBJECT_DRIFT",

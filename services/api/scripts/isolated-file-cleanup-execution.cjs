@@ -70,15 +70,10 @@ async function executeCleanup({ client, scope, source, plan, root, readInput, ve
     }
     await verifyAuthority();
     for (const operation of plan.operations) await assertVersions(operation.object, []);
-    await verifyDeletedDatabase(client, scope, source, plan, [databaseAudit]);
-    failurePhase = "completion_audit";
-    completionAudit = await completeDatabase(databaseAudit, completedVersions);
-    await verifyAuthority();
-    for (const operation of plan.operations) await assertVersions(operation.object, []);
-    const proof = await verifyDeletedDatabase(client, scope, source, plan, [databaseAudit, completionAudit]);
-    failurePhase = "terminal_journal";
-    append("completed", { databaseAudit, completionAudit, completedVersions, proof });
-    return { databaseAudit, completionAudit, completedVersions, proof };
+    const proof = await verifyDeletedDatabase(client, scope, source, plan, [databaseAudit]);
+    failurePhase = "postcheck_required_journal";
+    append("postcheck_required", { databaseAudit, completedVersions, proof });
+    return { databaseAudit, completedVersions, proof };
   } catch (error) {
     let failureAudit = null;
     if (databaseOutcome === "committed") {
@@ -98,26 +93,51 @@ async function executeCleanup({ client, scope, source, plan, root, readInput, ve
   }
 }
 
-async function postcheckCleanup({ client, scope, source, plan, root, readInput, verifyAuthority, listVersions }) {
+async function postcheckCleanup({ client, scope, source, plan, root, readInput, verifyAuthority,
+  listVersions, completeDatabase, recordFailureAudit }) {
   const journal = readJournal(root, plan.batchId, readInput);
   const last = journal.events.at(-1);
-  if (sha256(journal.plan) !== sha256(plan) || last.state !== "completed") throw new Error("POSTCHECK_INCOMPLETE_JOURNAL");
+  if (sha256(journal.plan) !== sha256(plan) || last.state !== "postcheck_required" ||
+      typeof completeDatabase !== "function" || typeof recordFailureAudit !== "function") {
+    throw new Error("POSTCHECK_INCOMPLETE_JOURNAL");
+  }
   const expected = plan.operations.flatMap(operation => operation.object.versions.map(version => ({
     fileId: operation.database.primaryKey.id, bucket: operation.object.bucket, objectKey: operation.object.objectKey,
     versionId: version.versionId, isDeleteMarker: version.isDeleteMarker === true
   })));
   const intents = journal.events.filter(event => event.state === "object_intent").map(event => event.details);
   const deleted = journal.events.filter(event => event.state === "object_deleted").map(event => event.details);
-  if (sha256(intents) !== sha256(expected) || sha256(deleted) !== sha256(expected) ||
-      sha256(last.details.completedVersions) !== sha256(expected)) throw new Error("POSTCHECK_VERSION_DISPOSITIONS_INVALID");
-  await verifyAuthority();
-  const proof = await verifyDeletedDatabase(client, scope, source, plan,
-    [last.details.databaseAudit, last.details.completionAudit]);
-  for (const operation of plan.operations) {
-    if ((await listVersions(operation.object)).length !== 0) throw new Error("POSTCHECK_OBJECT_REAPPEARED");
+  let completionAudit;
+  try {
+    if (sha256(intents) !== sha256(expected) || sha256(deleted) !== sha256(expected) ||
+        sha256(last.details.completedVersions) !== sha256(expected)) throw new Error("POSTCHECK_VERSION_DISPOSITIONS_INVALID");
+    await verifyAuthority();
+    await verifyDeletedDatabase(client, scope, source, plan, [last.details.databaseAudit]);
+    for (const operation of plan.operations) {
+      if ((await listVersions(operation.object)).length !== 0) throw new Error("POSTCHECK_OBJECT_REAPPEARED");
+    }
+    await verifyAuthority();
+    completionAudit = await completeDatabase(last.details.databaseAudit, expected);
+    await verifyAuthority();
+    const proof = await verifyDeletedDatabase(client, scope, source, plan,
+      [last.details.databaseAudit, completionAudit]);
+    appendJournal(root, plan.batchId, readInput, "completed", {
+      databaseAudit: last.details.databaseAudit, completionAudit, completedVersions: expected, proof
+    });
+    return proof;
+  } catch (error) {
+    let failureAudit = null;
+    try { failureAudit = await recordFailureAudit(last.details.databaseAudit, completionAudit, expected); }
+    catch { /* The private journal still records the unresolved outcome. */ }
+    try { appendJournal(root, plan.batchId, readInput, "failed", {
+      databaseOutcome: "committed", databaseAudit: last.details.databaseAudit,
+      completionAudit: completionAudit ?? null, failureAudit, failurePhase: "postcheck",
+      completedVersions: expected
+    }); }
+    catch { /* Existing journal remains the recovery authority. */ }
+    error.databaseOutcome = "committed";
+    throw error;
   }
-  await verifyAuthority();
-  return proof;
 }
 
 module.exports = { executeCleanup, postcheckCleanup };
