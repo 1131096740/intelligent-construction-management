@@ -10,9 +10,9 @@
 
 ---
 
-## POL 全树本地集成（2026-09-24）
+## POL 全树本地集成（2026-09-25）
 
-- [~] 2026-09-24 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已在候选中修正；旧 SHA 的真实 PG16/隔离 HTTPS 66/66 不代替新 SHA 证明。顶层已缓存镜像探针按授权修正，测试通过；本机 Docker 标签偶发失效后，已用含 `postgres:16` 标签的本机归档离线导入，同一镜像 ID 的 `--pull=never --network=none` PostgreSQL 16 冒烟通过，未访问外网或业务数据。候选 `29d30b40e8f0f882c7a5cff5c32dce3a1966263b` 的完整 `release:local` 已通过依赖审计、静态/单测/构建/清单及包括 POL-108 在内的前序真实 PG16 组，但在 POL-109 的 4 个 Chromium E2E 启动前失败：macOS 沙箱拒绝 Chromium Mach 端口注册，业务断言未运行；相同的最小浏览器启动在受限环境失败、在本机允许浏览器启动的环境成功。该 SHA 无完整门禁成功收据，已通过子项不构成新 SHA 证明。须冻结新 SHA，在可启动浏览器的本机环境重跑完整正式门、POL-22 预检及原双审，全部通过后才可进行已授权的非生产 PR/CI/合并。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
+- [~] 2026-09-25 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已修正。`17b9608b17ba74c9d6ac68c456e943ab85c81155` 的完整本机 `release:local` 17 项正式门通过，含真实 PostgreSQL 16 全动态组、POL-108 大规模投影、POL-109 4/4 Chromium、POL-22 隔离只读预检 ready/0 blocker、P0 与 RC06；成功回执为 `/private/tmp/pol122-local-release-17b9608b-attempt3.json`。前两次同 SHA 尝试在动态门首次镜像查询因本机 Docker 空闲态失败，第三次仅用无网络、无挂载、自动删除的本机休眠容器保持 Docker 活跃，未放宽镜像门或更改代码；此前 macOS 沙箱中的 Chromium 失败亦已在可启动浏览器的本机环境克服。原 Spec 轴无缺陷，Standards 轴无硬性违规、有两项非阻断重复代码判断性建议；本账本更新构成新 SHA，其正式门与双审仍须重新绑定，不继承 `17b9608b` 的成功证据。当前仅具本机合成数据的独立两文件 CLI 证明，非生产 PR/CI/合并尚未完成。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
 
 - [x] #301 已交付：2026-09-22 实时核对 Issue CLOSED、PR #302 MERGED，候选 `a1c2b48ca47b25d66c0b6aca597b360f061d7f37`、合并/main `56fd5243d6b096d4ce022eac1d8e95f7f1da97f0`。候选 CI `35720628352` 与合并 CI `35722385725` 均完成且 success；本机正式门和双审依据 Issue 最终回执。仅增加两个精确 FileObject 条件守卫的零引用证明，未知/缺失/禁用/定义漂移仍失败关闭，不修改 Schema 或业务权限。后续 #122 运行窗口与本票工具交付分开，不再将本票调度为待实现。
 
