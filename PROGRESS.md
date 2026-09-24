@@ -12,7 +12,7 @@
 
 ## POL 全树本地集成（2026-09-24）
 
-- [~] 2026-09-24 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已在候选中修正；本机真实 PG16/隔离 HTTPS 正常与首笔 DELETE 拒绝窗口曾以旧 SHA 通过，不能代替新 SHA 门禁。完整 `release:local` 仍未通过：本机 Docker 顶层旧镜像探针间歇报不存在，现获批仅将顶层探针改为同 daemon 的 `docker inspect --type=image`，并补已缓存/缺失镜像测试；依赖审计与历史动态 runner 的环境问题已定位。须冻结新 SHA、重跑完整正式门、POL-22 预检和原双审，全部通过后方可进行已授权的非生产 PR/CI/合并。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
+- [~] 2026-09-24 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已在候选中修正；本机真实 PG16/隔离 HTTPS 正常与首笔 DELETE 拒绝窗口曾以旧 SHA 通过，不能代替新 SHA 门禁。顶层镜像探针已按授权改为同 daemon 的 `docker inspect --type=image`，已缓存/缺失镜像测试 2/2 通过；但新 SHA `43d71ff74607ac40db4fa0c39ca92a3f0319f028` 的完整 `release:local` 仍在正式预检失败：本机 Docker 列表与按 ID 检查能看到 `postgres:16`，按标签检查却报不存在，故不能宣称正式门通过。须先单独修复本机镜像标签解析，再冻结新 SHA、重跑完整正式门、POL-22 预检和原双审，全部通过后方可进行已授权的非生产 PR/CI/合并。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
 
 - [x] #301 已交付：2026-09-22 实时核对 Issue CLOSED、PR #302 MERGED，候选 `a1c2b48ca47b25d66c0b6aca597b360f061d7f37`、合并/main `56fd5243d6b096d4ce022eac1d8e95f7f1da97f0`。候选 CI `35720628352` 与合并 CI `35722385725` 均完成且 success；本机正式门和双审依据 Issue 最终回执。仅增加两个精确 FileObject 条件守卫的零引用证明，未知/缺失/禁用/定义漂移仍失败关闭，不修改 Schema 或业务权限。后续 #122 运行窗口与本票工具交付分开，不再将本票调度为待实现。
 
