@@ -10,11 +10,13 @@
 
 ---
 
-## POL 全树本地集成（2026-09-22）
+## POL 全树本地集成（2026-09-25）
 
-- [~] #301 正在 `codex/pol301-fileobject-trigger-proof` 以最小专票收敛 #122 发现的两个 FileObject 条件删除守卫：仅对 `PaymentExecutionPayerAttestation_evidence_immutable` 和 `VerifiedBankTransactionObservation_evidence_immutable` 的精确触发器/函数身份及固定摘要建立候选级证明；只有文件外键登记完整、对应候选无任何受保护证据引用、对象版本清单不漂移且写冻结有效时才可通过该项门禁。未知守卫、守卫缺失/禁用、名称/表/列/函数/定义摘要漂移、未登记文件外键或受保护引用仍以 `DELETE_GUARD_TRIGGER` 失败关闭。新候选已补齐每个 FileObject 删除前与锁内 postcheck 的写冻结、对象快照和守卫复核，定向工具测试 72/72 通过；尚须冻结新 SHA、重跑全部本机 PG16/门禁和双审后才可交付 PR/CI。本票不执行生产 inspect、dry-run、apply、数据库/COS 删除或 #122/#123/#124。
+- [~] 2026-09-25 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已修正。`17b9608b17ba74c9d6ac68c456e943ab85c81155` 的完整本机 `release:local` 17 项正式门通过，含真实 PostgreSQL 16 全动态组、POL-108 大规模投影、POL-109 4/4 Chromium、POL-22 隔离只读预检 ready/0 blocker、P0 与 RC06；成功回执为 `/private/tmp/pol122-local-release-17b9608b-attempt3.json`。前两次同 SHA 尝试在动态门首次镜像查询因本机 Docker 空闲态失败，第三次仅用无网络、无挂载、自动删除的本机休眠容器保持 Docker 活跃，未放宽镜像门或更改代码；此前 macOS 沙箱中的 Chromium 失败亦已在可启动浏览器的本机环境克服。原 Spec 轴无缺陷，Standards 轴无硬性违规、有两项非阻断重复代码判断性建议；本账本更新构成新 SHA，其正式门与双审仍须重新绑定，不继承 `17b9608b` 的成功证据。当前仅具本机合成数据的独立两文件 CLI 证明，非生产 PR/CI/合并尚未完成。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
 
-- [~] #296 / POL-25A 两次获批生产尝试均在变更前只读绑定阶段失败关闭，零生产写入：第一次暴露执行 harness 语法与 root/ubuntu 身份错误；第二次已正确绑定 `ubuntu`、正式 checkout `a131188418b6913041f02ad1658d3bb28c173f58` 和 live `origin/main@118530bfb53e2374f88ddd21d13c2f343acb1341`，但正式机缺少 `/etc/jiangkong/db-migration.env`、候选受控 DB 助手、六项后续 POL-22 信任材料及私有对象恢复入口。当前在 fresh `main@118530bfb53e2374f88ddd21d13c2f343acb1341` 的 `codex/pol296-production-executor` 仅补齐 #296 私有对象全版本只读备份/隔离恢复能力：实际 clean HEAD 精确绑定、无环境旁路的 root-only 输入/输出、数据库 size/SHA 与 COS latest 双向核对、全版本双枚举防漂移、内容寻址 blob、独立恢复逐版本复核、脱敏回执及分页/特殊键/漂移失败关闭测试 6/6 通过。首个候选 `43575e57`的完整门禁因独立双审发现候选绑定、测试旁路、COS 分页和特殊键四类 P1 而主动中止，不作通过证据；修复后必须新建 SHA 并重跑全部门禁和原双审。未实现或执行迁移凭据引导、停写、数据库备份/恢复、Schema 迁移、grant、归零、部署或开放；形成新 SHA、完整门禁、审查和 GitHub 交付后，仍须新的生产授权。
+- [x] #301 已交付：2026-09-22 实时核对 Issue CLOSED、PR #302 MERGED，候选 `a1c2b48ca47b25d66c0b6aca597b360f061d7f37`、合并/main `56fd5243d6b096d4ce022eac1d8e95f7f1da97f0`。候选 CI `35720628352` 与合并 CI `35722385725` 均完成且 success；本机正式门和双审依据 Issue 最终回执。仅增加两个精确 FileObject 条件守卫的零引用证明，未知/缺失/禁用/定义漂移仍失败关闭，不修改 Schema 或业务权限。后续 #122 运行窗口与本票工具交付分开，不再将本票调度为待实现。
+
+- [x] #296 / POL-25A 已于 2026-09-20 收口，2026-09-22 实时核对 Issue CLOSED。最终历史回执绑定 `2ca8d507d9f5900f66ca0771cd27b37be2331d28`，记录 171 条迁移完成、checksum mismatch 0、数据库与私有对象隔离恢复通过、临时秘密清理及停机冻结；权威回执摘要 `707202fbf66bc1f22cc2bf06285a8fed67e5d79e9b1b855a40f2a90bc1a37582`。此为已发布回执事实，不是本轮生产实时复验。下游仍须核验历史兼容回执与新工具/发布 SHA 的连续绑定，不能因关票自动继承为新 SHA 证据；不重跑迁移，不自动进入 #123/#124。
 
 - [~] #211 与 #122 正式环境合并只读审计确认：正式库仍为 124 项迁移，而冻结候选为 171 项、POL-22 策略覆盖最终 281 张表，原 `#121 → #122 → #123 → #124` 顺序无法在旧 Schema 上生成可执行归零预检。用户已批准修订交付时序；本候选将权威规格改为 `#121 → #296/POL-25A Schema 兼容迁移与停写封存 → #122/POL-24 归零 → #123/POL-25B 同一 SHA 应用部署 → #124/POL-26 开放`，并以四张连续绑定收据隔离生产动作。#296 已以 `needs-info` 新建，明确当前只批准规格与依赖修订；#122/#123/#124 票面依赖在本次文档交付中同步。未生成备份、安装信任材料、迁移、归零、部署、开放或写入生产数据库/COS。
 

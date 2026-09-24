@@ -333,6 +333,65 @@ test("local release gate refuses a non-pnpm-9 host before writing a receipt", as
   }
 });
 
+test("local release preflight accepts an already cached PG16 image on the pinned local Docker socket", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-gate-test-"));
+  try {
+    const tools = await writeFakeLocalGateTools(testRoot);
+    await writeExecutable(
+      tools.fakeDocker,
+      [
+        "#!/usr/bin/env bash",
+        "if [[ \"$*\" == \"context inspect --format {{.Endpoints.docker.Host}}\" ]]; then printf 'unix:///var/run/docker.sock\\n'; exit 0; fi",
+        "if [[ \"$*\" == \"inspect --type=image postgres:16\" ]]; then exit 0; fi",
+        "printf 'No such image: postgres:16\\n' >&2",
+        "exit 1"
+      ].join("\n")
+    );
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => key !== "DATABASE_URL" && !key.endsWith("_DATABASE_URL"))
+    );
+    const result = runScript(localGate, ["--preflight", "--receipt", join(testRoot, "receipt.json")], {
+      env: { ...env, NODE_BIN: tools.fakeNode, PNPM_BIN: tools.fakePnpm, DOCKER_BIN: tools.fakeDocker, GIT_BIN: tools.fakeGit }
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Local release preflight passed/u);
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("local release preflight fails closed when the pinned Docker socket lacks PG16", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-gate-test-"));
+  try {
+    const tools = await writeFakeLocalGateTools(testRoot);
+    const calls = join(testRoot, "docker-calls.txt");
+    await writeExecutable(
+      tools.fakeDocker,
+      [
+        "#!/usr/bin/env bash",
+        `printf '%s\\n' "$*" >> ${JSON.stringify(calls)}`,
+        "if [[ \"$*\" == \"context inspect --format {{.Endpoints.docker.Host}}\" ]]; then printf 'unix:///var/run/docker.sock\\n'; exit 0; fi",
+        "exit 1"
+      ].join("\n")
+    );
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => key !== "DATABASE_URL" && !key.endsWith("_DATABASE_URL"))
+    );
+    const receipt = join(testRoot, "receipt.json");
+    const result = runScript(localGate, ["--preflight", "--receipt", receipt], {
+      env: { ...env, NODE_BIN: tools.fakeNode, PNPM_BIN: tools.fakePnpm, DOCKER_BIN: tools.fakeDocker, GIT_BIN: tools.fakeGit }
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /postgres:16 is not cached locally/u);
+    assert.doesNotMatch(await readFile(calls, "utf8"), /pull/u);
+    await assert.rejects(readFile(receipt, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
 test("Mac deployment dry run refuses a receipt for another candidate without invoking SSH", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-deploy-test-"));
   try {

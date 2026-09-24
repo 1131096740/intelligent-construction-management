@@ -105,7 +105,7 @@ case "$docker_host" in
     ;;
 esac
 
-$DOCKER_BIN image inspect postgres:16 >/dev/null 2>&1 ||
+$DOCKER_BIN inspect --type=image postgres:16 >/dev/null 2>&1 ||
   fail "postgres:16 is not cached locally; run 'docker pull postgres:16' once before the gate"
 
 if [[ -z "$RECEIPT_PATH" ]]; then
