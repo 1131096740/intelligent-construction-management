@@ -12,7 +12,7 @@
 
 ## POL 全树本地集成（2026-09-24）
 
-- [~] 2026-09-24 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已在候选中修正；旧 SHA 的真实 PG16/隔离 HTTPS 66/66 不代替新 SHA 证明。顶层已缓存镜像探针按授权修正，测试通过；本机 Docker 标签偶发失效后，已用含 `postgres:16` 标签的本机归档离线导入，同一镜像 ID 的 `--pull=never --network=none` PostgreSQL 16 冒烟通过，未访问外网或业务数据。完整 `release:local` 仍未通过（最近一次停在 npm Registry 依赖审计连接，之前停在动态 PG16 镜像检查），不能据冒烟宣称正式门通过。须冻结新 SHA、重跑完整正式门、POL-22 预检及原双审，全部通过后才可进行已授权的非生产 PR/CI/合并。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
+- [~] 2026-09-24 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已在候选中修正；旧 SHA 的真实 PG16/隔离 HTTPS 66/66 不代替新 SHA 证明。顶层已缓存镜像探针按授权修正，测试通过；本机 Docker 标签偶发失效后，已用含 `postgres:16` 标签的本机归档离线导入，同一镜像 ID 的 `--pull=never --network=none` PostgreSQL 16 冒烟通过，未访问外网或业务数据。候选 `29d30b40e8f0f882c7a5cff5c32dce3a1966263b` 的完整 `release:local` 已通过依赖审计、静态/单测/构建/清单及包括 POL-108 在内的前序真实 PG16 组，但在 POL-109 的 4 个 Chromium E2E 启动前失败：macOS 沙箱拒绝 Chromium Mach 端口注册，业务断言未运行；相同的最小浏览器启动在受限环境失败、在本机允许浏览器启动的环境成功。该 SHA 无完整门禁成功收据，已通过子项不构成新 SHA 证明。须冻结新 SHA，在可启动浏览器的本机环境重跑完整正式门、POL-22 预检及原双审，全部通过后才可进行已授权的非生产 PR/CI/合并。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
 
 - [x] #301 已交付：2026-09-22 实时核对 Issue CLOSED、PR #302 MERGED，候选 `a1c2b48ca47b25d66c0b6aca597b360f061d7f37`、合并/main `56fd5243d6b096d4ce022eac1d8e95f7f1da97f0`。候选 CI `35720628352` 与合并 CI `35722385725` 均完成且 success；本机正式门和双审依据 Issue 最终回执。仅增加两个精确 FileObject 条件守卫的零引用证明，未知/缺失/禁用/定义漂移仍失败关闭，不修改 Schema 或业务权限。后续 #122 运行窗口与本票工具交付分开，不再将本票调度为待实现。
 
