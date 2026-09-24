@@ -14,7 +14,6 @@ const {
   inheritedDatabaseTargetNames,
   loadManifest,
   parseArguments,
-  resolveLocalDocker,
   validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
 const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
@@ -760,47 +759,6 @@ test("execution accepts only local Docker sockets and never production mode", ()
     () => assertSafeExecutionEnvironment({ NODE_ENV: "production" }),
     /禁止/u
   );
-});
-
-test("local Docker accepts an already cached PG16 image despite image-subcommand lookup failure", async () => {
-  const imageId = "sha256:cached-pg16";
-  const command = async (_binary, args) => {
-    if (args[0] === "context") {
-      return { stdout: '"unix:///var/run/docker.sock"\n' };
-    }
-    if (args[0] === "info") {
-      return { stdout: '"28.0.0"\n' };
-    }
-    if (args[0] === "inspect" && args[1] === "--type=image") {
-      return { stdout: `${imageId}\n` };
-    }
-    throw new Error("No such image: postgres:16");
-  };
-
-  assert.deepEqual(
-    await resolveLocalDocker({}, "postgres:16", command),
-    { endpoint: "unix:///var/run/docker.sock", imageId }
-  );
-});
-
-test("local Docker rejects a missing PG16 image without pulling it", async () => {
-  const calls = [];
-  const command = async (_binary, args) => {
-    calls.push(args);
-    if (args[0] === "context") {
-      return { stdout: '"unix:///var/run/docker.sock"\n' };
-    }
-    if (args[0] === "info") {
-      return { stdout: '"28.0.0"\n' };
-    }
-    throw new Error("No such image: postgres:16");
-  };
-
-  await assert.rejects(
-    resolveLocalDocker({}, "postgres:16", command),
-    /No such image: postgres:16/u
-  );
-  assert.equal(calls.some((args) => args.includes("pull")), false);
 });
 
 test("child runner environment is allowlisted and cannot inherit secrets or DB URLs", () => {

@@ -495,8 +495,8 @@ async function assertRepositoryState(candidateSha, environment) {
   return head.stdout.trim();
 }
 
-async function resolveLocalDocker(environment, image, command = runCommand) {
-  const context = await command(
+async function resolveLocalDocker(environment, image) {
+  const context = await runCommand(
     docker,
     ["context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"],
     { env: environment }
@@ -504,12 +504,12 @@ async function resolveLocalDocker(environment, image, command = runCommand) {
   const endpoint = assertLocalDockerEndpoint(context.stdout);
   const pinnedEnvironment = { ...environment, DOCKER_HOST: endpoint };
   delete pinnedEnvironment.DOCKER_CONTEXT;
-  await command(docker, ["info", "--format", "{{json .ServerVersion}}"], {
+  await runCommand(docker, ["info", "--format", "{{json .ServerVersion}}"], {
     env: pinnedEnvironment
   });
-  const imageResult = await command(
+  const imageResult = await runCommand(
     docker,
-    ["inspect", "--type=image", "--format", "{{.Id}}", image],
+    ["image", "inspect", "--format", "{{.Id}}", image],
     { env: pinnedEnvironment }
   );
   const imageId = imageResult.stdout.trim();
@@ -709,7 +709,6 @@ module.exports = {
   main,
   normalizeDockerEndpoint,
   parseArguments,
-  resolveLocalDocker,
   resolveGroupCommand,
   root,
   selectCoveredGroups,
