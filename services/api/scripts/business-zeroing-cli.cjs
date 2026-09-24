@@ -45,6 +45,13 @@ const EXECUTION_FILES = Object.freeze([
   "services/api/scripts/business-zeroing-storage.cjs",
   "services/api/scripts/execute-test-business-zeroing.cjs",
   "services/api/scripts/inspect-test-business-zeroing.cjs",
+  "services/api/scripts/isolated-file-cleanup.cjs",
+  "services/api/scripts/isolated-file-cleanup-authorization.cjs",
+  "services/api/scripts/isolated-file-cleanup-version-backup.cjs",
+  "services/api/scripts/isolated-file-cleanup-database.cjs",
+  "services/api/scripts/isolated-file-cleanup-journal.cjs",
+  "services/api/scripts/isolated-file-cleanup-execution.cjs",
+  "services/api/scripts/isolated-file-cleanup-local-boundary.cjs",
   "services/api/scripts/run-business-zeroing-cli.sh",
   "services/api/scripts/sign-business-zeroing-input.cjs",
   "services/api/scripts/verify-test-business-zeroing.cjs"
@@ -157,6 +164,7 @@ async function dispatchTrustedLauncher(argv) {
     inspect: "inspect-test-business-zeroing.cjs",
     execute: "execute-test-business-zeroing.cjs",
     verify: "verify-test-business-zeroing.cjs",
+    "isolated-file-cleanup": "isolated-file-cleanup.cjs",
     sign: "sign-business-zeroing-input.cjs",
     dynamic: "../prisma/run-business-zeroing-local.cjs",
     "preflight-dynamic": "../prisma/run-business-zeroing-local.cjs"

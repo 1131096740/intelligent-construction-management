@@ -1,0 +1,16 @@
+// Generates only a pinned-version Linux engine for the isolated CLI fixture.
+// This model is never migrated and is not used as the application's data model.
+generator client {
+  provider      = "prisma-client-js"
+  output        = "./generated"
+  binaryTargets = ["linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model EngineProbe {
+  id String @id
+}
