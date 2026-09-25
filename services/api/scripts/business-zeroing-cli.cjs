@@ -24,6 +24,8 @@ const { builtinModules } = require("node:module");
 const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 const TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-authorization-public-key.pem";
+const TRUSTED_SCHEMA_CONTINUITY_PUBLIC_KEY_PATH =
+  "/etc/jiangkong/pol122-schema-continuity-public-key.pem";
 const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem";
 const TRUSTED_TEST_PROVENANCE_REGISTRY_PATH =
@@ -51,7 +53,12 @@ const EXECUTION_FILES = Object.freeze([
   "services/api/scripts/isolated-file-cleanup-database.cjs",
   "services/api/scripts/isolated-file-cleanup-journal.cjs",
   "services/api/scripts/isolated-file-cleanup-execution.cjs",
+  "services/api/scripts/isolated-file-cleanup-delete-transport.cjs",
   "services/api/scripts/isolated-file-cleanup-local-boundary.cjs",
+  "services/api/scripts/isolated-file-cleanup-production-contract.cjs",
+  "services/api/scripts/isolated-file-cleanup-production-boundary.cjs",
+  "services/api/scripts/isolated-file-cleanup-production-objects.cjs",
+  "services/api/scripts/production-isolated-file-cleanup.cjs",
   "services/api/scripts/run-business-zeroing-cli.sh",
   "services/api/scripts/sign-business-zeroing-input.cjs",
   "services/api/scripts/verify-test-business-zeroing.cjs"
@@ -165,6 +172,7 @@ async function dispatchTrustedLauncher(argv) {
     execute: "execute-test-business-zeroing.cjs",
     verify: "verify-test-business-zeroing.cjs",
     "isolated-file-cleanup": "isolated-file-cleanup.cjs",
+    "production-isolated-file-cleanup": "production-isolated-file-cleanup.cjs",
     sign: "sign-business-zeroing-input.cjs",
     dynamic: "../prisma/run-business-zeroing-local.cjs",
     "preflight-dynamic": "../prisma/run-business-zeroing-local.cjs"
@@ -246,6 +254,14 @@ function readTrustedAuthorizationPublicKey() {
     TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
     "未配置固定的独立授权公钥，受控执行保持禁用",
     "独立授权公钥"
+  );
+}
+
+function readTrustedSchemaContinuityPublicKey() {
+  return readRootOwnedFile(
+    TRUSTED_SCHEMA_CONTINUITY_PUBLIC_KEY_PATH,
+    "未配置固定的独立 Schema 连续性公钥，生产清理预检保持禁用",
+    "独立 Schema 连续性公钥"
   );
 }
 
@@ -811,6 +827,7 @@ const exportedApi = {
   parseOptions,
   readJson,
   readTrustedAuthorizationPublicKey,
+  readTrustedSchemaContinuityPublicKey,
   readTrustedTestProvenancePublicKey,
   readTrustedTestProvenanceRegistry,
   readTrustedWriteFreezePublicKey,
@@ -819,6 +836,7 @@ const exportedApi = {
   reserveJsonOutput,
   assertCleanRepositoryStatus,
   TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
+  TRUSTED_SCHEMA_CONTINUITY_PUBLIC_KEY_PATH,
   TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,
   TRUSTED_TEST_PROVENANCE_REGISTRY_PATH,
   TRUSTED_WRITE_FREEZE_PUBLIC_KEY_PATH,
