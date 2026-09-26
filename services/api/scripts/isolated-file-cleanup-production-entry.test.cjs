@@ -12,6 +12,11 @@ const { sha256 } = require("./business-zeroing-core.cjs");
 const { TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH, TRUSTED_SCHEMA_CONTINUITY_PUBLIC_KEY_PATH } =
   require("./business-zeroing-cli.cjs");
 
+test("生产入口与本机入口不共享可切换的主编排器", () => {
+  assert.equal(require("./isolated-file-cleanup.cjs").productionRunMain, undefined);
+  assert.equal(typeof require("./isolated-file-cleanup-production-inspection.cjs").runMain, "function");
+});
+
 test("Schema 连续性与处置授权使用不同的固定信任锚", () => {
   assert.notEqual(TRUSTED_SCHEMA_CONTINUITY_PUBLIC_KEY_PATH, TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH);
   assert.equal(TRUSTED_SCHEMA_CONTINUITY_PUBLIC_KEY_PATH,

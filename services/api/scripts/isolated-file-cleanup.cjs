@@ -134,12 +134,9 @@ function writeInspectionEvidence(outputPath, body) {
   }
 }
 
-async function main(argv, mode) {
+async function main(argv) {
   const [command, ...options] = argv;
   if (!["inspect", "dry-run", "execute", "postcheck"].includes(command)) return blocked("COMMAND_NOT_AVAILABLE");
-  if (mode === "production" && !["inspect", "dry-run"].includes(command)) {
-    return blocked("PRODUCTION_EXECUTION_NOT_ENABLED");
-  }
   const paths = new Map();
   for (let index = 0; index < options.length; index += 2) {
     const key = options[index];
@@ -150,7 +147,7 @@ async function main(argv, mode) {
     paths.set(key, value);
   }
   if (!paths.has("--scope")) return blocked("INVALID_ARGUMENTS");
-  if (mode === "local" && (paths.has("--schema-continuity-envelope") || paths.has("--pol25a-receipt"))) {
+  if (paths.has("--schema-continuity-envelope") || paths.has("--pol25a-receipt")) {
     return blocked("INVALID_ARGUMENTS");
   }
   const applyFlags = ["--plan", "--apply-authorization", "--journal-root", "--confirm"];
@@ -168,12 +165,6 @@ async function main(argv, mode) {
     return blocked("INVALID_ARGUMENTS");
   }
   if (paths.has("--batch-id") && !paths.has("--scope-authorization")) return blocked("AUTHORIZATION_REQUIRED");
-  if (mode === "production" && command === "dry-run" &&
-      ["--scope", "--source-report", "--backup-receipt", "--scope-authorization", "--version-backup-root",
-        "--version-restore-root", "--batch-id", "--output", "--inspection-report", "--execution-authorization",
-        "--schema-continuity-envelope", "--pol25a-receipt"].some(flag => !paths.has(flag))) {
-    return blocked("PRODUCTION_DRY_RUN_MATERIAL_REQUIRED");
-  }
   const envelope = readInput(paths.get("--scope"));
   if (!Array.isArray(envelope?.payload?.files) || envelope.payload.files.length !== 2) {
     return blocked("EXACT_TWO_FILES_REQUIRED");
@@ -202,23 +193,6 @@ async function main(argv, mode) {
   const targetIds = envelope.payload.files.map(file => file.id).sort();
   if (orphans.length !== 2 || new Set(sourceIds).size !== 2 ||
       JSON.stringify(sourceIds) !== JSON.stringify(targetIds)) return blocked("SOURCE_TARGET_MISMATCH");
-  let productionContinuity;
-  if (mode === "production") {
-    if (!paths.has("--schema-continuity-envelope") || !paths.has("--pol25a-receipt")) {
-      return blocked("PRODUCTION_CONTINUITY_REQUIRED");
-    }
-    if (!paths.has("--scope-authorization") || !paths.has("--batch-id") || !paths.has("--output")) {
-      return blocked("PRODUCTION_INSPECTION_AUTHORITY_REQUIRED");
-    }
-    try {
-      const { POL25A_RECEIPT_SHA256, validateProductionContinuity } =
-        require("./isolated-file-cleanup-production-contract.cjs");
-      const { readTrustedSchemaContinuityPublicKey } = require("./business-zeroing-cli.cjs");
-      productionContinuity = validateProductionContinuity(readInput(paths.get("--schema-continuity-envelope")),
-        readInput(paths.get("--pol25a-receipt"), true), source, envelope.payload,
-        readTrustedSchemaContinuityPublicKey(), POL25A_RECEIPT_SHA256);
-    } catch { return blocked("PRODUCTION_CONTINUITY_INVALID"); }
-  }
   if (paths.has("--version-backup-root") !== paths.has("--version-restore-root")) return blocked("INVALID_ARGUMENTS");
   let versionBackup;
   if (paths.has("--version-backup-root")) {
@@ -272,20 +246,8 @@ async function main(argv, mode) {
         approvedInspection, envelope.payload, source, executionIdentity, paths.get("--batch-id"), scopeAuthorization, writeFreezeLease);
     } catch { return blocked("EXECUTION_AUTHORIZATION_INVALID"); }
   }
-  if (mode === "production") {
-    try {
-      const { assertProductionInspectionBoundary } = require("./isolated-file-cleanup-production-boundary.cjs");
-      assertProductionInspectionBoundary(source);
-    } catch { return blocked("PRODUCTION_RUNTIME_INVALID"); }
-    if (!writeFreezeLease || !scopeAuthorization || !executionIdentity || !executionCodeIdentity) {
-      return blocked("PRODUCTION_INSPECTION_AUTHORITY_REQUIRED");
-    }
-    if (command === "dry-run" && !process.env.ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL?.trim()) {
-      return blocked("PRODUCTION_RESTORE_DATABASE_REQUIRED");
-    }
-  }
   const { assertLocalExecutionBoundary } = require("./isolated-file-cleanup-local-boundary.cjs");
-  if (mode === "local" && ["dry-run", "execute", "postcheck"].includes(command)) {
+  if (["dry-run", "execute", "postcheck"].includes(command)) {
     try { await assertLocalExecutionBoundary(source); }
     catch { return blocked("LOCAL_ISOLATION_REQUIRED"); }
   }
@@ -295,15 +257,6 @@ async function main(argv, mode) {
     const same = (left, right) => { if (sha256(left) !== sha256(right)) throw new Error("AUTHORITY_CHANGED"); };
     same(readInput(paths.get("--scope")), envelope);
     same(readInput(paths.get("--source-report")), source);
-    if (mode === "production") {
-      const { POL25A_RECEIPT_SHA256, validateProductionContinuity } =
-        require("./isolated-file-cleanup-production-contract.cjs");
-      const { readTrustedSchemaContinuityPublicKey } = require("./business-zeroing-cli.cjs");
-      require("./isolated-file-cleanup-production-boundary.cjs").assertProductionInspectionBoundary(source);
-      same(validateProductionContinuity(readInput(paths.get("--schema-continuity-envelope")),
-        readInput(paths.get("--pol25a-receipt"), true), source, envelope.payload,
-        readTrustedSchemaContinuityPublicKey(), POL25A_RECEIPT_SHA256), productionContinuity);
-    }
     const currentScope = validateScopeAuthorization(readInput(paths.get("--scope-authorization")), envelope.payload, source);
     same(currentScope, scopeAuthorization);
     const identity = readTrustedExecutionIdentity();
@@ -325,21 +278,6 @@ async function main(argv, mode) {
         plan.scopeSha256 !== sha256(envelope.payload) || plan.sourceReportSha256 !== source.reportSha256 || plan.batchId !== paths.get("--batch-id")) {
       throw new Error("PLAN_AUTHORITY_CHANGED");
     }
-    if (mode === "production") {
-      const { validateProductionApplyAuthorization } = require("./isolated-file-cleanup-production-contract.cjs");
-      const { readTrustedAuthorizationPublicKey } = require("./business-zeroing-cli.cjs");
-      const currentBackup = readInput(paths.get("--backup-receipt"));
-      const { receiptSha256, ...backupBody } = currentBackup;
-      if (sha256(plan.productionContinuity) !== sha256(productionContinuity) ||
-          plan.versionBackupReceiptSha256 !== versionBackup?.receiptSha256 ||
-          !/^[0-9a-f]{64}$/u.test(receiptSha256) || sha256(backupBody) !== receiptSha256 ||
-          plan.backupReceiptSha256 !== receiptSha256) {
-        throw new Error("PLAN_AUTHORITY_CHANGED");
-      }
-      return validateProductionApplyAuthorization(readInput(paths.get("--apply-authorization")),
-        plan, envelope.payload, source, productionContinuity, paths.get("--journal-root"),
-        readTrustedAuthorizationPublicKey());
-    }
     const { validateApplyAuthorization } = require("./isolated-file-cleanup-authorization.cjs");
     return validateApplyAuthorization(readInput(paths.get("--apply-authorization")), plan, plan, paths.get("--journal-root"));
   };
@@ -352,8 +290,7 @@ async function main(argv, mode) {
     const { executeCleanup, postcheckCleanup } = require("./isolated-file-cleanup-execution.cjs");
     const executionClient = new PrismaClient();
     const guard = async () => {
-      if (mode === "production") require("./isolated-file-cleanup-production-boundary.cjs").assertProductionInspectionBoundary(source);
-      else await assertLocalExecutionBoundary(source);
+      await assertLocalExecutionBoundary(source);
       verifyAuthority();
       if (sha256(readInput(paths.get("--plan"))) !== sha256(plan)) throw new Error("PLAN_CHANGED");
       validateSavedPlan(plan);
@@ -374,24 +311,11 @@ async function main(argv, mode) {
         objectKey: object.objectKey, versionId });
       await new CosVersionedObjectStorage({ fetchImpl }).deleteObjectVersion(object.objectKey, versionId);
     };
-    const productionObjects = mode === "production" ?
-      require("./isolated-file-cleanup-production-objects.cjs").createProductionObjectOperations({
-        source, plan, verifyAuthority: guard,
-        listObjectVersions: object => new CosVersionedObjectStorage({ fetchImpl: boundedCosFetch(object.objectKey) })
-          .listObjectVersions(object.objectKey),
-        deleteObjectVersion: async (object, versionId) => {
-          const { createOneShotVersionDeleteFetch } = require("./isolated-file-cleanup-delete-transport.cjs");
-          const fetchImpl = createOneShotVersionDeleteFetch({ bucket: process.env.COS_BUCKET,
-            region: process.env.COS_REGION, objectKey: object.objectKey, versionId });
-          await new CosVersionedObjectStorage({ fetchImpl }).deleteObjectVersion(object.objectKey, versionId);
-        }
-      }) : null;
-    const listVersions = productionObjects?.listVersions ?? localListVersions;
-    const deleteVersion = productionObjects?.deleteVersion ?? localDeleteVersion;
     try {
       await guard();
       const options = { client: executionClient, scope: envelope.payload, source, plan,
-        root: paths.get("--journal-root"), readInput, verifyAuthority: guard, listVersions, deleteVersion,
+        root: paths.get("--journal-root"), readInput, verifyAuthority: guard,
+        listVersions: localListVersions, deleteVersion: localDeleteVersion,
         completeDatabase: (audit, versions) => require("./isolated-file-cleanup-database.cjs").completeCleanupDatabase(
           executionClient, envelope.payload, source, plan, audit, versions, guard),
         recordFailureAudit: (audit, completionAudit, versions) =>
@@ -442,7 +366,6 @@ async function main(argv, mode) {
       backupReceiptSha256: backup.receiptSha256, versionBackupReceiptSha256: versionBackup?.receiptSha256 ?? null,
       objectSnapshotsSha256: sha256(objectSnapshots) };
     if (Object.entries(current).some(([field, value]) => approvedInspection[field] !== value) ||
-        (mode === "production" && sha256(approvedInspection.productionContinuity) !== sha256(productionContinuity)) ||
         sha256(stableProof(approvedInspection.databaseRestoreProof)) !== sha256(stableProof(databaseRestoreProof))) {
       return blocked("APPROVED_INSPECTION_DRIFT");
     }
@@ -459,15 +382,6 @@ async function main(argv, mode) {
       };
       same(readInput(paths.get("--scope")), envelope);
       same(readInput(paths.get("--source-report")), source);
-      if (mode === "production") {
-        const { POL25A_RECEIPT_SHA256, validateProductionContinuity } =
-          require("./isolated-file-cleanup-production-contract.cjs");
-        const { readTrustedSchemaContinuityPublicKey } = require("./business-zeroing-cli.cjs");
-        same(validateProductionContinuity(readInput(paths.get("--schema-continuity-envelope")),
-          readInput(paths.get("--pol25a-receipt"), true), source, envelope.payload,
-          readTrustedSchemaContinuityPublicKey(), POL25A_RECEIPT_SHA256), productionContinuity);
-        require("./isolated-file-cleanup-production-boundary.cjs").assertProductionInspectionBoundary(source);
-      }
       const currentScope = validateScopeAuthorization(readInput(paths.get("--scope-authorization")), envelope.payload, source);
       same(currentScope, scopeAuthorization);
       const currentIdentity = readTrustedExecutionIdentity();
@@ -496,7 +410,7 @@ async function main(argv, mode) {
       backupReceiptSha256: backup.receiptSha256, versionBackupReceiptSha256: versionBackup?.receiptSha256 ?? null,
       databaseRestoreProof: databaseRestoreProof ?? null,
       executionIdentity: executionIdentity ?? null, executionCodeIdentity: executionCodeIdentity ?? null,
-      productionContinuity: productionContinuity ?? null,
+      productionContinuity: null,
       scopeAuthorization: scopeAuthorization ?? null, writeFreezeLease: writeFreezeLease ?? null,
       executionAuthorization: executionAuthorization ?? null,
       batchId: paths.get("--batch-id") ?? null, objectSnapshots, objectSnapshotsSha256: sha256(objectSnapshots),
@@ -514,7 +428,7 @@ async function main(argv, mode) {
       // medium. All inspection and approved-checkpoint gates above still run.
       Object.assign(evidence, {
         mode: "isolated_file_cleanup_dry_run", status: "verified",
-        eligibleForIsolatedExecution: mode === "local" && Boolean(scopeAuthorization && writeFreezeLease &&
+        eligibleForIsolatedExecution: Boolean(scopeAuthorization && writeFreezeLease &&
           executionAuthorization && databaseRestoreProof && versionBackup),
         approvedInspectionSha256: approvedInspection.reportSha256,
         operations: envelope.payload.files.map(file => {
@@ -568,12 +482,8 @@ async function main(argv, mode) {
 
 const { createTrustedEntrypoint } = require("./business-zeroing-cli.cjs");
 const runMain = createTrustedEntrypoint(
-  () => main(process.argv.slice(2), "local").catch(() => blocked("INPUT_REJECTED")),
+  () => main(process.argv.slice(2)).catch(() => blocked("INPUT_REJECTED")),
   "独立文件清理已安全阻断"
 );
-const productionRunMain = createTrustedEntrypoint(
-  () => main(process.argv.slice(2), "production").catch(() => blocked("INPUT_REJECTED")),
-  "生产独立文件清理已安全阻断"
-);
-module.exports = { runMain, productionRunMain, boundedCosFetch };
+module.exports = { runMain, boundedCosFetch, readInput, blocked, writeInspectionEvidence };
 if (require.main === module) blocked("TRUSTED_LAUNCHER_REQUIRED");

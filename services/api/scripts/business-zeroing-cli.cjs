@@ -58,6 +58,8 @@ const EXECUTION_FILES = Object.freeze([
   "services/api/scripts/isolated-file-cleanup-production-contract.cjs",
   "services/api/scripts/isolated-file-cleanup-production-boundary.cjs",
   "services/api/scripts/isolated-file-cleanup-production-objects.cjs",
+  "services/api/scripts/isolated-file-cleanup-production-inspection.cjs",
+  "services/api/scripts/isolated-file-cleanup-readonly-coordinator.cjs",
   "services/api/scripts/production-isolated-file-cleanup.cjs",
   "services/api/scripts/run-business-zeroing-cli.sh",
   "services/api/scripts/sign-business-zeroing-input.cjs",

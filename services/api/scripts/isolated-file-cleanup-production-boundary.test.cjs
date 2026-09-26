@@ -4,6 +4,12 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { assertProductionInspectionBoundary } = require("./isolated-file-cleanup-production-boundary.cjs");
+const { EXECUTION_FILES } = require("./business-zeroing-cli.cjs");
+
+test("生产只读事实协调器纳入执行代码身份", () => {
+  assert.ok(EXECUTION_FILES.includes("services/api/scripts/isolated-file-cleanup-readonly-coordinator.cjs"));
+  assert.ok(EXECUTION_FILES.includes("services/api/scripts/isolated-file-cleanup-production-inspection.cjs"));
+});
 
 test("生产只读入口拒绝本机合成环境、容器与非 COS 配置", () => {
   const source = { environment: "production" };
