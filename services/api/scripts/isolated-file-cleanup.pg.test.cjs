@@ -265,6 +265,34 @@ test("真实 PG16：独立清理预检拒绝不安全的目标", async t => {
     };
     const backupPath = path.join(directory, "backup.json");
     writeFileSync(backupPath, JSON.stringify({ ...backupBody, receiptSha256: sha256(backupBody) }), { mode: 0o600 });
+    await t.test("只读协调接口在真实 PG16 与隔离对象上核验两个目标及恢复证明", async () => {
+      const { inspectReadOnlyFacts } = require("./isolated-file-cleanup-readonly-coordinator.cjs");
+      const previousRoot = process.env.FILE_STORAGE_ROOT;
+      const previousDriver = process.env.FILE_STORAGE_DRIVER;
+      const previousBucket = process.env.COS_BUCKET;
+      process.env.FILE_STORAGE_ROOT = storageRoot;
+      process.env.FILE_STORAGE_DRIVER = "local";
+      delete process.env.COS_BUCKET;
+      try {
+        const outcome = await inspectReadOnlyFacts({
+          scope: JSON.parse(readFileSync(scopePath, "utf8")).payload, source,
+          databaseUrl, restoreDatabaseUrl: databaseUrl.replace("/orphan_cleanup_test?", "/orphan_cleanup_restore?"),
+          loadBackup: () => JSON.parse(readFileSync(backupPath, "utf8"))
+        });
+        assert.equal(outcome.status, "verified");
+        assert.deepEqual(outcome.result.files.map(file => file.id).sort(), ids);
+        assert.equal(outcome.databaseRestoreProof.status, "passed");
+        assert.deepEqual(outcome.objectSnapshots.map(item => item.fileId).sort(), ids);
+        assert.equal(outcome.objectSnapshots.every(item => item.snapshot.kind === "local_file"), true);
+      } finally {
+        if (previousRoot === undefined) delete process.env.FILE_STORAGE_ROOT;
+        else process.env.FILE_STORAGE_ROOT = previousRoot;
+        if (previousDriver === undefined) delete process.env.FILE_STORAGE_DRIVER;
+        else process.env.FILE_STORAGE_DRIVER = previousDriver;
+        if (previousBucket === undefined) delete process.env.COS_BUCKET;
+        else process.env.COS_BUCKET = previousBucket;
+      }
+    });
     await t.test("无外网 Linux 运行时通过真实 CLI 查询恢复的 PG16，不替换 Prisma 或数据库适配器", async linux => {
       const databaseName = `${name}-linux-db`;
       const runtimeName = `${name}-linux-runtime`;
