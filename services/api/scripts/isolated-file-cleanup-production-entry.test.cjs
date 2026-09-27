@@ -23,6 +23,32 @@ test("Schema 连续性与处置授权使用不同的固定信任锚", () => {
     "/etc/jiangkong/pol122-schema-continuity-public-key.pem");
 });
 
+test("生产只读入口拒绝两个孤儿文件之外的任何来源 blocker", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "pol122-production-extra-blocker-"));
+  try {
+    const files = [randomUUID(), randomUUID()].map(id => ({ id, rowSha256: "a".repeat(64) }));
+    const sourceBody = { mode: "read_only_preflight", status: "blocked", executed: false,
+      deletionCandidates: [], blockers: [
+        ...files.map(file => ({ code: "ORPHAN_FILE", details: { primaryKey: { id: file.id } } })),
+        { code: "MISSING_POLICY_TABLE", details: { table: "OtherTable" } }
+      ] };
+    const source = { ...sourceBody, reportSha256: sha256(sourceBody) };
+    const scopePath = path.join(directory, "scope.json");
+    const sourcePath = path.join(directory, "source.json");
+    writeFileSync(scopePath, JSON.stringify({ payload: { files, sourceReportSha256: source.reportSha256 } }),
+      { mode: 0o600 });
+    writeFileSync(sourcePath, JSON.stringify(source), { mode: 0o600 });
+    const result = spawnSync("/bin/sh", [path.join(__dirname, "run-business-zeroing-cli.sh"),
+      "production-isolated-file-cleanup", "inspect", "--scope", scopePath,
+      "--source-report", sourcePath], {
+      encoding: "utf8", env: { ...process.env, DATABASE_URL: "must-not-connect" }
+    });
+    assert.equal(result.status, 2);
+    assert.deepEqual(JSON.parse(result.stdout),
+      { status: "blocked", code: "SOURCE_TARGET_MISMATCH", executed: false });
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("独立生产入口缺少连续性收据时在数据库和 COS 前阻断", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "pol122-production-entry-"));
   try {

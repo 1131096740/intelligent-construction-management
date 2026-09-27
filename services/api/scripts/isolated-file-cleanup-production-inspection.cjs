@@ -97,7 +97,7 @@ async function main(argv) {
   const orphans = source.blockers.filter(item => item.code === "ORPHAN_FILE");
   const sourceIds = orphans.map(item => item.details?.primaryKey?.id).sort();
   const targetIds = envelope.payload.files.map(file => file.id).sort();
-  if (orphans.length !== 2 || new Set(sourceIds).size !== 2 ||
+  if (source.blockers.length !== 2 || orphans.length !== 2 || new Set(sourceIds).size !== 2 ||
       JSON.stringify(sourceIds) !== JSON.stringify(targetIds)) return blocked("SOURCE_TARGET_MISMATCH");
   if (!paths.has("--schema-continuity-envelope") || !paths.has("--pol25a-receipt")) {
     return blocked("PRODUCTION_CONTINUITY_REQUIRED");
