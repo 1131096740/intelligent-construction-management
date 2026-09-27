@@ -4,7 +4,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { sha256, validateBackupReceipt, verifyObjectSnapshot } = require("./business-zeroing-core.cjs");
+const { isExactObjectKey, sha256 } = require("./business-zeroing-core.cjs");
 
 function readInput(filePath, raw = false) {
   const fd = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
@@ -33,7 +33,8 @@ function blocked(code) {
   process.exitCode = 2;
 }
 
-function boundedCosFetch() {
+function boundedCosFetch(objectKey, request = fetch) {
+  if (!isExactObjectKey(objectKey) || typeof request !== "function") throw new Error("COS_REQUEST_BOUNDARY");
   const seen = new Set();
   const deadline = Date.now() + 60000;
   let totalBytes = 0;
@@ -41,8 +42,21 @@ function boundedCosFetch() {
     const url = new URL(input);
     const expectedHost = `${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com`;
     const remaining = deadline - Date.now();
+    const query = [...url.searchParams];
+    const keys = query.map(([key]) => key).sort();
+    const hasCursor = keys.includes("key-marker") || keys.includes("version-id-marker");
+    const expectedKeys = hasCursor ? ["key-marker", "max-keys", "prefix", "version-id-marker", "versions"] :
+      ["max-keys", "prefix", "versions"];
+    const headers = new Headers(init?.headers);
     if (url.protocol !== "https:" || url.host !== expectedHost || url.pathname !== "/" ||
-        init?.method !== "GET" || remaining <= 0 || seen.size >= 1000 || seen.has(url.href)) {
+        url.username || url.password || url.hash || init?.method !== "GET" || init?.body != null ||
+        !headers.get("Authorization") || headers.get("Host") !== expectedHost ||
+        JSON.stringify(keys) !== JSON.stringify(expectedKeys) ||
+        url.searchParams.get("versions") !== "" || url.searchParams.get("prefix") !== objectKey ||
+        url.searchParams.get("max-keys") !== "1000" ||
+        (hasCursor && (url.searchParams.get("key-marker") !== objectKey ||
+          !url.searchParams.get("version-id-marker"))) ||
+        remaining <= 0 || seen.size >= 1000 || seen.has(url.href)) {
       throw new Error("COS_REQUEST_BOUNDARY");
     }
     seen.add(url.href);
@@ -57,7 +71,7 @@ function boundedCosFetch() {
       reader?.cancel().catch(() => undefined);
     }, Math.min(10000, remaining));
     try {
-      response = await Promise.race([fetch(url, { ...init, redirect: "error", signal: controller.signal }), timeout]);
+      response = await Promise.race([request(url, { ...init, redirect: "error", signal: controller.signal }), timeout]);
       if (!response.ok || !response.body) throw new Error("COS_RESPONSE_REJECTED");
       reader = response.body.getReader();
       const chunks = [];
@@ -127,12 +141,15 @@ async function main(argv) {
   for (let index = 0; index < options.length; index += 2) {
     const key = options[index];
     const value = options[index + 1];
-    if (!["--scope", "--source-report", "--backup-receipt", "--scope-authorization", "--version-backup-root", "--version-restore-root", "--batch-id", "--output", "--inspection-report", "--execution-authorization", "--plan", "--apply-authorization", "--journal-root", "--confirm"].includes(key) || paths.has(key) || !value || value.startsWith("--")) {
+    if (!["--scope", "--source-report", "--backup-receipt", "--scope-authorization", "--version-backup-root", "--version-restore-root", "--batch-id", "--output", "--inspection-report", "--execution-authorization", "--plan", "--apply-authorization", "--journal-root", "--confirm", "--schema-continuity-envelope", "--pol25a-receipt"].includes(key) || paths.has(key) || !value || value.startsWith("--")) {
       return blocked("INVALID_ARGUMENTS");
     }
     paths.set(key, value);
   }
   if (!paths.has("--scope")) return blocked("INVALID_ARGUMENTS");
+  if (paths.has("--schema-continuity-envelope") || paths.has("--pol25a-receipt")) {
+    return blocked("INVALID_ARGUMENTS");
+  }
   const applyFlags = ["--plan", "--apply-authorization", "--journal-root", "--confirm"];
   if (["execute", "postcheck"].includes(command)) {
     if ([...applyFlags, "--execution-authorization", "--inspection-report", "--batch-id"].some(flag => !paths.has(flag))) return blocked("APPLY_ARGUMENTS_REQUIRED");
@@ -255,13 +272,13 @@ async function main(argv) {
     }
   };
   const validateSavedPlan = plan => {
-    const { validateApplyAuthorization } = require("./isolated-file-cleanup-authorization.cjs");
     if (sha256(plan.executionAuthorization) !== sha256(executionAuthorization) ||
         sha256(plan.scopeAuthorization) !== sha256(scopeAuthorization) || sha256(plan.writeFreezeLease) !== sha256(writeFreezeLease) ||
         sha256(plan.executionIdentity) !== sha256(executionIdentity) || sha256(plan.executionCodeIdentity) !== sha256(executionCodeIdentity) ||
         plan.scopeSha256 !== sha256(envelope.payload) || plan.sourceReportSha256 !== source.reportSha256 || plan.batchId !== paths.get("--batch-id")) {
       throw new Error("PLAN_AUTHORITY_CHANGED");
     }
+    const { validateApplyAuthorization } = require("./isolated-file-cleanup-authorization.cjs");
     return validateApplyAuthorization(readInput(paths.get("--apply-authorization")), plan, plan, paths.get("--journal-root"));
   };
   if (!/^postgres(?:ql)?:\/\//u.test(process.env.DATABASE_URL ?? "")) return blocked("DATABASE_NOT_CONFIGURED");
@@ -278,42 +295,27 @@ async function main(argv) {
       if (sha256(readInput(paths.get("--plan"))) !== sha256(plan)) throw new Error("PLAN_CHANGED");
       validateSavedPlan(plan);
     };
-    const listVersions = async object => {
+    const localListVersions = async object => {
       await assertLocalExecutionBoundary(source);
       if (object.bucket !== process.env.COS_BUCKET || !plan.operations.some(item => item.object.objectKey === object.objectKey && item.object.bucket === object.bucket)) {
         throw new Error("OBJECT_SCOPE_INVALID");
       }
-      return new CosVersionedObjectStorage({ fetchImpl: boundedCosFetch() }).listObjectVersions(object.objectKey);
+      return new CosVersionedObjectStorage({ fetchImpl: boundedCosFetch(object.objectKey) }).listObjectVersions(object.objectKey);
     };
-    const deleteVersion = async (object, versionId) => {
+    const localDeleteVersion = async (object, versionId) => {
       await assertLocalExecutionBoundary(source);
       if (!plan.operations.some(item => item.object.bucket === object.bucket && item.object.objectKey === object.objectKey &&
           item.object.versions.some(version => version.versionId === versionId))) throw new Error("VERSION_SCOPE_INVALID");
-      let requested = false;
-      const fetchImpl = async (input, init) => {
-        const url = new URL(input);
-        // The existing adapter lowercases query names for signing and URL
-        // construction. Preserve its signature, but send the COS wire name.
-        if ([...url.searchParams].length === 1 && url.searchParams.get("versionid") === versionId) {
-          url.searchParams.delete("versionid");
-          url.searchParams.set("versionId", versionId);
-        }
-        if (requested || init?.method !== "DELETE" || url.protocol !== "https:" ||
-            url.host !== "private-local.cos.ap-test.myqcloud.com" ||
-            decodeURIComponent(url.pathname) !== `/${object.objectKey}` || [...url.searchParams].length !== 1 ||
-            url.searchParams.get("versionId") !== versionId) throw new Error("DELETE_TRANSPORT_BOUNDARY");
-        requested = true;
-        const response = await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(10000) });
-        response.body?.cancel().catch(() => undefined);
-        if (response.status !== 204) throw new Error("DELETE_NOT_CONFIRMED");
-        return new Response(null, { status: 204 });
-      };
+      const { createOneShotVersionDeleteFetch } = require("./isolated-file-cleanup-delete-transport.cjs");
+      const fetchImpl = createOneShotVersionDeleteFetch({ bucket: "private-local", region: "ap-test",
+        objectKey: object.objectKey, versionId });
       await new CosVersionedObjectStorage({ fetchImpl }).deleteObjectVersion(object.objectKey, versionId);
     };
     try {
       await guard();
       const options = { client: executionClient, scope: envelope.payload, source, plan,
-        root: paths.get("--journal-root"), readInput, verifyAuthority: guard, listVersions, deleteVersion,
+        root: paths.get("--journal-root"), readInput, verifyAuthority: guard,
+        listVersions: localListVersions, deleteVersion: localDeleteVersion,
         completeDatabase: (audit, versions) => require("./isolated-file-cleanup-database.cjs").completeCleanupDatabase(
           executionClient, envelope.payload, source, plan, audit, versions, guard),
         recordFailureAudit: (audit, completionAudit, versions) =>
@@ -346,97 +348,15 @@ async function main(argv) {
       if (fs.existsSync(journalPath)) return blocked("EXECUTION_JOURNAL_EXISTS");
     } catch { return blocked("APPLY_AUTHORIZATION_INVALID"); }
   }
-  const { inspectTargets } = require("./isolated-file-cleanup-database.cjs");
-  const client = new PrismaClient();
-  let result;
-  try {
-    result = await inspectTargets(client, envelope.payload, source);
-    if (typeof result === "string") return blocked(result);
-  } catch {
-    return blocked("DATABASE_INSPECTION_FAILED");
-  } finally {
-    await client.$disconnect();
-  }
-  if (versionBackup && result.files.some(file => {
-    const object = versionBackup.manifest.objects.find(item => item.databaseFileIds.includes(file.id));
-    const latest = object?.versions.find(version => version.isLatest);
-    return !object || object.bucket !== file.bucket || object.objectKey !== file.objectKey ||
-      !Array.isArray(object.databaseStorageStatuses) || object.databaseStorageStatuses.length !== 1 ||
-      object.databaseStorageStatuses[0] !== file.storageStatus || latest?.sizeBytes !== file.sizeBytes ||
-      (file.contentSha256 !== null && latest?.contentSha256 !== file.contentSha256);
-  })) return blocked("VERSION_BACKUP_BINDING_FAILED");
-  if (!paths.has("--backup-receipt")) return blocked("BACKUP_RECEIPT_REQUIRED");
-  let backup;
-  try {
-    backup = readInput(paths.get("--backup-receipt"));
-    validateBackupReceipt(backup, source.environment, result.databaseFingerprint, new Date().toISOString());
-    const { verifyBackupArtifacts } = require("./inspect-test-business-zeroing.cjs");
-    await verifyBackupArtifacts(backup);
-    if (backup.databaseBackup.restoreEvidence.migrationCount !== result.migrationCount ||
-        backup.databaseBackup.restoreEvidence.migrationHead !== result.migrationHead) {
-      return blocked("BACKUP_MIGRATION_MISMATCH");
-    }
-  } catch { return blocked("BACKUP_RESTORE_EVIDENCE_INVALID"); }
-  let databaseRestoreProof;
-  const restoreDatabaseUrl = process.env.ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL?.trim();
-  if (restoreDatabaseUrl) {
-    if (!/^postgres(?:ql)?:\/\//u.test(restoreDatabaseUrl)) return blocked("RESTORE_DATABASE_NOT_CONFIGURED");
-    const restoredClient = new PrismaClient({ datasources: { db: { url: restoreDatabaseUrl } } });
-    try {
-      const { verifyRestoredDatabase } = require("./isolated-file-cleanup-database.cjs");
-      databaseRestoreProof = await verifyRestoredDatabase(restoredClient, envelope.payload, result, backup);
-      if (typeof databaseRestoreProof === "string") return blocked(databaseRestoreProof);
-    } catch { return blocked("RESTORE_DATABASE_INSPECTION_FAILED"); }
-    finally { await restoredClient.$disconnect(); }
-  }
-  const objectSnapshots = [];
-  try {
-    const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
-    let versionedStorage;
-    if (process.env.COS_BUCKET?.trim()) {
-      // This standalone process exposes only its redacted JSON result. Keep
-      // provider diagnostics out of stdout/stderr and stop at the first failed
-      // request; the original POL-22 adapter's retry defaults stay unchanged.
-      const { Logger } = require("@nestjs/common");
-      Logger.overrideLogger(false);
-      const { CosVersionedObjectStorage, withObjectStorageRetry } = require("../dist/file/versioned-object-storage");
-      versionedStorage = { client: new CosVersionedObjectStorage({ fetchImpl: boundedCosFetch() }),
-        retry: operation => withObjectStorageRetry(operation, { maxAttempts: 1 }) };
-    }
-    const storage = createExactObjectStorage({ versionedStorage });
-    for (const file of result.files) {
-      const snapshot = await storage.inspectExactObject({
-        bucket: file.bucket, objectKey: file.objectKey, maxModifiedAt: backup.privateFileBackup.capturedAt
-      });
-      verifyObjectSnapshot(snapshot);
-      if (snapshot.kind === "cos_versions") {
-        // The offline verifier has already checked every data blob and its
-        // independent restored copy. Bind that proof to the entire live set,
-        // including old versions and delete markers, never just the latest.
-        if (!versionBackup) return blocked("COS_BACKUP_COVERAGE_UNPROVEN");
-        const object = versionBackup.manifest.objects.find(item => item.databaseFileIds[0] === file.id);
-        const comparable = versions => versions.map(version => {
-          if (!version.isDeleteMarker && (!Number.isSafeInteger(version.sizeBytes) || version.sizeBytes < 0)) {
-            throw new Error("INVALID_VERSION_SIZE");
-          }
-          return { versionId: version.versionId, isDeleteMarker: version.isDeleteMarker, isLatest: version.isLatest,
-            lastModified: new Date(version.lastModified).toISOString(),
-            ...(!version.isDeleteMarker ? { sizeBytes: version.sizeBytes } : {}) };
-        }).sort((a, b) => a.versionId.localeCompare(b.versionId));
-        if (sha256(comparable(snapshot.versions)) !== sha256(comparable(object.versions))) {
-          return blocked("COS_VERSION_BACKUP_MISMATCH");
-        }
-      } else {
-        const matches = backup.privateFileBackup.sourceObjects.filter(object => object.objectKey === file.objectKey);
-        if (matches.length !== 1 || matches[0].sha256 !== snapshot.contentSha256 ||
-            matches[0].sizeBytes !== snapshot.sizeBytes || file.sizeBytes !== snapshot.sizeBytes ||
-            (file.contentSha256 !== null && file.contentSha256 !== snapshot.contentSha256)) {
-          return blocked("OBJECT_BACKUP_MISMATCH");
-        }
-      }
-      objectSnapshots.push({ fileId: file.id, bucket: file.bucket, objectKey: file.objectKey, snapshot });
-    }
-  } catch { return blocked("OBJECT_SNAPSHOT_FAILED"); }
+  const { inspectReadOnlyFacts } = require("./isolated-file-cleanup-readonly-coordinator.cjs");
+  const inspection = await inspectReadOnlyFacts({
+    scope: envelope.payload, source, databaseUrl: process.env.DATABASE_URL,
+    restoreDatabaseUrl: process.env.ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL?.trim(),
+    versionBackup, boundedCosFetch,
+    loadBackup: () => paths.has("--backup-receipt") ? readInput(paths.get("--backup-receipt")) : null
+  });
+  if (inspection.status === "blocked") return blocked(inspection.code);
+  const { result, backup, databaseRestoreProof, objectSnapshots } = inspection;
   if (approvedInspection) {
     const stableProof = proof => {
       if (!proof) return null;
@@ -490,6 +410,7 @@ async function main(argv) {
       backupReceiptSha256: backup.receiptSha256, versionBackupReceiptSha256: versionBackup?.receiptSha256 ?? null,
       databaseRestoreProof: databaseRestoreProof ?? null,
       executionIdentity: executionIdentity ?? null, executionCodeIdentity: executionCodeIdentity ?? null,
+      productionContinuity: null,
       scopeAuthorization: scopeAuthorization ?? null, writeFreezeLease: writeFreezeLease ?? null,
       executionAuthorization: executionAuthorization ?? null,
       batchId: paths.get("--batch-id") ?? null, objectSnapshots, objectSnapshotsSha256: sha256(objectSnapshots),
@@ -564,5 +485,5 @@ const runMain = createTrustedEntrypoint(
   () => main(process.argv.slice(2)).catch(() => blocked("INPUT_REJECTED")),
   "独立文件清理已安全阻断"
 );
-module.exports = { runMain };
+module.exports = { runMain, boundedCosFetch, readInput, blocked, writeInspectionEvidence };
 if (require.main === module) blocked("TRUSTED_LAUNCHER_REQUIRED");

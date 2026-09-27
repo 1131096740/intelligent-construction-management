@@ -2895,6 +2895,7 @@ module.exports = {
   selectFormalObservationFields,
   sha256,
   inspectDeletedObjectScopes,
+  isExactObjectKey,
   validateAuthorizationEnvelope,
   validateApplyArguments,
   validateBackupReceipt,

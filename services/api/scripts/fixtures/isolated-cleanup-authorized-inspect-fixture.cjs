@@ -99,9 +99,43 @@ async function verifyAuthorizedInspection({ test, directory, repository, runtime
     writeJson("cos-response.json", value);
   };
   writeVersions(boundManifest);
-  docker(["exec", runtimeName, "mkdir", "-m", "0700", "/tmp/authorized-inspections"]);
   const restoreEnvironment = { ...environment,
     ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL: `postgresql://postgres:${password}@127.0.0.1:5432/orphan_cleanup_restore?schema=public` };
+  await test.test("只读协调接口在真实 PG16 与签名 HTTPS 对象服务上验证完整版本集合", () => {
+    const readRequests = () => JSON.parse(docker(["exec", runtimeName, "node", "-e",
+      'process.stdout.write(JSON.stringify(require("node:fs").readFileSync("/tmp/cos-audit.jsonl","utf8").trim().split("\\n").map(JSON.parse)))']));
+    const before = readRequests().length;
+    const coordinatorProcess = spawnSync("docker", ["exec", ...gitEnvironment, "--env",
+      "ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL", runtimeName, "node", "-e", `
+      const fs = require('node:fs');
+      const base = '${runtimeRepository}/services/api/scripts';
+      const read = (name, raw = false) => {
+        const bytes = fs.readFileSync(name);
+        return raw ? bytes : JSON.parse(bytes.toString('utf8'));
+      };
+      const scope = read('/fixture/authorized-scope.json').payload;
+      const source = read('/fixture/authorized-source.json');
+      const versionBackup = require(base + '/isolated-file-cleanup-version-backup.cjs').verifyVersionBackup(
+        '/fixture/linux-version-backup', '/fixture/linux-version-restore', scope, source, read);
+      const { boundedCosFetch } = require(base + '/isolated-file-cleanup.cjs');
+      require(base + '/isolated-file-cleanup-readonly-coordinator.cjs').inspectReadOnlyFacts({
+        scope, source, databaseUrl: process.env.DATABASE_URL,
+        restoreDatabaseUrl: process.env.ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL,
+        loadBackup: () => read('/fixture/linux-backup.json'), versionBackup, boundedCosFetch
+      }).then(value => process.stdout.write(JSON.stringify({ status: value.status, code: value.code ?? null,
+        targetCount: value.result?.files.length ?? 0,
+        restoreStatus: value.databaseRestoreProof?.status ?? null,
+        versionCounts: value.objectSnapshots?.map(item => item.snapshot.versions.length) ?? []
+      }))).catch(() => process.stdout.write(JSON.stringify({ status: 'error' })));`],
+    { env: restoreEnvironment, encoding: "utf8", timeout: 45000 });
+    assert.equal(coordinatorProcess.status, 0, "isolated read-only coordinator failed; output withheld");
+    const coordinatorResult = JSON.parse(coordinatorProcess.stdout);
+    assert.deepEqual(coordinatorResult, { status: "verified", code: null, targetCount: 2,
+      restoreStatus: "passed", versionCounts: [3, 3] });
+    assert.deepEqual(readRequests().slice(before), Array.from({ length: 2 }, () =>
+      ({ method: "GET", signed: true, exactTarget: true, allowed: true })));
+  });
+  docker(["exec", runtimeName, "mkdir", "-m", "0700", "/tmp/authorized-inspections"]);
   const inspect = (extra = [], restore = true, command = "inspect", expectedStatus = 2) => {
     const result = spawnSync("docker", ["exec", ...gitEnvironment, "--env",
       ...(restore ? ["ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL"] : ["ISOLATED_FILE_CLEANUP_RESTORE_DATABASE_URL="]),

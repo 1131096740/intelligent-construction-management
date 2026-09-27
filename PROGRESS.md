@@ -10,9 +10,21 @@
 
 ---
 
-## POL 全树本地集成（2026-09-25）
+## POL 全树本地集成（2026-09-27）
 
-- [~] 2026-09-25 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已修正。`17b9608b17ba74c9d6ac68c456e943ab85c81155` 的完整本机 `release:local` 17 项正式门通过，含真实 PostgreSQL 16 全动态组、POL-108 大规模投影、POL-109 4/4 Chromium、POL-22 隔离只读预检 ready/0 blocker、P0 与 RC06；成功回执为 `/private/tmp/pol122-local-release-17b9608b-attempt3.json`。前两次同 SHA 尝试在动态门首次镜像查询因本机 Docker 空闲态失败，第三次仅用无网络、无挂载、自动删除的本机休眠容器保持 Docker 活跃，未放宽镜像门或更改代码；此前 macOS 沙箱中的 Chromium 失败亦已在可启动浏览器的本机环境克服。原 Spec 轴无缺陷，Standards 轴无硬性违规、有两项非阻断重复代码判断性建议；本账本更新构成新 SHA，其正式门与双审仍须重新绑定，不继承 `17b9608b` 的成功证据。当前仅具本机合成数据的独立两文件 CLI 证明，非生产 PR/CI/合并尚未完成。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
+- [~] #122 候选 `9cee0f4cb42bc131e53d6d04ee3bfa9ae6e703b4` 的固定基线双审发现生产只读入口接受两个 `ORPHAN_FILE` 外另有 blocker 的来源报告，故不能交付；同 SHA 正式门禁在冻结依赖安装时被本机失效代理阻断，无成功收据。用户批准仅冻结安装进程直连、禁自动重试后，依赖已按锁文件安装；官方 Prisma generate 成功。当前仅补充生产受信入口的第三 blocker 拒绝用例及“来源 blocker 总数恰好为二”守卫，RED→GREEN 4/4，相关本机 PG16/隔离签名 HTTPS 对象长链 202/202、API typecheck/lint 和触及 CJS 的 ESLint 通过。账本与修正尚未冻结新 SHA；须对新 SHA 从头跑完整 `release:local`、安全审查和 Spec/Standards 双审，再进入非生产 GitHub 交付。生产备份身份新窗口未启动；无生产角色、环境、Cron、Schema、业务数据或对象变更，#122/#123/#124 未解锁。
+
+- [~] #122 旧候选 `8baa0d8a1b0757df1cceb7d4a1f8d70f77bb6c11` 的限时本机 PostgreSQL 16 复现通过（171/171 迁移、26/26 定向测试），随后以明确的 arm64 容器平台和仅依赖审计进程直连、禁自动重试重新执行完整 `release:local`，17/17 门通过；但固定基线双审指出执行代码身份未覆盖新增只读协调器，以及生产/本机共用可切换主编排器两项契约缺口。当前仅本地补齐执行代码清单并拆分生产只读入口；相关回归 201/201、API typecheck/lint 与触及 CJS 的 ESLint 已通过，尚未冻结新 SHA。旧 SHA 的正式门与双审结论不可继承，须对新 SHA 从头完成完整门禁和双审。独立生产备份身份新窗口尚未启动；未修改生产角色、环境、Cron、Schema、业务数据或对象，#122/#123/#124 未解锁。
+
+- [~] #122 已按批准的正向证明 seam 将既有数据库、恢复库、备份及私有对象的只读核验提取为同一协调接口；正式 CLI 仍先验证连续性、身份与授权，生产 `execute`/`postcheck` 仍在参数解析前禁用。隔离 PG16/本地对象与 PG16/签名 HTTPS 全版本正例以及既有反例同轮 68/68 通过，API typecheck、lint 和触及 CJS 的 ESLint 通过；新代码的完整 `release:local`、安全审查、固定基线双审和 CI 仍待精确 SHA 重跑，不能视作正式生产 CLI 正向验收。独立生产备份身份窗口在只读 SQL 引号转义错误后依首次失败规则停止，尚未创建角色、写入凭据、修改 Cron 或手工触发备份；需另行批准新窗口。#122/#123/#124 未解锁。
+
+- [~] #122 本地续进：实时核对 GitHub 仅 #93/#122/#123/#124 四张 Issue OPEN、无开放 PR，串行关键路径仍为 #122→#123→#124。正式两文件 apply 授权纯校验与生产对象操作模块已接入执行协调器内的禁用分支，逐步核验连续性、控制材料、计划与备份摘要，并约束正式 bucket/key/version 及单版本不重发；顶层生产 `execute`/`postcheck` 继续在参数解析前拒绝。RED→GREEN 补齐生产对象键路径精确性、固定数据库身份 `jiangkong_runtime`，及签名 HTTPS 版本枚举请求的精确 `prefix`/分页参数/Host/Authorization 校验，未批准键或请求在网络前阻断。定向编排测试 146/146、真实本机 PG16/隔离签名 HTTPS 对象测试 66/66、触及文件 eslint 与 `git diff --check` 通过，测试容器已退出；此前全仓 typecheck/lint 通过（0 errors，Web 570 条既有 warning）。完整 `release:local` 未通过，最终 SHA 双审与生产入口正向整链测试亦尚缺；这些本机证据不能冒充生产窗口验收。没有生产运行、GitHub 交付或 #122 终态收据，#123/#124 不解锁。
+
+- [~] #122 首个冻结候选 `f0280c22855b647fac5c1cfa58f61087ee87b10d` 的正式 `release:local` 预检通过，完整门运行至编排、冻结依赖安装、Prisma 生成及 171 项迁移基线均通过；生产依赖审计首请求 `ECONNREFUSED` 后已立即阻止自动重试。没有完整成功收据，也没有把已通过子门转移到后续 SHA。本账本更新将形成新候选，须在审计接口恢复后从头运行全部正式门禁；不改 Clash、不绕过审计。
+
+- [~] #122 两文件独立本机 CLI 已由 PR #305 合入 `main@a6a10433e7c6cb7743f9acf58971ec827b48df2f`；其候选 `49390f38a553f829dd2abb2e882580d2cb925cfd` 的正式本机门、双审及固定头/合并头 CI 已通过，详见[交付记录](docs/progress/2026-09-22-pol122-isolated-file-cleanup-local.md)。当前隔离工作树新增[精确两文件生产执行契约](docs/design/2026-09-25-pol122-production-two-orphan-execution-contract.md)及独立生产入口：`inspect`/`dry-run` 仅本地接线为只读，`execute`/`postcheck` 固定禁用；dry-run 只有拒绝路径测试，不能称为正式可用。COS 逐版本 DELETE 的单请求精确坐标模块已接入原本机执行链，不开放生产写入。已核实生产 checkout 曾为 `56fd5243d6b096d4ce022eac1d8e95f7f1da97f0`、API inactive，但未实时重验全部写入者、备份或租约。本次改动后的本机 PG16/隔离版本对象测试 66/66、授权容器测试 82/82、编排测试 133/133 通过；新生产入口的正向 PG16/COS、完整 `release:local`、最终 SHA 双审仍缺。#296 历史收据绑定旧 `2ca8d507…`，新候选同一 SHA 连续性须独立重验。#122/#93 OPEN、#123/#124 阻断；未执行生产删除、迁移、部署或开放。
+
+- [~] #122 本地候选的连续性校验已收紧为仅接受 `production` 来源，相关窄测 11/11 通过。2026-09-25 再次单独调用正式 `pnpm audit --prod --audit-level high`，npm 安全接口首请求 `ECONNREFUSED`；已阻止客户端自动重试并以 130 退出，未形成通过结论。不改代理、不重试冒充通过，完整门禁仍待外部接口恢复及干净精确 SHA 候选后重跑。
 
 - [x] #301 已交付：2026-09-22 实时核对 Issue CLOSED、PR #302 MERGED，候选 `a1c2b48ca47b25d66c0b6aca597b360f061d7f37`、合并/main `56fd5243d6b096d4ce022eac1d8e95f7f1da97f0`。候选 CI `35720628352` 与合并 CI `35722385725` 均完成且 success；本机正式门和双审依据 Issue 最终回执。仅增加两个精确 FileObject 条件守卫的零引用证明，未知/缺失/禁用/定义漂移仍失败关闭，不修改 Schema 或业务权限。后续 #122 运行窗口与本票工具交付分开，不再将本票调度为待实现。
 
