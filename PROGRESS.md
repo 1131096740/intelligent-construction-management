@@ -12,6 +12,8 @@
 
 ## 当前本地审计与验收（2026-10-07，本地候选）
 
+- [~] 用户已对被拒的精确CI包源修复追加明确“确认 继续”授权，原补丁重试获准；仅修改一次性GitHub runner该分片的镜像列表，不改变用户Mac或生产包源。直接执行workflow Python片段的7组fixture通过：准确目标删除、保留其他/HTTPS条目及Signed-By配置、HTTP或注释伪回退失败且文件不变、幂等、空文件和不存在文件；完整新SHA验收及PR CI仍待绑定。
+- [~] `2c36889d` 原完整本机17/17通过，PR#308精确head CI `37663072842` 的POL275修复已成功。保留三轮CI失败事实：attempt1手机创建POST等待45秒超时；attempt2该用例和POL11323/23通过，但POL115手机导航出现WebKit内部错误；attempt3从18:31:57停于apt-get update，Azure镜像反复Ign至18:53:06取消，未进入浏览器验收，汇总失败。未发起attempt4。依据该runner固定镜像的官方配置，只在POL113–115 CI分片删除准确Azure HTTP镜像条目，要求已有官方Ubuntu HTTPS fallback，保留其余源、Signed-By校验、原浏览器/测试/阈值；新SHA重新完整本机验收及CI。
 - [~] draft PR #308 的首个精确head `f76089ef564601214424da6042bc0f5b6c6a3c4c` 本机原17门全部通过（2026-10-07T17:08:46Z），但CI run `37657314469` 的POL275核心10/10通过后，reviewed-base独立离线安装因干净runner未缓存Vue3.5.38失败。仅在该CI分片新增从runner原有固定REVIEWED_BASE_SHA读取锁文件的依赖预取；临时目录清理、锁文件hash不变、禁用安装脚本，原兼容性独立frozen/offline安装保持。新提交须重跑原完整本机门和精确head CI，不继承旧SHA收据。
 - [~] 用户已追加批准非生产交付：在 `codex/307-release-safety-delivery-20261007` 保留历史候选 `caf3c0132dc492ba68b08172b35f9f9c6f445b99`，修复发布收据的17项接口、旧文档和冻结误部署防护，再推送独立分支、创建draft PR并验证精确head CI；不包含merge/auto-merge/生产workflow/迁移/归零/解除冻结或权限变更。
 - [~] 部署workflow补齐migration-baseline与pol22-readonly-preflight，保留精确SHA、main、确认、完整耗时及manual确认门；通用服务器部署器在任何写冻结/无效控制或已停机API状态下于构建、备份、迁移、运行时变更前拒绝。[POL25B维护态激活契约](docs/runbooks/pol25b-maintenance-activation.md)明确上游连续收据、零迁移、冻结all、只读核验和失败保持停机；本票没有实现或开启生产自动激活执行器，#123仍须独立定界、审查、验证和批准。

@@ -58,6 +58,51 @@ test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on succe
   }
 });
 
+test("POL113–115 CI removes only the Azure mirror with an existing official HTTPS fallback", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Install POL-113\/POL-115 browser and document runtimes\n        if: (.+)\n        run: \|\n          sudo python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(workflow);
+  assert.ok(step);
+  assert.equal(step[1], "${{ matrix.group == 'pol113_pol115_business_entries' }}");
+  const directory = await mkdtemp(join(tmpdir(), "pol113-apt-mirrors-test-"));
+  const mirrors = join(directory, "apt-mirrors.txt");
+  const signedSources = "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-security\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
+  const source = step[2].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors));
+  const azure = "http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n";
+  const archive = "https://archive.ubuntu.com/ubuntu/\tpriority:2\n";
+  const security = "https://security.ubuntu.com/ubuntu/\tpriority:3\n";
+  const other = "# keep comments\nhttp://azure.archive.ubuntu.com/ubuntu-other/\tpriority:4\nhttps://azure.archive.ubuntu.com/ubuntu/\tpriority:5\n";
+  const cases = [
+    [azure + archive + security + other, archive + security + other, true],
+    [azure + security, security, true],
+    [azure + "http://archive.ubuntu.com/ubuntu/\n", null, false],
+    [azure + "# https://archive.ubuntu.com/ubuntu/\n", null, false],
+    [archive + security + other, archive + security + other, true],
+    ["", "", true],
+    [null, null, true]
+  ];
+  try {
+    await writeFile(join(directory, "ubuntu.sources"), signedSources);
+    for (const [input, expected, success] of cases) {
+      await rm(mirrors, { force: true });
+      if (input !== null) await writeFile(mirrors, input);
+      const result = spawnSync("python3", ["-c", source], { encoding: "utf8" });
+      assert.equal(result.status === 0, success, result.stderr);
+      if (!success) assert.match(result.stderr, /Missing official HTTPS Ubuntu mirror/u);
+      if (input !== null) {
+        assert.equal(await readFile(mirrors, "utf8"), success ? expected : input);
+        if (success) {
+          const repeated = spawnSync("python3", ["-c", source], { encoding: "utf8" });
+          assert.equal(repeated.status, 0, repeated.stderr);
+          assert.equal(await readFile(mirrors, "utf8"), expected);
+        }
+      } else assert.deepEqual(await readdir(directory), ["ubuntu.sources"]);
+      assert.equal(await readFile(join(directory, "ubuntu.sources"), "utf8"), signedSources);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("repository restores bounded CI beside the manual deploy workflow", async () => {
   const entries = await readdir(join(root, ".github", "workflows"));
 

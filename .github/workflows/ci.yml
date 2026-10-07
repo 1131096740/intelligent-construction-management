@@ -236,6 +236,19 @@ jobs:
       - name: Install POL-113/POL-115 browser and document runtimes
         if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
         run: |
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          mirrors = Path('/etc/apt/apt-mirrors.txt')
+          if mirrors.is_file():
+              lines = mirrors.read_text().splitlines(keepends=True)
+              azure = 'http://azure.archive.ubuntu.com/ubuntu/'
+              official = {'https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/'}
+              urls = [line.split()[0] for line in lines if line.strip() and not line.lstrip().startswith('#')]
+              if azure in urls:
+                  if not official.intersection(urls):
+                      raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
+                  mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
+          PY
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc
           command -v soffice
