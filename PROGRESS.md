@@ -10,6 +10,14 @@
 
 ---
 
+## 当前本地审计与验收（2026-10-07，本地候选）
+
+- [~] 实时主线仍为 `a6a10433e7c6cb7743f9acf58971ec827b48df2f`；#114/#115/#117/#121 已关闭。用户主目录既有改动与 skills 回退备份保持，不重复 P0/P0.5 UI。
+- [~] 按本轮明确授权，本地新增四项最小兼容依赖修复：proxy-addr2.0.8、source-map-js1.2.2、Vue运行链3.5.42、sharp0.35.5及匹配平台二进制。原 brace-expansion1.1.21/2.1.7 保留；现有水印安全版本守卫同步 sharp/libheif，并新增 librsvg2.63.2 断言。未升级主版本、Schema、权限或业务语义。
+- [~] Node20.20.2/pnpm9.15.9 下原审计命令exit0，0high/0critical，仍2moderate。全量API437套7866项、Web223文件2147项、shared27文件239项通过；CI编排119项、水印26项、类型/lint/build/UI/正式清单均通过；桌面/390px RC06 mock16通过，P0浏览器3通过/2原条件跳过。API47套314项条件跳过不计为PG16通过。
+- [ ] 发布资格仍blocked：正式 release:local 与精确SHA PG16门均拒绝未提交工作树；POL-22隔离验证因本机Docker不可用而失败。此前轮次用户禁止提交/推送/部署，未绕过门禁或生成passed收据。用户随后明确批准仅创建本地提交、启动已安装Docker（必要时拉取官方postgres:16）并执行本机隔离完整发布验收；本候选固定后须以新SHA从头执行原门禁，真实PG16全门仍待本轮验证，旧CI不覆盖新补丁。
+- [~] 最终依赖+测试补丁SHA256 `7349adc17795f6399c16c09b7d9ca271b9bc9a6f5733bc121a408fabfcbc922b`，独立只读复审无具体绕过/回归；详细修复与全部日志见 [安全修复审计](/Users/leoyang/.codex/state/plugins/codex-security/scans/jiangkong-next-delivery-20261007/artifacts-93adc189401874d321019ece8ebff35120fe47ba2d343e41e9320550014211b6/artifacts/security-fix-report.md)。本轮将依用户新授权形成本地提交并执行完整隔离验收；未授权push/merge/deploy或任何生产操作。未访问生产或执行部署/迁移/归零/开放。
+
 ## POL 全树本地集成（2026-09-25）
 
 - [~] 2026-09-25 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已修正。`17b9608b17ba74c9d6ac68c456e943ab85c81155` 的完整本机 `release:local` 17 项正式门通过，含真实 PostgreSQL 16 全动态组、POL-108 大规模投影、POL-109 4/4 Chromium、POL-22 隔离只读预检 ready/0 blocker、P0 与 RC06；成功回执为 `/private/tmp/pol122-local-release-17b9608b-attempt3.json`。前两次同 SHA 尝试在动态门首次镜像查询因本机 Docker 空闲态失败，第三次仅用无网络、无挂载、自动删除的本机休眠容器保持 Docker 活跃，未放宽镜像门或更改代码；此前 macOS 沙箱中的 Chromium 失败亦已在可启动浏览器的本机环境克服。原 Spec 轴无缺陷，Standards 轴无硬性违规、有两项非阻断重复代码判断性建议；本账本更新构成新 SHA，其正式门与双审仍须重新绑定，不继承 `17b9608b` 的成功证据。当前仅具本机合成数据的独立两文件 CLI 证明，非生产 PR/CI/合并尚未完成。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。

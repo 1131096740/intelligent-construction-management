@@ -39,9 +39,10 @@ describe("ReceiptWatermarkService", () => {
       .toBuffer();
   }
 
-  it("runs the patched Sharp and libheif runtime used by receipt images", () => {
-    expect(sharp.versions.sharp).toBe("0.35.4");
-    expect(sharp.versions.heif).toBe("1.23.2");
+  it("runs the patched Sharp, libheif and librsvg runtime used by receipt images", () => {
+    expect(sharp.versions.sharp).toBe("0.35.5");
+    expect(sharp.versions.heif).toBe("1.23.5");
+    expect(sharp.versions.rsvg).toBe("2.63.2");
   });
 
   it("extends the image with a bottom information card without covering the subject", async () => {
