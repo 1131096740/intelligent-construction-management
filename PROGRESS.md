@@ -12,13 +12,13 @@
 
 ## 当前本地审计与验收（2026-10-07，本地候选）
 
-- [~] 实时主线仍为 `a6a10433e7c6cb7743f9acf58971ec827b48df2f`；#114/#115/#117/#121 已关闭。用户主目录既有改动与 skills 回退备份保持，不重复 P0/P0.5 UI。
-- [~] 按本轮明确授权，本地新增四项最小兼容依赖修复：proxy-addr2.0.8、source-map-js1.2.2、Vue运行链3.5.42、sharp0.35.5及匹配平台二进制。原 brace-expansion1.1.21/2.1.7 保留；现有水印安全版本守卫同步 sharp/libheif，并新增 librsvg2.63.2 断言。未升级主版本、Schema、权限或业务语义。
-- [~] Node20.20.2/pnpm9.15.9 下原审计命令exit0，0high/0critical，仍2moderate。全量API437套7866项、Web223文件2147项、shared27文件239项通过；CI编排119项、水印26项、类型/lint/build/UI/正式清单均通过；桌面/390px RC06 mock16通过，P0浏览器3通过/2原条件跳过。API47套314项条件跳过不计为PG16通过。
-- [ ] 发布资格仍blocked：正式 release:local 与精确SHA PG16门均拒绝未提交工作树；POL-22隔离验证因本机Docker不可用而失败。此前轮次用户禁止提交/推送/部署，未绕过门禁或生成passed收据。用户随后明确批准仅创建本地提交、启动已安装Docker（必要时拉取官方postgres:16）并执行本机隔离完整发布验收；本候选固定后须以新SHA从头执行原门禁，真实PG16全门仍待本轮验证，旧CI不覆盖新补丁。
-- [ ] 本地候选 `87485843c7215879263854d5b562902cac5d0014` 的完整门已通过前13项；真实PG16的POL108大样本14/14及POL109数据库/HTTP8/8、页面4/4通过，但POL114公开合同结算夹具固定2026-09-30，合同当轮生效后被原期间规则409拒绝。只修正该测试按合成合同effectiveAt推导本期与下一期月底，不改业务规则/skip/阈值；固定新候选后须重新执行定向及完整原门，旧候选无发布收据。首轮临时容器已清理。
-- [ ] 日期夹具修复后原POL113-POL115定向组的合同公开入口3/3已通过；零采桌面/手机测试又因默认月份硬编码9月而失败（实际10月），退款两端通过。仅将页面验收按浏览器当前月份选择另一个月份并精确断言所选日期，不冻结浏览器时钟、不改页面/接口/业务规则、不扩大skip；需重新定向及完整验收，最终同SHA资格以仓库外正式release收据为准。
-- [~] 最终依赖+测试补丁SHA256 `7349adc17795f6399c16c09b7d9ca271b9bc9a6f5733bc121a408fabfcbc922b`，独立只读复审无具体绕过/回归；详细修复与全部日志见 [安全修复审计](/Users/leoyang/.codex/state/plugins/codex-security/scans/jiangkong-next-delivery-20261007/artifacts-93adc189401874d321019ece8ebff35120fe47ba2d343e41e9320550014211b6/artifacts/security-fix-report.md)。本轮将依用户新授权形成本地提交并执行完整隔离验收；未授权push/merge/deploy或任何生产操作。未访问生产或执行部署/迁移/归零/开放。
+- [~] 本候选基线为 `a6a10433e7c6cb7743f9acf58971ec827b48df2f`；#114/#115/#117/#121 的关闭状态来自此前远端核验。用户主目录既有改动与 skills 回退备份保持，不重复 P0/P0.5 UI。
+- [~] 四项最小兼容依赖修复为 proxy-addr2.0.8、source-map-js1.2.2、Vue运行链3.5.42、sharp0.35.5及匹配平台二进制；保留 brace-expansion1.1.21/2.1.7。水印测试同步 sharp/libheif 并守卫 librsvg2.63.2；未改Schema、权限、业务规则或生产。
+- [~] 原修复报告记录0high/0critical/2moderate、API7866/Web2147/shared239通过；本地提交87485843的完整发布首轮前13门通过，POL108真实PG16大样本14/14、POL109数据库/HTTP8/8及页面4/4通过。首轮随后暴露两处过期日期测试假设，未生成passed总收据，不拼接旧SHA通过项。
+- [~] 仅修测试：合同结算期间按合成合同真实effectiveAt推导本期及下一期月底；零采页面按浏览器当前月份切换另一个月份并精确断言选中日期。未冻结时钟、放宽业务期间规则、改变阈值或扩大skip。原POL113-POL115隔离runner在2d1e97a0上完整exit0：合同入口3/3、零采HTTP3/3及桌面/手机页面4/4通过；日志 `/private/tmp/jiangkong-local-release-20261007-87485843/entry-targeted-2d1e97a0.log`。
+- [~] 用户已明确授权本地提交、启动已安装Docker及本机隔离完整发布门，不包含push/merge/deploy/生产操作。Docker29.5.3已可连接，官方postgres:16已缓存，无镜像拉取；首轮和定向runner临时容器均清理。本账本固定后从头运行原17项正式门，不继承历史CI或mock为真实PG16证据。
+- [~] 本轮完整验收的权威状态保存在仓库外 `/private/tmp/jiangkong-local-release-20261007-final/release-receipt.json` 与 `release.log`。只有原脚本生成status=passed且candidateSha与当前干净HEAD一致的收据才表示该SHA本地完整门通过；文件不存在、失败或SHA不符均不具本地发布资格。本地门通过也不构成生产部署、迁移、归零或开放授权。
+- [~] 原依赖+水印测试补丁SHA256 `7349adc17795f6399c16c09b7d9ca271b9bc9a6f5733bc121a408fabfcbc922b` 的修复证据见 [安全修复审计](/Users/leoyang/.codex/state/plugins/codex-security/scans/jiangkong-next-delivery-20261007/artifacts-93adc189401874d321019ece8ebff35120fe47ba2d343e41e9320550014211b6/artifacts/security-fix-report.md)；后续两处日期测试差异与本地提交另行绑定。仍有Nest core与multer各1项moderate，现行high阈值允许通过但不表示风险消失。
 
 ## POL 全树本地集成（2026-09-25）
 
