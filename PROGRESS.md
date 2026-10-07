@@ -12,6 +12,9 @@
 
 ## 当前本地审计与验收（2026-10-07，本地候选）
 
+- [~] 用户已追加批准非生产交付：在 `codex/307-release-safety-delivery-20261007` 保留历史候选 `caf3c0132dc492ba68b08172b35f9f9c6f445b99`，修复发布收据的17项接口、旧文档和冻结误部署防护，再推送独立分支、创建draft PR并验证精确head CI；不包含merge/auto-merge/生产workflow/迁移/归零/解除冻结或权限变更。
+- [~] 部署workflow补齐migration-baseline与pol22-readonly-preflight，保留精确SHA、main、确认、完整耗时及manual确认门；通用服务器部署器在任何写冻结/无效控制或已停机API状态下于构建、备份、迁移、运行时变更前拒绝。[POL25B维护态激活契约](docs/runbooks/pol25b-maintenance-activation.md)明确上游连续收据、零迁移、冻结all、只读核验和失败保持停机；本票没有实现或开启生产自动激活执行器，#123仍须独立定界、审查、验证和批准。
+- [~] 新增直接执行workflow校验代码的17项收据正反例与部署冻结/停机自测，针对性检查通过。新候选完整本机门及draft PR/精确head CI的权威状态保存于仓库外 `/private/tmp/jiangkong-release-safety-20261007-final/`；只有passed收据绑定当前干净HEAD，且PR CI绑定相同head并终态success，才表示本轮非生产交付通过。不得继承caf3c013收据或PR#306历史CI；POL122更新另行进行。
 - [~] 本候选基线为 `a6a10433e7c6cb7743f9acf58971ec827b48df2f`；#114/#115/#117/#121 的关闭状态来自此前远端核验。用户主目录既有改动与 skills 回退备份保持，不重复 P0/P0.5 UI。
 - [~] 四项最小兼容依赖修复为 proxy-addr2.0.8、source-map-js1.2.2、Vue运行链3.5.42、sharp0.35.5及匹配平台二进制；保留 brace-expansion1.1.21/2.1.7。水印测试同步 sharp/libheif 并守卫 librsvg2.63.2；未改Schema、权限、业务规则或生产。
 - [~] 原修复报告记录0high/0critical/2moderate、API7866/Web2147/shared239通过；本地提交87485843的完整发布首轮前13门通过，POL108真实PG16大样本14/14、POL109数据库/HTTP8/8及页面4/4通过。首轮随后暴露两处过期日期测试假设，未生成passed总收据，不拼接旧SHA通过项。

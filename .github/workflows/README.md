@@ -17,3 +17,11 @@ and recovery chain.
 `deploy-production.yml` remains manually dispatched and does not rebuild or
 retest the application. Restoring CI does not authorize deployment, migration,
 data cleanup, or production access.
+
+The deployment receipt has the same 17 mandatory checks as the local tool,
+including migration-baseline and pol22-readonly-preflight. Missing checks or
+durations are rejected. The existing deploy workflow remains a regular
+compatibility release path; its server deployer rejects operational write freezes
+and stopped APIs before deployment mutations. POL-25B requires the separate
+[maintenance activation contract](../../docs/runbooks/pol25b-maintenance-activation.md),
+whose production executor remains unavailable pending #123.

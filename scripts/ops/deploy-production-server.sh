@@ -428,6 +428,40 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
   exit 1
 fi
 
+# This compatibility deployer migrates and may recover the previous API. Neither
+# action is permitted in POL-25B. Reject maintenance/freeze before creating a
+# decision directory, building, backing up, migrating or touching a runtime.
+sudo --non-interactive node - "$API_ENV_FILE" <<'REGULAR_DEPLOY_FREEZE'
+const { lstatSync, readFileSync } = require("node:fs");
+function fail() {
+  console.error("Regular deployment requires an unfrozen environment; use the POL-25B maintenance activation runbook. No deployment was started.");
+  process.exit(1);
+}
+try {
+  const file = process.argv[2];
+  if (!file.startsWith("/") || !lstatSync(file).isFile() || lstatSync(file).isSymbolicLink()) fail();
+  const values = new Map();
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/u)) {
+    const match = /^\s*(?:export\s+)?(OPERATIONAL_WRITE_FREEZE_MODE|OPERATIONAL_WRITE_FREEZE_MODULES)\s*=\s*(.*)$/u.exec(line);
+    if (!match) continue;
+    if (values.has(match[1])) fail();
+    // Parse only the two control keys. Never source the file or print values.
+    const parsed = /^(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s#]*))(?:\s*(?:#.*)?)$/u.exec(match[2]);
+    if (!parsed) fail();
+    values.set(match[1], parsed[1] ?? parsed[2] ?? parsed[3]);
+  }
+  const mode = values.get("OPERATIONAL_WRITE_FREEZE_MODE") ?? "off";
+  const modules = values.get("OPERATIONAL_WRITE_FREEZE_MODULES") ?? "";
+  if (mode !== "off" || modules !== "") fail();
+} catch {
+  fail();
+}
+REGULAR_DEPLOY_FREEZE
+if ! sudo systemctl is-active --quiet "$API_SERVICE"; then
+  echo "Regular deployment requires an active API; POL-25B must preserve the maintenance state." >&2
+  exit 1
+fi
+
 if [[ "$DEPLOY_CONFIRMATION_MODE" == manual ]]; then
   if [[ "$DEPLOY_CONFIRMATION_DIR" != /* ]] ||
     [[ -L "$DEPLOY_CONFIRMATION_DIR" ]]; then

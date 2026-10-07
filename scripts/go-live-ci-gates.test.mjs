@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +76,65 @@ test("repository restores bounded CI beside the manual deploy workflow", async (
       deployWorkflow,
       new RegExp(forbiddenStep.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&"), "u")
     );
+  }
+});
+
+test("manual deployment executes the complete 17-check receipt contract and rejects incomplete requests", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/deploy-production.yml"), "utf8");
+  const source = /node <<'NODE'\n([\s\S]*?)^\s*NODE$/mu.exec(workflow)?.[1];
+  assert.ok(source, "deployment receipt validator must be executable in isolation");
+  const localChecks = spawnSync(process.execPath, [join(root, "scripts/ops/local-release-receipt.mjs"), "--checks-json"], { encoding: "utf8" });
+  assert.equal(localChecks.status, 0, localChecks.stderr);
+  const checks = JSON.parse(localChecks.stdout);
+  assert.equal(checks.length, 17);
+  const sha = "a".repeat(40);
+  const receipt = {
+    schemaVersion: 2, status: "passed", candidateSha: sha,
+    verifiedAt: "2026-10-07T16:01:44Z", nodeVersion: "20.20.2", pnpmVersion: "9.15.9",
+    checks, durationsMs: Object.fromEntries(checks.map((check) => [check, 1]))
+  };
+  const directory = await mkdtemp(join(tmpdir(), "jiangkong-workflow-receipt-"));
+  try {
+    const cases = [
+      ["complete", receipt, {}, true],
+      ["old 15-check receipt", { ...receipt, checks: checks.filter((check) => !["migration-baseline", "pol22-readonly-preflight"].includes(check)) }, {}, false],
+      ["wrong SHA", { ...receipt, candidateSha: "b".repeat(40) }, {}, false],
+      ["duplicate check", { ...receipt, checks: [...checks.slice(1), checks[1]] }, {}, false],
+      ["unexpected check", { ...receipt, checks: [...checks, "extra"] }, {}, false],
+      ["wrong main", receipt, { MAIN_REF_JSON: JSON.stringify({ object: { sha: "b".repeat(40) } }) }, false],
+      ["branch workflow", receipt, { GITHUB_REF: "refs/heads/candidate" }, false],
+      ["missing confirmation", receipt, { PRODUCTION_CONFIRMATION: "" }, false],
+      ["immediate full deploy", receipt, { DEPLOY_CONFIRMATION_MODE: "immediate" }, false],
+      ["invalid duration", { ...receipt, durationsMs: { ...receipt.durationsMs, "pol22-readonly-preflight": -1 } }, {}, false]
+    ];
+    for (const check of ["migration-baseline", "pol22-readonly-preflight"]) {
+      const durationsMs = { ...receipt.durationsMs };
+      delete durationsMs[check];
+      cases.push([`missing ${check} duration`, { ...receipt, durationsMs }, {}, false]);
+    }
+    for (const [name, candidate, overrides, accepted] of cases) {
+      const output = join(directory, `${name.replaceAll(" ", "-")}.output`);
+      const result = spawnSync(process.execPath, ["-"], {
+        input: source, encoding: "utf8",
+        env: {
+          ...process.env, GITHUB_REF: "refs/heads/main", TARGET_SHA: sha,
+          MAIN_REF_JSON: JSON.stringify({ object: { sha } }),
+          PRODUCTION_CONFIRMATION: "DEPLOY JGZG PRODUCTION", DEPLOY_SCOPE: "full",
+          DEPLOY_CONFIRMATION_MODE: "manual", DEPLOY_CONFIRMATION_TIMEOUT_SECONDS: "1800",
+          RELEASE_RECEIPT_JSON: JSON.stringify(candidate), GITHUB_OUTPUT: output,
+          GITHUB_STEP_SUMMARY: join(directory, "summary"), ...overrides
+        }
+      });
+      assert.equal(result.status === 0, accepted, `${name}: ${result.stderr}`);
+      if (accepted) {
+        assert.match(await readFile(output, "utf8"), /target_sha=a{40}/u);
+        assert.match(await readFile(join(directory, "summary"), "utf8"), /Fixed checks: 17/u);
+      } else {
+        await assert.rejects(readFile(output, "utf8"), `${name} must fail before producing a dispatch output`);
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

@@ -238,6 +238,9 @@ cat > "$FAKE_BIN/systemctl" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'systemctl %s\n' "$*" >> "${FAKE_LOG:?}"
+if [[ "$1" == is-active && "${FAKE_API_INACTIVE:-false}" == true ]]; then
+  exit 3
+fi
 FAKE
 
 cat > "$FAKE_BIN/nginx" <<'FAKE'
@@ -753,6 +756,45 @@ run_deploy_fixture() {
     "$@" \
     "$SCRIPT_DIR/deploy-production-server.sh"
 }
+
+for frozen_control in \
+  'OPERATIONAL_WRITE_FREEZE_MODE=all' \
+  'export OPERATIONAL_WRITE_FREEZE_MODE="all"' \
+  'OPERATIONAL_WRITE_FREEZE_MODE=modules' \
+  'OPERATIONAL_WRITE_FREEZE_MODE=invalid' \
+  'OPERATIONAL_WRITE_FREEZE_MODE=off\nOPERATIONAL_WRITE_FREEZE_MODE=all' \
+  'OPERATIONAL_WRITE_FREEZE_MODE=off\nOPERATIONAL_WRITE_FREEZE_MODULES=payment'; do
+  frozen_fixture="$TEST_ROOT/deploy-frozen"
+  make_deploy_fixture "$frozen_fixture"
+  printf '%b\n' "$frozen_control" >> "$frozen_fixture/api.env"
+  original_env="$(cat "$frozen_fixture/api.env")"
+  : > "$FAKE_LOG"
+  if run_deploy_fixture "$frozen_fixture" env FAKE_RUNTIME_HEALTH_ALLOW_NEW=true \
+    > "$frozen_fixture/output" 2>&1; then
+    fail "regular deployment must reject frozen, malformed or duplicate controls"
+  fi
+  grep -q 'POL-25B maintenance activation runbook' "$frozen_fixture/output" ||
+    fail "frozen deployment must explain the independent activation path"
+  if grep -Eq '^(pnpm|pg_dump|rsync|systemctl (stop|restart)|node bucket=) ' "$FAKE_LOG"; then
+    fail "frozen deployment built, backed up, migrated or changed a runtime"
+  fi
+  [[ "$(cat "$frozen_fixture/api.env")" == "$original_env" ]] || fail "freeze configuration changed"
+  [[ "$(< "$frozen_fixture/runtime/api/dist/release.txt")" == old-api ]] || fail "frozen API runtime changed"
+  [[ "$(< "$frozen_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] || fail "frozen Web runtime changed"
+  [[ ! -e "$frozen_fixture/api-env-command-must-not-run" ]] || fail "environment was evaluated as shell code"
+  rm -rf "$frozen_fixture"
+done
+
+inactive_fixture="$TEST_ROOT/deploy-inactive"
+make_deploy_fixture "$inactive_fixture"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$inactive_fixture" env FAKE_API_INACTIVE=true \
+  > "$inactive_fixture/output" 2>&1; then
+  fail "regular deployment must not activate a stopped API"
+fi
+if grep -Eq '^(pnpm|pg_dump|rsync|systemctl (stop|restart)) ' "$FAKE_LOG"; then
+  fail "inactive deployment performed mutations before refusing activation"
+fi
 
 migration_failure_fixture="$TEST_ROOT/deploy-migration-failure"
 make_deploy_fixture "$migration_failure_fixture"
