@@ -221,6 +221,18 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
+      - name: Prefetch POL-275 reviewed-base frozen dependencies
+        if: ${{ matrix.group == 'clearing_reconciliation_pol275' }}
+        run: |
+          set -euo pipefail
+          legacy_sha="$(node -p "require('./services/api/prisma/run-pol275-clearing-reconciliation-local.cjs').REVIEWED_BASE_SHA")"
+          legacy_root="$(mktemp -d "$RUNNER_TEMP/pol275-reviewed-dependencies.XXXXXX")"
+          trap 'rm -rf "$legacy_root"' EXIT
+          git show "$legacy_sha:pnpm-lock.yaml" > "$legacy_root/pnpm-lock.yaml"
+          lock_sha="$(sha256sum "$legacy_root/pnpm-lock.yaml" | cut -d ' ' -f 1)"
+          pnpm --dir "$legacy_root" fetch --ignore-scripts
+          test "$(sha256sum "$legacy_root/pnpm-lock.yaml" | cut -d ' ' -f 1)" = "$lock_sha"
+
       - name: Install POL-113/POL-115 browser and document runtimes
         if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
         run: |

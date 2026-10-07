@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -33,6 +33,30 @@ function jobBlock(workflow, jobName) {
   const end = nextJob ? start + marker.length + nextJob.index : workflow.length;
   return workflow.slice(start, end);
 }
+
+test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Prefetch POL-275 reviewed-base frozen dependencies\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(workflow);
+  assert.ok(step);
+  assert.equal(step[1], "${{ matrix.group == 'clearing_reconciliation_pol275' }}");
+  const source = step[2].replace(/^          /gmu, "");
+  const directory = await mkdtemp(join(tmpdir(), "pol275-prefetch-test-"));
+  const bin = join(directory, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "pnpm"), '#!/bin/bash\nset -euo pipefail\ntest "$1" = --dir\ntest "$3" = fetch\ntest "$4" = --ignore-scripts\ncmp "$2/pnpm-lock.yaml" "$EXPECTED_LOCK"\nif [ "$TAMPER_LOCK" = yes ]; then echo drift >> "$2/pnpm-lock.yaml"; fi\n', { mode: 0o755 });
+  const legacy = spawnSync("git", ["show", "3cf11b6c46b301856b554598522213f0839ef595:pnpm-lock.yaml"], { cwd: root });
+  assert.equal(legacy.status, 0);
+  await writeFile(join(directory, "expected-lock.yaml"), legacy.stdout);
+  try {
+    for (const tamper of ["no", "yes"]) {
+      const result = spawnSync("bash", ["-c", source], { cwd: root, encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: directory, EXPECTED_LOCK: join(directory, "expected-lock.yaml"), TAMPER_LOCK: tamper } });
+      assert.equal(result.status === 0, tamper === "no", result.stderr);
+      assert.deepEqual((await readdir(directory)).filter((entry) => entry.startsWith("pol275-reviewed-dependencies.")), []);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("repository restores bounded CI beside the manual deploy workflow", async () => {
   const entries = await readdir(join(root, ".github", "workflows"));

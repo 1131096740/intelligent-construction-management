@@ -12,6 +12,7 @@
 
 ## 当前本地审计与验收（2026-10-07，本地候选）
 
+- [~] draft PR #308 的首个精确head `f76089ef564601214424da6042bc0f5b6c6a3c4c` 本机原17门全部通过（2026-10-07T17:08:46Z），但CI run `37657314469` 的POL275核心10/10通过后，reviewed-base独立离线安装因干净runner未缓存Vue3.5.38失败。仅在该CI分片新增从runner原有固定REVIEWED_BASE_SHA读取锁文件的依赖预取；临时目录清理、锁文件hash不变、禁用安装脚本，原兼容性独立frozen/offline安装保持。新提交须重跑原完整本机门和精确head CI，不继承旧SHA收据。
 - [~] 用户已追加批准非生产交付：在 `codex/307-release-safety-delivery-20261007` 保留历史候选 `caf3c0132dc492ba68b08172b35f9f9c6f445b99`，修复发布收据的17项接口、旧文档和冻结误部署防护，再推送独立分支、创建draft PR并验证精确head CI；不包含merge/auto-merge/生产workflow/迁移/归零/解除冻结或权限变更。
 - [~] 部署workflow补齐migration-baseline与pol22-readonly-preflight，保留精确SHA、main、确认、完整耗时及manual确认门；通用服务器部署器在任何写冻结/无效控制或已停机API状态下于构建、备份、迁移、运行时变更前拒绝。[POL25B维护态激活契约](docs/runbooks/pol25b-maintenance-activation.md)明确上游连续收据、零迁移、冻结all、只读核验和失败保持停机；本票没有实现或开启生产自动激活执行器，#123仍须独立定界、审查、验证和批准。
 - [~] 新增直接执行workflow校验代码的17项收据正反例与部署冻结/停机自测，针对性检查通过。新候选完整本机门及draft PR/精确head CI的权威状态保存于仓库外 `/private/tmp/jiangkong-release-safety-20261007-final/`；只有passed收据绑定当前干净HEAD，且PR CI绑定相同head并终态success，才表示本轮非生产交付通过。不得继承caf3c013收据或PR#306历史CI；POL122更新另行进行。
