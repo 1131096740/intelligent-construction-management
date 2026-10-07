@@ -16,6 +16,7 @@
 - [~] 按本轮明确授权，本地新增四项最小兼容依赖修复：proxy-addr2.0.8、source-map-js1.2.2、Vue运行链3.5.42、sharp0.35.5及匹配平台二进制。原 brace-expansion1.1.21/2.1.7 保留；现有水印安全版本守卫同步 sharp/libheif，并新增 librsvg2.63.2 断言。未升级主版本、Schema、权限或业务语义。
 - [~] Node20.20.2/pnpm9.15.9 下原审计命令exit0，0high/0critical，仍2moderate。全量API437套7866项、Web223文件2147项、shared27文件239项通过；CI编排119项、水印26项、类型/lint/build/UI/正式清单均通过；桌面/390px RC06 mock16通过，P0浏览器3通过/2原条件跳过。API47套314项条件跳过不计为PG16通过。
 - [ ] 发布资格仍blocked：正式 release:local 与精确SHA PG16门均拒绝未提交工作树；POL-22隔离验证因本机Docker不可用而失败。此前轮次用户禁止提交/推送/部署，未绕过门禁或生成passed收据。用户随后明确批准仅创建本地提交、启动已安装Docker（必要时拉取官方postgres:16）并执行本机隔离完整发布验收；本候选固定后须以新SHA从头执行原门禁，真实PG16全门仍待本轮验证，旧CI不覆盖新补丁。
+- [ ] 本地候选 `87485843c7215879263854d5b562902cac5d0014` 的完整门已通过前13项；真实PG16的POL108大样本14/14及POL109数据库/HTTP8/8、页面4/4通过，但POL114公开合同结算夹具固定2026-09-30，合同当轮生效后被原期间规则409拒绝。只修正该测试按合成合同effectiveAt推导本期与下一期月底，不改业务规则/skip/阈值；固定新候选后须重新执行定向及完整原门，旧候选无发布收据。首轮临时容器已清理。
 - [~] 最终依赖+测试补丁SHA256 `7349adc17795f6399c16c09b7d9ca271b9bc9a6f5733bc121a408fabfcbc922b`，独立只读复审无具体绕过/回归；详细修复与全部日志见 [安全修复审计](/Users/leoyang/.codex/state/plugins/codex-security/scans/jiangkong-next-delivery-20261007/artifacts-93adc189401874d321019ece8ebff35120fe47ba2d343e41e9320550014211b6/artifacts/security-fix-report.md)。本轮将依用户新授权形成本地提交并执行完整隔离验收；未授权push/merge/deploy或任何生产操作。未访问生产或执行部署/迁移/归零/开放。
 
 ## POL 全树本地集成（2026-09-25）

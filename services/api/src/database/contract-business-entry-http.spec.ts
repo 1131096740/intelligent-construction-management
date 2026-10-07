@@ -530,6 +530,17 @@ if (enabled) {
       });
       let payment: Identified & { businessEntrySnapshot?: BusinessEntryFrozenSnapshot };
       if (settlementFinance) {
+        const effectiveContract = await prisma.contractVersion.findUniqueOrThrow({
+          where: { id: draft.version.id }, select: { effectiveAt: true }
+        });
+        if (!effectiveContract.effectiveAt) throw new Error("合成合同未生效");
+        // The public archive flow sets effectiveAt at runtime; settlement periods must follow it.
+        const effectiveAt = effectiveContract.effectiveAt;
+        const periodEnd = new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 1, 0))
+          .toISOString().slice(0, 10);
+        const periodLabel = periodEnd.slice(0, 7);
+        const offsetPeriodEnd = new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 2, 0))
+          .toISOString().slice(0, 10);
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet("本期结算明细");
         sheet.addRow(["清单编码/行号", "清单项名称", "是否本期结算", "合同数量", "合同单价", "前期已结算数量", "本期数量", "累计结算数量", "剩余可结算数量", "本期结算金额(分)", "人工调整金额(分)", "调整原因", "证据说明", "异常说明", "备注"]);
@@ -608,7 +619,7 @@ if (enabled) {
         const settlementCode = process.env.POL114_HTTP_SETTLEMENT_CODE ?? `POL114-ST-${randomUUID()}`;
         const settlementDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
           contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: settlementCode, periodLabel: "2026-09", periodEnd: "2026-09-30",
+          code: settlementCode, periodLabel, periodEnd,
           fieldReviewerUserId: roleUsers.get("material_staff"), fieldReviewerRoleKey: "material_staff",
           settlementLines: [
             { sourceType: "manual_adjustment", name: "合成现场签认金额", quantity: "2.50", amountCents: "10000", reason: "本期合成现场签认" },
@@ -638,8 +649,8 @@ if (enabled) {
         expect(settlementDraftDetail.businessEntry?.values).toMatchObject({
           contractVersionId: draft.version.id,
           settlementTemplateVersionId: settlementTemplate.version.id,
-          periodLabel: "2026-09",
-          periodEnd: "2026-09-30",
+          periodLabel,
+          periodEnd,
           isFinal: false,
           fieldReviewerUserId: roleUsers.get("material_staff"),
           fieldReviewerRoleKey: "material_staff"
@@ -732,8 +743,8 @@ if (enabled) {
           values: {
             contractVersionId: draft.version.id,
             settlementTemplateVersionId: settlementTemplate.version.id,
-            periodLabel: "2026-09",
-            periodEnd: "2026-09-30",
+            periodLabel,
+            periodEnd,
             isFinal: false,
             fieldReviewerUserId: roleUsers.get("material_staff"),
             fieldReviewerRoleKey: "material_staff"
@@ -817,7 +828,7 @@ if (enabled) {
         await loginAs(roleUsers.get("contract_staff")!);
         const offsetDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
           contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: `POL114-ST-OFFSET-${randomUUID()}`, periodLabel: "2026-10", periodEnd: "2026-10-31",
+          code: `POL114-ST-OFFSET-${randomUUID()}`, periodLabel: offsetPeriodEnd.slice(0, 7), periodEnd: offsetPeriodEnd,
           fieldReviewerUserId: roleUsers.get("material_staff"), fieldReviewerRoleKey: "material_staff",
           settlementLines: [
             { sourceType: "manual_adjustment", name: "合成本期补充量", amountCents: "10000", reason: "本期合法正向调整" },
