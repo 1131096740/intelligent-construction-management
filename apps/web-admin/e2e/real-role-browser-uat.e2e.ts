@@ -175,6 +175,7 @@ async function freezeRequest(page: Page, role: string, method: string, path: str
 test.describe("RC-06 real API-backed four-role browser acceptance", () => {
   test.beforeAll(() => assertRuntimeConfiguration());
   test.afterEach(async ({ browser: _browser }, testInfo) => {
+    void _browser;
     if (testInfo.status !== testInfo.expectedStatus) {
       testFailures.push(`${testInfo.project.name}:${testInfo.title}:${testInfo.status}`);
     }
@@ -223,7 +224,9 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     expect(invalidContract.status()).toBe(400);
 
     await page.goto("/首页", { waitUntil: "domcontentloaded" });
-    const forbiddenOrganizationWrite = await rawRequest(page, "contract_staff", "POST", "/organization/users", {});
+    const retiredOrganizationWrite = await rawRequest(page, "contract_staff", "POST", "/organization/users", {});
+    expect(retiredOrganizationWrite.status()).toBe(410);
+    const forbiddenOrganizationWrite = await rawRequest(page, "contract_staff", "POST", "/business-entry-definitions/organization_user/create-target", { entityType: "organization_user" });
     expect(forbiddenOrganizationWrite.status()).toBe(403);
 
     const trialRunId = process.env.TRIAL_RUN_ID;
@@ -322,12 +325,20 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       await expect(page.getByRole("region", { name: region })).toBeVisible();
     }
     const partyRegion = page.getByRole("region", { name: "合同主体业务台账表格" });
-    await expect(partyRegion.locator('[data-field="roleName"] input')).toHaveValue("乙方");
-    await expect(partyRegion.locator('[data-field="name"] input')).toHaveValue(/^UAT乙方-material_purchase-/u);
     const commercialRegion = page.getByRole("region", { name: "合同计价与税务业务台账表格" });
-    await expect(commercialRegion.locator('[data-field="contractAmountYuan"] input')).toHaveValue("10000.00");
     const stageRegion = page.getByRole("region", { name: "付款阶段业务台账表格" });
-    await expect(stageRegion.locator('[data-field="name"] input')).toHaveValue("UAT结算后付款");
+    if (browserKey === "webkit") {
+      await expect(partyRegion.locator('[data-field="roleName"] input')).toHaveValue("乙方");
+      await expect(partyRegion.locator('[data-field="name"] input')).toHaveValue(/^UAT乙方-material_purchase-/u);
+      await expect(commercialRegion.locator('[data-field="contractAmountYuan"] input')).toHaveValue("10000.00");
+      await expect(stageRegion.locator('[data-field="name"] input')).toHaveValue("UAT结算后付款");
+    } else {
+      await expect(partyRegion.locator(".jg-business-grid")).toHaveAttribute("aria-readonly", "true");
+      await expect(partyRegion.getByText("乙方", { exact: true })).toBeVisible();
+      await expect(partyRegion.getByText(/^UAT乙方-material_purchase-/u)).toBeVisible();
+      await expect(commercialRegion.getByText("10000.00", { exact: true })).toBeVisible();
+      await expect(stageRegion.getByText("UAT结算后付款", { exact: true })).toBeVisible();
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();
     await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
 
@@ -370,18 +381,18 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     expect(freezeLogin.ok()).toBeTruthy();
     const freezeLoginData = (await freezeLogin.json()) as { tokens?: { accessToken?: string } };
     expect(freezeLoginData.tokens?.accessToken).toBeTruthy();
-    const frozenWrite = await page.request.fetch(`${freezeApiBaseUrl}/organization/users`, {
+    const frozenWrite = await page.request.fetch(`${freezeApiBaseUrl}/business-entry-definitions/organization_user/create-target`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${freezeLoginData.tokens!.accessToken}`,
         "Content-Type": "application/json"
       },
-      data: {}
+      data: { entityType: "organization_user" }
     });
     ledger.push({
       role: "rc06-freeze",
       method: "POST",
-      path: `${freezeApiBaseUrl}/organization/users`,
+      path: `${freezeApiBaseUrl}/business-entry-definitions/organization_user/create-target`,
       status: frozenWrite.status()
     });
     expect(frozenWrite.status()).toBe(503);
@@ -459,6 +470,7 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
   });
 
   test.afterAll(async ({ browser: _browser }, testInfo) => {
+    void _browser;
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const configuredOutput = path.resolve(evidencePath!);

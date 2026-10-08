@@ -83,7 +83,7 @@ test("模板工作台真实创建、检查预览、取消发布、重试与冻�
   expect(writes.filter(path => path === "/api/files")).toHaveLength(1);
   expect(writes.filter(path => path.endsWith("/submission"))).toHaveLength(2);
   expect(writes.filter(path => path.endsWith("/publication"))).toHaveLength(2);
-  expect(writes.some(path => /^\/api\/settlement-template(?:s|\-versions)(?:\/|$)/.test(path))).toBe(false);
+  expect(writes.some(path => /^\/api\/settlement-template(?:s|-versions)(?:\/|$)/.test(path))).toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("published-template.png"), fullPage: true });
   await page.getByText("发布时的模板内容", { exact: true }).scrollIntoViewIfNeeded();
