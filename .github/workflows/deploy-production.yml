@@ -71,6 +71,7 @@ jobs:
             "ci-orchestration",
             "frozen-dependency-install",
             "prisma-client-generation",
+            "migration-baseline",
             "production-dependency-audit",
             "workspace-typecheck",
             "web-e2e-typecheck",
@@ -81,6 +82,7 @@ jobs:
             "web-ui-governance",
             "release-manifests",
             "exact-sha-postgresql-16",
+            "pol22-readonly-preflight",
             "playwright-p0",
             "playwright-rc06-mock"
           ];

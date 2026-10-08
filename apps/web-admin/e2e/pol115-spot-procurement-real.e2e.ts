@@ -34,25 +34,32 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
   await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
   await createDialog.getByPlaceholder("如：工程部").fill("浏览器工程部");
   await createDialog.getByPlaceholder("如：杨帅").fill("浏览器申请人");
+  const calendarDate = await page.evaluate(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
+  // Exercise a month change without assuming the month in which the test is run.
+  const arrivalMonth = calendarDate.month === 12 ? 11 : calendarDate.month + 1;
+  const arrivalDate = `${calendarDate.year}-${String(arrivalMonth).padStart(2, "0")}-03`;
   const arrivalDateInput = createDialog.getByPlaceholder("请选择日期");
   await arrivalDateInput.click();
   const datePanel = page.locator(".t-date-picker__panel:visible");
   await expect(datePanel).toBeVisible();
   const monthController = datePanel.locator(".t-date-picker__header-controller-month");
-  await expect(monthController.getByRole("textbox")).toHaveValue("9 月");
+  await expect(monthController.getByRole("textbox")).toHaveValue(`${calendarDate.month} 月`);
   await monthController.click();
-  const octoberOption = datePanel
+  const arrivalMonthOption = datePanel
     .locator(".t-date-picker__header-controller-month-popup:visible")
     .locator(".t-select-option")
-    .filter({ hasText: /^10 月$/u });
-  await expect(octoberOption).toHaveCount(1);
-  await octoberOption.click();
-  await expect(monthController.getByRole("textbox")).toHaveValue("10 月");
+    .filter({ hasText: new RegExp(`^${arrivalMonth} 月$`, "u") });
+  await expect(arrivalMonthOption).toHaveCount(1);
+  await arrivalMonthOption.click();
+  await expect(monthController.getByRole("textbox")).toHaveValue(`${arrivalMonth} 月`);
   await datePanel
     .locator(".t-date-picker__cell:not(.t-date-picker__cell--additional)")
     .getByText("3", { exact: true })
     .click();
-  await expect(arrivalDateInput).toHaveValue("2026-10-03");
+  await expect(arrivalDateInput).toHaveValue(arrivalDate);
   await createDialog.getByPlaceholder("说明现场为什么需要本次零星采购").fill(`浏览器旧版原因-${label}`);
   if (testInfo.project.name === "desktop") {
     const grid = createDialog.locator("revo-grid");

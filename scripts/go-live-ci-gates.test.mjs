@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +33,75 @@ function jobBlock(workflow, jobName) {
   const end = nextJob ? start + marker.length + nextJob.index : workflow.length;
   return workflow.slice(start, end);
 }
+
+test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Prefetch POL-275 reviewed-base frozen dependencies\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(workflow);
+  assert.ok(step);
+  assert.equal(step[1], "${{ matrix.group == 'clearing_reconciliation_pol275' }}");
+  const source = step[2].replace(/^          /gmu, "");
+  const directory = await mkdtemp(join(tmpdir(), "pol275-prefetch-test-"));
+  const bin = join(directory, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "pnpm"), '#!/bin/bash\nset -euo pipefail\ntest "$1" = --dir\ntest "$3" = fetch\ntest "$4" = --ignore-scripts\ncmp "$2/pnpm-lock.yaml" "$EXPECTED_LOCK"\nif [ "$TAMPER_LOCK" = yes ]; then echo drift >> "$2/pnpm-lock.yaml"; fi\n', { mode: 0o755 });
+  const legacy = spawnSync("git", ["show", "3cf11b6c46b301856b554598522213f0839ef595:pnpm-lock.yaml"], { cwd: root });
+  assert.equal(legacy.status, 0);
+  await writeFile(join(directory, "expected-lock.yaml"), legacy.stdout);
+  try {
+    for (const tamper of ["no", "yes"]) {
+      const result = spawnSync("bash", ["-c", source], { cwd: root, encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: directory, EXPECTED_LOCK: join(directory, "expected-lock.yaml"), TAMPER_LOCK: tamper } });
+      assert.equal(result.status === 0, tamper === "no", result.stderr);
+      assert.deepEqual((await readdir(directory)).filter((entry) => entry.startsWith("pol275-reviewed-dependencies.")), []);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("POL113–115 CI removes only the Azure mirror with an existing official HTTPS fallback", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Install POL-113\/POL-115 browser and document runtimes\n        if: (.+)\n        run: \|\n          sudo python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(workflow);
+  assert.ok(step);
+  assert.equal(step[1], "${{ matrix.group == 'pol113_pol115_business_entries' }}");
+  const directory = await mkdtemp(join(tmpdir(), "pol113-apt-mirrors-test-"));
+  const mirrors = join(directory, "apt-mirrors.txt");
+  const signedSources = "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-security\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
+  const source = step[2].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors));
+  const azure = "http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n";
+  const archive = "https://archive.ubuntu.com/ubuntu/\tpriority:2\n";
+  const security = "https://security.ubuntu.com/ubuntu/\tpriority:3\n";
+  const other = "# keep comments\nhttp://azure.archive.ubuntu.com/ubuntu-other/\tpriority:4\nhttps://azure.archive.ubuntu.com/ubuntu/\tpriority:5\n";
+  const cases = [
+    [azure + archive + security + other, archive + security + other, true],
+    [azure + security, security, true],
+    [azure + "http://archive.ubuntu.com/ubuntu/\n", null, false],
+    [azure + "# https://archive.ubuntu.com/ubuntu/\n", null, false],
+    [archive + security + other, archive + security + other, true],
+    ["", "", true],
+    [null, null, true]
+  ];
+  try {
+    await writeFile(join(directory, "ubuntu.sources"), signedSources);
+    for (const [input, expected, success] of cases) {
+      await rm(mirrors, { force: true });
+      if (input !== null) await writeFile(mirrors, input);
+      const result = spawnSync("python3", ["-c", source], { encoding: "utf8" });
+      assert.equal(result.status === 0, success, result.stderr);
+      if (!success) assert.match(result.stderr, /Missing official HTTPS Ubuntu mirror/u);
+      if (input !== null) {
+        assert.equal(await readFile(mirrors, "utf8"), success ? expected : input);
+        if (success) {
+          const repeated = spawnSync("python3", ["-c", source], { encoding: "utf8" });
+          assert.equal(repeated.status, 0, repeated.stderr);
+          assert.equal(await readFile(mirrors, "utf8"), expected);
+        }
+      } else assert.deepEqual(await readdir(directory), ["ubuntu.sources"]);
+      assert.equal(await readFile(join(directory, "ubuntu.sources"), "utf8"), signedSources);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("repository restores bounded CI beside the manual deploy workflow", async () => {
   const entries = await readdir(join(root, ".github", "workflows"));
@@ -75,6 +145,65 @@ test("repository restores bounded CI beside the manual deploy workflow", async (
       deployWorkflow,
       new RegExp(forbiddenStep.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&"), "u")
     );
+  }
+});
+
+test("manual deployment executes the complete 17-check receipt contract and rejects incomplete requests", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/deploy-production.yml"), "utf8");
+  const source = /node <<'NODE'\n([\s\S]*?)^\s*NODE$/mu.exec(workflow)?.[1];
+  assert.ok(source, "deployment receipt validator must be executable in isolation");
+  const localChecks = spawnSync(process.execPath, [join(root, "scripts/ops/local-release-receipt.mjs"), "--checks-json"], { encoding: "utf8" });
+  assert.equal(localChecks.status, 0, localChecks.stderr);
+  const checks = JSON.parse(localChecks.stdout);
+  assert.equal(checks.length, 17);
+  const sha = "a".repeat(40);
+  const receipt = {
+    schemaVersion: 2, status: "passed", candidateSha: sha,
+    verifiedAt: "2026-10-07T16:01:44Z", nodeVersion: "20.20.2", pnpmVersion: "9.15.9",
+    checks, durationsMs: Object.fromEntries(checks.map((check) => [check, 1]))
+  };
+  const directory = await mkdtemp(join(tmpdir(), "jiangkong-workflow-receipt-"));
+  try {
+    const cases = [
+      ["complete", receipt, {}, true],
+      ["old 15-check receipt", { ...receipt, checks: checks.filter((check) => !["migration-baseline", "pol22-readonly-preflight"].includes(check)) }, {}, false],
+      ["wrong SHA", { ...receipt, candidateSha: "b".repeat(40) }, {}, false],
+      ["duplicate check", { ...receipt, checks: [...checks.slice(1), checks[1]] }, {}, false],
+      ["unexpected check", { ...receipt, checks: [...checks, "extra"] }, {}, false],
+      ["wrong main", receipt, { MAIN_REF_JSON: JSON.stringify({ object: { sha: "b".repeat(40) } }) }, false],
+      ["branch workflow", receipt, { GITHUB_REF: "refs/heads/candidate" }, false],
+      ["missing confirmation", receipt, { PRODUCTION_CONFIRMATION: "" }, false],
+      ["immediate full deploy", receipt, { DEPLOY_CONFIRMATION_MODE: "immediate" }, false],
+      ["invalid duration", { ...receipt, durationsMs: { ...receipt.durationsMs, "pol22-readonly-preflight": -1 } }, {}, false]
+    ];
+    for (const check of ["migration-baseline", "pol22-readonly-preflight"]) {
+      const durationsMs = { ...receipt.durationsMs };
+      delete durationsMs[check];
+      cases.push([`missing ${check} duration`, { ...receipt, durationsMs }, {}, false]);
+    }
+    for (const [name, candidate, overrides, accepted] of cases) {
+      const output = join(directory, `${name.replaceAll(" ", "-")}.output`);
+      const result = spawnSync(process.execPath, ["-"], {
+        input: source, encoding: "utf8",
+        env: {
+          ...process.env, GITHUB_REF: "refs/heads/main", TARGET_SHA: sha,
+          MAIN_REF_JSON: JSON.stringify({ object: { sha } }),
+          PRODUCTION_CONFIRMATION: "DEPLOY JGZG PRODUCTION", DEPLOY_SCOPE: "full",
+          DEPLOY_CONFIRMATION_MODE: "manual", DEPLOY_CONFIRMATION_TIMEOUT_SECONDS: "1800",
+          RELEASE_RECEIPT_JSON: JSON.stringify(candidate), GITHUB_OUTPUT: output,
+          GITHUB_STEP_SUMMARY: join(directory, "summary"), ...overrides
+        }
+      });
+      assert.equal(result.status === 0, accepted, `${name}: ${result.stderr}`);
+      if (accepted) {
+        assert.match(await readFile(output, "utf8"), /target_sha=a{40}/u);
+        assert.match(await readFile(join(directory, "summary"), "utf8"), /Fixed checks: 17/u);
+      } else {
+        await assert.rejects(readFile(output, "utf8"), `${name} must fail before producing a dispatch output`);
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

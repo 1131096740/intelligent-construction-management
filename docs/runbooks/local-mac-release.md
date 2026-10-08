@@ -1,13 +1,17 @@
 # 本机完整门禁 + 低分钟手动部署
 
 日常开发验证和完整发布门禁都在 operator 的 Mac 执行。Pull Request 和普通
-`main` push 不会运行 GitHub Actions；只有一次已经通过本机完整门禁、并获得
-单独生产授权的发布，才会手动启动一个 deploy-only workflow。
+`main` push 会运行非生产 CI；`Release gates` 汇总全部检查结果。生产部署只在
+通过本机完整门禁、并获得单独生产授权后手动启动 deploy-only workflow。
 
 生产机仍只接受 `origin/main` 的精确提交，并在服务器端自行构建、备份、迁移、
 重启、健康检查和失败恢复。
 
 这不授权自动发布。每一次生产部署仍需要单独的业务/生产授权。
+
+本文的通用部署入口包含迁移和旧运行时恢复，只适用于未冻结且 API 正在运行的
+常规兼容发布。冻结、停机或 POL-25B 激活均不得使用此入口；POL-25B 的零迁移、
+维护态激活路径见 [专用 runbook](pol25b-maintenance-activation.md)。
 
 ## 一次性本机准备
 
@@ -78,10 +82,10 @@ $XDG_STATE_HOME/jiangkong/local-release-<sha>.json
 
 完整门禁包含：冻结依赖安装、Prisma Client 生成、依赖审计、typecheck、lint、业务
 错误与运维安全自测、全量测试、API/Web build、UI 规则、release manifests、精确 SHA
-PostgreSQL 16 动态门，以及
+PostgreSQL 16 动态门、POL-22 隔离只读预检，以及
 Chromium/WebKit 的 P0 和 RC-06 mocked browser checks。
 
-收据中的 `durationsMs` 会按上述 15 个固定阶段记录毫秒耗时，命令行也会在每个
+收据中的 `durationsMs` 会按上述 17 个固定阶段记录毫秒耗时，命令行也会在每个
 阶段结束时显示耗时。它既用于部署前的严格收据校验，也用于判断下一轮应优先优化
 哪一个慢阶段；阶段缺失、重复、负数或不是整数时，部署器会拒绝收据。
 
@@ -112,7 +116,7 @@ pnpm deploy:local \
 打开 SSH 连接。
 
 GitHub workflow 只接受手动触发，会串行排队且不会取消进行中的发布。它会再次校验确认
-短语、当前远端 `main`、收据的 15 个固定阶段和逐阶段耗时，然后才用 GitHub Secrets
+短语、当前远端 `main`、收据的 17 个固定阶段和逐阶段耗时，然后才用 GitHub Secrets
 经固定 known-hosts SSH 到服务器。runner 不安装项目依赖、不跑测试/数据库动态门、
 不安装浏览器，也不构建应用；服务器端原有构建、迁移前备份、运行时快照、迁移、健康
 检查和恢复链保持不变。workflow 最长 90 分钟，且不创建 Actions cache 或 artifact。

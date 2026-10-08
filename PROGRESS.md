@@ -10,6 +10,22 @@
 
 ---
 
+## 当前本地审计与验收（2026-10-07，本地候选）
+
+- [~] 用户已对被拒的精确CI包源修复追加明确“确认 继续”授权，原补丁重试获准；仅修改一次性GitHub runner该分片的镜像列表，不改变用户Mac或生产包源。直接执行workflow Python片段的7组fixture通过：准确目标删除、保留其他/HTTPS条目及Signed-By配置、HTTP或注释伪回退失败且文件不变、幂等、空文件和不存在文件；完整新SHA验收及PR CI仍待绑定。
+- [~] `2c36889d` 原完整本机17/17通过，PR#308精确head CI `37663072842` 的POL275修复已成功。保留三轮CI失败事实：attempt1手机创建POST等待45秒超时；attempt2该用例和POL11323/23通过，但POL115手机导航出现WebKit内部错误；attempt3从18:31:57停于apt-get update，Azure镜像反复Ign至18:53:06取消，未进入浏览器验收，汇总失败。未发起attempt4。依据该runner固定镜像的官方配置，只在POL113–115 CI分片删除准确Azure HTTP镜像条目，要求已有官方Ubuntu HTTPS fallback，保留其余源、Signed-By校验、原浏览器/测试/阈值；新SHA重新完整本机验收及CI。
+- [~] draft PR #308 的首个精确head `f76089ef564601214424da6042bc0f5b6c6a3c4c` 本机原17门全部通过（2026-10-07T17:08:46Z），但CI run `37657314469` 的POL275核心10/10通过后，reviewed-base独立离线安装因干净runner未缓存Vue3.5.38失败。仅在该CI分片新增从runner原有固定REVIEWED_BASE_SHA读取锁文件的依赖预取；临时目录清理、锁文件hash不变、禁用安装脚本，原兼容性独立frozen/offline安装保持。新提交须重跑原完整本机门和精确head CI，不继承旧SHA收据。
+- [~] 用户已追加批准非生产交付：在 `codex/307-release-safety-delivery-20261007` 保留历史候选 `caf3c0132dc492ba68b08172b35f9f9c6f445b99`，修复发布收据的17项接口、旧文档和冻结误部署防护，再推送独立分支、创建draft PR并验证精确head CI；不包含merge/auto-merge/生产workflow/迁移/归零/解除冻结或权限变更。
+- [~] 部署workflow补齐migration-baseline与pol22-readonly-preflight，保留精确SHA、main、确认、完整耗时及manual确认门；通用服务器部署器在任何写冻结/无效控制或已停机API状态下于构建、备份、迁移、运行时变更前拒绝。[POL25B维护态激活契约](docs/runbooks/pol25b-maintenance-activation.md)明确上游连续收据、零迁移、冻结all、只读核验和失败保持停机；本票没有实现或开启生产自动激活执行器，#123仍须独立定界、审查、验证和批准。
+- [~] 新增直接执行workflow校验代码的17项收据正反例与部署冻结/停机自测，针对性检查通过。新候选完整本机门及draft PR/精确head CI的权威状态保存于仓库外 `/private/tmp/jiangkong-release-safety-20261007-final/`；只有passed收据绑定当前干净HEAD，且PR CI绑定相同head并终态success，才表示本轮非生产交付通过。不得继承caf3c013收据或PR#306历史CI；POL122更新另行进行。
+- [~] 本候选基线为 `a6a10433e7c6cb7743f9acf58971ec827b48df2f`；#114/#115/#117/#121 的关闭状态来自此前远端核验。用户主目录既有改动与 skills 回退备份保持，不重复 P0/P0.5 UI。
+- [~] 四项最小兼容依赖修复为 proxy-addr2.0.8、source-map-js1.2.2、Vue运行链3.5.42、sharp0.35.5及匹配平台二进制；保留 brace-expansion1.1.21/2.1.7。水印测试同步 sharp/libheif 并守卫 librsvg2.63.2；未改Schema、权限、业务规则或生产。
+- [~] 原修复报告记录0high/0critical/2moderate、API7866/Web2147/shared239通过；本地提交87485843的完整发布首轮前13门通过，POL108真实PG16大样本14/14、POL109数据库/HTTP8/8及页面4/4通过。首轮随后暴露两处过期日期测试假设，未生成passed总收据，不拼接旧SHA通过项。
+- [~] 仅修测试：合同结算期间按合成合同真实effectiveAt推导本期及下一期月底；零采页面按浏览器当前月份切换另一个月份并精确断言选中日期。未冻结时钟、放宽业务期间规则、改变阈值或扩大skip。原POL113-POL115隔离runner在2d1e97a0上完整exit0：合同入口3/3、零采HTTP3/3及桌面/手机页面4/4通过；日志 `/private/tmp/jiangkong-local-release-20261007-87485843/entry-targeted-2d1e97a0.log`。
+- [~] 用户已明确授权本地提交、启动已安装Docker及本机隔离完整发布门，不包含push/merge/deploy/生产操作。Docker29.5.3已可连接，官方postgres:16已缓存，无镜像拉取；首轮和定向runner临时容器均清理。本账本固定后从头运行原17项正式门，不继承历史CI或mock为真实PG16证据。
+- [~] 本轮完整验收的权威状态保存在仓库外 `/private/tmp/jiangkong-local-release-20261007-final/release-receipt.json` 与 `release.log`。只有原脚本生成status=passed且candidateSha与当前干净HEAD一致的收据才表示该SHA本地完整门通过；文件不存在、失败或SHA不符均不具本地发布资格。本地门通过也不构成生产部署、迁移、归零或开放授权。
+- [~] 原依赖+水印测试补丁SHA256 `7349adc17795f6399c16c09b7d9ca271b9bc9a6f5733bc121a408fabfcbc922b` 的修复证据见 [安全修复审计](/Users/leoyang/.codex/state/plugins/codex-security/scans/jiangkong-next-delivery-20261007/artifacts-93adc189401874d321019ece8ebff35120fe47ba2d343e41e9320550014211b6/artifacts/security-fix-report.md)；后续两处日期测试差异与本地提交另行绑定。仍有Nest core与multer各1项moderate，现行high阈值允许通过但不表示风险消失。
+
 ## POL 全树本地集成（2026-09-25）
 
 - [~] 2026-09-25 #122 两文件独立 CLI 非生产候选：两项原 Standards/Spec 审查缺口已修正。`17b9608b17ba74c9d6ac68c456e943ab85c81155` 的完整本机 `release:local` 17 项正式门通过，含真实 PostgreSQL 16 全动态组、POL-108 大规模投影、POL-109 4/4 Chromium、POL-22 隔离只读预检 ready/0 blocker、P0 与 RC06；成功回执为 `/private/tmp/pol122-local-release-17b9608b-attempt3.json`。前两次同 SHA 尝试在动态门首次镜像查询因本机 Docker 空闲态失败，第三次仅用无网络、无挂载、自动删除的本机休眠容器保持 Docker 活跃，未放宽镜像门或更改代码；此前 macOS 沙箱中的 Chromium 失败亦已在可启动浏览器的本机环境克服。原 Spec 轴无缺陷，Standards 轴无硬性违规、有两项非阻断重复代码判断性建议；本账本更新构成新 SHA，其正式门与双审仍须重新绑定，不继承 `17b9608b` 的成功证据。当前仅具本机合成数据的独立两文件 CLI 证明，非生产 PR/CI/合并尚未完成。[两文件失败对账与恢复决策契约](docs/design/2026-09-23-pol122-two-orphan-failure-reconciliation.md) 不提供自动恢复。本候选不具生产执行资格；#122/#93 保持 OPEN，不执行生产归零或 #123/#124。
