@@ -203,6 +203,25 @@ async function prepareSignatures(tokens) {
   }
 }
 
+// Follow the current Web draft API: editing lease, revision and submission key.
+// The retired approval-submission route must never be re-enabled for UAT.
+async function submitContractDraft(versionId, token, expectedStatus) {
+  const lease = await request("POST", `/contract-drafts/${versionId}/edit-lease`, token);
+  assert(typeof lease.token === "string" && lease.token.length > 0, "合同编辑权未返回有效凭据");
+  try {
+    const workbench = await request("GET", `/contract-drafts/${versionId}/workbench`, token);
+    const expectedRevision = workbench.version?.draftRevision;
+    assert(Number.isInteger(expectedRevision), "合同工作台未返回当前草稿版本");
+    return await request("POST", `/contract-drafts/${versionId}/submission`, token, {
+      expectedRevision,
+      idempotencyKey: randomUUID()
+    }, expectedStatus, { "X-Contract-Draft-Lease": lease.token });
+  } finally {
+    await request("DELETE", `/contract-drafts/${versionId}/edit-lease`, token, undefined,
+      undefined, { "X-Contract-Draft-Lease": lease.token });
+  }
+}
+
 async function prepareSharedFixtures(tokens) {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   assert(project?.isActive, "缺少启用的 seed 项目");
@@ -589,12 +608,8 @@ async function prepareAndSubmitContract(fixture, tokens) {
       sourceRevision: current.draftRevision
     }
   );
-  const unconfirmedSubmission = await request(
-    "POST",
-    `/contracts/${fixture.version.id}/approval-submission`,
-    tokens[fixture.applicantRole],
-    { numberRuleId: fixture.numberRule.id },
-    400
+  const unconfirmedSubmission = await submitContractDraft(
+    fixture.version.id, tokens[fixture.applicantRole], 400
   );
   assert(
     unconfirmedSubmission.status >= 400 && unconfirmedSubmission.status < 500,
@@ -621,9 +636,7 @@ async function prepareAndSubmitContract(fixture, tokens) {
       expectedDraftRevision: current.draftRevision
     }
   );
-  const submitted = await request("POST", `/contracts/${fixture.version.id}/approval-submission`, tokens[fixture.applicantRole], {
-    numberRuleId: fixture.numberRule.id
-  });
+  const submitted = await submitContractDraft(fixture.version.id, tokens[fixture.applicantRole]);
   assert(submitted.status === "in_approval", `${fixture.config.type} 未进入审批中`);
   const instance = await prisma.approvalInstance.findFirst({
     where: { businessType: "contract_version", businessId: fixture.version.id, flowType: "contract.approve" }
@@ -930,9 +943,7 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
     }
   );
   if (allowed) {
-    const submitted = await request("POST", `/contracts/${draft.id}/approval-submission`, tokens.contractStaff, {
-      numberRuleId: base.numberRule.id
-    });
+    const submitted = await submitContractDraft(draft.id, tokens.contractStaff);
     assert(submitted.status === "in_approval", `${percentLabel}% 变更未进入审批`);
     const instance = await prisma.approvalInstance.findFirst({
       where: { businessType: "contract_version", businessId: draft.id, flowType: "contract.approve" }
@@ -940,9 +951,7 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
     assert(instance, `${percentLabel}% 变更未生成审批实例`);
     evidence.set(`contract_change_${suffix}_percent`, [draft.id, instance.id, changeCounterpartySignedPdf.id]);
   } else {
-    const failed = await request("POST", `/contracts/${draft.id}/approval-submission`, tokens.contractStaff, {
-      numberRuleId: base.numberRule.id
-    }, 400);
+    const failed = await submitContractDraft(draft.id, tokens.contractStaff, 400);
     assert(failed.body.includes("超过原合同 10%"), "10.01% 未返回必须新签合同的中文提示");
     const denial = await prisma.auditLog.findFirst({
       where: { action: "contract.change.limit.denied", businessId: draft.id }
