@@ -10,6 +10,14 @@
 
 ---
 
+## POL25B 本地实现与验证（2026-10-08，未提交工作区）
+
+- [x] 开发前实时核验 PR #308 MERGED，main 为 `3d06db8b30fa66b9b7f4c58d1506323a86ba1cbd`，merge-head CI `37744986299` completed/success、21 项通过；核对相关聊天和 worktree，未发现运行中的 POL25B 并行开发。主目录既有改动保持；本任务在 `codex/pol25b-local-activation-20261008` 独立 worktree 开发。
+- [~] 本地维护态激活引擎已实现：独立签名授权/证据、原始上游字节摘要、原生归零终态、同候选 main CI、原17项本机收据、冻结/窗口/Schema/迁移/对象坐标的阶段间复核、API/Web 产物与文件回退。仅提供隔离适配器接口，不接入生产；生产 scope 与直接执行均拒绝，成功工件明确标注 isolated-local。
+- [x] 本轮本地验证完成：Node20.20.2/pnpm9.15.9 的CI编排回归200/200，包含78项激活测试（含2项真实回环HTTP/子进程测试与部分写、fsync/unlink双故障）；workspace typecheck、lint（0errors，570项既有Web warnings）、三份新增脚本定向lint/syntax及diff检查通过。规范/规格两路复审发现的锁释放、坐标脱敏、原子发布及撤销状态问题已修正，末轮均无剩余阻塞；文件摘要与完整日志索引在仓库外 `/private/tmp/pol25b-local-verification-20261008.json`。
+- [~] 原 `release:local --preflight` 按预期在“candidate worktree must be clean”处拒绝。新差异尚未提交，不具完整17项正式发布门或fixed-head CI资格，不继承 #308 的候选级验收。上述本地证明不替代真实PG16、systemd/COS或正式上游收据。
+- [ ] #123 正式适配器、固定信任锚、原生上游完整验证及现场只读观测仍待独立实现/审查和生产授权；#122/#123/#124 不因本地测试完成而关闭。未访问生产，未执行部署/迁移/归零/解除冻结/凭据或权限变更。
+
 ## 当前本地审计与验收（2026-10-07，本地候选）
 
 - [~] 用户已对被拒的精确CI包源修复追加明确“确认 继续”授权，原补丁重试获准；仅修改一次性GitHub runner该分片的镜像列表，不改变用户Mac或生产包源。直接执行workflow Python片段的7组fixture通过：准确目标删除、保留其他/HTTPS条目及Signed-By配置、HTTP或注释伪回退失败且文件不变、幂等、空文件和不存在文件；完整新SHA验收及PR CI仍待绑定。
