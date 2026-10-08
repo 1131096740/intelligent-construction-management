@@ -10,6 +10,12 @@
 
 ---
 
+## PR #309 POL109 CI 运行库最小修复（2026-10-08，独立本地候选）
+
+- [~] 原固定head`a1351580`的CI `37782532668`已终态failure：18项success，Quality编排失败，POL109运行库安装cancelled，Release gates failure；POL109取消前约19分钟停在精确Azure HTTP Ubuntu镜像，官方HTTPS源成功取得索引，未进入该分片动态验收。原失败/取消与条件跳过分别保留，PR #309仍草稿且head未变，未rerun/merge/关票。
+- [~] 独立分支`codex/pol25b-pol109-ci-runtime-fix-20261008`仅在POL109安装浏览器前复用POL113–115现有镜像保护：有既定官方HTTPS后备才删除准确Azure HTTP行，保留其他源、Signed-By、原浏览器/测试/超时。实际workflow Python两步骤各七组fixture先RED后GREEN；完整编排204/204、全仓类型/lint（0 errors、570既有warnings）和diff通过，双审无finding；两处短脚本重复为非阻塞判断性建议，本批不增加共享脚本。
+- [ ] 经用户“继续推进”授权，`6bdfc6174b1a46b31103993c93afb68a5db38431`一次完整17门正在另一个独立工作区执行，目前13个前置门通过、进入真实PG16；不改其源码、不启动另一套完整验收。此新增workflow补丁会产生新SHA，须另行完整验收和版本审批后才更新PR，不继承6bdf收据。生产和模板Schema均未操作。
+
 ## PR #309 Linux 收据传输兼容修复（2026-10-08，本地新候选）
 
 - [~] 经用户批准，`a1351580c7a3e11b5c6cbd5328883f042888a352`已推送并创建草稿PR #309；当前main仍为3d06db8b。固定head CI `37782532668`的Quality gates在CI编排失败，后续审计/类型/lint为条件跳过；其余分片独立运行，未把本机17/17替代远端CI成功。
