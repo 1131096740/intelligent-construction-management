@@ -174,7 +174,7 @@ async function freezeRequest(page: Page, role: string, method: string, path: str
 
 test.describe("RC-06 real API-backed four-role browser acceptance", () => {
   test.beforeAll(() => assertRuntimeConfiguration());
-  test.afterEach(async (_fixtures, testInfo) => {
+  test.afterEach(async ({ browser: _browser }, testInfo) => {
     if (testInfo.status !== testInfo.expectedStatus) {
       testFailures.push(`${testInfo.project.name}:${testInfo.title}:${testInfo.status}`);
     }
@@ -458,7 +458,7 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     await context.close();
   });
 
-  test.afterAll(async (_fixtures, testInfo) => {
+  test.afterAll(async ({ browser: _browser }, testInfo) => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const configuredOutput = path.resolve(evidencePath!);
