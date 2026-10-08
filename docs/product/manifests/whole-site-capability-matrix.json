@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "dd889da07b46a3426485d050d3530d87fa5bec380bca1bb05f3f7ac0608d3de8",
+      "sha256": "f9a86edb7f767f92f7d67804db50487797751722b7acf6b80a9074b02fb42ad5",
       "status": "ready",
       "summary": {
-        "routeCount": 606
+        "routeCount": 621
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8dc4a99c85afe5144bcc254d20b419eb20f1ebe06778e5dcaefd8d66f6876f74",
+      "sha256": "652708ff9a319ae0e0e4e1a4ced39139d0e16cd845811e7336462ad3e5eaf434",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 28,
-        "exportedFunctionCount": 580,
-        "transportWrapperCount": 560,
+        "apiModuleCount": 29,
+        "exportedFunctionCount": 594,
+        "transportWrapperCount": 574,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 584,
-        "ticketFollowupCount": 3,
-        "requestEdgeCount": 584,
-        "productionConsumerCount": 455,
+        "mainRequestBindingCount": 599,
+        "ticketFollowupCount": 4,
+        "requestEdgeCount": 599,
+        "productionConsumerCount": 469,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "60211da209e982166c1448642b25093fa8da732f3acec5941dec025ce8364b6f",
+      "sha256": "9bb09cbec56d30397f7598fc7a13e4c5a8166d644a9e5e7a6ce84ec3b8d98a61",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 317,
+        "registeredActionCount": 329,
         "pageActionCount": 56,
-        "backgroundActionCount": 261,
-        "reachableVueFileCount": 153,
-        "routeRootCount": 59,
+        "backgroundActionCount": 273,
+        "reachableVueFileCount": 154,
+        "routeRootCount": 62,
         "totalVueFileCount": 172,
         "parsedVueFileCount": 172,
-        "reachableProductionModuleCount": 275,
-        "templateEventDirectiveCount": 976,
-        "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 308,
-        "candidateProductionMutationConsumerCount": 308,
-        "acceptedProductionMutationConsumerCount": 308,
-        "productionMutationConsumerPairCount": 308,
+        "reachableProductionModuleCount": 277,
+        "templateEventDirectiveCount": 991,
+        "propCallbackDirectiveCount": 8,
+        "coveredProductionMutationConsumerCount": 319,
+        "candidateProductionMutationConsumerCount": 319,
+        "acceptedProductionMutationConsumerCount": 319,
+        "productionMutationConsumerPairCount": 319,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "a81e3070839720c3f0473d47a04582340d42d99362fb5c786ee77a8e71a9ff4e",
+      "sha256": "a6d44279e856bd282225db1f920a6c6ffe015fce5cc109b003d50e36674185e9",
       "status": "ready",
       "summary": {
-        "routeCount": 606,
-        "exactRouteCount": 606,
-        "normalizedRouteCount": 606,
+        "routeCount": 621,
+        "exactRouteCount": 621,
+        "normalizedRouteCount": 621,
         "classificationOverrideCount": 221,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
         "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-        "derivedProductionPageCount": 385,
-        "pageRouteCount": 389,
+        "derivedProductionPageCount": 400,
+        "pageRouteCount": 404,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 108,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 442,
+          "web_api_wrapper": 457,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 606,
-    "pageRouteCount": 389,
+    "routeCount": 621,
+    "pageRouteCount": 404,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 584,
+    "mainRequestBindingCount": 599,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 317,
-    "actionBindingCount": 359,
-    "acceptedActionBindingCount": 337,
+    "registeredActionCount": 329,
+    "actionBindingCount": 374,
+    "acceptedActionBindingCount": 352,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 308,
-    "coveredProductionMutationConsumerPairCount": 308,
+    "productionMutationConsumerPairCount": 319,
+    "coveredProductionMutationConsumerPairCount": 319,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -7777,6 +7777,178 @@
     {
       "route": {
         "method": "GET",
+        "path": "/settlement-template-workbench/capability",
+        "normalizedKey": "GET /settlement-template-workbench/capability",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "capability",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "fetchTemplateWorkbenchCapability",
+          "method": "GET",
+          "path": "/settlement-template-workbench/capability",
+          "normalizedKey": "GET /settlement-template-workbench/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/settlement-template-workbench/templates/:templateId",
+        "normalizedKey": "GET /settlement-template-workbench/templates/:param",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "get",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "getSettlementTemplate",
+          "method": "GET",
+          "path": "/settlement-template-workbench/templates/:param",
+          "normalizedKey": "GET /settlement-template-workbench/templates/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/settlement-template-workbench/templates",
+        "normalizedKey": "GET /settlement-template-workbench/templates",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "list",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "listSettlementTemplates",
+          "method": "GET",
+          "path": "/settlement-template-workbench/templates",
+          "normalizedKey": "GET /settlement-template-workbench/templates",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateListPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/settlement-template-workbench/versions/:versionId/capability",
+        "normalizedKey": "GET /settlement-template-workbench/versions/:param/capability",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "versionCapability",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "fetchTemplateVersionCapability",
+          "method": "GET",
+          "path": "/settlement-template-workbench/versions/:param/capability",
+          "normalizedKey": "GET /settlement-template-workbench/versions/:param/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/settlement-templates/:templateId",
         "normalizedKey": "GET /settlement-templates/:param",
         "controller": "SettlementTemplateGovernanceController",
@@ -10849,6 +11021,102 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/settlement-template-workbench/versions/:versionId",
+        "normalizedKey": "PATCH /settlement-template-workbench/versions/:param",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "update",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "updateSettlementTemplateVersion",
+          "method": "PATCH",
+          "path": "/settlement-template-workbench/versions/:param",
+          "normalizedKey": "PATCH /settlement-template-workbench/versions/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.save",
+          "bindingIndex": 0,
+          "identity": "template-workbench.save\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000updateSettlementTemplateVersion\u0000PATCH\u0000PATCH /settlement-template-workbench/versions/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "save_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "updateSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "template-workbench.save-source",
+          "bindingIndex": 1,
+          "identity": "template-workbench.save-source\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000updateSettlementTemplateVersion\u0000PATCH\u0000PATCH /settlement-template-workbench/versions/:param\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "save_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "updateSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -18938,7 +19206,8 @@
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
-            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+            "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -19069,6 +19338,58 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "template-workbench.create-source",
+          "bindingIndex": 0,
+          "identity": "template-workbench.create-source\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.availableActions",
+            "key": "create_template",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "template-workbench.save-source",
+          "bindingIndex": 0,
+          "identity": "template-workbench.save-source\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "save_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -30300,6 +30621,731 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/templates",
+        "normalizedKey": "POST /settlement-template-workbench/templates",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "create",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "createSettlementTemplate",
+          "method": "POST",
+          "path": "/settlement-template-workbench/templates",
+          "normalizedKey": "POST /settlement-template-workbench/templates",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.create",
+          "bindingIndex": 0,
+          "identity": "template-workbench.create\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000createSettlementTemplate\u0000POST\u0000POST /settlement-template-workbench/templates\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.availableActions",
+            "key": "create_template",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "createSettlementTemplate",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "template-workbench.create-source",
+          "bindingIndex": 1,
+          "identity": "template-workbench.create-source\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000createSettlementTemplate\u0000POST\u0000POST /settlement-template-workbench/templates\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.availableActions",
+            "key": "create_template",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "createSettlementTemplate",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/clone",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/clone",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "clone",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "cloneSettlementTemplateVersion",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/clone",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/clone",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.clone",
+          "bindingIndex": 0,
+          "identity": "template-workbench.clone\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000cloneSettlementTemplateVersion\u0000POST\u0000POST /settlement-template-workbench/versions/:param/clone\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "clone",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "cloneSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/discard",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/discard",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "discard",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "discardSettlementTemplateVersion",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/discard",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/discard",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.discard",
+          "bindingIndex": 0,
+          "identity": "template-workbench.discard\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000discardSettlementTemplateVersion\u0000POST\u0000POST /settlement-template-workbench/versions/:param/discard\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "actionCapability.availableActions",
+            "key": "discard_version",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "discardSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/inspection",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/inspection",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "inspect",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "inspectSettlementTemplateVersion",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/inspection",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/inspection",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.inspect",
+          "bindingIndex": 0,
+          "identity": "template-workbench.inspect\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000inspectSettlementTemplateVersion\u0000POST\u0000POST /settlement-template-workbench/versions/:param/inspection\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "inspect",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "inspectSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/preview-generation",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-generation",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "preview",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "generateSettlementTemplatePreview",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/preview-generation",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-generation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.preview",
+          "bindingIndex": 0,
+          "identity": "template-workbench.preview\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000generateSettlementTemplatePreview\u0000POST\u0000POST /settlement-template-workbench/versions/:param/preview-generation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "preview",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "generateSettlementTemplatePreview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/preview-pdf/download-ticket",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "pdf",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "downloadSettlementTemplatePreview",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.download",
+          "bindingIndex": 0,
+          "identity": "template-workbench.download\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000downloadSettlementTemplatePreview\u0000POST\u0000POST /settlement-template-workbench/versions/:param/preview-pdf/download-ticket\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "download_preview",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "downloadSettlementTemplatePreview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/preview-xlsx/download-ticket",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-xlsx/download-ticket",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "xlsx",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "downloadSettlementTemplatePreview",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/preview-xlsx/download-ticket",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-xlsx/download-ticket",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.download",
+          "bindingIndex": 1,
+          "identity": "template-workbench.download\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000downloadSettlementTemplatePreview\u0000POST\u0000POST /settlement-template-workbench/versions/:param/preview-xlsx/download-ticket\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "download_preview",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "downloadSettlementTemplatePreview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/publication",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/publication",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "publish",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "publishSettlementTemplateVersion",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/publication",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/publication",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.publish",
+          "bindingIndex": 0,
+          "identity": "template-workbench.publish\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000publishSettlementTemplateVersion\u0000POST\u0000POST /settlement-template-workbench/versions/:param/publication\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "publish",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "publishSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/stop",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/stop",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "stop",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "stopSettlementTemplateVersion",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/stop",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/stop",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.stop",
+          "bindingIndex": 0,
+          "identity": "template-workbench.stop\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000stopSettlementTemplateVersion\u0000POST\u0000POST /settlement-template-workbench/versions/:param/stop\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "stop",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "stopSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/settlement-template-workbench/versions/:versionId/submission",
+        "normalizedKey": "POST /settlement-template-workbench/versions/:param/submission",
+        "controller": "SettlementTemplateWorkbenchController",
+        "handler": "submit",
+        "sourceFile": "services/api/src/settlement/settlement-template-workbench.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "submitSettlementTemplateVersion",
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/submission",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/submission",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "template-workbench.submit",
+          "bindingIndex": 0,
+          "identity": "template-workbench.submit\u0000apps/web-admin/src/api/settlement-template-workbench.api.ts\u0000submitSettlementTemplateVersion\u0000POST\u0000POST /settlement-template-workbench/versions/:param/submission\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "actionCapability.workbenchActions",
+            "key": "submit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+          "wrapper": "submitSettlementTemplateVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {

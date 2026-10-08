@@ -176,8 +176,8 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface.",
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard.",
       "wrappers": [
         "cloneSettlementTemplateVersion",
         "createSettlementTemplate",

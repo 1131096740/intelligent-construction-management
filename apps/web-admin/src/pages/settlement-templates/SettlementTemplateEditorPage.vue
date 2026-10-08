@@ -7,7 +7,7 @@
       </div>
       <t-button
         variant="outline"
-        @click="router.push('/结算模板库')"
+        @click="router.push('/结算模板工作台')"
       >
         返回模板库
       </t-button>
@@ -25,77 +25,23 @@
       :bordered="true"
       class="panel"
     >
-      <div class="form-grid">
-        <t-form-item label="模板名称">
-          <t-input
-            v-model="form.name"
-            :readonly="!isCreateMode"
-            placeholder="例如：劳务月度结算模板"
-          />
-        </t-form-item>
-        <t-form-item label="模板编码">
-          <t-input
-            v-model="form.code"
-            :readonly="!isCreateMode"
-            placeholder="例如：SETTLEMENT-LABOR"
-          />
-        </t-form-item>
-        <t-form-item
-          v-if="!isCreateMode"
-          label="治理版本"
-        >
-          <t-select
-            v-model="selectedVersionId"
-            :options="versionOptions"
-            @change="selectVersion"
-          />
-        </t-form-item>
-        <div
-          v-if="currentVersion"
-          class="version-summary"
-        >
-          <span>草稿修订 R{{ currentVersion.draftRevision }}</span>
-          <t-tag
-            :theme="currentVersion.status === 'published' ? 'success' : 'default'"
-            variant="light"
-          >
-            {{ settlementTemplateStatusLabel(currentVersion.status) }}
-          </t-tag>
-        </div>
-      </div>
-
-      <div class="compatibility-grid">
-        <t-form-item label="兼容合同类型">
-          <t-select
-            v-model="form.compatibleContractTypeKeys"
-            multiple
-            clearable
-            :disabled="!isCreateMode && !governance.canSave"
-            :options="settlementTemplateContractTypeOptions"
-            placeholder="留空表示兼容全部合同类型"
-          />
-        </t-form-item>
-        <t-form-item label="兼容金额角色">
-          <t-select
-            v-model="form.compatibleAmountRoles"
-            multiple
-            clearable
-            :disabled="!isCreateMode && !governance.canSave"
-            :options="settlementTemplateAmountRoleOptions"
-            placeholder="留空表示兼容全部金额角色"
-          />
-        </t-form-item>
-        <t-form-item label="兼容计价模式">
-          <t-select
-            v-model="form.compatiblePricingModes"
-            multiple
-            clearable
-            :disabled="!isCreateMode && !governance.canSave"
-            :options="settlementTemplatePricingModeOptions"
-            placeholder="留空表示兼容全部计价模式"
-          />
-        </t-form-item>
-      </div>
+      <BusinessEntryForm
+        v-if="editorDefinition"
+        :key="currentVersion ? `${currentVersion.id}:${currentVersion.draftRevision}:${currentVersion.status}` : 'create'"
+        v-model="entryDraft"
+        :definition="editorDefinition"
+        :readonly="Boolean(busyAction) || (!isCreateMode && !governance.canSave)"
+      />
+      <t-select
+        v-if="!isCreateMode"
+        v-model="selectedVersionId"
+        :options="versionOptions"
+        :disabled="Boolean(busyAction)"
+        @change="selectVersion"
+      />
+      <p v-if="currentVersion">
+        {{ settlementTemplateStatusLabel(currentVersion.status) }}
+      </p>
 
       <div class="source-row">
         <t-upload
@@ -104,13 +50,14 @@
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           :auto-upload="false"
           :max="1"
-          :disabled="!isCreateMode && !governance.canSave"
+          :disabled="Boolean(busyAction) || (!isCreateMode && !governance.canSave)"
           placeholder="选择 XLSX 模板源文件"
         />
         <t-button
           v-if="isCreateMode"
           theme="primary"
           :loading="busyAction === 'save'"
+          :disabled="!definition || Boolean(busyAction)"
           @click="createTemplate"
         >
           创建草稿
@@ -119,6 +66,7 @@
           v-else-if="governance.canSave"
           theme="primary"
           :loading="busyAction === 'save'"
+          :disabled="!definition || Boolean(busyAction)"
           @click="saveDraft"
         >
           保存新修订
@@ -150,7 +98,7 @@
               <strong>模板检查</strong>
               <t-button
                 variant="outline"
-                :disabled="!governance.canInspect"
+                :disabled="!governance.canInspect || isDirty || Boolean(busyAction)"
                 :loading="busyAction === 'inspect'"
                 @click="inspectCurrent"
               >
@@ -199,7 +147,7 @@
               <strong>固定脱敏样张</strong>
               <t-button
                 variant="outline"
-                :disabled="!governance.canPreview"
+                :disabled="!governance.canPreview || isDirty || Boolean(busyAction)"
                 :loading="busyAction === 'preview'"
                 @click="generatePreview"
               >
@@ -242,6 +190,7 @@
       class="panel"
     >
       <BusinessDraftAction
+        v-if="currentVersion.availableActions?.some(action => action.enabled)"
         class="version-lifecycle-action"
         :actions="currentVersion.availableActions ?? []"
         :blocked-reasons="currentVersion.blockedReasons ?? []"
@@ -261,7 +210,7 @@
             v-if="governance.canSubmit"
             :loading="busyAction === 'submit'"
             :disabled="isDirty"
-            @click="runAction('submit')"
+            @click="submitCurrent"
           >
             提交发布
           </t-button>
@@ -285,7 +234,7 @@
             v-if="governance.canClone"
             theme="primary"
             :loading="busyAction === 'clone'"
-            @click="runAction('clone')"
+            @click="cloneCurrent"
           >
             复制为新草稿
           </t-button>
@@ -293,6 +242,25 @@
       </div>
     </t-card>
 
+    <t-card
+      v-if="currentVersion?.submissionEntrySnapshot"
+      title="提交时的模板内容"
+      class="panel"
+    >
+      <p>兼容范围留空表示兼容全部；规则未显式填写表示沿用系统规则。</p>
+      <BusinessEntryReadonlySnapshot :submitted-record="currentVersion.submissionEntrySnapshot" />
+    </t-card>
+    <t-card
+      v-if="currentVersion?.publicationEntrySnapshot"
+      title="发布时的模板内容"
+      class="panel"
+    >
+      <p>兼容范围未列明时适用于全部；未单独配置的安全检查仍按默认规则执行。</p>
+      <BusinessEntryReadonlySnapshot
+        :submitted-record="currentVersion.publicationEntrySnapshot"
+        snapshot-stage-label="发布"
+      />
+    </t-card>
     <t-dialog
       v-model:visible="confirmVisible"
       :header="confirmAction === 'publish' ? '确认发布结算模板' : '确认停用结算模板'"
@@ -316,11 +284,17 @@
 </template>
 
 <script setup lang="ts">
+import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import { formatUnknownApiError } from "../../api/error-message";
+import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
+import BusinessEntryReadonlySnapshot from "../../components/BusinessEntryReadonlySnapshot.vue";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import {
+  fetchTemplateWorkbenchCapability,
+  fetchTemplateVersionCapability,
   cloneSettlementTemplateVersion,
   createSettlementTemplate,
   discardSettlementTemplateVersion,
@@ -332,19 +306,17 @@ import {
   stopSettlementTemplateVersion,
   submitSettlementTemplateVersion,
   updateSettlementTemplateVersion,
-  type SettlementTemplateDetailReadModel
-} from "../../api/settlement-template.api";
+  type SettlementTemplateDetailReadModel,
+  type SettlementTemplateVersionReadModel
+} from "../../api/settlement-template-workbench.api";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../components/BusinessDraftAction.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
-  settlementTemplateAmountRoleOptions,
-  settlementTemplateContractTypeOptions,
   settlementTemplateFixedRules,
   settlementTemplateGovernance,
-  settlementTemplatePricingModeOptions,
   settlementTemplateStatusLabel
 } from "./settlement-template.state";
 
@@ -370,8 +342,47 @@ const form = reactive({
   code: "",
   compatibleContractTypeKeys: [] as string[],
   compatibleAmountRoles: [] as string[],
-  compatiblePricingModes: [] as string[]
+  compatiblePricingModes: [] as string[],
+  requiredColumns: [] as string[],
+  evidenceRequiredColumns: ["证据说明"] as string[]
 });
+
+const definition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const capability = shallowRef<{ availableActions: string[] } | null>(null);
+const editorDefinition = computed(() => definition.value ? {
+  ...definition.value,
+  fields: definition.value.fields.filter(field => !["sourceFileName", "requirePrintArea", "rejectNegativeOrdinaryRows", "requireAdjustmentReason", "rejectFormula", "rejectMergedDataCells"].includes(field.key))
+    .map(field => ({ ...field, readOnly: !isCreateMode.value && ["name", "code"].includes(field.key) }))
+} : null);
+const entryDraft = computed<BusinessEntryDraftPayload>({
+  get: () => ({ sceneKey: "settlement_template_version", definitionVersion: definition.value?.version,
+    values: { name: form.name, code: form.code, ...payloadCompatibility(), requiredColumns: form.requiredColumns, evidenceRequiredColumns: form.evidenceRequiredColumns } }),
+  set: draft => {
+    form.name = String(draft.values.name ?? ""); form.code = String(draft.values.code ?? "");
+    for (const key of ["compatibleContractTypeKeys", "compatibleAmountRoles", "compatiblePricingModes", "requiredColumns", "evidenceRequiredColumns"] as const) {
+      const value = draft.values[key];
+      form[key] = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+    }
+  }
+});
+let uploadedSource: { file: File; id: string } | null = null;
+
+function revision(version: SettlementTemplateVersionReadModel) {
+  if (!definition.value) throw new Error("请等待模板填写规则加载完成");
+  return { expectedRevision: version.draftRevision, definitionVersion: definition.value.version };
+}
+
+function ruleUpdates(version?: SettlementTemplateVersionReadModel) {
+  const changed = (current: string[], original: unknown) => JSON.stringify(current) !== JSON.stringify(Array.isArray(original) ? original : []);
+  return {
+    ...(!version || changed(form.requiredColumns, version.columnSchema.requiredColumns)
+      ? { columnSchema: { ...(version?.columnSchema ?? settlementTemplateFixedRules.columnSchema), requiredColumns: [...form.requiredColumns] } } : {}),
+    ...(!version || changed(form.evidenceRequiredColumns, version.evidenceRules.requiredColumns)
+      ? { evidenceRules: { ...(version?.evidenceRules ?? {}), requiredColumns: [...form.evidenceRequiredColumns] } } : {})
+  };
+}
+
+
 
 const isCreateMode = computed(() => !route.params.templateId);
 const versions = computed(() => detail.value?.versions ?? []);
@@ -384,7 +395,12 @@ const versionOptions = computed(() =>
     value: version.id
   }))
 );
-const governance = computed(() => settlementTemplateGovernance(currentVersion.value ?? undefined));
+const governance = computed(() => {
+  const actions = currentVersion.value?.workbenchActions ?? [];
+  return { ...settlementTemplateGovernance(currentVersion.value ?? undefined),
+    canSave: actions.includes("save_draft"), canInspect: actions.includes("inspect"), canPreview: actions.includes("preview"),
+    canSubmit: actions.includes("submit"), canPublish: actions.includes("publish"), canStop: actions.includes("stop"), canClone: actions.includes("clone") };
+});
 const previewStatus = computed(() => {
   const preview = currentVersion.value?.latestPreview;
   if (!preview) return "尚未生成当前修订样张。";
@@ -422,6 +438,7 @@ function editorSnapshot() {
     name: form.name,
     code: form.code,
     compatibility: payloadCompatibility(),
+    rules: { requiredColumns: form.requiredColumns, evidenceRequiredColumns: form.evidenceRequiredColumns },
     sourceFiles: sourceFiles.value.map((file) => file.name),
     publicationSummary: governance.value.canPublish ? publicationSummary.value : ""
   });
@@ -468,31 +485,130 @@ function syncVersionForm() {
   form.compatibleAmountRoles = [...version.compatibleAmountRoles];
   form.compatiblePricingModes = [...version.compatiblePricingModes];
   sourceFiles.value = [];
+  uploadedSource = null;
+  form.requiredColumns = Array.isArray(version.columnSchema.requiredColumns) ? [...version.columnSchema.requiredColumns] as string[] : [];
+  form.evidenceRequiredColumns = Array.isArray(version.evidenceRules.requiredColumns) ? [...version.evidenceRules.requiredColumns] as string[] : [];
   publicationSummary.value = version.changeSummary ?? "";
   downloadReason.value = "";
 }
 
+async function createTemplateWithCapability(body: Parameters<typeof createSettlementTemplate>[0]) {
+  const actionCapability = await fetchTemplateWorkbenchCapability();
+  const operationAllowed = actionCapability.availableActions.includes("create_template");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return createSettlementTemplate(body);
+}
+
+async function createTemplateWithSourceCapability(file: File, body: Omit<Parameters<typeof createSettlementTemplate>[0], "xlsxFileId">) {
+  const actionCapability = await fetchTemplateWorkbenchCapability();
+  const operationAllowed = actionCapability.availableActions.includes("create_template");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  const uploaded = await uploadPrivateFile(file, file.name);
+  uploadedSource = { file, id: uploaded.id };
+  return createSettlementTemplate({ ...body, xlsxFileId: uploaded.id });
+}
+
+async function saveTemplateWithCapability(versionId: string, body: Parameters<typeof updateSettlementTemplateVersion>[1]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("save_draft");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return updateSettlementTemplateVersion(versionId, body);
+}
+
+async function saveTemplateWithSourceCapability(versionId: string, file: File, body: Parameters<typeof updateSettlementTemplateVersion>[1]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("save_draft");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  const uploaded = await uploadPrivateFile(file, file.name);
+  uploadedSource = { file, id: uploaded.id };
+  return updateSettlementTemplateVersion(versionId, { ...body, xlsxFileId: uploaded.id });
+}
+
+async function inspectTemplateWithCapability(versionId: Parameters<typeof inspectSettlementTemplateVersion>[0], revisionInput: Parameters<typeof inspectSettlementTemplateVersion>[1]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("inspect");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return inspectSettlementTemplateVersion(versionId, revisionInput);
+}
+
+async function previewTemplateWithCapability(versionId: Parameters<typeof generateSettlementTemplatePreview>[0], revisionInput: Parameters<typeof generateSettlementTemplatePreview>[1]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("preview");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return generateSettlementTemplatePreview(versionId, revisionInput);
+}
+
+async function submitTemplateWithCapability(versionId: Parameters<typeof submitSettlementTemplateVersion>[0], revisionInput: Parameters<typeof submitSettlementTemplateVersion>[1]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("submit");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return submitSettlementTemplateVersion(versionId, revisionInput);
+}
+
+async function publishTemplateWithCapability(versionId: Parameters<typeof publishSettlementTemplateVersion>[0], changeSummary: Parameters<typeof publishSettlementTemplateVersion>[1], revisionInput: Parameters<typeof publishSettlementTemplateVersion>[2]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("publish");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return publishSettlementTemplateVersion(versionId, changeSummary, revisionInput);
+}
+
+async function stopTemplateWithCapability(versionId: Parameters<typeof stopSettlementTemplateVersion>[0]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("stop");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return stopSettlementTemplateVersion(versionId);
+}
+
+async function cloneTemplateWithCapability(versionId: Parameters<typeof cloneSettlementTemplateVersion>[0]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("clone");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return cloneSettlementTemplateVersion(versionId);
+}
+
+async function downloadTemplateWithCapability(versionId: Parameters<typeof downloadSettlementTemplatePreview>[0], format: Parameters<typeof downloadSettlementTemplatePreview>[1], reason: Parameters<typeof downloadSettlementTemplatePreview>[2]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.workbenchActions.includes("download_preview");
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return downloadSettlementTemplatePreview(versionId, format, reason);
+}
+
+async function discardTemplateWithCapability(versionId: Parameters<typeof discardSettlementTemplateVersion>[0], body: Parameters<typeof discardSettlementTemplateVersion>[1]) {
+  const actionCapability = await fetchTemplateVersionCapability(versionId);
+  const operationAllowed = actionCapability.availableActions.some(action => action.key === "discard_version" && action.enabled);
+  if (!operationAllowed) throw new Error("当前不允许该操作，请刷新后重试");
+  return discardSettlementTemplateVersion(versionId, body);
+}
+
+
+
+
+
 async function createTemplate() {
+  if (busyAction.value || !definition.value || !capability.value?.availableActions.includes("create_template")) return;
   const file = selectedFile();
   if (!form.name.trim() || !form.code.trim()) return showError("请填写模板名称和编码。");
   if (!file) return showError("请选择 XLSX 模板源文件。");
   busyAction.value = "save";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    const created = await createSettlementTemplate({
+    const body = {
       name: form.name.trim(),
       code: form.code.trim(),
-      xlsxFileId: uploaded.id,
+      definitionVersion: definition.value.version,
       ...payloadCompatibility(),
-      ...settlementTemplateFixedRules
-    });
+      ...settlementTemplateFixedRules,
+      ...ruleUpdates()
+    };
+    const created = uploadedSource && uploadedSource.file === file
+      ? await createTemplateWithCapability({ ...body, xlsxFileId: uploadedSource.id })
+      : await createTemplateWithSourceCapability(file, body);
     allowNavigation.value = true;
-    await router.replace(`/结算模板库/${encodeURIComponent(created.template.id)}`);
+    await router.replace(`/结算模板工作台/${encodeURIComponent(created.template.id)}`);
     allowNavigation.value = false;
     await loadDetail(created.version.id);
     showSuccess("结算模板草稿已创建。");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "创建结算模板失败。");
+    showError(formatUnknownApiError(error, "创建结算模板失败。"));
   } finally {
     allowNavigation.value = false;
     busyAction.value = "";
@@ -501,20 +617,24 @@ async function createTemplate() {
 
 async function saveDraft() {
   const version = currentVersion.value;
-  if (!version) return;
+  if (!version || busyAction.value || !version.workbenchActions?.includes("save_draft")) return;
   busyAction.value = "save";
   try {
     const file = selectedFile();
-    const xlsxFileId = file ? (await uploadPrivateFile(file, file.name)).id : undefined;
-    await updateSettlementTemplateVersion(version.id, {
-      expectedRevision: version.draftRevision,
-      ...payloadCompatibility(),
-      ...(xlsxFileId ? { xlsxFileId } : {})
-    });
+    const body = {
+      ...revision(version),
+      ...ruleUpdates(version),
+      ...payloadCompatibility()
+    };
+    if (file && (!uploadedSource || uploadedSource.file !== file)) {
+      await saveTemplateWithSourceCapability(version.id, file, body);
+    } else {
+      await saveTemplateWithCapability(version.id, { ...body, ...(file && uploadedSource ? { xlsxFileId: uploadedSource.id } : {}) });
+    }
     await loadDetail(version.id);
     showSuccess("草稿新修订已保存，旧检查和旧样张已失效。");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "保存结算模板失败。");
+    showError(formatUnknownApiError(error, "保存结算模板失败。"));
   } finally {
     busyAction.value = "";
   }
@@ -522,14 +642,15 @@ async function saveDraft() {
 
 async function inspectCurrent() {
   const version = currentVersion.value;
-  if (!version) return;
+  if (isDirty.value) return showError("请先保存当前修改，再执行检查。");
+  if (!version || busyAction.value || !version.workbenchActions?.includes("inspect")) return;
   busyAction.value = "inspect";
   try {
-    await inspectSettlementTemplateVersion(version.id);
+    await inspectTemplateWithCapability(version.id, revision(version));
     await loadDetail(version.id);
     showSuccess("当前修订检查完成。");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "检查结算模板失败。");
+    showError(formatUnknownApiError(error, "检查结算模板失败。"));
   } finally {
     busyAction.value = "";
   }
@@ -537,14 +658,15 @@ async function inspectCurrent() {
 
 async function generatePreview() {
   const version = currentVersion.value;
-  if (!version) return;
+  if (isDirty.value) return showError("请先保存当前修改，再生成预览。");
+  if (!version || busyAction.value || !version.workbenchActions?.includes("preview")) return;
   busyAction.value = "preview";
   try {
-    await generateSettlementTemplatePreview(version.id);
+    await previewTemplateWithCapability(version.id, revision(version));
     await loadDetail(version.id);
     showSuccess("当前修订的 XLSX/PDF 脱敏样张已生成。");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "生成脱敏样张失败。");
+    showError(formatUnknownApiError(error, "生成脱敏样张失败。"));
   } finally {
     busyAction.value = "";
   }
@@ -552,41 +674,78 @@ async function generatePreview() {
 
 async function downloadPreview(format: "xlsx" | "pdf") {
   const version = currentVersion.value;
-  if (!version || !canDownloadPreview.value) return;
+  if (!version || !canDownloadPreview.value || busyAction.value || !version.workbenchActions?.includes("download_preview")) return;
   busyAction.value = `download-${format}`;
   try {
-    await downloadSettlementTemplatePreview(version.id, format, downloadReason.value.trim());
+    await downloadTemplateWithCapability(version.id, format, downloadReason.value.trim());
     showSuccess(`${format.toUpperCase()} 脱敏样张已下载。`);
   } catch (error) {
-    showError(error instanceof Error ? error.message : "下载脱敏样张失败。");
+    showError(formatUnknownApiError(error, "下载脱敏样张失败。"));
   } finally {
     busyAction.value = "";
   }
 }
 
-async function runAction(action: "submit" | "publish" | "stop" | "clone") {
+async function submitCurrent() {
   const version = currentVersion.value;
-  if (!version) return;
-  busyAction.value = action;
+  if (isDirty.value) return showError("请先保存当前修改，再提交发布。");
+  if (!version || busyAction.value || !version.workbenchActions?.includes("submit")) return;
+  busyAction.value = "submit";
   try {
-    if (action === "submit") await submitSettlementTemplateVersion(version.id);
-    if (action === "publish") {
-      await publishSettlementTemplateVersion(version.id, publicationSummary.value.trim());
-    }
-    if (action === "stop") await stopSettlementTemplateVersion(version.id);
-    if (action === "clone") {
-      const cloned = await cloneSettlementTemplateVersion(version.id);
-      await loadDetail(cloned.id);
-      showSuccess("已复制为新的结算模板草稿。");
-      return;
-    }
+    await submitTemplateWithCapability(version.id, revision(version));
     await loadDetail(version.id);
-    showSuccess(action === "submit" ? "版本已提交发布。" : action === "publish" ? "版本已发布。" : "版本已停用。");
+    showSuccess("版本已提交发布。");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "结算模板版本操作失败。");
+    showError(formatUnknownApiError(error, "结算模板版本操作失败。"));
+  } finally {
+    busyAction.value = "";
+  }
+}
+
+async function publishCurrent() {
+  const version = currentVersion.value;
+  if (!version || busyAction.value || !version.workbenchActions?.includes("publish")) return;
+  busyAction.value = "publish";
+  try {
+    await publishTemplateWithCapability(version.id, publicationSummary.value.trim(), revision(version));
+    await loadDetail(version.id);
+    showSuccess("版本已发布。");
+  } catch (error) {
+    showError(formatUnknownApiError(error, "结算模板版本操作失败。"));
   } finally {
     busyAction.value = "";
     confirmVisible.value = false;
+  }
+}
+
+async function stopCurrent() {
+  const version = currentVersion.value;
+  if (!version || busyAction.value || !version.workbenchActions?.includes("stop")) return;
+  busyAction.value = "stop";
+  try {
+    await stopTemplateWithCapability(version.id);
+    await loadDetail(version.id);
+    showSuccess("版本已停用。");
+  } catch (error) {
+    showError(formatUnknownApiError(error, "结算模板版本操作失败。"));
+  } finally {
+    busyAction.value = "";
+    confirmVisible.value = false;
+  }
+}
+
+async function cloneCurrent() {
+  const version = currentVersion.value;
+  if (!version || busyAction.value || !version.workbenchActions?.includes("clone")) return;
+  busyAction.value = "clone";
+  try {
+    const cloned = await cloneTemplateWithCapability(version.id);
+    await loadDetail(cloned.id);
+    showSuccess("已复制为新的结算模板草稿。");
+  } catch (error) {
+    showError(formatUnknownApiError(error, "结算模板版本操作失败。"));
+  } finally {
+    busyAction.value = "";
   }
 }
 
@@ -595,7 +754,7 @@ async function discardCurrentVersion(request: BusinessDraftActionRequest) {
   if (!version || request.action !== "discard_version") {
     throw new Error("当前结算模板版本不支持该操作，请刷新后重试");
   }
-  await discardSettlementTemplateVersion(version.id, {
+  await discardTemplateWithCapability(version.id, {
     reason: request.reason,
     expectedRevision: version.draftRevision
   });
@@ -612,7 +771,8 @@ function openConfirmation(action: "publish" | "stop") {
 }
 
 function confirmGovernanceAction() {
-  void runAction(confirmAction.value);
+  if (confirmAction.value === "publish") void publishCurrent();
+  else void stopCurrent();
 }
 
 async function loadDetail(preferredVersionId = "") {
@@ -648,6 +808,14 @@ function showError(value: string) {
 }
 
 onMounted(async () => {
+  try {
+    const result = await fetchTemplateWorkbenchCapability();
+    capability.value = result;
+    definition.value = result.definition;
+  } catch (error) {
+    showError(formatUnknownApiError(error, "加载模板填写规则失败"));
+    return;
+  }
   if (isCreateMode.value) {
     syncEditorBaseline();
     return;
@@ -655,7 +823,7 @@ onMounted(async () => {
   try {
     await loadDetail();
   } catch (error) {
-    showError(error instanceof Error ? error.message : "加载结算模板失败。");
+    showError(formatUnknownApiError(error, "加载结算模板失败。"));
   }
 });
 </script>

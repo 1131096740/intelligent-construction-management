@@ -22,6 +22,7 @@ import { SettlementAttachmentTemplateService } from "./settlement-attachment-tem
 import { SettlementReadService } from "./settlement-read.service";
 import { SettlementImportService } from "./settlement-import.service";
 import { SettlementTemplateService } from "./settlement-template.service";
+import { SettlementTemplateWorkbenchController } from "./settlement-template-workbench.controller";
 import { SettlementService } from "./settlement.service";
 import { SettlementSubmissionService } from "./settlement-submission.service";
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
@@ -47,6 +48,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
     SettlementWorkbenchController,
     SettlementImportController,
     SettlementTemplateGovernanceController,
+    SettlementTemplateWorkbenchController,
     SettlementTemplateRecommendationController
   ],
   providers: [

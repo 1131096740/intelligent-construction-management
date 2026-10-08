@@ -68,6 +68,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   SettlementDraftController: "settlement",
   SettlementImportController: "settlement",
   SettlementTemplateGovernanceController: "settlement",
+  SettlementTemplateWorkbenchController: "settlement",
   SettlementWorkbenchController: "settlement",
   SpotProcurementController: "procurement",
   SpotProcurementInvoiceController: "procurement",

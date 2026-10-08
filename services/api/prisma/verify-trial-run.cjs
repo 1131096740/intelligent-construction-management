@@ -630,11 +630,12 @@ async function createPublishedSettlementTemplate(token) {
     token
   );
   const created = await postJson(
-    "/settlement-templates",
+    "/settlement-template-workbench/templates",
     {
       name: `P0-5B UAT 脱敏结算模板 ${RUN_ID}`,
       code: `JS-UAT-TPL-${RUN_ID}`,
       xlsxFileId: sourceFile.id,
+      definitionVersion: 2,
       compatibleContractTypeKeys: ["material_purchase"],
       compatibleAmountRoles: [],
       compatiblePricingModes: [],
@@ -649,27 +650,27 @@ async function createPublishedSettlementTemplate(token) {
   const versionId = created.version?.id;
   assert(versionId, "创建 UAT 结算模板未返回版本编号");
   const inspection = await postJson(
-    `/settlement-template-versions/${versionId}/inspection`,
-    {},
+    `/settlement-template-workbench/versions/${versionId}/inspection`,
+    { expectedRevision: created.version.draftRevision, definitionVersion: 2 },
     token,
     "检查 UAT 结算模板"
   );
   assertEqual(inspection.blockingErrors?.length, 0, "UAT 结算模板阻断项数量");
   await postJson(
-    `/settlement-template-versions/${versionId}/preview-generation`,
-    {},
+    `/settlement-template-workbench/versions/${versionId}/preview-generation`,
+    { expectedRevision: created.version.draftRevision, definitionVersion: 2 },
     token,
     "生成 UAT 结算模板脱敏预览"
   );
   await postJson(
-    `/settlement-template-versions/${versionId}/submission`,
-    {},
+    `/settlement-template-workbench/versions/${versionId}/submission`,
+    { expectedRevision: created.version.draftRevision, definitionVersion: 2 },
     token,
     "提交 UAT 结算模板"
   );
   const published = await postJson(
-    `/settlement-template-versions/${versionId}/publication`,
-    { changeSummary: "P0-5B UAT 脱敏模板发布验证" },
+    `/settlement-template-workbench/versions/${versionId}/publication`,
+    { expectedRevision: created.version.draftRevision, definitionVersion: 2, changeSummary: "P0-5B UAT 脱敏模板发布验证" },
     token,
     "发布 UAT 结算模板"
   );

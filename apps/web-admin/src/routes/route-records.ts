@@ -436,6 +436,21 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { title: "项目花名册" }
       },
       {
+        path: "结算模板工作台",
+        component: () => import("../pages/settlement-templates/SettlementTemplateListPage.vue"),
+        meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板工作台" }
+      },
+      {
+        path: "结算模板工作台/新建",
+        component: () => import("../pages/settlement-templates/SettlementTemplateEditorPage.vue"),
+        meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "新建结算模板" }
+      },
+      {
+        path: "结算模板工作台/:templateId",
+        component: () => import("../pages/settlement-templates/SettlementTemplateEditorPage.vue"),
+        meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板治理" }
+      },
+      {
         path: "结算模板库",
         component: () => import("../pages/settlement-templates/SettlementTemplateListPage.vue"),
         meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板库" }

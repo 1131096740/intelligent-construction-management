@@ -160,18 +160,18 @@ test("invoice ledger waits for the published loopback port after container readi
   ]);
 });
 
-test("manifest derives all 294 pending tests as executable local coverage", () => {
+test("manifest derives all 303 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 60,
-    fullyPendingSuites: 49,
+    pendingFiles: 61,
+    fullyPendingSuites: 50,
     partiallyPendingSuites: 11,
-    pendingTests: 294,
-    coveredFiles: 60,
-    coveredTests: 294,
+    pendingTests: 303,
+    coveredFiles: 61,
+    coveredTests: 303,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -247,7 +247,7 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
-test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", () => {
+test("canonical manifest executes all 56 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -255,7 +255,7 @@ test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", (
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 47,
+    pendingTests: 56,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -280,6 +280,11 @@ test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", (
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
         pendingTests: 3,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/settlement/settlement-template-workbench.http.pg.spec.ts",
+        pendingTests: 9,
         suiteStatus: "fully_pending"
       }
     ],
@@ -548,7 +553,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=294/u
+    /inventory\.coveredTests=26，派生值=303/u
   );
 });
 

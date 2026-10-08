@@ -1,6 +1,6 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
-import type { DetailActionReadModel } from "@jiangkong/shared-domain";
+import type { BusinessEntryFrozenSnapshot, DetailActionReadModel } from "@jiangkong/shared-domain";
 
 export type SettlementTemplateVersionStatus = "draft" | "submitted" | "published" | "stopped" | "discarded";
 export type SettlementTemplatePreviewStatus =
@@ -38,6 +38,9 @@ export interface SettlementTemplateVersionReadModel {
   versionNo: number;
   status: SettlementTemplateVersionStatus;
   draftRevision: number;
+  submissionEntrySnapshot?: BusinessEntryFrozenSnapshot | null;
+  publicationEntrySnapshot?: BusinessEntryFrozenSnapshot | null;
+  workbenchActions?: string[];
   compatibleContractTypeKeys: string[];
   compatibleAmountRoles: string[];
   compatiblePricingModes: string[];

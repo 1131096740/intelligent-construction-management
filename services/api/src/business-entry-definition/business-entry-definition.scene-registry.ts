@@ -1,3 +1,4 @@
+import { SETTLEMENT_TEMPLATE_ENTRY_DEFINITION } from "../settlement/settlement-template-entry-definition";
 import {
   createBusinessEntryDefinitionRegistry,
   OPERATING_TAKEOVER_SCENE_DEFINITIONS,
@@ -504,10 +505,7 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     textField("name", "条款名称", contractTemplateRoles),
     textField("title", "条款标题", contractTemplateRoles)
   ]),
-  globalDefinition("settlement_template_version", "settlement_template_version", "结算模板版本", [
-    textField("name", "模板名称", settlementTemplateRoles),
-    textField("code", "模板编码", settlementTemplateRoles)
-  ]),
+  SETTLEMENT_TEMPLATE_ENTRY_DEFINITION,
   {
     ...globalDefinition("user_self_profile", "user_self_profile", "本人资料", [
       textField("name", "姓名", authenticatedSelf),

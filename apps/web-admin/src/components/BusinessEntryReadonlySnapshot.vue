@@ -3,7 +3,9 @@ import { computed } from "vue";
 import type { BusinessEntryFrozenSnapshot } from "@jiangkong/shared-domain";
 import { formatBusinessEntryReadonlyValue } from "../lib/business-entry-adapters";
 
-const props = defineProps<{ submittedRecord: BusinessEntryFrozenSnapshot }>();
+const props = withDefaults(defineProps<{ submittedRecord: BusinessEntryFrozenSnapshot; snapshotStageLabel?: "提交" | "发布" }>(), {
+  snapshotStageLabel: "提交"
+});
 const groups = computed(() => {
   const result = new Map<string, typeof props.submittedRecord.definition.fields>();
   for (const field of props.submittedRecord.definition.fields) {
@@ -17,11 +19,11 @@ const groups = computed(() => {
 <template>
   <section
     class="business-entry-readonly"
-    :aria-label="`${submittedRecord.definition.name}提交快照`"
+    :aria-label="`${submittedRecord.definition.name}${snapshotStageLabel}快照`"
   >
     <t-alert
       theme="info"
-      title="以下内容来自提交时冻结的业务快照"
+      :title="`以下内容来自${snapshotStageLabel}时冻结的业务快照`"
       :close="false"
     />
     <t-card

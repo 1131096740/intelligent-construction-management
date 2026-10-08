@@ -2,14 +2,14 @@
   <section class="template-list-page jg-responsive-ledger">
     <header class="page-head">
       <div>
-        <h1>结算模板库</h1>
+        <h1>{{ isWorkbench ? "结算模板工作台" : "结算模板库" }}</h1>
         <p>统一治理结算 XLSX 模板的兼容范围、检查、脱敏预览和发布版本。</p>
       </div>
       <t-button
         theme="primary"
-        @click="router.push('/结算模板库/新建')"
+        @click="router.push(isWorkbench ? '/结算模板工作台/新建' : '/结算模板工作台')"
       >
-        新建结算模板
+        {{ isWorkbench ? "新建结算模板" : "进入模板工作台" }}
       </t-button>
     </header>
 
@@ -71,8 +71,9 @@
 
 <script setup lang="ts">
 import type { PrimaryTableCol } from "tdesign-vue-next";
-import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { listSettlementTemplates as listWorkbenchTemplates } from "../../api/settlement-template-workbench.api";
 import {
   listSettlementTemplates,
   type SettlementTemplateReadModel,
@@ -81,6 +82,8 @@ import {
 import { settlementTemplateStatusLabel } from "./settlement-template.state";
 
 const router = useRouter();
+const route = useRoute();
+const isWorkbench = computed(() => route.path.startsWith("/结算模板工作台"));
 const rows = ref<SettlementTemplateReadModel[]>([]);
 const loading = ref(false);
 const message = ref("");
@@ -118,14 +121,14 @@ function formatDateTime(value: string) {
 }
 
 function openTemplate(template: SettlementTemplateReadModel) {
-  void router.push(`/结算模板库/${encodeURIComponent(template.id)}`);
+  void router.push(`${isWorkbench.value ? "/结算模板工作台" : "/结算模板库"}/${encodeURIComponent(template.id)}`);
 }
 
 async function loadTemplates() {
   loading.value = true;
   message.value = "";
   try {
-    rows.value = await listSettlementTemplates();
+    rows.value = await (isWorkbench.value ? listWorkbenchTemplates(true) : listSettlementTemplates());
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载结算模板失败。";
   } finally {

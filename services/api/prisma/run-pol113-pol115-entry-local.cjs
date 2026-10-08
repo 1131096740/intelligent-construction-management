@@ -127,3 +127,9 @@ runDedicatedDatabase({
   },
   spec: "src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"
 });
+runDedicatedDatabase({
+  id: "settlement-template-workbench",
+  database: "template_workbench",
+  flags: { RUN_TEMPLATE_WORKBENCH_PG16: "1" },
+  spec: "src/settlement/settlement-template-workbench.http.pg.spec.ts"
+});
