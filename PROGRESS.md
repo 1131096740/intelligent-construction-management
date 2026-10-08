@@ -32,6 +32,13 @@
 - [~] 全局模板快照专用Schema和本地迁移已获单独批准并实现两个可空JSON字段；统一项目快照表和通用全局冻结拒绝规则保持。历史版本不补造，生产迁移及POL25A兼容链仍未执行/验证。
 - [~] 用户另行批准干净`a1351580c7a3e11b5c6cbd5328883f042888a352`一次完整17门；在`/private/tmp/rc06-current-submission-20261008`独立运行。2026-10-08北京时间21:04:31终态退出0，原完整17/17通过；收据`/private/tmp/pol25b-isolated-acceptance-20261008/rc06-release-attempt1-receipt.json`已由原验证器复核，候选仍干净，当前GitHub main仍为3d06db8b。真实PG16含POL10814/14、POL109、POL113–115及remaining回归，POL22隔离只读预检、P0和RC06 mocked浏览器均通过；既有条件跳过仍按原日志单列。真实治理21/21只绑定28a1aad7，完整真实试运行/浏览器仍因模板发布阻断，不能把mocked浏览器替代。专属保活及本轮临时数据库资源已清理，未动其他容器。此文档提交不继承a1351580的完整收据；未push/PR、无当前候选远端CI或生产验证。
 
+
+## 历史检查点：PR #309 POL109 CI 运行库最小修复（2026-10-08，独立本地候选）
+
+- [~] 原固定head`a1351580`的CI `37782532668`已终态failure：18项success，Quality编排失败，POL109运行库安装cancelled，Release gates failure；POL109取消前约19分钟停在精确Azure HTTP Ubuntu镜像，官方HTTPS源成功取得索引，未进入该分片动态验收。原失败/取消与条件跳过分别保留，PR #309仍草稿且head未变，未rerun/merge/关票。
+- [~] 独立分支`codex/pol25b-pol109-ci-runtime-fix-20261008`仅在POL109安装浏览器前复用POL113–115现有镜像保护：有既定官方HTTPS后备才删除准确Azure HTTP行，保留其他源、Signed-By、原浏览器/测试/超时。实际workflow Python两步骤各七组fixture先RED后GREEN；完整编排204/204、全仓类型/lint（0 errors、570既有warnings）和diff通过，双审无finding；两处短脚本重复为非阻塞判断性建议，本批不增加共享脚本。
+- [ ] 经用户“继续推进”授权，`6bdfc6174b1a46b31103993c93afb68a5db38431`一次完整17门正在另一个独立工作区执行，目前13个前置门通过、进入真实PG16；不改其源码、不启动另一套完整验收。此新增workflow补丁会产生新SHA，须另行完整验收和版本审批后才更新PR，不继承6bdf收据。生产和模板Schema均未操作。
+
 ## 历史检查点：PR #309 Linux 收据传输兼容修复（2026-10-08，本地新候选）
 
 - [~] 经用户批准，`a1351580c7a3e11b5c6cbd5328883f042888a352`已推送并创建草稿PR #309；当前main仍为3d06db8b。固定head CI `37782532668`的Quality gates在CI编排失败，后续审计/类型/lint为条件跳过；其余分片独立运行，未把本机17/17替代远端CI成功。
