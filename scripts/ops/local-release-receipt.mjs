@@ -89,7 +89,7 @@ function readDurations(durationPath) {
 function validateReceipt(receiptPath, candidateSha) {
   let receipt;
   try {
-    receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    receipt = JSON.parse(readFileSync(receiptPath === "/dev/stdin" ? 0 : receiptPath, "utf8"));
   } catch {
     fail("release receipt is incomplete");
   }
