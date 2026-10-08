@@ -9,8 +9,10 @@
 旧 API 恢复行为，不是 POL-25B 执行器。服务器入口会在构建、备份、迁移、运行时
 替换前拒绝冻结配置或已停止的 API。不得先关闭冻结、启动旧 API 或伪造配置以通过此门。
 
-当前仓库没有能验证下述上游收据并执行维护态激活的自动入口。#123 必须在独立范围内
-实现、审查并验证该受控入口；在此之前，生产激活保持阻断。不得增加一个跳过迁移的
+本地维护态激活引擎为 `scripts/ops/maintenance-activation.mjs`，隔离验证入口为
+`pnpm verify:pol25b:local`。它不包含生产传输、systemd/SSH/COS/数据库连接实现；
+直接执行模块会拒绝，不能作为生产激活命令。#123 的正式控制面适配器、固定信任锚及
+现场只读验证仍需在独立范围内实现、审查和授权；在此之前，生产激活保持阻断。不得增加一个跳过迁移的
 环境变量来绕过收据、维护态、权限或恢复要求。GitHub deploy workflow 仍只允许手动触发，
 PR/main push 只执行非生产 CI。
 
@@ -45,6 +47,72 @@ PR/main push 只执行非生产 CI。
    维护态/写冻结/定时任务状态及脱敏只读核验结果；不得生成 `opening_receipt`。
 
 上述为受控执行契约，不是可直接运行的生产命令或已完成验收声明。
+
+## 本地引擎与隔离验证接口
+
+公开接口为 `activateMaintenanceRuntime(request, trustedAdapter)`。适配器是受信代码，
+请求不能传入 shell 命令、URL、运行时路径、公钥或可动态加载的适配器。
+当前适配器必须明确声明 `executionScope=isolated-local`；生产 scope 拒绝。
+测试生成的收据固定包含 `executionScope=isolated-local`、`productionAccessed=false`，
+不得作为 #123 正式收据或 #124 开放证据。
+
+请求绑定环境、部署实例、窗口和精确候选 SHA，并包含以下原始字节及签名证据：
+
+- 原始 POL25A 收据、原生 POL22 执行收据、原始 17 项本机发布收据。
+  各自字节 SHA-256 同时绑定在授权与独立证据 envelope 中；不改写或冒充旧收据。
+- 独立 Ed25519 授权：仅允许 API/Web 激活和运行时文件恢复，绑定本窗口及
+  事先批准的数据库/对象协调恢复方案摘要；拒绝附加迁移、归零和开放授权。
+- 另一独立 Ed25519 证据：其签发者必须完整验证原生上游签名、身份、恢复证据与
+  权威数据库终态。证据绑定同候选兼容性、POL25A→归零原始收据链、归零执行摘要、
+  逐主键候选摘要、对象删除清单摘要、本窗口双类隔离恢复以及 main push CI。
+  证据不能由调用者自行给出公钥或用 JSON 内的 `passed` 字样替代独立签发。
+
+两个 envelope 均只含 `payload` 与标准 Base64 编码的64字节 `signature`，对
+`JSON.stringify(payload)` 的原始 UTF-8 字节签名。payload 固定 `schemaVersion=1`，
+授权 purpose 为 `pol25b_activation_authorization`，证据 purpose 为 `pol25b_upstream_validation`。
+原生归零执行摘要直接复用 POL22 的规范化 JSON SHA-256，不按 JSON 字段插入顺序另算。
+
+引擎沿用 `local-release-receipt.mjs` 的原 17 项及耗时校验；另外核对原生归零收据的
+`executed=true`、`status=completed`、`codeSha`、内容摘要和通过的 postcheck。
+POL25A 没有本模块自行发明的原生 JSON 格式：完整原生验证由独立证据签发者负责。
+旧 SHA 历史 POL25A 收据只在当前窗口签发者实际证明连续兼容时可被绑定。
+
+受信适配器接口及职责如下，任何缺失或异常都失败关闭：
+
+| 接口 | 必须实际验证/执行的行为 |
+| --- | --- |
+| `identity` / `authority` / `now` | 固定部署身份、互不相同的独立信任公钥、受信当前时间；不得从 request 加载 |
+| `acquire` | 以固定 deploymentId 获取实例级排他锁，覆盖全部阶段及收据发布；返回释放锁函数 |
+| `inspect` | 实际 HEAD/main/clean；实际环境文件摘要；维护入口、有效冻结 all/空 modules、双范围冻结、全部写来源/worker/timer/cron 状态；API 停/运行 SHA；API/Web 实际产物摘要；迁移执行次数；现场数据库身份、迁移集合/checksum、Schema、角色及对象版本摘要。不能仅读配置字面值 |
+| `verifyTerminal` | 用受控只读连接查询权威归零终态，返回与独立证据一致的 terminal commit 摘要；不能只读候选文件 |
+| `build` | 从干净精确候选构建并验证 API/Web，返回候选及两类产物摘要；不得触发迁移、backfill、grant、归零或远端发布 |
+| `snapshot` / `replace` | 安全保存旧 API/Web 文件快照及各自摘要并替换已验证产物；不触及环境/维护入口/写冻结 |
+| `start` | 只启动授权的新 API，验证其实际继承已绑定的环境；不启用 timer/worker 或业务入口 |
+| `verifyReadOnly` | 实际核验运行 SHA/产物、存活/就绪、角色/权限、受控私有文件、关键只读页面、拒写及失败暂停能力；只返回脱敏结果 |
+| `stop` / `restore` | 先确认 API 停止，再恢复旧运行时文件并验证快照；绝不启动旧 API，不恢复数据库/对象 |
+| `publish` / `revoke` | 用新路径排他、原子、持久写入收据；只有本次创建且摘要相同的工件才可撤销，绝不覆盖/删除既有或未知工件。隔离适配器在调用publish前创建并保存 `createActivationReceiptStore` 所有权句柄，即使publish及内部清理失败也保留它；受限真实目录、0600临时文件、fsync、原子排他硬链接发布和目录fsync；撤销同时核对inode与完整字节摘要，并必须明确返回 `{revocationConfirmed:true}` |
+
+引擎在构建、快照、替换、启动、只读验收及发布前后反复验证窗口、候选、终态、
+Schema/迁移/对象坐标及冻结；启动前再次校验实际产物。失败先停新 API、确认维护冻结，
+然后按授权恢复文件快照并撤销本次收据。停机、恢复或撤销失败会明确返回
+`ACTIVATION_RECOVERY_FAILED`，不得声称环境已经恢复。异常中的原始命令/凭据不外传。
+发布后同步、删除或目录持久化失败时，所有权及待同步状态继续保留；失败结果中的
+`receiptRevocationConfirmed=false` 明确表示残留工件可能仍在，不得以文件内 passed 字样认定成功。
+文件恢复后还由引擎独立重读实际 API/Web 字节摘要，不能仅凭 restore 返回成功。
+撤销先将公开收据目录项原子移至本次随机 `.activation-revoked-*` 路径，再核验
+inode 与完整字节摘要；绝不在检查文件描述符后删除公开路径，避免误删并发替换的文件。
+若捕获的是未知工件，以排他硬链接恢复原路径并保留隔离副本供人工核对；原路径已被占用时
+保留隔离工件并报告撤销失败，不覆盖新工件，不自动删除未知字节。自有工件删除或目录
+同步失败时保留捕获路径及所有权，以便重试撤销；
+此时隔离文件中的 passed 仍不构成有效成功收据。
+最后释放锁属于终态清理；若锁已释放但回调报错，返回 `ACTIVATION_LOCK_RELEASE_UNCERTAIN`，
+不在锁所有权不确定时停止/回退下一位持锁者，也不重复释放；已经完成的激活和收据须由
+控制面核实，不把此异常报告为自动回滚成功。收据坐标仅输出六个已核验摘要字段。
+
+隔离测试使用临时目录、临时 Ed25519 密钥和合成上游收据；两个进程测试只绑定
+`127.0.0.1`，使用合成 API/Web 验证拒写、受控读取、实际停机与文件回退。
+这些测试不等同于真实 Nest/PostgreSQL/systemd/COS、正式上游收据或整套发布门验收。
+后续生产适配器必须逐项补齐真实只读观测与受信签发，不能复用测试适配器或测试密钥。
 
 ## 失败、回退与开放边界
 

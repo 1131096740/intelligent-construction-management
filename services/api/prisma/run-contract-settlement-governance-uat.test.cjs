@@ -114,15 +114,15 @@ test("governance UAT confirms the current counterparty-signed file before contra
   );
   assert.match(submitSource, /fileIds: \[counterpartySignedPdf\.id\]/u);
   assert.match(submitSource, /formalFileId: counterpartySigned\.previewFormalFileId/u);
-  assert.match(submitSource, /const unconfirmedSubmission = await request\(/u);
+  assert.match(submitSource, /const unconfirmedSubmission = await submitContractDraft\(/u);
   assert.match(submitSource, /unconfirmedSubmission\.status >= 400 && unconfirmedSubmission\.status < 500/u);
   assert.match(submitSource, /unconfirmedVersion\?\.status === "draft"/u);
   assert.match(submitSource, /!unconfirmedInstance/u);
   assert.doesNotMatch(submitSource, /\/formal-files\/approval/u);
   const counterpartyUploadIndex = submitSource.indexOf("/formal-files/counterparty`");
-  const unconfirmedSubmissionIndex = submitSource.indexOf("/approval-submission`");
+  const unconfirmedSubmissionIndex = submitSource.indexOf("const unconfirmedSubmission = await submitContractDraft(");
   const counterpartyConfirmationIndex = submitSource.indexOf("/formal-files/counterparty/confirmation`");
-  const confirmedSubmissionIndex = submitSource.lastIndexOf("/approval-submission`");
+  const confirmedSubmissionIndex = submitSource.lastIndexOf("const submitted = await submitContractDraft(");
   assert(
     counterpartyUploadIndex < unconfirmedSubmissionIndex &&
       unconfirmedSubmissionIndex < counterpartyConfirmationIndex &&
@@ -152,18 +152,20 @@ test("governance UAT establishes document content through the public draft flow 
 });
 
 test("governance UAT confirms counterparty files before every operational contract submission", () => {
-  const contractSubmissionRoutes = [...runnerSource.matchAll(/`(\/contracts\/\$\{[^`]+?\/approval-submission)`/gu)]
-    .map((match) => match[1]);
-  assert.deepEqual(contractSubmissionRoutes, [
-    "/contracts/${fixture.version.id}/approval-submission",
-    "/contracts/${fixture.version.id}/approval-submission",
-    "/contracts/${draft.id}/approval-submission",
-    "/contracts/${draft.id}/approval-submission"
-  ]);
+  const contractSubmissions = [...runnerSource.matchAll(/await submitContractDraft\(/gu)];
+  assert.equal(contractSubmissions.length, 4);
+  assert.doesNotMatch(runnerSource, /`\/contracts\/\$\{[^`]+\/approval-submission`/u);
+  const helperStart = runnerSource.indexOf("async function submitContractDraft");
+  const helperEnd = runnerSource.indexOf("\nasync function prepareSharedFixtures", helperStart);
+  const helper = runnerSource.slice(helperStart, helperEnd);
+  assert.match(helper, /\/contract-drafts\/\$\{versionId\}\/submission/u);
+  assert.match(helper, /expectedRevision/u);
+  assert.match(helper, /idempotencyKey: randomUUID\(\)/u);
+  assert.match(helper, /X-Contract-Draft-Lease/u);
   assert.doesNotMatch(runnerSource, /\/formal-files\/approval/u);
   assert(
     submitSource.indexOf("/formal-files/counterparty/confirmation`") <
-      submitSource.lastIndexOf("/approval-submission`"),
+      submitSource.lastIndexOf("const submitted = await submitContractDraft("),
     "正常合同提交必须发生在乙方签章整体确认之后"
   );
   assert.match(
@@ -174,7 +176,7 @@ test("governance UAT confirms counterparty files before every operational contra
   assert.match(changeSource, /formalFileId: changeCounterpartySigned\.previewFormalFileId/u);
   const changeCounterpartyUploadIndex = changeSource.indexOf("/formal-files/counterparty`");
   const changeCounterpartyConfirmationIndex = changeSource.indexOf("/formal-files/counterparty/confirmation`");
-  const changeSubmissionIndex = changeSource.indexOf("/approval-submission`");
+  const changeSubmissionIndex = changeSource.indexOf("await submitContractDraft(");
   assert(
     changeCounterpartyUploadIndex < changeCounterpartyConfirmationIndex &&
       changeCounterpartyConfirmationIndex < changeSubmissionIndex,

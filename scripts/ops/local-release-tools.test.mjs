@@ -32,6 +32,27 @@ const requiredChecks = [
   "playwright-rc06-mock"
 ];
 
+test("receipt validation reads child stdin and retains exact SHA and gate checks", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-receipt-stdin-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const bytes = await readFile(inputs.receipt, "utf8");
+    const validate = (input, sha = candidateSha) => spawnSync(process.execPath, [
+      localReceipt, "--validate", "--receipt", "/dev/stdin", "--candidate-sha", sha
+    ], { input, encoding: "utf8" });
+    assert.equal(validate(bytes).status, 0);
+    const wrongSha = validate(bytes, "b".repeat(40));
+    assert.notEqual(wrongSha.status, 0);
+    assert.match(wrongSha.stderr, /does not match target SHA/u);
+    const incomplete = JSON.parse(bytes);
+    incomplete.checks.pop();
+    assert.notEqual(validate(JSON.stringify(incomplete)).status, 0);
+    assert.notEqual(validate("{broken-json").status, 0);
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
 function runScript(script, args, options = {}) {
   return spawnSync("bash", [script, ...args], {
     cwd: root,

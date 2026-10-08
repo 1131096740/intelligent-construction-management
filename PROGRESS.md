@@ -10,6 +10,38 @@
 
 ---
 
+## PR #309 POL109 CI 运行库最小修复（2026-10-08，独立本地候选）
+
+- [~] 原固定head`a1351580`的CI `37782532668`已终态failure：18项success，Quality编排失败，POL109运行库安装cancelled，Release gates failure；POL109取消前约19分钟停在精确Azure HTTP Ubuntu镜像，官方HTTPS源成功取得索引，未进入该分片动态验收。原失败/取消与条件跳过分别保留，PR #309仍草稿且head未变，未rerun/merge/关票。
+- [~] 独立分支`codex/pol25b-pol109-ci-runtime-fix-20261008`仅在POL109安装浏览器前复用POL113–115现有镜像保护：有既定官方HTTPS后备才删除准确Azure HTTP行，保留其他源、Signed-By、原浏览器/测试/超时。实际workflow Python两步骤各七组fixture先RED后GREEN；完整编排204/204、全仓类型/lint（0 errors、570既有warnings）和diff通过，双审无finding；两处短脚本重复为非阻塞判断性建议，本批不增加共享脚本。
+- [ ] 经用户“继续推进”授权，`6bdfc6174b1a46b31103993c93afb68a5db38431`一次完整17门正在另一个独立工作区执行，目前13个前置门通过、进入真实PG16；不改其源码、不启动另一套完整验收。此新增workflow补丁会产生新SHA，须另行完整验收和版本审批后才更新PR，不继承6bdf收据。生产和模板Schema均未操作。
+
+## PR #309 Linux 收据传输兼容修复（2026-10-08，本地新候选）
+
+- [~] 经用户批准，`a1351580c7a3e11b5c6cbd5328883f042888a352`已推送并创建草稿PR #309；当前main仍为3d06db8b。固定head CI `37782532668`的Quality gates在CI编排失败，后续审计/类型/lint为条件跳过；其余分片独立运行，未把本机17/17替代远端CI成功。
+- [~] 已在缓存的官方Linux Node20.20.2隔离容器复现：spawnSync子进程stdin为socket，原CLI重新打开`/dev/stdin`触发ENXIO，合法17门收据被拒绝。独立分支`codex/pol25b-linux-receipt-fix-20261008`仅将明确的stdin路径映射为已有fd0，普通文件读取及原SHA/17门/耗时/状态/版本校验不变；新增公开CLI有效/错SHA/缺门/坏JSON回归。macOS相关106/106、Linux激活80/80、全仓类型/lint（0 errors、570既有warnings）通过，双轴复审无finding；原失败日志与Linux初次缺Schema的准备失败均保留。
+- [ ] 新SHA完整17门与远端更新尚未授权执行，不继承a1351580收据；PR head仍为a1351580，保持草稿、不合并、不关票。模板全局快照Schema的独立范围决策仍未确认，未改Schema/权限或生产。
+
+## RC06 正式提交链修复（2026-10-08，本地独立候选）
+
+- [~] 当前代码检查点`28a1aad7cb3a9df813ae84d8f5ef5696d8563f38`真实本机PG16治理21/21通过、runner回归12/12、全仓typecheck及lint通过（0 errors、570既有warnings），双轴复审无阻塞。完整治理/试运行/浏览器组合仍失败：后续创建结算模板API返回410，桌面及390px浏览器未执行。用户明确保留原模板创建/检查/发布验收要求，先明确新发布入口；当前唯一旧治理控制器的写操作均在退役守卫中，没有可用替代入口，不重开、不降断言、不替换为现有模板或合成发布收据。
+- [ ] 独立付款审批并发runner在夹具创建生效合同前因缺唯一施工企业触发PG16约束23514，未进入并发验收；临时容器与目录已清理。此为旧验收夹具缺口，不声明业务并发通过，未修改业务校验。详细失败及当前入口缺口在`/private/tmp/pol25b-isolated-acceptance-20261008`保留；完整17门下一次执行及新模板治理范围仍待确认。
+
+
+- [~] `5e4f1889`真实API/PG16治理UAT在退役`/contracts/:id/approval-submission`处返回410而失败，未进入浏览器；临时资源已清理。新独立分支`codex/rc06-current-submission-20261008`只把四次合同提交接入当前公开草稿编辑租约/版本/幂等提交链，保留未确认签章拒绝、审批实例/路线、10%与10.01%变更边界及审计断言，不重开旧入口。runner编排回归12/12，真实PG16/桌面390验收与本批类型/lint待执行；不宣称业务长链或上线条件完成。
+- [ ] POL25B修复SHA `5e4f18892cc8a4b978128691c1f8f32164db2ad8`一次获准完整17门已在第9门业务语言检查失败，因新克隆继承旧origin/main引用。校正到已核验GitHub main后窄门通过，但原完整轮保持失败，不拼接收据。下一完整验收仍待批准；旧五轮日志与新轮终态均保留。
+
+## POL25B 本地实现与验证（2026-10-08，未提交工作区）
+
+- [~] 接管核验：GitHub main `3d06db8b30fa66b9b7f4c58d1506323a86ba1cbd`、PR #308 MERGED、merge-head CI `37744986299` 21/21 success。原六文件未提交工作区保留；独立候选 `bc2c28a4a0c61fbac90d8ace891ae16e357a1f93` 第四轮日志停于剩余 PG16 回归，无原验收进程、会话不可恢复且无完整成功收据，登记为中断。获准一次第五轮后，启动门因 pnpm 子进程解析 Node 22 而失败，未进入测试；两轮不得拼接或冒充17门通过，全部旧日志保留于 `/private/tmp/pol25b-isolated-acceptance-20261008`。
+- [~] 新独立修复分支 `codex/pol25b-revocation-repair-20261008` 复现并修复收据撤销的并发替换误删：先原子捕获目录项再核验，未知工件排他恢复或保留，故障保留所有权供重试。公开发布/撤销回归先 RED 后 GREEN，当前Node20本地引擎80/80、编排202/202、全仓类型检查及lint通过（0 errors、570既有warnings）；Spec修复复审无剩余阻塞。新SHA完整17门仍须独立绑定。生产入口继续禁用，未push/PR/生产访问。
+
+- [x] 开发前实时核验 PR #308 MERGED，main 为 `3d06db8b30fa66b9b7f4c58d1506323a86ba1cbd`，merge-head CI `37744986299` completed/success、21 项通过；核对相关聊天和 worktree，未发现运行中的 POL25B 并行开发。主目录既有改动保持；本任务在 `codex/pol25b-local-activation-20261008` 独立 worktree 开发。
+- [~] 本地维护态激活引擎已实现：独立签名授权/证据、原始上游字节摘要、原生归零终态、同候选 main CI、原17项本机收据、冻结/窗口/Schema/迁移/对象坐标的阶段间复核、API/Web 产物与文件回退。仅提供隔离适配器接口，不接入生产；生产 scope 与直接执行均拒绝，成功工件明确标注 isolated-local。
+- [x] 本轮本地验证完成：Node20.20.2/pnpm9.15.9 的CI编排回归200/200，包含78项激活测试（含2项真实回环HTTP/子进程测试与部分写、fsync/unlink双故障）；workspace typecheck、lint（0errors，570项既有Web warnings）、三份新增脚本定向lint/syntax及diff检查通过。规范/规格两路复审发现的锁释放、坐标脱敏、原子发布及撤销状态问题已修正，末轮均无剩余阻塞；文件摘要与完整日志索引在仓库外 `/private/tmp/pol25b-local-verification-20261008.json`。
+- [~] 原 `release:local --preflight` 按预期在“candidate worktree must be clean”处拒绝。新差异尚未提交，不具完整17项正式发布门或fixed-head CI资格，不继承 #308 的候选级验收。上述本地证明不替代真实PG16、systemd/COS或正式上游收据。
+- [ ] #123 正式适配器、固定信任锚、原生上游完整验证及现场只读观测仍待独立实现/审查和生产授权；#122/#123/#124 不因本地测试完成而关闭。未访问生产，未执行部署/迁移/归零/解除冻结/凭据或权限变更。
+
 ## 当前本地审计与验收（2026-10-07，本地候选）
 
 - [~] 用户已对被拒的精确CI包源修复追加明确“确认 继续”授权，原补丁重试获准；仅修改一次性GitHub runner该分片的镜像列表，不改变用户Mac或生产包源。直接执行workflow Python片段的7组fixture通过：准确目标删除、保留其他/HTTPS条目及Signed-By配置、HTTP或注释伪回退失败且文件不变、幂等、空文件和不存在文件；完整新SHA验收及PR CI仍待绑定。
