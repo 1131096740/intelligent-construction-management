@@ -12,6 +12,17 @@ test("模板工作台真实创建、检查预览、取消发布、重试与冻�
   });
   const name = `真实模板浏览器${testInfo.project.name}`;
   const code = `TB-${randomUUID()}`;
+  await page.route("**/api/settlement-template-workbench/templates?includeHistory=true", route => route.abort("failed"), { times: 1 });
+  await page.goto("/结算模板工作台");
+  await expect(page.getByText("网络连接失败，请检查网络后重试。", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Failed to fetch|NetworkError|Load failed/)).toHaveCount(0);
+  const listRecovery = page.waitForResponse(response => new URL(response.url()).pathname === "/api/settlement-template-workbench/templates" && response.request().method() === "GET");
+  await page.reload();
+  const recoveredList = await listRecovery;
+  expect(recoveredList.status()).toBe(200);
+  const recoveredTemplates = await recoveredList.json() as { name: string }[];
+  await expect(page.getByText(recoveredTemplates[0]?.name ?? "尚未创建结算模板", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("网络连接失败，请检查网络后重试。", { exact: true })).toHaveCount(0);
   await page.goto("/结算模板工作台/新建");
   await page.getByPlaceholder("请填写模板名称", { exact: true }).fill(name);
   await page.getByPlaceholder("请填写模板编码", { exact: true }).fill(code);

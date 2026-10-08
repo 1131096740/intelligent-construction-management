@@ -80,6 +80,7 @@ import {
   type SettlementTemplateVersionReadModel
 } from "../../api/settlement-template.api";
 import { settlementTemplateStatusLabel } from "./settlement-template.state";
+import { formatUnknownApiError } from "../../api/error-message";
 
 const router = useRouter();
 const route = useRoute();
@@ -130,7 +131,7 @@ async function loadTemplates() {
   try {
     rows.value = await (isWorkbench.value ? listWorkbenchTemplates(true) : listSettlementTemplates());
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载结算模板失败。";
+    message.value = formatUnknownApiError(error, "加载结算模板失败，请刷新后重试。");
   } finally {
     loading.value = false;
   }
