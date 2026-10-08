@@ -12,6 +12,9 @@
 
 ## POL25B 本地实现与验证（2026-10-08，未提交工作区）
 
+- [~] 接管核验：GitHub main `3d06db8b30fa66b9b7f4c58d1506323a86ba1cbd`、PR #308 MERGED、merge-head CI `37744986299` 21/21 success。原六文件未提交工作区保留；独立候选 `bc2c28a4a0c61fbac90d8ace891ae16e357a1f93` 第四轮日志停于剩余 PG16 回归，无原验收进程、会话不可恢复且无完整成功收据，登记为中断。获准一次第五轮后，启动门因 pnpm 子进程解析 Node 22 而失败，未进入测试；两轮不得拼接或冒充17门通过，全部旧日志保留于 `/private/tmp/pol25b-isolated-acceptance-20261008`。
+- [~] 新独立修复分支 `codex/pol25b-revocation-repair-20261008` 复现并修复收据撤销的并发替换误删：先原子捕获目录项再核验，未知工件排他恢复或保留，故障保留所有权供重试。公开发布/撤销回归先 RED 后 GREEN，当前Node20本地引擎80/80、编排202/202、全仓类型检查及lint通过（0 errors、570既有warnings）；Spec修复复审无剩余阻塞。新SHA完整17门仍须独立绑定。生产入口继续禁用，未push/PR/生产访问。
+
 - [x] 开发前实时核验 PR #308 MERGED，main 为 `3d06db8b30fa66b9b7f4c58d1506323a86ba1cbd`，merge-head CI `37744986299` completed/success、21 项通过；核对相关聊天和 worktree，未发现运行中的 POL25B 并行开发。主目录既有改动保持；本任务在 `codex/pol25b-local-activation-20261008` 独立 worktree 开发。
 - [~] 本地维护态激活引擎已实现：独立签名授权/证据、原始上游字节摘要、原生归零终态、同候选 main CI、原17项本机收据、冻结/窗口/Schema/迁移/对象坐标的阶段间复核、API/Web 产物与文件回退。仅提供隔离适配器接口，不接入生产；生产 scope 与直接执行均拒绝，成功工件明确标注 isolated-local。
 - [x] 本轮本地验证完成：Node20.20.2/pnpm9.15.9 的CI编排回归200/200，包含78项激活测试（含2项真实回环HTTP/子进程测试与部分写、fsync/unlink双故障）；workspace typecheck、lint（0errors，570项既有Web warnings）、三份新增脚本定向lint/syntax及diff检查通过。规范/规格两路复审发现的锁释放、坐标脱敏、原子发布及撤销状态问题已修正，末轮均无剩余阻塞；文件摘要与完整日志索引在仓库外 `/private/tmp/pol25b-local-verification-20261008.json`。

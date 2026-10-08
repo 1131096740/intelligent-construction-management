@@ -532,6 +532,52 @@ test("atomic publication refuses a symbolic link without following or deleting i
   } finally { await f.close(); }
 });
 
+test("receipt revocation preserves a file replaced after ownership verification", async () => {
+  const f = await fixture();
+  let closeMock;
+  try {
+    const path = join(f.root, "activation.json");
+    const receipt = { receiptSha256: "a".repeat(64), status: "passed" };
+    const publication = await publishActivationReceipt(path, receipt);
+    const originalOpen = fileSystem.open;
+    let replaced = false;
+    closeMock = mock.method(fileSystem, "open", async (...args) => {
+      const handle = await originalOpen(...args);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        const stat = await handle.stat();
+        await close();
+        if (!replaced && stat.isFile()) {
+          replaced = true;
+          await rm(path, { force: true });
+          await writeFile(path, "concurrent-operator-evidence");
+        }
+      };
+      return handle;
+    });
+    await publication.revoke(receipt.receiptSha256);
+    assert.equal(await readFile(path, "utf8"), "concurrent-operator-evidence");
+  } finally { closeMock?.mock.restore(); await f.close(); }
+});
+
+test("receipt revocation restores an unrelated entry captured during a concurrent replacement", async () => {
+  const f = await fixture();
+  let renameMock;
+  try {
+    const path = join(f.root, "activation.json");
+    const receipt = { receiptSha256: "a".repeat(64), status: "passed" };
+    const publication = await publishActivationReceipt(path, receipt);
+    const rename = fileSystem.rename;
+    renameMock = mock.method(fileSystem, "rename", async (source, destination) => {
+      await rm(path);
+      await writeFile(path, "concurrent-operator-evidence");
+      return rename(source, destination);
+    });
+    await assert.rejects(publication.revoke(receipt.receiptSha256), /RECEIPT_CLEANUP_FAILED/u);
+    assert.equal(await readFile(path, "utf8"), "concurrent-operator-evidence");
+  } finally { renameMock?.mock.restore(); await f.close(); }
+});
+
 test("noncanonical signature encoding is refused even when decoded signature bytes match", async () => {
   const f = await fixture();
   try {
@@ -606,7 +652,7 @@ test("post-link sync and unlink failures preserve ownership and report unconfirm
       return sync.call(this);
     });
     unlinkMock = mock.method(fileSystem, "unlink", async (path) => {
-      if (path === join(f.root, "activation.json")) throw new Error("fixture unlink failed");
+      if (String(path).startsWith(join(f.root, ".activation-revoked-"))) throw new Error("fixture unlink failed");
       return unlink(path);
     });
     const failure = await activateMaintenanceRuntime(f.request, f.adapter).catch((error) => error);
@@ -615,10 +661,13 @@ test("post-link sync and unlink failures preserve ownership and report unconfirm
     assert.equal(failure.recoveryFailed, true);
     assert.equal(f.state.apiRunning, false);
     assert.equal(await readFile(join(f.root, "api", "runtime.txt"), "utf8"), "old-api");
-    assert.equal(JSON.parse(await readFile(join(f.root, "activation.json"))).status, "passed");
+    const residualPath = join(f.root, (await readdir(f.root)).find((name) => name.startsWith(".activation-revoked-")));
+    const residual = JSON.parse(await readFile(residualPath));
+    assert.equal(residual.status, "passed");
     unlinkMock.mock.restore(); syncMock.mock.restore();
-    assert.deepEqual(await f.adapter.revoke(JSON.parse(await readFile(join(f.root, "activation.json"))).receiptSha256), { revocationConfirmed: true });
+    assert.deepEqual(await f.adapter.revoke(residual.receiptSha256), { revocationConfirmed: true });
     await assert.rejects(readFile(join(f.root, "activation.json")));
+    await assert.rejects(readFile(residualPath));
   } finally { unlinkMock?.mock.restore(); syncMock?.mock.restore(); await f.close(); }
 });
 

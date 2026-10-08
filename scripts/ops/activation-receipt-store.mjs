@@ -17,6 +17,7 @@ export function createActivationReceiptStore(outputPath) {
   let handle;
   let inode;
   let linked = false;
+  let capturedPath;
   let temporaryExists = false;
   let needsDirectorySync = false;
 
@@ -32,13 +33,32 @@ export function createActivationReceiptStore(outputPath) {
       try { await operation(); } catch { failures.push(true); }
     };
     if (handle) await attempt(async () => { await handle.close(); handle = undefined; });
-    if (linked) await attempt(async () => {
-      const current = await fileSystem.open(outputPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (linked || capturedPath) await attempt(async () => {
+      // Take the directory entry out of the shared pathname atomically before
+      // inspecting it. Never unlink outputPath after a descriptor-only check.
+      if (!capturedPath) {
+        const capture = join(parent, ".activation-revoked-" + randomUUID());
+        await fileSystem.rename(outputPath, capture);
+        capturedPath = capture; linked = false; needsDirectorySync = true;
+      }
+      let owned = false;
+      const current = await fileSystem.open(capturedPath, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => undefined);
       try {
-        const stat = await current.stat();
-        if (stat.dev !== inode?.dev || stat.ino !== inode?.ino || hash(await current.readFile()) !== bytesSha256) throw new Error("RECEIPT_OWNERSHIP");
-      } finally { await current.close(); }
-      await fileSystem.unlink(outputPath); linked = false; needsDirectorySync = true;
+        if (current) {
+          const stat = await current.stat();
+          owned = stat.dev === inode?.dev && stat.ino === inode?.ino && hash(await current.readFile()) === bytesSha256;
+        }
+      } finally { await current?.close(); }
+      if (!owned) {
+        // Restore the unrelated entry without overwriting a concurrent writer.
+        // If occupied, retain the captured evidence and report failed cleanup.
+        await fileSystem.link(capturedPath, outputPath);
+        needsDirectorySync = true;
+        // Unknown bytes are never deleted automatically, even after restoration.
+        // Retain the private link for operator reconciliation on every retry.
+        throw new Error("RECEIPT_OWNERSHIP");
+      }
+      await fileSystem.unlink(capturedPath); capturedPath = undefined; needsDirectorySync = true;
     });
     if (temporaryExists) await attempt(async () => {
       const stat = await fileSystem.lstat(temporary);
@@ -74,7 +94,7 @@ export function createActivationReceiptStore(outputPath) {
     } catch {
       try { await revoke(receiptDigest); } catch {
         const error = new Error("RECEIPT_CLEANUP_FAILED");
-        error.publicationMayExist = linked || needsDirectorySync;
+        error.publicationMayExist = linked || Boolean(capturedPath) || needsDirectorySync;
         throw error;
       }
       throw new Error("RECEIPT_PUBLICATION_FAILED");
