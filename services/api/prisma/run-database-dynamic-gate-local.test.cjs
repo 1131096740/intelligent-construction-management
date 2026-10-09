@@ -53,6 +53,32 @@ const runnerPath = path.join(
   "run-database-dynamic-gate-local.cjs"
 );
 
+test("POL113 readiness cannot finish on the bootstrap socket-only server", () => {
+  const source = readFileSync(path.join(__dirname, "run-pol113-pol115-entry-local.cjs"), "utf8");
+  const readiness = source.match(/`(until pg_isready [^`]+)`/u)?.[1];
+  assert.ok(readiness, "POL113 must expose its PostgreSQL readiness command");
+  // Model the official image's temporary socket-only server, then final TCP server.
+  const result = spawnSync(process.env.BASH_BIN || "bash", ["-c", `
+    probes=0
+    pg_isready() {
+      probes=$((probes + 1))
+      case " $* " in
+        *" -h 127.0.0.1 "*)
+          if [ "$probes" -eq 1 ]; then return 1; fi
+          echo FINAL_TCP_READY
+          return 0
+          ;;
+        *) echo BOOTSTRAP_SOCKET_READY; return 0 ;;
+      esac
+    }
+    sleep() { :; }
+    ${readiness.replaceAll("${database}", "readiness_fixture")}
+  `], { encoding: "utf8", timeout: 5000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /FINAL_TCP_READY/u);
+  assert.doesNotMatch(result.stdout, /BOOTSTRAP_SOCKET_READY/u);
+});
+
 test("fund execution verifier waits for the final postgres PID 1", () => {
   const bootstrapCalls = [];
   const bootstrapSpawn = (_command, args) => {
