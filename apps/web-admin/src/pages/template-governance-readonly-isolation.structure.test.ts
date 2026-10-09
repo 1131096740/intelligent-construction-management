@@ -63,7 +63,12 @@ describe("stage D template-governance readonly isolation", () => {
     for (const page of readonlyPages) {
       expect(routes).toContain(page.replace(/^\.\//, "../pages/"));
     }
-    expect(routes).not.toMatch(
+    const authorizedWorkbenchEditors = [...routes.matchAll(
+      /\{\s*path: "结算模板工作台\/(新建|:templateId)",\s*component: \(\) => import\("\.\.\/pages\/settlement-templates\/SettlementTemplateEditorPage\.vue"\),\s*meta: \{ requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "[^"]+" \}\s*\}/g
+    )];
+    expect(authorizedWorkbenchEditors.map(match => match[1]).sort()).toEqual([":templateId", "新建"]);
+    const legacyRoutes = authorizedWorkbenchEditors.reduce((source, match) => source.replace(match[0], ""), routes);
+    expect(legacyRoutes).not.toMatch(
       /ContractScenarioGovernancePage|ContractTemplateEditorPage|LayoutTemplateEditorPage|ContractNumberRulePage|ContractTemplateListPage|StandardClauseLibraryPage|SettlementTemplateEditorPage/
     );
   });
