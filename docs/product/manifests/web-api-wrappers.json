@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 28,
-    "exportedFunctionCount": 580,
-    "transportWrapperCount": 560,
+    "apiModuleCount": 29,
+    "exportedFunctionCount": 594,
+    "transportWrapperCount": 574,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 584,
-    "ticketFollowupCount": 3,
-    "requestEdgeCount": 584,
-    "productionConsumerCount": 455,
+    "mainRequestBindingCount": 599,
+    "ticketFollowupCount": 4,
+    "requestEdgeCount": 599,
+    "productionConsumerCount": 469,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 302,
-    "reachableProductionModuleCount": 275
+    "productionModuleCount": 303,
+    "reachableProductionModuleCount": 277
   },
   "wrappers": [
     {
@@ -9970,11 +9970,11 @@
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
-        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue"
+        "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
       "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ]
     },
     {
@@ -14782,13 +14782,432 @@
     },
     {
       "name": "cloneSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/clone",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/clone",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/clone",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "cloneSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createSettlementTemplate",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/templates",
+          "normalizedPath": "/settlement-template-workbench/templates",
+          "normalizedKey": "POST /settlement-template-workbench/templates",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createSettlementTemplate",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "discardSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/discard",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/discard",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/discard",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "discardSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadSettlementTemplatePreview",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "none",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadSettlementTemplatePreview",
+              "postJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/preview-xlsx/download-ticket",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/preview-xlsx/download-ticket",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-xlsx/download-ticket",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadSettlementTemplatePreview",
+              "postJson"
+            ]
+          ]
+        },
+        {
+          "kind": "ticket_followup",
+          "sourceLine": 113,
+          "method": "GET",
+          "ticketField": "downloadUrl",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSettlementTemplatePreview"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchTemplateVersionCapability",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 127,
+          "method": "GET",
+          "path": "/settlement-template-workbench/versions/:param/capability",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/capability",
+          "normalizedKey": "GET /settlement-template-workbench/versions/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchTemplateVersionCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchTemplateWorkbenchCapability",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 127,
+          "method": "GET",
+          "path": "/settlement-template-workbench/capability",
+          "normalizedPath": "/settlement-template-workbench/capability",
+          "normalizedKey": "GET /settlement-template-workbench/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchTemplateWorkbenchCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "generateSettlementTemplatePreview",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/preview-generation",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/preview-generation",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/preview-generation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generateSettlementTemplatePreview",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getSettlementTemplate",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 127,
+          "method": "GET",
+          "path": "/settlement-template-workbench/templates/:param",
+          "normalizedPath": "/settlement-template-workbench/templates/:param",
+          "normalizedKey": "GET /settlement-template-workbench/templates/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getSettlementTemplate",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "inspectSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/inspection",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/inspection",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/inspection",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "inspectSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "listSettlementTemplates",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 127,
+          "method": "GET",
+          "path": "/settlement-template-workbench/templates",
+          "normalizedPath": "/settlement-template-workbench/templates",
+          "normalizedKey": "GET /settlement-template-workbench/templates",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listSettlementTemplates",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateListPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "publishSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/publication",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/publication",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/publication",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "publishSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "stopSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/stop",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/stop",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/stop",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "stopSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "submitSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 133,
+          "method": "POST",
+          "path": "/settlement-template-workbench/versions/:param/submission",
+          "normalizedPath": "/settlement-template-workbench/versions/:param/submission",
+          "normalizedKey": "POST /settlement-template-workbench/versions/:param/submission",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitSettlementTemplateVersion",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateSettlementTemplateVersion",
+      "apiFile": "apps/web-admin/src/api/settlement-template-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 143,
+          "method": "PATCH",
+          "path": "/settlement-template-workbench/versions/:param",
+          "normalizedPath": "/settlement-template-workbench/versions/:param",
+          "normalizedKey": "PATCH /settlement-template-workbench/versions/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateSettlementTemplateVersion",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "cloneSettlementTemplateVersion",
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "kind": "transport",
       "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/clone",
           "normalizedPath": "/settlement-template-versions/:param/clone",
@@ -14802,11 +15221,9 @@
           ]
         }
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [],
-      "testConsumers": []
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "createSettlementTemplate",
@@ -14816,7 +15233,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-templates",
           "normalizedPath": "/settlement-templates",
@@ -14830,11 +15247,9 @@
           ]
         }
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [],
-      "testConsumers": []
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "discardSettlementTemplateVersion",
@@ -14844,7 +15259,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/discard",
           "normalizedPath": "/settlement-template-versions/:param/discard",
@@ -14861,10 +15276,8 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
-      "productionConsumers": []
+      "productionConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "downloadSettlementTemplatePreview",
@@ -14874,7 +15287,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/preview-pdf/download-ticket",
           "normalizedPath": "/settlement-template-versions/:param/preview-pdf/download-ticket",
@@ -14889,7 +15302,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/preview-xlsx/download-ticket",
           "normalizedPath": "/settlement-template-versions/:param/preview-xlsx/download-ticket",
@@ -14904,7 +15317,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 223,
+          "sourceLine": 226,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -14918,10 +15331,8 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
-      "productionConsumers": []
+      "productionConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "fetchSettlementTemplateRecommendations",
@@ -14931,7 +15342,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 237,
+          "sourceLine": 240,
           "method": "GET",
           "path": "/settlement-workbench/projects/:param/contract-versions/:param/template-recommendations",
           "normalizedPath": "/settlement-workbench/projects/:param/contract-versions/:param/template-recommendations",
@@ -14961,7 +15372,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/preview-generation",
           "normalizedPath": "/settlement-template-versions/:param/preview-generation",
@@ -14975,11 +15386,9 @@
           ]
         }
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [],
-      "testConsumers": []
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "getSettlementTemplate",
@@ -14989,7 +15398,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 237,
+          "sourceLine": 240,
           "method": "GET",
           "path": "/settlement-templates/:param",
           "normalizedPath": "/settlement-templates/:param",
@@ -15006,12 +15415,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateReadonlyPage.vue"
-      ]
+      ],
+      "unreachableConsumers": []
     },
     {
       "name": "inspectSettlementTemplateVersion",
@@ -15021,7 +15428,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/inspection",
           "normalizedPath": "/settlement-template-versions/:param/inspection",
@@ -15035,11 +15442,9 @@
           ]
         }
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [],
-      "testConsumers": []
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "listSettlementTemplates",
@@ -15049,7 +15454,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 237,
+          "sourceLine": 240,
           "method": "GET",
           "path": "/settlement-templates",
           "normalizedPath": "/settlement-templates",
@@ -15079,7 +15484,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/publication",
           "normalizedPath": "/settlement-template-versions/:param/publication",
@@ -15096,10 +15501,8 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
-      "productionConsumers": []
+      "productionConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "stopSettlementTemplateVersion",
@@ -15109,7 +15512,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/stop",
           "normalizedPath": "/settlement-template-versions/:param/stop",
@@ -15123,11 +15526,9 @@
           ]
         }
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [],
-      "testConsumers": []
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "submitSettlementTemplateVersion",
@@ -15137,7 +15538,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 246,
           "method": "POST",
           "path": "/settlement-template-versions/:param/submission",
           "normalizedPath": "/settlement-template-versions/:param/submission",
@@ -15151,11 +15552,9 @@
           ]
         }
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
       "productionConsumers": [],
-      "testConsumers": []
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "updateSettlementTemplateVersion",
@@ -15165,7 +15564,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 253,
+          "sourceLine": 256,
           "method": "PATCH",
           "path": "/settlement-template-versions/:param",
           "normalizedPath": "/settlement-template-versions/:param",
@@ -15182,10 +15581,8 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-      ],
-      "productionConsumers": []
+      "productionConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "applySettlementImport",
@@ -18017,38 +18414,38 @@
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "wrapper": "cloneSettlementTemplateVersion",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard."
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "wrapper": "createSettlementTemplate",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard."
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "wrapper": "generateSettlementTemplatePreview",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard."
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "wrapper": "inspectSettlementTemplateVersion",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard."
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "wrapper": "stopSettlementTemplateVersion",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard."
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
       "wrapper": "submitSettlementTemplateVersion",
-      "classification": "unreachable_only",
-      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+      "classification": "unreferenced",
+      "reason": "Retired write wrappers have no UI consumer after the independent template workbench migration; the original routes remain rejected by the retirement guard."
     },
     {
       "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",

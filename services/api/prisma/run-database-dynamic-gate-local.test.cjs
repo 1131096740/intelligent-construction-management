@@ -53,6 +53,32 @@ const runnerPath = path.join(
   "run-database-dynamic-gate-local.cjs"
 );
 
+test("POL113 readiness cannot finish on the bootstrap socket-only server", () => {
+  const source = readFileSync(path.join(__dirname, "run-pol113-pol115-entry-local.cjs"), "utf8");
+  const readiness = source.match(/`(until pg_isready [^`]+)`/u)?.[1];
+  assert.ok(readiness, "POL113 must expose its PostgreSQL readiness command");
+  // Model the official image's temporary socket-only server, then final TCP server.
+  const result = spawnSync(process.env.BASH_BIN || "bash", ["-c", `
+    probes=0
+    pg_isready() {
+      probes=$((probes + 1))
+      case " $* " in
+        *" -h 127.0.0.1 "*)
+          if [ "$probes" -eq 1 ]; then return 1; fi
+          echo FINAL_TCP_READY
+          return 0
+          ;;
+        *) echo BOOTSTRAP_SOCKET_READY; return 0 ;;
+      esac
+    }
+    sleep() { :; }
+    ${readiness.replaceAll("${database}", "readiness_fixture")}
+  `], { encoding: "utf8", timeout: 5000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /FINAL_TCP_READY/u);
+  assert.doesNotMatch(result.stdout, /BOOTSTRAP_SOCKET_READY/u);
+});
+
 test("fund execution verifier waits for the final postgres PID 1", () => {
   const bootstrapCalls = [];
   const bootstrapSpawn = (_command, args) => {
@@ -160,18 +186,18 @@ test("invoice ledger waits for the published loopback port after container readi
   ]);
 });
 
-test("manifest derives all 294 pending tests as executable local coverage", () => {
+test("manifest derives all 303 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 60,
-    fullyPendingSuites: 49,
+    pendingFiles: 61,
+    fullyPendingSuites: 50,
     partiallyPendingSuites: 11,
-    pendingTests: 294,
-    coveredFiles: 60,
-    coveredTests: 294,
+    pendingTests: 303,
+    coveredFiles: 61,
+    coveredTests: 303,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -247,7 +273,7 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
-test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", () => {
+test("canonical manifest executes all 56 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -255,7 +281,7 @@ test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", (
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 47,
+    pendingTests: 56,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -280,6 +306,11 @@ test("canonical manifest executes all 47 POL-113 through POL-115 entry tests", (
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
         pendingTests: 3,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/settlement/settlement-template-workbench.http.pg.spec.ts",
+        pendingTests: 9,
         suiteStatus: "fully_pending"
       }
     ],
@@ -548,7 +579,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=294/u
+    /inventory\.coveredTests=26，派生值=303/u
   );
 });
 

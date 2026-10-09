@@ -6,7 +6,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { DetailActionReadModel } from "@jiangkong/shared-domain";
+import { isDeepStrictEqual } from "node:util";
+import { BusinessEntryDraftValidationError, createBusinessEntryDefinitionRegistry, type DetailActionReadModel, type RoleKey } from "@jiangkong/shared-domain";
+import type { TemplateWorkbenchRevisionDto } from "./dto/settlement-template-workbench.dto";
+import { settlementTemplateEntryDefinition } from "./settlement-template-entry-definition";
 import * as ExcelJS from "exceljs";
 import type { Cell, Worksheet } from "exceljs";
 import PizZip from "pizzip";
@@ -159,6 +162,99 @@ export class SettlementTemplateService {
     await this.assertGovernance(this.prisma, actorUserId);
   }
 
+  async workbenchCapability(actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGovernance(tx, actorUserId);
+      return { definition: await this.entryDefinition(tx), availableActions: ["create_template"] };
+    });
+  }
+
+  private async entryDefinition(tx: Prisma.TransactionClient) {
+    const types = await tx.contractBusinessTemplate.findMany({
+      select: { contractTypeKey: true, name: true }, orderBy: { code: "asc" }
+    });
+    const options = [...new Map(types.map(type => [type.contractTypeKey, { value: type.contractTypeKey, label: type.name }])).values()];
+    return settlementTemplateEntryDefinition(options);
+  }
+
+  private assertEntryRevision(version: { draftRevision: number } | undefined, input: { definitionVersion: number; expectedRevision?: number }) {
+    if (input.definitionVersion !== 2) throw new BadRequestException("模板填写规则已更新，请刷新后重试");
+    if (version && version.draftRevision !== input.expectedRevision) throw new BadRequestException("结算模板草稿已被更新，请刷新后重试");
+  }
+
+  private sameEntryRequest(snapshot: Prisma.JsonValue | null, actorUserId: string, input: TemplateWorkbenchRevisionDto, changeSummary?: string) {
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return false;
+    return snapshot.actorUserId === actorUserId && snapshot.draftRevision === input.expectedRevision
+      && snapshot.definitionVersion === input.definitionVersion
+      && (changeSummary === undefined || snapshot.changeSummary === changeSummary);
+  }
+
+  private workbenchActions(version: { status: string; draftRevision: number; inspectionRevision: number | null; inspectionReport: Prisma.JsonValue | null; submissionEntrySnapshot: Prisma.JsonValue | null }, preview: { status: string; previewXlsxFileId: string | null; previewPdfFileId: string | null } | undefined) {
+    const report = version.inspectionReport as unknown as SettlementTemplateInspectionReport | null;
+    const inspected = version.inspectionRevision === version.draftRevision && Array.isArray(report?.blockingErrors) && report.blockingErrors.length === 0;
+    const previewed = inspected && preview?.status === "succeeded" && Boolean(preview.previewXlsxFileId && preview.previewPdfFileId);
+    if (version.status === "draft") return ["save_draft", "inspect", ...(inspected ? ["preview"] : []), ...(previewed ? ["submit", "download_preview"] : [])];
+    if (version.status === "submitted") return [...(previewed ? ["download_preview"] : []), ...(previewed && version.submissionEntrySnapshot ? ["publish"] : [])];
+    if (version.status === "published") return ["stop", "clone", ...(previewed ? ["download_preview"] : [])];
+    if (version.status === "stopped") return ["clone", ...(previewed ? ["download_preview"] : [])];
+    return [];
+  }
+
+  private async freezeTemplateEntry(
+    tx: Prisma.TransactionClient,
+    version: NonNullable<Awaited<ReturnType<SettlementTemplateService["findVersion"]>>>,
+    actorUserId: string,
+    stage: "submission" | "publication",
+    changeSummary: string | undefined,
+    selectedPreview: { id: string; previewXlsxFileId: string | null; previewPdfFileId: string | null }
+  ): Promise<Prisma.InputJsonValue> {
+    const roles = await this.assertGovernance(tx, actorUserId);
+    const template = await tx.settlementTemplate.findUnique({ where: { id: version.settlementTemplateId } });
+    const file = await tx.fileObject.findUnique({ where: { id: version.xlsxFileId } });
+    if (!template || !file || file.storageStatus !== "active") throw new BadRequestException("模板或源文件已变化，请刷新后重新检查");
+    const definition = await this.entryDefinition(tx);
+    const column = version.columnSchema as Record<string, unknown>;
+    const evidence = version.evidenceRules as Record<string, unknown>;
+    const print = version.printRules as Record<string, unknown>;
+    const anomaly = version.anomalyRules as Record<string, unknown>;
+    this.assertRuleSchemas(column, print, evidence, anomaly);
+    await this.assertKnownCompatibility(tx, version.compatibleContractTypeKeys);
+    const values = {
+      name: template.name, code: template.code, sourceFileName: file.originalName,
+      compatibleContractTypeKeys: version.compatibleContractTypeKeys,
+      compatibleAmountRoles: version.compatibleAmountRoles, compatiblePricingModes: version.compatiblePricingModes,
+      ...(column.requiredColumns !== undefined ? { requiredColumns: column.requiredColumns } : {}),
+      ...(evidence.requiredColumns !== undefined ? { evidenceRequiredColumns: evidence.requiredColumns } : {}),
+      ...(print.requirePrintArea !== undefined ? { requirePrintArea: print.requirePrintArea } : {}),
+      ...anomaly
+    };
+    try {
+      const frozen = createBusinessEntryDefinitionRegistry([definition]).freezeSubmissionSnapshot({
+        sceneKey: definition.key, definitionVersion: definition.version,
+        target: { entityType: definition.entityType, entityId: version.id }, values
+      }, roles as RoleKey[]);
+      return {
+        ...frozen, stage, actorUserId, draftRevision: version.draftRevision,
+        actorRoleKeys: roles.filter(role => GOVERNANCE_ROLES.includes(role as typeof GOVERNANCE_ROLES[number])),
+        authorizationScope: "global",
+        ...(changeSummary ? { changeSummary } : {}),
+        domainValues: {
+          templateId: template.id, versionNo: version.versionNo, xlsxFileId: version.xlsxFileId,
+          sourceFileSha256: file.contentSha256,
+          compatibleContractTypeKeys: version.compatibleContractTypeKeys,
+          compatibleAmountRoles: version.compatibleAmountRoles, compatiblePricingModes: version.compatiblePricingModes,
+          columnSchema: version.columnSchema, printRules: version.printRules,
+          evidenceRules: version.evidenceRules, anomalyRules: version.anomalyRules,
+          previewJobId: selectedPreview.id,
+          previewXlsxFileId: selectedPreview.previewXlsxFileId, previewPdfFileId: selectedPreview.previewPdfFileId
+        }
+      } as unknown as Prisma.InputJsonValue;
+    } catch (error) {
+      if (error instanceof BusinessEntryDraftValidationError) throw new BadRequestException({ message: "模板未通过统一字段校验，请检查后重试", errors: error.result.errors });
+      throw error;
+    }
+  }
+
   async listGovernance(actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
       const roles = await this.assertGovernance(tx, actorUserId);
@@ -199,9 +295,11 @@ export class SettlementTemplateService {
     });
   }
 
-  async create(actorUserId: string, input: CreateSettlementTemplateDto) {
-    return this.prisma.$transaction(async (tx) => {
+  async create(actorUserId: string, input: CreateSettlementTemplateDto, definitionVersion?: number) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
       await this.assertGovernance(tx, actorUserId);
+      if (definitionVersion !== undefined) this.assertEntryRevision(undefined, { definitionVersion });
       await this.assertOwnedXlsx(tx, input.xlsxFileId, actorUserId);
       await this.assertKnownCompatibility(tx, input.compatibleContractTypeKeys ?? []);
       this.assertRuleSchemas(
@@ -210,6 +308,10 @@ export class SettlementTemplateService {
         input.evidenceRules,
         input.anomalyRules
       );
+      if (definitionVersion !== undefined) {
+        const existing = await this.existingWorkbenchCreation(tx, actorUserId, input);
+        if (existing) return existing;
+      }
       const template = await tx.settlementTemplate.create({
         data: {
           name: input.name.trim(),
@@ -232,7 +334,36 @@ export class SettlementTemplateService {
       });
       await this.record(tx, actorUserId, "create", version.id, { templateId: template.id });
       return { template, version: this.versionReadModel(version) };
-    });
+      });
+    } catch (error) {
+      if (definitionVersion !== undefined && this.errorCode(error) === "P2002") {
+        return this.prisma.$transaction(async (tx) => {
+          await this.assertGovernance(tx, actorUserId);
+          await this.assertOwnedXlsx(tx, input.xlsxFileId, actorUserId);
+          const existing = await this.existingWorkbenchCreation(tx, actorUserId, input);
+          if (existing) return existing;
+          throw new BadRequestException("模板编码已被使用，请刷新列表后重试");
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async existingWorkbenchCreation(tx: Prisma.TransactionClient, actorUserId: string, input: CreateSettlementTemplateDto) {
+    const template = await tx.settlementTemplate.findUnique({ where: { code: input.code.trim() } });
+    if (!template) return null;
+    const version = await tx.settlementTemplateVersion.findFirst({ where: { settlementTemplateId: template.id, versionNo: 1 } });
+    if (!version || template.createdByUserId !== actorUserId || template.name !== input.name.trim()
+      || version.xlsxFileId !== input.xlsxFileId
+      || !isDeepStrictEqual(this.compatibilityData(input), {
+        compatibleContractTypeKeys: version.compatibleContractTypeKeys,
+        compatibleAmountRoles: version.compatibleAmountRoles, compatiblePricingModes: version.compatiblePricingModes
+      })
+      || !isDeepStrictEqual([input.columnSchema, input.printRules, input.evidenceRules, input.anomalyRules],
+        [version.columnSchema, version.printRules, version.evidenceRules, version.anomalyRules])) {
+      throw new BadRequestException("模板编码已被使用，当前填写与原创建内容不一致，请刷新列表后重试");
+    }
+    return { template, version: this.versionReadModel(version) };
   }
 
   async get(templateId: string, actorUserId: string, includeHistory = false) {
@@ -268,6 +399,7 @@ export class SettlementTemplateService {
         versions: versions.map((version, index) => ({
           ...this.versionReadModel(version),
           ...actionModels[index],
+          workbenchActions: this.workbenchActions(version, jobs.find(job => job.settlementTemplateVersionId === version.id && job.sourceRevision === version.draftRevision)),
           latestPreview:
             this.previewReadModel(
               jobs.find(
@@ -281,14 +413,37 @@ export class SettlementTemplateService {
     });
   }
 
+  async workbenchVersionCapability(versionId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const roles = await this.assertGovernance(tx, actorUserId);
+      const version = await this.findVersion(tx, versionId);
+      const preview = await tx.settlementTemplatePreviewJob.findFirst({
+        where: { settlementTemplateVersionId: version.id, sourceRevision: version.draftRevision },
+        orderBy: { createdAt: "desc" }
+      });
+      const actions = this.workbenchActions(version, preview ?? undefined);
+      const revision = { expectedRevision: version.draftRevision, definitionVersion: 2 };
+      // A lost response may retry only the original actor's frozen command;
+      // the mutation still checks revision, definition and publication summary.
+      if (version.status === "submitted" && this.sameEntryRequest(version.submissionEntrySnapshot, actorUserId, revision)) actions.push("submit");
+      if (version.status === "published" && this.sameEntryRequest(version.publicationEntrySnapshot, actorUserId, revision, version.changeSummary ?? undefined)) actions.push("publish");
+      return {
+        workbenchActions: actions,
+        ...this.discardAction(version, await this.settlementDiscardReferenceReason(tx, version.id), roles.includes("contract_director"))
+      };
+    });
+  }
+
   async updateDraft(
     versionId: string,
     actorUserId: string,
-    input: UpdateSettlementTemplateVersionDto
+    input: UpdateSettlementTemplateVersionDto,
+    definitionVersion?: number
   ) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGovernance(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
+      if (definitionVersion !== undefined) this.assertEntryRevision(version, { definitionVersion, expectedRevision: input.expectedRevision });
       if (version.status !== "draft") {
         throw new BadRequestException("已提交或已发布的结算模板不可覆盖，请复制为新草稿后修改");
       }
@@ -362,10 +517,11 @@ export class SettlementTemplateService {
     });
   }
 
-  async inspect(versionId: string, actorUserId: string) {
+  async inspect(versionId: string, actorUserId: string, entry?: TemplateWorkbenchRevisionDto) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGovernance(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
+      if (entry) this.assertEntryRevision(version, entry);
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的结算模板可以检查");
       }
@@ -400,10 +556,11 @@ export class SettlementTemplateService {
     });
   }
 
-  async generatePreview(versionId: string, actorUserId: string) {
+  async generatePreview(versionId: string, actorUserId: string, entry?: TemplateWorkbenchRevisionDto) {
     const { version, job } = await this.prisma.$transaction(async (tx) => {
       await this.assertGovernance(tx, actorUserId);
       const current = await this.findVersion(tx, versionId);
+      if (entry) this.assertEntryRevision(current, entry);
       this.assertPreviewReady(current);
       const created = await tx.settlementTemplatePreviewJob.create({
         data: {
@@ -488,11 +645,11 @@ export class SettlementTemplateService {
     }
   }
 
-  submit(versionId: string, actorUserId: string) {
-    return this.changeDraftToSubmitted(versionId, actorUserId);
+  submit(versionId: string, actorUserId: string, entry?: TemplateWorkbenchRevisionDto) {
+    return this.changeDraftToSubmitted(versionId, actorUserId, entry);
   }
 
-  async publish(versionId: string, actorUserId: string, changeSummary: string) {
+  async publish(versionId: string, actorUserId: string, changeSummary: string, entry?: TemplateWorkbenchRevisionDto) {
     const normalizedChangeSummary = changeSummary.trim();
     if (!normalizedChangeSummary) {
       throw new BadRequestException("请填写结算模板发布说明");
@@ -501,6 +658,13 @@ export class SettlementTemplateService {
       await this.assertGovernance(tx, actorUserId);
       await this.lockTemplateVersionFamily(tx, versionId);
       const version = await this.findVersion(tx, versionId);
+      if (entry) {
+        this.assertEntryRevision(version, entry);
+        if (version.status === "published" && this.sameEntryRequest(version.publicationEntrySnapshot, actorUserId, entry, normalizedChangeSummary)) {
+          return { id: versionId, status: "published", publishedAt: version.publishedAt };
+        }
+        if (!version.submissionEntrySnapshot) throw new BadRequestException("请先通过模板工作台提交当前版本");
+      }
       if (version.status !== "submitted") {
         throw new BadRequestException("只有已提交的结算模板可以发布");
       }
@@ -519,6 +683,7 @@ export class SettlementTemplateService {
       if (!latestPreview?.previewXlsxFileId || !latestPreview.previewPdfFileId) {
         throw new BadRequestException("请先生成当前修订的 XLSX 和 PDF 脱敏预览");
       }
+      const snapshot = entry ? await this.freezeTemplateEntry(tx, version, actorUserId, "publication", normalizedChangeSummary, latestPreview) : undefined;
       const publishedAt = new Date();
       const superseded = await tx.settlementTemplateVersion.updateMany({
         where: {
@@ -532,6 +697,7 @@ export class SettlementTemplateService {
         where: { id: versionId, status: "submitted", draftRevision: version.draftRevision },
         data: {
           status: "published",
+          ...(snapshot ? { publicationEntrySnapshot: snapshot } : {}),
           publishedByUserId: actorUserId,
           publishedAt,
           changeSummary: normalizedChangeSummary,
@@ -805,10 +971,17 @@ export class SettlementTemplateService {
     return { templateVersionId: candidate.id, projectId: context.projectId };
   }
 
-  private async changeDraftToSubmitted(versionId: string, actorUserId: string) {
+  private async changeDraftToSubmitted(versionId: string, actorUserId: string, entry?: TemplateWorkbenchRevisionDto) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGovernance(tx, actorUserId);
+      if (entry) await this.lockTemplateVersionFamily(tx, versionId);
       const version = await this.findVersion(tx, versionId);
+      if (entry) {
+        this.assertEntryRevision(version, entry);
+        if ((version.status === "submitted" || version.status === "published") && this.sameEntryRequest(version.submissionEntrySnapshot, actorUserId, entry)) {
+          return { id: versionId, status: version.status };
+        }
+      }
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的结算模板可以提交");
       }
@@ -824,9 +997,13 @@ export class SettlementTemplateService {
       if (!preview?.previewXlsxFileId || !preview.previewPdfFileId) {
         throw new BadRequestException("请先生成当前修订的 XLSX 和 PDF 脱敏预览");
       }
+      const snapshot = entry ? await this.freezeTemplateEntry(tx, version, actorUserId, "submission", undefined, preview) : undefined;
       const changed = await tx.settlementTemplateVersion.updateMany({
         where: { id: versionId, status: "draft", draftRevision: version.draftRevision },
-        data: { status: "submitted", submittedByUserId: actorUserId }
+        data: { status: "submitted", submittedByUserId: actorUserId, ...(snapshot ? {
+          submissionEntrySnapshot: snapshot,
+          previewXlsxFileId: preview.previewXlsxFileId, previewPdfFileId: preview.previewPdfFileId
+        } : {}) }
       });
       if (changed.count !== 1) {
         throw new BadRequestException("结算模板状态已变化，请刷新后重试");

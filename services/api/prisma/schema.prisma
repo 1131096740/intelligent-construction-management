@@ -3155,6 +3155,8 @@ model SettlementTemplateVersion {
   printRules                 Json
   evidenceRules              Json
   anomalyRules               Json
+  submissionEntrySnapshot    Json?
+  publicationEntrySnapshot   Json?
   inspectionReport           Json?
   inspectionRevision         Int?
   previewXlsxFileId          String?

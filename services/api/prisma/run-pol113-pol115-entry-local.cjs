@@ -57,7 +57,7 @@ function runDedicatedDatabase({ id, database, flags, spec }) {
     command(docker, [
       "--host", endpoint,
       "exec", name, "sh", "-c",
-      `until pg_isready -U jiangkong -d ${database}; do sleep 0.2; done`
+      `until pg_isready -h 127.0.0.1 -U jiangkong -d ${database}; do sleep 0.2; done`
     ], dockerEnv);
     const binding = command(
       docker,
@@ -126,4 +126,10 @@ runDedicatedDatabase({
     RUN_POL115_BROWSER: "1"
   },
   spec: "src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"
+});
+runDedicatedDatabase({
+  id: "settlement-template-workbench",
+  database: "template_workbench",
+  flags: { RUN_TEMPLATE_WORKBENCH_PG16: "1" },
+  spec: "src/settlement/settlement-template-workbench.http.pg.spec.ts"
 });

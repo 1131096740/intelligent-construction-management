@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 308,
+    "activeBusinessActionCount": 320,
     "technicalActionCount": 9,
-    "activeBindingCount": 349,
+    "activeBindingCount": 364,
     "retiredWriteEntryCount": 97,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -4860,6 +4860,213 @@
       "capabilityKind": "detail_action",
       "bindingKeys": [
         "POST /spot-procurements/:param/approval-withdrawal"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.clone",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/clone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/templates"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.create-source",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /files",
+        "POST /settlement-template-workbench/templates"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.discard",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/discard"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.download",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/preview-pdf/download-ticket",
+        "POST /settlement-template-workbench/versions/:param/preview-xlsx/download-ticket"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.inspect",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/inspection"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/preview-generation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.publish",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/publication"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "PATCH /settlement-template-workbench/versions/:param"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.save-source",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "PATCH /settlement-template-workbench/versions/:param",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.stop",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/stop"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "template-workbench.submit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算模板工作台/:templateId",
+        "/结算模板工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /settlement-template-workbench/versions/:param/submission"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `dd889da07b46a3426485d050d3530d87fa5bec380bca1bb05f3f7ac0608d3de8` |
-| webApiWrappers | ready | `8dc4a99c85afe5144bcc254d20b419eb20f1ebe06778e5dcaefd8d66f6876f74` |
-| webPageActions | ready | `60211da209e982166c1448642b25093fa8da732f3acec5941dec025ce8364b6f` |
-| routeUsage | ready | `a81e3070839720c3f0473d47a04582340d42d99362fb5c786ee77a8e71a9ff4e` |
+| nestRoutes | ready | `f9a86edb7f767f92f7d67804db50487797751722b7acf6b80a9074b02fb42ad5` |
+| webApiWrappers | ready | `652708ff9a319ae0e0e4e1a4ced39139d0e16cd845811e7336462ad3e5eaf434` |
+| webPageActions | ready | `9bb09cbec56d30397f7598fc7a13e4c5a8166d644a9e5e7a6ce84ec3b8d98a61` |
+| routeUsage | ready | `a6d44279e856bd282225db1f920a6c6ffe015fce5cc109b003d50e36674185e9` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 606 |
-| pageRouteCount | 389 |
+| routeCount | 621 |
+| pageRouteCount | 404 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 108 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 584 |
+| mainRequestBindingCount | 599 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 317 |
-| actionBindingCount | 359 |
-| acceptedActionBindingCount | 337 |
+| registeredActionCount | 329 |
+| actionBindingCount | 374 |
+| acceptedActionBindingCount | 352 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 308 |
-| coveredProductionMutationConsumerPairCount | 308 |
+| productionMutationConsumerPairCount | 319 |
+| coveredProductionMutationConsumerPairCount | 319 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -196,6 +196,10 @@
 | GET | /projects/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectCreateCapability | — | not_applicable | — |
 | GET | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjects | — | not_applicable | — |
 | GET | /projects/roster | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectRoster | — | not_applicable | — |
+| GET | /settlement-template-workbench/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#fetchTemplateWorkbenchCapability | — | not_applicable | — |
+| GET | /settlement-template-workbench/templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#getSettlementTemplate | — | not_applicable | — |
+| GET | /settlement-template-workbench/templates | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#listSettlementTemplates | — | not_applicable | — |
+| GET | /settlement-template-workbench/versions/:versionId/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#fetchTemplateVersionCapability | — | not_applicable | — |
 | GET | /settlement-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#getSettlementTemplate | — | not_applicable | — |
 | GET | /settlement-templates | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#listSettlementTemplates | — | not_applicable | — |
 | GET | /settlement-workbench/contract-versions/:contractVersionId/import-template | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportTemplate | — | not_applicable | — |
@@ -254,6 +258,7 @@
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | project.update | covered | — |
 | PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.update-local-gate | covered | — |
 | PATCH | /settlement-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#updateSettlementTemplateVersion | — | not_applicable | — |
+| PATCH | /settlement-template-workbench/versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#updateSettlementTemplateVersion | template-workbench.save<br>template-workbench.save-source | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentDraft | spot-procurement-payment.draft.update | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/payer | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentPayer | spot-procurement-payment.payer.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.draft.update | covered | — |
@@ -387,7 +392,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
 | POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
@@ -566,6 +571,16 @@
 | POST | /settlement-template-versions/:versionId/publication | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#publishSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/stop | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#stopSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/submission | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#submitSettlementTemplateVersion | — | not_applicable | — |
+| POST | /settlement-template-workbench/templates | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#createSettlementTemplate | template-workbench.create<br>template-workbench.create-source | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/clone | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#cloneSettlementTemplateVersion | template-workbench.clone | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/discard | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#discardSettlementTemplateVersion | template-workbench.discard | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/inspection | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#inspectSettlementTemplateVersion | template-workbench.inspect | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#generateSettlementTemplatePreview | template-workbench.preview | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/preview-pdf/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#downloadSettlementTemplatePreview | template-workbench.download | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/preview-xlsx/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#downloadSettlementTemplatePreview | template-workbench.download | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/publication | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#publishSettlementTemplateVersion | template-workbench.publish | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#stopSettlementTemplateVersion | template-workbench.stop | covered | — |
+| POST | /settlement-template-workbench/versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#submitSettlementTemplateVersion | template-workbench.submit | covered | — |
 | POST | /settlement-templates | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#createSettlementTemplate | — | not_applicable | — |
 | POST | /settlement-workbench/contract-versions/:contractVersionId/imports/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport | settlement-import.preview-local-gate | covered | — |
 | POST | /settlement-workbench/contract-versions/:contractVersionId/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines | settlement-preview.background-local-gate | covered | — |

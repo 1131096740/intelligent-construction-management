@@ -67,7 +67,8 @@
     "pretypecheck": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "typecheck": "tsc --noEmit",
     "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "verify:settlement-template-workbench:local": "node prisma/run-settlement-template-workbench-local.cjs"
   },
   "dependencies": {
     "@jiangkong/shared-domain": "workspace:*",
