@@ -32,7 +32,9 @@ test("合同岗从公开入口创建合作单位，错误资料零写且刷新�
   const confirmation = page.locator("button:visible").filter({ hasText: "确认创建" });
   await expect(confirmation).toHaveCount(2);
   const created = page.waitForResponse((res) => new URL(res.url()).pathname === "/api/business-parties" && res.request().method() === "POST");
-  await confirmation.last().click();
+  const dialogConfirm = page.locator(".t-dialog:visible").getByRole("button", { name: "确认创建", exact: true });
+  await expect(dialogConfirm).toHaveCount(1);
+  await dialogConfirm.click();
   const response = await created;
   expect(response.status()).toBe(201);
   const result = await response.json();

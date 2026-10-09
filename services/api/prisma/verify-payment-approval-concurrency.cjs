@@ -16,6 +16,9 @@ const CHAIRMAN_USER_ID = "payment-approval-chairman";
 const GENERAL_MANAGER_USER_ID = "payment-approval-general-manager";
 const CONTRACT_ID = "payment-approval-contract";
 const CONTRACT_VERSION_ID = "payment-approval-contract-v1";
+const COMPANY_ENTITY_ID = "payment-approval-company-entity";
+const COMPANY_ENTITY_NAME = "付款审批并发验收我方公司";
+const COMPANY_ENTITY_CREDIT_CODE = "91310000PAYMENTTEST";
 const PAYMENT_TERMS_VERSION_ID =
   "payment-approval-contract-terms-v1";
 const REQUESTED_AMOUNT_CENTS = 1_000n;
@@ -163,6 +166,28 @@ async function seedBaseFacts() {
       }
     ]
   });
+  await clientA.projectAffiliateAssignment.create({
+    data: {
+      id: `${PROJECT_ID}-construction-enterprise`,
+      projectId: PROJECT_ID,
+      businessPartyId: `${PROJECT_ID}-party`,
+      businessPartyVersionId: `${PROJECT_ID}-party-version`,
+      affiliateNameSnapshot: "付款审批并发验收施工企业",
+      effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+      changeReason: "数据库测试夹具",
+      assignedByUserId: APPLICANT_USER_ID
+    }
+  });
+  await clientA.companyEntity.create({
+    data: {
+      id: COMPANY_ENTITY_ID,
+      name: COMPANY_ENTITY_NAME,
+      unifiedSocialCreditCode: COMPANY_ENTITY_CREDIT_CODE,
+      dataStatus: "complete",
+      currentVersionNo: 1,
+      isActive: true
+    }
+  });
   await clientA.contract.create({
     data: {
       id: CONTRACT_ID,
@@ -170,6 +195,8 @@ async function seedBaseFacts() {
       code: "HT-PAYMENT-APPROVAL-CONCURRENCY",
       name: "付款审批并发验收合同",
       counterparty: "付款审批并发验收相对方",
+      companyEntityId: COMPANY_ENTITY_ID,
+      companyEntityName: COMPANY_ENTITY_NAME,
       contractTypeKey: "material_purchase",
       ownerUserId: APPLICANT_USER_ID
     }
@@ -184,6 +211,9 @@ async function seedBaseFacts() {
       amountCents: 10_000n,
       effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
       signingSubjectType: "our_company",
+      companyEntityIdSnapshot: COMPANY_ENTITY_ID,
+      companyEntityNameSnapshot: COMPANY_ENTITY_NAME,
+      companyEntityCreditCodeSnapshot: COMPANY_ENTITY_CREDIT_CODE,
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: {}
