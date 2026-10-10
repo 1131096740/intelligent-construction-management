@@ -80,6 +80,10 @@ cat > "$FAKE_BIN/pg_dump" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'pg_dump %s\n' "$*" >> "${FAKE_LOG:?}"
+if [[ -n "${PGSERVICEFILE:-}" ]]; then
+  grep '^sslmode=' "$PGSERVICEFILE" >> "${FAKE_LOG:?}" || true
+  if grep -q '^schema=' "$PGSERVICEFILE"; then exit 1; fi
+fi
 [[ " $* " != *"schema="* ]]
 output=""
 while (( $# > 0 )); do
@@ -288,7 +292,7 @@ FAKE
 cat > "$FAKE_BIN/node" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-}" == "-" || $# -eq 0 ]]; then
+if [[ "${1:-}" == "-" || "${1:-}" == */private-libpq-service.mjs || $# -eq 0 ]]; then
   exec "$REAL_NODE" "$@"
 fi
 printf 'node bucket=%s region=%s %s\n' \
@@ -327,7 +331,7 @@ assert_file "$backup_file.sha256"
 [[ "$(file_mode "$backup_file.sha256")" == 600 ]] ||
   fail "checksum mode must be 600"
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "backup was not checked with pg_restore --list"
-grep -q '^pg_dump .*sslmode=require' "$FAKE_LOG" || fail "backup did not preserve libpq parameters"
+grep -q '^sslmode=require$' "$FAKE_LOG" || fail "backup did not preserve libpq parameters"
 if grep -q '^pg_dump .*schema=' "$FAKE_LOG"; then
   fail "backup passed a Prisma-only parameter to pg_dump"
 fi

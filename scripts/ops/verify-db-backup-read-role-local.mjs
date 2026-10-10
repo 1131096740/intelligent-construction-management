@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { tmpdir } from "node:os";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const receiptIndex = process.argv.indexOf("--receipt");
@@ -14,7 +16,7 @@ for (const key of ["DATABASE_URL", "DATABASE_OWNER_URL", "PG_DATABASE_URL", "PGS
   assert(!process.env[key], "local verification refuses inherited database targets");
 }
 assert(!process.env.DOCKER_HOST || /^(unix:|npipe:)/u.test(process.env.DOCKER_HOST), "local Docker endpoint required");
-const passwords = [randomBytes(24).toString("hex"), randomBytes(24).toString("hex"), randomBytes(24).toString("hex")];
+const passwords = [randomBytes(24).toString("hex"), randomBytes(24).toString("hex"), randomBytes(24).toString("hex") + ":\\+ #"];
 function redact(value) {
   return passwords.reduce((text, password) => text.replaceAll(password, "<REDACTED>"), String(value));
 }
@@ -30,7 +32,7 @@ const runId = `backup-read-role-${Date.now()}-${process.pid}`;
 const startedAt = new Date().toISOString();
 const container = command(["docker", "run", "--detach", "--rm", "--pull=never", "--name", `jiangkong-${runId}`,
   "--label", `jiangkong.backup-read-role-run=${runId}`, "--network=none", "--tmpfs", "/var/lib/postgresql/data",
-  "--env", "POSTGRES_USER=fixture_owner", "--env", "POSTGRES_DB=backup_fixture", "--env", "POSTGRES_PASSWORD",
+  "--env", "POSTGRES_HOST_AUTH_METHOD=scram-sha-256", "--env", "POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=trust", "--env", "POSTGRES_USER=fixture_owner", "--env", "POSTGRES_DB=backup_fixture", "--env", "POSTGRES_PASSWORD",
   "postgres:16"], { env: { ...process.env, POSTGRES_PASSWORD: passwords[0] } }).stdout.trim();
 const cases = [];
 function sql(text, database = "backup_fixture") {
@@ -65,6 +67,19 @@ try {
   assert.equal(details.Config.Labels["jiangkong.backup-read-role-run"], runId);
   assert.equal(details.HostConfig.NetworkMode, "none");
   assert.deepEqual(details.HostConfig.Binds ?? [], []);
+  // Copy the cached official Linux Node20 executable; never install packages or mount host paths.
+  const runtimeDirectory = mkdtempSync(join(tmpdir(), "jgzg-backup-node-"));
+  let runtimeContainer;
+  try {
+    runtimeContainer = command(["docker", "create", "--pull=never", "--network=none", "--label", `jiangkong.backup-read-role-run=${runId}`,
+      "node:20.20.2-bookworm-slim", "node", "--version"]).stdout.trim();
+    command(["docker", "cp", `${runtimeContainer}:/usr/local/bin/node`, join(runtimeDirectory, "node")]);
+    command(["docker", "cp", join(runtimeDirectory, "node"), `${container}:/usr/local/bin/node`]);
+    assert.match(command(["docker", "exec", container, "node", "--version"]).stdout, /^v20\./u);
+  } finally {
+    if (runtimeContainer) command(["docker", "rm", "--force", runtimeContainer]);
+    rmSync(runtimeDirectory, { recursive: true, force: true });
+  }
   imageId = details.Image;
   assert.equal(sql("SELECT current_setting('server_version_num')::integer / 10000;"), "16");
   sql(`CREATE ROLE fixture_runtime LOGIN PASSWORD '${passwords[1]}';
@@ -80,13 +95,18 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO fixture_runtime, fixture_backup;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO fixture_backup;
 REVOKE ALL ON "OperatingLedgerWriteSecret", "OperatingLedgerWriteContext" FROM fixture_runtime;
 GRANT INSERT, UPDATE, DELETE ON "BackupBusinessFixture" TO fixture_runtime;`);
-  for (const name of ["db-backup.sh", "db-backup-read-role.sql", "run-production-db-backup.sh"]) {
+  for (const name of ["db-backup.sh", "db-backup-read-role.sql", "run-production-db-backup.sh", "private-libpq-service.mjs"]) {
     put(`/tmp/${name}`, readFileSync(resolve(root, "scripts/ops", name), "utf8"));
   }
   for (const [name, user, password] of [["fixture_backup", "fixture_backup", passwords[2]], ["fixture_runtime", "fixture_runtime", passwords[1]], ["fixture_owner", "fixture_owner", passwords[0]]]) {
-    put(`/tmp/${name}.env`, `DATABASE_URL=postgresql://${user}:${password}@127.0.0.1:5432/backup_fixture\n`);
+    put(`/tmp/${name}.env`, `DATABASE_URL=postgresql://${user}:${encodeURIComponent(password)}@127.0.0.1:5432/backup_fixture\n`);
   }
   sql('CREATE ROLE fixture_read_group; GRANT SELECT ON "BackupBusinessFixture" TO fixture_read_group; GRANT fixture_read_group TO fixture_backup WITH INHERIT FALSE, SET TRUE;');
+  put("/tmp/fixture_wrong_password.env", "DATABASE_URL=postgresql://fixture_backup:deliberately-wrong@127.0.0.1:5432/backup_fixture\n");
+  const authenticationFailure = backup("fixture_wrong_password", "wrong-password", true);
+  assert.notEqual(authenticationFailure.status, 0);
+  assert.match(authenticationFailure.stderr, /password authentication failed/u);
+  cases.push({ id: "wrong-private-password-rejected", passed: true });
   const dump = backup("fixture_backup", "complete-backup").stdout.trim();
   assert(dump.startsWith("/tmp/complete-backup/jiangkong-"));
   command(["docker", "exec", container, "createdb", "-U", "fixture_owner", "backup_restored"]);
@@ -156,13 +176,15 @@ GRANT EXECUTE ON FUNCTION public.fixture_controlled_write() TO fixture_backup;`)
     container, "bash", "/tmp/run-production-db-backup.sh"]).stdout;
   assert.equal(routing, "/etc/jiangkong/db-backup-database.env|/etc/jiangkong/api.env|true|empty");
   cases.push({ id: "production-entry-uses-separated-private-files", passed: true, routingOnly: true });
+  assert.equal(command(["docker", "exec", container, "find", "/tmp", "-maxdepth", "1", "-name", "jgzg-private-libpq-*"]).stdout.trim(), "");
+  cases.push({ id: "private-service-and-password-files-cleaned-after-success-and-failure", passed: true });
 } finally {
   const details = JSON.parse(command(["docker", "inspect", container]).stdout)[0];
   assert.equal(details.Config.Labels["jiangkong.backup-read-role-run"], runId);
   command(["docker", "rm", "--force", "--volumes", container]);
   containerRemoved = true;
 }
-const sources = ["scripts/ops/db-backup.sh", "scripts/ops/db-backup-read-role.sql", "scripts/ops/run-production-db-backup.sh", "scripts/ops/deploy-production-server.sh", "scripts/ops/verify-db-backup-read-role-local.mjs"];
+const sources = ["scripts/ops/private-libpq-service.mjs", "scripts/ops/db-backup.sh", "scripts/ops/db-backup-read-role.sql", "scripts/ops/run-production-db-backup.sh", "scripts/ops/deploy-production-server.sh", "scripts/ops/verify-db-backup-read-role-local.mjs"];
 const evidence = {
   schemaVersion: 1, executionScope: "isolated-local", productionAccessed: false, status: "passed", postgresMajorVersion: 16,
   candidateSha: command(["git", "-C", root, "rev-parse", "HEAD"]).stdout.trim(),

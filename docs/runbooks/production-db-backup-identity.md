@@ -28,14 +28,22 @@ bucket 拒绝规则。缺少文件、权限不符或解析失败即停止，不�
 本交付不自动配置角色、设置口令或修改 default privileges；如既有权限/继承/RLS 与契约冲突，停止
 并单独审查。密钥、数据库连接和环境文件原文不进入日志或 Git。
 
+数据库客户端只接收固定服务别名，连接参数由 `private-libpq-service.mjs` 写入本次独占0700
+临时目录；服务文件和口令文件均0600。口令不放入客户端参数或 `PGPASSWORD`，客户端不继承
+`DATABASE_URL`、`PG_DATABASE_URL`、`PGDATABASE`。显式口令使用本次私有passfile并清除继承的
+`PGPASSWORD`；无口令连接保留原有libpq认证来源。正常结束及失败退出均清理临时文件。
+必须随脚本安装该helper，并预检可用Node20；离线备份也需要Node。支持单主机URI及libpq
+键值连接，保留查询选项和转义口令；无法安全表示的换行、嵌套service等输入拒绝，不回退身份。
+SIGKILL或宿主故障可能留下私有临时目录，需要按本轮所有权确认后处理，不能宣称必定清理。
+
 ## 本地验证
 
 ```bash
-node --test scripts/ops/db-backup-read-role.test.mjs
+node --test scripts/ops/db-backup-read-role.test.mjs scripts/ops/private-libpq-service.test.mjs
 pnpm verify:db-backup-read-role:local --receipt <new-absolute-local-receipt.json>
 ```
 
-第二条仅使用本机 Docker、官方缓存 postgres:16、网络隔离与 tmpfs，不连接生产、没有宿主目录挂载。
+第二条仅使用本机 Docker、官方缓存 postgres:16 与 node:20.20.2-bookworm-slim、网络隔离与 tmpfs，不连接生产、没有宿主目录挂载。
 验证真实完整 dump/独立恢复、控制面表与 bigint 精度、API 拒读、危险身份/写权限拒绝、RLS 失败清理
 和 root 入口连接分离。它不验证真实 COS 上传、不替代原完整17门或自然 Cron 运行收据。
 

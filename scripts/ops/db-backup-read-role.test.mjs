@@ -17,7 +17,10 @@ async function fixture() {
     psql: `#!/bin/bash
 set -euo pipefail
 for arg in "$@"; do case "$arg" in --dbname=*) url="\${arg#--dbname=}";; esac; done
-role="\${url#*://}"; role="\${role%%:*}"
+[[ "$url" == service=jgzg_backup ]]
+[[ -z "\${DATABASE_URL:-}" && -z "\${PG_DATABASE_URL:-}" && -z "\${PGDATABASE:-}" && -z "\${PGPASSWORD:-}" ]]
+printf '%s\\n' "$PGSERVICEFILE" >> "$CONNECTION_PATHS_FILE"
+role="$(sed -n 's/^user=//p' "$PGSERVICEFILE")"
 printf 'psql %s\\n' "$role" >> "$CALLS_FILE"
 cat > "$SQL_FILE"
 exit "\${FAKE_PSQL_EXIT:-0}"
@@ -25,7 +28,11 @@ exit "\${FAKE_PSQL_EXIT:-0}"
     pg_dump: `#!/bin/bash
 set -euo pipefail
 for ((i=1;i<=$#;i++)); do if [[ "\${!i}" == --file ]]; then j=$((i+1)); output="\${!j}"; fi; done
-url="\${!#}"; role="\${url#*://}"; role="\${role%%:*}"
+url="\${!#}"
+[[ "$url" == --dbname=service=jgzg_backup ]]
+[[ -z "\${DATABASE_URL:-}" && -z "\${PG_DATABASE_URL:-}" && -z "\${PGDATABASE:-}" && -z "\${PGPASSWORD:-}" ]]
+printf '%s\\n' "$PGSERVICEFILE" >> "$CONNECTION_PATHS_FILE"
+role="$(sed -n 's/^user=//p' "$PGSERVICEFILE")"
 printf 'pg_dump %s\\n' "$role" >> "$CALLS_FILE"
 printf 'fixture-only-custom-dump' > "$output"
 `
@@ -44,7 +51,7 @@ printf 'fixture-only-custom-dump' > "$output"
   }
   Object.assign(env, {
     PATH: `${bin}:${process.env.PATH}`,
-    CALLS_FILE: join(root, "calls"), SQL_FILE: join(root, "sql"),
+    CONNECTION_PATHS_FILE: join(root, "connection-paths"), CALLS_FILE: join(root, "calls"), SQL_FILE: join(root, "sql"),
     DATABASE_ENV_FILE: database, BUSINESS_ENV_FILE: business,
     DB_BACKUP_READ_ONLY_ROLE_REQUIRED: "true", BACKUP_DIR: join(root, "backups")
   });
@@ -55,7 +62,10 @@ async function calls(f) {
 }
 async function runCase(action) {
   const f = await fixture();
-  try { await action(f); } finally { await rm(f.root, { recursive: true, force: true }); }
+  try { await action(f);
+    const paths = await readFile(f.env.CONNECTION_PATHS_FILE, "utf8").catch(() => "");
+    for (const path of paths.trim().split("\n").filter(Boolean)) await assert.rejects(readFile(path));
+  } finally { await rm(f.root, { recursive: true, force: true }); }
 }
 
 test("checks the independent backup identity before dumping and never adopts the API identity", async () => runCase(async f => {
@@ -72,7 +82,7 @@ test("rejects a failed read-role preflight before creating or publishing a backu
 }));
 
 test("cannot substitute an inherited libpq URL for the independent read-role connection", async () => runCase(async f => {
-  const result = spawnSync("bash", [script], { env: { ...f.env, PG_DATABASE_URL: "postgresql://fixture_owner:fixture-only@localhost/database" }, encoding: "utf8" });
+  const result = spawnSync("bash", [script], { env: { ...f.env, PGPASSWORD: "must-not-replace-private-password", PGDATABASE: "must-not-replace-private-database", PG_DATABASE_URL: "postgresql://fixture_owner:fixture-only@localhost/database" }, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(await calls(f), "psql fixture_backup\npg_dump fixture_backup\n");
 }));

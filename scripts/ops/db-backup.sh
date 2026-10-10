@@ -285,9 +285,34 @@ if [[ "$DB_BACKUP_READ_ONLY_ROLE_REQUIRED" == true ]]; then
     echo "Database backup read-role preflight must be a regular non-symlink file" >&2
     exit 1
   fi
-  psql --no-psqlrc --set=ON_ERROR_STOP=1 --dbname="$PG_DATABASE_URL" < "$role_preflight" >/dev/null
+  # Connection preparation below precedes the unchanged SQL role preflight.
+  require_role_preflight=true
 else
   PG_DATABASE_URL="${PG_DATABASE_URL:-$(normalize_libpq_url "$DATABASE_URL")}"
+fi
+
+private_connection_helper="$SCRIPT_DIR/private-libpq-service.mjs"
+if [[ ! -f "$private_connection_helper" || -L "$private_connection_helper" ]]; then
+  echo "Private libpq connection helper must be a regular non-symlink file" >&2
+  exit 1
+fi
+command -v node >/dev/null 2>&1 || { echo "Node.js is required for private libpq connection preparation" >&2; exit 1; }
+connection_directory="$(printf '%s' "$PG_DATABASE_URL" | env -u DATABASE_URL -u PG_DATABASE_URL -u PGDATABASE -u PGPASSWORD node "$private_connection_helper")"
+cleanup_connection() {
+  if [[ -n "${connection_directory:-}" ]]; then
+    rm -rf -- "$connection_directory"
+  fi
+}
+trap cleanup_connection EXIT
+run_database_client() {
+  if [[ -f "$connection_directory/explicit-password" ]]; then
+    env -u DATABASE_URL -u PG_DATABASE_URL -u PGPASSWORD -u PGDATABASE PGSERVICEFILE="$connection_directory/service.conf" "$@" --dbname=service=jgzg_backup
+  else
+    env -u DATABASE_URL -u PG_DATABASE_URL -u PGDATABASE PGSERVICEFILE="$connection_directory/service.conf" "$@" --dbname=service=jgzg_backup
+  fi
+}
+if [[ "${require_role_preflight:-false}" == true ]]; then
+  run_database_client psql --no-psqlrc --set=ON_ERROR_STOP=1 < "$role_preflight" >/dev/null
 fi
 
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
@@ -322,6 +347,7 @@ offsite_published=false
 cleanup() {
   local exit_code=$?
   trap - EXIT
+  cleanup_connection
   rm -f "$backup_temp" "$checksum_temp" "$receipt_temp"
   if [[ "$published" != true ]]; then
     rm -f "$backup_file" "$checksum_file"
@@ -367,7 +393,7 @@ upload_to_cos_with_retry() {
   return 1
 }
 
-pg_dump --format=custom --no-owner --file "$backup_temp" "$PG_DATABASE_URL"
+run_database_client pg_dump --format=custom --no-owner --file "$backup_temp"
 if [[ ! -s "$backup_temp" ]]; then
   echo "Database backup is empty" >&2
   exit 1
