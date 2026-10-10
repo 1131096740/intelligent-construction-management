@@ -66,7 +66,7 @@ unquote_env_value() {
 
 load_database_url_file() {
   local env_file=$1
-  validate_env_file "$env_file" "DATABASE_ENV_FILE" false
+  validate_env_file "$env_file" "DATABASE_ENV_FILE" "${DB_BACKUP_READ_ONLY_ROLE_REQUIRED:-false}"
   local line value="" count=0 business_bucket="" business_bucket_count=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%$'\r'}"
@@ -99,6 +99,28 @@ load_database_url_file() {
     COS_BUCKET="$business_bucket"
     export COS_BUCKET
   fi
+}
+
+load_business_bucket_file() {
+  local env_file=$1
+  validate_env_file "$env_file" "BUSINESS_ENV_FILE" false
+  local line bucket="" count=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    if [[ "$line" == COS_BUCKET=* ]]; then
+      count=$((count + 1))
+      bucket="$(unquote_env_value "${line#COS_BUCKET=}")" || {
+        echo "BUSINESS_ENV_FILE contains an invalid quoted COS_BUCKET" >&2
+        exit 1
+      }
+    fi
+  done < "$env_file"
+  if [[ "$count" != 1 || -z "$bucket" ]]; then
+    echo "BUSINESS_ENV_FILE must contain exactly one non-empty COS_BUCKET" >&2
+    exit 1
+  fi
+  COS_BUCKET="$bucket"
+  export COS_BUCKET
 }
 
 load_backup_env_file() {
@@ -142,8 +164,17 @@ load_backup_env_file() {
   done < "$env_file"
 }
 
+DB_BACKUP_READ_ONLY_ROLE_REQUIRED="${DB_BACKUP_READ_ONLY_ROLE_REQUIRED:-false}"
+if [[ "$DB_BACKUP_READ_ONLY_ROLE_REQUIRED" != true && "$DB_BACKUP_READ_ONLY_ROLE_REQUIRED" != false ]]; then
+  echo "DB_BACKUP_READ_ONLY_ROLE_REQUIRED must be true or false" >&2
+  exit 1
+fi
+
 if [[ -n "${DATABASE_ENV_FILE:-}" ]]; then
   load_database_url_file "$DATABASE_ENV_FILE"
+fi
+if [[ -n "${BUSINESS_ENV_FILE:-}" ]]; then
+  load_business_bucket_file "$BUSINESS_ENV_FILE"
 fi
 if [[ -n "${DB_BACKUP_ENV_FILE:-}" ]]; then
   load_backup_env_file "$DB_BACKUP_ENV_FILE"
@@ -246,7 +277,18 @@ normalize_libpq_url() {
   fi
 }
 
-PG_DATABASE_URL="${PG_DATABASE_URL:-$(normalize_libpq_url "$DATABASE_URL")}"
+if [[ "$DB_BACKUP_READ_ONLY_ROLE_REQUIRED" == true ]]; then
+  # The private database file is the authority; inherited libpq URLs cannot replace it.
+  PG_DATABASE_URL="$(normalize_libpq_url "$DATABASE_URL")"
+  role_preflight="$SCRIPT_DIR/db-backup-read-role.sql"
+  if [[ ! -f "$role_preflight" || -L "$role_preflight" ]]; then
+    echo "Database backup read-role preflight must be a regular non-symlink file" >&2
+    exit 1
+  fi
+  psql --no-psqlrc --set=ON_ERROR_STOP=1 --dbname="$PG_DATABASE_URL" < "$role_preflight" >/dev/null
+else
+  PG_DATABASE_URL="${PG_DATABASE_URL:-$(normalize_libpq_url "$DATABASE_URL")}"
+fi
 
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
 mkdir -p "$BACKUP_DIR"

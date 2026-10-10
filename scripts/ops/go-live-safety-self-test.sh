@@ -710,7 +710,7 @@ make_deploy_fixture() {
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
   printf 'DATABASE_URL=postgresql://runtime:runtime@local/jiangkong\n' > "$fixture/api.env"
-  printf 'OPERATING_LEDGER_RUNTIME_ROLE=runtime\n' >> "$fixture/api.env"
+  printf 'OPERATING_LEDGER_RUNTIME_ROLE=runtime\nCOS_BUCKET=jiangkong-prod-files-1438687719\n' >> "$fixture/api.env"
   printf 'UNRELATED_VALUE=$(touch %s)\n' "$fixture/api-env-command-must-not-run" >> "$fixture/api.env"
   printf 'DATABASE_MIGRATION_URL=postgresql://owner:owner@local/jiangkong\n' \
     > "$fixture/db-migration.env"
@@ -721,7 +721,8 @@ DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719
 DB_BACKUP_COS_REGION=ap-chengdu
 DB_BACKUP_COS_PREFIX=database-backups
 BACKUP_ENV
-  chmod 600 "$fixture/api.env" "$fixture/db-migration.env" "$fixture/db-backup.env"
+  printf 'DATABASE_URL=postgresql://backup_reader:fixture-only@local/jiangkong\n' > "$fixture/db-backup-database.env"
+  chmod 600 "$fixture/api.env" "$fixture/db-migration.env" "$fixture/db-backup.env" "$fixture/db-backup-database.env"
   cat > "$fixture/health.sh" <<'HEALTH'
 #!/usr/bin/env bash
 exit 0
@@ -746,6 +747,7 @@ run_deploy_fixture() {
     BACKUP_SCRIPT="$SCRIPT_DIR/db-backup.sh" \
     BACKUP_RUN_AS_ROOT=true \
     DB_BACKUP_ENV_FILE="$fixture/db-backup.env" \
+    DB_BACKUP_DATABASE_ENV_FILE="$fixture/db-backup-database.env" \
     DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
     FAKE_NODE_COUNT_FILE="$fixture/node-count" \
     RUNTIME_HEALTH_SCRIPT="$fixture/health.sh" \
@@ -993,5 +995,6 @@ restart_count="$(grep -c '^systemctl restart jiangkong-api$' "$FAKE_LOG")"
 
 "$REAL_NODE" --test "$SCRIPT_DIR/cos-backup-transfer.test.mjs" >/dev/null
 "$REAL_NODE" --test "$SCRIPT_DIR/check-production-db-backup.test.mjs" >/dev/null
+"$REAL_NODE" --test "$SCRIPT_DIR/db-backup-read-role.test.mjs" >/dev/null
 
 echo "go-live ops safety self-test passed"
