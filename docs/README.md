@@ -10,6 +10,8 @@
 4. `prd.md`：冻结的实施包 1–5 与上线范围基线。
 5. `docs/progress/2026-08-05-go-live-conditional-go.md`：当前最新发布与残余风险收据。
 
+当前数据库备份身份与生产修复/回滚契约见 [`正式数据库备份身份与恢复验证`](runbooks/production-db-backup-identity.md)；旧异机备份手册保留为历史资料。
+
 ## 当前规格索引
 
 - 项目经营总账、施工企业经营、历史接管、多公司主体分账、统一业务录入及正式启用规则，以 [`项目经营总账、施工企业经营接管与统一业务录入正式规格`](specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md) 为准。

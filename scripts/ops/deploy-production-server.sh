@@ -15,6 +15,7 @@ DATABASE_MIGRATION_ENV_FILE="${DATABASE_MIGRATION_ENV_FILE:-/etc/jiangkong/db-mi
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
 DB_BACKUP_ENV_FILE="${DB_BACKUP_ENV_FILE:-/etc/jiangkong/db-backup.env}"
+DB_BACKUP_DATABASE_ENV_FILE="${DB_BACKUP_DATABASE_ENV_FILE:-/etc/jiangkong/db-backup-database.env}"
 BACKUP_RUN_AS_ROOT="${BACKUP_RUN_AS_ROOT:-true}"
 DEPLOY_COREPACK_HOME="${DEPLOY_COREPACK_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/node/corepack}"
 STAGING_PARENT_DIR="${STAGING_PARENT_DIR:-/srv/jiangkong}"
@@ -81,8 +82,10 @@ fi
 
 run_pre_migration_backup() {
   if [[ "$BACKUP_RUN_AS_ROOT" == true ]]; then
-    sudo --non-interactive env \
-      DATABASE_ENV_FILE="$API_ENV_FILE" \
+    sudo --non-interactive env -u DATABASE_URL -u PG_DATABASE_URL \
+      DATABASE_ENV_FILE="$DB_BACKUP_DATABASE_ENV_FILE" \
+      BUSINESS_ENV_FILE="$API_ENV_FILE" \
+      DB_BACKUP_READ_ONLY_ROLE_REQUIRED=true \
       DB_BACKUP_ENV_FILE="$DB_BACKUP_ENV_FILE" \
       DB_BACKUP_OFFSITE_REQUIRED=true \
       BACKUP_DIR="$BACKUP_DIR" \
@@ -91,7 +94,10 @@ run_pre_migration_backup() {
     return
   fi
 
-  DB_BACKUP_OFFSITE_REQUIRED=true \
+  DATABASE_ENV_FILE="$DB_BACKUP_DATABASE_ENV_FILE" \
+    BUSINESS_ENV_FILE="$API_ENV_FILE" \
+    DB_BACKUP_READ_ONLY_ROLE_REQUIRED=true \
+    DB_BACKUP_OFFSITE_REQUIRED=true \
     DB_BACKUP_TRANSFER_SCRIPT="$DB_BACKUP_TRANSFER_SCRIPT" \
     "$BACKUP_SCRIPT"
 }

@@ -8,6 +8,7 @@
     "lint": "node scripts/pnpm-workspace.mjs -r lint",
     "test": "node scripts/pnpm-workspace.mjs -r test",
     "test:ci-orchestration": "node --test scripts/go-live-ci-gates.test.mjs scripts/inspect-contract-mutation-authority-manifest.test.mjs scripts/inspect-pol21-cross-domain-acceptance.test.mjs scripts/inspect-pol23-release-candidate.test.mjs scripts/inspect-release-manifests.test.mjs scripts/ops/local-release-tools.test.mjs scripts/ops/maintenance-activation.test.mjs scripts/ops/private-object-backup.test.mjs scripts/ops/run-fast-local-check.test.mjs services/api/prisma/generate-database-migration-baseline.test.cjs services/api/prisma/run-database-dynamic-gate-local.test.cjs",
+    "verify:db-backup-read-role:local": "node scripts/ops/verify-db-backup-read-role-local.mjs",
     "verify:pol25b:local": "node --test scripts/ops/maintenance-activation.test.mjs",
     "check:migration-baseline": "node services/api/prisma/generate-database-migration-baseline.cjs --check",
     "preview:migration-baseline": "node services/api/prisma/generate-database-migration-baseline.cjs --preview",
