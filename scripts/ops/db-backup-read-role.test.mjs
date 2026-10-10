@@ -119,3 +119,13 @@ test("still refuses a business bucket after database credentials have been separ
   assert.match(result.stderr, /must not use the business file bucket/u);
   assert.equal(await calls(f), "");
 }));
+
+for (const target of ['actual#archive', 'actual?application_name=backup#archive', 'db/../actual', 'db/%2e%2e/actual']) {
+  test(`refuses ambiguous URI ${target} before any database client or backup publication`, async () => runCase(async f => {
+    await writeFile(f.database, `DATABASE_URL=postgresql://fixture_backup:fixture-only@localhost/${target}\n`, { mode: 0o600 });
+    const result = spawnSync('bash', [script], { env: f.env, encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.equal(await calls(f), '');
+    await assert.rejects(readFile(join(f.env.BACKUP_DIR, '.db-backup.lock')));
+  }));
+}

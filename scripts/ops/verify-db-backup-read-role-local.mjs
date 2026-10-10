@@ -114,6 +114,28 @@ GRANT INSERT, UPDATE, DELETE ON "BackupBusinessFixture" TO fixture_runtime;`);
   assert.equal(sql('SELECT count(*) FROM "OperatingLedgerWriteSecret"; SELECT count(*) FROM "OperatingLedgerWriteContext"; SELECT amount FROM "BackupBusinessFixture";', "backup_restored"), "1\n1\n9007199254740993");
   assert.equal(sql("SELECT has_table_privilege('fixture_runtime','\"OperatingLedgerWriteSecret\"','SELECT');"), "f");
   cases.push({ id: "full-dump-and-real-restore", readOnlySetMembershipAllowed: true, passed: true, protectedControlTablesIncluded: true, moneyPrecisionPreserved: true, runtimeSecretReadDenied: true });
+  sql('CREATE DATABASE "backup_fixture#archive" TEMPLATE backup_fixture;');
+  sql('UPDATE "BackupBusinessFixture" SET amount=109;', "backup_fixture#archive");
+  const originalHashTarget = command(["docker", "exec", "--env", "PGPASSWORD", container, "psql", "-X", "-At",
+    "--dbname=postgresql://fixture_backup@127.0.0.1:5432/backup_fixture#archive", "-c", "SELECT current_database();"],
+    { env: { ...process.env, PGPASSWORD: passwords[2] } }).stdout.trim();
+  assert.equal(originalHashTarget, "backup_fixture#archive");
+  cases.push({ id: "native-libpq-raw-hash-selects-original-database", passed: true });
+  for (const [name, path] of [["raw_hash", "backup_fixture#archive"], ["dot_path", "db/../backup_fixture"], ["encoded_dot", "db/%2e%2e/backup_fixture"]]) {
+    put(`/tmp/${name}.env`, `DATABASE_URL=postgresql://fixture_backup:${encodeURIComponent(passwords[2])}@127.0.0.1:5432/${path}\n`);
+    const refusal = backup(name, `refuse-${name}`, true);
+    assert.notEqual(refusal.status, 0, "URI normalization must not select another database");
+    assert.match(refusal.stderr, /Private libpq connection preparation failed/u);
+    assert.equal(command(["docker", "exec", container, "bash", "-c", `test ! -e /tmp/refuse-${name}; printf clean`]).stdout, "clean");
+    cases.push({ id: `public-backup-${name}-refused-before-target-access`, passed: true });
+  }
+  put("/tmp/encoded_hash.env", `DATABASE_URL=postgresql://fixture_backup:${encodeURIComponent(passwords[2])}@127.0.0.1:5432/backup_fixture%23archive\n`);
+  const archiveDump = backup("encoded_hash", "archive-backup").stdout.trim();
+  command(["docker", "exec", container, "createdb", "-U", "fixture_owner", "archive_restored"]);
+  command(["docker", "exec", container, "pg_restore", "--exit-on-error", "--no-owner", "-U", "fixture_owner", "-d", "archive_restored", archiveDump]);
+  assert.equal(sql('SELECT amount FROM "BackupBusinessFixture"; SELECT count(*) FROM "OperatingLedgerWriteSecret";', "archive_restored"), "109\n1");
+  assert.equal(sql('SELECT amount FROM "BackupBusinessFixture";'), "9007199254740993");
+  cases.push({ id: "encoded-hash-backup-restores-original-target-only", passed: true });
   rejects("runtime-role-rejected", "fixture_runtime", /application write|complete read/u);
   rejects("owner-role-rejected", "fixture_owner", /non-owner read-only role/u);
   sql('GRANT INSERT ON "BackupBusinessFixture" TO fixture_backup;');

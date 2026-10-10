@@ -7,7 +7,12 @@ import { fileURLToPath } from 'node:url';
 export function connectionParameters(text) {
   const params = new Map();
   if (/^postgres(?:ql)?:\/\//u.test(text)) {
+    // libpq has no fragment syntax and treats the database path as an opaque name.
+    // WHATWG removes fragments, control characters and dot segments; never adopt that target.
+    if (text.includes('#') || /[\u0000-\u0020\u007f]/u.test(text)) throw new Error('ambiguous connection URI');
+    const originalPath = text.match(/^postgres(?:ql)?:\/\/[^/?#]*(\/[^?]*)?(?:\?.*)?$/u)?.[1] ?? '';
     const url = new URL(text);
+    if (decodeURIComponent(url.pathname) !== decodeURIComponent(originalPath)) throw new Error('connection URI path would be normalized');
     if (url.username) params.set('user', decodeURIComponent(url.username));
     if (url.password) params.set('password', decodeURIComponent(url.password));
     if (url.hostname) params.set('host', url.hostname.replace(/^\[|\]$/gu, ''));

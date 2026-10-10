@@ -35,3 +35,24 @@ test('a no-password connection retains native authentication without fabricating
   try { await assert.rejects(stat(join(dir,'pgpass'))); assert(!(await readFile(join(dir,'service.conf'),'utf8')).includes('password')); }
   finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+for (const input of [
+  'postgresql://reader@localhost/actual#archive',
+  'postgresql://reader@localhost/actual?application_name=backup#archive',
+  'postgresql://reader@localhost/db/../actual',
+  'postgresql://reader@localhost/db/%2e%2e/actual',
+  'postgresql://reader@localhost/act\nual',
+  'postgresql://reader@localhost/act\tual'
+]) test(`refuses URI normalization of ${JSON.stringify(input)}`, () => assert.throws(() => connectionParameters(input)));
+
+test('encoded hash and literal query plus keep their libpq meaning', () => {
+  const p = connectionParameters('postgresql://reader@localhost/actual%23archive?application_name=backup+archive');
+  assert.equal(p.get('dbname'), 'actual#archive');
+  assert.equal(p.get('application_name'), 'backup+archive');
+});
+
+test('Unicode and percent encoding that preserve the database name remain accepted', () => {
+  assert.equal(connectionParameters('postgresql://reader@localhost/工程归档').get('dbname'), '工程归档');
+  assert.equal(connectionParameters('postgresql://reader@localhost/actual%2Farchive').get('dbname'), 'actual/archive');
+  assert.equal(connectionParameters('postgresql://reader@localhost/actual%252e%252e').get('dbname'), 'actual%2e%2e');
+});
