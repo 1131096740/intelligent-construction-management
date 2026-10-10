@@ -16,7 +16,7 @@
 - [~] 单独批准的生产只读快照：正式仓库56fd5243、API停止、配置冻结all/空modules；PG16.14仅171项成功迁移，共有项checksum一致但缺第172项模板快照迁移。最新备份三件套为9月20日、今日无dump、监控inactive；已有恢复材料为9月21日，尚未独立核验当前SHA权威上游收据。未执行生产写入，证据见 `/private/tmp/pol25b-isolated-acceptance-20261008/main-9904bb77-production-readonly-closeout.json`。
 - [x] 用户批准独立本地诊断/最小修复，明确采用独立只读备份连接。原脚本在最小真实PG16秘密表夹具稳定RED；只更换独立只读身份后完整dump/独立恢复GREEN，控制面表及bigint精度保留、API秘密表拒读不变。新预检不创建/授权角色，覆盖所有用户schema及直接/继承/列/序列写权限、可SET身份及可执行定义者权限入口；没有排除受保护表或扩大应用权限。
 - [x] 当前本地角色/入口回归7/7、真实PG16二十三类验证及原运维安全自测通过；初始测试字符串转义和夹具角色清理失败分别保留，不算目标RED。监控原13/13回归通过，尚无其源码缺陷证据，本批不改检查器或定时器。独立证据目录 `/private/tmp/backup-read-permission-evidence-20261010`。
-- [~] 提交前全仓类型/lint通过（0 errors、570既有Web warnings），205/205原编排通过；双审发现的SET ROLE、ADMIN OPTION、所有权、服务器能力、SECURITY DEFINER及TCP就绪遗漏已修正；真实反例RED与初始化窗口证据保留；最终候选双审与新SHA固定验证继续。新候选完整17门、push/PR及任何生产角色/凭据/脚本安装、备份/恢复、监控启动/通知、迁移仍须另行批准。生产步骤与回滚范围见 `docs/runbooks/production-db-backup-identity.md`；#296→#122→#123→#124条件未完成，生产激活入口禁用。
+- [~] 全仓类型/lint通过（0 errors、570既有Web warnings），205/205原编排通过；双审发现的SET ROLE、ADMIN OPTION、所有权、服务器能力、SECURITY DEFINER及TCP就绪遗漏已修正并复审通过。真实反例RED与初始化窗口证据保留；各固定候选检查结果见独立证据目录的 `*-checks.json`，不跨SHA拼接。新候选完整17门、push/PR及任何生产角色/凭据/脚本安装、备份/恢复、监控启动/通知、迁移仍须另行批准。生产步骤与回滚范围见 `docs/runbooks/production-db-backup-identity.md`；#296→#122→#123→#124条件未完成，生产激活入口禁用。
 
 ## 历史检查点（2026-10-10，POL113手机确认定位诊断）
 
