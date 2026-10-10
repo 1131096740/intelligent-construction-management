@@ -1,33 +1,56 @@
 -- Read-only metadata preflight. Never provisions or changes a role.
 BEGIN READ ONLY;
 DO $$
+DECLARE
+  backup_identity record;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_catalog.pg_roles
-    WHERE rolname = current_user
-      AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
-  ) OR has_database_privilege(current_user, current_database(), 'CREATE') THEN
-    RAISE EXCEPTION 'Database backup requires a non-owner read-only role';
-  END IF;
+  -- PG16 SET membership can confer capabilities without INHERIT.
+  FOR backup_identity IN
+    SELECT oid, rolname, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+    FROM pg_catalog.pg_roles
+    WHERE rolname = current_user OR pg_has_role(current_user, oid, 'SET')
+    ORDER BY (rolname = current_user) DESC, oid
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_catalog.pg_roles
+      WHERE oid = backup_identity.oid
+        AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
+    ) OR has_database_privilege(backup_identity.oid, current_database(), 'CREATE') THEN
+      RAISE EXCEPTION 'Database backup requires a non-owner read-only role';
+    END IF;
 
-  IF EXISTS (
-    SELECT 1 FROM pg_catalog.pg_namespace n
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)'
-      AND has_schema_privilege(current_user, n.oid, 'CREATE')
-  ) OR EXISTS (
-    SELECT 1 FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-      AND (c.relowner = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user)
-        OR has_table_privilege(current_user, c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'))
-  ) OR EXISTS (
-    SELECT 1 FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)' AND c.relkind = 'S'
-      AND has_sequence_privilege(current_user, c.oid, 'USAGE, UPDATE')
-  ) THEN
-    RAISE EXCEPTION 'Database backup role must not have application write or ownership privileges';
-  END IF;
+    IF EXISTS (
+      SELECT 1 FROM pg_catalog.pg_namespace n
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)'
+        AND has_schema_privilege(backup_identity.oid, n.oid, 'CREATE')
+    ) OR EXISTS (
+      SELECT 1 FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND (c.relowner = backup_identity.oid
+          OR has_table_privilege(backup_identity.oid, c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+          OR has_any_column_privilege(backup_identity.oid, c.oid, 'INSERT, UPDATE, REFERENCES'))
+    ) OR EXISTS (
+      SELECT 1 FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)' AND c.relkind = 'S'
+        AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege(backup_identity.oid, c.oid, 'USAGE, UPDATE') ELSE false END
+    ) THEN
+      RAISE EXCEPTION 'Database backup role must not have application write or ownership privileges';
+    END IF;
+
+    -- Do not infer safety from function names or volatility declarations.
+    -- Backup needs no application SECURITY DEFINER entry point.
+    IF EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)'
+        AND p.prosecdef AND p.prorettype NOT IN ('pg_catalog.trigger'::regtype, 'pg_catalog.event_trigger'::regtype)
+        AND has_function_privilege(backup_identity.oid, p.oid, 'EXECUTE')
+    ) THEN
+      RAISE EXCEPTION 'Database backup role must not have executable security-definer application functions';
+    END IF;
+  END LOOP;
 
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_class c
