@@ -11,12 +11,18 @@ async function useSession(page: Page, session: Session) {
   await page.reload();
 }
 
-test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, request, context }, testInfo) => {
+async function openRefundPayment(page: Page, paymentId: string) {
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === "GET" && response.url().endsWith(`/spot-procurement-payments/${paymentId}`)),
+    gotoWithSingleWebKitInternalErrorRetry(page, `/零星材料付款/${paymentId}`)
+  ]);
+  expect(response.status()).toBe(200);
+}
+
+test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, context }, testInfo) => {
   const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
   const director = JSON.parse(process.env.POL115_SPOT_DIRECTOR_SESSION!) as Session;
   const manager = JSON.parse(process.env.POL115_SPOT_MANAGER_SESSION!) as Session;
-  const projectId = (JSON.parse(process.env.POL115_SPOT_PROJECT_IDS!) as Record<string, string>)[testInfo.project.name]!;
-  const headers = { authorization: `Bearer ${applicant.tokens.accessToken}` };
   const label = testInfo.project.name;
   await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
   await useSession(page, applicant);
@@ -165,7 +171,18 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   const coordinates = (JSON.parse(process.env.POL115_SPOT_REFUND_COORDINATES!) as Record<string, { procurementId: string; paymentId: string }>)[testInfo.project.name]!;
   await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
   await useSession(page, finance);
-  await gotoWithSingleWebKitInternalErrorRetry(page, `/零星材料付款/${coordinates.paymentId}`);
+  // Navigation load can precede this real API response; keep the original UI assertion window.
+  if (testInfo.project.name === "mobile") {
+    let firstDetail = true;
+    await page.route(`**/spot-procurement-payments/${coordinates.paymentId}`, async (route) => {
+      if (firstDetail && route.request().method() === "GET") {
+        firstDetail = false;
+        await new Promise<void>((resolve) => setTimeout(resolve, 6_000));
+      }
+      await route.continue();
+    });
+  }
+  await openRefundPayment(page, coordinates.paymentId);
   const form = page.locator(".payment-refund-form");
   await expect(form.getByText("待退款整笔差额", { exact: true })).toBeVisible();
   await expect(form.getByText("¥200.00", { exact: true })).toBeVisible();
@@ -204,7 +221,7 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   await expect(page.getByText("退款到账事实和凭证已登记", { exact: true })).toHaveCount(0);
   expect(refundMutations).toBe(0);
   await page.unroute(`**/spot-procurement-payments/${coordinates.paymentId}`);
-  await gotoWithSingleWebKitInternalErrorRetry(page, `/零星材料付款/${coordinates.paymentId}`);
+  await openRefundPayment(page, coordinates.paymentId);
   const retryForm = page.locator(".payment-refund-form");
   await expect(retryForm.getByText("待退款整笔差额", { exact: true })).toBeVisible();
   await retryForm.locator('input[type="file"]').setInputFiles({ name: `${testInfo.project.name}-退款.png`, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64") });
@@ -218,7 +235,7 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   await page.reload();
   await expect(page.locator(".payment-refund-receipt").getByText("¥200.00", { exact: true })).toBeVisible();
   await gotoWithSingleWebKitInternalErrorRetry(page, "/零星材料付款工作台");
-  await gotoWithSingleWebKitInternalErrorRetry(page, `/零星材料付款/${coordinates.paymentId}`);
+  await openRefundPayment(page, coordinates.paymentId);
   await expect(page.locator(".payment-refund-receipt").getByText("¥200.00", { exact: true })).toBeVisible();
   const receiptRead = await request.get(`${process.env.POL115_API_URL}/spot-procurements/${coordinates.procurementId}/receipt`, { headers: { authorization: `Bearer ${finance.tokens.accessToken}` } });
   expect(receiptRead.status()).toBe(403);
