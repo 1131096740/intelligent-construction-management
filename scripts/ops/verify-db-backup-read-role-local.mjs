@@ -105,6 +105,23 @@ GRANT INSERT, UPDATE, DELETE ON "BackupBusinessFixture" TO fixture_runtime;`);
   sql('CREATE ROLE fixture_writer; GRANT UPDATE ON "BackupBusinessFixture" TO fixture_writer; GRANT fixture_writer TO fixture_backup;');
   rejects("inherited-write-role-rejected", "fixture_backup", /application write/u);
   sql('REVOKE fixture_writer FROM fixture_backup; REVOKE UPDATE ON "BackupBusinessFixture" FROM fixture_writer; DROP ROLE fixture_writer;');
+  sql('CREATE ROLE fixture_admin_writer; GRANT UPDATE ON "BackupBusinessFixture" TO fixture_admin_writer; GRANT fixture_admin_writer TO fixture_backup WITH ADMIN TRUE, INHERIT FALSE, SET FALSE;');
+  assert.equal(sql("SELECT pg_has_role('fixture_backup','fixture_admin_writer','SET'); SELECT has_table_privilege('fixture_backup','\"BackupBusinessFixture\"','UPDATE');"), "f\nf");
+  rejects("admin-only-writer-role-rejected", "fixture_backup", /role administration/u);
+  sql('REVOKE fixture_admin_writer FROM fixture_backup; REVOKE UPDATE ON "BackupBusinessFixture" FROM fixture_admin_writer; DROP ROLE fixture_admin_writer;');
+  sql('ALTER DATABASE backup_fixture OWNER TO fixture_backup; REVOKE CREATE ON DATABASE backup_fixture FROM fixture_backup; REVOKE CREATE ON SCHEMA public FROM pg_database_owner;');
+  assert.equal(sql("SELECT has_database_privilege('fixture_backup','backup_fixture','CREATE');"), "f");
+  rejects("database-owner-with-revoked-create-rejected", "fixture_backup", /non-owner read-only role/u);
+  sql('ALTER DATABASE backup_fixture OWNER TO fixture_owner; GRANT CREATE ON SCHEMA public TO pg_database_owner;');
+  sql('CREATE SCHEMA backup_owned AUTHORIZATION fixture_backup; REVOKE CREATE ON SCHEMA backup_owned FROM fixture_backup;');
+  assert.equal(sql("SELECT has_schema_privilege('fixture_backup','backup_owned','CREATE');"), "f");
+  rejects("schema-owner-with-revoked-create-rejected", "fixture_backup", /application write/u);
+  sql('DROP SCHEMA backup_owned;');
+  for (const serverRole of ["pg_execute_server_program", "pg_write_server_files", "pg_signal_backend", "pg_checkpoint"]) {
+    sql(`GRANT ${serverRole} TO fixture_backup WITH INHERIT FALSE, SET TRUE;`);
+    rejects(`server-capability-${serverRole}-rejected`, "fixture_backup", /server mutation/u);
+    sql(`REVOKE ${serverRole} FROM fixture_backup;`);
+  }
   sql('CREATE ROLE fixture_switch_writer; GRANT UPDATE ON "BackupBusinessFixture" TO fixture_switch_writer; GRANT fixture_switch_writer TO fixture_backup WITH INHERIT FALSE, SET TRUE;');
   assert.equal(sql("SELECT has_table_privilege('fixture_backup','\"BackupBusinessFixture\"','UPDATE'); SELECT pg_has_role('fixture_backup','fixture_switch_writer','SET');"), "f\nt");
   rejects("set-only-writer-role-rejected", "fixture_backup", /application write/u);

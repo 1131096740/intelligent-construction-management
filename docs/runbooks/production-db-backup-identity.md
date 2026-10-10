@@ -71,3 +71,5 @@ pnpm verify:db-backup-read-role:local --receipt <new-absolute-local-receipt.json
 ### 只读能力复核边界
 
 预检同时检查当前身份及PG16允许`SET ROLE`切换的身份，不依赖`INHERIT`标记。备份无需调用应用`SECURITY DEFINER`入口，因此可直接调用的用户schema定义者权限函数/过程只要具有EXECUTE即拒绝（包括PUBLIC、继承及可切换角色授予）；不按函数名或volatility猜测其是否安全。仅触发器专用返回类型不属可直接调用入口。只读成员关系可保留，任何写入/所有者能力均停止，不自动撤权或修改业务函数。
+
+此外拒绝可切换身份持有的ADMIN OPTION角色管理权、数据库/schema/关系所有权（含撤销自身CREATE后仍保留的所有权）和PG16服务器执行、写文件、信号、checkpoint、写全库及订阅管理角色能力。只读连接不应具有这些运维或升级通道。PG16身份切换、成员管理及所有者语义按[系统权限函数](https://www.postgresql.org/docs/16/functions-info.html)、[GRANT](https://www.postgresql.org/docs/16/sql-grant.html)及[预定义角色](https://www.postgresql.org/docs/16/predefined-roles.html)核验；本地回归不证明生产角色符合契约。
