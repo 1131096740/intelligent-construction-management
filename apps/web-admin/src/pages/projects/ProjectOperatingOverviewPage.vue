@@ -24,20 +24,39 @@
             value="project-maintenance"
             header="项目维护"
           >
+            <t-radio-group
+              v-model="projectMaintenanceMode"
+              variant="default-filled"
+              :disabled="projectSubmitting || projectUpdating"
+            >
+              <t-radio-button
+                value="rename"
+                :disabled="!selectedProjectId"
+              >
+                项目名称
+              </t-radio-button>
+              <t-radio-button value="create">
+                新增项目
+              </t-radio-button>
+            </t-radio-group>
             <div class="project-maintenance-forms">
-              <ProjectCreateForm
-                :key="projectCreateRevision"
-                :saving="projectSubmitting"
-                @save="submitProject"
-              />
-              <ProjectRenameForm
-                v-if="selectedProjectId"
-                :key="selectedProjectId"
-                :project-id="selectedProjectId"
-                :name="selectedProjectName"
-                :saving="projectUpdating"
-                @save="submitProjectName"
-              />
+              <div v-show="projectMaintenanceMode === 'create'">
+                <ProjectCreateForm
+                  :key="projectCreateRevision"
+                  :saving="projectSubmitting"
+                  @save="submitProject"
+                />
+              </div>
+              <div v-show="projectMaintenanceMode === 'rename'">
+                <ProjectRenameForm
+                  v-if="selectedProjectId"
+                  :key="selectedProjectId"
+                  :project-id="selectedProjectId"
+                  :name="selectedProjectName"
+                  :saving="projectUpdating"
+                  @save="submitProjectName"
+                />
+              </div>
             </div>
           </t-collapse-panel>
         </t-collapse>
@@ -1023,6 +1042,7 @@ const projectUpdating = ref(false);
 const projectMessage = ref("");
 const projectMessageTone = ref<"success" | "danger">("success");
 const projectCreateRevision = ref(0);
+const projectMaintenanceMode = ref<"create" | "rename">("rename");
 const selectedProjectName = ref("");
 const receiptSubmitting = ref(false);
 const receiptMessage = ref("");
@@ -1439,6 +1459,7 @@ async function loadProjects() {
     if (!canReadProjectOverview.value && canCreateProjectExpense.value) {
       activeTab.value = "operations";
     }
+    if (!selectedProjectId.value) projectMaintenanceMode.value = "create";
     syncSelectedProjectName();
     await loadExecutiveOverview();
     if (selectedProjectId.value) {

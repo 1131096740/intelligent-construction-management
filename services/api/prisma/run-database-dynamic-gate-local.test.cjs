@@ -922,3 +922,58 @@ test("default and list modes stay read-only even with no executable PATH", () =>
     assert.doesNotMatch(result.stdout, /preview-must-not-use/u);
   }
 });
+
+async function artifactLifecycleFixture(shouldFail) {
+  // Exercise the real executeGate/finally filesystem lifecycle. Infrastructure
+  // callbacks are substituted; this fixture does not execute a business/PG gate.
+  const Module = require('node:module');
+  const fixtureModule = new Module(runnerPath, module);
+  fixtureModule.filename = runnerPath;
+  fixtureModule.paths = Module._nodeModulePaths(path.dirname(runnerPath));
+  const hook = `
+module.exports.artifactLifecycleFixture = async (shouldFail) => {
+  let directory;
+  assertExecutionArguments = () => {};
+  assertSafeExecutionEnvironment = () => {};
+  selectCoveredGroups = () => [{ id: 'artifact-fixture', pendingTests: 1, runner: {} }];
+  selectedCoverage = () => ({ coveredFiles: 1, coveredTests: 1 });
+  createProbeEnvironment = () => ({});
+  assertRepositoryState = async () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  resolveLocalDocker = async () => ({ endpoint: 'unix:///fixture', imageId: 'fixture-only' });
+  createChildEnvironment = (_source, temporaryRoot) => { directory = temporaryRoot; return { TMPDIR: temporaryRoot }; };
+  runPreflight = async () => {};
+  resolveGroupCommand = () => ({ command: 'fixture', args: [] });
+  runCommand = async () => {
+    await require('node:fs/promises').mkdir(path.join(directory, 'browser-failure'));
+    await require('node:fs/promises').writeFile(path.join(directory, 'browser-failure', 'trace.zip'), 'synthetic-private-trace');
+    if (shouldFail) throw new Error('controlled browser failure');
+  };
+  let failure;
+  try {
+    await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
+      migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } }, options: {} });
+  } catch (error) { failure = error; }
+  return { directory, failure };
+};`;
+  fixtureModule._compile("const process = { ...require('node:process'), stdout: { write: () => true }, stderr: { write: () => true } };\n" + readFileSync(runnerPath, 'utf8').replace(/^#!.*\n/u, '') + hook, runnerPath);
+  return fixtureModule.exports.artifactLifecycleFixture(shouldFail);
+}
+
+test('failed dynamic gate preserves its private browser trace instead of deleting evidence', async () => {
+  const { readFile, rm, stat } = require('node:fs/promises');
+  const result = await artifactLifecycleFixture(true);
+  try {
+    assert.match(result.failure?.message ?? '', /controlled browser failure/u);
+    assert.equal(await readFile(path.join(result.directory, 'browser-failure', 'trace.zip'), 'utf8'), 'synthetic-private-trace');
+    assert.equal((await stat(result.directory)).mode & 0o777, 0o700);
+  } finally { await rm(result.directory, { recursive: true, force: true }); }
+});
+
+test('successful dynamic gate still removes its own temporary directory', async () => {
+  const { rm, stat } = require('node:fs/promises');
+  const result = await artifactLifecycleFixture(false);
+  try {
+    assert.equal(result.failure, undefined);
+    await assert.rejects(stat(result.directory), { code: 'ENOENT' });
+  } finally { await rm(result.directory, { recursive: true, force: true }); }
+});
