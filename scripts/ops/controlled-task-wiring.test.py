@@ -6,7 +6,8 @@ spec=importlib.util.spec_from_file_location('wiring',Path(__file__).with_name('c
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class TaskWiringTests(unittest.TestCase):
     def test_actual_save_and_owned_withdrawal_refuse_identical_byte_replacement(self):
-        with tempfile.TemporaryDirectory(dir='/private/tmp')as root:
+        with tempfile.TemporaryDirectory()as root:
+            root=Path(root).resolve()
             path=Path(root)/'drop-in';body=b'fixture unit body\n'
             meta=m.create_drop_in(path,body,owner_uid=os.getuid())
             with self.assertRaises(FileExistsError):m.create_drop_in(path,body,owner_uid=os.getuid())
@@ -14,13 +15,15 @@ class TaskWiringTests(unittest.TestCase):
             with self.assertRaises(ValueError):m.remove_drop_in(path,m.digest(body),meta)
             self.assertEqual(path.read_bytes(),body)
     def test_exact_owned_file_can_be_removed_without_touching_neighbour(self):
-        with tempfile.TemporaryDirectory(dir='/private/tmp')as root:
+        with tempfile.TemporaryDirectory()as root:
+            root=Path(root).resolve()
             path=Path(root)/'drop-in';other=Path(root)/'untouched';other.write_bytes(b'other')
             meta=m.create_drop_in(path,b'fixture',owner_uid=os.getuid());m.remove_drop_in(path,m.digest(b'fixture'),meta)
             self.assertFalse(path.exists());self.assertEqual(other.read_bytes(),b'other')
     def test_missing_parent_is_owned_and_creation_pin_survives_json(self):
         import json
-        with tempfile.TemporaryDirectory(dir='/private/tmp')as root:
+        with tempfile.TemporaryDirectory()as root:
+            root=Path(root).resolve()
             path=Path(root)/'task.service.d'/'owned.conf';body=b'fixture'
             meta=m.create_drop_in(path,body,owner_uid=os.getuid(),create_parent=True)
             saved=json.loads(json.dumps(meta))

@@ -186,6 +186,25 @@ test("invoice ledger waits for the published loopback port after container readi
   ]);
 });
 
+test("invoice ledger refuses the bootstrap socket-only server before host readiness", async () => {
+  const dockerCalls = [];
+  let finalServerReady = false;
+  await waitForInvoiceLedgerPostgres(
+    "invoice-bootstrap-postgres",
+    43212,
+    async (args) => {
+      dockerCalls.push(args);
+      const hostIndex = args.indexOf("-h");
+      if (hostIndex >= 0 && args[hostIndex + 1] === "127.0.0.1") {
+        if (dockerCalls.length === 1) throw new Error("bootstrap has no TCP listener");
+        finalServerReady = true;
+      }
+    },
+    async () => assert.equal(finalServerReady, true, "host TCP accept must not hide socket-only initialization")
+  );
+  assert.equal(dockerCalls.length, 2);
+});
+
 test("manifest derives all 303 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);

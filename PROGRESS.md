@@ -10,7 +10,15 @@
 
 ---
 
-## 当前执行（2026-10-14，发布登记最小修复）
+## 当前执行（2026-10-14，CI平台路径与PG16就绪修复）
+
+- [~] 原固定44628cac5ac6b1bf3133e253e7925757936e2352本地原完整17/17与原收据验证器通过，获准正常推送并创建草稿PR #313；固定head CI38515969555质量门和发票PG16门首次失败后按批准包停止，未重跑、修复原分支或合并。旧候选clean、所有失败原件保留；本地通过不代表CI或生产通过。
+- [x] 获准独立修复分支codex/ci-platform-readiness-repair-20261014：原Python测试真实Linux复现/private/tmp缺席，改为系统临时目录规范路径，原Linux及macOS7/7通过；macOS中间路径别名设置失败单独保存，未放宽生产目录安全规则。
+- [x] 原发票waitForPostgres真实PG16初始化窗口复现socket ready/TCP不可用时提前返回；仅增加-h 127.0.0.1后等待至真实SQL可用，公开等待函数新增回归RED→GREEN。原CI唯一现场原因未直接还原，不虚称唯一因果证明；不改业务、Schema、权限、timeouts/retries/skip。
+- [x] 原发票PG16窄门10/10、受影响测试/编排、全仓类型及lint通过（0errors、570既有warnings）。本地提交固定SHA及双审绑定独立收尾收据，详见docs/progress/2026-10-14-ci-platform-readiness-repair.md和/private/tmp/jgzg-ci-platform-readiness-evidence-20261014。
+- [ ] 新SHA完整17门和PR更新集中另批，原完整收据不继承；不推送、不合并、不访问生产。受控首发现场备份恢复、停写、172兼容迁移、维护发布与业务开放尚未执行，旧02:30任务保留，生产入口禁用。
+
+## 历史检查点（2026-10-14，发布登记最小修复）
 
 - [~] 原候选c9ebdcf0bbcf756dfd2626bd8c7b6d1553c56ed1已固定clean；获准一次完整17门前12门通过，第13门页面操作登记检查失败，14–17未运行。原完整日志、状态及失败收据保留在/private/tmp/jgzg-controlled-first-launch-final-acceptance-20261014，不继承或拼轮。本轮保活匿名卷已核验为官方镜像声明的Docker自有卷、非宿主bind，退出后只清理本轮容器。
 - [x] 用户批准独立诊断、最小修复、受影响验证与本地提交。独立codex/page-action-manifest-repair-20261014基于上述SHA，原CLI明确复现PAGE_ACTION_MANIFEST_DRIFT；原生成器重算329项/0阻塞，逐字段证明仅13处trigger/sourceLine漂移，其他字段全部相等。同步能力矩阵JSON/Markdown各一处输入摘要；业务、权限、Schema、检查器、断言及skip未改。
