@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import {parseCosXml,children,singleText} from './restricted-cos-xml.mjs';
 import { createHash, createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   chmod,
   copyFile,
   lstat,
+  open,
   mkdir,
   readFile,
   realpath,
@@ -14,6 +16,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { constants } from "node:fs";
 
 const REQUIRED_ENV_KEYS = [
   "FILE_STORAGE_DRIVER",
@@ -73,6 +76,8 @@ function parseArgs(argv) {
     "candidate-sha",
     "confirm"
   ];
+  if(values.scope!==undefined)expected.push("scope");
+  if(values['storage-profile']!==undefined)expected.push('storage-profile','storage-env-sha256');
   if (Object.keys(values).sort().join("|") !== expected.sort().join("|")) {
     fail("capture-and-verify requires exactly the documented arguments");
   }
@@ -89,7 +94,7 @@ async function assertSafeInputFile(path, label) {
 
 function gitOutput(repositoryRoot, args) {
   try {
-    return execFileSync("git", ["-C", repositoryRoot, ...args], {
+    return execFileSync("git", ["--no-optional-locks","-c","safe.directory="+repositoryRoot,"-c","core.fsmonitor=false","-C", repositoryRoot, ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
@@ -154,6 +159,35 @@ function parseEnvFile(text) {
   return Object.fromEntries(values);
 }
 
+export function parseExistingBackupReaderEnv(text) {
+  const required=['DB_BACKUP_COS_BUCKET','DB_BACKUP_COS_REGION','DB_BACKUP_COS_SECRET_ID','DB_BACKUP_COS_SECRET_KEY'];
+  const allowed=new Set([...required,'DB_BACKUP_COS_PREFIX','DB_BACKUP_LOCAL_RETENTION_DAYS']);
+  const values={};
+  for(const raw of text.split(/\r?\n/u)){
+    const line=raw.trim();if(!line||line.startsWith('#'))continue;
+    const match=line.match(/^(?:export\s+)?([A-Z_]+)=(.*)$/u);
+    if(!match||!allowed.has(match[1])||Object.hasOwn(values,match[1]))fail('invalid backup reader configuration');
+    let value=match[2];if(value.length>=2&&["'",'"'].includes(value[0])&&value.at(-1)===value[0])value=value.slice(1,-1);
+    if(!value||/[\x00\r\n]/u.test(value))fail('invalid backup reader configuration');values[match[1]]=value;
+  }
+  if(required.some(key=>!values[key])||values.DB_BACKUP_COS_BUCKET!=='jiangkong-prod-db-backups-1438687719'||values.DB_BACKUP_COS_REGION!=='ap-chengdu')fail('invalid backup reader configuration');
+  return {FILE_STORAGE_DRIVER:'cos',COS_BUCKET:'jiangkong-prod-files-1438687719',COS_REGION:'ap-chengdu',COS_SECRET_ID:values.DB_BACKUP_COS_SECRET_ID,COS_SECRET_KEY:values.DB_BACKUP_COS_SECRET_KEY};
+}
+
+async function readPinnedBackupReaderFile(path,expectedSha256) {
+  if(path!=='/etc/jiangkong/db-backup.env'||!SHA256_PATTERN.test(expectedSha256??''))fail('exact existing backup reader source and digest required');
+  const fd=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  const pin=s=>[s.dev,s.ino,s.size,s.mode,s.uid,s.gid,s.nlink,s.mtimeMs,s.ctimeMs].join(':');
+  try{
+    const before=await fd.stat();
+    if(!before.isFile()||before.uid!==0||before.nlink!==1||(before.mode&0o077)||before.size>65536)fail('private backup reader source required');
+    const bytes=Buffer.alloc(before.size+1),read=await fd.read(bytes,0,bytes.length,0);
+    const after=await fd.stat(),named=await lstat(path);
+    if(read.bytesRead!==before.size||pin(before)!==pin(after)||pin(before)!==pin(named)||sha256(bytes.subarray(0,read.bytesRead))!==expectedSha256)fail('backup reader source changed');
+    return {text:bytes.subarray(0,read.bytesRead).toString('utf8'),pin:pin(before)};
+  }finally{await fd.close();}
+}
+
 export function validateInventory(value, configuredBucket) {
   if (!Array.isArray(value) || value.length === 0) fail("private-object inventory must be a non-empty JSON array");
   const identities = new Set();
@@ -204,6 +238,7 @@ function tagBlocks(xml, tag) {
 
 function parseVersionListing(xml) {
   const document = xml.trim();
+  let tree;try{tree=parseCosXml(document,"ListVersionsResult");}catch{fail("COS version listing is not a complete ListVersionsResult document or contains unsupported XML");}
   const root = document.match(
     /^(?:<\?xml\s+[\s\S]*?\?>\s*)?<ListVersionsResult(?:\s+[^>]*)?>([\s\S]*)<\/ListVersionsResult>$/iu
   );
@@ -212,7 +247,7 @@ function parseVersionListing(xml) {
   if (truncatedValues.length !== 1 || !["true", "false"].includes(truncatedValues[0])) {
     fail("COS version listing requires exactly one true/false IsTruncated value");
   }
-  return { body: root[1], truncated: truncatedValues[0] === "true" };
+  return { body: root[1], tree, truncated: truncatedValues[0] === "true" };
 }
 
 function queryEntries(query) {
@@ -285,7 +320,7 @@ function objectEndpoint(config) {
   return `https://${config.COS_BUCKET}.cos.${config.COS_REGION}.myqcloud.com`;
 }
 
-async function cosGet(config, pathname, query = {}) {
+async function cosGet(config, pathname, query = {}, options={}) {
   const endpoint = objectEndpoint(config);
   const endpointUrl = new URL(endpoint);
   const host = endpointUrl.host;
@@ -297,7 +332,7 @@ async function cosGet(config, pathname, query = {}) {
         Authorization: authorization("GET", pathname, host, query, config.COS_SECRET_ID, config.COS_SECRET_KEY),
         Host: host
       },
-      signal: AbortSignal.timeout(120_000)
+      signal: AbortSignal.timeout(options.timeoutMs??120_000)
     });
   } catch {
     fail("private-object read failed before an HTTP response was received");
@@ -306,6 +341,8 @@ async function cosGet(config, pathname, query = {}) {
   return response;
 }
 
+function optionalText(node,name){return children(node,name).length?singleText(node,name):undefined;}
+
 export async function listVersions(config, objectKey, requester = cosGet) {
   const versions = [];
   const versionIdentities = new Set();
@@ -313,47 +350,58 @@ export async function listVersions(config, objectKey, requester = cosGet) {
   let keyMarker = "";
   let versionIdMarker = "";
   let hasPreviousPage = false;
-  let truncated;
+  let truncated,pages=0;
   do {
-    const query = { versions: undefined, prefix: objectKey, "max-keys": "1000" };
+    if(++pages>100)fail("COS version page limit");
+    const query = { versions: undefined, "max-keys": "1000" };
+    if(objectKey!==null)query.prefix=objectKey;
     if (hasPreviousPage) {
       query["key-marker"] = keyMarker;
       query["version-id-marker"] = versionIdMarker;
     }
     const xml = await (await requester(config, "/", query)).text();
     const listing = parseVersionListing(xml);
-    for (const block of tagBlocks(listing.body, "Version")) {
-      if (tagValue(block, "Key") !== objectKey) continue;
-      const versionId = tagValue(block, "VersionId");
+    const nested=(node)=>node.children.flatMap(child=>[child,...nested(child)]);
+    const generations=nested(listing.tree).filter(n=>['Version','DeleteMarker'].includes(n.name));
+    if(generations.some(n=>!listing.tree.children.includes(n)))fail("unexpected nested COS generation");
+    for (const block of children(listing.tree, "Version")) {
+      const key=singleText(block,"Key",false);
+      if(objectKey!==null && key!==objectKey)continue;
+      if(!key||/[\u0000-\u001f\u007f]/u.test(key)||key.includes("\\")||Buffer.byteLength(key)>850||key.split("/").some(part=>part==="."||part===".."))fail("COS version key invalid");
+      const versionId = singleText(block, "VersionId");
       if (!versionId) fail("COS version listing omitted VersionId");
-      if (versionIdentities.has(`version\0${versionId}`)) fail("COS version listing repeated a generation");
-      versionIdentities.add(`version\0${versionId}`);
+      if (versionIdentities.has(`version\0${key}\0${versionId}`)) fail("COS version listing repeated a generation");
+      versionIdentities.add(`version\0${key}\0${versionId}`);
       versions.push({
+        ...(objectKey===null?{objectKey:key}:{}),
         versionId,
         isDeleteMarker: false,
-        isLatest: tagValue(block, "IsLatest") === "true",
-        lastModified: tagValue(block, "LastModified"),
-        etag: tagValue(block, "ETag"),
-        sizeBytes: Number(tagValue(block, "Size"))
+        isLatest: singleText(block, "IsLatest") === "true",
+        lastModified: optionalText(block, "LastModified"),
+        etag: optionalText(block, "ETag"),
+        sizeBytes: Number(singleText(block, "Size"))
       });
     }
-    for (const block of tagBlocks(listing.body, "DeleteMarker")) {
-      if (tagValue(block, "Key") !== objectKey) continue;
-      const versionId = tagValue(block, "VersionId");
+    for (const block of children(listing.tree, "DeleteMarker")) {
+      const key=singleText(block,"Key",false);
+      if(objectKey!==null && key!==objectKey)continue;
+      if(!key||/[\u0000-\u001f\u007f]/u.test(key)||key.includes("\\")||Buffer.byteLength(key)>850||key.split("/").some(part=>part==="."||part===".."))fail("COS version key invalid");
+      const versionId = singleText(block, "VersionId");
       if (!versionId) fail("COS delete-marker listing omitted VersionId");
-      if (versionIdentities.has(`delete\0${versionId}`)) fail("COS version listing repeated a generation");
-      versionIdentities.add(`delete\0${versionId}`);
+      if (versionIdentities.has(`delete\0${key}\0${versionId}`)) fail("COS version listing repeated a generation");
+      versionIdentities.add(`delete\0${key}\0${versionId}`);
       versions.push({
+        ...(objectKey===null?{objectKey:key}:{}),
         versionId,
         isDeleteMarker: true,
-        isLatest: tagValue(block, "IsLatest") === "true",
-        lastModified: tagValue(block, "LastModified")
+        isLatest: singleText(block, "IsLatest") === "true",
+        lastModified: optionalText(block, "LastModified")
       });
     }
     truncated = listing.truncated;
     if (truncated) {
-      const nextKeyMarker = tagValue(listing.body, "NextKeyMarker");
-      const nextVersionIdMarker = tagValue(listing.body, "NextVersionIdMarker") ?? "";
+      const nextKeyMarker = singleText(listing.tree, "NextKeyMarker",false);
+      const nextVersionIdMarker = optionalText(listing.tree, "NextVersionIdMarker") ?? "";
       if (!nextKeyMarker) fail("truncated COS version listing omitted NextKeyMarker");
       const markerIdentity = `${nextKeyMarker}\0${nextVersionIdMarker}`;
       if (markerPairs.has(markerIdentity)) fail("COS version pagination did not advance");
@@ -363,8 +411,9 @@ export async function listVersions(config, objectKey, requester = cosGet) {
       hasPreviousPage = true;
     }
   } while (truncated);
-  if (versions.length === 0) fail("private-object inventory key has no recoverable COS versions");
-  if (versions.filter((version) => version.isLatest).length !== 1) fail("private-object key must have exactly one latest COS generation");
+  if(versions.length>100000)fail("COS generation limit");
+  if (objectKey!==null && versions.length === 0) fail("private-object inventory key has no recoverable COS versions");
+  if (objectKey!==null && versions.filter((version) => version.isLatest).length !== 1) fail("private-object key must have exactly one latest COS generation");
   return versions.sort((left, right) => left.versionId.localeCompare(right.versionId));
 }
 
@@ -375,7 +424,7 @@ async function writeAtomic(path, body) {
   await chmod(path, 0o600);
 }
 
-export async function capture(config, inventory, backupRoot, requester = cosGet) {
+export async function capture(config, inventory, backupRoot, requester = cosGet, completeCatalogue=null) {
   const blobRoot = join(backupRoot, "blobs");
   await mkdir(blobRoot, { mode: 0o700 });
   const uniqueObjects = new Map();
@@ -388,9 +437,15 @@ export async function capture(config, inventory, backupRoot, requester = cosGet)
     uniqueObjects.set(identity, row);
   }
 
+  if(completeCatalogue){
+    for(const version of completeCatalogue){
+      if(!uniqueObjects.has(`${config.COS_BUCKET}\0${version.objectKey}`))uniqueObjects.set(`${config.COS_BUCKET}\0${version.objectKey}`,{bucket:config.COS_BUCKET,objectKey:version.objectKey});
+    }
+  }
   const objects = [];
   for (const row of [...uniqueObjects.values()].sort((left, right) => left.objectKey.localeCompare(right.objectKey))) {
-    const versions = await listVersions(config, row.objectKey, requester);
+    const versions = completeCatalogue?completeCatalogue.filter(v=>v.objectKey===row.objectKey).map(({objectKey,...v})=>v):await listVersions(config, row.objectKey, requester);
+    if(!versions.length||versions.filter(v=>v.isLatest).length!==1)fail("Object latest generation incomplete");
     const capturedVersions = [];
     for (const version of versions) {
       if (version.isDeleteMarker) {
@@ -399,6 +454,7 @@ export async function capture(config, inventory, backupRoot, requester = cosGet)
       }
       const response = await requester(config, `/${row.objectKey}`, { versionId: version.versionId });
       const bytes = Buffer.from(await response.arrayBuffer());
+      if(!Number.isSafeInteger(version.sizeBytes)||version.sizeBytes<0||bytes.length!==version.sizeBytes)fail("COS generation size mismatch");
       const contentSha256 = sha256(bytes);
       const blobName = `${contentSha256}.blob`;
       const blobPath = join(blobRoot, blobName);
@@ -412,13 +468,13 @@ export async function capture(config, inventory, backupRoot, requester = cosGet)
       }
       capturedVersions.push({ ...version, sizeBytes: bytes.length, contentSha256, blobName });
     }
-    const verifiedVersions = await listVersions(config, row.objectKey, requester);
+    const verifiedVersions = completeCatalogue?versions:await listVersions(config, row.objectKey, requester);
     if (canonicalJson(verifiedVersions) !== canonicalJson(versions)) {
       fail("private-object version set changed during backup capture");
     }
     const latest = capturedVersions.find((version) => version.isLatest);
-    if (!latest || latest.isDeleteMarker) fail("active database FileObject points to a deleted latest COS generation");
-    if (latest.sizeBytes !== row.sizeBytes || latest.contentSha256 !== row.contentSha256) {
+    if (!latest || (row.id!==undefined && latest.isDeleteMarker)) fail("active database FileObject points to a deleted latest COS generation");
+    if (row.id!==undefined && (latest.sizeBytes !== row.sizeBytes || latest.contentSha256 !== row.contentSha256)) {
       fail("latest COS bytes do not match database size/hash metadata");
     }
     objects.push({
@@ -432,6 +488,31 @@ export async function capture(config, inventory, backupRoot, requester = cosGet)
   return objects;
 }
 
+// Full-bucket capture adds orphaned objects without fabricating FileObject rows.
+// The isolated restore retains the complete generation/delete-marker manifest.
+export async function captureCompleteBucket(config,inventory,backupRoot,requester=cosGet){
+  config=structuredClone(config);inventory=validateInventory(inventory,config.COS_BUCKET);
+  let requests=0,total=0;const start=Date.now();
+  const bounded=async(c,path,query)=>{
+    if(++requests>500||Date.now()-start>600000)fail("complete bucket capture limit");
+    const response=await requester(c,path,query,{timeoutMs:Math.min(120000,600000-(Date.now()-start))});
+    if(!response.ok)fail("complete bucket request refused");
+    const listing=Object.hasOwn(query,'versions'),chunks=[];let size=0;
+    for await(const chunk of response.body){
+      size+=chunk.length;
+      if(Date.now()-start>600000||size>(listing?4194304:134217728)||(!listing&&total+size>2147483648))fail("complete bucket byte/time limit");
+      chunks.push(Buffer.from(chunk));
+    }
+    if(!listing)total+=size;
+    return new Response(Buffer.concat(chunks));
+  };
+  const before=await listVersions(config,null,bounded);
+  const objects=await capture(config,inventory,backupRoot,bounded,before);
+  const after=await listVersions(config,null,bounded);
+  if(canonicalJson(before)!==canonicalJson(after))fail("complete bucket generation set changed during capture");
+  return objects;
+}
+
 export async function restoreAndVerify(manifest, backupRoot, restoreRoot) {
   const restoredBlobRoot = join(restoreRoot, "blobs");
   await mkdir(restoredBlobRoot, { mode: 0o700 });
@@ -442,16 +523,19 @@ export async function restoreAndVerify(manifest, backupRoot, restoreRoot) {
       const source = join(backupRoot, "blobs", version.blobName);
       const target = join(restoredBlobRoot, version.blobName);
       if (basename(source) !== version.blobName || basename(target) !== version.blobName) fail("backup manifest contains an unsafe blob name");
+      const sourceMeta=await lstat(source);if(!sourceMeta.isFile()||sourceMeta.isSymbolicLink()||sourceMeta.nlink!==1)fail("unsafe backup blob");
       const bytes = await readFile(source);
       if (bytes.length !== version.sizeBytes || sha256(bytes) !== version.contentSha256) fail("backup blob verification failed before restore");
       const existing = await lstat(target).catch(() => null);
-      if (!existing) await copyFile(source, target, 0);
+      if(existing&&(!existing.isFile()||existing.isSymbolicLink()||existing.nlink!==1))fail("unsafe isolated restore target");
+      if (!existing) await copyFile(source, target, 1);
       await chmod(target, 0o600);
       const restoredBytes = await readFile(target);
       if (restoredBytes.length !== version.sizeBytes || sha256(restoredBytes) !== version.contentSha256) fail("isolated private-object restore verification failed");
       restoredVersions += 1;
     }
   }
+  await writeAtomic(join(restoreRoot,"private-object-backup-manifest.json"),`${canonicalJson(manifest)}\n`);
   return restoredVersions;
 }
 
@@ -467,7 +551,9 @@ async function main() {
   await assertCandidateRepository(REPOSITORY_ROOT, candidateSha, SCRIPT_RELATIVE_PATH);
   await assertSafeInputFile(args.inventory, "inventory file");
   await assertSafeInputFile(args["storage-env-file"], "environment file");
-  const config = parseEnvFile(await readFile(args["storage-env-file"], "utf8"));
+  if(args['storage-profile']!==undefined&&(args['storage-profile']!=='existing-backup-reader'||args.scope!=='complete-bucket'))fail('backup reader profile requires complete fixed business bucket capture');
+  const readerSource=args['storage-profile']===undefined?null:await readPinnedBackupReaderFile(args['storage-env-file'],args['storage-env-sha256']);
+  const config = readerSource?parseExistingBackupReaderEnv(readerSource.text):parseEnvFile(await readFile(args["storage-env-file"], "utf8"));
   const inventory = validateInventory(JSON.parse(await readFile(args.inventory, "utf8")), config.COS_BUCKET);
   const requestedBackupRoot = resolve(args["backup-root"]);
   const requestedRestoreRoot = resolve(args["restore-root"]);
@@ -486,18 +572,21 @@ async function main() {
   const restoreRoot = await prepareEmptyDirectory(requestedRestoreRoot, "restore root");
 
   const capturedAt = new Date().toISOString();
-  const objects = await capture(config, inventory, backupRoot);
+  if(args.scope!==undefined&&args.scope!=="complete-bucket")fail("unsupported capture scope");
+  const objects = args.scope==="complete-bucket"?await captureCompleteBucket(config,inventory,backupRoot):await capture(config, inventory, backupRoot);
   const manifest = {
     schemaVersion: 1,
     candidateSha,
     capturedAt,
     inventorySha256: sha256(canonicalJson(inventory)),
+    captureScope:args.scope??"registered-objects",
     objects
   };
   const manifestBody = `${canonicalJson(manifest)}\n`;
   const manifestSha256 = sha256(manifestBody);
   await writeAtomic(join(backupRoot, "private-object-backup-manifest.json"), manifestBody);
   const restoredVersionCount = await restoreAndVerify(manifest, backupRoot, restoreRoot);
+  if(readerSource&&(await readPinnedBackupReaderFile(args['storage-env-file'],args['storage-env-sha256'])).pin!==readerSource.pin)fail('backup reader source changed');
   const verifiedAt = new Date().toISOString();
   const receiptBody = {
     schemaVersion: 1,
@@ -507,6 +596,7 @@ async function main() {
     capturedAt,
     verifiedAt,
     sourceRecordCount: inventory.length,
+    captureScope: args.scope??"registered-objects",
     uniqueObjectCount: objects.length,
     versionCount: objects.reduce((sum, object) => sum + object.versions.filter((version) => !version.isDeleteMarker).length, 0),
     deleteMarkerCount: objects.reduce((sum, object) => sum + object.versions.filter((version) => version.isDeleteMarker).length, 0),

@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 const { PrismaClient } = require("@prisma/client");
+const { assertOperationalMaintenanceWriteAllowed } = require("./operational-maintenance-write-boundary.cjs");
 
 const RECEIPT_PURGE_BATCH_SIZE = 500;
 const TIMER_ARGUMENT = "--timer-approved-receipt-purge";
@@ -19,6 +20,7 @@ function parseArgs(argv) {
 }
 
 async function purgeExpiredPristineDraftDeletionReceipts(prisma, now = new Date()) {
+  assertOperationalMaintenanceWriteAllowed();
   const candidates = await prisma.contractPristineDraftDeletionReceipt.findMany({
     where: { status: "completed", expiresAt: { lte: now } },
     orderBy: [{ expiresAt: "asc" }, { contractVersionId: "asc" }],
@@ -28,6 +30,7 @@ async function purgeExpiredPristineDraftDeletionReceipts(prisma, now = new Date(
   if (candidates.length === 0) {
     return { scannedCount: 0, deletedCount: 0 };
   }
+  assertOperationalMaintenanceWriteAllowed();
   const deleted = await prisma.contractPristineDraftDeletionReceipt.deleteMany({
     where: {
       contractVersionId: { in: candidates.map((row) => row.contractVersionId) },
@@ -45,6 +48,7 @@ async function main() {
     process.env.CONTRACT_PRISTINE_DRAFT_DELETION_RECEIPT_PURGE_ENABLED === "true",
     "纯净草稿删除收据定时清理开关未启用"
   );
+  assertOperationalMaintenanceWriteAllowed();
   const prisma = new PrismaClient();
   try {
     process.stdout.write(

@@ -1896,4 +1896,179 @@ describe("ContractDocumentProcessor", () => {
     expect(prisma.contractGeneratedDocument.updateMany).toHaveBeenCalledTimes(2);
     expect(prisma.tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
+  it("drains a claimed document through file publication and audit before shutdown returns", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const files = generatedDocumentFiles();
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    files.getFileBuffer.mockImplementationOnce(async () => {
+      entered();await blocked;
+      return { file: { id: "layout-file" }, buffer: Buffer.from("template") };
+    });
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, files as never, audit as never);
+    const work = processor.processNext();await started;
+    let stopped = false;
+    const shutdown = processor.onModuleDestroy().then(() => { stopped = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const returnedBeforeRelease = stopped;
+    release();await work;await shutdown;
+    expect(returnedBeforeRelease).toBe(false);
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "success" }) }));
+    expect(audit.record).toHaveBeenCalledWith(prisma.tx, expect.objectContaining({ action: "contract.document.success" }));
+    await expect(processor.processNext()).resolves.toBe(false);
+    await expect(processor.onModuleDestroy()).resolves.toBeUndefined();
+  });
+
+});
+
+describe("ContractDocumentProcessor operational freeze", () => {
+  const previousMode = process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+  const previousModules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+  afterEach(() => {
+    if (previousMode === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+    else process.env.OPERATIONAL_WRITE_FREEZE_MODE = previousMode;
+    if (previousModules === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    else process.env.OPERATIONAL_WRITE_FREEZE_MODULES = previousModules;
+  });
+
+  it("does not reach database recovery or file writes under an all freeze", async () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "all";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "";
+    const boundary = new Proxy({}, { get() { throw new Error("frozen worker reached a dependency"); } });
+    const processor = new ContractDocumentProcessor(
+      boundary as PrismaService, boundary as never, boundary as never
+    );
+    await expect(processor.processNext()).resolves.toBe(false);
+  });
+});
+
+describe("ContractDocumentProcessor freeze configuration", () => {
+  const previousMode = process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+  const previousModules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+  afterEach(() => {
+    if (previousMode === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+    else process.env.OPERATIONAL_WRITE_FREEZE_MODE = previousMode;
+    if (previousModules === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    else process.env.OPERATIONAL_WRITE_FREEZE_MODULES = previousModules;
+  });
+  const processor = () => {
+    const boundary = new Proxy({}, { get() { throw new Error("worker dependency reached"); } });
+    return new ContractDocumentProcessor(boundary as PrismaService, boundary as never, boundary as never);
+  };
+  it.each(["contract", "files"])("pauses before dependencies when %s is frozen", async (module) => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = module;
+    await expect(processor().processNext()).resolves.toBe(false);
+  });
+  it.each(["off", "unrelated-module"])("preserves ordinary worker access for %s", async (mode) => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = mode === "off" ? "off" : "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = mode === "off" ? "" : "payment";
+    await expect(processor().processNext()).rejects.toThrow("worker dependency reached");
+  });
+  it.each([["unknown", ""], ["modules", "unknown"]])("invalid mode/modules %s/%s fail closed", async (mode, modules) => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = mode;
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = modules;
+    await expect(processor().processNext()).rejects.toMatchObject({
+      response: { code: "OPERATIONAL_WRITE_FREEZE_CONFIGURATION_INVALID" }
+    });
+  });
+});
+
+describe("ContractDocumentProcessor shutdown drain", () => {
+  it("waits for an in-flight recovery and never claims a new job after shutdown", async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    let claims = 0;
+    const first = { updateMany: async () => { entered(); await blocked; return { count: 0 }; }, findFirst: async () => { claims++; return null; } };
+    const later = { updateMany: async () => ({ count: 0 }), findFirst: async () => { claims++; return null; } };
+    const prisma = { contractLayoutPreviewJob: first, contractGeneratedDocument: later, contractOfflineRevision: later, contractDocumentComparison: later };
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, {} as never, {} as never);
+    const work = processor.processNext();await started;
+    let stopped = false;
+    const shutdown = Promise.resolve(processor.onApplicationShutdown()).then(() => { stopped = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const returnedBeforeRelease = stopped;
+    release();await work;await shutdown;
+    expect(returnedBeforeRelease).toBe(false);
+    expect(claims).toBe(0);
+    await expect(processor.processNext()).resolves.toBe(false);
+  });
+});
+
+describe("ContractDocumentProcessor failed-work drain", () => {
+  it("settles shutdown after in-flight failure while preserving the caller's error", async () => {
+    let fail!: (error: Error) => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const blocked = new Promise<void>((_resolve, reject) => { fail = reject; });
+    const prisma = { contractLayoutPreviewJob: { updateMany: async () => { entered(); await blocked; } } };
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, {} as never, {} as never);
+    const work = processor.processNext().catch((error: unknown) => error);await started;
+    const shutdown = processor.onModuleDestroy();
+    const fault = new Error("local fixture work failure");fail(fault);
+    expect(await work).toBe(fault);
+    await expect(shutdown).resolves.toBeUndefined();
+    await expect(processor.processNext()).resolves.toBe(false);
+    await expect(processor.onApplicationShutdown()).resolves.toBeUndefined();
+  });
+});
+
+describe("ContractDocumentProcessor lookup/shutdown race", () => {
+  it.each(["contractLayoutPreviewJob", "contractOfflineRevision", "contractGeneratedDocument"])("does not claim %s when lookup returns after shutdown", async (target) => {
+    let release!: (job: Record<string, unknown>) => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const lookup = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });
+    const model = () => ({
+      updateMany: async (args: { where?: { id?: string } }) => {
+        if (args.where?.id === "late-job") throw new Error("late claim crossed shutdown boundary");
+        return { count: 0 };
+      },
+      findFirst: async (): Promise<Record<string, unknown> | null> => null,
+      findUnique: async () => ({ id: "comparison", status: "queued" })
+    });
+    const tables = { contractLayoutPreviewJob: model(), contractOfflineRevision: model(), contractGeneratedDocument: model(), contractDocumentComparison: model() };
+    tables[target as keyof typeof tables].findFirst = async () => { entered(); return lookup; };
+    const prisma = { ...tables, $transaction: async (callback: (tx: typeof tables) => Promise<unknown>) => callback(tables) };
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, {} as never, {} as never);
+    const work = processor.processNext().then(value => ({ value, error: undefined }), (error: unknown) => ({ value: undefined, error }));
+    await started;const shutdown = processor.onModuleDestroy();
+    release({ id: "late-job", status: "queued" });
+    expect(await work).toEqual({ value: false, error: undefined });
+    await expect(shutdown).resolves.toBeUndefined();
+  });
+});
+
+describe("ContractDocumentProcessor comparison/transaction shutdown race", () => {
+  it.each(["comparison", "transaction"])("does not claim after shutdown while awaiting %s", async (phase) => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const model = () => ({
+      updateMany: async (args: { where?: { id?: string } }) => {
+        if (args.where?.id === "late-job") throw new Error("late offline claim crossed shutdown boundary");
+        return { count: 0 };
+      }, findFirst: async (): Promise<Record<string, unknown> | null> => null
+    });
+    const tables = { contractLayoutPreviewJob: model(), contractGeneratedDocument: model(), contractOfflineRevision: model(), contractDocumentComparison: {
+      updateMany: async () => ({ count: 0 }),
+      findUnique: async () => { if (phase === "comparison") { entered(); await blocked; } return { id: "comparison", status: "queued" }; }
+    } };
+    tables.contractOfflineRevision.findFirst = async () => ({ id: "late-job", status: "queued" });
+    const prisma = { ...tables, $transaction: async (callback: (tx: typeof tables) => Promise<unknown>) => {
+      if (phase === "transaction") { entered(); await blocked; }
+      return callback(tables);
+    } };
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, {} as never, {} as never);
+    const work = processor.processNext().then(value => ({ value, error: undefined }), (error: unknown) => ({ value: undefined, error }));
+    await started;const shutdown = processor.onModuleDestroy();release();
+    expect(await work).toEqual({ value: false, error: undefined });
+    await expect(shutdown).resolves.toBeUndefined();
+  });
 });

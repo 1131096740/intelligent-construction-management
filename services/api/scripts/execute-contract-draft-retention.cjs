@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { PrismaClient } = require("@prisma/client");
+const { assertOperationalMaintenanceWriteAllowed } = require("./operational-maintenance-write-boundary.cjs");
 
 const MAX_SCAN = 500;
 const REPORT_TTL_MS = 30 * 60 * 1000;
@@ -239,6 +240,7 @@ function safeReceipt({
 }
 
 async function executeRetention({ store, storage, report, options }) {
+  assertOperationalMaintenanceWriteAllowed();
   verifyReport(report);
   invariant(report.status === "ready", "retention report 不是 ready");
   const candidates = report.candidates;
@@ -272,6 +274,7 @@ async function executeRetention({ store, storage, report, options }) {
   };
 
   for (const { candidate, current } of rescanned) {
+    assertOperationalMaintenanceWriteAllowed();
     if (!current.safe) {
       skippedCount += 1;
       bump(candidate.category, "rescan_not_safe");
@@ -360,6 +363,7 @@ async function executeRetention({ store, storage, report, options }) {
         )
       )
   });
+  assertOperationalMaintenanceWriteAllowed();
   await store.recordBatch(receipt);
   return receipt;
 }
@@ -1207,6 +1211,7 @@ async function main() {
     );
     return;
   }
+  if (args.apply || args.timerApprovedTemporary) assertOperationalMaintenanceWriteAllowed();
   const prisma = new PrismaClient();
   try {
     if (args.timerApprovedTemporary) {

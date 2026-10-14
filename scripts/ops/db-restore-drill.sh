@@ -97,6 +97,28 @@ normalize_libpq_url() {
 
 PG_RESTORE_DATABASE_URL="${PG_RESTORE_DATABASE_URL:-$(normalize_libpq_url "$RESTORE_DATABASE_URL")}"
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+private_connection_helper="$SCRIPT_DIR/private-libpq-service.mjs"
+if [[ ! -f "$private_connection_helper" || -L "$private_connection_helper" ]]; then
+  echo "Private libpq connection helper must be a regular non-symlink file" >&2
+  exit 1
+fi
+command -v node >/dev/null 2>&1 || { echo "Node.js is required for private restore connection preparation" >&2; exit 1; }
+connection_directory="$(printf '%s' "$PG_RESTORE_DATABASE_URL" | env -u RESTORE_DATABASE_URL -u PG_RESTORE_DATABASE_URL -u PGDATABASE -u PGPASSWORD node "$private_connection_helper")"
+cleanup_connection() {
+  if [[ -n "${connection_directory:-}" ]]; then
+    rm -rf -- "$connection_directory"
+  fi
+}
+trap cleanup_connection EXIT
+run_restore_database_client() {
+  if [[ -f "$connection_directory/explicit-password" ]]; then
+    env -u RESTORE_DATABASE_URL -u PG_RESTORE_DATABASE_URL -u PGPASSWORD -u PGDATABASE PGSERVICEFILE="$connection_directory/service.conf" "$@" --dbname=service=jgzg_backup
+  else
+    env -u RESTORE_DATABASE_URL -u PG_RESTORE_DATABASE_URL -u PGDATABASE PGSERVICEFILE="$connection_directory/service.conf" "$@" --dbname=service=jgzg_backup
+  fi
+}
+
 if [[ ! -f "$BACKUP_FILE" ]]; then
   echo "Backup file not found: $BACKUP_FILE" >&2
   exit 1
@@ -122,7 +144,7 @@ sha256_file() {
 }
 
 target_database="$(
-  psql "$PG_RESTORE_DATABASE_URL" \
+  run_restore_database_client psql \
     --no-password \
     --tuples-only \
     --no-align \
@@ -142,7 +164,7 @@ if [[ "$RESTORE_DATABASE_NAME_CONFIRMATION" != "$target_database" ]]; then
 fi
 
 existing_public_tables="$(
-  psql "$PG_RESTORE_DATABASE_URL" \
+  run_restore_database_client psql \
     --no-password \
     --tuples-only \
     --no-align \
@@ -172,11 +194,11 @@ if [[ "$actual_checksum" != "$expected_checksum" ]]; then
   exit 1
 fi
 
-pg_restore --list "$BACKUP_FILE" >/dev/null
-pg_restore --exit-on-error --dbname "$PG_RESTORE_DATABASE_URL" "$BACKUP_FILE"
+env -u RESTORE_DATABASE_URL -u PG_RESTORE_DATABASE_URL -u PGPASSWORD -u PGDATABASE pg_restore --list "$BACKUP_FILE" >/dev/null
+run_restore_database_client pg_restore --exit-on-error "$BACKUP_FILE"
 
 read_migration_summary() {
-  psql "$PG_RESTORE_DATABASE_URL" \
+  run_restore_database_client psql \
     --no-password \
     --tuples-only \
     --no-align \
@@ -231,6 +253,6 @@ fi
 printf 'completed_migration_count=%s\n' "$completed_migrations"
 
 for table in User Project Contract ContractTakeover Settlement PaymentRequest ProjectExpenseRequest FileObject AuditLog; do
-  psql "$PG_RESTORE_DATABASE_URL" --no-password --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  run_restore_database_client psql --no-password --tuples-only --no-align --set=ON_ERROR_STOP=1 \
     --command "select '$table=' || count(*) from \"$table\";"
 done

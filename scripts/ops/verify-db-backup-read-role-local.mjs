@@ -87,6 +87,8 @@ CREATE ROLE fixture_backup LOGIN PASSWORD '${passwords[2]}';
 CREATE TABLE "OperatingLedgerWriteSecret"(id integer PRIMARY KEY, "secretHash" text NOT NULL);
 CREATE TABLE "OperatingLedgerWriteContext"(id integer PRIMARY KEY, marker text NOT NULL);
 CREATE TABLE "BackupBusinessFixture"(id serial PRIMARY KEY, amount bigint NOT NULL);
+CREATE TABLE "FileObject"(id text PRIMARY KEY,bucket text,"objectKey" text,"sizeBytes" integer,"contentSha256" text,"storageStatus" text);
+INSERT INTO "FileObject" VALUES ('a','fixture-bucket','fixture/a',3,repeat('a',64),'active'),('b','fixture-bucket','fixture/b',4,repeat('b',64),'superseded');
 INSERT INTO "OperatingLedgerWriteSecret" VALUES(1,'fixture-only-hash');
 INSERT INTO "OperatingLedgerWriteContext" VALUES(1,'fixture-context');
 INSERT INTO "BackupBusinessFixture"(amount) VALUES(9007199254740993);
@@ -95,7 +97,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO fixture_runtime, fixture_backup;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO fixture_backup;
 REVOKE ALL ON "OperatingLedgerWriteSecret", "OperatingLedgerWriteContext" FROM fixture_runtime;
 GRANT INSERT, UPDATE, DELETE ON "BackupBusinessFixture" TO fixture_runtime;`);
-  for (const name of ["db-backup.sh", "db-backup-read-role.sql", "run-production-db-backup.sh", "private-libpq-service.mjs"]) {
+  for (const name of ["db-backup.sh", "db-backup-read-role.sql", "run-production-db-backup.sh", "private-libpq-service.mjs", "export-private-object-inventory.mjs", "private-object-backup.mjs", "restricted-cos-xml.mjs"]) {
     put(`/tmp/${name}`, readFileSync(resolve(root, "scripts/ops", name), "utf8"));
   }
   for (const [name, user, password] of [["fixture_backup", "fixture_backup", passwords[2]], ["fixture_runtime", "fixture_runtime", passwords[1]], ["fixture_owner", "fixture_owner", passwords[0]]]) {
@@ -114,6 +116,17 @@ GRANT INSERT, UPDATE, DELETE ON "BackupBusinessFixture" TO fixture_runtime;`);
   assert.equal(sql('SELECT count(*) FROM "OperatingLedgerWriteSecret"; SELECT count(*) FROM "OperatingLedgerWriteContext"; SELECT amount FROM "BackupBusinessFixture";', "backup_restored"), "1\n1\n9007199254740993");
   assert.equal(sql("SELECT has_table_privilege('fixture_runtime','\"OperatingLedgerWriteSecret\"','SELECT');"), "f");
   cases.push({ id: "full-dump-and-real-restore", readOnlySetMembershipAllowed: true, passed: true, protectedControlTablesIncluded: true, moneyPrecisionPreserved: true, runtimeSecretReadDenied: true });
+  put('/tmp/inventory-export-probe.mjs', `import {readFile} from 'node:fs/promises';
+import {exportInventory} from './export-private-object-inventory.mjs';
+const url=(await readFile('/tmp/fixture_backup.env','utf8')).trim().slice('DATABASE_URL='.length);
+const result=await exportInventory({databaseUrl:url,expectedUser:'fixture_backup',bucket:'fixture-bucket'});
+const rows=JSON.parse(result.bytes);
+if(result.recordCount!==2||rows.map(r=>r.storageStatus).join(',')!=='active,superseded')process.exit(91);
+console.log(JSON.stringify({recordCount:result.recordCount,inventorySha256:result.sha256}));
+`);
+  const inventory=JSON.parse(command(['docker','exec',container,'node','/tmp/inventory-export-probe.mjs']).stdout);
+  assert.equal(inventory.recordCount,2);assert.match(inventory.inventorySha256,/^[a-f0-9]{64}$/u);
+  cases.push({id:'actual-readonly-all-status-FileObject-inventory',passed:true});
   sql('CREATE DATABASE "backup_fixture#archive" TEMPLATE backup_fixture;');
   sql('UPDATE "BackupBusinessFixture" SET amount=109;', "backup_fixture#archive");
   const originalHashTarget = command(["docker", "exec", "--env", "PGPASSWORD", container, "psql", "-X", "-At",
@@ -200,13 +213,61 @@ GRANT EXECUTE ON FUNCTION public.fixture_controlled_write() TO fixture_backup;`)
   cases.push({ id: "production-entry-uses-separated-private-files", passed: true, routingOnly: true });
   assert.equal(command(["docker", "exec", container, "find", "/tmp", "-maxdepth", "1", "-name", "jgzg-private-libpq-*"]).stdout.trim(), "");
   cases.push({ id: "private-service-and-password-files-cleaned-after-success-and-failure", passed: true });
+  const {buildBackupPermissionSql}=await import('./controlled-backup-permission-sql.mjs');
+  sql('CREATE ROLE jiangkong; CREATE ROLE jg_pol275_owner; CREATE ROLE jiangkong_runtime; CREATE ROLE postgres; CREATE DATABASE permission_fixture OWNER jiangkong;');
+  sql(`SET ROLE jiangkong;
+CREATE TABLE public."OperatingLedgerWriteSecret"(value text); INSERT INTO public."OperatingLedgerWriteSecret" VALUES('fixture-only-private');
+CREATE TABLE public."PermissionBusinessFixture"(id serial,amount bigint); INSERT INTO public."PermissionBusinessFixture"(amount) VALUES(9007199254740993);
+CREATE FUNCTION public.assert_fund_movement_write_context() RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN IF current_setting('fixture.context_valid',true) IS DISTINCT FROM 'yes' THEN RAISE EXCEPTION 'Invalid fixture context'; END IF; RETURN 42; END $$;
+RESET ROLE;`,'permission_fixture');
+  const databaseIdentitySha256=sql("SELECT encode(sha256(convert_to(system_identifier::text||'|'||current_database()||'|public','UTF8')),'hex') FROM pg_control_system()",'permission_fixture');
+  const helperDefinitionSha256=sql("SELECT encode(sha256(convert_to(pg_get_functiondef('public.assert_fund_movement_write_context()'::regprocedure),'UTF8')),'hex')",'permission_fixture');
+  const permissionPacket=buildBackupPermissionSql({database:'permission_fixture',databaseIdentitySha256,helperDefinitionSha256,creators:['jiangkong','jg_pol275_owner','postgres']});
+  sql(permissionPacket.applySql,'permission_fixture');
+  const permissionQuery=text=>command(['docker','exec','-i',container,'psql','-X','-q','-v','ON_ERROR_STOP=1','-U','fixture_owner','-d','permission_fixture','-At'],{input:text}).stdout.trim();
+  const installed=JSON.parse(permissionQuery(permissionPacket.inspectSql));
+  assert.equal(installed.loginEnabled,false);assert.equal(installed.superuser,false);assert.equal(installed.createsRoles,false);assert.equal(installed.bypassRls,false);
+  cases.push({id:'actual-no-login-read-identity-permission-transaction',passed:true});
+  assert.equal(sql("SELECT has_function_privilege('jiangkong_backup_reader','public.assert_fund_movement_write_context()','EXECUTE'); SELECT has_function_privilege('jiangkong_runtime','public.assert_fund_movement_write_context()','EXECUTE'); SELECT has_table_privilege('jiangkong_runtime','public.\"OperatingLedgerWriteSecret\"','SELECT');",'permission_fixture'),'f\nt\nf');
+  cases.push({id:'helper-public-revoked-runtime-retained-secret-read-still-denied',passed:true});
+  assert.equal(permissionQuery("BEGIN; SET LOCAL ROLE jiangkong_runtime; SET LOCAL fixture.context_valid='yes'; SELECT public.assert_fund_movement_write_context(); ROLLBACK;"),'42');
+  const invalidContext=command(['docker','exec','-i',container,'psql','-X','-q','-v','ON_ERROR_STOP=1','-U','fixture_owner','-d','permission_fixture','-At'],{input:"BEGIN; SET LOCAL ROLE jiangkong_runtime; SELECT public.assert_fund_movement_write_context(); ROLLBACK;",allowFailure:true});
+  assert.notEqual(invalidContext.status,0);assert.match(invalidContext.stderr,/Invalid fixture context/);
+  cases.push({id:'minimal-real-helper-context-legal-and-illegal-still-enforced',passed:true,fullFundsDomainTest:false});
+  const wrongOid=command(['docker','exec','-i',container,'psql','-X','-q','-v','ON_ERROR_STOP=1','-U','fixture_owner','-d','permission_fixture','-At'],{input:permissionPacket.rollbackSql(installed.roleOid+1),allowFailure:true});
+  assert.notEqual(wrongOid.status,0);assert.equal(sql("SELECT count(*) FROM pg_roles WHERE rolname='jiangkong_backup_reader'",'permission_fixture'),'1');
+  cases.push({id:'wrong-recorded-role-oid-refuses-rollback-without-mutation',passed:true});
+  put('/tmp/controlled-backup-connection.mjs',readFileSync(resolve(root,'scripts/ops/controlled-backup-connection.mjs'),'utf8'));
+  put('/tmp/credential-lifecycle-probe.mjs',`import {mkdir,readFile,lstat,writeFile,rename} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {installConnection,withdrawConnection} from './controlled-backup-connection.mjs';
+import {prepareService} from './private-libpq-service.mjs';
+const directory='/tmp/controlled-reader-private';await mkdir(directory,{mode:0o700});
+const file=directory+'/connection.env';
+const query=async input=>{try{execFileSync('psql',['-X','-q','-U','fixture_owner','-d','permission_fixture','--set=ON_ERROR_STOP=1'],{input,stdio:['pipe','pipe','pipe']});}catch{throw Error('fixture query refused');}};
+const pin=await installConnection({file,database:'permission_fixture',roleOid:${installed.roleOid},databaseIdentitySha256:'${databaseIdentitySha256}',query});
+const url=(await readFile(file,'utf8')).trim().slice(13),service=await prepareService(url);
+const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!k.startsWith('PG')));env.PGSERVICEFILE=service+'/service.conf';
+const amount=execFileSync('psql',['-X','-q','-t','-A','--no-password','--dbname=service=jgzg_backup','-c','SELECT amount FROM public."PermissionBusinessFixture"'],{env,stdio:['ignore','pipe','pipe']}).toString().trim();
+if(amount!=='9007199254740993')throw Error('real SCRAM authentication did not preserve amount');
+await withdrawConnection({file,pin,query});
+try{execFileSync('psql',['-X','-q','--no-password','--dbname=service=jgzg_backup','-c','SELECT 1'],{env,stdio:['ignore','pipe','pipe']});throw Error('withdrawal still authenticates');}catch(e){if(e.message==='withdrawal still authenticates')throw e;}
+try{await lstat(file);throw Error('owned connection not removed');}catch(e){if(e.code!=='ENOENT')throw e;}
+console.log(JSON.stringify({scramLoginVerified:true,withdrawalRefusesLogin:true,fileRemoved:true}));`);
+  const lifecycle=JSON.parse(command(['docker','exec',container,'node','/tmp/credential-lifecycle-probe.mjs']).stdout);
+  assert.equal(lifecycle.scramLoginVerified,true);assert.equal(lifecycle.withdrawalRefusesLogin,true);assert.equal(lifecycle.fileRemoved,true);
+  cases.push({id:'actual-private-reader-credential-SCRAM-install-and-precise-withdrawal',passed:true});
+  sql(permissionPacket.rollbackSql(installed.roleOid),'permission_fixture');
+  assert.equal(permissionQuery("SELECT count(*) FROM pg_roles WHERE rolname='jiangkong_backup_reader'; SELECT count(*) FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE p.oid=to_regprocedure('public.assert_fund_movement_write_context()') AND a.grantee=0 AND a.privilege_type='EXECUTE';"),'0\n1');
+  assert.equal(sql('SELECT amount FROM public."PermissionBusinessFixture"','permission_fixture'),'9007199254740993');
+  cases.push({id:'exact-owned-role-and-effective-helper-acl-rollback-preserves-business',passed:true,rawNullAclRestored:false});
 } finally {
   const details = JSON.parse(command(["docker", "inspect", container]).stdout)[0];
   assert.equal(details.Config.Labels["jiangkong.backup-read-role-run"], runId);
   command(["docker", "rm", "--force", "--volumes", container]);
   containerRemoved = true;
 }
-const sources = ["scripts/ops/private-libpq-service.mjs", "scripts/ops/db-backup.sh", "scripts/ops/db-backup-read-role.sql", "scripts/ops/run-production-db-backup.sh", "scripts/ops/deploy-production-server.sh", "scripts/ops/verify-db-backup-read-role-local.mjs"];
+const sources = ["scripts/ops/private-libpq-service.mjs", "scripts/ops/db-backup.sh", "scripts/ops/db-backup-read-role.sql", "scripts/ops/run-production-db-backup.sh", "scripts/ops/deploy-production-server.sh", "scripts/ops/verify-db-backup-read-role-local.mjs", "scripts/ops/export-private-object-inventory.mjs", "scripts/ops/private-object-backup.mjs", "scripts/ops/controlled-backup-permission-sql.mjs", "scripts/ops/controlled-backup-connection.mjs"];
 const evidence = {
   schemaVersion: 1, executionScope: "isolated-local", productionAccessed: false, status: "passed", postgresMajorVersion: 16,
   candidateSha: command(["git", "-C", root, "rev-parse", "HEAD"]).stdout.trim(),

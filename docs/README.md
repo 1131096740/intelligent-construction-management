@@ -2,6 +2,8 @@
 
 仓库文档分为“当前控制面、冻结规格、运行证据、历史资料”四类。文件数量不代表默认阅读数量；日常开发只需沿当前控制面进入。
 
+当前受控首发以 [`已确认的单人维护首发范围`](runbooks/owner-approved-first-launch-simplification.md) 和 [`受控首发执行包`](runbooks/controlled-first-launch.md) 为入口。辅助CAM/自动签名/在线见证建设延后；旧自动协议的强校验和生产禁用继续保留。
+
 ## 默认阅读顺序
 
 1. `PROGRESS.md`：当前状态、下一步和未完成门禁。
