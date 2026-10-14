@@ -10,6 +10,9 @@ import { constants } from 'node:fs';
 // invocation. Require the precise current script digest as an approval token.
 const digest = b => createHash('sha256').update(b).digest('hex');
 const identity = s => [s.dev,s.ino,s.size,s.mtimeMs,s.ctimeMs,s.mode,s.uid,s.nlink].join(':');
+const boundedOutputPattern = process.platform === 'darwin'
+  ? /^\/private\/tmp\/jgzg-controlled-preflight-[a-z0-9-]+$/
+  : process.platform === 'linux' ? /^\/tmp\/jgzg-controlled-preflight-[a-z0-9-]+$/ : null;
 export async function persistPinnedArtifact(handle,path,bytes) {
   await handle.writeFile(bytes);await handle.sync();const pin=await handle.stat();
   const verify=async()=>{
@@ -19,7 +22,7 @@ export async function persistPinnedArtifact(handle,path,bytes) {
   };await verify();return verify;
 }
 export async function runPreflight({ source, expectedSha256, output, execute = spawn }) {
-  if (!/^[a-f0-9]{64}$/.test(expectedSha256 ?? '') || !/^\/private\/tmp\/jgzg-controlled-preflight-[a-z0-9-]+$/.test(output ?? '')) throw Error('invalid bounded preflight inputs');
+  if (!/^[a-f0-9]{64}$/.test(expectedSha256 ?? '') || !boundedOutputPattern?.test(output ?? '')) throw Error('invalid bounded preflight inputs');
   const fd = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
   let bytes;
   try {

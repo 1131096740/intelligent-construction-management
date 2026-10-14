@@ -10,7 +10,15 @@
 
 ---
 
-## 当前执行（2026-10-14，CI平台路径与PG16就绪修复）
+## 当前执行（2026-10-14，一次性Linux质量门收敛）
+
+- [~] 父候选da91f7d426958f8c1853ec92b3b3f82c1988d5dc本地原17/17与收据复核通过并获准快进草稿PR #313；CI38521923760质量门14项Node临时路径失败后停止。更早原日志亦有同类失败，前批遗漏Node组，旧候选及原证据完整保留，未重跑CI或合并。
+- [x] 获准独立codex/quality-platform-closeout-20261014：三测试文件采用系统临时目录canonical，原14失败真实Linux RED→GREEN，原安全/组恢复断言保留。本机只读证据输出按OS固定Mac/private/tmp或Linux/tmp原命名空间，四项范围外/穿越/他OS目录拒绝在读取/传输前验证；不接受任意TMPDIR，文件权限/身份/摘要/防替换及生产确认不变。
+- [x] 真实Linux原质量门整组通过：迁移、293编排、生产依赖审计、全仓/WebE2E类型、lint、业务错误和原运维安全自测。Mac24相关、293编排、类型/lint通过（0errors/570既有warnings）。Linuxpnpm12误选、2GB堆OOM及缺rsync设置失败分别保存，仅本轮容器固定pnpm9/4GB堆/安装官方rsync，未改宿主、workflow、断言或超时，不拼轮。
+- [~] 最终本地提交/准确Git克隆质量门/两轴审查绑定外部精确SHA收尾，详见docs/progress/2026-10-14-quality-platform-closeout.md及/private/tmp/jgzg-quality-platform-closeout-evidence-20261014；Linux容器与GitHubrunner有环境差异，不能当作固定head CI或生产验证。
+- [ ] 新SHA完整17门、PR更新及CI集中另批，本批未跑17门或推送，不合并/访问生产。正式完整备份恢复、停写、172兼容迁移、维护发布及业务开放仍需分别批准；旧02:30任务保留，生产入口禁用。
+
+## 历史检查点（2026-10-14，CI平台路径与PG16就绪修复）
 
 - [~] 原固定44628cac5ac6b1bf3133e253e7925757936e2352本地原完整17/17与原收据验证器通过，获准正常推送并创建草稿PR #313；固定head CI38515969555质量门和发票PG16门首次失败后按批准包停止，未重跑、修复原分支或合并。旧候选clean、所有失败原件保留；本地通过不代表CI或生产通过。
 - [x] 获准独立修复分支codex/ci-platform-readiness-repair-20261014：原Python测试真实Linux复现/private/tmp缺席，改为系统临时目录规范路径，原Linux及macOS7/7通过；macOS中间路径别名设置失败单独保存，未放宽生产目录安全规则。
