@@ -49,7 +49,7 @@ async function waitForPostgres(
   let containerReady = false;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await dockerCommand(["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", DATABASE_NAME]);
+      await dockerCommand(["exec", containerName, "pg_isready", "-h", "127.0.0.1", "-U", "jiangkong", "-d", DATABASE_NAME]);
       containerReady = true;
       break;
     } catch {

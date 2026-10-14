@@ -1,18 +1,6 @@
-export const OPERATIONAL_WRITE_MODULES = [
-  "account",
-  "approval",
-  "contract",
-  "expense",
-  "files",
-  "finance",
-  "master_data",
-  "operations",
-  "organization",
-  "payment",
-  "procurement",
-  "project",
-  "settlement"
-] as const;
+import { OPERATIONAL_WRITE_MODULES as sharedModules } from "../../scripts/operational-write-freeze-policy.cjs";
+
+export const OPERATIONAL_WRITE_MODULES = sharedModules;
 
 export type OperationalWriteModule = (typeof OPERATIONAL_WRITE_MODULES)[number];
 

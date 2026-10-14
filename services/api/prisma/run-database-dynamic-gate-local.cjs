@@ -555,6 +555,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
   );
   const startedAt = new Date();
   const groupReceipts = [];
+  let completed = false;
   try {
     const probeEnvironment = createProbeEnvironment(sourceEnv, temporaryRoot);
     const candidateSha = await assertRepositoryState(
@@ -624,9 +625,16 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       groups: groupReceipts
     };
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
+    completed = true;
     return receipt;
   } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
+    if (completed) {
+      await rm(temporaryRoot, { recursive: true, force: true });
+    } else {
+      // mkdtemp creates a private 0700 root. Keep failure traces inside it;
+      // group runners still clean their own containers, and no passed receipt is emitted.
+      process.stderr.write(`[database-dynamic-gate] failure artifacts retained: ${temporaryRoot}\n`);
+    }
   }
 }
 

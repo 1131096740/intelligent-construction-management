@@ -11,11 +11,36 @@ import {
   assertCandidateRepository,
   authorization,
   capture,
+  captureCompleteBucket,
   listVersions,
+  parseExistingBackupReaderEnv,
   requestUrl,
   restoreAndVerify,
   validateInventory
 } from "./private-object-backup.mjs";
+
+test('existing independent backup configuration targets only the fixed business bucket without copying credentials',()=>{
+ const text='DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719\nDB_BACKUP_COS_REGION=ap-chengdu\nDB_BACKUP_COS_SECRET_ID=fixture-reader-id\nDB_BACKUP_COS_SECRET_KEY=fixture-reader-key\nDB_BACKUP_COS_PREFIX=daily\n';
+ const config=parseExistingBackupReaderEnv(text);
+ assert.equal(config.COS_BUCKET,'jiangkong-prod-files-1438687719');assert.equal(config.COS_SECRET_ID,'fixture-reader-id');
+ assert.throws(()=>parseExistingBackupReaderEnv(text.replace('ap-chengdu','ap-beijing')),/backup reader configuration/);
+ for(const tail of ['DB_BACKUP_COS_TOKEN=\n','DB_BACKUP_COS_TMP_SECRET_ID=fixture\n','DB_BACKUP_COS_SECRET_ID=another\n'])assert.throws(()=>parseExistingBackupReaderEnv(text+tail),/backup reader configuration/);
+});
+
+test('complete bucket recovery includes unregistered generations and delete markers, and refuses bucket drift',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jgzg-full-attachment-'));
+ try{
+  const backup=join(root,'backup'),restored=join(root,'restored');await mkdir(backup,{mode:0o700});await mkdir(restored,{mode:0o700});
+  const xml='<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>registered</Key><VersionId>v1</VersionId><IsLatest>true</IsLatest><Size>7</Size></Version><Version><Key>unregistered</Key><VersionId>v0</VersionId><IsLatest>false</IsLatest><Size>7</Size></Version><DeleteMarker><Key>unregistered</Key><VersionId>deleted</VersionId><IsLatest>true</IsLatest></DeleteMarker></ListVersionsResult>';
+  const inventory=[{id:'row1',bucket:'private-bucket',objectKey:'registered',sizeBytes:7,contentSha256:CONTENT_SHA256,storageStatus:'active'}];
+  const requester=async(_c,path,q)=>new Response(q.versions===undefined&&Object.hasOwn(q,'versions')?xml:CONTENT);
+  const objects=await captureCompleteBucket(CONFIG,inventory,backup,requester);
+  assert.equal(objects.length,2);assert.deepEqual(objects[1].databaseFileIds,[]);assert.equal(objects[1].versions.length,2);
+  assert.equal(await restoreAndVerify({objects},backup,restored),2);
+  const second=join(root,'changed');await mkdir(second,{mode:0o700});let listings=0;
+  await assert.rejects(captureCompleteBucket(CONFIG,inventory,second,async(_c,path,q)=>{if(Object.hasOwn(q,'versions'))return new Response(++listings===1?xml:xml.replace('v0','v2'));return new Response(CONTENT);}),/changed/);
+ }finally{await rm(root,{recursive:true});}
+});
 
 const SCRIPT = fileURLToPath(new URL("./private-object-backup.mjs", import.meta.url));
 const CANDIDATE_SHA = "1".repeat(40);
@@ -222,4 +247,33 @@ test("core capture fails closed when latest bytes drift from database metadata",
     await server.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('complete capture refuses unparsed orphan XML rather than omitting the generation',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jgzg-orphan-xml-'));
+ try{const inventory=[{id:'row',bucket:'private-bucket',objectKey:'registered',sizeBytes:7,contentSha256:CONTENT_SHA256,storageStatus:'active'}];
+  for(const tag of ['Version xmlns="http://fixture"','cos:Version','Version extra="x"']){
+   const xml=`<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>registered</Key><VersionId>v1</VersionId><IsLatest>true</IsLatest><Size>7</Size></Version><${tag}><Key>orphan</Key><VersionId>v2</VersionId><IsLatest>true</IsLatest><Size>7</Size></${tag.split(' ')[0]}></ListVersionsResult>`;
+   await assert.rejects(captureCompleteBucket(CONFIG,inventory,root,async()=>new Response(xml)),/unsupported XML/);
+  }
+ }finally{await rm(root,{recursive:true});}
+});
+
+test('self-closing generation nodes cannot disappear from complete bucket capture',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jgzg-empty-generation-'));
+ try{
+  const inventory=[{id:'row',bucket:'private-bucket',objectKey:'registered',sizeBytes:7,contentSha256:CONTENT_SHA256,storageStatus:'active'}];
+  for(const tag of ['Version','DeleteMarker'])await assert.rejects(captureCompleteBucket(CONFIG,inventory,root,async()=>new Response(`<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>registered</Key><VersionId>v1</VersionId><IsLatest>true</IsLatest><Size>7</Size></Version><${tag}/></ListVersionsResult>`)),/ambiguous COS XML field/);
+ }finally{await rm(root,{recursive:true});}
+});
+
+test('entity-encoded keys and pagination round-trip to the real HTTP object path and reject unknown entities',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jgzg-xml-key-'));
+ try{
+  const key=' 文件&a<中> ',inventory=[{id:'row',bucket:'private-bucket',objectKey:key,sizeBytes:7,contentSha256:CONTENT_SHA256,storageStatus:'active'}];let objectReads=0;
+  const xml='<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key> 文件&amp;a&lt;&#x4E2D;&gt; </Key><VersionId>v1</VersionId><IsLatest>true</IsLatest><Size>7</Size></Version></ListVersionsResult>';
+  const objects=await captureCompleteBucket(CONFIG,inventory,root,async(_c,path,q)=>{if(Object.hasOwn(q,'versions'))return new Response(xml);assert.equal(path,'/'+key);const url=requestUrl('https://fixture.invalid',path,q);assert(url.includes('%26a%3C%E4%B8%AD%3E'));objectReads++;return new Response(CONTENT);});
+  assert.equal(objectReads,1);assert.equal(objects[0].objectKey,key);
+  await assert.rejects(listVersions(CONFIG,key,async()=>new Response(xml.replace('&amp;','&unknown;'))),/unknown COS XML entity/);
+ }finally{await rm(root,{recursive:true});}
 });

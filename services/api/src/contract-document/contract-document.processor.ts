@@ -1,5 +1,7 @@
 import {
   Injectable,
+  Optional,
+  OnModuleDestroy,
   OnApplicationBootstrap,
   OnApplicationShutdown
 } from "@nestjs/common";
@@ -8,6 +10,7 @@ import { AuditService } from "../audit/audit.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { compareContractDocumentSnapshots } from "./contract-document-comparison";
@@ -54,18 +57,22 @@ const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
 
 @Injectable()
 export class ContractDocumentProcessor
-  implements OnApplicationBootstrap, OnApplicationShutdown
+  implements OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown
 {
   private timer?: NodeJS.Timeout;
   private running = false;
+  private stopping = false;
+  private activeWork?: Promise<void>;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly files: FileService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @Optional() private readonly writeFreeze: OperationalWriteFreezeService = new OperationalWriteFreezeService()
   ) {}
 
   onApplicationBootstrap() {
+    if (this.stopping) return;
     // ponytail: one DB-backed worker matches the current single API deployment;
     // replace with a distributed queue before running multiple API replicas.
     this.timer = setInterval(() => {
@@ -73,31 +80,48 @@ export class ContractDocumentProcessor
     }, 1_000);
   }
 
-  onApplicationShutdown() {
+  async onModuleDestroy() {
+    await this.onApplicationShutdown();
+  }
+
+  async onApplicationShutdown() {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+    await this.activeWork;
   }
 
   async processNext() {
-    if (this.running) return false;
+    if (this.stopping || this.running) return false;
+    // Recovery and job claiming write even without an HTTP request. Reuse the
+    // existing contract/file freeze before reaching any database or storage.
+    if (this.writeFreeze.isFrozen("contract") || this.writeFreeze.isFrozen("files")) return false;
     this.running = true;
+    let finished!: () => void;
+    this.activeWork = new Promise<void>((resolve) => { finished = resolve; });
     try {
       await this.recoverExpiredJobs();
+      if (this.stopping) return false;
       const preview = await this.claimPreview();
       if (preview) {
         await this.processPreview(preview);
         return true;
       }
+      if (this.stopping) return false;
       const offlineRevision = await this.claimOfflineRevision();
       if (offlineRevision) {
         await this.processOfflineRevision(offlineRevision);
         return true;
       }
+      if (this.stopping) return false;
       const document = await this.claimDocument();
       if (!document) return false;
       await this.processDocument(document);
       return true;
     } finally {
       this.running = false;
+      this.activeWork = undefined;
+      finished();
     }
   }
 
@@ -158,7 +182,7 @@ export class ContractDocumentProcessor
       where: { status: "queued" },
       orderBy: { createdAt: "asc" }
     });
-    if (!job) return null;
+    if (!job || this.stopping) return null;
     const startedAt = new Date();
     const claimed = await this.prisma.contractLayoutPreviewJob.updateMany({
       where: { id: job.id, status: "queued" },
@@ -172,7 +196,7 @@ export class ContractDocumentProcessor
       where: { status: "queued" },
       orderBy: { createdAt: "asc" }
     });
-    if (!job) return null;
+    if (!job || this.stopping) return null;
     const startedAt = new Date();
     const claimed = await this.prisma.contractGeneratedDocument.updateMany({
       where: { id: job.id, status: "queued" },
@@ -186,12 +210,14 @@ export class ContractDocumentProcessor
       where: { status: "queued" },
       orderBy: { createdAt: "asc" }
     });
-    if (!job) return null;
+    if (!job || this.stopping) return null;
     const comparison = await this.prisma.contractDocumentComparison.findUnique({
       where: { offlineRevisionId: job.id }
     });
+    if (this.stopping) return null;
     if (!comparison || comparison.status !== "queued") {
       await this.prisma.$transaction(async (tx) => {
+        if (this.stopping) return;
         const errorMessage = "线下修订稿比较记录异常，请联系管理员";
         const updated = await tx.contractOfflineRevision.updateMany({
           where: { id: job.id, status: "queued" },
@@ -214,6 +240,7 @@ export class ContractDocumentProcessor
     }
     const startedAt = new Date();
     return this.prisma.$transaction(async (tx) => {
+      if (this.stopping) return null;
       const revisionClaimed = await tx.contractOfflineRevision.updateMany({
         where: { id: job.id, status: "queued" },
         data: { status: "processing", startedAt, errorMessage: null }

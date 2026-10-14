@@ -264,6 +264,8 @@ test("项目创建使用服务端定义预检，原创建响应冻结真实项�
   });
   await page.goto("/项目经营");
   await page.getByText("项目维护", { exact: true }).click();
+  await expect(page.locator(".project-maintenance .t-collapse-panel__body")).not.toHaveClass(/t-slide-down-enter-active/);
+  await page.getByRole("radio", { name: "新增项目", exact: true }).locator("..").click();
   const form = page.getByRole("region", { name: "新建项目单条业务表单" });
   await expect(form).toBeVisible();
   await form.locator('[data-field="code"] input').fill(`B113-${Date.now()}`);
@@ -273,9 +275,11 @@ test("项目创建使用服务端定义预检，原创建响应冻结真实项�
   const invalid = page.waitForResponse((response) => response.url().includes("/projects/create-validation"));
   await page.getByRole("button", { name: "新增项目", exact: true }).click();
   expect((await invalid).status()).toBe(400);
+  await expect(form.locator("..").getByRole("alert")).toHaveText("请填写项目名称");
   await expect(form.locator('[data-field="name"] input')).toHaveValue("  ");
   expect(writes).toBe(0);
   await form.locator('[data-field="name"] input').fill("浏览器创建合成项目");
+  await form.locator('[data-field="name"] input').blur();
   const saved = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/projects" && response.request().method() === "POST");
   await page.getByRole("button", { name: "新增项目", exact: true }).click();
   const body = await (await saved).json();
@@ -285,6 +289,21 @@ test("项目创建使用服务端定义预检，原创建响应冻结真实项�
 });
 
 test("项目维护通过同一名称定义预检，空白输入保留且有效名称可保存", async ({ page, request }) => {
+  // Keep the real initial creation response pending while the rename form is usable.
+  // Completing it during a pointer gesture must not move an enabled save target.
+  let releaseCreation!: () => void;
+  let creationBuffered!: () => void;
+  const creationResponse = new Promise<void>((resolve) => { creationBuffered = resolve; });
+  const release = new Promise<void>((resolve) => { releaseCreation = resolve; });
+  const creationUrl = (url: URL) => url.pathname === "/api/projects/create-capability";
+  await page.route(creationUrl, async (route) => {
+    const response = await route.fetch();
+    creationBuffered();
+    await release;
+    await route.fulfill({ response });
+  });
+  await page.exposeFunction("releaseProjectCreationResponse", () => releaseCreation());
+
   const session = JSON.parse(process.env.POL113_RENAME_SESSION!);
   const api = process.env.POL113_API_URL!;
   const projects = await request.get(`${api}/projects`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
@@ -303,15 +322,29 @@ test("项目维护通过同一名称定义预检，空白输入保留且有效�
   await name.fill("  ");
   let writes = 0;
   page.on("request", (req) => { if (req.url().endsWith(path) && req.method() === "PATCH") writes += 1; });
+  // Visibility alone is insufficient while the enclosing accordion still clips its body.
+  await expect(page.locator(".project-maintenance .t-collapse-panel__body")).not.toHaveClass(/t-slide-down-enter-active/);
+  const saveName = page.getByRole("button", { name: "保存名称", exact: true });
+  await creationResponse;
+  await expect(saveName).toBeEnabled();
+  await expect(name).toHaveValue("  ");
+  await saveName.evaluate((button) => {
+    button.addEventListener("pointerdown", () => {
+      void (window as unknown as { releaseProjectCreationResponse: () => Promise<void> }).releaseProjectCreationResponse();
+    }, { once: true });
+  });
+  const responseTimer = setTimeout(releaseCreation, 300);
   const invalid = page.waitForResponse((response) => response.url().includes("/project_rename/validate"));
-  await page.getByRole("button", { name: "保存名称", exact: true }).click();
+  try { await saveName.click({ delay: 150 }); }
+  finally { clearTimeout(responseTimer); releaseCreation(); }
   const invalidResponse = await invalid;
   expect(invalidResponse.ok()).toBe(true);
   expect(invalidResponse.request().postDataJSON().target.entityId).toBe(projectId);
-  await expect(form).toContainText("请填写项目名称");
+  await expect(form.locator(".business-entry-field__error")).toHaveText("请填写项目名称");
   await expect(name).toHaveValue("  ");
   expect(writes).toBe(0);
   await name.fill("浏览器重命名验收");
+  await name.blur();
   const saved = page.waitForResponse((response) => /\/projects\/[^/]+$/.test(new URL(response.url()).pathname) && response.request().method() === "PATCH", { timeout: 10_000 });
   await page.getByRole("button", { name: "保存名称", exact: true }).click();
   const savedResponse = await saved;
@@ -322,6 +355,23 @@ test("项目维护通过同一名称定义预检，空白输入保留且有效�
   const current = await request.get(`${api}/projects`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect((await current.json()).find((entry: { id: string }) => entry.id === projectId).name).toBe("浏览器重命名验收");
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.unroute(creationUrl);
+  await page.route(creationUrl, (route) => route.abort("failed"));
+  await page.reload();
+  await page.getByText("项目维护", { exact: true }).click();
+  const retryName = page.getByRole("region", { name: "项目名称单条业务表单" }).locator('[data-field="name"] input');
+  await retryName.fill("  ");
+  await expect(page.locator(".project-maintenance .t-collapse-panel__body")).not.toHaveClass(/t-slide-down-enter-active/);
+  await page.getByRole("radio", { name: "新增项目", exact: true }).locator("..").click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByRole("radio", { name: "项目名称", exact: true }).locator("..").click();
+  await expect(retryName).toHaveValue("  ");
+  await expect(saveName).toBeEnabled();
+  const retryValidation = page.waitForResponse((response) => response.url().includes("/project_rename/validate"));
+  await saveName.click();
+  expect((await retryValidation).ok()).toBe(true);
+  await expect(retryName).toHaveValue("  ");
+  expect(writes).toBe(1);
 });
 
 test("项目财务通过统一字段保存档案，预检失败保留输入且不写业务", async ({ page, request }) => {

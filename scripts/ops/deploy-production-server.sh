@@ -511,6 +511,7 @@ STAGING_DIR="$(mktemp -d "$STAGING_PARENT_DIR/.deploy-stage.XXXXXX")"
 mkdir -p "$STAGING_DIR/api"
 rsync -a --delete "$REPO_ROOT/services/api/dist/" "$STAGING_DIR/api/dist/"
 rsync -a --delete "$REPO_ROOT/services/api/prisma/" "$STAGING_DIR/api/prisma/"
+rsync -a --delete "$REPO_ROOT/services/api/scripts/" "$STAGING_DIR/api/scripts/"
 if [[ -d "$REPO_ROOT/services/api/assets" ]]; then
   rsync -a --delete "$REPO_ROOT/services/api/assets/" "$STAGING_DIR/api/assets/"
 fi

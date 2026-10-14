@@ -80,6 +80,10 @@ cat > "$FAKE_BIN/pg_dump" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'pg_dump %s\n' "$*" >> "${FAKE_LOG:?}"
+if [[ -n "${PGSERVICEFILE:-}" ]]; then
+  grep '^sslmode=' "$PGSERVICEFILE" >> "${FAKE_LOG:?}" || true
+  if grep -q '^schema=' "$PGSERVICEFILE"; then exit 1; fi
+fi
 [[ " $* " != *"schema="* ]]
 output=""
 while (( $# > 0 )); do
@@ -288,7 +292,7 @@ FAKE
 cat > "$FAKE_BIN/node" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-}" == "-" || $# -eq 0 ]]; then
+if [[ "${1:-}" == "-" || "${1:-}" == */private-libpq-service.mjs || $# -eq 0 ]]; then
   exec "$REAL_NODE" "$@"
 fi
 printf 'node bucket=%s region=%s %s\n' \
@@ -327,7 +331,7 @@ assert_file "$backup_file.sha256"
 [[ "$(file_mode "$backup_file.sha256")" == 600 ]] ||
   fail "checksum mode must be 600"
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "backup was not checked with pg_restore --list"
-grep -q '^pg_dump .*sslmode=require' "$FAKE_LOG" || fail "backup did not preserve libpq parameters"
+grep -q '^sslmode=require$' "$FAKE_LOG" || fail "backup did not preserve libpq parameters"
 if grep -q '^pg_dump .*schema=' "$FAKE_LOG"; then
   fail "backup passed a Prisma-only parameter to pg_dump"
 fi
@@ -558,7 +562,7 @@ PATH="$FAKE_BIN:$PATH" \
   BACKUP_FILE="$backup_file" \
   "$SCRIPT_DIR/db-restore-drill.sh" >/dev/null
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "restore drill did not validate the archive"
-grep -q 'pg_restore --exit-on-error --dbname ' "$FAKE_LOG" ||
+grep -Eq '^pg_restore --exit-on-error .+ --dbname=service=jgzg_backup$' "$FAKE_LOG" ||
   fail "restore drill did not enable exit-on-error"
 
 candidate_restore_root="$TEST_ROOT/candidate-restore"
@@ -680,6 +684,7 @@ make_deploy_fixture() {
   mkdir -p \
     "$fixture/repo/services/api/dist" \
     "$fixture/repo/services/api/prisma" \
+    "$fixture/repo/services/api/scripts" \
     "$fixture/repo/services/api/node_modules" \
     "$fixture/repo/scripts/ops" \
     "$fixture/repo/apps/web-admin/dist" \
@@ -698,6 +703,7 @@ make_deploy_fixture() {
     "$fixture/repo/scripts/ops/grant-project-participating-company-fence-runtime-role.sh" \
     "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
   printf 'new-api-release\n' > "$fixture/repo/services/api/dist/release.txt"
+  cp "$SCRIPT_DIR/../../services/api/scripts/operational-write-freeze-policy.cjs" "$fixture/repo/services/api/scripts/operational-write-freeze-policy.cjs"
   printf 'new-web-release\n' > "$fixture/repo/apps/web-admin/dist/release.txt"
   printf '[Unit]\nDescription=fixture retention service\n' \
     > "$fixture/repo/scripts/ops/systemd/jiangkong-draft-retention.service"
@@ -855,6 +861,8 @@ run_deploy_fixture "$api_only_fixture" \
   env DEPLOY_SCOPE=api-only FAKE_RUNTIME_HEALTH_ALLOW_NEW=true >/dev/null 2>&1
 [[ "$(< "$api_only_fixture/runtime/api/dist/release.txt")" == new-api-release ]] ||
   fail "API-only deployment did not switch the API runtime"
+cmp -s "$api_only_fixture/repo/services/api/scripts/operational-write-freeze-policy.cjs" "$api_only_fixture/runtime/api/scripts/operational-write-freeze-policy.cjs" ||
+  fail "API-only deployment did not retain the runtime freeze policy"
 [[ "$(< "$api_only_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
   fail "API-only deployment changed the Web runtime"
 grep -q '^pnpm --filter @jiangkong/api build$' "$FAKE_LOG" ||
