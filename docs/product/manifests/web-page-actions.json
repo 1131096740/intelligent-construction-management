@@ -12320,7 +12320,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 1604,
+        "sourceLine": 1625,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -12618,7 +12618,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2626,
+        "sourceLine": 2647,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12683,7 +12683,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2587,
+        "sourceLine": 2608,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12748,7 +12748,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1998,
+        "sourceLine": 2019,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12813,7 +12813,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 1982,
+        "sourceLine": 2003,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13116,7 +13116,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2546,
+        "sourceLine": 2567,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14993,7 +14993,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 828,
+        "sourceLine": 847,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -15746,7 +15746,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1517,
+        "sourceLine": 1538,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15892,7 +15892,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1526,
+        "sourceLine": 1547,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15960,7 +15960,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2325,
+        "sourceLine": 2346,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16025,7 +16025,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2264,
+        "sourceLine": 2285,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16090,7 +16090,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2212,
+        "sourceLine": 2233,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16155,7 +16155,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 2228,
+        "sourceLine": 2249,
         "sourceColumn": 0
       },
       "semantic": "business_write",
