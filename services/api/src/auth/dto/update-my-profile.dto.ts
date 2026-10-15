@@ -1,4 +1,4 @@
-import { IsString, Matches } from "class-validator";
+import { IsOptional, IsString, Matches } from "class-validator";
 import {
   IsMaxUnicodeTextLength,
   IsRequiredText
@@ -24,4 +24,7 @@ export class UpdateMyProfileDto {
   })
   @IsMaxUnicodeTextLength({ max: 256, message: "当前密码不能超过 256 个字符" })
   currentPassword!: string;
+  @IsOptional()
+  @Matches(/^\d{6}$/u, { message: "请输入6位短信验证码" })
+  code?: string;
 }

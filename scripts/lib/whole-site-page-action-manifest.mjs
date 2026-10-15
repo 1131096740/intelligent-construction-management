@@ -11079,7 +11079,7 @@ function selfProfileFacadeImplementationIsTrusted({ asts, sourceFileSet }) {
     !["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"].includes(
       definition.type
     ) ||
-    definition.params?.length !== 3 ||
+    ![3, 4].includes(definition.params?.length) ||
     !definition.params.every((parameter) => parameter?.type === "Identifier") ||
     definition.body?.type !== "BlockStatement" ||
     definition.body.body?.length !== 1 ||

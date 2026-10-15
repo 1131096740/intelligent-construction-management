@@ -398,12 +398,17 @@ export function fetchOrganizationDirectory() {
 }
 
 export interface OrganizationManagementCapabilities {
+  canReviewApplications?: boolean;
+  canApproveImportantEmployees?: boolean;
+  canGenerateRecoveryCode?: boolean;
+  importantEmployeeRoleKeys?: RoleKey[];
   canManageUsers: boolean;
   canManageRoles: boolean;
   canCreateUser: boolean;
   canManageDepartments: boolean;
   manageableDepartmentIds: string[];
   manageableUserIds: string[];
+  manageableRoleUserIds?: string[];
   manageableRoleKeys: RoleKey[];
 }
 

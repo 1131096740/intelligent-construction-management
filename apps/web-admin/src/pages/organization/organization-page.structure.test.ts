@@ -7,7 +7,8 @@ describe("组织管理入口", () => {
     expect(pageSource).toContain("fetchOrganizationManagementCapabilities");
     expect(pageSource).toContain("capabilities?.canCreateUser");
     expect(pageSource).toContain("capabilities?.canManageDepartments");
-    expect(pageSource).toContain("capabilities?.manageableUserIds.includes(row.id)");
+    expect(pageSource).toContain("capabilities.value?.manageableUserIds.includes(id)");
+    expect(pageSource).toContain("capabilities.value?.manageableRoleUserIds");
     expect(pageSource).toContain("新增人员和账号");
     expect(pageSource).toContain("重新启用");
     expect(pageSource).not.toContain("首次上线只读");

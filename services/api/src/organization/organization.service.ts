@@ -20,6 +20,7 @@ import type { CreateOrganizationUserDto } from "./dto/create-organization-user.d
 import type { UpdateDepartmentDto } from "./dto/update-department.dto";
 import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
 import { configuredInitialUserTemporaryPassword } from "./initial-user-temporary-password";
+import { employeeManagerRoles, employeeTargetNeedsChairman, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
 import {
   canManageRole,
   ORGANIZATION_MANAGER_ROLE_KEYS,
@@ -265,7 +266,11 @@ export class OrganizationService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          const actorRoles = await this.assertOrganizationManager(tx, actorUserId);
+          const actorRoles = await employeeManagerRoles(tx, actorUserId);
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-phone:${phone}`}))`;
+          if (await tx.employeeRegistration.findUnique({ where: { phone }, select: { id: true } })) {
+            throw new ConflictException("该手机号已有入职申请，请在入职审核中处理，不能重复代建");
+          }
           const department = await tx.department.findUnique({
             where: { id: departmentId },
             select: { id: true, isActive: true }
@@ -305,7 +310,8 @@ export class OrganizationService {
               departmentId,
               passwordHash,
               isActive: true,
-              mustChangePassword: true
+              mustChangePassword: true,
+              requiresChairmanManagement: Boolean(input.initialRoleKey && IMPORTANT_EMPLOYEE_ROLES.includes(input.initialRoleKey))
             },
             select: {
               id: true,
@@ -380,8 +386,11 @@ export class OrganizationService {
     values: Record<string, unknown>
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const actorRoles = await this.assertOrganizationManager(tx, actorUserId);
+      const actorRoles = sceneKey === "organization_user"
+        ? await employeeManagerRoles(tx, actorUserId)
+        : await this.assertOrganizationManager(tx, actorUserId);
       if (sceneKey === "department") {
+        await this.assertDepartmentManager(tx, actorUserId);
         const departmentId = targetId ?? this.optionalString(values.parentId);
         if (departmentId) {
           await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
@@ -395,6 +404,9 @@ export class OrganizationService {
       if (!targetId) return;
       if (targetId === actorUserId) {
         throw new ForbiddenException("不能通过组织管理入口修改或停用自己");
+      }
+      if (!actorRoles.includes("chairman") && await employeeTargetNeedsChairman(tx, targetId)) {
+        throw new ForbiddenException("管理层和财务人员仅由董事长调整");
       }
       const target = await tx.user.findUnique({
         where: { id: targetId },
@@ -567,7 +579,10 @@ export class OrganizationService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          const actorRoles = await this.assertOrganizationManager(tx, actorUserId);
+          const actorRoles = await employeeManagerRoles(tx, actorUserId);
+          if (!actorRoles.includes("chairman") && await employeeTargetNeedsChairman(tx, userId)) {
+            throw new ForbiddenException("管理层和财务人员的部门、启停状态仅由董事长调整");
+          }
           if (userId === actorUserId) {
             throw new ForbiddenException("不能通过组织管理入口修改或停用自己");
           }
@@ -674,10 +689,10 @@ export class OrganizationService {
 
           const after = await tx.user.update({
             where: { id: userId },
-            data,
+            data: { ...data, sessionVersion: { increment: 1 } },
             select: { id: true, departmentId: true, isActive: true }
           });
-          if (data.isActive === false) {
+          if (data.isActive !== undefined || data.departmentId !== undefined) {
             await tx.refreshToken.updateMany({
               where: { userId, revokedAt: null },
               data: { revokedAt: mutationAt }
@@ -1151,15 +1166,27 @@ export class OrganizationService {
       }
     };
     visit(directory.departments);
+    const employeeManager = roles.includes("chairman") || roles.includes("comprehensive_director");
+    const protectedUsers = new Set((await this.prisma.user.findMany({
+      where: { requiresChairmanManagement: true }, select: { id: true }
+    })).map((user) => user.id));
+    const canManagePerson = (user: OrganizationDirectoryReadModel["users"][number]) => {
+      const targetRoles = [...user.globalPositions.map((role) => role.key), ...user.projectPositions.flatMap((project) => project.keys)];
+      const important = protectedUsers.has(user.id) || targetRoles.some((role) => role === "super_admin" || IMPORTANT_EMPLOYEE_ROLES.includes(role));
+      return user.id !== actorUserId && employeeManager && (roles.includes("chairman") || !important);
+    };
     return {
       canCreateUser: (!bounded || allowedDepartments.size > 0) && ROLE_KEYS.some((role) => !["super_admin", "engineering_department_member", "engineering_department_director"].includes(role) && canManageRole(roles, role)),
-      canManageUsers: !bounded || allowedDepartments.size > 0,
+      canManageUsers: employeeManager,
+      canReviewApplications: employeeManager,
+      canApproveImportantEmployees: roles.includes("chairman"),
+      canGenerateRecoveryCode: roles.includes("chairman"),
+      importantEmployeeRoleKeys: [...IMPORTANT_EMPLOYEE_ROLES],
       canManageRoles: ROLE_KEYS.some((role) => canManageRole(roles, role)),
       canManageDepartments: roles.includes("super_admin") || roles.includes("chairman"),
       manageableDepartmentIds: [...allowedDepartments],
-      manageableUserIds: directory.users.filter((user) =>
-        user.id !== actorUserId && (!bounded || Boolean(user.departmentId && allowedDepartments.has(user.departmentId)))
-      ).map((user) => user.id),
+      manageableUserIds: directory.users.filter(canManagePerson).map((user) => user.id),
+      manageableRoleUserIds: directory.users.filter((user) => user.id !== actorUserId && (roles.includes("super_admin") || canManagePerson(user))).map((user) => user.id),
       manageableRoleKeys: ROLE_KEYS.filter((role) => canManageRole(roles, role))
     };
   }

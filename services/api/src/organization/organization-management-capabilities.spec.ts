@@ -32,12 +32,14 @@ describe("组织管理可操作范围", () => {
     expect(result.manageableRoleKeys).not.toContain("super_admin");
   });
 
-  it("部门主管只管理本部门及下属，不能管理自己或跨部门人员", async () => {
+  it("财务主管不再管理人员账号与岗位，由董事长统一审核财务人员", async () => {
     const result = await harness("finance_director").getManagementCapabilities("actor");
     expect(result.canManageDepartments).toBe(false);
     expect(result.manageableDepartmentIds.sort()).toEqual(["child", "finance"]);
-    expect(result.manageableUserIds).toEqual(["staff"]);
-    expect(result.manageableRoleKeys).toEqual(["finance_staff"]);
+    expect(result.manageableUserIds).toEqual([]);
+    expect(result.manageableRoleKeys).toEqual([]);
+    expect(result.canManageUsers).toBe(false);
+    expect(result.canReviewApplications).toBe(false);
   });
 
   it("停用管理者和普通员工不能读取管理能力", async () => {

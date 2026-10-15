@@ -15,6 +15,10 @@ model User {
   wxOpenid                           String?                           @unique
   passwordHash                       String?
   mustChangePassword                 Boolean                           @default(true)
+  sessionVersion                     Int                               @default(0)
+  temporaryPasswordExpiresAt         DateTime?
+  recoveryCodeHash                   String?
+  requiresChairmanManagement         Boolean                           @default(false)
   lastLoginAt                        DateTime?
   isActive                           Boolean                           @default(true)
   // 旧上传签名只用于历史单据预览与回退；新审批从不可变 Canvas 版本取快照。
@@ -35,6 +39,52 @@ model User {
   updatedAt                          DateTime                          @updatedAt
 
   @@index([departmentId])
+}
+
+// 未审核的入职申请不创建 User，不持有任何业务岗位。
+model EmployeeRegistration {
+  id                String   @id @default(uuid())
+  phone             String   @unique
+  name              String
+  passwordHash      String
+  mustChangePassword Boolean @default(false)
+  temporaryPasswordExpiresAt DateTime?
+  status            String   @default("pending")
+  revision          Int      @default(1)
+  credentialVersion Int      @default(0)
+  phoneVerifiedAt   DateTime?
+  departmentId      String?
+  proposedRoles     Json     @default("[]")
+  reason            String   @default("")
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  userId            String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model AuthRateLimit {
+  key       String   @id
+  hits      Int      @default(1)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model SmsChallenge {
+  id         String   @id @default(uuid())
+  phone      String
+  purpose    String
+  binding    String
+  codeHash   String
+  attempts   Int      @default(0)
+  delivered  Boolean  @default(false)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  @@unique([phone, purpose])
+  @@index([expiresAt])
 }
 
 // Canvas 手写签名的不可变版本。新审批动作只允许绑定此表中的版本，旧上传图不回填。

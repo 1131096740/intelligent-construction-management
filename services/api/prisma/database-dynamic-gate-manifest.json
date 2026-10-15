@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 172,
-    "terminalMigration": "20261008143000_settlement_template_entry_snapshots",
-    "terminalMigrationChecksum": "ed3721f95b9be83d8f6655619e50490767f0cc16a60ca7853e37b7005a9377d3",
+    "expectedDirectoryCount": 173,
+    "terminalMigration": "20261015060000_employee_onboarding",
+    "terminalMigrationChecksum": "c8104c25cc2c4dbfc639a65bdfdf3d6b3ed094fb23b011386df924a2334d315a",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 61,
-    "fullyPendingSuites": 50,
+    "pendingFiles": 62,
+    "fullyPendingSuites": 51,
     "partiallyPendingSuites": 11,
-    "pendingTests": 303,
-    "coveredFiles": 61,
-    "coveredTests": 303,
+    "pendingTests": 315,
+    "coveredFiles": 62,
+    "coveredTests": 315,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -536,6 +536,22 @@
         "kind": "apiScript",
         "script": "verify:database-dynamic-remaining:local",
         "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "employee_onboarding",
+      "pendingTests": 12,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/employee-onboarding-http-postgres.spec.ts",
+          "pendingTests": 12,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-employee-onboarding-local.cjs"
       },
       "state": "executable_local_runner"
     }

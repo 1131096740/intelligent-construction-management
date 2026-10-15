@@ -1,6 +1,7 @@
 import { MODULE_METADATA } from "@nestjs/common/constants";
 import { APP_GUARD } from "@nestjs/core";
 import { AuthModule } from "../auth/auth.module";
+import { AccountRateLimitGuard } from "../auth/guards/account-rate-limit.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionGuard } from "../auth/guards/permission.guard";
 import { ContractCutoverGuard } from "../contract-cutover/contract-cutover.guard";
@@ -21,6 +22,7 @@ describe("operational write freeze global wiring", () => {
       JwtAuthGuard,
       RetiredWriteEntryGuard,
       OperationalWriteFreezeGuard,
+      AccountRateLimitGuard,
       PermissionGuard,
       ContractCutoverGuard
     ]);

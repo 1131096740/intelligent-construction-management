@@ -3,9 +3,11 @@ import {
   Logger,
   UnauthorizedException,
   BadRequestException,
-  ConflictException
+  ConflictException,
+  Optional
 } from "@nestjs/common";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -17,6 +19,7 @@ import type { RefreshTokenDto } from "./dto/refresh-token.dto";
 import type { UpdateMyProfileDto } from "./dto/update-my-profile.dto";
 import type { WxLoginDto } from "./dto/wx-login.dto";
 import { JwtTokenService } from "./jwt-token.service";
+import { SmsVerificationService } from "./sms-verification.service";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
@@ -34,7 +37,8 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: JwtTokenService,
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional() private readonly sms?: SmsVerificationService
   ) {}
 
   async login(input: LoginDto) {
@@ -42,7 +46,8 @@ export class AuthService {
       where: { phone: input.phone }
     });
 
-    if (!user?.isActive || !user.passwordHash) {
+    if (!user?.isActive || !user.passwordHash ||
+      (user.temporaryPasswordExpiresAt && user.temporaryPasswordExpiresAt <= new Date())) {
       throw new UnauthorizedException("手机号或密码不正确");
     }
 
@@ -69,7 +74,8 @@ export class AuthService {
     const tokens = await this.issueTokens({
       id: user.id,
       name: user.name,
-      phone: user.phone
+      phone: user.phone,
+      sessionVersion: user.sessionVersion
     });
 
     return {
@@ -156,7 +162,8 @@ export class AuthService {
         where: { id: payload.sub }
       });
 
-      if (!user?.isActive) {
+      if (!user?.isActive || (user.sessionVersion ?? 0) !== (payload.ver ?? 0) ||
+        (user.temporaryPasswordExpiresAt && user.temporaryPasswordExpiresAt <= now)) {
         throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
       }
 
@@ -176,7 +183,8 @@ export class AuthService {
       return this.issueTokens({
         id: user.id,
         name: user.name,
-        phone: user.phone
+        phone: user.phone,
+        sessionVersion: user.sessionVersion
       }, tx);
     });
 
@@ -212,7 +220,7 @@ export class AuthService {
       where: { id: user.id }
     });
 
-    if (!storedUser?.passwordHash) {
+    if (!storedUser?.isActive || !storedUser.passwordHash) {
       throw new UnauthorizedException("当前账号无效，请重新登录");
     }
 
@@ -230,11 +238,14 @@ export class AuthService {
     const passwordHash = await this.hashPassword(input.newPassword);
     const updatedUser = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({
-        where: { id: user.id },
+        where: { id: user.id, passwordHash: storedUser.passwordHash,
+          sessionVersion: storedUser.sessionVersion, isActive: true },
         data: {
           ...(name ? { name } : {}),
           passwordHash,
-          mustChangePassword: false
+          mustChangePassword: false,
+          temporaryPasswordExpiresAt: null,
+          sessionVersion: { increment: 1 }
         }
       });
       await tx.refreshToken.updateMany({
@@ -249,6 +260,11 @@ export class AuthService {
         metadata: { nameUpdated: Boolean(name) }
       });
       return updated;
+    }).catch((error: unknown) => {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "P2025") {
+        throw new ConflictException("账号状态已变化，请重新登录后修改密码");
+      }
+      throw error;
     });
 
     return {
@@ -270,12 +286,23 @@ export class AuthService {
     }
 
     const name = input.name.trim();
+    if (input.phone !== storedUser.phone && this.sms?.enabled()) {
+      await this.sms.verify(input.phone, "change_phone", input.code, `user:${storedUser.id}:${storedUser.sessionVersion}`);
+    }
     let updatedUser;
     try {
       updatedUser = await this.prisma.$transaction(async (tx) => {
+        if (input.phone !== storedUser.phone) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-phone:${input.phone}`}))`;
+          const application = await tx.employeeRegistration.findUnique({ where: { phone: input.phone }, select: { userId: true } });
+          if (application && application.userId !== user.id) {
+            throw new ConflictException("该手机号已有入职申请，请联系综合部或董事长核对");
+          }
+        }
         const updated = await tx.user.update({
-          where: { id: user.id },
-          data: { name, phone: input.phone }
+          where: { id: user.id, passwordHash: storedUser.passwordHash,
+            sessionVersion: storedUser.sessionVersion, isActive: true },
+          data: { name, phone: input.phone, sessionVersion: { increment: 1 } }
         });
         await tx.refreshToken.updateMany({
           where: { userId: user.id, revokedAt: null },
@@ -294,10 +321,16 @@ export class AuthService {
           }
         });
         return updated;
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
         throw new ConflictException("该手机号已被其他账号使用");
+      }
+      if (typeof error === "object" && error !== null && "code" in error && ["P2025", "P2034"].includes(String(error.code))) {
+        throw new ConflictException("账号状态已变化，请重新登录后修改资料");
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010" && error.meta?.code === "40001") {
+        throw new ConflictException("手机号状态已变化，请刷新后重试");
       }
       throw error;
     }
@@ -336,6 +369,10 @@ export class AuthService {
   }
 
   private assertPasswordPolicy(password: string) {
+    if (!password.trim()) throw new BadRequestException("新密码不能全为空白字符");
+    if (Buffer.byteLength(password, "utf8") > 72) {
+      throw new BadRequestException("密码不能超过72个英文字符或24个汉字");
+    }
     if (password.length < 8) {
       throw new BadRequestException("新密码至少需要 8 个字符");
     }

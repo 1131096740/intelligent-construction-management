@@ -96,6 +96,8 @@ function createWriteHarness(options?: {
     ? options?.user
     : { id: "user-2", departmentId: "department-1", isActive: true };
   const tx = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
+    employeeRegistration: { findUnique: jest.fn().mockResolvedValue(null) },
     department: {
       findUnique: jest
         .fn()
@@ -132,7 +134,7 @@ function createWriteHarness(options?: {
           )
         ),
       update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
-        Promise.resolve({ ...user, ...data })
+        Promise.resolve({ id: user?.id, departmentId: data.departmentId === undefined ? user?.departmentId : data.departmentId, isActive: data.isActive === undefined ? user?.isActive : data.isActive })
       ),
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
         Promise.resolve({
@@ -149,7 +151,7 @@ function createWriteHarness(options?: {
       findUnique: jest
         .fn()
         .mockResolvedValue(options?.superAdminPosition ?? { id: "position-super-admin" }),
-      findMany: jest.fn().mockResolvedValue([])
+      findMany: jest.fn().mockResolvedValue(options?.actorGlobalAdminAssignment === null ? [] : [{ key: "chairman" }])
     },
     userPosition: {
       findFirst: jest.fn().mockImplementation(({ where }: { where: { userId: string } }) =>
@@ -163,10 +165,7 @@ function createWriteHarness(options?: {
       ),
       findMany: jest
         .fn()
-        .mockResolvedValue(options?.globalSuperAdminAssignments ?? [
-          { userId: "user-2" },
-          { userId: "user-other-admin" }
-        ]),
+        .mockImplementation(({ where }: { where: { userId?: string } }) => Promise.resolve(where.userId === "actor-1" ? (options?.actorGlobalAdminAssignment === null ? [] : [{ positionId: "position-chairman" }]) : (options?.globalSuperAdminAssignments ?? [{ userId: "user-2" }, { userId: "user-other-admin" }]))),
       create: jest.fn().mockResolvedValue({ id: "global-role-new" })
     },
     projectMember: {
@@ -1034,7 +1033,8 @@ describe("OrganizationService core writes", () => {
         departmentId: "department-1",
         passwordHash: "bcrypt-temporary-hash",
         isActive: true,
-        mustChangePassword: true
+        mustChangePassword: true,
+        requiresChairmanManagement: false
       },
       select: {
         id: true,
@@ -1045,13 +1045,9 @@ describe("OrganizationService core writes", () => {
         mustChangePassword: true
       }
     });
-    expect(harness.tx.userPosition.findFirst).toHaveBeenCalledWith({
-      where: {
-        userId: "actor-1",
-        positionId: "position-super-admin",
-        projectId: null
-      },
-      select: { id: true }
+    expect(harness.tx.userPosition.findMany).toHaveBeenCalledWith({
+      where: { userId: "actor-1", projectId: null },
+      select: { positionId: true }
     });
     expect(harness.tx.projectMember.create).not.toHaveBeenCalled();
     expect(harness.audit.record).toHaveBeenCalledWith(harness.tx, {
@@ -1476,7 +1472,7 @@ describe("OrganizationService core writes", () => {
 
     expect(harness.tx.user.update).toHaveBeenCalledWith({
       where: { id: "user-2" },
-      data: { departmentId: null },
+      data: { departmentId: null, sessionVersion: { increment: 1 } },
       select: { id: true, departmentId: true, isActive: true }
     });
     expect(harness.audit.record).toHaveBeenCalledWith(harness.tx, {
@@ -1512,7 +1508,7 @@ describe("OrganizationService core writes", () => {
     );
   });
 
-  it("启用人员时不撤销 refresh token", async () => {
+  it("重新启用人员时也撤销旧会话，避免停用前的凭证重新生效", async () => {
     const harness = createWriteHarness({
       user: { id: "user-2", departmentId: null, isActive: false }
     });
@@ -1523,7 +1519,9 @@ describe("OrganizationService core writes", () => {
         confirmationPassword: "password"
       })
     ).resolves.toEqual({ id: "user-2", departmentId: null, isActive: true });
-    expect(harness.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(harness.tx.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: "user-2", revokedAt: null }, data: { revokedAt: expect.any(Date) }
+    });
   });
 
   it("重新启用人员时拒绝沿用已停用所属部门", async () => {

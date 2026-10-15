@@ -273,6 +273,9 @@ const spotProcurementPaymentRedirect = (to: RedirectTarget) =>
   `/零星材料付款/${String(to.params.paymentId)}`;
 
 export const webAdminRoutes: RouteRecordRaw[] = [
+  { path: "/register", component: () => import("../pages/login/EmployeeRegisterPage.vue"), meta: { public: true } },
+  { path: "/registration-status", component: () => import("../pages/login/EmployeeApplicationPage.vue"), meta: { public: true } },
+  { path: "/forgot-password", component: () => import("../pages/login/ForgotPasswordPage.vue"), meta: { public: true } },
   {
     path: "/login",
     component: () => import("../pages/login/LoginPage.vue"),

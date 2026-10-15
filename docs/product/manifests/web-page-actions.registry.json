@@ -8551,6 +8551,274 @@
           "name": "applyOrganizationRoleRemoval"
         }
       ]
+    },
+    {
+      "id": "employee.register",
+      "usage": "background",
+      "routePaths": [
+        "/register"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "registerWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRegister"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "registerEmployee"
+        }
+      ]
+    },
+    {
+      "id": "employee.application-login",
+      "usage": "background",
+      "routePaths": [
+        "/login"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/LoginPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "loginApplicationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canLoginApplication"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "loginApplication"
+        }
+      ]
+    },
+    {
+      "id": "employee.resubmit",
+      "usage": "background",
+      "routePaths": [
+        "/registration-status"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resubmitWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canResubmit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "resubmitApplication"
+        }
+      ]
+    },
+    {
+      "id": "employee.application-password",
+      "usage": "background",
+      "routePaths": [
+        "/registration-status"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "changePasswordWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canChangePassword"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "changeApplicationPassword"
+        }
+      ]
+    },
+    {
+      "id": "employee.sms",
+      "usage": "background",
+      "routePaths": [
+        "/register",
+        "/forgot-password",
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "sendAccountSms"
+        }
+      ]
+    },
+    {
+      "id": "employee.sms-reset",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resetWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "resetPasswordWithSms"
+        }
+      ]
+    },
+    {
+      "id": "employee.code-recovery",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recoverWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canUseRecoveryCode"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "recoverWithCode"
+        }
+      ]
+    },
+    {
+      "id": "employee.review",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReviewApplications"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "reviewEmployeeApplication"
+        }
+      ]
+    },
+    {
+      "id": "employee.admin-reset",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限",
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resetEmployeePasswordWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "resetEmployeePassword"
+        }
+      ]
+    },
+    {
+      "id": "employee.generate-recovery",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限",
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateRecoveryCodeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canGenerateRecoveryCode"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "generateRecoveryCode"
+        }
+      ]
+    },
+    {
+      "id": "employee.phone-change-sms",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendPhoneChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "sendPhoneChangeSms"
+        }
+      ]
     }
   ]
 }

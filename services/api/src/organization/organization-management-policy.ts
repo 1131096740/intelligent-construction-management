@@ -2,6 +2,7 @@ import {
   GLOBAL_USER_POSITION_ROLE_KEYS,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import { ORDINARY_EMPLOYEE_ROLES } from "./employee-management-policy";
 
 export const ORGANIZATION_MANAGER_ROLE_KEYS: readonly RoleKey[] = [
   "chairman",
@@ -15,40 +16,18 @@ export const ORGANIZATION_MANAGER_ROLE_KEYS: readonly RoleKey[] = [
   "super_admin"
 ];
 
-const SUBORDINATE_ROLES: Partial<Record<RoleKey, readonly RoleKey[]>> = {
-  engineering_department_director: [
-    "engineering_director",
-    "engineering_foreman",
-    "engineering_tech"
-  ],
-  finance_director: ["finance_staff"],
-  contract_director: ["contract_staff"],
-  budget_director: ["budget_staff"],
-  material_director: ["material_staff"],
-  comprehensive_director: []
-};
-
 export function roleScope(roleKey: RoleKey): "global" | "project" {
   return GLOBAL_USER_POSITION_ROLE_KEYS.includes(roleKey) ? "global" : "project";
 }
 
 export function canManageRole(actorRoles: readonly RoleKey[], roleKey: RoleKey) {
-  if (
-    roleKey === "engineering_department_member" ||
-    roleKey === "engineering_department_director"
-  ) {
-    return actorRoles.includes("chairman");
-  }
-  if (actorRoles.includes("super_admin")) return true;
-  if (actorRoles.includes("chairman")) return roleKey !== "super_admin";
-  if (actorRoles.includes("general_manager")) {
-    return roleKey !== "super_admin";
-  }
-  return actorRoles.some((role) => SUBORDINATE_ROLES[role]?.includes(roleKey));
+  if (roleKey === "super_admin") return actorRoles.includes("super_admin");
+  if (actorRoles.includes("chairman")) return true;
+  return actorRoles.includes("comprehensive_director") && ORDINARY_EMPLOYEE_ROLES.includes(roleKey);
 }
 
 export function requiresDepartmentBoundary(actorRoles: readonly RoleKey[]) {
   return !actorRoles.some((role) =>
-    role === "super_admin" || role === "chairman" || role === "general_manager"
+    role === "super_admin" || role === "chairman" || role === "general_manager" || role === "comprehensive_director"
   );
 }
