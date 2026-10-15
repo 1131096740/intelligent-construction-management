@@ -132,6 +132,7 @@ import {
   updateCompanyEntityStatus,
   type CompanyEntityModel
 } from "../../api/company-entity.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
@@ -189,7 +190,7 @@ async function load() {
   } catch (error) {
     if (!requestGate.isCurrent(token, listRequestSnapshot())) return;
     rows.value = [];
-    errorMessage.value = error instanceof Error ? error.message : "加载我方公司主体失败";
+    errorMessage.value = formatUnknownApiError(error, "加载我方公司主体失败");
   } finally {
     if (requestGate.isCurrent(token, listRequestSnapshot())) {
       loading.value = false;
@@ -238,7 +239,7 @@ async function saveStatus() {
     maintenanceMessage.value = entity.isActive ? "我方公司已停用，历史记录保留" : "我方公司已重新启用";
     await load();
   } catch (error) {
-    maintenanceMessage.value = error instanceof Error ? error.message : "更新主体状态失败";
+    maintenanceMessage.value = formatUnknownApiError(error, "更新主体状态失败");
   } finally { savingStatus.value = false; }
 }
 onMounted(() => { void load(); void loadCapability(); });
