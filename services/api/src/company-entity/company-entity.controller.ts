@@ -34,6 +34,11 @@ export class CompanyEntityController {
     return this.companyEntities.listForManagement(user.id, query);
   }
 
+  @Get("management-capability")
+  managementCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.companyEntities.managementCapability(user.id);
+  }
+
   @Get(":id/history")
   history(
     @Param("id") id: string,

@@ -432,6 +432,9 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       paymentMethods: ["bank_transfer"]
     });
 
+    const companyLockIndex = tx.$queryRaw.mock.calls.findIndex(([sql]) => sql.strings.join("").includes('FROM "CompanyEntity"'));
+    expect(companyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(tx.$queryRaw.mock.invocationCallOrder[companyLockIndex]).toBeLessThan(tx.companyEntity.findFirst.mock.invocationCallOrder[0]);
     expect(tx.spotProcurementPaymentMethodOption.createMany).toHaveBeenCalledWith({
       data: [
         {

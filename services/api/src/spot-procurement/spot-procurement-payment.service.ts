@@ -20,6 +20,7 @@ import { snapshotApprovalSignature } from "../approval/approval-signature-snapsh
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   missingOperatingSourceReplayService,
   OperatingSourceReplayService,
@@ -1164,6 +1165,9 @@ export class SpotProcurementPaymentService {
       const repairsExistingPayerSnapshot =
         preservesExistingPayer &&
         !payment.payerCompanyNameSnapshot?.trim();
+      if (!completesLegacyMethods && !repairsExistingPayerSnapshot) {
+        await lockMasterDataRow(tx, "CompanyEntity", requestedCompanyEntityId);
+      }
       const company = completesLegacyMethods
         ? {
             id: payment.payerCompanyEntityId as string,

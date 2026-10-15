@@ -8,25 +8,25 @@ const companyEntities = readPage("./company-entities/CompanyEntityListPage.vue")
 const partyList = readPage("./business-parties/BusinessPartyListPage.vue");
 const partyDetail = readPage("./business-parties/BusinessPartyEditorPage.vue");
 
-describe("stage D master-data readonly isolation", () => {
-  it("keeps company entities readable while removing every production write trigger", () => {
+describe("authorized master-data maintenance and preserved reads", () => {
+  it("keeps company history readable and gates restored maintenance by server capability", () => {
     expect(companyEntities).toContain("fetchCompanyEntityManagement");
     expect(companyEntities).toContain("CompanyEntityHistoryDrawer");
-    expect(companyEntities).toContain("上线准备期间暂为只读");
-    expect(companyEntities).not.toMatch(
-      /CompanyEntityFormDrawer|SensitiveActionDialog|updateCompanyEntityStatus|openCreate|openEdit|openStatus|confirmStatus/
-    );
+    expect(companyEntities).toContain("fetchCompanyEntityManagementCapability");
+    expect(companyEntities).toContain('v-if="canMaintain"');
+    expect(companyEntities).toContain("saveCompanyStatusWithCapability");
   });
 
   it("keeps business-party search readable", () => {
     expect(partyList).toContain("listBusinessParties");
   });
 
-  it("keeps business-party history readable without version or upload triggers", () => {
+  it("keeps business-party history readable and restores only approved maintenance", () => {
     expect(partyDetail).toContain("getBusinessParty");
-    expect(partyDetail).toContain("上线准备期间暂为只读");
+    expect(partyDetail).toContain("getBusinessPartyMaintenanceCapability");
+    expect(partyDetail).toContain("savePartyVersionWithCapability");
     expect(partyDetail).not.toMatch(
-      /uploadPrivateFile|createBusinessPartyVersion|createVersion|onAttachmentFile|type="file"|新建档案版本|新增附件/
+      /uploadPrivateFile|onAttachmentFile|type="file"|新增附件/
     );
   });
 });

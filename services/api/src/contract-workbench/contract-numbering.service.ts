@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ForbiddenException,
@@ -82,6 +83,12 @@ export class ContractNumberingService {
     const input = this.parseInput(rawInput, false);
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, ["contract_director"]);
+      if (input.companyEntityId) {
+        await lockMasterDataRow(tx, "CompanyEntity", input.companyEntityId);
+        if (!await tx.companyEntity.findUnique({ where: { id: input.companyEntityId, isActive: true }, select: { id: true } })) {
+          throw new BadRequestException("我方公司不存在或已停用，不能用于新编号规则");
+        }
+      }
       const rule = await tx.contractNumberRule.create({
         data: {
           ...input,
@@ -104,6 +111,12 @@ export class ContractNumberingService {
       if (!current) throw new NotFoundException("未找到合同编号规则，请刷新编号规则列表后重试");
       if (!current.isActive) {
         throw new BadRequestException("合同编号规则已停用，不能继续修改");
+      }
+      if (input.companyEntityId) {
+        await lockMasterDataRow(tx, "CompanyEntity", input.companyEntityId);
+        if (!await tx.companyEntity.findUnique({ where: { id: input.companyEntityId, isActive: true }, select: { id: true } })) {
+          throw new BadRequestException("我方公司不存在或已停用，不能用于新编号规则");
+        }
       }
       const rule = await tx.contractNumberRule.update({
         where: { id: ruleId },

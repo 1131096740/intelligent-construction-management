@@ -1,3 +1,5 @@
+import { ConflictException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import {
   ProjectCloseProfitService,
   calculateExistingFundsApplied,
@@ -151,6 +153,7 @@ describe("ProjectCloseProfitService", () => {
       confirmedAt: new Date("2026-09-18T08:10:00.000Z")
     };
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
       projectCloseAggregate: {
         upsert: jest.fn().mockResolvedValue({ projectId: "project-1", revision: 0 }),
@@ -380,6 +383,7 @@ describe("ProjectCloseProfitService", () => {
       { stageKey: "owner_settlement_completed", revision: 1, status: "completed" }
     ];
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
       projectCloseAggregate: {
         upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
@@ -466,8 +470,10 @@ describe("ProjectCloseProfitService", () => {
       factKind: "downstream_settlement"
     } as never];
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ locked: "1" }])
+        .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{ projectId: "project-1" }])
         .mockResolvedValueOnce([{
           contractVersionId: "contract-version-1",
@@ -546,6 +552,7 @@ describe("ProjectCloseProfitService", () => {
   it("does not reuse a specialty attestation already frozen into an earlier stage version", async () => {
     const readAt = new Date("2026-09-18T09:10:00.000Z");
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
       projectCloseAggregate: {
         upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
@@ -1050,6 +1057,78 @@ describe("ProjectCloseProfitService", () => {
     );
   });
 
+  it.each([
+    ["project", "40001"], ["aggregate", "40001"],
+    ["project", "40P01"], ["aggregate", "40P01"],
+    ["aggregate", "23505"]
+  ])("handles a %s lock failure %s through distribution confirmation", async (lockStage, sqlState) => {
+    const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010", clientVersion: Prisma.prismaVersion.client, meta: { code: sqlState }
+    });
+    const query = jest.fn().mockResolvedValueOnce([]);
+    if (lockStage === "aggregate") query.mockResolvedValueOnce([]);
+    query.mockRejectedValueOnce(error);
+    const tx = {
+      $queryRaw: query,
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectCloseAggregate: { upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }) }
+    };
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
+      {} as never, {} as never, {} as never
+    );
+    const outcome = service.confirmDistribution("gm-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "0aa4526f-d5a1-423e-b417-784759d2a7f2",
+      submissionId: "5a648f91-5085-4dad-b6fb-d5b9aac5d9f7"
+    });
+    if (sqlState === "23505") {
+      await expect(outcome).rejects.toBe(error);
+    } else {
+      await expect(outcome).rejects.toBeInstanceOf(ConflictException);
+      await expect(outcome).rejects.toMatchObject({
+        status: 409, cause: error, message: "项目结项发生并发冲突，请刷新后重试"
+      });
+    }
+  });
+
+  it.each(["40001", "40P01"])("reports a raw SQL %s conflict during temporary distribution as a business conflict", async (sqlState) => {
+    const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010", clientVersion: Prisma.prismaVersion.client, meta: { code: sqlState }
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn().mockRejectedValue(error) } as never,
+      {} as never, {} as never, {} as never, {} as never
+    );
+    const outcome = service.createTemporaryDistribution("finance-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "46a4526f-d5a1-423e-b417-784759d2a7f2",
+      basis: { summary: "并发暂分验证", evidenceFileIds: [] },
+      projectParticipatingCompanyId: "participant-1",
+      amountCents: "1000"
+    });
+    await expect(outcome).rejects.toBeInstanceOf(ConflictException);
+    await expect(outcome).rejects.toMatchObject({ cause: error, status: 409, message: "暂分利润发生并发冲突，请刷新后重试" });
+  });
+
+  it.each(["23505", undefined])("preserves an unrelated raw SQL failure %s during temporary distribution", async (sqlState) => {
+    const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010", clientVersion: Prisma.prismaVersion.client,
+      ...(sqlState ? { meta: { code: sqlState } } : {})
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn().mockRejectedValue(error) } as never,
+      {} as never, {} as never, {} as never, {} as never
+    );
+    await expect(service.createTemporaryDistribution("finance-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "56a4526f-d5a1-423e-b417-784759d2a7f2",
+      basis: { summary: "失败原样保留验证", evidenceFileIds: [] },
+      projectParticipatingCompanyId: "participant-1",
+      amountCents: "1000"
+    })).rejects.toBe(error);
+  });
+
   it("rejects a temporary distribution above the current projection ceiling", async () => {
     const readAt = new Date("2026-09-18T10:40:00.000Z");
     const tx = temporaryDistributionTx(readAt);
@@ -1162,6 +1241,7 @@ function completeProjection(readAt: Date) {
 function finalConfirmationTx(_readAt: Date) {
   void _readAt;
   return {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
     $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
     projectCloseAggregate: {
       upsert: jest.fn(),

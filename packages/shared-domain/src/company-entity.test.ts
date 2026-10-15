@@ -9,8 +9,7 @@ describe("company entity domain constants", () => {
   it("keeps company entity maintainers in the confirmed business order", () => {
     expect(COMPANY_ENTITY_MAINTAINER_ROLES).toEqual([
       "comprehensive_director",
-      "contract_staff",
-      "contract_director"
+      "chairman"
     ]);
   });
 

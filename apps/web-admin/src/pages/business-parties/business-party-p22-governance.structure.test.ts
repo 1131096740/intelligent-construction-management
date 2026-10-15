@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const FROZEN_TEST_ONLY_WRAPPERS = [
+const RESTORED_COMPANY_WRAPPERS = [
   "createCompanyEntity",
   "updateCompanyEntity"
 ] as const;
@@ -15,7 +15,7 @@ const RESTORED_ORGANIZATION_WRAPPERS = [
   "previewOrganizationRoleRemoval"
 ] as const;
 
-type FrozenTestOnlyWrapper = (typeof FROZEN_TEST_ONLY_WRAPPERS)[number] | (typeof RESTORED_ORGANIZATION_WRAPPERS)[number];
+type FrozenTestOnlyWrapper = (typeof RESTORED_COMPANY_WRAPPERS)[number] | (typeof RESTORED_ORGANIZATION_WRAPPERS)[number];
 
 type RetirementManifestEntry = {
   apiFile: string;
@@ -91,27 +91,25 @@ function findWebApiWrapper(name: string): WebApiWrapper | undefined {
 }
 
 describe("POL-19A P22 retirement governance", () => {
-  it("keeps the two company wrappers test-only in the repository-root registry", () => {
-    for (const wrapperName of FROZEN_TEST_ONLY_WRAPPERS) {
+  it("restores the authorized company wrappers in the repository-root registry", () => {
+    for (const wrapperName of RESTORED_COMPANY_WRAPPERS) {
       const entry = retirementManifest.entries.find((candidate: { wrappers: string[] }) =>
         candidate.wrappers.includes(wrapperName)
       );
 
-      expect(entry).toMatchObject({
-        apiFile: EXPECTED_API_FILES[wrapperName],
-        classification: "test_only"
-      });
+      expect(entry).toBeUndefined();
+      expect(EXPECTED_API_FILES[wrapperName]).toContain("company-entity.api.ts");
     }
   });
 
-  it("does not promote detached drawers or internal test calls to production consumers", () => {
-    for (const wrapperName of FROZEN_TEST_ONLY_WRAPPERS) {
+  it("records the restored company drawer as a reachable production consumer", () => {
+    for (const wrapperName of RESTORED_COMPANY_WRAPPERS) {
       const wrapper = findWebApiWrapper(wrapperName);
 
       expect(wrapper).toBeDefined();
-      expect(wrapper?.productionConsumers).toEqual([]);
+      expect(wrapper?.productionConsumers).toContain(EXPECTED_UNREACHABLE_CONSUMERS[wrapperName]);
       expect(wrapper?.testConsumers).toContain(EXPECTED_TEST_CONSUMERS[wrapperName]);
-      expect(wrapper?.unreachableConsumers).toContain(
+      expect(wrapper?.unreachableConsumers).not.toContain(
         EXPECTED_UNREACHABLE_CONSUMERS[wrapperName]
       );
     }

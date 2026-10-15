@@ -34,6 +34,16 @@ export class CompanyEntityAccess {
     );
   }
 
+  async canMaintain(userId: string, client: CompanyEntityAccessClient = this.prisma) {
+    try {
+      await this.assertCanMaintain(userId, client);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   assertCanRead(
     userId: string,
     client: CompanyEntityAccessClient = this.prisma

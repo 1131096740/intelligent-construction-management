@@ -281,15 +281,16 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
 
   it("serializes concurrent participant additions so only one interval wins", async () => {
     const fixture = await createFixture(prisma, { participant: false });
+    const maintainerUserId = await createMasterDataMaintainer(prisma);
     const first = new ProjectOperatingProfileService(prisma as never);
     const second = new ProjectOperatingProfileService(prisma as never);
     const outcomes = await Promise.allSettled([
-      first.addParticipatingCompany(fixture.projectId, fixture.financeUserId, {
+      first.addParticipatingCompany(fixture.projectId, maintainerUserId, {
         companyEntityId: fixture.company.id,
         effectiveFrom: "2026-08-01",
         changeReason: "并发新增验证"
       }),
-      second.addParticipatingCompany(fixture.projectId, fixture.financeUserId, {
+      second.addParticipatingCompany(fixture.projectId, maintainerUserId, {
         companyEntityId: fixture.company.id,
         effectiveFrom: "2026-08-01",
         changeReason: "并发新增验证"
@@ -398,6 +399,7 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
       operatingLedgerEffectiveDate: "2026-08-01",
       participant: true
     });
+    const maintainerUserId = await createMasterDataMaintainer(prisma);
     await addFallbackParticipant(prisma, fixture);
     const factClient = new PrismaClient({ datasources: { db: { url: databaseUrl! } } });
     const stopClient = new PrismaClient({ datasources: { db: { url: databaseUrl! } } });
@@ -419,7 +421,7 @@ describeDatabase("project operating profile PostgreSQL invariants", () => {
         .deactivateParticipatingCompany(
           fixture.projectId,
           fixture.participantId!,
-          fixture.financeUserId,
+          maintainerUserId,
           { endedOn: "2026-08-12", changeReason: "并发停用验证" }
         )
         .then(
@@ -1127,6 +1129,17 @@ function deferred<T>() {
 
 function date(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+async function createMasterDataMaintainer(prisma: PrismaClient) {
+  const user = await prisma.user.create({ data: { name: "综合部主管", isActive: true } });
+  const position = await prisma.position.upsert({
+    where: { key: "comprehensive_director" },
+    update: {},
+    create: { key: "comprehensive_director", name: "综合部主管" }
+  });
+  await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id } });
+  return user.id;
 }
 
 async function createFixture(

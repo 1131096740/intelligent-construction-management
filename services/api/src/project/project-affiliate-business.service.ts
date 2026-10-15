@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
@@ -342,7 +343,7 @@ export class ProjectAffiliateBusinessService {
           );
         }
 
-        await this.requireActiveProject(tx, projectId);
+        await this.requireActiveProject(tx, projectId, true);
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roleKeys.includes("contract_staff")) {
           throw new ForbiddenException("只有合同人员可以录入施工企业对下合同事实");
@@ -581,7 +582,7 @@ export class ProjectAffiliateBusinessService {
             await loadActorRoleKeys(tx, actorUserId, projectId)
           );
         }
-        await this.requireActiveProject(tx, projectId);
+        await this.requireActiveProject(tx, projectId, true);
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roleKeys.includes("budget_staff")) {
           throw new ForbiddenException("只有项目预算人员可以录入施工企业对下结算事实");
@@ -800,7 +801,7 @@ export class ProjectAffiliateBusinessService {
             await loadActorRoleKeys(tx, actorUserId, projectId)
           );
         }
-        await this.requireActiveProject(tx, projectId);
+        await this.requireActiveProject(tx, projectId, true);
         const projectClient = (tx as unknown as {
           project?: {
             findUnique?: (args: unknown) => Promise<{
@@ -1079,7 +1080,7 @@ export class ProjectAffiliateBusinessService {
           }
           return replay;
         }
-        await this.requireActiveProject(tx, projectId);
+        await this.requireActiveProject(tx, projectId, true);
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         const recordedByRoleKey = requireEvidenceRole(roleKeys, businessType);
         await assertFactExists(tx, businessType, projectId, factId);
@@ -1297,7 +1298,8 @@ export class ProjectAffiliateBusinessService {
     });
   }
 
-  private async requireActiveProject(tx: Prisma.TransactionClient, projectId: string) {
+  private async requireActiveProject(tx: Prisma.TransactionClient, projectId: string, lock = false) {
+    if (lock) await lockMasterDataRow(tx, "Project", projectId);
     const project = await tx.project.findFirst({
       where: { id: projectId, isActive: true },
       select: { id: true }

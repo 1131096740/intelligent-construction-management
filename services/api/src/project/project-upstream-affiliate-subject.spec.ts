@@ -9,6 +9,7 @@ function projectTransaction(tx: object) {
 describe("ProjectService upstream affiliate snapshots", () => {
   it("fails an upstream settlement before file or business writes when the mapping is missing", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn() },
@@ -38,6 +39,7 @@ describe("ProjectService upstream affiliate snapshots", () => {
 
   it("rejects the legacy receipt write before affiliate or file facts can be written", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
       },

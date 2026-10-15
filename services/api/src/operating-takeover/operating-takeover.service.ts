@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
@@ -222,6 +223,9 @@ export class OperatingTakeoverService {
     if (input.sourceFileId && !sourceFileName) throw new BadRequestException("来源文件不存在或已被移除");
 
     await this.prisma.$transaction(async (tx) => {
+      await lockMasterDataRow(tx, "Project", projectId);
+      const activeProject = await tx.project.findUnique({ where: { id: projectId }, select: { isActive: true } });
+      if (!activeProject?.isActive) throw new BadRequestException("项目不存在或已停用，不能新增接管批次");
       if (input.sourceFileId) await this.files.assertCanUseHistoricalTakeoverFile(tx, input.sourceFileId, actorUserId, false);
       const createdBatch = await tx.operatingTakeoverBatch.create({
         data: {

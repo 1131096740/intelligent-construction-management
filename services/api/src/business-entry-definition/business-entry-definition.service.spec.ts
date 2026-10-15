@@ -216,14 +216,14 @@ describe("BusinessEntryDefinitionService", () => {
       fields: definition.fields.map((field) => ({
         ...field,
         permissions: {
-          view: ["contract_staff"] as const,
-          edit: ["contract_staff"] as const,
-          import: ["contract_staff"] as const
+          view: ["comprehensive_director"] as const,
+          edit: ["comprehensive_director"] as const,
+          import: ["comprehensive_director"] as const
         }
       }))
     };
     const resolver = {
-      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"])
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["comprehensive_director"])
     };
     const authorization = { assertAuthorized: jest.fn() };
     const createTargets = new BusinessEntryCreateTargetService();
@@ -368,13 +368,13 @@ describe("BusinessEntryDefinitionService", () => {
       fields: definition.fields.map((field) => ({
         ...field,
         permissions: {
-          view: ["contract_staff"] as const,
-          edit: ["contract_staff"] as const,
-          import: ["contract_staff"] as const
+          view: ["comprehensive_director"] as const,
+          edit: ["comprehensive_director"] as const,
+          import: ["comprehensive_director"] as const
         }
       }))
     };
-    const resolver = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"]) };
+    const resolver = { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["comprehensive_director"]) };
     const createTargets = new BusinessEntryCreateTargetService();
     const writeFreeze = { assertCanWrite: jest.fn() };
     const service = new BusinessEntryDefinitionService(
@@ -1037,10 +1037,10 @@ describe("BusinessEntryDefinitionService", () => {
     const prisma = {
       project: { findUnique: jest.fn() },
       userPosition: {
-        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-comprehensive-director" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }])
       }
     };
     const service = new BusinessEntryDefinitionService(
@@ -1097,9 +1097,9 @@ describe("BusinessEntryDefinitionService", () => {
       {
         project: { findUnique: jest.fn() },
         userPosition: {
-          findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+          findMany: jest.fn().mockResolvedValue([{ positionId: "position-comprehensive-director" }])
         },
-        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) }
       } as never,
       authorizationMock()
     );
@@ -1202,9 +1202,9 @@ describe("BusinessEntryDefinitionService", () => {
       {
         project: { findUnique: jest.fn() },
         userPosition: {
-          findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+          findMany: jest.fn().mockResolvedValue([{ positionId: "position-comprehensive-director" }])
         },
-        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) }
       } as never,
       authorizationMock()
     );
@@ -1235,7 +1235,7 @@ describe("BusinessEntryDefinitionService", () => {
     await expect(service.validateDraftWithRoles(
       "company_profile",
       "project-1",
-      ["contract_staff"],
+      ["comprehensive_director"],
       { ...input, target: { entityType: "company_entity", entityId: "company-1" } }
     )).rejects.toThrow(BadRequestException);
   });

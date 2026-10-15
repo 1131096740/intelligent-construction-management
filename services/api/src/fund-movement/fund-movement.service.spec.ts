@@ -61,6 +61,7 @@ function createHarness(roleKeys: string[] = ["finance_staff"]) {
     positionId: `position-${index + 1}`
   }));
   const tx = {
+      companyEntity: { findUnique: jest.fn().mockImplementation(async ({where}) => ({ id: where.id, isActive: true })) },
     $executeRaw: jest.fn().mockResolvedValue(0),
     $queryRaw: jest.fn().mockResolvedValue([{ id: "movement-1" }]),
     fundMovementCommandReceipt: {
@@ -708,6 +709,25 @@ describe("FundMovementService", () => {
     }
   });
 
+  it("locks the existing payment before master-data rows so create and confirm share an order", async () => {
+    const { service, tx } = createHarness();
+    await service.create("actor-1", crossProjectInput());
+    const queries = tx.$queryRaw.mock.calls.map(([sql]) => sql.strings.join(""));
+    const paymentLock = queries.findIndex((sql) => sql.includes('FROM "PaymentExecution"'));
+    const projectLock = queries.findIndex((sql) => sql.includes('FROM "Project"'));
+    const companyLock = queries.findIndex((sql) => sql.includes('FROM "CompanyEntity"'));
+    expect(paymentLock).toBeGreaterThanOrEqual(0);
+    expect(projectLock).toBeGreaterThan(paymentLock);
+    expect(companyLock).toBeGreaterThan(projectLock);
+  });
+
+  it("rejects new movement through an inactive company before creating a draft", async () => {
+    const { service, tx } = createHarness();
+    tx.companyEntity.findUnique.mockResolvedValue(null);
+    await expect(service.create("actor-1", crossProjectInput())).rejects.toThrow("我方公司不存在或已停用");
+    expect(tx.fundMovement.create).not.toHaveBeenCalled();
+  });
+
   it("rejects project-scoped and super-admin roles before any write", async () => {
     for (const roleKeys of [["project_finance"], ["super_admin", "finance_staff"]]) {
       const { service, prisma } = createHarness(roleKeys);
@@ -813,6 +833,29 @@ describe("FundMovementService", () => {
       data: expect.objectContaining({ profitAuthorizationId: "client-supplied-109" })
     }));
     expect(tx.fundMovementRelationshipEntry.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["company_advance_recovery", "company_advance"],
+    ["temporary_project_fund_return", "temporary_project_fund_use"]
+  ] as const)("keeps repayment of existing %s usable for an inactive historical company", async (kind, entryKind) => {
+    const { service, tx } = createHarness();
+    tx.companyEntity.findUnique.mockImplementation(async ({ where }) => where.isActive ? null : { id: where.id, isActive: false });
+    tx.fundMovementRelationshipEntry.findUnique.mockResolvedValue({
+      id: "old-relationship", entryKind, direction: "increase", status: "confirmed",
+      sourceProjectId: "project-source", beneficiaryProjectId: "project-source",
+      debtorCompanyEntityId: "company-beneficiary", creditorCompanyEntityId: "company-source", amountCents: 100n
+    });
+    const original = crossProjectInput();
+    await expect(service.create("actor-1", crossProjectInput({
+      kind, paymentExecutionId: undefined, adjustsRelationshipEntryId: "old-relationship",
+      beneficiaryProjectId: "project-source",
+      legs: [
+        { ...original.legs[0], direction: "increase" },
+        { ...original.legs[1], projectId: "project-source", direction: "decrease" }
+      ]
+    }))).resolves.toMatchObject({ status: "draft" });
+    expect(tx.companyEntity.findUnique).toHaveBeenCalledWith({ where: { id: "company-source" }, select: { id: true } });
   });
 
   it("rejects a client-supplied #109 profit authorization before opening a transaction", async () => {

@@ -428,6 +428,7 @@ function createHarness(options?: {
   const sqlRows = (query: unknown) => {
     const text = sqlText(query);
     const values = sqlValues(query);
+    if (text.includes('FROM "CompanyEntity"')) return [{ id: values[0] }];
     if (text.includes('FROM "InvoiceRecord"')) {
       if (text.includes('WHERE "id" =')) {
         const byId = invoiceRecords.find((candidate) => candidate.id === values[0]);
@@ -681,6 +682,7 @@ function createHarness(options?: {
       return { positionId };
     });
   const tx = {
+      companyEntity: { findUnique: jest.fn().mockImplementation(async ({where}) => ({ id: where.id, isActive: true })) },
     $queryRaw: jest.fn().mockImplementation(sqlRows),
     vatRateOption: {
       findMany: jest.fn().mockImplementation(

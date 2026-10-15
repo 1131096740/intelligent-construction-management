@@ -128,35 +128,58 @@ describe("PermissionGuard", () => {
     });
   }
 
-  it("uses the canonical active company-role resolver for business-party creation", async () => {
-    const prisma = {
-      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
-      userPosition: {
-        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
-      },
-      position: {
-        findMany: jest.fn().mockResolvedValue([{
-          id: "position-contract-staff",
-          key: "contract_staff"
-        }])
+  it.each(["business_party.create", "project.master_data.manage"])(
+    "checks active global master-data roles for %s",
+    async (action) => {
+      for (const roleKey of ["comprehensive_director", "chairman"]) {
+        const prisma = {
+          user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+          userPosition: {
+            findMany: jest.fn().mockResolvedValue([{ positionId: "position-master" }])
+          },
+          position: { findMany: jest.fn().mockResolvedValue([{ id: "position-master", key: roleKey }]) }
+        };
+        const guard = new PermissionGuard({
+          getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce(action)
+        } as never, prisma as never);
+        await expect(guard.canActivate(contextWithRequest({ user: { id: "user-1" } })))
+          .resolves.toBe(true);
+        expect(prisma.userPosition.findMany).toHaveBeenCalledWith({
+          where: { userId: "user-1", projectId: null },
+          select: { positionId: true }
+        });
       }
-    };
-    const guard = new PermissionGuard(
-      {
-        getAllAndOverride: jest.fn()
-          .mockReturnValueOnce(undefined)
-          .mockReturnValueOnce("business_party.create")
-      } as never,
-      prisma as never
-    );
+    }
+  );
 
-    await expect(guard.canActivate(contextWithRequest({ user: { id: "user-1" } })))
-      .resolves.toBe(true);
-    expect(prisma.userPosition.findMany).toHaveBeenCalledWith({
-      where: { userId: "user-1", projectId: null },
-      select: { positionId: true }
-    });
-  });
+  it.each(["business_party.create", "project.master_data.manage"])(
+    "rejects other roles, project-only appointments and inactive accounts for %s",
+    async (action) => {
+      for (const candidate of [
+        { roleKey: "contract_staff", projectOnly: false, active: true },
+        { roleKey: "contract_director", projectOnly: false, active: true },
+        { roleKey: "finance_staff", projectOnly: false, active: true },
+        { roleKey: "general_manager", projectOnly: false, active: true },
+        { roleKey: "super_admin", projectOnly: false, active: true },
+        { roleKey: "comprehensive_director", projectOnly: true, active: true },
+        { roleKey: "chairman", projectOnly: false, active: false }
+      ]) {
+        const prisma = {
+          user: { findUnique: jest.fn().mockResolvedValue({ isActive: candidate.active }) },
+          userPosition: { findMany: jest.fn().mockResolvedValue(
+            candidate.projectOnly ? [] : [{ positionId: "position-1" }]
+          ) },
+          position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: candidate.roleKey }]) }
+        };
+        const guard = new PermissionGuard({
+          getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce(action)
+        } as never, prisma as never);
+        await expect(guard.canActivate(contextWithRequest({
+          user: { id: "user-1" }, params: { projectId: "project-1" }
+        }))).rejects.toThrow();
+      }
+    }
+  );
 
   it("blocks a project-scoped director from the governed final-file routes before the service, without tightening ordinary archive-file confirmation", async () => {
     const prisma = {

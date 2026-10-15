@@ -63,6 +63,7 @@ describe("ProjectFundDisputeService public business seam", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
       project: {
         findUnique: jest.fn().mockResolvedValue({
+          isActive: true,
           operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
         })
       },
@@ -604,12 +605,14 @@ describe("ProjectFundDisputeService public business seam", () => {
       payloadSnapshot: { replacementImpacts: [] },
       replacements: []
     }, "finance-director-1")).resolves.toBeUndefined();
-    expect(harness.tx.$queryRaw).not.toHaveBeenCalled();
+    expect(harness.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(harness.tx.$queryRaw.mock.calls[0]?.[0].strings?.join("?")).toContain('FROM "Project"');
   });
 
   it("blocks a positive entry when an active formal source already uses the evidence", async () => {
     const harness = createHarness();
     harness.tx.$queryRaw
+      .mockResolvedValueOnce([{ id: "project-1" }])
       .mockResolvedValueOnce([{ duplicateExists: false }])
       .mockResolvedValueOnce([{ duplicateExists: true }]);
     const service = harness.service as unknown as {
@@ -650,7 +653,7 @@ describe("ProjectFundDisputeService public business seam", () => {
       payloadSnapshot: { replacementImpacts: [] },
       replacements: []
     }, "finance-director-1")).rejects.toThrow(/duplicate_blocked/u);
-    const duplicateQuery = harness.tx.$queryRaw.mock.calls[1]?.[0] as { strings?: readonly string[] };
+    const duplicateQuery = harness.tx.$queryRaw.mock.calls[2]?.[0] as { strings?: readonly string[] };
     const duplicateSql = duplicateQuery.strings?.join("?") ?? "";
     expect(duplicateSql).toContain(
       "fact.\"basisSnapshot\" ->> 'evidenceSha256'"

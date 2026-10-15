@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 339,
+    "activeBusinessActionCount": 345,
     "technicalActionCount": 9,
-    "activeBindingCount": 384,
-    "retiredWriteEntryCount": 89,
+    "activeBindingCount": 390,
+    "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -99,6 +99,38 @@
         "POST /business-entry-definitions/business-party/create/validate"
       ],
       "bindingCount": 3,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "business-party.status",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/business-parties/:partyId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /business-parties/:param/status"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "business-party.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/business-parties/:partyId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /business-parties/:param/versions"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -225,6 +257,54 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /clearing-cases/events/:param/submit"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-entity.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /company-entities"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-entity.status",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /company-entities/:param/status"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-entity.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "PATCH /company-entities/:param"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -3836,6 +3916,22 @@
       "causalVerified": true
     },
     {
+      "id": "project.status",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/status"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "project.update",
       "status": "unified_candidate",
       "usage": "background",
@@ -5687,13 +5783,6 @@
     },
     {
       "method": "PATCH",
-      "path": "/company-entities/:id",
-      "controller": "CompanyEntityController",
-      "handler": "update",
-      "status": "gone"
-    },
-    {
-      "method": "PATCH",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "updateRow",
@@ -5774,27 +5863,6 @@
       "path": "/auth/wx-login",
       "controller": "AuthController",
       "handler": "wxLogin",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/business-parties/:partyId/versions",
-      "controller": "BusinessPartyController",
-      "handler": "createVersion",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/company-entities",
-      "controller": "CompanyEntityController",
-      "handler": "create",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/company-entities/:id/status",
-      "controller": "CompanyEntityController",
-      "handler": "updateStatus",
       "status": "gone"
     },
     {

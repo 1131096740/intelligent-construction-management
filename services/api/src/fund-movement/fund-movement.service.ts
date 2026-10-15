@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -520,6 +521,21 @@ export class FundMovementService {
         const consumedAmount = consumed._sum.amountCents ?? 0n;
         if (consumedAmount + paymentAmountCents > originalRelationship.amountCents) {
           throw new ConflictException("归还或收回金额超过未结往来余额");
+        }
+      }
+
+      // Existing payment/source locks precede project and company locks.
+      // Repayment of an existing relationship keeps its original inactive subjects usable.
+      for (const id of [...new Set([sourceProjectId, beneficiaryProjectId])].sort()) {
+        await lockMasterDataRow(tx, "Project", id);
+        if (!await tx.project.findUnique({ where: { id, ...(originalRelationship ? {} : { isActive: true }) }, select: { id: true } })) {
+          throw new ConflictException("项目不存在或已停用，不能新增资金移动");
+        }
+      }
+      for (const id of [...new Set([sourceCompanyEntityId, beneficiaryCompanyEntityId])].sort()) {
+        await lockMasterDataRow(tx, "CompanyEntity", id);
+        if (!await tx.companyEntity.findUnique({ where: { id, ...(originalRelationship ? {} : { isActive: true }) }, select: { id: true } })) {
+          throw new ConflictException("我方公司不存在或已停用，不能新增资金移动");
         }
       }
 

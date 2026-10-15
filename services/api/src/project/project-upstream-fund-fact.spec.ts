@@ -186,6 +186,7 @@ describe("ProjectService upstream fund facts", () => {
 
   it("records an owner payment as a pending external fact instead of company cash", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([{
@@ -315,6 +316,7 @@ describe("ProjectService upstream fund facts", () => {
 
   it("rejects an owner payment whose counterparty differs from the linked upstream settlement", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findFirst: jest.fn().mockResolvedValue({
@@ -467,6 +469,7 @@ describe("ProjectService upstream fund facts", () => {
 
   it("records an oral unresolved difference without inventing a file, cash, or cost fact", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([{
@@ -1078,7 +1081,7 @@ describe("ProjectService upstream fund facts", () => {
     });
     expect(replay).toEqual(createdFact);
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.projectParticipatingCompany.findFirst.mock.invocationCallOrder[0]
     );
@@ -1166,7 +1169,7 @@ describe("ProjectService upstream fund facts", () => {
         idempotencyKey: "7c75cc73-1549-4fe5-9b25-6eaf70b951d7"
       })
     ).rejects.toThrow("重分类金额不能超过原待核对到账差额");
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled();
   });
 

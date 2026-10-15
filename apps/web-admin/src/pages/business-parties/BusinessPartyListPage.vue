@@ -25,8 +25,8 @@
 
     <t-alert
       theme="info"
-      title="上线准备期间暂为只读"
-      message="当前可查询合作单位及版本历史；新建档案仅通过受控业务入口提交。"
+      title="合作单位资料维护"
+      message="综合部主管和董事长可新增、修改和启停合作单位；进入详情查看历史版本。"
       class="panel"
     />
 
@@ -43,12 +43,13 @@
         :horizontal-scroll-affixed-bottom="true"
         empty="暂无合作单位"
       >
+        <template #status="{ row }">{{ row.status === "active" ? "启用" : "停用" }}</template>
         <template #operation="{ row }">
           <t-link
             theme="primary"
             @click="go(row.id)"
           >
-            查看版本
+            查看详情
           </t-link>
         </template>
       </t-table>
@@ -77,6 +78,7 @@ interface PartyRow {
   name?: string;
   unifiedSocialCreditCode?: string | null;
   createdAt?: string;
+  status?: string;
 }
 
 const router = useRouter();
@@ -84,6 +86,7 @@ const route = useRoute();
 const columns = [
   { colKey: "name", title: "名称", minWidth: 180 },
   { colKey: "unifiedSocialCreditCode", title: "统一社会信用代码", minWidth: 180 },
+  { colKey: "status", title: "状态", width: 90 },
   { colKey: "createdAt", title: "创建时间", width: 180 },
   { colKey: "operation", title: "操作", width: 120, fixed: "right" }
 ];

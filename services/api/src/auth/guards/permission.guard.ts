@@ -82,13 +82,13 @@ export class PermissionGuard implements CanActivate {
       request.user.id,
       projectId,
       includeAnyProjectRole,
-      requiredAction === "business_party.create"
+      (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage")
     );
     const effectiveRoleKeys = resolveEffectiveRoleKeys(
       roleScopes.globalRoleKeys,
       roleScopes.projectRoleKeys
     );
-    const actionRoleKeys = requiredAction === "business_party.create"
+    const actionRoleKeys = (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage")
       ? roleScopes.globalRoleKeys
       : effectiveRoleKeys;
 
@@ -172,10 +172,14 @@ export class PermissionGuard implements CanActivate {
     useCanonicalCompanyScope = false
   ) {
     if (useCanonicalCompanyScope) {
-      return {
-        globalRoleKeys: await this.companyRoles.resolveActiveRoleScopes(userId),
-        projectRoleKeys: [] as RoleKey[]
-      };
+      try {
+        return {
+          globalRoleKeys: await this.companyRoles.resolveActiveRoleScopes(userId),
+          projectRoleKeys: [] as RoleKey[]
+        };
+      } catch {
+        throw new ForbiddenException("当前账号缺少维护基础资料所需的公司级岗位，请联系管理员");
+      }
     }
     const [globalPositions, userProjectPositions, projectMemberPositions] = await Promise.all([
       this.prisma.userPosition.findMany({

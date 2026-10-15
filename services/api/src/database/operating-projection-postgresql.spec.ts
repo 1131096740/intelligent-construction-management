@@ -38,6 +38,7 @@ const RUN_POSTGRES = process.env.RUN_POL108_OPERATING_PROJECTION_PG16 === "1";
 const describePostgres = RUN_POSTGRES ? describe : describe.skip;
 const PROJECT_ID = "seed-project-jgxm-001";
 const WRITER_ID = "seed-user-cashier";
+const MASTER_DATA_MAINTAINER_ID = "seed-user-comprehensive-director";
 const READER_ID = "seed-user-finance-director";
 const PROJECT_MANAGER_ID = "seed-user-project-manager";
 const OCCURRED_AT = new Date("2026-09-01T08:00:00.000Z");
@@ -1534,11 +1535,11 @@ describePostgres("POL-108 operating projection PostgreSQL 16", () => {
       { projectId, userId: WRITER_ID, positionKey: "finance_staff" },
       { projectId, userId: READER_ID, positionKey: "finance_director" }
     ] });
-    await projects.assignAffiliate(projectId, WRITER_ID, {
+    await projects.assignAffiliate(projectId, MASTER_DATA_MAINTAINER_ID, {
       businessPartyVersionId: affiliate.businessPartyVersionId,
       effectiveFrom: "2026-08-01", changeReason: "A18 隔离预算验收项目"
     });
-    await operatingProfile.addParticipatingCompany(projectId, WRITER_ID, {
+    await operatingProfile.addParticipatingCompany(projectId, MASTER_DATA_MAINTAINER_ID, {
       companyEntityId, effectiveFrom: "2026-08-01", changeReason: "A18 隔离预算验收公司"
     });
     await operatingProfile.updateProfile(projectId, WRITER_ID, { operatingLedgerEffectiveDate: "2026-08-01" });

@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
@@ -138,7 +139,7 @@ export class ProjectAffiliateCompanyContractService {
           );
         }
 
-        await requireActiveProject(tx, projectId);
+        await requireActiveProject(tx, projectId, true);
         const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roles.includes("contract_staff")) {
           throw new ForbiddenException(
@@ -405,8 +406,10 @@ function assertConfirmationReplay(
 
 async function requireActiveProject(
   tx: Prisma.TransactionClient,
-  projectId: string
+  projectId: string,
+  lock = false
 ) {
+  if (lock) await lockMasterDataRow(tx, "Project", projectId);
   const project = await tx.project.findFirst({
     where: { id: projectId, isActive: true },
     select: { id: true }

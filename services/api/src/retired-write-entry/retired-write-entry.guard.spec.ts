@@ -69,6 +69,15 @@ describe("POL-19E retired write entry guard", () => {
     expect(new RetiredWriteEntryGuard().canActivate(context)).toBe(true);
   });
 
+  it.each([
+    ["CompanyEntityController", "create"],
+    ["CompanyEntityController", "update"],
+    ["CompanyEntityController", "updateStatus"],
+    ["BusinessPartyController", "createVersion"]
+  ])("lets authorized master-data entry %s.%s reach business authorization", (controller, handler) => {
+    expect(new RetiredWriteEntryGuard().canActivate(contextFor({ controller, handler }))).toBe(true);
+  });
+
   it("keeps the unrequested batch role operation retired", () => {
     expect(() => new RetiredWriteEntryGuard().canActivate(contextFor({
       controller: "OrganizationController", handler: "previewRoleRemovalBatch"

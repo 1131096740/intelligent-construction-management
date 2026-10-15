@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 637,
-    "exactRouteCount": 637,
-    "normalizedRouteCount": 637,
+    "routeCount": 642,
+    "exactRouteCount": 642,
+    "normalizedRouteCount": 642,
     "classificationOverrideCount": 221,
     "consumerSurfaceOverrideCount": 40,
-    "classificationOverrideSha256": "4e44a5d1ac665e3d71695a595b97c3cca8fe5f0b5ecfefec99476cea526693e3",
+    "classificationOverrideSha256": "085f9bbd84ae8b0133bba665bea7b0214ea2e4d800c626b52eb12e10e46d556e",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-    "derivedProductionPageCount": 416,
-    "pageRouteCount": 428,
+    "derivedProductionPageCount": 421,
+    "pageRouteCount": 437,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 100,
+    "exitCandidateCount": 96,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 481,
+      "web_api_wrapper": 490,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 37,
-      "none": 111
+      "none": 107
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 481,
+    "productionWrapperRouteCount": 490,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -265,7 +265,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -847,6 +847,47 @@
     },
     {
       "method": "GET",
+      "path": "/business-parties/:partyId/maintenance-capability",
+      "normalizedKey": "GET /business-parties/:param/maintenance-capability",
+      "controller": "BusinessPartyController",
+      "handler": "maintenanceCapability",
+      "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "getBusinessPartyMaintenanceCapability",
+            "method": "GET",
+            "normalizedPath": "/business-parties/:param/maintenance-capability",
+            "normalizedKey": "GET /business-parties/:param/maintenance-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/business-parties/create-capability",
       "normalizedKey": "GET /business-parties/create-capability",
       "controller": "BusinessPartyController",
@@ -1199,6 +1240,48 @@
             "normalizedKey": "GET /company-entities/management",
             "productionConsumers": [
               "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/company-entities/management-capability",
+      "normalizedKey": "GET /company-entities/management-capability",
+      "controller": "CompanyEntityController",
+      "handler": "managementCapability",
+      "sourceFile": "services/api/src/company-entity/company-entity.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+            "wrapper": "fetchCompanyEntityManagementCapability",
+            "method": "GET",
+            "normalizedPath": "/company-entities/management-capability",
+            "normalizedKey": "GET /company-entities/management-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue",
+              "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
             ]
           }
         ],
@@ -5144,7 +5227,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -6413,7 +6496,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -6669,13 +6752,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "general_manager"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -6693,7 +6773,8 @@
             "normalizedPath": "/projects/:param/update-capability",
             "normalizedKey": "GET /projects/:param/update-capability",
             "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+              "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
             ]
           }
         ],
@@ -6952,13 +7033,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "general_manager"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -6978,6 +7056,50 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/management",
+      "normalizedKey": "GET /projects/management",
+      "controller": "ProjectController",
+      "handler": "management",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+            "wrapper": "fetchProjectManagement",
+            "method": "GET",
+            "normalizedPath": "/projects/management",
+            "normalizedKey": "GET /projects/management",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
             ]
           }
         ],
@@ -8862,18 +8984,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "issue_318_owner_authorized_master_data_maintenance",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+            "wrapper": "updateCompanyEntity",
+            "method": "PATCH",
+            "normalizedPath": "/company-entities/:param",
+            "normalizedKey": "PATCH /company-entities/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "PATCH",
@@ -9319,13 +9452,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "general_manager"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -9571,7 +9701,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -10926,6 +11056,47 @@
     },
     {
       "method": "POST",
+      "path": "/business-parties/:partyId/status",
+      "normalizedKey": "POST /business-parties/:param/status",
+      "controller": "BusinessPartyController",
+      "handler": "updateStatus",
+      "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "business_party.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "updateBusinessPartyStatus",
+            "method": "POST",
+            "normalizedPath": "/business-parties/:param/status",
+            "normalizedKey": "POST /business-parties/:param/status",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/business-parties/:partyId/versions",
       "normalizedKey": "POST /business-parties/:param/versions",
       "controller": "BusinessPartyController",
@@ -10941,18 +11112,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "issue_318_owner_authorized_master_data_maintenance",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "createBusinessPartyVersion",
+            "method": "POST",
+            "normalizedPath": "/business-parties/:param/versions",
+            "normalizedKey": "POST /business-parties/:param/versions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -11258,18 +11440,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "issue_318_owner_authorized_master_data_maintenance",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+            "wrapper": "createCompanyEntity",
+            "method": "POST",
+            "normalizedPath": "/company-entities",
+            "normalizedKey": "POST /company-entities",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -11288,18 +11481,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "issue_318_owner_authorized_master_data_maintenance",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+            "wrapper": "updateCompanyEntityStatus",
+            "method": "POST",
+            "normalizedPath": "/company-entities/:param/status",
+            "normalizedKey": "POST /company-entities/:param/status",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -17596,13 +17800,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "general_manager"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -17643,7 +17844,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -18724,7 +18925,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -21236,7 +21437,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -21277,7 +21478,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.operating_profile.manage",
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -21798,6 +21999,47 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/status",
+      "normalizedKey": "POST /projects/:param/status",
+      "controller": "ProjectController",
+      "handler": "updateStatus",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.master_data.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+            "wrapper": "updateProjectStatus",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/status",
+            "normalizedKey": "POST /projects/:param/status",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/upstream-fund-facts",
       "normalizedKey": "POST /projects/:param/upstream-fund-facts",
       "controller": "ProjectController",
@@ -21988,13 +22230,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "general_manager"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.master_data.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,

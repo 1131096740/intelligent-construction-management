@@ -1,6 +1,7 @@
 import { SETTLEMENT_TEMPLATE_ENTRY_DEFINITION } from "../settlement/settlement-template-entry-definition";
 import {
   createBusinessEntryDefinitionRegistry,
+  MASTER_DATA_MAINTAINER_ROLES,
   ORGANIZATION_DEPARTMENT_ENTRY_DEFINITION,
   ORGANIZATION_USER_ENTRY_DEFINITION,
   ORGANIZATION_ROLE_ENTRY_DEFINITION,
@@ -18,14 +19,11 @@ import {
 } from "./business-entry-scene-access";
 
 const projectFinanceRoles = ["finance_staff", "finance_director"] as const;
-const projectMaintenanceRoles = ["chairman", "general_manager"] as const;
+const projectMaintenanceRoles = MASTER_DATA_MAINTAINER_ROLES;
 const organizationRoles = ORGANIZATION_ENTRY_MANAGER_ROLE_KEYS;
-const companyRoles = ["comprehensive_director", "contract_staff", "contract_director"] as const;
+const companyRoles = MASTER_DATA_MAINTAINER_ROLES;
 const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
-const businessPartyCreateRoles = [
-  "contract_staff",
-  "contract_director"
-] as const;
+const businessPartyCreateRoles = MASTER_DATA_MAINTAINER_ROLES;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
 const spotProcurementCreateRoles = ["material_staff", "material_director"] as const;
@@ -195,7 +193,7 @@ export const PROJECT_CREATE_DEFINITION: BusinessEntrySceneDefinition = {
 export const PARTICIPANT_DEACTIVATION_DEFINITION: BusinessEntrySceneDefinition = {
   key: "project_participating_company_deactivate", entityType: "project_participating_company",
   name: "停止新增业务", version: 1, description: "沿用项目参与公司停止规则。",
-  fields: projectBaseFields([["endedOn", "停止新增业务日期", "date"], ["changeReason", "停止新增业务原因", "long_text"]], projectFinanceRoles), rules: []
+  fields: projectBaseFields([["endedOn", "停止新增业务日期", "date"], ["changeReason", "停止新增业务原因", "long_text"]], projectMaintenanceRoles), rules: []
 };
 
 const remittanceOnly = {
@@ -305,14 +303,14 @@ export const resolveSpotProcurementLine = async (
 export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefinition[] = [
   PROJECT_UPSTREAM_FUND_FACT_DEFINITION,
   globalDefinition("project_construction_enterprise", "project", "项目施工企业", [
-    textField("businessPartyVersionId", "施工企业", projectFinanceRoles, { type: "counterparty", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
-    textField("effectiveFrom", "生效日", projectFinanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
-    textField("changeReason", "设置/变更原因", projectFinanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
+    textField("businessPartyVersionId", "施工企业", projectMaintenanceRoles, { type: "counterparty", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("effectiveFrom", "生效日", projectMaintenanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("changeReason", "设置/变更原因", projectMaintenanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
   ]),
   globalDefinition("project_participating_company_add", "project", "新增参与公司", [
-    textField("companyEntityId", "参与公司", projectFinanceRoles, { type: "company", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
-    textField("effectiveFrom", "生效日", projectFinanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
-    textField("changeReason", "加入原因", projectFinanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
+    textField("companyEntityId", "参与公司", projectMaintenanceRoles, { type: "company", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("effectiveFrom", "生效日", projectMaintenanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
+    textField("changeReason", "加入原因", projectMaintenanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
   ]),
   globalDefinition("project_rename", "project", "项目名称", [
     textField("name", "项目名称", projectMaintenanceRoles, {
@@ -515,12 +513,12 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
     {
       sceneKey: "project_construction_enterprise",
       target: { scope: "project", entityType: "project" },
-      permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
+      permission: { kind: "business_action", action: "project.master_data.manage", roleScope: "effective" }
     },
     {
       sceneKey: "project_participating_company_add",
       target: { scope: "project", entityType: "project" },
-      permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
+      permission: { kind: "business_action", action: "project.master_data.manage", roleScope: "effective" }
     },
     {
       sceneKey: "project_rename",
@@ -535,7 +533,7 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
     {
       sceneKey: "project_participating_company_deactivate",
       target: { scope: "project", entityType: "project_participating_company" },
-      permission: { kind: "business_action", action: "project.operating_profile.manage", roleScope: "project" }
+      permission: { kind: "business_action", action: "project.master_data.manage", roleScope: "effective" }
     },
     {
       sceneKey: "spot_procurement.application",

@@ -180,12 +180,12 @@ describe("ProjectOperatingProfileService", () => {
   it("adds an active company to the selected project with a frozen company version", async () => {
     const effectiveFrom = new Date("2026-08-12T00:00:00.000Z");
     const tx = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
       },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
       $executeRaw: jest.fn(),
       project: {
@@ -233,7 +233,7 @@ describe("ProjectOperatingProfileService", () => {
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
 
     await expect(
-      service.addParticipatingCompany("project-1", "finance-1", {
+      service.addParticipatingCompany("project-1", "comprehensive-1", {
         companyEntityId: "company-1",
         effectiveFrom: "2026-08-12",
         changeReason: "项目开始由该公司承担现场支出"
@@ -251,7 +251,7 @@ describe("ProjectOperatingProfileService", () => {
         companyEntityId: "company-1",
         companyEntityVersionId: "company-version-2",
         effectiveFrom,
-        addedByUserId: "finance-1"
+        addedByUserId: "comprehensive-1"
       })
     });
     expect(tx.projectParticipatingCompany.findFirst).toHaveBeenCalledWith({
@@ -264,7 +264,7 @@ describe("ProjectOperatingProfileService", () => {
     });
   });
 
-  it("does not let finance for another project manage this project's companies", async () => {
+  it("does not let project finance maintain project company data", async () => {
     const tx = {
       user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -280,16 +280,16 @@ describe("ProjectOperatingProfileService", () => {
         effectiveFrom: "2026-08-12",
         changeReason: "越权加入"
       })
-    ).rejects.toThrow("只有当前项目财务人员可以维护项目经营档案");
+    ).rejects.toThrow("当前账号没有公司级全局岗位，不能维护我方公司主体");
     expect(tx.project.findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects an incomplete company even when its id bypasses the candidate list", async () => {
     const tx = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({
@@ -302,7 +302,7 @@ describe("ProjectOperatingProfileService", () => {
     };
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
 
-    await expect(service.addParticipatingCompany("project-1", "finance-1", {
+    await expect(service.addParticipatingCompany("project-1", "comprehensive-1", {
       companyEntityId: "company-legacy",
       effectiveFrom: "2026-08-12",
       changeReason: "绕过候选列表"
@@ -310,17 +310,18 @@ describe("ProjectOperatingProfileService", () => {
     expect(tx.projectParticipatingCompany.create).not.toHaveBeenCalled();
   });
 
-  it("lists active company candidates only after validating current-project finance scope", async () => {
+  it("lists active company candidates only after validating company-wide maintenance scope", async () => {
     const prisma = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       companyEntity: { findMany: jest.fn().mockResolvedValue([{ id: "company-1", name: "项目公司一" }]) }
     };
     const service = new ProjectOperatingProfileService(prisma as never);
 
-    await expect(service.listParticipatingCompanyOptions("project-1", "finance-1"))
+    await expect(service.listParticipatingCompanyOptions("project-1", "comprehensive-1"))
       .resolves.toEqual([{ id: "company-1", name: "项目公司一" }]);
     expect(prisma.companyEntity.findMany).toHaveBeenCalledWith({
       where: { isActive: true, dataStatus: "complete" },
@@ -331,10 +332,11 @@ describe("ProjectOperatingProfileService", () => {
 
   it("lists current construction-enterprise versions as business labels instead of opaque ids", async () => {
     const prisma = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       businessParty: { findMany: jest.fn().mockResolvedValue([{ id: "party-1" }]) },
       businessPartyVersion: { findMany: jest.fn().mockResolvedValue([{
         id: "version-2", versionNo: 2,
@@ -342,18 +344,18 @@ describe("ProjectOperatingProfileService", () => {
       }]) }
     };
     const service = new ProjectOperatingProfileService(prisma as never);
-    await expect(service.listConstructionEnterpriseOptions("project-1", "finance-1"))
+    await expect(service.listConstructionEnterpriseOptions("project-1", "comprehensive-1"))
       .resolves.toEqual([{ id: "version-2", versionNo: 2, name: "云南施工企业", creditCode: "91530000BUILD02" }]);
   });
 
   it("does not delete a participating company after it has formal business facts", async () => {
     const tx = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
       },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{
           id: "participant-1",
@@ -368,17 +370,17 @@ describe("ProjectOperatingProfileService", () => {
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
 
     await expect(
-      service.removeParticipatingCompany("project-1", "participant-1", "finance-1")
+      service.removeParticipatingCompany("project-1", "participant-1", "comprehensive-1")
     ).rejects.toThrow("该公司已有正式经营事实，只能停止新增业务，不能删除");
     expect(tx.projectParticipatingCompany.delete).not.toHaveBeenCalled();
   });
 
   it("does not delete a participating company referenced by an expense or actual payment fact", async () => {
     const tx = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{
           id: "participant-1",
@@ -392,7 +394,7 @@ describe("ProjectOperatingProfileService", () => {
     };
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
 
-    await expect(service.removeParticipatingCompany("project-1", "participant-1", "finance-1"))
+    await expect(service.removeParticipatingCompany("project-1", "participant-1", "comprehensive-1"))
       .rejects.toThrow("该公司已有正式经营事实，只能停止新增业务，不能删除");
     const factQuery = JSON.stringify(tx.$queryRaw.mock.calls[1][0]);
     expect(factQuery).toContain("ExpenseClaim");
@@ -404,10 +406,10 @@ describe("ProjectOperatingProfileService", () => {
 
   it("does not delete the last participant covering an enabled ledger effective date", async () => {
     const tx = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{
           id: "participant-1",
@@ -421,7 +423,7 @@ describe("ProjectOperatingProfileService", () => {
     };
     const service = new ProjectOperatingProfileService(transactionPrisma(tx) as never);
 
-    await expect(service.removeParticipatingCompany("project-1", "participant-1", "finance-1"))
+    await expect(service.removeParticipatingCompany("project-1", "participant-1", "comprehensive-1"))
       .rejects.toThrow("启用经营账前必须至少设置一家我方参与公司");
     expect(tx.projectParticipatingCompany.delete).not.toHaveBeenCalled();
     const guardQuery = JSON.stringify(tx.$queryRaw.mock.calls[1][0]);
@@ -434,12 +436,12 @@ describe("ProjectOperatingProfileService", () => {
     const endedAt = new Date("2026-08-20T00:00:00.000Z");
     const tx = {
       businessEntrySubmissionSnapshot: { create: jest.fn().mockResolvedValue({ id: "snapshot-1" }) },
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
       },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $executeRaw: jest.fn(),
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "project-1" }])
@@ -474,7 +476,7 @@ describe("ProjectOperatingProfileService", () => {
 
     try {
       await expect(
-        service.deactivateParticipatingCompany("project-1", "participant-1", "finance-1", {
+        service.deactivateParticipatingCompany("project-1", "participant-1", "comprehensive-1", {
           endedOn: "2026-08-20",
           changeReason: "该公司停止承接本项目新增业务"
         })
@@ -487,7 +489,7 @@ describe("ProjectOperatingProfileService", () => {
       where: { id: "participant-1" },
       data: {
         endedAt,
-        endedByUserId: "finance-1",
+        endedByUserId: "comprehensive-1",
         changeReason: "该公司停止承接本项目新增业务"
       }
     });
@@ -501,10 +503,10 @@ describe("ProjectOperatingProfileService", () => {
 
   it("does not end the last participant across an enabled ledger effective date", async () => {
     const tx = {
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "finance-1", isActive: true }) },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "comprehensive-1", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "comprehensive-position" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "comprehensive_director" }]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{
@@ -523,7 +525,7 @@ describe("ProjectOperatingProfileService", () => {
     await expect(service.deactivateParticipatingCompany(
       "project-1",
       "participant-1",
-      "finance-1",
+      "comprehensive-1",
       { endedOn: "2026-08-10", changeReason: "停止" }
     )).rejects.toThrow("启用经营账前必须至少设置一家我方参与公司");
     expect(tx.projectParticipatingCompany.update).not.toHaveBeenCalled();

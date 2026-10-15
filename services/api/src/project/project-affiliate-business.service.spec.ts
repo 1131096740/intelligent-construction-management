@@ -137,6 +137,7 @@ describe("ProjectAffiliateBusinessService", () => {
     ["contract_director", []]
   ])("derives original contract record capability for %s", async (roleKey, expected) => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables(roleKey)
     };
@@ -168,6 +169,7 @@ describe("ProjectAffiliateBusinessService", () => {
     ["finance_director", ["confirm_affiliate_fact", "supplement_affiliate_evidence"]]
   ])("derives oral payment fact capability for %s", async (roleKey, expected) => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables(roleKey),
       projectAffiliatePaymentFact: {
@@ -193,6 +195,7 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("rejects affiliate evidence upload before file storage for the wrong business role", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("employee"),
       projectAffiliateContractFact: { findFirst: jest.fn() }
@@ -217,6 +220,7 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("does not advertise contract adjustments to a confirming-only contract director", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("contract_director"),
       projectAffiliateContractFact: {
@@ -241,6 +245,7 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("returns a payment request business code for correction receipts without replacing the hidden id", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("finance_staff"),
       projectAffiliateContractFact: { findMany: jest.fn().mockResolvedValue([]) },
@@ -274,6 +279,7 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("does not create company approval work when recording an external affiliate contract", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([
@@ -368,6 +374,7 @@ describe("ProjectAffiliateBusinessService", () => {
     "rejects a post-effective %s payment without an approved payment request",
     async (paymentKind) => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
         findUnique: jest.fn().mockResolvedValue({
@@ -543,6 +550,7 @@ describe("ProjectAffiliateBusinessService", () => {
       confirmationSignatureSha256: null
     });
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("budget_staff"),
       projectAffiliateContractFact: {

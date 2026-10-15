@@ -6723,7 +6723,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage"
+        "source": "profile.canManageMasterData"
       },
       "wrappers": [
         {
@@ -6751,7 +6751,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage"
+        "source": "profile.canManageMasterData"
       },
       "wrappers": [
         {
@@ -6779,7 +6779,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage"
+        "source": "profile.canManageMasterData"
       },
       "wrappers": [
         {
@@ -6807,7 +6807,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage"
+        "source": "profile.canManageMasterData"
       },
       "wrappers": [
         {
@@ -8817,6 +8817,156 @@
         {
           "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
           "name": "sendPhoneChangeSms"
+        }
+      ]
+    },
+    {
+      "id": "business-party.update",
+      "usage": "background",
+      "routePaths": [
+        "/business-parties/:partyId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "savePartyVersionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_business_party"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "createBusinessPartyVersion"
+        }
+      ]
+    },
+    {
+      "id": "business-party.status",
+      "usage": "background",
+      "routePaths": [
+        "/business-parties/:partyId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "savePartyStatusWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_business_party_status"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "updateBusinessPartyStatus"
+        }
+      ]
+    },
+    {
+      "id": "company-entity.create",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveCompanyCreate"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_company_entity"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+          "name": "createCompanyEntity"
+        }
+      ]
+    },
+    {
+      "id": "company-entity.update",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveCompanyUpdate"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_company_entity"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+          "name": "updateCompanyEntity"
+        }
+      ]
+    },
+    {
+      "id": "company-entity.status",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveCompanyStatusWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_company_entity_status"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+          "name": "updateCompanyEntityStatus"
+        }
+      ]
+    },
+    {
+      "id": "project.status",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveProjectStatus"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_project_status"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "name": "updateProjectStatus"
         }
       ]
     }

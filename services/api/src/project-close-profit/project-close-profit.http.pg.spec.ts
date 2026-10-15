@@ -592,7 +592,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     );
     const concurrentNewFact = operatingProfile.addParticipatingCompany(
       projectId,
-      "seed-user-finance-director",
+      "seed-user-comprehensive-director",
       {
         companyEntityId: newFactCompany.id,
         effectiveFrom: "2026-09-18",

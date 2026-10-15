@@ -1,4 +1,4 @@
-import type { CompanyEntityDataStatus, RoleKey } from "@jiangkong/shared-domain";
+import type { BusinessEntrySceneDefinition, CompanyEntityDataStatus, RoleKey } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -111,7 +111,7 @@ export function createCompanyEntity(body: CompanyEntityFactsPayload) {
   return sendJson<CompanyEntityWriteResponse>("/company-entities", "POST", body, "新增我方公司主体失败");
 }
 
-export function updateCompanyEntity(id: string, body: CompanyEntityFactsPayload) {
+export function updateCompanyEntity(id: string, body: CompanyEntityFactsPayload & { expectedVersionNo: number }) {
   return sendJson<CompanyEntityWriteResponse>(
     `/company-entities/${encodeURIComponent(id)}`,
     "PATCH",
@@ -126,5 +126,11 @@ export function updateCompanyEntityStatus(id: string, isActive: boolean) {
     "POST",
     { isActive },
     "更新主体状态失败"
+  );
+}
+
+export function fetchCompanyEntityManagementCapability() {
+  return readJson<{ availableActions: string[]; definition: BusinessEntrySceneDefinition }>(
+    "/company-entities/management-capability", "读取我方公司维护权限失败"
   );
 }

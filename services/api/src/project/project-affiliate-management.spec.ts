@@ -1,8 +1,13 @@
 import { ProjectService } from "./project.service";
 
 function transactionPrisma(tx: object) {
+  const client = {
+    userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
+    position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
+    ...tx
+  };
   return {
-    $transaction: jest.fn(async (callback: (client: object) => unknown) => callback(tx))
+    $transaction: jest.fn(async (callback: (client: object) => unknown) => callback(client))
   };
 }
 
@@ -148,6 +153,9 @@ describe("ProjectService affiliate mapping", () => {
       affiliateNameSnapshot: "新挂靠建设集团"
     });
 
+    const partyLockIndex = tx.$queryRaw.mock.calls.findIndex(([sql]) => sql.strings.join("").includes('FROM "BusinessParty"'));
+    expect(partyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(tx.$queryRaw.mock.invocationCallOrder[partyLockIndex]).toBeLessThan(tx.businessParty.findUnique.mock.invocationCallOrder[0]);
     expect(tx.projectAffiliateAssignment.updateMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", endedAt: null },
       data: { endedAt: effectiveFrom, endedByUserId: "chairman-1" }
@@ -218,7 +226,7 @@ describe("ProjectService affiliate mapping", () => {
     };
     const service = new ProjectService(transactionPrisma(tx) as never);
 
-    await expect(service.assignAffiliate("project-1", "finance-1", {
+    await expect(service.assignAffiliate("project-1", "chairman-1", {
       businessPartyVersionId: "party-version-1",
       effectiveFrom: "2020-08-13T00:00:00.000Z",
       changeReason: "事后补绑"
@@ -228,6 +236,7 @@ describe("ProjectService affiliate mapping", () => {
 
   it("freezes the current affiliate snapshot into a new owner master contract", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },

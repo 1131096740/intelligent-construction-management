@@ -1,18 +1,14 @@
 import "reflect-metadata";
-import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { ProjectExpenseController } from "../project-expense/project-expense.controller";
 import { ProjectController } from "./project.controller";
 
 describe("project stage D capability controller wiring", () => {
   it.each(["createCapability", "updateCapability"])(
-    "keeps %s aligned with project maintenance positions",
+    "keeps %s aligned with global master-data permission",
     (method) => {
       const handler = (ProjectController.prototype as unknown as Record<string, object>)[method];
-      expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual([
-        "chairman",
-        "general_manager"
-      ]);
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe("project.master_data.manage");
     }
   );
 
@@ -28,13 +24,13 @@ describe("project stage D capability controller wiring", () => {
       "project.affiliate_business_fact.evidence_supplement"
     ],
     ["updateOperatingProfile", "project.operating_profile.manage"],
-    ["participatingCompanyOptions", "project.operating_profile.manage"],
-    ["constructionEnterpriseOptions", "project.operating_profile.manage"],
-    ["assignConstructionEnterprise", "project.operating_profile.manage"],
-    ["addParticipatingCompany", "project.operating_profile.manage"],
-    ["deactivateParticipatingCompany", "project.operating_profile.manage"],
-    ["removeParticipatingCompany", "project.operating_profile.manage"],
-    ["assignAffiliate", "project.operating_profile.manage"]
+    ["participatingCompanyOptions", "project.master_data.manage"],
+    ["constructionEnterpriseOptions", "project.master_data.manage"],
+    ["assignConstructionEnterprise", "project.master_data.manage"],
+    ["addParticipatingCompany", "project.master_data.manage"],
+    ["deactivateParticipatingCompany", "project.master_data.manage"],
+    ["removeParticipatingCompany", "project.master_data.manage"],
+    ["assignAffiliate", "project.master_data.manage"]
   ])("guards %s with %s", (method, action) => {
     const handler = (ProjectController.prototype as unknown as Record<string, object>)[method];
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);

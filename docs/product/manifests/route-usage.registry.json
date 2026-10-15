@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 637,
+    "routeCount": 642,
     "classificationOverrideCount": 221,
-    "derivedProductionPageCount": 416,
-    "classificationOverrideSha256": "4e44a5d1ac665e3d71695a595b97c3cca8fe5f0b5ecfefec99476cea526693e3",
+    "derivedProductionPageCount": 421,
+    "classificationOverrideSha256": "085f9bbd84ae8b0133bba665bea7b0214ea2e4d800c626b52eb12e10e46d556e",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
     "usageCounts": {
-      "page": 428,
+      "page": 437,
       "external_takeover": 70,
-      "exit_candidate": 100,
+      "exit_candidate": 96,
       "internal_task": 39,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 481,
+      "web_api_wrapper": 490,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 37,
-      "none": 111
+      "none": 107
     }
   },
   "overrides": [
@@ -250,8 +250,8 @@
     {
       "method": "PATCH",
       "path": "/company-entities/:id",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "issue_318_owner_authorized_master_data_maintenance"
     },
     {
       "method": "PATCH",
@@ -364,20 +364,20 @@
     {
       "method": "POST",
       "path": "/business-parties/:partyId/versions",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "issue_318_owner_authorized_master_data_maintenance"
     },
     {
       "method": "POST",
       "path": "/company-entities",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "issue_318_owner_authorized_master_data_maintenance"
     },
     {
       "method": "POST",
       "path": "/company-entities/:id/status",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "issue_318_owner_authorized_master_data_maintenance"
     },
     {
       "method": "POST",

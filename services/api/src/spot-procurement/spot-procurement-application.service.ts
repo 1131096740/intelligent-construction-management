@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
@@ -239,7 +240,7 @@ export class SpotProcurementApplicationService {
     return this.runWrite(() =>
       this.prisma.$transaction(async (tx) => {
         this.pilot.assertEnabled(input.projectId);
-        await this.requireActiveProject(tx, input.projectId);
+        await this.requireActiveProject(tx, input.projectId, true);
         const actorRoles = await this.loadActorRoleKeys(
           tx,
           actorUserId,
@@ -1722,7 +1723,8 @@ export class SpotProcurementApplicationService {
     };
   }
 
-  private async requireActiveProject(tx: Prisma.TransactionClient, projectId: string) {
+  private async requireActiveProject(tx: Prisma.TransactionClient, projectId: string, lock = false) {
+    if (lock) await lockMasterDataRow(tx, "Project", projectId);
     const project = await tx.project.findUnique({ where: { id: projectId }, select: { id: true, isActive: true } });
     if (!project) throw new NotFoundException("采购项目不存在");
     if (!project.isActive) throw new BadRequestException("采购项目已停用");

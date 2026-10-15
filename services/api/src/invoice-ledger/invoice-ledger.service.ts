@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
@@ -697,6 +698,9 @@ export class InvoiceLedgerService {
       if (existing) throw new ConflictException("该发票身份已用于不同的发票事实");
       const file = await this.files.assertFileHasNoBusinessBinding(tx, header.fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("只能登记本人上传且尚未绑定的发票文件");
+      await lockMasterDataRow(tx, "CompanyEntity", header.owningCompanyEntityId);
+      const owningCompany = await tx.companyEntity.findUnique({ where: { id: header.owningCompanyEntityId, isActive: true }, select: { id: true } });
+      if (!owningCompany) throw new ConflictException("我方公司不存在或已停用，不能登记新发票");
       const invoice = await tx.invoiceRecord.create({ data: {
         projectId: null, identityKey: header.identityKey, identityKind: header.identityKind,
         owningCompanyEntityId: header.owningCompanyEntityId, direction: header.direction,

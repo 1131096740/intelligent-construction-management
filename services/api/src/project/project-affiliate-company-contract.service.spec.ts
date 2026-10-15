@@ -311,6 +311,7 @@ describe("ProjectAffiliateCompanyContractService", () => {
     "derives list capabilities from role and pending status for %s",
     async (roleKey, expectedRootActions, expectedContractActions) => {
       const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
         project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
         ...roleTables(roleKey),
         projectAffiliateCompanyContract: {
@@ -383,11 +384,12 @@ describe("ProjectAffiliateCompanyContractService", () => {
     const queryTexts = tx.$queryRaw.mock.calls.map(([query]) =>
       rawQueryText(query)
     );
-    expect(queryTexts[0]).toContain("pg_advisory_xact_lock");
-    expect(queryTexts[1]).toContain('FROM "CompanyEntity"');
-    expect(queryTexts[1]).toContain("FOR UPDATE");
-    expect(queryTexts[2]).toContain('FROM "FileObject"');
+    expect(queryTexts[0]).toContain('FROM "Project"');
+    expect(queryTexts[1]).toContain("pg_advisory_xact_lock");
+    expect(queryTexts[2]).toContain('FROM "CompanyEntity"');
     expect(queryTexts[2]).toContain("FOR UPDATE");
+    expect(queryTexts[3]).toContain('FROM "FileObject"');
+    expect(queryTexts[3]).toContain("FOR UPDATE");
     expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
     expect(
       tx.projectAffiliateCompanyContract.findUnique.mock.invocationCallOrder[1]
@@ -435,8 +437,8 @@ describe("ProjectAffiliateCompanyContractService", () => {
       recordedByUserId: "contract-staff-1",
       requestFingerprint: winner.requestFingerprint
     });
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(rawQueryText(tx.$queryRaw.mock.calls[0]?.[0])).toContain(
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(rawQueryText(tx.$queryRaw.mock.calls[1]?.[0])).toContain(
       "pg_advisory_xact_lock"
     );
     expect(tx.projectAffiliateCompanyContract.findUnique).toHaveBeenCalledTimes(2);
@@ -466,8 +468,8 @@ describe("ProjectAffiliateCompanyContractService", () => {
       await expect(
         service.record("project-1", "contract-staff-1", RECORD_INPUT)
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
-      expect(rawQueryText(tx.$queryRaw.mock.calls[0]?.[0])).toContain(
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+      expect(rawQueryText(tx.$queryRaw.mock.calls[1]?.[0])).toContain(
         "pg_advisory_xact_lock"
       );
       expect(tx.companyEntity.findUnique).not.toHaveBeenCalled();

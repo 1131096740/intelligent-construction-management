@@ -21,16 +21,6 @@
       ]
     },
     {
-      "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests.",
-      "wrappers": [
-        "createCompanyEntity",
-        "updateCompanyEntity",
-        "updateCompanyEntityStatus"
-      ]
-    },
-    {
       "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests.",
@@ -65,7 +55,6 @@
         "addBillRow",
         "cloneContractTemplateVersion",
         "cloneLayoutTemplateVersion",
-        "createBusinessPartyVersion",
         "createContractNumberRule",
         "createContractTemplate",
         "createDraftCheckpoint",
