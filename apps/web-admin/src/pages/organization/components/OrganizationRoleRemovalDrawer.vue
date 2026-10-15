@@ -191,6 +191,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import { computed, ref, watch } from "vue";
 import {
   applyOrganizationRoleRemoval,
@@ -327,7 +328,7 @@ async function previewTarget(target: OrganizationRoleRemovalTargetRow) {
     preview.value = result;
     previewStale.value = false;
   } catch (error) {
-    previewMessage.value = error instanceof Error ? error.message : "读取岗位撤销影响失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "读取岗位撤销影响失败，请稍后重试。");
   } finally {
     previewing.value = false;
   }
@@ -351,7 +352,7 @@ async function applyRemoval() {
     if (error instanceof OrganizationApiError && error.status === 409) {
       previewStale.value = true;
     }
-    previewMessage.value = error instanceof Error ? error.message : "撤销岗位失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "撤销岗位失败，请稍后重试。");
   } finally {
     applying.value = false;
   }

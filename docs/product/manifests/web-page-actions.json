@@ -10576,7 +10576,7 @@
         "event": "call",
         "handler": "applyOrganizationRoleAdditionWithCapability",
         "kind": "background_call",
-        "sourceLine": 392,
+        "sourceLine": 393,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10650,7 +10650,7 @@
         "event": "call",
         "handler": "previewOrganizationRoleAdditionWithCapability",
         "kind": "background_call",
-        "sourceLine": 385,
+        "sourceLine": 386,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10724,7 +10724,7 @@
         "event": "call",
         "handler": "applyOrganizationRoleRemovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 367,
+        "sourceLine": 368,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10798,7 +10798,7 @@
         "event": "call",
         "handler": "previewOrganizationRoleRemovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 360,
+        "sourceLine": 361,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10872,7 +10872,7 @@
         "event": "call",
         "handler": "createOrganizationUserWithCapability",
         "kind": "background_call",
-        "sourceLine": 161,
+        "sourceLine": 162,
         "sourceColumn": 0
       },
       "semantic": "business_write",

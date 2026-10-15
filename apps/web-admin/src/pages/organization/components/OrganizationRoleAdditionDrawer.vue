@@ -169,6 +169,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import { ORGANIZATION_ROLE_ENTRY_DEFINITION, type BusinessEntryDraftPayload, type RoleKey } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { computed, ref, watch } from "vue";
@@ -336,7 +337,7 @@ async function previewTarget() {
       drawerDirectory()
     );
   } catch (error) {
-    previewMessage.value = error instanceof Error ? error.message : "新增岗位目标无效，请刷新后重试。";
+    previewMessage.value = formatUnknownApiError(error, "新增岗位目标无效，请刷新后重试。");
     return;
   }
   selectedTarget.value = target;
@@ -349,7 +350,7 @@ async function previewTarget() {
     }
     preview.value = result;
   } catch (error) {
-    previewMessage.value = error instanceof Error ? error.message : "读取岗位新增影响失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "读取岗位新增影响失败，请稍后重试。");
     resetPassword();
   } finally {
     previewing.value = false;
@@ -376,7 +377,7 @@ async function applyAddition() {
       selectedTarget.value = null;
       previewStale.value = true;
     }
-    previewMessage.value = error instanceof Error ? error.message : "新增岗位失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "新增岗位失败，请稍后重试。");
   } finally {
     applying.value = false;
   }

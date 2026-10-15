@@ -229,6 +229,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
 import OrganizationUserCreationDrawer from "./components/OrganizationUserCreationDrawer.vue";
@@ -379,7 +380,7 @@ async function loadDirectory() {
     directoryMessage.value = "";
   } catch (error) {
     capabilities.value = null;
-    directoryMessage.value = error instanceof Error ? error.message : "读取组织目录失败，请稍后重试。";
+    directoryMessage.value = formatUnknownApiError(error, "读取组织目录失败，请稍后重试。");
   } finally {
     directoryLoading.value = false;
   }
@@ -397,7 +398,7 @@ async function loadPermissionIntegrity() {
     integrityMessage.value = "";
   } catch (error) {
     integrityMessage.value =
-      error instanceof Error ? error.message : "读取权限完整性预检失败，请稍后重试。";
+      formatUnknownApiError(error, "读取权限完整性预检失败，请稍后重试。");
   } finally {
     integrityLoading.value = false;
   }

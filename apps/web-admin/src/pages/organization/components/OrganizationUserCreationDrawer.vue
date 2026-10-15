@@ -69,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import { ORGANIZATION_USER_ENTRY_DEFINITION, type BusinessEntryDraftPayload, type RoleKey } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { computed, reactive, ref, watch } from "vue";
@@ -152,7 +153,7 @@ async function submitCreation() {
     emit("created");
   } catch (error) {
     resetSensitiveFields();
-    message.value = error instanceof Error ? error.message : "创建人员失败，请稍后重试。";
+    message.value = formatUnknownApiError(error, "创建人员失败，请稍后重试。");
   } finally {
     submitting.value = false;
   }

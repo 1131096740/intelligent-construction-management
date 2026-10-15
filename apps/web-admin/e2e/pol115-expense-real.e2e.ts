@@ -26,7 +26,7 @@ test("财务员登记还款后由财务主管确认并更正，桌面和手机�
 
   await page.getByRole("button", { name: "登记员工还款", exact: true }).click();
   const repaymentDrawer = page.locator(".t-drawer").filter({ hasText: "登记员工还款" });
-  await repaymentDrawer.getByPlaceholder("例如 1250").fill("1");
+  await repaymentDrawer.getByPlaceholder("例如 1250").fill("0.01");
   await repaymentDrawer.getByPlaceholder("例如：银行转账").fill(paymentMethod);
   await repaymentDrawer.locator('input[type="file"]').setInputFiles({
     name: "浏览器还款凭证.png", mimeType: "image/png",
@@ -38,6 +38,7 @@ test("财务员登记还款后由财务主管确认并更正，桌面和手机�
   await page.locator(".t-dialog").filter({ hasText: "确认登记借款资金事实" }).getByRole("button", { name: "确认写入", exact: true }).click();
   const recorded = await recordedResponse;
   expect(recorded.status(), await recorded.text()).toBe(201);
+  expect(recorded.request().postDataJSON().amountCents).toBe("1");
   const repaymentId = ((await recorded.json()) as { id: string }).id;
   const browserRow = page.locator(".expense-claim-detail__repayment-row").filter({ hasText: paymentMethod });
   await expect(browserRow).toContainText("待确认");
