@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 348,
+    "registeredActionCount": 354,
     "pageActionCount": 56,
-    "backgroundActionCount": 292,
-    "reachableVueFileCount": 166,
+    "backgroundActionCount": 298,
+    "reachableVueFileCount": 168,
     "routeRootCount": 65,
-    "totalVueFileCount": 181,
-    "parsedVueFileCount": 181,
-    "reachableProductionModuleCount": 292,
-    "templateEventDirectiveCount": 1034,
+    "totalVueFileCount": 182,
+    "parsedVueFileCount": 182,
+    "reachableProductionModuleCount": 294,
+    "templateEventDirectiveCount": 1045,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 338,
-    "candidateProductionMutationConsumerCount": 338,
-    "acceptedProductionMutationConsumerCount": 338,
-    "productionMutationConsumerPairCount": 338,
+    "coveredProductionMutationConsumerCount": 344,
+    "candidateProductionMutationConsumerCount": 344,
+    "acceptedProductionMutationConsumerCount": 344,
+    "productionMutationConsumerPairCount": 344,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 314,
-    "reachableProductionModuleCount": 292,
-    "totalVueFileCount": 181,
-    "parsedVueFileCount": 181
+    "totalProductionModuleCount": 315,
+    "reachableProductionModuleCount": 294,
+    "totalVueFileCount": 182,
+    "parsedVueFileCount": 182
   },
   "actions": [
     {
@@ -508,6 +508,138 @@
             "localCallChain": [
               "prepareCreate",
               "validateBusinessPartyDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "business-party.status",
+      "usage": "background",
+      "routePaths": [
+        "/business-parties/:partyId"
+      ],
+      "ownerRoutePaths": [
+        "/business-parties/:partyId",
+        "/合作单位档案/:partyId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "savePartyStatusWithCapability",
+        "kind": "background_call",
+        "sourceLine": 249,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_business_party_status",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "updateBusinessPartyStatus",
+          "method": "POST",
+          "path": "/business-parties/:param/status",
+          "normalizedKey": "POST /business-parties/:param/status",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/business-parties/:partyId/status",
+            "normalizedKey": "POST /business-parties/:param/status",
+            "controller": "BusinessPartyController",
+            "handler": "updateStatus",
+            "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "business_party.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "savePartyStatusWithCapability",
+              "updateBusinessPartyStatus"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "business-party.update",
+      "usage": "background",
+      "routePaths": [
+        "/business-parties/:partyId"
+      ],
+      "ownerRoutePaths": [
+        "/business-parties/:partyId",
+        "/合作单位档案/:partyId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "savePartyVersionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 242,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_business_party",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "createBusinessPartyVersion",
+          "method": "POST",
+          "path": "/business-parties/:param/versions",
+          "normalizedKey": "POST /business-parties/:param/versions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/business-parties/:partyId/versions",
+            "normalizedKey": "POST /business-parties/:param/versions",
+            "controller": "BusinessPartyController",
+            "handler": "createVersion",
+            "sourceFile": "services/api/src/business-party/business-party.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "business_party.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "savePartyVersionWithCapability",
+              "createBusinessPartyVersion"
             ]
           },
           "ticketFollowups": []
@@ -1028,6 +1160,201 @@
             "localCallChain": [
               "submitClearingEventWithCapability",
               "submitClearingEvent"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-entity.create",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "ownerRoutePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveCompanyCreate",
+        "kind": "background_call",
+        "sourceLine": 96,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_company_entity",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+          "wrapper": "createCompanyEntity",
+          "method": "POST",
+          "path": "/company-entities",
+          "normalizedKey": "POST /company-entities",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-entities",
+            "normalizedKey": "POST /company-entities",
+            "controller": "CompanyEntityController",
+            "handler": "create",
+            "sourceFile": "services/api/src/company-entity/company-entity.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveCompanyCreate",
+              "createCompanyEntity"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-entity.status",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "ownerRoutePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveCompanyStatusWithCapability",
+        "kind": "background_call",
+        "sourceLine": 253,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_company_entity_status",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+          "wrapper": "updateCompanyEntityStatus",
+          "method": "POST",
+          "path": "/company-entities/:param/status",
+          "normalizedKey": "POST /company-entities/:param/status",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-entities/:id/status",
+            "normalizedKey": "POST /company-entities/:param/status",
+            "controller": "CompanyEntityController",
+            "handler": "updateStatus",
+            "sourceFile": "services/api/src/company-entity/company-entity.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveCompanyStatusWithCapability",
+              "updateCompanyEntityStatus"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-entity.update",
+      "usage": "background",
+      "routePaths": [
+        "/我方公司主体"
+      ],
+      "ownerRoutePaths": [
+        "/我方公司主体"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveCompanyUpdate",
+        "kind": "background_call",
+        "sourceLine": 104,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_company_entity",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+          "wrapper": "updateCompanyEntity",
+          "method": "PATCH",
+          "path": "/company-entities/:param",
+          "normalizedKey": "PATCH /company-entities/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/company-entities/:id",
+            "normalizedKey": "PATCH /company-entities/:param",
+            "controller": "CompanyEntityController",
+            "handler": "update",
+            "sourceFile": "services/api/src/company-entity/company-entity.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveCompanyUpdate",
+              "updateCompanyEntity"
             ]
           },
           "ticketFollowups": []
@@ -13659,7 +13986,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 1625,
+        "sourceLine": 1651,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -13917,13 +14244,10 @@
             "sourceFile": "services/api/src/project/project.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "positions",
+            "guardAuthorization": "project_action",
             "isPublic": false,
-            "requiredPositions": [
-              "chairman",
-              "general_manager"
-            ],
-            "requiredProjectAction": null
+            "requiredPositions": [],
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
@@ -13957,7 +14281,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2647,
+        "sourceLine": 2673,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14022,7 +14346,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2608,
+        "sourceLine": 2634,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14087,7 +14411,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2019,
+        "sourceLine": 2045,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14152,7 +14476,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2003,
+        "sourceLine": 2029,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14455,7 +14779,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2567,
+        "sourceLine": 2593,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15874,7 +16198,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage",
+        "source": "profile.canManageMasterData",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -15934,7 +16258,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "project.operating_profile.manage"
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
@@ -15974,7 +16298,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage",
+        "source": "profile.canManageMasterData",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -15998,7 +16322,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "project.operating_profile.manage"
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
@@ -16034,7 +16358,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "project.operating_profile.manage"
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
@@ -16074,7 +16398,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage",
+        "source": "profile.canManageMasterData",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -16098,7 +16422,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "project.operating_profile.manage"
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
@@ -16238,7 +16562,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "profile.canManage",
+        "source": "profile.canManageMasterData",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -16298,7 +16622,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "project.operating_profile.manage"
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
@@ -16332,7 +16656,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 847,
+        "sourceLine": 853,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -17085,7 +17409,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1538,
+        "sourceLine": 1564,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17113,13 +17437,10 @@
             "sourceFile": "services/api/src/project/project.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "positions",
+            "guardAuthorization": "project_action",
             "isPublic": false,
-            "requiredPositions": [
-              "chairman",
-              "general_manager"
-            ],
-            "requiredProjectAction": null
+            "requiredPositions": [],
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -17217,6 +17538,71 @@
       ]
     },
     {
+      "id": "project.status",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveProjectStatus",
+        "kind": "background_call",
+        "sourceLine": 57,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_project_status",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "updateProjectStatus",
+          "method": "POST",
+          "path": "/projects/:param/status",
+          "normalizedKey": "POST /projects/:param/status",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/status",
+            "normalizedKey": "POST /projects/:param/status",
+            "controller": "ProjectController",
+            "handler": "updateStatus",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.master_data.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveProjectStatus",
+              "updateProjectStatus"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "project.update",
       "usage": "background",
       "routePaths": [
@@ -17231,7 +17617,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1547,
+        "sourceLine": 1573,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17259,13 +17645,10 @@
             "sourceFile": "services/api/src/project/project.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "positions",
+            "guardAuthorization": "project_action",
             "isPublic": false,
-            "requiredPositions": [
-              "chairman",
-              "general_manager"
-            ],
-            "requiredProjectAction": null
+            "requiredPositions": [],
+            "requiredProjectAction": "project.master_data.manage"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -17299,7 +17682,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2346,
+        "sourceLine": 2372,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17364,7 +17747,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2285,
+        "sourceLine": 2311,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17429,7 +17812,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2233,
+        "sourceLine": 2259,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17494,7 +17877,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 2249,
+        "sourceLine": 2275,
         "sourceColumn": 0
       },
       "semantic": "business_write",

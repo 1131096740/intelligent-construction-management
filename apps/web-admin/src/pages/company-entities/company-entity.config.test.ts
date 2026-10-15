@@ -19,11 +19,11 @@ const settingsSource = readFileSync(new URL("../settings/SettingsPage.vue", impo
 describe("company entity ledger configuration", () => {
   it("derives capabilities from company-global roles only", () => {
     expect(companyEntityCapabilities(["comprehensive_director"])).toEqual({ canRead: true, canMaintain: true });
-    expect(companyEntityCapabilities(["contract_staff"])).toEqual({ canRead: true, canMaintain: true });
-    expect(companyEntityCapabilities(["contract_director"])).toEqual({ canRead: true, canMaintain: true });
+    expect(companyEntityCapabilities(["contract_staff"])).toEqual({ canRead: true, canMaintain: false });
+    expect(companyEntityCapabilities(["contract_director"])).toEqual({ canRead: true, canMaintain: false });
     expect(companyEntityCapabilities(["finance_staff"])).toEqual({ canRead: true, canMaintain: false });
     expect(companyEntityCapabilities(["finance_director"])).toEqual({ canRead: true, canMaintain: false });
-    expect(companyEntityCapabilities(["chairman"])).toEqual({ canRead: true, canMaintain: false });
+    expect(companyEntityCapabilities(["chairman"])).toEqual({ canRead: true, canMaintain: true });
     expect(companyEntityCapabilities(["general_manager"])).toEqual({ canRead: true, canMaintain: false });
     expect(companyEntityCapabilities(["super_admin"])).toEqual({ canRead: false, canMaintain: false });
     expect(companyEntityCapabilities([])).toEqual({ canRead: false, canMaintain: false });
@@ -35,9 +35,8 @@ describe("company entity ledger configuration", () => {
       "unifiedSocialCreditCode",
       "registeredAddress"
     ]);
-    expect(formSource).toContain('label="公司全称"');
-    expect(formSource).toContain('label="统一社会信用代码"');
-    expect(formSource).toContain('label="注册地址"');
+    expect(formSource).toContain("<BusinessEntryForm");
+    expect(formSource).toContain("fetchCompanyEntityManagementCapability");
     expect(formSource).not.toMatch(/法定代表人|联系电话|银行账户|公章图片|营业执照附件|备注/);
   });
 
@@ -65,16 +64,17 @@ describe("company entity ledger configuration", () => {
     expect(pageSource).toContain("<BusinessTableToolbar");
     expect(pageSource).toContain('appearance="plain"');
     expect(pageSource).toContain("<BusinessFeedback");
-    expect(pageSource).toContain("上线准备期间暂为只读");
+    expect(pageSource).toContain("我方公司资料维护");
     expect(pageSource).not.toContain("<SensitiveActionDialog");
-    expect(pageSource).not.toContain("<CompanyEntityFormDrawer");
+    expect(pageSource).toContain("<CompanyEntityFormDrawer");
     expect(pageSource).not.toMatch(/overflow-x\s*:|100vw|min-width\s*:\s*[89]\d{2}px|min-width\s*:\s*\d{4,}px/);
   });
 
-  it("keeps only read and history actions during the stage D isolation", () => {
+  it("keeps maintenance behind the server capability and preserves history", () => {
     expect(pageSource).toContain("查看历史");
-    expect(pageSource).not.toMatch(/openCreate|openEdit|openStatus|confirmStatus/);
-    expect(pageSource).not.toMatch(/\bcreateCompanyEntity\(|updateCompanyEntityStatus/);
+    expect(pageSource).toContain('v-if="canMaintain"');
+    expect(pageSource).toContain("fetchCompanyEntityManagementCapability");
+    expect(pageSource).toContain("updateCompanyEntityStatus");
     expect(pageSource).not.toContain("<t-link");
     expect(historySource).toContain("item.actorName");
     expect(historySource).toContain('title="暂无历史版本"');
@@ -107,7 +107,7 @@ describe("company entity ledger configuration", () => {
     expect(guard.tryStart()).toBe(false);
     guard.finish();
     expect(guard.tryStart()).toBe(true);
-    expect(formSource).toMatch(/async function save\(\) \{\n {2}if \(saving\.value\) return;/);
+    expect(formSource).toMatch(/async function save\(\) \{\n {2}if \(saving\.value \|\| !definition\.value\) return;/);
   });
 
   it("removes the obsolete settings entry while preserving account and signature settings", () => {

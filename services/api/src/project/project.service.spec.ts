@@ -272,6 +272,9 @@ describe("ProjectService", () => {
 
   it("creates a project and records an audit log", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
       businessEntrySubmissionSnapshot: { create: jest.fn().mockResolvedValue({ id: "snapshot-1" }) },
       project: {
         create: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
@@ -303,6 +306,9 @@ describe("ProjectService", () => {
 
   it("updates a project name and records an audit log", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
       project: {
         update: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
       }
@@ -1280,6 +1286,7 @@ describe("ProjectService", () => {
     const settledAt = "2026-07-02T00:00:00.000Z";
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -1402,6 +1409,7 @@ describe("ProjectService", () => {
     const signedAt = "2026-07-02T00:00:00.000Z";
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -1538,6 +1546,7 @@ describe("ProjectService", () => {
 
   it("rejects duplicate active project owner contract code before quota can be inflated", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -1595,6 +1604,7 @@ describe("ProjectService", () => {
 
   it("rejects duplicate active project owner contract file before file access becomes ambiguous", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -1800,6 +1810,7 @@ describe("ProjectService", () => {
     const validUntil = "2099-07-02T00:00:00.000Z";
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -1898,6 +1909,7 @@ describe("ProjectService", () => {
   it("advances settlement exception quota approval from the project manager node", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       projectSettlementExceptionQuota: {
         findFirst: jest.fn().mockResolvedValue({
           id: "quota-1",
@@ -1995,6 +2007,7 @@ describe("ProjectService", () => {
   it("advances settlement exception quota approval from the contract or budget node", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       projectSettlementExceptionQuota: {
         findFirst: jest.fn().mockResolvedValue({
           id: "quota-1",
@@ -2094,6 +2107,7 @@ describe("ProjectService", () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const approvedAt = new Date("2026-07-02T02:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       projectSettlementExceptionQuota: {
         findFirst: jest.fn().mockResolvedValue({
           id: "quota-1",
@@ -2605,6 +2619,7 @@ describe("ProjectService", () => {
 
   it("rejects upstream settlement voucher uploaded by another user", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -2638,6 +2653,7 @@ describe("ProjectService", () => {
 
   it("rejects owner contract file uploaded by another user", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -2756,6 +2772,7 @@ describe("ProjectService", () => {
 
   it("rejects project proxy payment when linked settlement belongs to another project", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },

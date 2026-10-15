@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { type BusinessEntryValidationResult } from "@jiangkong/shared-domain";
+import { MASTER_DATA_MAINTAINER_ROLES, type BusinessEntryValidationResult } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY as registry } from "../business-entry-definition/business-entry-definition.scene-registry";
 export const PROJECT_CREATE_DEFINITION = registry.getSceneDefinition("project_create");
@@ -8,7 +8,7 @@ export const PARTICIPANT_DEACTIVATION_DEFINITION = registry.getSceneDefinition("
 
 export function validateParticipantDeactivation(participantId: string, values: Record<string, unknown>, definitionVersion = PARTICIPANT_DEACTIVATION_DEFINITION.version) {
   return registry.validateDraft({ sceneKey: PARTICIPANT_DEACTIVATION_DEFINITION.key, definitionVersion,
-    target: { entityType: "project_participating_company", entityId: participantId }, values }, ["finance_staff", "finance_director"]);
+    target: { entityType: "project_participating_company", entityId: participantId }, values }, MASTER_DATA_MAINTAINER_ROLES);
 }
 
 export async function freezeParticipantDeactivation(tx: Prisma.TransactionClient, audit: AuditService, actorUserId: string,
@@ -17,7 +17,7 @@ export async function freezeParticipantDeactivation(tx: Prisma.TransactionClient
   const validation = validateParticipantDeactivation(participant.id, values, definitionVersion);
   if (!validation.valid) throw new BadRequestException(validation);
   const snapshot = registry.freezeSubmissionSnapshot({ sceneKey: PARTICIPANT_DEACTIVATION_DEFINITION.key, definitionVersion,
-    target: { entityType: "project_participating_company", entityId: participant.id }, values }, ["finance_staff", "finance_director"]);
+    target: { entityType: "project_participating_company", entityId: participant.id }, values }, MASTER_DATA_MAINTAINER_ROLES);
   const stored = await tx.businessEntrySubmissionSnapshot.create({ data: {
     projectId: participant.projectId, sceneKey: snapshot.sceneKey, entityType: "project_participating_company", entityId: participant.id,
     revision: 1, definitionVersion, definitionSnapshot: JSON.parse(JSON.stringify(snapshot.definition)) as Prisma.InputJsonValue,
@@ -48,7 +48,7 @@ export async function freezeProjectCreation(tx: Prisma.TransactionClient, audit:
   const snapshot = registry.freezeSubmissionSnapshot({
     sceneKey: PROJECT_CREATE_DEFINITION.key, definitionVersion,
     target: { entityType: "project", entityId: project.id }, values
-  }, ["chairman", "general_manager"]);
+  }, MASTER_DATA_MAINTAINER_ROLES);
   const stored = await tx.businessEntrySubmissionSnapshot.create({ data: {
     projectId: project.id, sceneKey: snapshot.sceneKey, entityType: "project", entityId: project.id,
     revision: 1, definitionVersion,

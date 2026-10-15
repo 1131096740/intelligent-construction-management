@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -441,17 +442,7 @@ export class ProjectCloseProfitService {
 
     return this.prisma.$transaction(async (tx) => {
       await lockCommandIdempotency(tx, idempotencyKey);
-      await tx.projectCloseAggregate.upsert({
-        where: { projectId },
-        create: { projectId },
-        update: {}
-      });
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "projectId"
-        FROM "ProjectCloseAggregate"
-        WHERE "projectId" = ${projectId}
-        FOR UPDATE
-      `);
+      await lockProjectCloseAggregate(tx, projectId);
 
       const existing = await tx.projectCloseCommandReceipt.findUnique({
         where: { idempotencyKey },
@@ -1888,6 +1879,9 @@ async function lockProjectCloseAggregate(
   tx: Prisma.TransactionClient,
   projectId: string
 ) {
+  await lockMasterDataRow(tx, "Project", projectId);
+  const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { id: true } });
+  if (!project) throw new ConflictException("项目不存在或已停用，不能办理结项");
   await tx.projectCloseAggregate.upsert({
     where: { projectId },
     create: { projectId },

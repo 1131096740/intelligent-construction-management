@@ -3,6 +3,8 @@ import { ProjectService } from "./project.service";
 describe("ProjectService construction-enterprise operating period", () => {
   it("rejects a construction enterprise that starts after an enabled operating ledger", async () => {
     const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{
           id: "project-1",
@@ -18,7 +20,7 @@ describe("ProjectService construction-enterprise operating period", () => {
     };
     const service = new ProjectService(prisma as never);
 
-    await expect(service.assignAffiliate("project-1", "finance-1", {
+    await expect(service.assignAffiliate("project-1", "chairman-1", {
       businessPartyVersionId: "party-version-1",
       effectiveFrom: "2026-08-02T00:00:00.000Z",
       changeReason: "调整施工企业"

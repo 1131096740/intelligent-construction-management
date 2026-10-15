@@ -119,9 +119,9 @@ test("切换项目丢弃旧名称草稿，旧目标不能在新项目预检且�
   expect(current.find((project: { id: string }) => project.id === second.id).name).toBe("乙项目切换后保存");
 });
 
-test("项目财务通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }, testInfo) => {
+test("综合部主管通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }, testInfo) => {
   page.setDefaultTimeout(10_000);
-  const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
+  const session = JSON.parse(process.env.POL113_MASTER_DATA_SESSION!);
   const api = process.env.POL113_API_URL!;
   const isolated = JSON.parse(process.env.POL113_PARTICIPANT_PROJECTS!)[testInfo.project.name];
   const projectId = isolated.id;
@@ -192,8 +192,8 @@ test("项目财务通过统一字段新增参与公司，空白原因保留且�
   }
 });
 
-test("项目财务统一填写施工企业版本日期原因，预检失败保留输入且成功绑定可回读", async ({ page, request }, testInfo) => {
-  const session = JSON.parse(process.env.POL113_BROWSER_SESSION!);
+test("综合部主管统一填写施工企业版本日期原因，预检失败保留输入且成功绑定可回读", async ({ page, request }, testInfo) => {
+  const session = JSON.parse(process.env.POL113_MASTER_DATA_SESSION!);
   const api = process.env.POL113_API_URL!;
   const isolated = JSON.parse(process.env.POL113_CONSTRUCTION_PROJECTS!)[testInfo.project.name];
   const projectId = isolated.id;
@@ -419,4 +419,33 @@ test("项目财务通过统一字段保存档案，预检失败保留输入且�
   const current = await request.get(`${api}${profilePath}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect((await current.json()).takeoverStatus).toBe("supplemental_review");
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+
+test("综合部可从项目维护停用并恢复空项目，手机也能办理", async ({ page, request }, testInfo) => {
+  const api = process.env.POL113_API_URL!;
+  const session = JSON.parse(process.env.POL113_MASTER_DATA_SESSION!);
+  const name = `空项目启停${testInfo.project.name}`;
+  const created = await request.post(`${api}/projects`, {
+    headers: { authorization: `Bearer ${session.tokens.accessToken}` },
+    data: { code: `LIFEBROWSER-${testInfo.project.name}`, name }
+  });
+  expect(created.status()).toBe(201);
+  const id = (await created.json()).id;
+  await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  await page.goto("/项目经营");
+  await page.getByText("项目维护", { exact: true }).click();
+  await page.getByText("停用与恢复", { exact: true }).click();
+  const panel = page.getByRole("region", { name: "项目启停管理" });
+  const row = panel.getByRole("listitem").filter({ hasText: name });
+  for (const action of ["停用空项目", "重新启用"]) {
+    await row.getByRole("button", { name: action, exact: true }).click();
+    const saved = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/projects/${id}/status` && response.request().method() === "POST");
+    await page.locator(".t-dialog:visible").getByRole("button", { name: "确认", exact: true }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(row).toContainText(action === "停用空项目" ? "已停用" : "启用中");
+  }
+  expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });

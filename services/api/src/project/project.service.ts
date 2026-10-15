@@ -1,3 +1,5 @@
+import { hasProjectBusiness, lockMasterDataRow } from "../master-data/master-data-lifecycle";
+import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import {
   BadRequestException,
   ConflictException,
@@ -320,20 +322,13 @@ export class ProjectService {
     @Optional()
     private readonly operatingProjection?: OperatingProjectionService,
     private readonly upstreamFundBusinessEntry: ProjectUpstreamFundBusinessEntryService =
-      missingProjectUpstreamFundBusinessEntryService()
+      missingProjectUpstreamFundBusinessEntryService(),
+    @Optional()
+    private readonly masterDataAccess: CompanyEntityAccess = new CompanyEntityAccess(prisma)
   ) {}
 
-  async assertCanRenameBusinessEntry(projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
-    // Same global + current-project UserPosition/ProjectMember scope as the
-    // existing PATCH route's RequirePositions guard; no technical-admin bypass.
-    const visibility = new ProjectVisibilityService(this.prisma);
-    const scopes = tx
-      ? await visibility.effectiveRoleScopesInTransaction(tx, actorUserId, projectId)
-      : await visibility.effectiveRoleScopes(actorUserId, projectId);
-    const roles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
-    if (!roles.some((role) => role === "chairman" || role === "general_manager")) {
-      throw new ForbiddenException("当前账号缺少执行该操作所需的岗位权限");
-    }
+  async assertCanRenameBusinessEntry(_projectId: string, actorUserId: string, tx?: Prisma.TransactionClient) {
+    await this.masterDataAccess.assertCanMaintain(actorUserId, tx ?? this.prisma);
   }
 
   async assertCanRecordUpstreamFundBusinessEntry(
@@ -366,6 +361,7 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await this.masterDataAccess.assertCanMaintain(actorUserId, tx);
         const project = await tx.project.create({
           data: { code, name },
           select: { id: true, code: true, name: true }
@@ -395,6 +391,7 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await this.masterDataAccess.assertCanMaintain(actorUserId, tx);
         const project = await tx.project.update({
           where: { id: projectId },
           data: { name },
@@ -417,6 +414,34 @@ export class ProjectService {
       }
       throw error;
     }
+  }
+
+  async listForManagement(actorUserId: string) {
+    await this.masterDataAccess.assertCanMaintain(actorUserId);
+    return this.prisma.project.findMany({
+      select: { id: true, code: true, name: true, isActive: true }, orderBy: { createdAt: "asc" }
+    });
+  }
+
+  async updateStatus(projectId: string, actorUserId: string, input: { isActive: boolean }) {
+    if (typeof input.isActive !== "boolean") throw new BadRequestException("请选择启用或停用状态");
+    return this.prisma.$transaction(async (tx) => {
+      await this.masterDataAccess.assertCanMaintain(actorUserId, tx);
+      await lockMasterDataRow(tx, "Project", projectId);
+      const project = await tx.project.findUnique({ where: { id: projectId } });
+      if (!project) throw new NotFoundException("项目不存在，请刷新后重试");
+      if (project.isActive === input.isActive) return { id: projectId, isActive: project.isActive, unchanged: true };
+      if (!input.isActive && (project.constructionEnterpriseLockedAt || project.takeoverCompletedDate || project.takeoverStatus !== "preparing" || await hasProjectBusiness(tx, projectId))) {
+        throw new ConflictException("项目已有业务，不能作为空项目停用；请使用结项流程，历史查询和尾款继续办理");
+      }
+      await tx.project.update({ where: { id: projectId }, data: { isActive: input.isActive } });
+      await this.audit.record(tx, {
+        actorUserId, action: input.isActive ? "project.enable" : "project.disable",
+        businessType: "project", businessId: projectId,
+        metadata: { previousIsActive: project.isActive, isActive: input.isActive }
+      });
+      return { id: projectId, isActive: input.isActive, unchanged: false };
+    });
   }
 
   async listActiveOptions(userId: string) {
@@ -571,6 +596,7 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await this.masterDataAccess.assertCanMaintain(actorUserId, tx);
         const [project] = await tx.$queryRaw<Array<{
           id: string;
           isActive: boolean;
@@ -632,6 +658,7 @@ export class ProjectService {
         if (!version) {
           throw new NotFoundException("所选施工企业版本不存在");
         }
+        await lockMasterDataRow(tx, "BusinessParty", version.businessPartyId);
         const party = await tx.businessParty.findUnique({
           where: { id: version.businessPartyId },
           select: { id: true, status: true }
@@ -1249,6 +1276,7 @@ export class ProjectService {
           return toUpstreamFundFactReadModel(existing);
         }
 
+        await lockMasterDataRow(tx, "Project", projectId);
         const project = await tx.project.findFirst({
           where: { id: projectId, isActive: true },
           select: { id: true }
@@ -2360,7 +2388,8 @@ export class ProjectService {
       typeof input.description === "string" ? input.description.trim() || undefined : undefined;
 
     return this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.findFirst({
+      await lockMasterDataRow(tx, "Project", projectId);
+        const project = await tx.project.findFirst({
         where: { id: projectId, isActive: true },
         select: { id: true }
       });
@@ -2549,6 +2578,7 @@ export class ProjectService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockMasterDataRow(tx, "Project", projectId);
         const project = await tx.project.findFirst({
           where: { id: projectId, isActive: true },
           select: { id: true }

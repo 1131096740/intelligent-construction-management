@@ -16,7 +16,8 @@ import { ContractCutoverTombstoneWrite } from "../contract-cutover/contract-cuto
 import { BusinessPartyService } from "./business-party.service";
 import type {
   AddContractPartyDto,
-  CreateBusinessPartyDto
+  CreateBusinessPartyDto,
+  UpdateBusinessPartyDto
 } from "./dto/business-party.dto";
 
 @Controller()
@@ -61,11 +62,24 @@ export class BusinessPartyController {
     return this.businessParties.createPartyWithIntent(user.id, body as never);
   }
 
+  @Get("business-parties/:partyId/maintenance-capability")
+  @RequireProjectRole("business_party.create")
+  maintenanceCapability(@Param("partyId") partyId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.businessParties.getMaintenanceCapability(partyId, user.id);
+  }
+
+  @Post("business-parties/:partyId/status")
+  @RequireProjectRole("business_party.create")
+  updateStatus(@Param("partyId") partyId: string, @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { isActive: boolean }) {
+    return this.businessParties.updateStatus(partyId, user.id, body);
+  }
+
   @Post("business-parties/:partyId/versions")
   @RequireProjectRole("business_party.create")
   createVersion(
     @Param("partyId") partyId: string,
-    @Body() body: CreateBusinessPartyDto,
+    @Body() body: UpdateBusinessPartyDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.businessParties.createVersion(partyId, user.id, body);

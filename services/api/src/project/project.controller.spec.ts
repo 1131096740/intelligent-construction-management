@@ -151,7 +151,6 @@ describe("ProjectController authorization wiring", () => {
     confirmationPassword: string;
   };
 
-  const projectCreatePositions = ["chairman", "general_manager"];
 
   it.each([
     [
@@ -843,24 +842,24 @@ describe("ProjectController authorization wiring", () => {
   });
 
   it("guards project creation with company decision roles", () => {
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.create)).toEqual(
-      projectCreatePositions
+    expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.create)).toEqual(
+      "project.master_data.manage"
     );
   });
 
   it("guards project updates with company decision roles", () => {
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.update)).toEqual(
-      projectCreatePositions
+    expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.update)).toEqual(
+      "project.master_data.manage"
     );
   });
 
-  it("limits legacy affiliate mapping writes to project finance and exposes a read-only review report", () => {
+  it("limits legacy affiliate mapping writes to master-data maintainers and exposes a read-only review report", () => {
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.assignAffiliate)
     ).toBeUndefined();
     expect(
       Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.assignAffiliate)
-    ).toBe("project.operating_profile.manage");
+    ).toBe("project.master_data.manage");
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.affiliateMappingReport)
     ).toEqual(["chairman", "general_manager", "contract_director"]);

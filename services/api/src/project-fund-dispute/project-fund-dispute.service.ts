@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -645,10 +646,12 @@ export class ProjectFundDisputeService {
     draft: ValidatedProjectFundDisputeDraft,
     actorUserId: string
   ) {
+    await lockMasterDataRow(tx, "Project", draft.projectId);
     const project = await tx.project.findUnique({
       where: { id: draft.projectId },
-      select: { operatingLedgerEffectiveDate: true }
+      select: { operatingLedgerEffectiveDate: true, isActive: true }
     });
+    if (!project?.isActive) throw new ConflictException("项目不存在或已停用，不能新增业务");
     if (!project?.operatingLedgerEffectiveDate) {
       throw new ConflictException("项目尚未启用经营账，不能建立一般争议资金");
     }

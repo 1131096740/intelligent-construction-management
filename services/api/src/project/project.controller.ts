@@ -93,25 +93,25 @@ export class ProjectController {
   }
 
   @Post()
-  @RequirePositions("chairman", "general_manager")
+  @RequireProjectRole("project.master_data.manage")
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
     return this.projects.createProject(user.id, body);
   }
 
   @Get("create-capability")
-  @RequirePositions("chairman", "general_manager")
+  @RequireProjectRole("project.master_data.manage")
   createCapability() {
     return { availableActions: ["create_project"], definition: PROJECT_CREATE_DEFINITION };
   }
 
   @Post("create-validation")
-  @RequirePositions("chairman", "general_manager")
+  @RequireProjectRole("project.master_data.manage")
   validateCreation(@Body() body: CreateProjectDto) {
     return this.projects.validateCreation(body);
   }
 
   @Patch(":projectId")
-  @RequirePositions("chairman", "general_manager")
+  @RequireProjectRole("project.master_data.manage")
   update(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -121,14 +121,26 @@ export class ProjectController {
   }
 
   @Get(":projectId/update-capability")
-  @RequirePositions("chairman", "general_manager")
+  @RequireProjectRole("project.master_data.manage")
   updateCapability(@Param("projectId") projectId: string) {
-    return { projectId, availableActions: ["update_project"] };
+    return { projectId, availableActions: ["update_project", "update_project_status"] };
   }
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.projects.listActiveOptions(user.id);
+  }
+
+  @Get("management")
+  @RequirePositions("comprehensive_director", "chairman")
+  management(@CurrentUser() user: AuthenticatedUser) {
+    return this.projects.listForManagement(user.id);
+  }
+
+  @Post(":projectId/status")
+  @RequireProjectRole("project.master_data.manage")
+  updateStatus(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: { isActive: boolean }) {
+    return this.projects.updateStatus(projectId, user.id, body);
   }
 
   @Get("contract-create-options")
@@ -166,7 +178,7 @@ export class ProjectController {
   }
 
   @Get(":projectId/participating-company-options")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   participatingCompanyOptions(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -175,7 +187,7 @@ export class ProjectController {
   }
 
   @Get(":projectId/construction-enterprise-options")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   constructionEnterpriseOptions(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -194,7 +206,7 @@ export class ProjectController {
   }
 
   @Post(":projectId/construction-enterprise")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   assignConstructionEnterprise(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -204,7 +216,7 @@ export class ProjectController {
   }
 
   @Post(":projectId/participating-companies")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   addParticipatingCompany(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -214,7 +226,7 @@ export class ProjectController {
   }
 
   @Patch(":projectId/participating-companies/:participantId/deactivation")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   deactivateParticipatingCompany(
     @Param("projectId") projectId: string,
     @Param("participantId") participantId: string,
@@ -230,7 +242,7 @@ export class ProjectController {
   }
 
   @Post(":projectId/participating-companies/:participantId/deactivation/validate")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   validateParticipatingCompanyDeactivation(
     @Param("projectId") projectId: string,
     @Param("participantId") participantId: string,
@@ -241,7 +253,7 @@ export class ProjectController {
   }
 
   @Delete(":projectId/participating-companies/:participantId")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   removeParticipatingCompany(
     @Param("projectId") projectId: string,
     @Param("participantId") participantId: string,
@@ -383,7 +395,7 @@ export class ProjectController {
   }
 
   @Post(":projectId/affiliate-assignment")
-  @RequireProjectRole("project.operating_profile.manage")
+  @RequireProjectRole("project.master_data.manage")
   assignAffiliate(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,

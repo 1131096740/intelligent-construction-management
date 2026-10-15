@@ -1666,6 +1666,7 @@ describe("ContractTakeoverService", () => {
 
   it("validates a selected historical company entity while preserving the original name", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-inactive" }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
@@ -1704,6 +1705,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects an unknown company entity before creating historical contract facts", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       companyEntity: { findUnique: jest.fn().mockResolvedValue(null) },
       contract: { create: jest.fn() }
@@ -1728,6 +1730,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects a tombstoned formal code before creating a historical takeover contract", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       contractNumberTombstone: {
         findUnique: jest.fn().mockResolvedValue({ id: "tombstone-1" })
@@ -1758,6 +1761,7 @@ describe("ContractTakeoverService", () => {
 
   it("creates a historical contract takeover draft on existing contract tables", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -1924,6 +1928,7 @@ describe("ContractTakeoverService", () => {
 
   it("persists manually entered direct payment stages for a generic contract takeover", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
@@ -2013,6 +2018,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects generic takeover without explicit direct stages and settlement contracts with them", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
@@ -2067,6 +2073,7 @@ describe("ContractTakeoverService", () => {
     "professional_subcontract"
   ])("keeps the current-settlement initial stage for %s takeover", async (contractTypeKey) => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
@@ -2114,6 +2121,7 @@ describe("ContractTakeoverService", () => {
 
   it("preserves historical tax gaps and creates unconfirmed pricing facts without guessing", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -2263,6 +2271,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects negative historical balance values before writing", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn()
       },
@@ -2299,6 +2308,7 @@ describe("ContractTakeoverService", () => {
 
   it("requires adjustment reason when takeover level differs from system suggestion", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         create: jest.fn()
       }
@@ -2335,6 +2345,7 @@ describe("ContractTakeoverService", () => {
 
   it("uses a business message when the takeover project cannot be used", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn().mockResolvedValue(null)
       },
@@ -2953,6 +2964,7 @@ describe("ContractTakeoverService", () => {
 
   it("creates takeover drafts from ready import rows after precheck", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
@@ -3144,6 +3156,7 @@ describe("ContractTakeoverService", () => {
       updatedAt: new Date("2026-07-10T00:00:00.000Z")
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn()
@@ -3238,6 +3251,7 @@ describe("ContractTakeoverService", () => {
       updatedAt: new Date("2026-07-10T00:00:00.000Z")
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -3407,6 +3421,7 @@ describe("ContractTakeoverService", () => {
       updatedAt: new Date("2026-07-10T01:00:00.000Z")
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeoverBatch: {
         findFirst: jest.fn().mockResolvedValue(batch),
         update: jest.fn().mockResolvedValue({ ...batch, status: "under_review" })
@@ -3486,6 +3501,7 @@ describe("ContractTakeoverService", () => {
       updatedAt: new Date("2026-07-10T01:00:00.000Z")
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeoverBatch: {
         findFirst: jest.fn().mockResolvedValue(batch),
         update: jest.fn().mockResolvedValue({
@@ -3547,6 +3563,7 @@ describe("ContractTakeoverService", () => {
       updatedAt: new Date("2026-07-10T01:00:00.000Z")
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeoverBatch: {
         findFirst: jest.fn().mockResolvedValue(batch),
         update: jest.fn().mockResolvedValue({
@@ -3588,6 +3605,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects takeover import batch acceptance before review", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeoverBatch: {
         findFirst: jest.fn().mockResolvedValue({
           id: "batch-1",
@@ -3644,6 +3662,7 @@ describe("ContractTakeoverService", () => {
 
   it("does not create import drafts while precheck still has error rows", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn()
@@ -3682,6 +3701,7 @@ describe("ContractTakeoverService", () => {
 
   it("updates an editable takeover draft and keeps linked contract facts in sync", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
         update: jest.fn().mockResolvedValue(
@@ -3831,6 +3851,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects a tombstoned formal code before updating a historical takeover contract", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
@@ -3867,6 +3888,7 @@ describe("ContractTakeoverService", () => {
     const adjustmentReason = "合同部确认资料可控，按 A级继续跟踪付款限制。";
     const reviewComment = "预算和财务已复核历史余额，后续按资料清单继续补齐。";
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(
           takeoverRecord({
@@ -3955,6 +3977,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects editing takeover records after review submission", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_review" }))
       },
@@ -3993,6 +4016,7 @@ describe("ContractTakeoverService", () => {
 
   it("attaches evidence files to editable takeover drafts", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
@@ -4135,6 +4159,7 @@ describe("ContractTakeoverService", () => {
 
   it("财务只能在待补充状态补充确有付款事实的历史付款凭证", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "needs_supplement" }))
       },
@@ -4189,6 +4214,7 @@ describe("ContractTakeoverService", () => {
 
   it("财务不能绕过主管退回直接补充历史付款凭证", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
@@ -4217,6 +4243,7 @@ describe("ContractTakeoverService", () => {
 
   it("接管记录状态不允许时不能挂接资料", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_review" }))
       },
@@ -4250,6 +4277,7 @@ describe("ContractTakeoverService", () => {
 
   it("已确认接管资料不能静默补充，必须走更正记录", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
       },
@@ -4285,6 +4313,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects takeover evidence when the actor cannot read the file", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
@@ -4325,6 +4354,7 @@ describe("ContractTakeoverService", () => {
       historicalPaidCents: 400_000n
     });
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeover)
       },
@@ -4430,6 +4460,7 @@ describe("ContractTakeoverService", () => {
 
   it("未确认接管记录不走更正记录", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
@@ -4472,6 +4503,7 @@ describe("ContractTakeoverService", () => {
   it("合同员提交已确认接管的主体更正时冻结改前改后事实且不修改合同", async () => {
     const takeover = takeoverRecord({ takeoverStatus: "confirmed" });
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: { findUnique: jest.fn().mockResolvedValue(takeover) },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -4557,6 +4589,7 @@ describe("ContractTakeoverService", () => {
 
   it("合同部主管只有主管岗位时不能代替合同员发起主体更正", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
       },
@@ -4591,6 +4624,7 @@ describe("ContractTakeoverService", () => {
       new Error("该文件已用于其他业务，请重新上传专用的更正依据附件")
     );
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
       },
@@ -4625,6 +4659,7 @@ describe("ContractTakeoverService", () => {
 
   it("数据库互斥触发器拒绝并发绑定时返回稳定中文且不泄露表名", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
       },
@@ -4692,6 +4727,7 @@ describe("ContractTakeoverService", () => {
 
   it("合同部主管确认主体更正时只更新主体ID并保留原始名称", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: { findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-director" }]) },
       position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
@@ -4749,6 +4785,7 @@ describe("ContractTakeoverService", () => {
 
   it("服务层拒绝合同员、跨项目或仅全局非主管岗位处理主体更正", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
       },
@@ -4795,6 +4832,7 @@ describe("ContractTakeoverService", () => {
     };
     const makeService = (correction: Record<string, unknown> | null) => {
       const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
         contractTakeover: { findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })) },
         userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-director" }]) },
         position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
@@ -4889,6 +4927,7 @@ describe("ContractTakeoverService", () => {
 
   it("主体更正CAS未取得待处理记录时不修改合同", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
       },
@@ -4940,6 +4979,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects missing signed date before writing", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn()
       },
@@ -4975,6 +5015,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects normalized impossible signed dates before writing", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findUnique: jest.fn()
       },
@@ -5010,6 +5051,7 @@ describe("ContractTakeoverService", () => {
 
   it("submits a draft takeover for review and records audit", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
         update: jest.fn().mockResolvedValue(
@@ -5077,6 +5119,7 @@ describe("ContractTakeoverService", () => {
 
   it("接管记录不存在时不能提交复核", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(null),
         update: jest.fn()
@@ -5097,6 +5140,7 @@ describe("ContractTakeoverService", () => {
 
   it("接管记录状态不允许时不能提交复核", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })),
         update: jest.fn()
@@ -5117,6 +5161,7 @@ describe("ContractTakeoverService", () => {
 
   it("returns a pending takeover for supplement with a required reason and audit", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_review" })),
         update: jest.fn().mockResolvedValue(
@@ -5177,6 +5222,7 @@ describe("ContractTakeoverService", () => {
 
   it("does not return a takeover that is no longer pending review", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })),
         update: jest.fn()
@@ -5202,6 +5248,7 @@ describe("ContractTakeoverService", () => {
 
   it("confirms generic takeover only with a persisted direct stage and preserves historical settlement facts", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(
           takeoverRecord({ takeoverStatus: "pending_review" })
@@ -5356,6 +5403,7 @@ describe("ContractTakeoverService", () => {
       ): Promise<void>;
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: {
         findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" })
       },
@@ -5400,6 +5448,7 @@ describe("ContractTakeoverService", () => {
 
   it("接管记录状态不允许时不能主管确认", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
         update: jest.fn()
@@ -5433,6 +5482,7 @@ describe("ContractTakeoverService", () => {
 
   it("rejects takeover confirmation when required evidence is missing", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(
           takeoverRecord({ takeoverStatus: "pending_review" })

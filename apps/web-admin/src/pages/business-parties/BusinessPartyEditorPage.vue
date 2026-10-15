@@ -12,10 +12,42 @@
 
     <t-alert
       theme="info"
-      title="上线准备期间暂为只读"
-      message="当前可查看档案版本与既有附件事实；版本新增和附件上传将在主数据治理完成后重新开放。"
+      title="合作单位资料维护"
+      message="综合部主管和董事长可以维护资料。修改会生成新版本，已有合同和附件保留原记录。"
       class="panel"
     />
+
+    <t-space v-if="canMaintain" class="panel">
+      <t-button theme="primary" :disabled="saving || loading" @click="openEdit">修改资料</t-button>
+      <t-button :disabled="saving || loading" @click="statusVisible = true">{{ party?.status === "active" ? "停用" : "重新启用" }}</t-button>
+      <span>当前状态：{{ party?.status === "active" ? "启用" : "停用" }}</span>
+    </t-space>
+    <t-dialog
+      v-model:visible="editVisible"
+      header="修改合作单位资料"
+      :confirm-btn="{ content: '保存新版本', loading: saving }"
+      :cancel-btn="{ content: '取消', disabled: saving }"
+      :close-btn="!saving"
+      :close-on-overlay-click="false"
+      :close-on-esc-keydown="false"
+      @confirm="saveFacts"
+    >
+      <BusinessEntryForm v-if="definition" v-model="draft" :definition="definition" :readonly="saving" />
+      <p v-if="message" role="alert">{{ message }}</p>
+    </t-dialog>
+    <t-dialog
+      v-model:visible="statusVisible"
+      :header="party?.status === 'active' ? '停用合作单位' : '重新启用合作单位'"
+      body="此操作保留全部档案、历史版本和既有业务记录。确认继续？"
+      :confirm-btn="{ content: '确认', loading: saving }"
+      :cancel-btn="{ content: '取消', disabled: saving }"
+      :close-btn="!saving"
+      :close-on-overlay-click="false"
+      :close-on-esc-keydown="false"
+      @confirm="saveStatus"
+    >
+      <p v-if="message" role="alert">{{ message }}</p>
+    </t-dialog>
 
     <t-card
       title="档案创建信息"
@@ -72,10 +104,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
 import { useRoute } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
-import { getBusinessParty } from "../../api/contract-workbench.api";
+import { getBusinessParty, getBusinessPartyMaintenanceCapability, createBusinessPartyVersion, updateBusinessPartyStatus } from "../../api/contract-workbench.api";
+import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 
 interface AttachmentDraft {
   category: "business_license" | "legal_id" | "authorization" | "qualification" | "other";
@@ -93,6 +127,15 @@ interface PartyVersionRow {
 }
 
 const route = useRoute();
+const actions = ref<string[]>([]);
+const canMaintain = computed(() => actions.value.includes("update_business_party"));
+const definition = shallowRef<BusinessEntrySceneDefinition | null>(null);
+const draft = ref<BusinessEntryDraftPayload>({ sceneKey: "business_party", values: {} });
+const editVisible = ref(false);
+const statusVisible = ref(false);
+const saving = ref(false);
+const expectedVersionNo = ref(0);
+let generation = 0;
 const party = ref<Record<string, unknown> | null>(null);
 const versions = ref<PartyVersionRow[]>([]);
 const loading = ref(false);
@@ -126,23 +169,90 @@ function creatorName(value: { createdByName?: unknown } | null | undefined) {
 }
 
 async function loadParty() {
+  const partyId = String(route.params.partyId);
+  const current = ++generation;
   loading.value = true;
+  actions.value = [];
   try {
-    const data = (await getBusinessParty(String(route.params.partyId))) as {
-      party: Record<string, unknown>;
-      versions: PartyVersionRow[];
-    };
+    const data = (await getBusinessParty(partyId)) as { party: Record<string, unknown>; versions: PartyVersionRow[] };
+    if (current !== generation) return;
     party.value = data.party;
     versions.value = data.versions;
+    const capability = await getBusinessPartyMaintenanceCapability(partyId).catch(() => null);
+    if (current !== generation) return;
+    actions.value = capability?.availableActions ?? [];
+    definition.value = capability?.definition ?? null;
   } catch (error) {
-    message.value = formatUnknownApiError(error, "加载合作单位失败");
-    tone.value = "danger";
-  } finally {
-    loading.value = false;
-  }
+    if (current === generation) message.value = formatUnknownApiError(error, "加载合作单位失败");
+  } finally { if (current === generation) loading.value = false; }
 }
 
-onMounted(loadParty);
+function openEdit() {
+  const latest = versions.value[0];
+  if (!latest) return;
+  expectedVersionNo.value = latest.versionNo;
+  draft.value = { sceneKey: "business_party", values: {
+    name: latest.snapshot.name ?? "", unifiedSocialCreditCode: latest.snapshot.unifiedSocialCreditCode ?? ""
+  } };
+  message.value = "";
+  editVisible.value = true;
+}
+
+async function saveFacts() {
+  if (saving.value || !definition.value) return;
+  saving.value = true;
+  message.value = "";
+  const partyId = String(route.params.partyId);
+  const current = generation;
+  const values = { ...draft.value.values };
+  try {
+    await savePartyVersionWithCapability(partyId, current, {
+      name: String(values.name ?? "").trim(), unifiedSocialCreditCode: String(values.unifiedSocialCreditCode ?? "").trim(),
+      expectedVersionNo: expectedVersionNo.value
+    });
+    editVisible.value = false;
+    await loadParty();
+  } catch (error) { message.value = formatUnknownApiError(error, "保存合作单位失败"); }
+  finally { saving.value = false; }
+}
+
+async function saveStatus() {
+  if (saving.value || !party.value) return;
+  saving.value = true;
+  message.value = "";
+  const partyId = String(route.params.partyId);
+  const isActive = party.value.status !== "active";
+  const current = generation;
+  try {
+    await savePartyStatusWithCapability(partyId, isActive, current);
+    statusVisible.value = false;
+    await loadParty();
+  } catch (error) { message.value = formatUnknownApiError(error, "更新合作单位状态失败"); }
+  finally { saving.value = false; }
+}
+
+watch(() => route.params.partyId, () => {
+  editVisible.value = false;
+  statusVisible.value = false;
+  party.value = null;
+  versions.value = [];
+  message.value = "";
+  void loadParty();
+}, { immediate: true });
+async function savePartyVersionWithCapability(partyId: string, current: number, body: Parameters<typeof createBusinessPartyVersion>[1]) {
+  const capability = await getBusinessPartyMaintenanceCapability(partyId);
+  if (current !== generation) throw new Error("页面已变化，请重新操作");
+  const operationAllowed = capability.availableActions.includes("update_business_party");
+  if (!operationAllowed) throw new Error("维护权限已变化，请刷新后重试");
+  return createBusinessPartyVersion(partyId, body);
+}
+async function savePartyStatusWithCapability(partyId: string, isActive: boolean, current: number) {
+  const capability = await getBusinessPartyMaintenanceCapability(partyId);
+  if (current !== generation) throw new Error("页面已变化，请重新操作");
+  const operationAllowed = capability.availableActions.includes("update_business_party_status");
+  if (!operationAllowed) throw new Error("维护权限已变化，请刷新后重试");
+  return updateBusinessPartyStatus(partyId, isActive);
+}
 </script>
 
 <style scoped>

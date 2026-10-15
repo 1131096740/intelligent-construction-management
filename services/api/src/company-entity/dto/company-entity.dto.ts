@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsString, ValidateIf } from "class-validator";
+import { IsBoolean, IsIn, IsInt, Min, IsString, ValidateIf } from "class-validator";
 import { IsRequiredText } from "../../validation/static-field-validation";
 
 class CompanyEntityFactsDto {
@@ -23,7 +23,11 @@ class CompanyEntityFactsDto {
 
 export class CreateCompanyEntityDto extends CompanyEntityFactsDto {}
 
-export class UpdateCompanyEntityDto extends CompanyEntityFactsDto {}
+export class UpdateCompanyEntityDto extends CompanyEntityFactsDto {
+  @IsInt({ message: "请刷新公司资料后重新提交" })
+  @Min(0, { message: "请刷新公司资料后重新提交" })
+  expectedVersionNo!: number;
+}
 
 export class UpdateCompanyEntityStatusDto {
   @IsBoolean({ message: "公司主体状态必须是布尔值" })

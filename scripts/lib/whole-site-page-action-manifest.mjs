@@ -14016,6 +14016,8 @@ function projectFreshCapabilitySources({
   excludedBindings,
   context
 }) {
+  const capabilityField = action.capability.source?.split(".").at(-1);
+  if (!["canManage", "canManageMasterData"].includes(capabilityField)) return null;
   const freshCandidates = [];
   for (const definition of handler.definitions) {
     directCallableNodes(definition, (node) => {
@@ -14044,7 +14046,7 @@ function projectFreshCapabilitySources({
         expressionContainsBindingMember(
           node.init,
           freshBinding,
-          "canManage",
+          capabilityField,
           context.symbols
         )
       ) {

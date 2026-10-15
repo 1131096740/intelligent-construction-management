@@ -70,6 +70,23 @@ describe("CompanyEntityAccess", () => {
     }
   );
 
+  it.each(["comprehensive_director", "chairman"])(
+    "allows the owner-confirmed company maintainer %s",
+    async (roleKey) => {
+      const access = new CompanyEntityAccess(buildClient({ roleKeys: [roleKey] }) as never);
+      await expect(access.assertCanMaintain("maintainer")).resolves.toBe(roleKey);
+    }
+  );
+
+  it.each(["contract_staff", "contract_director", "finance_staff", "finance_director", "general_manager"])(
+    "retains read access but denies maintenance to %s",
+    async (roleKey) => {
+      const access = new CompanyEntityAccess(buildClient({ roleKeys: [roleKey] }) as never);
+      await expect(access.assertCanMaintain("reader")).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(access.assertCanRead("reader")).resolves.toBe(roleKey);
+    }
+  );
+
   it.each(COMPANY_ENTITY_READER_ROLES)(
     "allows company-level reader role %s",
     async (roleKey) => {
@@ -186,7 +203,7 @@ describe("CompanyEntityAccess", () => {
     const access = new CompanyEntityAccess(prisma as never);
 
     await expect(access.assertCanMaintain("multi-role-user")).resolves.toBe(
-      "contract_staff"
+      "chairman"
     );
     await expect(access.assertCanRead("multi-role-user")).resolves.toBe(
       "contract_staff"
@@ -195,11 +212,11 @@ describe("CompanyEntityAccess", () => {
 
   it("uses the supplied transaction client for an in-transaction recheck", async () => {
     const prisma = buildClient({ assignmentIds: [], roleKeys: [] });
-    const tx = buildClient({ roleKeys: ["contract_director"] });
+    const tx = buildClient({ roleKeys: ["comprehensive_director"] });
     const access = new CompanyEntityAccess(prisma as never);
 
-    await expect(access.assertCanMaintain("contract-user", tx as never)).resolves.toBe(
-      "contract_director"
+    await expect(access.assertCanMaintain("maintainer", tx as never)).resolves.toBe(
+      "comprehensive_director"
     );
     expect(tx.userPosition.findMany).toHaveBeenCalled();
     expect(prisma.userPosition.findMany).not.toHaveBeenCalled();

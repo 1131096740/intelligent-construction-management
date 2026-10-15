@@ -38,7 +38,13 @@
               <t-radio-button value="create">
                 新增项目
               </t-radio-button>
+              <t-radio-button value="status">停用与恢复</t-radio-button>
             </t-radio-group>
+            <ProjectLifecyclePanel
+              v-if="projectMaintenanceMode === 'status'"
+              :before-change="prepareProjectStatusChange"
+              @saved="refreshProjectStatus"
+            />
             <div class="project-maintenance-forms">
               <div v-show="projectMaintenanceMode === 'create'">
                 <ProjectCreateForm
@@ -940,6 +946,7 @@ import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import ProjectCreateForm from "./components/ProjectCreateForm.vue";
+import ProjectLifecyclePanel from "./components/ProjectLifecyclePanel.vue";
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
@@ -1042,7 +1049,7 @@ const projectUpdating = ref(false);
 const projectMessage = ref("");
 const projectMessageTone = ref<"success" | "danger">("success");
 const projectCreateRevision = ref(0);
-const projectMaintenanceMode = ref<"create" | "rename">("rename");
+const projectMaintenanceMode = ref<"create" | "rename" | "status">("rename");
 const selectedProjectName = ref("");
 const receiptSubmitting = ref(false);
 const receiptMessage = ref("");
@@ -1294,7 +1301,7 @@ const visibleExpenseTypeOptions = computed(() =>
 );
 
 const canManageProjects = computed(
-  () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "general_manager") ?? false
+  () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false
 );
 
 const canViewExecutiveOverview = computed(
@@ -1472,6 +1479,25 @@ async function loadProjects() {
   } finally {
     loadingProjects.value = false;
   }
+}
+
+async function prepareProjectStatusChange() {
+  if (expenseFormDirty.value) {
+    if (!await expenseLeaveGuard.requestClose()) return false;
+    resetExpenseForm();
+    expenseMessage.value = "";
+  }
+  return true;
+}
+
+async function refreshProjectStatus() {
+  overviewRequestOwner.invalidate();
+  overview.value = null;
+  financingQuotaWorkbench.value = null;
+  closeProfitWorkbench.value = null;
+  projectExpenses.value = null;
+  await loadProjects();
+  projectMaintenanceMode.value = "status";
 }
 
 async function submitProject(values: Parameters<typeof createProject>[0]) {

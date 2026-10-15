@@ -19,6 +19,7 @@ describe("ProjectService upstream settlement external facts", () => {
   it("records a pending external fact with a frozen file digest and no approval instance", async () => {
     const createdAt = new Date("2026-07-28T01:00:00.000Z");
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([affiliate]) },
       fileObject: {

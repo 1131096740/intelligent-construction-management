@@ -1,6 +1,7 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 import type {
+  BusinessEntrySceneDefinition,
   ContractClauseDefinition,
   ContractInvoiceType,
   ContractSettlementMode,
@@ -1333,8 +1334,20 @@ export function getBusinessParty(partyId: string) {
   return readJson<unknown>(`/business-parties/${partyId}`);
 }
 
-export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload) {
+export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload & { expectedVersionNo: number }) {
   return postJson<unknown>(`/business-parties/${partyId}/versions`, body);
+}
+
+export function getBusinessPartyMaintenanceCapability(partyId: string) {
+  return readJson<{ availableActions: string[]; definition: BusinessEntrySceneDefinition }>(
+    `/business-parties/${encodeURIComponent(partyId)}/maintenance-capability`
+  );
+}
+
+export function updateBusinessPartyStatus(partyId: string, isActive: boolean) {
+  return postJson<{ id: string; status: string }>(
+    `/business-parties/${encodeURIComponent(partyId)}/status`, { isActive }
+  );
 }
 
 // ---------------------------------------------------------------------------

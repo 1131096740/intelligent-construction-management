@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional
 } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { assertValidUnifiedSocialCreditCode } from "../company-entity/unified-social-credit-code";
@@ -27,6 +27,7 @@ import type {
   BusinessPartyCreateIntentDto,
   BusinessPartySnapshotDto,
   CreateBusinessPartyDto,
+  UpdateBusinessPartyDto,
   SaveContractDraftPartyDto
 } from "./dto/business-party.dto";
 
@@ -82,11 +83,11 @@ export class BusinessPartyService {
   ) {}
 
   async assertCanMaintainBusinessEntry(actorUserId: string) {
-    await this.assertGlobalContractRole(actorUserId);
+    await this.assertGlobalMasterDataRole(actorUserId);
   }
 
   async getCreateCapability(actorUserId: string) {
-    await this.assertGlobalContractRole(actorUserId);
+    await this.assertGlobalMasterDataRole(actorUserId);
     (this.writeFreeze ?? new OperationalWriteFreezeService()).assertCanWrite("master_data");
     return { availableActions: [BUSINESS_PARTY_ACTION] };
   }
@@ -99,7 +100,7 @@ export class BusinessPartyService {
     if (!isUuidV4(idempotencyKey) || !/^[0-9a-f]{64}$/iu.test(fingerprint)) {
       throw new BadRequestException("合作单位创建结果查询参数无效");
     }
-    await this.assertGlobalContractRole(actorUserId);
+    await this.assertGlobalMasterDataRole(actorUserId);
     const idempotency = await this.prisma.businessPartyCreateIdempotency.findUnique({
       where: { idempotencyKey },
       select: {
@@ -175,6 +176,20 @@ export class BusinessPartyService {
         !isDeepStrictEqual(current.snapshot, party.snapshot)
       );
     });
+    // Existing snapshots remain usable after deactivation. Only a new or changed
+    // version reference must still be active; lock its parent against status changes.
+    const newReferences = [...added, ...updated].filter((party) =>
+      party.businessPartyVersionId && existingByKey.get(key(party))?.businessPartyVersionId !== party.businessPartyVersionId
+    );
+    const parentIds = [...new Set(newReferences.map((party) => versionById.get(party.businessPartyVersionId!)!.businessPartyId))].sort();
+    if (parentIds.length) {
+      const parents = await tx.$queryRaw<Array<{ id: string; status: string }>>(Prisma.sql`
+        SELECT "id", "status" FROM "BusinessParty" WHERE "id" IN (${Prisma.join(parentIds)}) ORDER BY "id" FOR UPDATE
+      `);
+      if (parents.length !== parentIds.length || parents.some((party) => party.status !== "active")) {
+        throw new BadRequestException("合作单位已停用，请选择启用中的单位；已有合同引用仍保留");
+      }
+    }
     if (removed.length) {
       await tx.contractPartySnapshot.deleteMany({
         where: { id: { in: removed.map((party) => party.id) } }
@@ -261,9 +276,9 @@ export class BusinessPartyService {
   }
 
   async createParty(actorUserId: string, input: CreateBusinessPartyDto) {
-    const roleKeys = await this.assertGlobalContractRole(actorUserId);
+    await this.assertGlobalMasterDataRole(actorUserId);
     const snapshot = this.normalizeSnapshot(input, true);
-    return this.createPartyRecord(actorUserId, roleKeys, snapshot);
+    return this.createPartyRecord(actorUserId, snapshot);
   }
 
   async createPartyWithIntent(
@@ -312,15 +327,14 @@ export class BusinessPartyService {
       request.idempotencyKey,
       idempotentIntent
     );
-    const roleKeys = await this.assertGlobalContractRole(actorUserId);
+    await this.assertGlobalMasterDataRole(actorUserId);
     if (existing) return existing;
     this.writeFreeze.assertCanWrite("master_data");
-    return this.createPartyRecord(actorUserId, roleKeys, snapshot, {
+    return this.createPartyRecord(actorUserId, snapshot, {
       idempotencyKey: request.idempotencyKey,
       fingerprint,
       definitionKey: definition.key,
-      definitionVersion: definition.version,
-      roleKeys
+      definitionVersion: definition.version
     });
   }
 
@@ -383,18 +397,18 @@ export class BusinessPartyService {
 
   private async createPartyRecord(
     actorUserId: string,
-    roleKeys: readonly RoleKey[],
     snapshot: BusinessPartySnapshotDto,
     idempotency?: {
       idempotencyKey: string;
       fingerprint: string;
       definitionKey: string;
       definitionVersion: number;
-      roleKeys: readonly RoleKey[];
     }
   ) {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const roleKeys = await this.assertGlobalMasterDataRole(actorUserId, tx);
+        this.writeFreeze.assertCanWrite("master_data");
         if (idempotency) {
           const existing = await tx.businessPartyCreateIdempotency.findUnique({
             where: { idempotencyKey: idempotency.idempotencyKey }
@@ -505,48 +519,70 @@ export class BusinessPartyService {
     }
   }
 
+  async getMaintenanceCapability(partyId: string, actorUserId: string) {
+    await this.getCreateCapability(actorUserId);
+    const party = await this.prisma.businessParty.findUnique({ where: { id: partyId } });
+    if (!party) throw new NotFoundException("合作单位不存在");
+    return {
+      availableActions: ["update_business_party", "update_business_party_status"],
+      definition: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("business_party")
+    };
+  }
+
   async createVersion(
     partyId: string,
     actorUserId: string,
-    input: CreateBusinessPartyDto
+    input: UpdateBusinessPartyDto
   ) {
-    await this.assertGlobalContractRole(actorUserId);
+    await this.assertGlobalMasterDataRole(actorUserId);
     return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalMasterDataRole(actorUserId, tx);
+      this.writeFreeze.assertCanWrite("master_data");
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "BusinessParty" WHERE "id" = ${partyId} FOR UPDATE`);
       const party = await tx.businessParty.findUnique({ where: { id: partyId } });
       if (!party) throw new NotFoundException("合作单位不存在");
-
-      const snapshot = this.normalizeSnapshot(input, false);
-      await this.assertIdentityAvailable(tx, snapshot, partyId);
       const latestVersion = await tx.businessPartyVersion.findFirst({
-        where: { businessPartyId: partyId },
-        orderBy: { versionNo: "desc" }
+        where: { businessPartyId: partyId }, orderBy: { versionNo: "desc" }
       });
-      const versionNo = (latestVersion?.versionNo ?? 0) + 1;
-      const version = await tx.businessPartyVersion.create({
-        data: {
-          businessPartyId: partyId,
-          versionNo,
-          snapshot: this.copySnapshot(snapshot),
-          createdByUserId: actorUserId
-        }
-      });
-
-      await tx.businessParty.update({
-        where: { id: partyId },
-        data: {
-          name: snapshot.name,
-          normalizedName: snapshot.name,
-          unifiedSocialCreditCode: snapshot.unifiedSocialCreditCode ?? null
-        }
-      });
+      if (!latestVersion || !Number.isInteger(input?.expectedVersionNo) || input.expectedVersionNo !== latestVersion.versionNo) {
+        throw new ConflictException("合作单位资料已变化，请刷新后重新修改");
+      }
+      const snapshot = this.normalizeSnapshot({ ...(latestVersion.snapshot as object), ...input }, false);
+      await this.assertIdentityAvailable(tx, snapshot, partyId);
+      const versionNo = latestVersion.versionNo + 1;
+      const version = await tx.businessPartyVersion.create({ data: {
+        businessPartyId: partyId, versionNo,
+        snapshot: this.copySnapshot(snapshot), createdByUserId: actorUserId
+      } });
+      await tx.businessParty.update({ where: { id: partyId }, data: {
+        name: snapshot.name, normalizedName: snapshot.name,
+        unifiedSocialCreditCode: snapshot.unifiedSocialCreditCode ?? null
+      } });
       await this.audit.record(tx, {
-        actorUserId,
-        action: "business_party.version",
-        businessType: "business_party",
-        businessId: partyId,
+        actorUserId, action: "business_party.version", businessType: "business_party", businessId: partyId,
         metadata: { versionId: version.id, versionNo }
       });
       return version;
+    });
+  }
+
+  async updateStatus(partyId: string, actorUserId: string, input: { isActive: boolean }) {
+    if (typeof input?.isActive !== "boolean") throw new BadRequestException("请选择合作单位启用或停用状态");
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalMasterDataRole(actorUserId, tx);
+      this.writeFreeze.assertCanWrite("master_data");
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "BusinessParty" WHERE "id" = ${partyId} FOR UPDATE`);
+      const current = await tx.businessParty.findUnique({ where: { id: partyId } });
+      if (!current) throw new NotFoundException("合作单位不存在");
+      const status = input.isActive ? "active" : "inactive";
+      if (current.status === status) return { id: partyId, status, unchanged: true };
+      await tx.businessParty.update({ where: { id: partyId }, data: { status } });
+      await this.audit.record(tx, {
+        actorUserId, action: input.isActive ? "business_party.enable" : "business_party.disable",
+        businessType: "business_party", businessId: partyId,
+        metadata: { previousStatus: current.status, status }
+      });
+      return { id: partyId, status, unchanged: false };
     });
   }
 
@@ -869,11 +905,13 @@ export class BusinessPartyService {
     }
   }
 
-  private async assertGlobalContractRole(actorUserId: string) {
-    const roleKeys: RoleKey[] = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
+  private async assertGlobalMasterDataRole(actorUserId: string, tx?: Prisma.TransactionClient) {
+    const roleKeys: RoleKey[] = tx
+      ? await this.companyRoles.resolveActiveRoleScopesInTransaction(tx, actorUserId)
+      : await this.companyRoles.resolveActiveRoleScopes(actorUserId);
     if (!canPerform("business_party.create", roleKeys)) {
       throw new ForbiddenException(
-        "只有公司级合同人员可以维护合作单位档案"
+        "只有公司级综合部主管和董事长可以维护合作单位档案"
       );
     }
     return roleKeys;

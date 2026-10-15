@@ -11,7 +11,7 @@ describe("BusinessPartyService", () => {
     audit.record.mockReset();
   });
 
-  function globalRole(roleKey: "contract_staff" | "contract_director" = "contract_staff") {
+  function globalRole(roleKey: "comprehensive_director" | "chairman" = "comprehensive_director") {
     return {
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }])
@@ -24,7 +24,7 @@ describe("BusinessPartyService", () => {
 
   it("projects the server create capability and current freeze state", async () => {
     const assertCanWrite = jest.fn();
-    const resolveActiveRoleScopes = jest.fn().mockResolvedValue(["contract_staff"]);
+    const resolveActiveRoleScopes = jest.fn().mockResolvedValue(["comprehensive_director"]);
     const service = new BusinessPartyService(
       {} as PrismaService,
       audit as never,
@@ -40,6 +40,26 @@ describe("BusinessPartyService", () => {
     expect(assertCanWrite).toHaveBeenCalledWith("master_data");
   });
 
+  it("rejects creation when the global maintainer role is withdrawn before the transaction", async () => {
+    const tx = {
+      businessParty: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "party-1" })
+      },
+      businessPartyVersion: { create: jest.fn().mockResolvedValue({ id: "version-1" }) }
+    };
+    const resolver = {
+      resolveActiveRoleScopes: jest.fn().mockResolvedValue(["comprehensive_director"]),
+      resolveActiveRoleScopesInTransaction: jest.fn().mockResolvedValue(["contract_staff"])
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never, resolver as never);
+    await expect(service.createParty("staff-1", { name: "撤权后禁止创建", attachments: [] }))
+      .rejects.toThrow("只有公司级综合部主管和董事长");
+    expect(tx.businessParty.create).not.toHaveBeenCalled();
+    expect(tx.businessPartyVersion.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("returns only the completed party id for the current actor and company scope", async () => {
     const idempotencyKey = "11111111-1111-4111-8111-111111111111";
     const fingerprint = "a".repeat(64);
@@ -51,7 +71,7 @@ describe("BusinessPartyService", () => {
       completedAt: new Date("2026-08-26T00:00:00.000Z")
     });
     const findParty = jest.fn().mockResolvedValue({ id: "party-1" });
-    const resolveActiveRoleScopes = jest.fn().mockResolvedValue(["contract_staff"]);
+    const resolveActiveRoleScopes = jest.fn().mockResolvedValue(["comprehensive_director"]);
     const service = new BusinessPartyService(
       {
         businessPartyCreateIdempotency: { findUnique: findIdempotency },
@@ -112,7 +132,7 @@ describe("BusinessPartyService", () => {
         businessParty: { findUnique: findParty }
       } as unknown as PrismaService,
       audit as never,
-      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"]) } as never
+      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["comprehensive_director"]) } as never
     );
 
     await expect(service.getCreationResult(
@@ -129,7 +149,7 @@ describe("BusinessPartyService", () => {
     const service = new BusinessPartyService(
       { businessPartyCreateIdempotency: { findUnique } } as unknown as PrismaService,
       audit as never,
-      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"]) } as never
+      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["comprehensive_director"]) } as never
     );
 
     await expect(service.getCreationResult("staff-1", "not-a-uuid", "not-a-fingerprint"))
@@ -219,6 +239,7 @@ describe("BusinessPartyService", () => {
 
   function prismaWithTransaction<T extends object>(tx: T) {
     const client = tx as T & {
+      user?: { findUnique: jest.Mock };
       $queryRaw?: jest.Mock;
       userPosition?: { findMany: jest.Mock };
       position?: { findMany: jest.Mock };
@@ -230,6 +251,7 @@ describe("BusinessPartyService", () => {
       contract?: { updateMany?: jest.Mock };
       contractGeneratedDocument?: { updateMany: jest.Mock };
     };
+    client.user ??= { findUnique: jest.fn().mockResolvedValue({ isActive: true }) };
     if (client.contractVersion && !client.$queryRaw) {
       client.$queryRaw = contractPartyBoundaryQuery();
     }
@@ -490,7 +512,7 @@ describe("BusinessPartyService", () => {
         }
       } as unknown as PrismaService,
       audit as never,
-      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["contract_staff"]) } as never,
+      { resolveActiveRoleScopes: jest.fn().mockResolvedValue(["comprehensive_director"]) } as never,
       targetService
     );
 
@@ -554,7 +576,7 @@ describe("BusinessPartyService", () => {
 
   it("rejects duplicate unified social credit code", async () => {
     const tx = {
-      ...globalRole("contract_director"),
+      ...globalRole("chairman"),
       businessParty: {
         findUnique: jest.fn().mockResolvedValue({ id: "party-existing" }),
         create: jest.fn()
@@ -572,8 +594,36 @@ describe("BusinessPartyService", () => {
     expect(tx.businessParty.create).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("changes only current status and records the actor when isActive is %s", async (isActive) => {
+    const tx = {
+      ...globalRole(),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "party-1" }]),
+      businessParty: {
+        findUnique: jest.fn().mockResolvedValue({ id: "party-1", status: isActive ? "inactive" : "active" }),
+        update: jest.fn(), delete: jest.fn()
+      },
+      businessPartyVersion: { update: jest.fn(), deleteMany: jest.fn() },
+      contractPartySnapshot: { updateMany: jest.fn() }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+    await expect(service.updateStatus("party-1", "staff-1", { isActive }))
+      .resolves.toMatchObject({ status: isActive ? "active" : "inactive", unchanged: false });
+    expect(tx.businessParty.update).toHaveBeenCalledWith({
+      where: { id: "party-1" }, data: { status: isActive ? "active" : "inactive" }
+    });
+    expect(tx.businessParty.delete).not.toHaveBeenCalled();
+    expect(tx.businessPartyVersion.update).not.toHaveBeenCalled();
+    expect(tx.businessPartyVersion.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractPartySnapshot.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      actorUserId: "staff-1", action: isActive ? "business_party.enable" : "business_party.disable"
+    }));
+  });
+
   it("creates a new immutable version instead of overwriting history", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "party-1" }]),
       ...globalRole(),
       businessParty: {
         findUnique: jest.fn().mockResolvedValue({
@@ -583,7 +633,7 @@ describe("BusinessPartyService", () => {
         update: jest.fn().mockResolvedValue({ id: "party-1", name: "华东建设集团有限公司" })
       },
       businessPartyVersion: {
-        findFirst: jest.fn().mockResolvedValue({ versionNo: 1 }),
+        findFirst: jest.fn().mockResolvedValue({ versionNo: 1, snapshot: { ...snapshot, contactName: "原联系人" } }),
         create: jest.fn().mockResolvedValue({ id: "party-version-2", versionNo: 2 }),
         update: jest.fn()
       }
@@ -591,15 +641,17 @@ describe("BusinessPartyService", () => {
     const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
 
     const result = await service.createVersion("party-1", "staff-1", {
-      ...snapshot,
+      expectedVersionNo: 1,
       name: "华东建设集团有限公司"
     });
 
     expect(result.versionNo).toBe(2);
+    await expect(service.createVersion("party-1", "staff-1", { name: "过时修改", expectedVersionNo: 0 })).rejects.toThrow("合作单位资料已变化");
     expect(tx.businessPartyVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         businessPartyId: "party-1",
-        versionNo: 2
+        versionNo: 2,
+        snapshot: expect.objectContaining({ contactName: "原联系人", attachments: snapshot.attachments })
       })
     });
     expect(tx.businessPartyVersion.update).not.toHaveBeenCalled();
@@ -789,12 +841,30 @@ describe("BusinessPartyService", () => {
     expect(tx.contractPartySnapshot.createMany).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("inactive party rejects new reference but preserves existing reference: %s", async (existing) => {
+    const party = { roleKey: "party_b", displayOrder: 1, businessPartyVersionId: "version-inactive", snapshot: { name: "历史单位" } };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "inactive", status: "inactive" }]),
+      businessPartyVersion: { findMany: jest.fn().mockResolvedValue([{ id: "version-inactive", businessPartyId: "inactive", snapshot: party.snapshot }]) },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue(existing ? [{ id: "old", ...party }] : []),
+        deleteMany: jest.fn(), update: jest.fn(), createMany: jest.fn()
+      }
+    };
+    const service = new BusinessPartyService({} as PrismaService, audit as never);
+    const result = service.replaceContractPartiesInTransaction(tx as never, "draft", [party]);
+    if (existing) await expect(result).resolves.toEqual({ changed: false });
+    else await expect(result).rejects.toThrow("合作单位已停用");
+    expect(tx.contractPartySnapshot.createMany).not.toHaveBeenCalled();
+  });
+
   it("uses the authoritative party version snapshot during aggregate replacement", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "active-party", status: "active" }]),
       businessPartyVersion: {
         findMany: jest.fn().mockResolvedValue([
           {
-            id: "party-version-b",
+            id: "party-version-b", businessPartyId: "active-party",
             snapshot: { name: "数据库权威乙方", attachments: [] }
           }
         ])
@@ -1023,7 +1093,7 @@ describe("BusinessPartyService", () => {
     expect(tx.businessParty.create).not.toHaveBeenCalled();
   });
 
-  it("非公司级合同人员不能维护合作单位档案", async () => {
+  it("非公司级综合部主管或董事长不能维护合作单位档案", async () => {
     const tx = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       position: { findMany: jest.fn() },

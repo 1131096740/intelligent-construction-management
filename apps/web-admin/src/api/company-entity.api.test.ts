@@ -41,12 +41,12 @@ describe("company entity management API", () => {
     };
 
     await createCompanyEntity(facts);
-    await updateCompanyEntity("entity/1", facts);
+    await updateCompanyEntity("entity/1", { ...facts, expectedVersionNo: 1 });
     await updateCompanyEntityStatus("entity/1", false);
 
     expect(mockApiFetch.mock.calls.map(([path, init]) => [path, init?.method, init?.body])).toEqual([
       ["/company-entities", "POST", JSON.stringify(facts)],
-      ["/company-entities/entity%2F1", "PATCH", JSON.stringify(facts)],
+      ["/company-entities/entity%2F1", "PATCH", JSON.stringify({ ...facts, expectedVersionNo: 1 })],
       ["/company-entities/entity%2F1/status", "POST", JSON.stringify({ isActive: false })]
     ]);
   });
@@ -98,6 +98,7 @@ describe("company entity management API", () => {
       registeredAddress: null
     })).resolves.toEqual({ entity, warning: "存在同名主体" });
     await expect(updateCompanyEntity(entity.id, {
+      expectedVersionNo: 1,
       name: entity.name,
       unifiedSocialCreditCode: entity.unifiedSocialCreditCode,
       registeredAddress: null
@@ -116,6 +117,7 @@ describe("company entity management API", () => {
       registeredAddress: null
     })).rejects.toThrow("统一社会信用代码已被其他主体使用");
     await expect(updateCompanyEntity("entity-1", {
+      expectedVersionNo: 1,
       name: "",
       unifiedSocialCreditCode: "",
       registeredAddress: null

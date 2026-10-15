@@ -80,7 +80,7 @@ function buildHarness() {
       findMany: jest.fn().mockResolvedValue([])
     },
     auditLog: { create: jest.fn() },
-    $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }])
+    $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1", inUse: false }])
   };
   const prisma = {
     user: {
@@ -113,6 +113,16 @@ function buildHarness() {
 }
 
 describe("CompanyEntityService reads", () => {
+  it("returns maintenance actions only while the current company role permits them", async () => {
+    const { service, access } = buildHarness();
+    const capable = service as unknown as { managementCapability(id: string): Promise<{ availableActions: string[] }> };
+    await expect(capable.managementCapability("chairman-user")).resolves.toMatchObject({
+      availableActions: ["create_company_entity", "update_company_entity", "update_company_entity_status"]
+    });
+    access.assertCanMaintain.mockRejectedValue(new ForbiddenException("无维护权限"));
+    await expect(capable.managementCapability("finance-user")).resolves.toMatchObject({ availableActions: [] });
+  });
+
   it("keeps the candidate response as an array after authorization", async () => {
     const { service, prisma, access } = buildHarness();
 
@@ -470,10 +480,21 @@ describe("CompanyEntityService create", () => {
 });
 
 describe("CompanyEntityService update", () => {
+  it("rejects a stale editor instead of restoring another editor's old facts", async () => {
+    const { service, tx, audit } = buildHarness();
+    tx.companyEntity.findUnique.mockResolvedValue(entityFixture({ currentVersionNo: 2, registeredAddress: "已更正地址" }));
+    await expect(service.update("entity-1", "chairman", {
+      name: "新名称", unifiedSocialCreditCode: VALID_CODE, registeredAddress: "旧地址", expectedVersionNo: 1
+    } as never)).rejects.toThrow(CONCURRENT_CHANGE_MESSAGE);
+    expect(tx.companyEntity.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("locks before reading and creates the next immutable update version", async () => {
     const { service, tx, access, audit } = buildHarness();
 
     await service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
       name: "云南某建设有限公司",
       unifiedSocialCreditCode: VALID_CODE,
       registeredAddress: "昆明市"
@@ -522,6 +543,7 @@ describe("CompanyEntityService update", () => {
     const { service, tx } = buildHarness();
 
     await service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
       name: "云南某建设有限公司",
       unifiedSocialCreditCode: VALID_CODE
     });
@@ -544,6 +566,7 @@ describe("CompanyEntityService update", () => {
 
     await expect(
       service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: VALID_CODE
       })
@@ -562,6 +585,7 @@ describe("CompanyEntityService update", () => {
 
     await expect(
       service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: OTHER_VALID_CODE
       })
@@ -579,6 +603,7 @@ describe("CompanyEntityService update", () => {
     let thrown: unknown;
     try {
       await service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: OTHER_VALID_CODE
       });
@@ -604,6 +629,7 @@ describe("CompanyEntityService update", () => {
     let thrown: unknown;
     try {
       await service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: VALID_CODE
       });
@@ -623,12 +649,14 @@ describe("CompanyEntityService update", () => {
 
     await expect(
       service.update("missing", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: VALID_CODE
       })
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
       service.update("missing", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: VALID_CODE
       })
@@ -642,6 +670,7 @@ describe("CompanyEntityService update", () => {
 
     await expect(
       service.update("entity-1", "contract-user", {
+      expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: VALID_CODE
       })
@@ -910,6 +939,7 @@ describe("company entity DTOs", () => {
     "accepts only the required maintained facts through %p",
     async (Dto) => {
       const input = Object.assign(new Dto(), {
+        expectedVersionNo: 1,
         name: "云南某建设有限公司",
         unifiedSocialCreditCode: VALID_CODE,
         registeredAddress: "昆明市"
@@ -1035,7 +1065,7 @@ describe("CompanyEntityController", () => {
     await controller.listForManagement(user, { status: "all" });
     await controller.history("entity-1", user);
     await controller.create(facts, user);
-    await controller.update("entity-1", facts, user);
+    await controller.update("entity-1", { ...facts, expectedVersionNo: 1 }, user);
     await controller.updateStatus("entity-1", { isActive: false }, user);
 
     expect(service.listActive).toHaveBeenCalledWith("contract-user");
@@ -1047,7 +1077,7 @@ describe("CompanyEntityController", () => {
     expect(service.update).toHaveBeenCalledWith(
       "entity-1",
       "contract-user",
-      facts
+      { ...facts, expectedVersionNo: 1 }
     );
     expect(service.updateStatus).toHaveBeenCalledWith(
       "entity-1",

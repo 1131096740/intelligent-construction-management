@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
@@ -95,7 +96,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     if (participatingCompanyId) return participatingCompanyId;
     const prisma = app.get(PrismaService);
     const suffix = randomUUID().replaceAll("-", "");
-    // Synthetic master-data bootstrap only: the retired company write route stays unavailable.
+    // Shared synthetic selection fixture; company mutations have separate public HTTP coverage.
     const company = await prisma.companyEntity.create({ data: {
       name: "参与主体合成验收公司",
       unifiedSocialCreditCode: `POL113${suffix.slice(0, 12)}`,
@@ -174,16 +175,17 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const chairman = await actor("chairman");
     const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "停止参与快照合成项目" }, chairman);
     const projectId = created.body.id as string;
-    const finance = await actor("finance_staff", projectId);
+    const master = await actor("comprehensive_director");
     const companyEntityId = await participatingCompany();
     const added = await request(`/projects/${projectId}/participating-companies`, "POST", {
       companyEntityId, effectiveFrom: "2026-01-01", changeReason: "合成停止验收"
-    }, finance);
+    }, master);
     expect(added.status).toBe(201);
     const admin = await actor("super_admin");
+    const deniedFinance = await actor("finance_staff", projectId);
     for (const [scene, entityType, entityId, allowed, denied, values] of [
-      ["project_create", "project", projectId, chairman, finance, { code: "测试编号", name: "测试项目" }],
-      ["project_participating_company_deactivate", "project_participating_company", added.body.id, finance, chairman, { endedOn: "2026-09-17", changeReason: "授权预检" }]
+      ["project_create", "project", projectId, chairman, deniedFinance, { code: "测试编号", name: "测试项目" }],
+      ["project_participating_company_deactivate", "project_participating_company", added.body.id, master, deniedFinance, { endedOn: "2026-09-17", changeReason: "授权预检" }]
     ] as const) {
       const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: entityType, targetEntityId: entityId });
       const definitionPath = `/business-entry-definitions/${scene}?${query}`;
@@ -199,20 +201,20 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       expect(frozen.body.message).toBe("该场景须通过原领域提交入口在同一事务中冻结");
     }
     const profilePath = `/projects/${projectId}/operating-profile`;
-    const profile = await request(profilePath, "GET", undefined, finance);
+    const profile = await request(profilePath, "GET", undefined, master);
     expect(profile.body.deactivationDefinition).toMatchObject({ key: "project_participating_company_deactivate" });
     const input = { endedOn: "2026-09-17", changeReason: "合成停止完成", definitionVersion: profile.body.deactivationDefinition.version };
     const path = `/projects/${projectId}/participating-companies/${added.body.id}/deactivation`;
-    expect((await request(`${path}/validate`, "POST", input, finance)).body.valid).toBe(true);
-    const stopped = await request(path, "PATCH", input, finance);
+    expect((await request(`${path}/validate`, "POST", input, master)).body.valid).toBe(true);
+    const stopped = await request(path, "PATCH", input, master);
     expect(stopped.status).toBe(200);
     expect(stopped.body.entrySnapshot).toMatchObject({
       sceneKey: "project_participating_company_deactivate",
       target: { entityType: "project_participating_company", entityId: added.body.id }, revision: 1,
       values: { endedOn: input.endedOn, changeReason: input.changeReason }
     });
-    expect((await request(path, "PATCH", input, finance)).status).toBe(400);
-    const persisted = await request(profilePath, "GET", undefined, finance);
+    expect((await request(path, "PATCH", input, master)).status).toBe(400);
+    const persisted = await request(profilePath, "GET", undefined, master);
     const historyJson = JSON.stringify(persisted.body.entrySnapshots);
     expect(historyJson).not.toContain(added.body.id);
     expect(historyJson).not.toContain(projectId);
@@ -229,24 +231,24 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const chairman = await actor("chairman");
     const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "停止参与负向合成项目" }, chairman);
     const projectId = created.body.id as string;
-    const finance = await actor("finance_staff", projectId);
+    const master = await actor("comprehensive_director");
     const added = await request(`/projects/${projectId}/participating-companies`, "POST", {
       companyEntityId: await participatingCompany(), effectiveFrom: "2026-01-01", changeReason: "合成负向验收"
-    }, finance);
+    }, master);
     const path = `/projects/${projectId}/participating-companies/${added.body.id}/deactivation`;
     const input = { endedOn: "2026-09-17", changeReason: "合成负向停止", definitionVersion: 1 };
-    for (const denied of [chairman, await actor("super_admin"), await actor("finance_staff")]) {
+    for (const denied of [await actor("comprehensive_director", projectId), await actor("super_admin"), await actor("finance_staff")]) {
       expect((await request(`${path}/validate`, "POST", input, denied)).status).toBe(403);
       expect((await request(path, "PATCH", input, denied)).status).toBe(403);
     }
     for (const key of ["projectId", "companyEntityId", "companyEntityVersionId"]) {
-      expect((await request(path, "PATCH", { ...input, [key]: randomUUID() }, finance)).status).toBe(400);
+      expect((await request(path, "PATCH", { ...input, [key]: randomUUID() }, master)).status).toBe(400);
     }
-    expect((await request(path, "PATCH", { ...input, definitionVersion: 999 }, finance)).status).toBe(400);
+    expect((await request(path, "PATCH", { ...input, definitionVersion: 999 }, master)).status).toBe(400);
     const other = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "跨项目停止验收" }, chairman);
-    const otherFinance = await actor("finance_staff", other.body.id);
-    expect((await request(`/projects/${other.body.id}/participating-companies/${added.body.id}/deactivation`, "PATCH", input, otherFinance)).status).toBe(404);
-    const profile = await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance);
+    const otherMaster = await actor("comprehensive_director");
+    expect((await request(`/projects/${other.body.id}/participating-companies/${added.body.id}/deactivation`, "PATCH", input, otherMaster)).status).toBe(404);
+    const profile = await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master);
     expect(profile.body.participatingCompanies).toEqual(expect.arrayContaining([expect.objectContaining({ id: added.body.id, endedAt: null })]));
     expect(profile.body.entrySnapshots.filter((snapshot: { sceneLabel: string }) => snapshot.sceneLabel === "停止新增业务")).toEqual([]);
   });
@@ -255,18 +257,18 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const chairman = await actor("chairman");
     const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "停止回滚验收" }, chairman);
     const projectId = created.body.id as string;
-    const finance = await actor("finance_staff", projectId);
+    const master = await actor("comprehensive_director");
     const added = await request(`/projects/${projectId}/participating-companies`, "POST", {
       companyEntityId: await participatingCompany(), effectiveFrom: "2026-01-01", changeReason: "回滚前原因"
-    }, finance);
+    }, master);
     const path = `/projects/${projectId}/participating-companies/${added.body.id}/deactivation`;
     const profilePath = `/projects/${projectId}/operating-profile`;
     const input = { endedOn: "2026-09-17", changeReason: "回滚后停止", definitionVersion: 1 };
     const prisma = app.get(PrismaService);
     const beforeAudits = await prisma.auditLog.count({ where: { businessId: added.body.id } });
-    const beforeProfile = (await request(profilePath, "GET", undefined, finance)).body;
-    expect((await request(`${path}/validate`, "POST", input, finance)).body.valid).toBe(true);
-    expect((await request(profilePath, "GET", undefined, finance)).body).toEqual(beforeProfile);
+    const beforeProfile = (await request(profilePath, "GET", undefined, master)).body;
+    expect((await request(`${path}/validate`, "POST", input, master)).body.valid).toBe(true);
+    expect((await request(profilePath, "GET", undefined, master)).body).toEqual(beforeProfile);
     expect(await prisma.auditLog.count({ where: { businessId: added.body.id } })).toBe(beforeAudits);
     const fault = `pol113_fault_${randomUUID().replaceAll("-", "")}`;
     await prisma.$executeRawUnsafe(`CREATE FUNCTION "${fault}"() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -278,8 +280,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       END $$`);
     try {
       await prisma.$executeRawUnsafe(`CREATE TRIGGER "${fault}" BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION "${fault}"()`);
-      expect((await request(path, "PATCH", input, finance)).status).toBe(500);
-      expect((await request(profilePath, "GET", undefined, finance)).body).toEqual(beforeProfile);
+      expect((await request(path, "PATCH", input, master)).status).toBe(500);
+      expect((await request(profilePath, "GET", undefined, master)).body).toEqual(beforeProfile);
       expect(await prisma.businessEntrySubmissionSnapshot.count({ where: { entityId: added.body.id } })).toBe(0);
       expect(await prisma.auditLog.count({ where: { businessId: added.body.id } })).toBe(beforeAudits);
     } finally {
@@ -287,8 +289,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       await prisma.$executeRawUnsafe(`DROP FUNCTION "${fault}"()`);
     }
     expect(await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) AS count FROM pg_trigger WHERE tgname = ${fault}`).toEqual([{ count: 0n }]);
-    expect((await request(path, "PATCH", input, finance)).status).toBe(200);
-    const current = (await request(profilePath, "GET", undefined, finance)).body;
+    expect((await request(path, "PATCH", input, master)).status).toBe(200);
+    const current = (await request(profilePath, "GET", undefined, master)).body;
     expect(current.participatingCompanies).toEqual(expect.arrayContaining([expect.objectContaining({ id: added.body.id, endedAt: "2026-09-17" })]));
     expect(current.entrySnapshots.filter((snapshot: { sceneLabel: string }) => snapshot.sceneLabel === "停止新增业务")).toHaveLength(1);
   });
@@ -387,14 +389,15 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
         settingsAccounts[browser] = account;
       }
       await participatingCompany();
-      const contract = await actor("contract_staff");
-      const enterpriseIntent = await partyIntent(contract, "浏览器施工企业验收");
-      expect((await request("/business-parties", "POST", enterpriseIntent.body, contract)).status).toBe(201);
+      const master = await actor("comprehensive_director");
+      const enterpriseIntent = await partyIntent(master, "浏览器施工企业验收");
+      expect((await request("/business-parties", "POST", enterpriseIntent.body, master)).status).toBe(201);
       try {
         await new Promise<void>((done, reject) => {
           const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
           delete browserEnv.JEST_WORKER_ID;
-          browserEnv.POL113_PARTY_SESSION = JSON.stringify(sessions.get(contract));
+          browserEnv.POL113_MASTER_DATA_SESSION = JSON.stringify(sessions.get(master));
+          browserEnv.POL113_PARTY_SESSION = JSON.stringify(sessions.get(master));
           browserEnv.POL113_WITHDRAWAL_SESSION = JSON.stringify(sessions.get(withdrawalFinance));
           browserEnv.POL113_ROLE_FIXTURE_URL = `http://127.0.0.1:${fixtureAddress.port}/${callbackSecret}`;
           browserEnv.POL113_RETAINED_PROJECT_ID = retainedProject.body.id;
@@ -414,7 +417,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     }
   }, 210_000);
 
-  it("项目名称沿用原董事长总经理岗位范围，空白名称不写入且有效名称可回读", async () => {
+  it("项目名称仅公司级综合部主管和董事长可维护，空白名称不写入且有效名称可回读", async () => {
     const chairman = await actor("chairman");
     const project = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "重命名前合成项目" }, chairman);
     expect(project.status).toBe(201);
@@ -426,18 +429,20 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const target = { entityType: "project", entityId: projectId };
     const payload = { definitionVersion: definition.body.version, target, operation: "edit", values: { name: "  新项目名称  " } };
     const path = `/business-entry-definitions/project_rename/validate?projectId=${projectId}`;
+    const master = await actor("comprehensive_director");
+    const projectMaster = await actor("comprehensive_director", projectId);
     const scopedManager = await actor("general_manager", projectId);
     const other = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "其他重命名项目" }, chairman);
     const otherManager = await actor("general_manager", other.body.id);
     const admin = await actor("super_admin");
-    for (const denied of [otherManager, admin]) {
+    for (const denied of [scopedManager, projectMaster, otherManager, admin]) {
       expect((await request(path, "POST", payload, denied)).status).toBe(403);
       expect((await request(`/projects/${projectId}`, "PATCH", payload.values, denied)).status).toBe(403);
     }
     const invalid = await request(path, "POST", { ...payload, values: { name: "  " } }, chairman);
     expect(invalid.body.valid).toBe(false);
     expect((await request("/projects", "GET", undefined, chairman)).body.find((entry: { id: string }) => entry.id === projectId).name).toBe("重命名前合成项目");
-    for (const allowed of [chairman, scopedManager]) {
+    for (const allowed of [chairman, master]) {
       const valid = await request(path, "POST", payload, allowed);
       expect(valid.status).toBe(201);
       expect(valid.body.valid).toBe(true);
@@ -446,49 +451,49 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await request("/projects", "GET", undefined, chairman)).body.find((entry: { id: string }) => entry.id === projectId).name).toBe("新项目名称");
   });
 
-  it("项目财务按统一字段绑定施工企业，空白原因零写入且保存沿原事务回读", async () => {
+  it("综合部主管按统一字段绑定施工企业，空白原因零写入且保存沿原事务回读", async () => {
     const chairman = await actor("chairman");
     const project = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "施工企业绑定合成项目" }, chairman);
     expect(project.status).toBe(201);
     const projectId = project.body.id as string;
-    const finance = await actor("finance_director", projectId);
-    const contract = await actor("contract_staff");
+    const master = await actor("comprehensive_director");
+    const contract = await actor("chairman");
     const intent = await partyIntent(contract, `施工企业合成${randomUUID()}`);
     const party = await request("/business-parties", "POST", intent.body, contract);
     expect(party.status).toBe(201);
-    const options = await request(`/projects/${projectId}/construction-enterprise-options`, "GET", undefined, finance);
+    const options = await request(`/projects/${projectId}/construction-enterprise-options`, "GET", undefined, master);
     expect(options.body.some((entry: { id: string }) => entry.id === party.body.version.id)).toBe(true);
     const target = { entityType: "project", entityId: projectId };
     const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId });
-    const definition = await request(`/business-entry-definitions/project_construction_enterprise?${query}`, "GET", undefined, finance);
+    const definition = await request(`/business-entry-definitions/project_construction_enterprise?${query}`, "GET", undefined, master);
     expect(definition.status).toBe(200);
     expect(definition.body.fields.map((field: { key: string }) => field.key)).toEqual(["businessPartyVersionId", "effectiveFrom", "changeReason"]);
     const values = { businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", changeReason: "首次绑定验收" };
     const payload = { definitionVersion: definition.body.version, target, operation: "edit", values };
     const validatePath = `/business-entry-definitions/project_construction_enterprise/validate?projectId=${projectId}`;
     const globalFinance = await actor("finance_director");
-    for (const denied of [chairman, globalFinance]) {
+    for (const denied of [await actor("finance_staff", projectId), globalFinance]) {
       expect((await request(validatePath, "POST", payload, denied)).status).toBe(403);
       expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", values, denied)).status).toBe(403);
     }
-    const invalid = await request(validatePath, "POST", { ...payload, values: { ...values, changeReason: " " } }, finance);
+    const invalid = await request(validatePath, "POST", { ...payload, values: { ...values, changeReason: " " } }, master);
     expect(invalid.body.valid).toBe(false);
-    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.constructionEnterprise).toBeNull();
-    const valid = await request(validatePath, "POST", payload, finance);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.constructionEnterprise).toBeNull();
+    const valid = await request(validatePath, "POST", payload, master);
     expect(valid.body.valid).toBe(true);
-    expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", { ...valid.body.values, effectiveFrom: `${values.effectiveFrom}T00:00:00.000Z` }, finance)).status).toBe(201);
-    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: false });
+    expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", { ...valid.body.values, effectiveFrom: `${values.effectiveFrom}T00:00:00.000Z` }, master)).status).toBe(201);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: false });
   });
 
-  it("项目财务通过统一字段加入完整公司，空白原因不新增并按原关系回读", async () => {
+  it("综合部主管通过统一字段加入完整公司，空白原因不新增并按原关系回读", async () => {
     const chairman = await actor("chairman");
     const created = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "参与公司合成项目" }, chairman);
     expect(created.status).toBe(201);
     const projectId = created.body.id as string;
-    const finance = await actor("finance_staff", projectId);
+    const master = await actor("comprehensive_director");
     const companyEntityId = await participatingCompany();
     const query = new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId });
-    const definition = await request(`/business-entry-definitions/project_participating_company_add?${query}`, "GET", undefined, finance);
+    const definition = await request(`/business-entry-definitions/project_participating_company_add?${query}`, "GET", undefined, master);
     expect(definition.status).toBe(200);
     expect(definition.body.fields.map((field: { key: string }) => field.key)).toEqual(["companyEntityId", "effectiveFrom", "changeReason"]);
     const values = { companyEntityId, effectiveFrom: "2026-01-01", changeReason: "加入项目验收" };
@@ -496,21 +501,189 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const validationPath = `/business-entry-definitions/project_participating_company_add/validate?projectId=${projectId}`;
     const path = `/projects/${projectId}/participating-companies`;
     const globalFinance = await actor("finance_staff");
-    for (const denied of [chairman, globalFinance]) {
+    for (const denied of [await actor("finance_staff", projectId), globalFinance]) {
       expect((await request(validationPath, "POST", payload, denied)).status).toBe(403);
       expect((await request(path, "POST", values, denied)).status).toBe(403);
     }
-    const invalid = await request(validationPath, "POST", { ...payload, values: { ...values, changeReason: " " } }, finance);
+    const invalid = await request(validationPath, "POST", { ...payload, values: { ...values, changeReason: " " } }, master);
     expect(invalid.body.valid).toBe(false);
-    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.participatingCompanies).toEqual([]);
-    const valid = await request(validationPath, "POST", payload, finance);
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.participatingCompanies).toEqual([]);
+    const valid = await request(validationPath, "POST", payload, master);
     expect(valid.body.valid).toBe(true);
-    const added = await request(path, "POST", valid.body.values, finance);
+    const added = await request(path, "POST", valid.body.values, master);
     expect(added.status).toBe(201);
-    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, finance)).body.participatingCompanies).toEqual([
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.participatingCompanies).toEqual([
       expect.objectContaining({ id: added.body.id, companyEntityId, effectiveFrom: "2026-01-01", changeReason: "加入项目验收", status: "active" })
     ]);
-    expect((await request(path, "POST", valid.body.values, finance)).status).toBe(400);
+    expect((await request(path, "POST", valid.body.values, master)).status).toBe(400);
+  });
+
+  it("空项目可停用恢复，有业务的项目保留启用，权限和审计一致", async () => {
+    const master = await actor("comprehensive_director");
+    const chairman = await actor("chairman");
+    const created = await request("/projects", "POST", { code: `LIFE-${randomUUID()}`, name: "空项目停用验收" }, master);
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+    for (const denied of [await actor("general_manager"), await actor("super_admin"), await actor("comprehensive_director", id)]) {
+      expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, denied)).status).toBe(403);
+      expect((await request("/projects/management", "GET", undefined, denied)).status).toBe(403);
+    }
+    expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, master)).status).toBe(201);
+    expect((await request("/projects", "GET", undefined, master)).body.some((p: { id: string }) => p.id === id)).toBe(false);
+    expect((await request("/projects/management", "GET", undefined, chairman)).body)
+      .toContainEqual(expect.objectContaining({ id, isActive: false }));
+    expect((await request(`/projects/${id}/status`, "POST", { isActive: true }, chairman)).status).toBe(201);
+    const prisma = app.get(PrismaService);
+    // Existing business at the database boundary, then lifecycle via public HTTP.
+    const contract = await prisma.contract.create({ data: { projectId: id, name: "已有合同", counterparty: "合成单位" } });
+    expect((await request(`/projects/${id}/status`, "POST", { isActive: false }, master)).status).toBe(409);
+    expect(await prisma.project.findUnique({ where: { id } })).toMatchObject({ isActive: true });
+    expect(await prisma.contract.findUnique({ where: { id: contract.id } })).toMatchObject({ projectId: id });
+    expect(await prisma.auditLog.count({ where: { businessId: id, action: { in: ["project.disable", "project.enable"] } } })).toBe(2);
+  });
+
+  it.each(["project-stop-first", "expense-first", "company-stop-first"])("首笔费用与停用真实并发串行：%s", async (order) => {
+    const chairman = await actor("chairman");
+    const prisma = app.get(PrismaService);
+    const project = await request("/projects", "POST", { code: `RACE-${randomUUID()}`, name: "首笔费用并发项目" }, chairman);
+    expect(project.status).toBe(201);
+    const projectId = project.body.id;
+    const employee = await actor("employee", projectId);
+    const employeeId = (sessions.get(employee) as { user: { id: string } }).user.id;
+    const company = await prisma.companyEntity.create({ data: { name: "并发合成公司", isActive: true, dataStatus: "complete", currentVersionNo: 0 } });
+    const companyFirst = order === "company-stop-first";
+    const table = companyFirst ? "CompanyEntity" : "Project";
+    const id = companyFirst ? company.id : projectId;
+    let locked!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => { locked = resolve; });
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    // Only hold a real DB boundary lock. Both conflicting business writes use HTTP.
+    const blocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM ${Prisma.raw(`"${table}"`)} WHERE "id" = ${id} FOR UPDATE`);
+      locked();
+      await held;
+    });
+    const waitForWaiters = async (count: number) => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+          SELECT count(*) FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE ${`%"${table}"%`} AND query ILIKE '%FOR UPDATE%'
+        `);
+        if (Number(rows[0]?.count) >= count) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("真实并发请求未进入预期行锁等待");
+    };
+    const stop = () => request(`${companyFirst ? "/company-entities" : "/projects"}/${id}/status`, "POST", { isActive: false }, chairman);
+    const create = () => request("/expense-claims", "POST", { claimType: "loan", projectId, applicantUserId: employeeId, companyEntityId: company.id, reason: "本机合成并发借款", requestedAmountCents: "10000" }, employee);
+    await ready;
+    let first: ReturnType<typeof request> | undefined;
+    let second: ReturnType<typeof request> | undefined;
+    try {
+      first = order === "expense-first" ? create() : stop();
+      await waitForWaiters(1);
+      second = order === "expense-first" ? stop() : create();
+      await waitForWaiters(2);
+    } finally { release(); await blocker; }
+    const [firstResult, secondResult] = await Promise.all([first!, second!]);
+    expect(firstResult.status).toBe(201);
+    expect(secondResult.status).toBe(order === "expense-first" ? 409 : 404);
+    expect(await prisma.expenseClaim.count({ where: { projectId } })).toBe(order === "expense-first" ? 1 : 0);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: projectId } })).isActive).toBe(order !== "project-stop-first");
+  });
+
+  it("已有项目或付款引用的公司不能停用，保持历史业务可办理", async () => {
+    const chairman = await actor("chairman");
+    const companyEntityId = await participatingCompany();
+    const prisma = app.get(PrismaService);
+    const project = await request("/projects", "POST", { code: `COREF-${randomUUID()}`, name: "主体引用验收" }, chairman);
+    await prisma.contract.create({ data: { projectId: project.body.id, name: "尾款办理合同", counterparty: "合成单位", companyEntityId } });
+    const result = await request(`/company-entities/${companyEntityId}/status`, "POST", { isActive: false }, chairman);
+    expect(result.status).toBe(409);
+    expect(await prisma.companyEntity.findUnique({ where: { id: companyEntityId } })).toMatchObject({ isActive: true });
+  });
+
+  it("公司主体仅两类全局岗位可新增修改启停，旧版本和停用档案仍可回读", async () => {
+    const chairman = await actor("chairman");
+    const master = await actor("comprehensive_director");
+    const facts = { name: `我方公司维护验收${randomUUID()}`, unifiedSocialCreditCode: "91350211M000100Y46", registeredAddress: "合成注册地址" };
+    for (const denied of [await actor("contract_staff"), await actor("finance_staff"), await actor("general_manager"), await actor("super_admin")]) {
+      expect((await request("/company-entities", "POST", facts, denied)).status).toBe(403);
+    }
+    const capability = await request("/company-entities/management-capability", "GET", undefined, master);
+    expect(capability.body.availableActions).toContain("create_company_entity");
+    const created = await request("/company-entities", "POST", facts, chairman);
+    expect(created.status).toBe(201);
+    const id = created.body.entity.id;
+    const changed = { ...facts, name: `${facts.name}更名`, expectedVersionNo: 1 };
+    expect((await request(`/company-entities/${id}`, "PATCH", changed, master)).status).toBe(200);
+    expect((await request(`/company-entities/${id}`, "PATCH", { ...changed, registeredAddress: "过时编辑地址" }, chairman)).status).toBe(409);
+    expect((await request(`/company-entities/${id}/history`, "GET", undefined, chairman)).body.entity.registeredAddress).toBe(facts.registeredAddress);
+    const before = (await request(`/company-entities/${id}/history`, "GET", undefined, chairman)).body;
+    expect(before.versions).toEqual(expect.arrayContaining([expect.objectContaining({ versionNo: 1, name: facts.name })]));
+    expect((await request(`/company-entities/${id}/status`, "POST", { isActive: false }, master)).status).toBe(201);
+    expect((await request("/company-entities", "GET", undefined, chairman)).body.some((row: { id: string }) => row.id === id)).toBe(false);
+    expect((await request("/company-entities/management?status=inactive", "GET", undefined, master)).body)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id, name: changed.name, isActive: false })]));
+    const history = (await request(`/company-entities/${id}/history`, "GET", undefined, chairman)).body;
+    expect(history.versions.slice(1)).toEqual(before.versions);
+    expect((await request(`/company-entities/${id}/status`, "POST", { isActive: true }, chairman)).status).toBe(201);
+    expect((await request("/company-entities", "GET", undefined, chairman)).body)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id, isActive: true })]));
+    for (const denied of [await actor("contract_director"), await actor("comprehensive_director", randomUUID())]) {
+      expect((await request(`/company-entities/${id}`, "PATCH", { ...facts, expectedVersionNo: 4 }, denied)).status).toBe(403);
+      expect((await request(`/company-entities/${id}/status`, "POST", { isActive: false }, denied)).status).toBe(403);
+    }
+  });
+
+  it("合作单位改名和启停保留版本，过时提交和撤权拒绝，审计故障回滚", async () => {
+    const master = await actor("comprehensive_director");
+    const chairman = await actor("chairman");
+    const intent = await partyIntent(master, `合作单位维护验收${randomUUID()}`);
+    const created = await request("/business-parties", "POST", intent.body, master);
+    expect(created.status).toBe(201);
+    const id = created.body.party.id;
+    const old = (await request(`/business-parties/${id}`, "GET", undefined, chairman)).body.versions;
+    const changed = await request(`/business-parties/${id}/versions`, "POST", {
+      name: `${intent.body.values.name}更名`, expectedVersionNo: 1
+    }, master);
+    expect(changed.status).toBe(201);
+    expect(changed.body.versionNo).toBe(2);
+    expect((await request(`/business-parties/${id}/versions`, "POST", { name: "过时修改", expectedVersionNo: 1 }, master)).status).toBe(409);
+    expect((await request(`/business-parties/${id}`, "GET", undefined, chairman)).body.versions.slice(1)).toEqual(old);
+    const path = `/business-parties/${id}/status`;
+    expect((await request(path, "POST", { isActive: false }, master)).status).toBe(201);
+    const inactive = (await request(`/business-parties/${id}`, "GET", undefined, chairman)).body;
+    expect(inactive.party.status).toBe("inactive");
+    expect(inactive.versions).toHaveLength(2);
+    const prisma = app.get(PrismaService);
+    const fault = `pol113_status_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION "${fault}"() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.action = 'business_party.enable' AND NEW."businessId" = '${id}' THEN
+          RAISE EXCEPTION 'POL113 synthetic status audit failure';
+        END IF;
+        RETURN NEW;
+      END $$`);
+    try {
+      await prisma.$executeRawUnsafe(`CREATE TRIGGER "${fault}" BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION "${fault}"()`);
+      expect((await request(path, "POST", { isActive: true }, chairman)).status).toBe(500);
+      expect((await request(`/business-parties/${id}`, "GET", undefined, chairman)).body).toEqual(inactive);
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${fault}" ON "AuditLog"`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION "${fault}"()`);
+    }
+    expect((await request(path, "POST", { isActive: true }, chairman)).status).toBe(201);
+    const stable = (await request(`/business-parties/${id}`, "GET", undefined, chairman)).body;
+    const session = sessions.get(master) as { user: { id: string } };
+    // Auth boundary fixture revokes only this synthetic maintainer after capability was issued.
+    expect((await request(`/business-parties/${id}/maintenance-capability`, "GET", undefined, master)).status).toBe(200);
+    await prisma.userPosition.deleteMany({ where: { userId: session.user.id } });
+    expect((await request(path, "POST", { isActive: false }, master)).status).toBe(403);
+    expect((await request(`/business-parties/${id}/versions`, "POST", { name: "撤权修改", expectedVersionNo: 2 }, master)).status).toBe(403);
+    expect((await request(`/business-parties/${id}`, "GET", undefined, chairman)).body).toEqual(stable);
   });
 
   it("本人字段定义和服务端预检拒绝原账号规则不接受的手机号", async () => {
@@ -555,8 +728,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     expect((await request("/auth/login", "POST", { phone, password })).status).toBe(401);
   });
 
-  it("合同岗沿专用创建链成功，重放与并发只返回一个可回读合作单位", async () => {
-    const accessToken = await actor("contract_staff");
+  it("综合部主管沿专用创建链成功，重放与并发只返回一个可回读合作单位", async () => {
+    const accessToken = await actor("comprehensive_director");
     expect((await request("/business-parties/create-capability", "GET", undefined, accessToken)).status).toBe(200);
     const name = `合作单位并发验收${randomUUID()}`;
     const intent = await partyIntent(accessToken, name);
@@ -579,8 +752,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   });
 
   it.each([
-    "chairman", "general_manager", "engineering_department_director", "finance_staff",
-    "finance_director", "budget_director", "material_director", "comprehensive_director", "super_admin"
+    "contract_staff", "general_manager", "engineering_department_director", "finance_staff",
+    "finance_director", "budget_director", "material_director", "contract_director", "super_admin"
   ])("%s 无法签发或提交合作单位创建", async (role) => {
     const accessToken = await actor(role);
     expect((await request("/business-parties/create-capability", "GET", undefined, accessToken)).status).toBe(403);
@@ -591,8 +764,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   });
 
   it("目标过期、定义漂移、不同用户和异指纹均拒绝且没有创建结果", async () => {
-    const accessToken = await actor("contract_director");
-    const other = await actor("contract_staff");
+    const accessToken = await actor("chairman");
+    const other = await actor("comprehensive_director");
     const name = `合作单位拒绝验收${randomUUID()}`;
     const intent = await partyIntent(accessToken, name);
     const resultPath = `/business-parties/creation-result?${new URLSearchParams({ idempotencyKey: intent.body.idempotencyKey, fingerprint: intent.fingerprint })}`;
@@ -618,7 +791,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   });
 
   it("审计持久化故障令创建原子回滚，移除本用例故障后同一请求可成功", async () => {
-    const accessToken = await actor("contract_staff");
+    const accessToken = await actor("comprehensive_director");
     const name = `合作单位回滚验收${randomUUID()}`;
     const intent = await partyIntent(accessToken, name);
     const resultPath = `/business-parties/creation-result?${new URLSearchParams({ idempotencyKey: intent.body.idempotencyKey, fingerprint: intent.fingerprint })}`;

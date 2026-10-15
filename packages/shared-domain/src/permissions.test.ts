@@ -15,8 +15,8 @@ describe("permission policy table", () => {
   it("limits business-party creation to the approved company roles", () => {
     const action = "business_party.create" as BusinessAction;
     const expectedRoles = [
-      "contract_staff",
-      "contract_director"
+      "comprehensive_director",
+      "chairman"
     ] as const satisfies readonly RoleKey[];
 
     expect(ACTION_REQUIRED_ROLES[action]).toEqual(expectedRoles);
@@ -25,6 +25,15 @@ describe("permission policy table", () => {
     for (const role of ROLE_KEYS) {
       expect(canPerform(action, [role])).toBe(allowedRoles.has(role));
     }
+  });
+
+  it("allows only the two master-data maintainers without granting finance maintenance", () => {
+    for (const role of ROLE_KEYS) {
+      expect(canPerform("project.master_data.manage" as BusinessAction, [role]))
+        .toBe(role === "comprehensive_director" || role === "chairman");
+    }
+    expect(canPerform("project.operating_profile.manage", ["comprehensive_director"])).toBe(false);
+    expect(canPerform("project.operating_profile.manage", ["chairman"])).toBe(false);
   });
 
   it("limits operating takeover work to contract and finance roles", () => {

@@ -276,6 +276,7 @@ describe("WageStatementService historical takeover confirmation", () => {
       sourceVersionId: "source-1"
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageTakeoverWageStatementReservation: { findUnique: jest.fn().mockResolvedValue(reservation) },
       wageApprovedSourceVersion: { findUnique: jest.fn().mockResolvedValue(source) },
       wageStatementVersion: {
@@ -565,6 +566,7 @@ describe("WageStatementService historical takeover confirmation", () => {
       sourceSnapshot
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageTakeoverWageStatementReservation: {
         findUnique: jest.fn().mockResolvedValue({
           id: "reserved-version-1",
@@ -870,6 +872,7 @@ describe("WageStatementService historical takeover confirmation", () => {
       sourceSnapshot
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageApprovedSourceVersion: { findUnique: jest.fn().mockResolvedValue(source) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "file-1", storageStatus: "active", contentSha256: SHA }) },
       wageStatement: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -919,6 +922,7 @@ describe("WageStatementService historical takeover confirmation", () => {
       sourceSnapshot
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageApprovedSourceVersion: { findUnique: jest.fn().mockResolvedValue(source) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "file-1", storageStatus: "active", contentSha256: SHA }) },
       wageStatement: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -958,6 +962,7 @@ describe("WageStatementService historical takeover confirmation", () => {
       sourceSnapshot
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageApprovedSourceVersion: { findUnique: jest.fn().mockResolvedValue(source) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "file-1", storageStatus: "active", contentSha256: SHA }) },
       wageStatement: { findUnique: jest.fn().mockResolvedValue(null) }
@@ -1361,6 +1366,7 @@ describe("WageStatementService historical takeover confirmation", () => {
 
   it("rejects a reserved UUID that is not owned by the activating atomic scope before reading wage authority", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageTakeoverWageStatementReservation: {
         findUnique: jest.fn().mockResolvedValue({
           id: "reserved-version-1",
@@ -1418,6 +1424,7 @@ describe("WageStatementService historical takeover confirmation", () => {
       sourceSnapshot
     };
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageTakeoverWageStatementReservation: {
         findUnique: jest.fn().mockResolvedValue({
           id: "reserved-version-1",
@@ -1484,6 +1491,7 @@ describe("WageStatementService historical takeover confirmation", () => {
 
   it("never invokes the ordinary operating-ledger append for a historical-link projection", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       wageStatementVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",

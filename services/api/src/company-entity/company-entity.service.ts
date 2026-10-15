@@ -1,6 +1,8 @@
+import { hasCompanyBusiness } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -14,6 +16,7 @@ import type {
   UpdateCompanyEntityDto,
   UpdateCompanyEntityStatusDto
 } from "./dto/company-entity.dto";
+import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 import { assertValidUnifiedSocialCreditCode } from "./unified-social-credit-code";
 
 const COMPANY_ENTITY_SELECT = {
@@ -84,6 +87,22 @@ export class CompanyEntityService {
     private readonly access: CompanyEntityAccess,
     private readonly audit: AuditService
   ) {}
+
+  async managementCapability(actorUserId: string) {
+    await this.access.assertCanRead(actorUserId);
+    let allowed = true;
+    try { await this.access.assertCanMaintain(actorUserId); }
+    catch (error) {
+      if (!(error instanceof ForbiddenException)) throw error;
+      allowed = false;
+    }
+    return {
+      availableActions: allowed
+        ? ["create_company_entity", "update_company_entity", "update_company_entity_status"]
+        : [],
+      definition: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("company_entity")
+    };
+  }
 
   async listActive(actorUserId: string) {
     await this.access.assertCanSelect(actorUserId);
@@ -231,10 +250,14 @@ export class CompanyEntityService {
     input: UpdateCompanyEntityDto
   ) {
     const facts = this.normalizeFacts(input);
+    if (!Number.isInteger(input.expectedVersionNo) || input.expectedVersionNo < 0) {
+      throw new BadRequestException("请刷新公司资料后重新提交");
+    }
     try {
       return await this.prisma.$transaction(async (tx) => {
         const actorRoleKey = await this.access.assertCanMaintain(actorUserId, tx);
         const current = await this.lockAndLoad(tx, companyEntityId);
+        if (current.currentVersionNo !== input.expectedVersionNo) throw new ConflictException(CONCURRENT_CHANGE_MESSAGE);
         await this.assertCreditCodeAvailable(
           tx,
           facts.unifiedSocialCreditCode,
@@ -304,6 +327,9 @@ export class CompanyEntityService {
           return { entity: current, unchanged: true };
         }
 
+        if (!rawIsActive && await hasCompanyBusiness(tx, companyEntityId)) {
+          throw new ConflictException("该公司已有项目、合同或其他业务引用，请保持启用以继续办理历史业务和尾款");
+        }
         const versionNo = current.currentVersionNo + 1;
         const action = rawIsActive ? "enable" : "disable";
         const entity = await tx.companyEntity.update({

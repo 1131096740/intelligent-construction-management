@@ -19,6 +19,7 @@ export interface ProjectOperatingProfileReadModel {
   takeoverCompletedDate: string | null;
   takeoverStatus: ProjectOperatingTakeoverStatus;
   canManage: boolean;
+  canManageMasterData: boolean;
   deactivationDefinition?: BusinessEntrySceneDefinition | null;
   constructionEnterprise: {
     assignmentId: string;
@@ -203,4 +204,14 @@ export function removeProjectParticipatingCompany(projectId: string, participant
     `${projectPath(projectId)}/participating-companies/${encodeURIComponent(participantId)}`,
     "删除项目参与公司失败"
   );
+}
+
+export interface ProjectManagementRow { id: string; code: string; name: string; isActive: boolean }
+
+export function fetchProjectManagement() {
+  return readJson<ProjectManagementRow[]>("/projects/management", "读取项目维护列表失败");
+}
+
+export function updateProjectStatus(projectId: string, isActive: boolean) {
+  return postJson<{ id: string; isActive: boolean; unchanged: boolean }>(`${projectPath(projectId)}/status`, { isActive }, "更新项目状态失败");
 }

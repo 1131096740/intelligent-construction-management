@@ -16,6 +16,8 @@
 
 ## 当前规格索引
 
+- 基础资料统一维护（#318）见 [操作单](guides/2026-10-15-master-data-maintenance.md) 和 [发布执行说明](runbooks/2026-10-15-master-data-maintenance-release.md)：仅公司级综合部主管和董事长维护；空项目可停用恢复，有业务项目沿用结项。
+
 - 员工注册、分级审核及密码找回见 [员工入职规格](specs/2026-10-15-employee-onboarding.md)、[员工操作说明](guides/2026-10-15-employee-accounts.md) 和 [本轮发布执行说明](runbooks/2026-10-15-employee-onboarding-release.md)。
 
 - 项目经营总账、施工企业经营、历史接管、多公司主体分账、统一业务录入及正式启用规则，以 [`项目经营总账、施工企业经营接管与统一业务录入正式规格`](specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md) 为准。

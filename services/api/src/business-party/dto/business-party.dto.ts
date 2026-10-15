@@ -30,6 +30,10 @@ export interface BusinessPartySnapshotDto {
 
 export interface CreateBusinessPartyDto extends BusinessPartySnapshotDto {}
 
+export interface UpdateBusinessPartyDto extends BusinessPartySnapshotDto {
+  expectedVersionNo: number;
+}
+
 export interface BusinessPartyCreateIntentDto {
   target: { entityType: string; createTarget: string };
   definitionKey: string;

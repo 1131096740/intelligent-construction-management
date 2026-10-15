@@ -56,7 +56,7 @@
         </t-descriptions>
       </template>
       <t-form
-        v-if="profile?.canManage && !profile.constructionEnterprise?.isLocked"
+        v-if="profile?.canManageMasterData && !profile.constructionEnterprise?.isLocked"
         label-align="top"
         class="construction-form"
         @submit="saveConstructionEnterprise"
@@ -91,7 +91,7 @@
           </t-tag>
         </template>
         <template #operation="{ row }">
-          <t-space v-if="profile?.canManage && (row.status === 'scheduled_active' || row.status === 'active')">
+          <t-space v-if="profile?.canManageMasterData && (row.status === 'scheduled_active' || row.status === 'active')">
             <t-link
               v-if="row.status === 'active'"
               theme="warning"
@@ -111,7 +111,7 @@
         </template>
       </t-table>
       <t-form
-        v-if="profile?.canManage"
+        v-if="profile?.canManageMasterData"
         label-align="top"
         class="construction-form"
         @submit="addParticipant"
@@ -139,7 +139,7 @@
       :message="message"
     />
     <t-dialog
-      v-if="profile?.canManage"
+      v-if="profile?.canManageMasterData"
       v-model:visible="deactivationVisible"
       header="停止参与公司新增业务"
       :confirm-btn="{ content: '确认停止', loading: deactivationSaving, disabled: !profile.deactivationDefinition || deactivationSaving }"
@@ -222,10 +222,14 @@ async function load() {
     profileErrors.value = [];
     profileDraft.value = { sceneKey: "project_operating_profile", target: { entityType: "project", entityId: expectedProjectId }, values: { operatingLedgerEffectiveDate: value.operatingLedgerEffectiveDate, takeoverCompletedDate: value.takeoverCompletedDate, takeoverStatus: value.takeoverStatus } };
     if (value.canManage) {
-      const [definition, companies, enterprises, enterpriseDefinition, companyDefinition] = await Promise.all([loadProfileDefinition(expectedProjectId), fetchProjectParticipatingCompanyOptions(expectedProjectId), fetchProjectConstructionEnterpriseOptions(expectedProjectId), loadConstructionDefinition(expectedProjectId), loadParticipantDefinition(expectedProjectId)]);
+      const definition = await loadProfileDefinition(expectedProjectId);
       if (!ownsLoad(requestId, expectedProjectId)) return;
       profileDefinition.value = definition;
       profileDraft.value.definitionVersion = definition.version;
+    }
+    if (value.canManageMasterData) {
+      const [companies, enterprises, enterpriseDefinition, companyDefinition] = await Promise.all([fetchProjectParticipatingCompanyOptions(expectedProjectId), fetchProjectConstructionEnterpriseOptions(expectedProjectId), loadConstructionDefinition(expectedProjectId), loadParticipantDefinition(expectedProjectId)]);
+      if (!ownsLoad(requestId, expectedProjectId)) return;
       constructionDefinition.value = enterpriseDefinition;
       participantDefinition.value = companyDefinition;
       companyOptions.value = companies.map(company => ({ label: company.name, value: company.id }));
@@ -272,7 +276,7 @@ async function saveProfile() {
   finally { if (ownsProject(projectId, expectedGeneration)) saving.value = false; }
 }
 async function addParticipant() {
-  if (adding.value || !profile.value?.canManage || !participantDefinition.value) return;
+  if (adding.value || !profile.value?.canManageMasterData || !participantDefinition.value) return;
   const projectId = props.projectId;
   const expectedGeneration = projectGeneration;
   const values = { ...participantDraft.value.values };
@@ -282,7 +286,7 @@ async function addParticipant() {
   try {
     const current = await fetchProjectOperatingProfile(projectId);
     if (!ownsProject(projectId, expectedGeneration)) return;
-    const operationAllowed = current.canManage;
+    const operationAllowed = current.canManageMasterData;
     if (!operationAllowed) throw new Error("当前用户不能维护项目参与公司");
     profile.value = current;
     const definition = await fetchBusinessEntryDefinition("project_participating_company_add", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");
@@ -322,7 +326,7 @@ async function confirmDeactivate() {
   try {
     const current = await fetchProjectOperatingProfile(projectId);
     if (!ownsProject(projectId, expectedGeneration)) return;
-    const operationAllowed = current.canManage && Boolean(current.deactivationDefinition);
+    const operationAllowed = current.canManageMasterData && Boolean(current.deactivationDefinition);
     if (!operationAllowed) throw new Error("当前用户不能停止参与公司新增业务");
     profile.value = current;
     if (!current.deactivationDefinition) throw new Error("当前参与公司停止规则不可用");
@@ -345,7 +349,7 @@ async function remove(id: string) {
   try {
     const current = await fetchProjectOperatingProfile(projectId);
     if (!ownsProject(projectId, expectedGeneration)) return;
-    const operationAllowed = current.canManage;
+    const operationAllowed = current.canManageMasterData;
     if (!operationAllowed) throw new Error("当前用户不能删除项目参与公司");
     profile.value = current;
     await removeProjectParticipatingCompany(projectId, id);
@@ -355,7 +359,7 @@ async function remove(id: string) {
   } catch (error) { if (ownsProject(projectId, expectedGeneration)) fail(error); }
 }
 async function saveConstructionEnterprise() {
-  if (savingConstruction.value || !profile.value?.canManage || profile.value.constructionEnterprise?.isLocked || !constructionDefinition.value) return;
+  if (savingConstruction.value || !profile.value?.canManageMasterData || profile.value.constructionEnterprise?.isLocked || !constructionDefinition.value) return;
   const projectId = props.projectId;
   const expectedGeneration = projectGeneration;
   const values = { ...constructionDraft.value.values };
@@ -365,7 +369,7 @@ async function saveConstructionEnterprise() {
   try {
     const current = await fetchProjectOperatingProfile(projectId);
     if (!ownsProject(projectId, expectedGeneration)) return;
-    const operationAllowed = current.canManage && !current.constructionEnterprise?.isLocked;
+    const operationAllowed = current.canManageMasterData && !current.constructionEnterprise?.isLocked;
     if (!operationAllowed) throw new Error("当前用户不能设置施工企业");
     profile.value = current;
     const definition = await fetchBusinessEntryDefinition("project_construction_enterprise", { scope: "project", projectId }, { entityType: "project", entityId: projectId }, "edit");

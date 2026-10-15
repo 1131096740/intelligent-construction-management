@@ -1413,6 +1413,19 @@ async function submit() {
   const manifest = await inspectWholeSitePageActionManifest({ root });
   assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
 
+  const masterAction = { ...action, capability: { kind: "server_boolean", source: "profile.canManageMasterData" } };
+  const masterPage = page.replaceAll("canManage", "canManageMasterData");
+  const masterRoot = await fixture({ actions: [masterAction], wrappers, routes, page: masterPage, extraFiles: projectExtraFiles, webManifestOverrides: projectWebManifestOverrides });
+  const masterManifest = await inspectWholeSitePageActionManifest({ root: masterRoot });
+  assert.equal(masterManifest.status, "ready", JSON.stringify(masterManifest.blockers));
+  for (const unsafePage of [
+    masterPage.replace("const operationAllowed = capability.canManageMasterData;", "const operationAllowed = true;"),
+    masterPage.replace("const operationAllowed = capability.canManageMasterData;", "const operationAllowed = capability.canManage;")
+  ]) {
+    const unsafeRoot = await fixture({ actions: [masterAction], wrappers, routes, page: unsafePage, extraFiles: projectExtraFiles, webManifestOverrides: projectWebManifestOverrides });
+    assert.equal((await inspectWholeSitePageActionManifest({ root: unsafeRoot })).status, "blocked");
+  }
+
   const staleRoot = await fixture({
     actions: [action], wrappers, routes,
     page: page.replace(

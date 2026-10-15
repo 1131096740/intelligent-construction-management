@@ -340,6 +340,9 @@ describe("ExpenseClaimService", () => {
       companyEntityId: "company-pay", reason: "资金由集团统一支付"
     })).resolves.toMatchObject({ paymentSubjectNameSnapshot: "付款单位", paymentSubjectAdjustedByRoleKey: "finance_staff" });
 
+    const companyLockIndex = tx.$queryRaw.mock.calls.findIndex(([sql]) => sql.strings.join("").includes('FROM "CompanyEntity"'));
+    expect(companyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(tx.$queryRaw.mock.invocationCallOrder[companyLockIndex]).toBeLessThan(tx.companyEntity.findFirst.mock.invocationCallOrder[0]);
     expect(tx.companyEntity.findFirst).toHaveBeenCalledWith({
       where: { id: "company-pay", isActive: true, dataStatus: "complete" },
       select: { id: true, name: true }

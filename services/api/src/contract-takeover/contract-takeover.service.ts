@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
@@ -793,6 +794,7 @@ export class ContractTakeoverService {
     actorUserId: string,
     options: CreateDraftRecordOptions = {}
   ) {
+    await lockMasterDataRow(tx, "Project", projectId);
     const project = await tx.project.findUnique({
       where: { id: projectId },
       select: { id: true, isActive: true }
@@ -2312,6 +2314,7 @@ export class ContractTakeoverService {
       await this.assertProjectContractStaff(tx, projectId, actorUserId);
       if (!this.files) throw new Error("系统暂不能读取更正依据附件，请稍后重试");
       await this.files.assertCanAttachUnlinkedFile(tx, attachmentFileId, actorUserId);
+      await this.assertCompanyEntityExists(tx, targetCompanyEntityId);
       const [contract, targetCompanyEntity, responsibleUser, pendingCorrection] =
         await Promise.all([
           tx.contract.findUnique({
@@ -2789,6 +2792,12 @@ export class ContractTakeoverService {
         };
       }
 
+      await lockMasterDataRow(tx, "Project", projectId);
+      const companyIds = readyRowsWithRowNo.map(({ row }) => stringValue(row["companyEntityId"])).filter(Boolean);
+      for (const companyId of [...new Set(companyIds)].sort()) {
+        await lockMasterDataRow(tx, "CompanyEntity", companyId);
+      }
+
       const batch = await tx.contractTakeoverBatch.create({
         data: {
           projectId,
@@ -3157,11 +3166,13 @@ export class ContractTakeoverService {
   }
 
   private async assertCompanyEntityExists(
-    client: Pick<Prisma.TransactionClient, "companyEntity">,
+    client: Pick<Prisma.TransactionClient, "companyEntity" | "$queryRaw">,
     companyEntityId: string | null | undefined
   ) {
     if (!companyEntityId) return;
+    await lockMasterDataRow(client, "CompanyEntity", companyEntityId);
     const companyEntity = await client.companyEntity.findUnique({
+      // Historical matching must preserve companies that existed when the contract was signed.
       where: { id: companyEntityId },
       select: { id: true }
     });

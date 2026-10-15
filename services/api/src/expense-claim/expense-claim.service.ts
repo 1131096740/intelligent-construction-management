@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
@@ -184,6 +185,8 @@ export class ExpenseClaimService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      if (input.projectId?.trim()) await lockMasterDataRow(tx, "Project", input.projectId.trim());
+      await lockMasterDataRow(tx, "CompanyEntity", requiredText(input.companyEntityId, "使用单位不能为空"));
       const [actor, company, project] = await Promise.all([
         tx.user.findUnique({ where: { id: actorUserId }, select: { id: true, name: true, phone: true, isActive: true } }),
         tx.companyEntity.findFirst({ where: { id: requiredText(input.companyEntityId, "使用单位不能为空"), isActive: true }, select: { id: true, name: true } }),
@@ -588,6 +591,7 @@ export class ExpenseClaimService {
       const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
       const adjustedByRoleKey = PAYMENT_SUBJECT_ADJUSTMENT_ROLES.find((role) => roles.includes(role));
       if (!adjustedByRoleKey) throw new ForbiddenException("当前岗位无权调整实际付款主体");
+      await lockMasterDataRow(tx, "CompanyEntity", companyEntityId);
       const company = await tx.companyEntity.findFirst({
         where: { id: companyEntityId, isActive: true, dataStatus: "complete" },
         select: { id: true, name: true }

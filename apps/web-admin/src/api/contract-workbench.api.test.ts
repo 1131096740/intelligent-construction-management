@@ -1387,7 +1387,7 @@ describe("contract workbench API client", () => {
     await createBusinessPartyVersion("party-1", {
       name: "云南示例供应商有限公司",
       unifiedSocialCreditCode: "91530000EXAMPLE01",
-      attachments: []
+      attachments: [], expectedVersionNo: 1
     });
 
     expect(mockApiFetch).toHaveBeenCalledWith("/business-parties/party-1/versions", {
@@ -1396,7 +1396,7 @@ describe("contract workbench API client", () => {
       body: JSON.stringify({
         name: "云南示例供应商有限公司",
         unifiedSocialCreditCode: "91530000EXAMPLE01",
-        attachments: []
+        attachments: [], expectedVersionNo: 1
       })
     });
   });

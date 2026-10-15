@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `5466ecda6cb001de5d3b51f2ba37ea07f07c0a8cfd6a156ed1f54142255213d0` |
-| webApiWrappers | ready | `5bf0158375fd7326054b045d614db313c2609285cf7a0cf0188b348a0a1e7629` |
-| webPageActions | ready | `bbc154c1ab39dc08a58ca26a7a76ea21fbbac654ae9ac772ca91fc6ca1a5dfc4` |
-| routeUsage | ready | `64d1e899a8503e66eea8963cd5c230dd13c249a73b827de9fae7cc2bd03bd840` |
+| nestRoutes | ready | `3462d83189d5bb1db134a0d07fa1e4f38733245e9ac42744b320dc296ba122f8` |
+| webApiWrappers | ready | `9bb4ebee8513ad7a6406893eb2e66b63f2a37d496d88ca47b70414e415c268de` |
+| webPageActions | ready | `89f5d0c0d1f2d89e267248d0eb875b74d11f32dcd42d6e9b733263716557fcce` |
+| routeUsage | ready | `8568a3ac66cfaad1d3ab90abefb9f4d27af609b28be5d5d55bb0f898b946178c` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 637 |
-| pageRouteCount | 428 |
+| routeCount | 642 |
+| pageRouteCount | 437 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 100 |
+| exitCandidateRouteCount | 96 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 615 |
+| mainRequestBindingCount | 620 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 348 |
-| actionBindingCount | 394 |
-| acceptedActionBindingCount | 372 |
+| registeredActionCount | 354 |
+| actionBindingCount | 400 |
+| acceptedActionBindingCount | 378 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 338 |
-| coveredProductionMutationConsumerPairCount | 338 |
+| productionMutationConsumerPairCount | 344 |
+| coveredProductionMutationConsumerPairCount | 344 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -58,6 +58,7 @@
 | GET | /business-entry-definitions/:sceneKey | external_takeover | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#fetchBusinessEntryDefinition | — | not_applicable | — |
 | GET | /business-entry-definitions/:sceneKey/excel-template | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#downloadBusinessEntryExcelTemplate | — | not_applicable | — |
 | GET | /business-parties/:partyId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessParty | — | not_applicable | — |
+| GET | /business-parties/:partyId/maintenance-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessPartyMaintenanceCapability | — | not_applicable | — |
 | GET | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listBusinessParties | — | not_applicable | — |
 | GET | /business-parties/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessPartyCreateCapability | — | not_applicable | — |
 | GET | /business-parties/creation-result | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#getBusinessPartyCreationResult | — | not_applicable | — |
@@ -67,6 +68,7 @@
 | GET | /clearing-cases/reconciliation-risk | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
 | GET | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchActiveCompanyEntities | — | not_applicable | — |
+| GET | /company-entities/management-capability | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagementCapability | — | not_applicable | — |
 | GET | /company-entities/management | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagement | — | not_applicable | — |
 | GET | /contract-bills/:billId/excel-template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadBillExcelTemplate | — | not_applicable | — |
 | GET | /contract-business-scenarios/available | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listAvailableContractBusinessScenarios | — | not_applicable | — |
@@ -198,6 +200,7 @@
 | GET | /projects/affiliate-mapping-report | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateMappingReport | — | not_applicable | — |
 | GET | /projects/contract-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractCreateProjects | — | not_applicable | — |
 | GET | /projects/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectCreateCapability | — | not_applicable | — |
+| GET | /projects/management | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectManagement | — | not_applicable | — |
 | GET | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjects | — | not_applicable | — |
 | GET | /projects/roster | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectRoster | — | not_applicable | — |
 | GET | /settlement-template-workbench/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#fetchTemplateWorkbenchCapability | — | not_applicable | — |
@@ -240,7 +243,7 @@
 | GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | covered | — |
 | PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
-| PATCH | /company-entities/:id | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | not_applicable | — |
+| PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | company-entity.update | covered | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |
 | PATCH | /contract-business-scenarios/:scenarioId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario | — | not_applicable | — |
 | PATCH | /contract-layout-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | — | not_applicable | — |
@@ -294,7 +297,8 @@
 | POST | /business-entry-definitions/business-party/create/probe | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartyDefinitionProbe | business-party.create.prepare | covered | — |
 | POST | /business-entry-definitions/business-party/create/submission-target | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#issueBusinessPartySubmissionTarget | business-party.create.prepare | covered | — |
 | POST | /business-entry-definitions/business-party/create/validate | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#validateBusinessPartyDraft | business-party.create.prepare | covered | — |
-| POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | — |
+| POST | /business-parties/:partyId/status | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#updateBusinessPartyStatus | business-party.status | covered | — |
+| POST | /business-parties/:partyId/versions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | business-party.update | covered | — |
 | POST | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/business-entry.api.ts#submitBusinessPartyCreation | business-party.create | covered | — |
 | POST | /clearing-cases/:caseId/events | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#createClearingEvent | clearing.event.prepare | covered | — |
 | POST | /clearing-cases | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#createClearingCase | clearing.case.create | covered | — |
@@ -303,8 +307,8 @@
 | POST | /clearing-cases/events/:eventId/reopen | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reopenClearingEvent | clearing.event.reopen | covered | — |
 | POST | /clearing-cases/events/:eventId/return | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#returnClearingEvent | clearing.event.return | covered | — |
 | POST | /clearing-cases/events/:eventId/submit | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#submitClearingEvent | clearing.event.submit | covered | — |
-| POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | — |
-| POST | /company-entities | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | not_applicable | — |
+| POST | /company-entities/:id/status | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | company-entity.status | covered | — |
+| POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | company-entity.create | covered | — |
 | POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/excel-imports | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/rows/:rowKey/remainder-cancellation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation | contract-bill.remainder-cancellation | covered | — |
@@ -571,6 +575,7 @@
 | POST | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | settlement-draft.save-local-gate | covered | — |
 | POST | /projects/:projectId/settlement-exception-quotas/:quotaId/approval | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota | — | not_applicable | — |
 | POST | /projects/:projectId/settlement-exception-quotas | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota | — | not_applicable | — |
+| POST | /projects/:projectId/status | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectStatus | project.status | covered | — |
 | POST | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamFundFact | project.upstream-fund.confirm | covered | — |
 | POST | /projects/:projectId/upstream-fund-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectUpstreamFundPrivateFile | project.upstream-fund.evidence-upload | covered | — |
 | POST | /projects/:projectId/upstream-fund-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact | project.upstream-fund.record | covered | — |

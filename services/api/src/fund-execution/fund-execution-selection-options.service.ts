@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
   ConflictException,
@@ -340,6 +341,13 @@ export class FundExecutionSelectionOptionsService {
       throw new ConflictException("逐轴业务选项已失效，请刷新后重新选择");
     }
     const selections = matchedPlans[0]!;
+    const projectIds = [...new Set(selections.map((selection) => selection.optionSnapshot.line.projectId))].sort();
+    for (const id of projectIds) {
+      await lockMasterDataRow(tx, "Project", id);
+      if (!await tx.project.findUnique({ where: { id, isActive: true }, select: { id: true } })) {
+        throw new ConflictException("项目已停用，请刷新资金分类选项");
+      }
+    }
     assertCompleteFundExecutionSelectionSet(
       selections,
       context.execution.amountCents

@@ -151,6 +151,7 @@ describe("ProjectCloseProfitService", () => {
       confirmedAt: new Date("2026-09-18T08:10:00.000Z")
     };
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
       projectCloseAggregate: {
         upsert: jest.fn().mockResolvedValue({ projectId: "project-1", revision: 0 }),
@@ -380,6 +381,7 @@ describe("ProjectCloseProfitService", () => {
       { stageKey: "owner_settlement_completed", revision: 1, status: "completed" }
     ];
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
       projectCloseAggregate: {
         upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
@@ -466,8 +468,10 @@ describe("ProjectCloseProfitService", () => {
       factKind: "downstream_settlement"
     } as never];
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ locked: "1" }])
+        .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{ projectId: "project-1" }])
         .mockResolvedValueOnce([{
           contractVersionId: "contract-version-1",
@@ -546,6 +550,7 @@ describe("ProjectCloseProfitService", () => {
   it("does not reuse a specialty attestation already frozen into an earlier stage version", async () => {
     const readAt = new Date("2026-09-18T09:10:00.000Z");
     const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
       projectCloseAggregate: {
         upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }),
@@ -1162,6 +1167,7 @@ function completeProjection(readAt: Date) {
 function finalConfirmationTx(_readAt: Date) {
   void _readAt;
   return {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
     $queryRaw: jest.fn().mockResolvedValue([{ projectId: "project-1" }]),
     projectCloseAggregate: {
       upsert: jest.fn(),

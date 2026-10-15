@@ -1,3 +1,4 @@
+import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -1296,6 +1297,7 @@ export class WageStatementService {
             normalized.fullReversalTarget!.priorConfirmedRevision
           )
         : null;
+      await lockMasterDataRow(tx, "CompanyEntity", normalized.employmentCompanyId);
       const [company, evidence, employees] = await Promise.all([
         tx.companyEntity.findUnique({
           where: { id: normalized.employmentCompanyId, isActive: true },
@@ -3009,8 +3011,9 @@ export class WageStatementService {
     });
   }
 
-  private activeProjects(tx: Tx, lines: WagePersonLineInput[]) {
+  private async activeProjects(tx: Tx, lines: WagePersonLineInput[]) {
     const ids = [...new Set(lines.flatMap((line) => line.projectAllocations.map((allocation) => required(allocation.projectId, "分摊项目不能为空"))))];
+    for (const id of [...ids].sort()) await lockMasterDataRow(tx, "Project", id);
     return tx.project.findMany({
       where: { id: { in: ids }, isActive: true },
       select: { id: true, code: true, name: true }
