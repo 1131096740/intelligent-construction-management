@@ -271,8 +271,13 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     const claim = await request("/expense-claims", "POST", { claimType: "incidental_expense", incidentalExpenseCategory: "procurement_construction_tools", generalProcurementId: id, generalProcurementRequestKey: randomUUID(), companyEntityId, projectId, reason: "合成分次实付", requestedAmountCents: "20000", payeeName: "合成工具供应商" }, director.token);
     expect(claim.status).toBe(201);
     const claimPath = `/expense-claims/${claim.body.id}`;
+    const generalManager = await actor("general_manager");
+    expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { status: "draft" } });
+    expect((await request(claimPath, "GET", undefined, employee.token)).status).toBe(404);
     expect((await request(`${claimPath}/submission`, "POST", {}, director.token)).status).toBe(201);
     expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, director.token)).status).toBe(400);
+    expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { approval: { canReview: false } } });
+    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, generalManager.token)).status).toBe(403);
     for (const reviewer of [director, manager, financeDirector, chairman]) {
       const result = await request(`${claimPath}/approval`, "POST", { decision: "approve", ...(reviewer.id === director.id ? { selfReviewReason: "综合部按已批准采购办理付款", confirmationPassword: password } : {}) }, reviewer.token);
       expect(result).toMatchObject({ status: 201 });
@@ -297,6 +302,7 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     const detail = await request(claimPath, "GET", undefined, finance.token);
     expect(detail.body.paymentExecutions).toHaveLength(1);
     expect(detail.body.fundedAmountCents).toBe("15000");
+    expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { status: "partially_paid", fundedAmountCents: "15000" } });
     const original = await request(path, "GET", undefined, director.token);
     expect(original.body.payments[0]).toMatchObject({ status: "partially_paid", fundedAmountCents: "15000" });
   });

@@ -331,7 +331,7 @@ export class ExpenseClaimService {
       claim.status === "approved_pending_payment" &&
       roles.some((role) => PAYMENT_SUBJECT_ADJUSTMENT_ROLES.includes(role));
     const procurementActor = claim.generalProcurementId && claim.projectId ? await generalProcurementActor(this.prisma, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId) : null;
-    const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
+    const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "general_manager", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
     if (!isOwner && !identity && !canAppendEvidence && !canReadProcurementPayment) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
