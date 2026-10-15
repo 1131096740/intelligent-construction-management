@@ -1057,6 +1057,41 @@ describe("ProjectCloseProfitService", () => {
     );
   });
 
+  it.each([
+    ["project", "40001"], ["aggregate", "40001"],
+    ["project", "40P01"], ["aggregate", "40P01"],
+    ["aggregate", "23505"]
+  ])("handles a %s lock failure %s through distribution confirmation", async (lockStage, sqlState) => {
+    const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010", clientVersion: Prisma.prismaVersion.client, meta: { code: sqlState }
+    });
+    const query = jest.fn().mockResolvedValueOnce([]);
+    if (lockStage === "aggregate") query.mockResolvedValueOnce([]);
+    query.mockRejectedValueOnce(error);
+    const tx = {
+      $queryRaw: query,
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectCloseAggregate: { upsert: jest.fn().mockResolvedValue({ projectId: "project-1" }) }
+    };
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } as never,
+      {} as never, {} as never, {} as never
+    );
+    const outcome = service.confirmDistribution("gm-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "0aa4526f-d5a1-423e-b417-784759d2a7f2",
+      submissionId: "5a648f91-5085-4dad-b6fb-d5b9aac5d9f7"
+    });
+    if (sqlState === "23505") {
+      await expect(outcome).rejects.toBe(error);
+    } else {
+      await expect(outcome).rejects.toBeInstanceOf(ConflictException);
+      await expect(outcome).rejects.toMatchObject({
+        status: 409, cause: error, message: "项目结项发生并发冲突，请刷新后重试"
+      });
+    }
+  });
+
   it.each(["40001", "40P01"])("reports a raw SQL %s conflict during temporary distribution as a business conflict", async (sqlState) => {
     const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
       code: "P2010", clientVersion: Prisma.prismaVersion.client, meta: { code: sqlState }

@@ -1882,20 +1882,22 @@ async function lockProjectCloseAggregate(
   tx: Prisma.TransactionClient,
   projectId: string
 ) {
-  await lockMasterDataRow(tx, "Project", projectId);
-  const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { id: true } });
-  if (!project) throw new ConflictException("项目不存在或已停用，不能办理结项");
-  await tx.projectCloseAggregate.upsert({
-    where: { projectId },
-    create: { projectId },
-    update: {}
-  });
-  await tx.$queryRaw(Prisma.sql`
-    SELECT "projectId"
-    FROM "ProjectCloseAggregate"
-    WHERE "projectId" = ${projectId}
-    FOR UPDATE
-  `);
+  return translateProjectCloseConcurrencyConflict((async () => {
+    await lockMasterDataRow(tx, "Project", projectId);
+    const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { id: true } });
+    if (!project) throw new ConflictException("项目不存在或已停用，不能办理结项");
+    await tx.projectCloseAggregate.upsert({
+      where: { projectId },
+      create: { projectId },
+      update: {}
+    });
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "projectId"
+      FROM "ProjectCloseAggregate"
+      WHERE "projectId" = ${projectId}
+      FOR UPDATE
+    `);
+  })(), "项目结项发生并发冲突，请刷新后重试");
 }
 
 async function readCommandReplay(
