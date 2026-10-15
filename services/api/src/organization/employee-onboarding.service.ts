@@ -59,6 +59,8 @@ export class EmployeeOnboardingService {
     if (!row || row.status === "approved" || (row.temporaryPasswordExpiresAt && row.temporaryPasswordExpiresAt <= new Date()) || !await bcrypt.compare(input.password, row.passwordHash)) {
       throw new UnauthorizedException("手机号或密码不正确，请重试或联系管理员");
     }
+    await this.audit.record(this.prisma, { action: "auth.application.login", businessType: "employee_registration",
+      businessId: row.id, metadata: { credentialVersion: row.credentialVersion, temporaryPasswordUsed: row.mustChangePassword } });
     return this.session(row);
   }
 

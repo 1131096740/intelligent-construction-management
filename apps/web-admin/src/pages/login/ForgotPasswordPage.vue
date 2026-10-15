@@ -92,7 +92,7 @@ import { fetchAccountOptions, resetPasswordWithSms, recoverWithCode, clearApplic
 import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
 import AuthPageShell from "./AuthPageShell.vue";
-import SmsCodeField from "./SmsCodeField.vue";
+import SmsCodeField from "../../components/SmsCodeField.vue";
 const options = ref<{ smsEnabled: boolean } | null>(null); const phone = ref(""); const code = ref(""); const recoveryCode = ref("");
 const password = ref(""); const confirmation = ref(""); const busy = ref(false); const recovery = ref(false); const complete = ref(false); const message = ref("");
 const auth = useAuthStore();

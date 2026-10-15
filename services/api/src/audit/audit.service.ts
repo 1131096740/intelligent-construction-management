@@ -14,6 +14,7 @@ const FILE_DOWNLOAD_AUDIT_ACTION_LABELS = {
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   ...FILE_DOWNLOAD_AUDIT_ACTION_LABELS,
   "auth.login": "登录",
+  "auth.application.login": "登录本人入职申请",
   "auth.logout": "退出登录",
   "permission.change": "权限变更",
   "operating_projection.export": "导出经营投影",

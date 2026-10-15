@@ -51,6 +51,7 @@ import { reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AuthRequestError, useAuthStore } from "../../auth/auth.store";
 import { clearApplicationSession, fetchAccountOptions, loginApplication, saveApplicationSession } from "../../api/employee-onboarding.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import SiteFilingFooter from "../../components/SiteFilingFooter.vue";
 
 const route = useRoute();
@@ -87,8 +88,8 @@ async function submitLogin() {
         const session = await loginApplicationWithCapability();
         auth.clearSession(); saveApplicationSession(session); form.password = "";
         await router.replace("/registration-status");
-      } catch (applicationError) { errorMessage.value = applicationError instanceof Error ? applicationError.message : "登录失败"; }
-    } else errorMessage.value = error instanceof Error ? error.message : "登录失败";
+      } catch (applicationError) { errorMessage.value = formatUnknownApiError(applicationError, "登录失败，请核对手机号和密码后重试"); }
+    } else errorMessage.value = formatUnknownApiError(error, "登录失败，请核对手机号和密码后重试");
   } finally {
     submitting.value = false;
   }

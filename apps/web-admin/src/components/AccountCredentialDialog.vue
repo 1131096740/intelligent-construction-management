@@ -66,9 +66,9 @@
 </template>
 <script setup lang="ts">
 import { ref } from "vue";
-import { generateRecoveryCode, resetEmployeePassword } from "../../../api/employee-onboarding.api";
-import { formatUnknownApiError } from "../../../api/error-message";
-import { fetchOrganizationManagementCapabilities } from "../../../api/organization.api";
+import { generateRecoveryCode, resetEmployeePassword } from "../api/employee-onboarding.api";
+import { formatUnknownApiError } from "../api/error-message";
+import { fetchOrganizationManagementCapabilities } from "../api/organization.api";
 const props = defineProps<{ recovery?: boolean; id?: string; kind?: "users" | "applications"; name?: string }>();
 const emit = defineEmits<{ close: []; saved: [] }>();
 const password = ref(""); const verified = ref(false); const busy = ref(false); const secret = ref(""); const message = ref("");

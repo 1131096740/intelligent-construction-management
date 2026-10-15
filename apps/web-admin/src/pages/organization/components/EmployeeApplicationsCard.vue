@@ -181,7 +181,7 @@ import { GLOBAL_ORGANIZATION_ROLE_KEYS, fetchOrganizationManagementCapabilities,
 import { fetchEmployeeApplications, reviewEmployeeApplication, type EmployeeApplication, type EmployeeReview } from "../../../api/employee-onboarding.api";
 import { formatUnknownApiError } from "../../../api/error-message";
 import { flattenDepartmentTree } from "../organization.config";
-import AccountCredentialDialog from "./AccountCredentialDialog.vue";
+import AccountCredentialDialog from "../../../components/AccountCredentialDialog.vue";
 const props = defineProps<{ directory: OrganizationDirectory; capabilities: OrganizationManagementCapabilities; refreshKey: number }>();
 const emit = defineEmits<{ approved: [] }>();
 const applications = ref<EmployeeApplication[]>([]); const pendingCount = ref(0); const loading = ref(false); const message = ref("");

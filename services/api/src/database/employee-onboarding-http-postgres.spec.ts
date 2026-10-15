@@ -72,6 +72,16 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     const own = await fetch(`${base}/employee-onboarding/mine`, { headers: { Authorization: `Bearer ${result.applicationToken}` } });
     expect(own.status).toBe(200);
     expect(await own.json()).toMatchObject({ status: "pending", name: "合成入职员工" });
+    const login = await request("/employee-onboarding/login", "POST", { phone: "13910000001", password });
+    expect(login.status).toBe(201);
+    expect(login.body.applicationToken).toEqual(expect.any(String));
+    const audits = () => app.get(PrismaService).auditLog.findMany({ where: {
+      action: "auth.application.login", businessId: result.application.id
+    } });
+    expect(await audits()).toEqual([expect.objectContaining({ actorUserId: null,
+      businessType: "employee_registration", metadata: { credentialVersion: 0, temporaryPasswordUsed: false } })]);
+    expect((await request("/employee-onboarding/login", "POST", { phone: "13910000001", password: "Wrong-Password-01" })).status).toBe(401);
+    expect(await audits()).toHaveLength(1);
   });
 
   it("综合部跨部门开通普通员工，财务岗位转董事长且仅批准一次", async () => {

@@ -307,8 +307,8 @@ import {
   type DraftRetentionPreviewReadModel
 } from "../../api/core-flow-read.api";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
-import SmsCodeField from "../login/SmsCodeField.vue";
-import AccountCredentialDialog from "../organization/components/AccountCredentialDialog.vue";
+import SmsCodeField from "../../components/SmsCodeField.vue";
+import AccountCredentialDialog from "../../components/AccountCredentialDialog.vue";
 import { fetchAccountOptions } from "../../api/employee-onboarding.api";
 import JgSignaturePanel from "../../components/JgSignaturePanel.vue";
 import JgSignatureHandoff from "../../components/JgSignatureHandoff.vue";

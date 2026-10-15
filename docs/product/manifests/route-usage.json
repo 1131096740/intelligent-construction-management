@@ -365,10 +365,10 @@
             "normalizedPath": "/account-security/options",
             "normalizedKey": "GET /account-security/options",
             "productionConsumers": [
+              "apps/web-admin/src/components/SmsCodeField.vue",
               "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
               "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
               "apps/web-admin/src/pages/login/LoginPage.vue",
-              "apps/web-admin/src/pages/login/SmsCodeField.vue",
               "apps/web-admin/src/pages/settings/SettingsPage.vue"
             ]
           }
@@ -4253,8 +4253,8 @@
             "normalizedPath": "/organization/management-capabilities",
             "normalizedKey": "GET /organization/management-capabilities",
             "productionConsumers": [
+              "apps/web-admin/src/components/AccountCredentialDialog.vue",
               "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-              "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
               "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
               "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
               "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
@@ -9947,7 +9947,7 @@
             "normalizedPath": "/account-security/applications/:param/reset-password",
             "normalizedKey": "POST /account-security/applications/:param/reset-password",
             "productionConsumers": [
-              "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+              "apps/web-admin/src/components/AccountCredentialDialog.vue"
             ]
           }
         ],
@@ -9988,7 +9988,7 @@
             "normalizedPath": "/account-security/phone-change-sms",
             "normalizedKey": "POST /account-security/phone-change-sms",
             "productionConsumers": [
-              "apps/web-admin/src/pages/login/SmsCodeField.vue"
+              "apps/web-admin/src/components/SmsCodeField.vue"
             ]
           }
         ],
@@ -10072,7 +10072,7 @@
             "normalizedPath": "/account-security/recovery-code",
             "normalizedKey": "POST /account-security/recovery-code",
             "productionConsumers": [
-              "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+              "apps/web-admin/src/components/AccountCredentialDialog.vue"
             ]
           }
         ],
@@ -10154,7 +10154,7 @@
             "normalizedPath": "/account-security/sms",
             "normalizedKey": "POST /account-security/sms",
             "productionConsumers": [
-              "apps/web-admin/src/pages/login/SmsCodeField.vue"
+              "apps/web-admin/src/components/SmsCodeField.vue"
             ]
           }
         ],
@@ -10198,7 +10198,7 @@
             "normalizedPath": "/account-security/users/:param/reset-password",
             "normalizedKey": "POST /account-security/users/:param/reset-password",
             "productionConsumers": [
-              "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+              "apps/web-admin/src/components/AccountCredentialDialog.vue"
             ]
           }
         ],

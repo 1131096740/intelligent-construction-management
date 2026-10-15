@@ -7159,7 +7159,7 @@
         "/系统配置",
         "/组织权限"
       ],
-      "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -7201,10 +7201,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -7240,10 +7240,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -7271,7 +7271,7 @@
         "event": "call",
         "handler": "loginApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 96,
+        "sourceLine": 97,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7459,7 +7459,7 @@
         "/系统配置",
         "/组织权限"
       ],
-      "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -7500,10 +7500,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -7527,7 +7527,7 @@
         "/register",
         "/系统配置"
       ],
-      "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -7566,10 +7566,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -7790,7 +7790,7 @@
         "/register",
         "/系统配置"
       ],
-      "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -7829,10 +7829,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "causalVerified": true,
           "causalProof": {

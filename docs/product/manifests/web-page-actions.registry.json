@@ -8656,7 +8656,7 @@
         "/forgot-password",
         "/系统配置"
       ],
-      "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -8753,7 +8753,7 @@
         "/组织权限",
         "/系统配置"
       ],
-      "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -8778,7 +8778,7 @@
         "/组织权限",
         "/系统配置"
       ],
-      "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -8802,7 +8802,7 @@
       "routePaths": [
         "/系统配置"
       ],
-      "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
       "trigger": {
         "element": "module",
         "event": "call",

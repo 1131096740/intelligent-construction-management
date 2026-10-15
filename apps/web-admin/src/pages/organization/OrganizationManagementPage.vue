@@ -240,7 +240,7 @@ import OrganizationDetailsDrawer from "./components/OrganizationDetailsDrawer.vu
 import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
 import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
 import EmployeeApplicationsCard from "./components/EmployeeApplicationsCard.vue";
-import AccountCredentialDialog from "./components/AccountCredentialDialog.vue";
+import AccountCredentialDialog from "../../components/AccountCredentialDialog.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 import {

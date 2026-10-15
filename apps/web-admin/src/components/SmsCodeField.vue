@@ -29,8 +29,8 @@
 </template>
 <script setup lang="ts">
 import { onUnmounted, ref } from "vue";
-import { fetchAccountOptions, sendAccountSms, sendPhoneChangeSms } from "../../api/employee-onboarding.api";
-import { formatUnknownApiError } from "../../api/error-message";
+import { fetchAccountOptions, sendAccountSms, sendPhoneChangeSms } from "../api/employee-onboarding.api";
+import { formatUnknownApiError } from "../api/error-message";
 const props = defineProps<{ phone: string; purpose: "register" | "reset" | "change_phone"; modelValue: string; disabled?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const sending = ref(false); const remaining = ref(0); const message = ref(""); const error = ref(false);

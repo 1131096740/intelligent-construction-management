@@ -84,7 +84,7 @@ import { useAuthStore } from "../../auth/auth.store";
 import { fetchAccountOptions, registerEmployee, saveApplicationSession } from "../../api/employee-onboarding.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import AuthPageShell from "./AuthPageShell.vue";
-import SmsCodeField from "./SmsCodeField.vue";
+import SmsCodeField from "../../components/SmsCodeField.vue";
 const router = useRouter(); const auth = useAuthStore();
 const options = ref<{ smsEnabled: boolean } | null>(null);
 const loading = ref(false); const busy = ref(false); const message = ref("");

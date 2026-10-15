@@ -10497,10 +10497,10 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/SmsCodeField.vue",
         "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
         "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
         "apps/web-admin/src/pages/login/LoginPage.vue",
-        "apps/web-admin/src/pages/login/SmsCodeField.vue",
         "apps/web-admin/src/pages/settings/SettingsPage.vue"
       ],
       "testConsumers": [],
@@ -10585,7 +10585,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+        "apps/web-admin/src/components/AccountCredentialDialog.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -10712,7 +10712,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+        "apps/web-admin/src/components/AccountCredentialDialog.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -10838,7 +10838,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/login/SmsCodeField.vue"
+        "apps/web-admin/src/components/SmsCodeField.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -10866,7 +10866,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/login/SmsCodeField.vue"
+        "apps/web-admin/src/components/SmsCodeField.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -13038,8 +13038,8 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/AccountCredentialDialog.vue",
         "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
         "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",

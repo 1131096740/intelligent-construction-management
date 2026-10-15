@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "ba35d9222ceafe4838a76286b448e245f149f6c8e2be62d11c22a892a445e099",
+      "sha256": "5bf0158375fd7326054b045d614db313c2609285cf7a0cf0188b348a0a1e7629",
       "status": "ready",
       "summary": {
         "apiModuleCount": 30,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e860c73b06b7ecb13dbd8c230a0fe5e8c3511d6cb0f7499329f4f996c981e3c8",
+      "sha256": "bbc154c1ab39dc08a58ca26a7a76ea21fbbac654ae9ac772ca91fc6ca1a5dfc4",
       "status": "ready",
       "summary": {
         "registeredActionCount": 348,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "976acc5ae635649cb50166f26b03459ca9c71aae3f0700fb0e2a8e226b92fc18",
+      "sha256": "64d1e899a8503e66eea8963cd5c230dd13c249a73b827de9fae7cc2bd03bd840",
       "status": "ready",
       "summary": {
         "routeCount": 637,
@@ -617,10 +617,10 @@
           "normalizedKey": "GET /account-security/options",
           "bodyKind": "json",
           "productionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue",
             "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
             "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
             "apps/web-admin/src/pages/login/LoginPage.vue",
-            "apps/web-admin/src/pages/login/SmsCodeField.vue",
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
           "testConsumers": []
@@ -4764,8 +4764,8 @@
           "normalizedKey": "GET /organization/management-capabilities",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue",
             "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
             "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
             "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
             "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
@@ -11695,7 +11695,7 @@
           "normalizedKey": "POST /account-security/applications/:param/reset-password",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "testConsumers": []
         }
@@ -11708,7 +11708,7 @@
           "identity": "employee.admin-reset\u0000apps/web-admin/src/api/employee-onboarding.api.ts\u0000resetEmployeePassword\u0000POST\u0000POST /account-security/applications/:param/reset-password\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+          "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canManageUsers",
@@ -11718,10 +11718,10 @@
           "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
           "wrapper": "resetEmployeePassword",
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -11761,7 +11761,7 @@
           "normalizedKey": "POST /account-security/phone-change-sms",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "testConsumers": []
         }
@@ -11774,7 +11774,7 @@
           "identity": "employee.phone-change-sms\u0000apps/web-admin/src/api/employee-onboarding.api.ts\u0000sendPhoneChangeSms\u0000POST\u0000POST /account-security/phone-change-sms\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+          "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.smsEnabled",
@@ -11784,10 +11784,10 @@
           "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
           "wrapper": "sendPhoneChangeSms",
           "productionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -11895,7 +11895,7 @@
           "normalizedKey": "POST /account-security/recovery-code",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "testConsumers": []
         }
@@ -11908,7 +11908,7 @@
           "identity": "employee.generate-recovery\u0000apps/web-admin/src/api/employee-onboarding.api.ts\u0000generateRecoveryCode\u0000POST\u0000POST /account-security/recovery-code\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+          "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canGenerateRecoveryCode",
@@ -11918,10 +11918,10 @@
           "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
           "wrapper": "generateRecoveryCode",
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -12027,7 +12027,7 @@
           "normalizedKey": "POST /account-security/sms",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "testConsumers": []
         }
@@ -12040,7 +12040,7 @@
           "identity": "employee.sms\u0000apps/web-admin/src/api/employee-onboarding.api.ts\u0000sendAccountSms\u0000POST\u0000POST /account-security/sms\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/login/SmsCodeField.vue",
+          "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.smsEnabled",
@@ -12050,10 +12050,10 @@
           "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
           "wrapper": "sendAccountSms",
           "productionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/login/SmsCodeField.vue"
+            "apps/web-admin/src/components/SmsCodeField.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -12096,7 +12096,7 @@
           "normalizedKey": "POST /account-security/users/:param/reset-password",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "testConsumers": []
         }
@@ -12109,7 +12109,7 @@
           "identity": "employee.admin-reset\u0000apps/web-admin/src/api/employee-onboarding.api.ts\u0000resetEmployeePassword\u0000POST\u0000POST /account-security/users/:param/reset-password\u00001",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue",
+          "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canManageUsers",
@@ -12119,10 +12119,10 @@
           "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
           "wrapper": "resetEmployeePassword",
           "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/organization/components/AccountCredentialDialog.vue"
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
