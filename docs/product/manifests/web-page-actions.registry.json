@@ -8359,6 +8359,198 @@
           "name": "uploadPrivateFile"
         }
       ]
+    },
+    {
+      "id": "organization.department.create",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createOrganizationDepartmentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageDepartments"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "createOrganizationDepartment"
+        }
+      ]
+    },
+    {
+      "id": "organization.department.update",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateOrganizationDepartmentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageDepartments"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "updateOrganizationDepartment"
+        }
+      ]
+    },
+    {
+      "id": "organization.user.update",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateOrganizationUserWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "updateOrganizationUser"
+        }
+      ]
+    },
+    {
+      "id": "organization.user.create",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createOrganizationUserWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreateUser"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "createOrganizationUser"
+        }
+      ]
+    },
+    {
+      "id": "organization.role-addition.preview",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewOrganizationRoleAdditionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "previewOrganizationRoleAddition"
+        }
+      ]
+    },
+    {
+      "id": "organization.role-addition.apply",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyOrganizationRoleAdditionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "applyOrganizationRoleAddition"
+        }
+      ]
+    },
+    {
+      "id": "organization.role-removal.preview",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewOrganizationRoleRemovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "previewOrganizationRoleRemoval"
+        }
+      ]
+    },
+    {
+      "id": "organization.role-removal.apply",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyOrganizationRoleRemovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "applyOrganizationRoleRemoval"
+        }
+      ]
     }
   ]
 }

@@ -38,6 +38,11 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
       })
     })
   );
+  await page.route("**/api/organization/management-capabilities", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ canCreateUser: true, canManageDepartments: true, canManageUsers: true, canManageRoles: true,
+      manageableDepartmentIds: ["department-1"], manageableUserIds: ["user-1"], manageableRoleKeys: ["finance_staff", "contract_director", "project_manager", "super_admin"] })
+  }));
   await page.route("**/api/organization/directory", (route) => {
     directoryReads += 1;
     return route.fulfill({
@@ -114,12 +119,12 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
   await page.getByText("组织权限", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: "新增人员" }).click();
-  const userDialog = page.locator(".t-drawer__header:visible").filter({ hasText: /^新增人员$/u }).locator("..");
-  await userDialog.getByPlaceholder("请输入 11 位中国大陆手机号").fill("13800000001");
-  await userDialog.getByPlaceholder("请选择启用部门").click();
+  await page.getByRole("button", { name: "新增人员和账号" }).click();
+  const userDialog = page.locator(".t-drawer__header:visible").filter({ hasText: /^新增人员和账号$/u }).locator("..");
+  await userDialog.getByPlaceholder("请选择或填写手机号").fill("13800000001");
+  await userDialog.getByPlaceholder("请选择或填写所属部门").click();
   await page.locator(".t-select__dropdown:visible").getByText("合同部", { exact: true }).click();
-  await userDialog.getByPlaceholder("请选择允许授予的初始岗位").click();
+  await userDialog.getByPlaceholder("请选择或填写初始岗位").click();
   await page.locator(".t-select__dropdown:visible").getByText("财务员", { exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
@@ -131,9 +136,9 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
   }).click();
   await expect(passwordNotice).toBeChecked();
   await userDialog.getByPlaceholder("请验证管理员当前密码").fill(" current-password ");
-  await page.getByRole("button", { name: "确认创建人员" }).click();
+  await page.getByRole("button", { name: "创建人员和账号", exact: true }).click();
 
-  await expect(page.getByText(/人员已创建但尚未授岗/u)).toBeVisible();
+  await expect(page.locator(".t-drawer__header:visible")).toHaveCount(0);
   expect(directoryReads).toBeGreaterThanOrEqual(2);
   expect(roleApplyCalls).toBe(0);
   expect(createBodies).toEqual([

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
+import { centsTextToYuanText } from "../../lib/money";
 import { computed, onMounted, reactive, ref } from "vue";
 import { MessagePlugin, type UploadFile } from "tdesign-vue-next";
 import {
@@ -45,7 +47,7 @@ const repairForm = reactive({ impactId: "", replacementInvoiceRecordId: "", reas
 function idempotencyKey() { return crypto.randomUUID(); }
 function invoiceLabel(invoice: (typeof globalInvoices.value)[number]) {
   const identifier = invoice.invoiceNumber || invoice.externalIdentifier || "未显示编号";
-  return `${invoice.sellerName} · ${identifier} · ${invoice.issueDate} · ${invoice.totalAmountCents} 分`;
+  return `${invoice.sellerName} · ${identifier} · ${invoice.issueDate} · ${centsTextToYuanText(invoice.totalAmountCents)} 元`;
 }
 const invoiceOptions = computed(() => globalInvoices.value.map((invoice) => ({ label: invoiceLabel(invoice), value: invoice.id })));
 const clearingCaseOptions = computed(() => clearingCases.value.map((item) => ({ label: `${item.governedSubjectKey} · ${item.category} · ${item.status}`, value: item.id })));
@@ -53,11 +55,11 @@ const clearingVersionOptions = computed(() => {
   const clearingCase = clearingCases.value.find((item) => item.id === allocationForm.clearingCaseId);
   return (clearingCase?.events ?? []).flatMap((event) => event.versions)
     .filter((version) => Boolean(version.confirmation))
-    .map((version) => ({ label: `第 ${version.versionNo} 版 · ${version.amountCents} 分 · ${version.evidenceLevel} 级证据`, value: version.id }));
+    .map((version) => ({ label: `第 ${version.versionNo} 版 · ${centsTextToYuanText(version.amountCents)} 元 · ${version.evidenceLevel} 级证据`, value: version.id }));
 });
-const allocationOptions = computed(() => globalInvoices.value.flatMap((invoice) => invoice.allocations.filter((allocation) => !allocation.reversesAllocationId).map((allocation) => ({ label: `${invoiceLabel(invoice)} · 已分配 ${allocation.amountCents} 分`, value: allocation.id }))));
+const allocationOptions = computed(() => globalInvoices.value.flatMap((invoice) => invoice.allocations.filter((allocation) => !allocation.reversesAllocationId).map((allocation) => ({ label: `${invoiceLabel(invoice)} · 已分配 ${centsTextToYuanText(allocation.amountCents)} 元`, value: allocation.id }))));
 const replacementInvoiceOptions = computed(() => globalInvoices.value.filter((invoice) => invoice.status === "active" && ["global_clearing_invoice", "global_clearing_invoice_reissue"].includes(invoice.sourceBusinessType)).map((invoice) => ({ label: invoiceLabel(invoice), value: invoice.id })));
-const evidenceRepairImpactOptions = computed(() => evidenceRepairImpacts.value.filter((impact) => !impact.resolution).map((impact) => ({ label: `${impact.invalidatedInvoice?.sellerName ?? "原发票"} · ${impact.invalidatedInvoice?.invoiceNumber ?? impact.invalidatedInvoice?.externalIdentifier ?? "未显示编号"} · 待修复 ${impact.invalidatedAmountCents} 分`, value: impact.id })));
+const evidenceRepairImpactOptions = computed(() => evidenceRepairImpacts.value.filter((impact) => !impact.resolution).map((impact) => ({ label: `${impact.invalidatedInvoice?.sellerName ?? "原发票"} · ${impact.invalidatedInvoice?.invoiceNumber ?? impact.invalidatedInvoice?.externalIdentifier ?? "未显示编号"} · 待修复 ${centsTextToYuanText(impact.invalidatedAmountCents)} 元`, value: impact.id })));
 const unresolvedImpactCount = computed(() => evidenceRepairImpacts.value.filter((impact) => !impact.resolution).length);
 const resolvedImpactCount = computed(() => evidenceRepairImpacts.value.filter((impact) => Boolean(impact.resolution)).length);
 const selectedAllocationInvoice = computed(() => globalInvoices.value.find((invoice) => invoice.id === allocationForm.invoiceRecordId));
@@ -239,25 +241,25 @@ onMounted(async () => {
         <t-input v-model="invoiceForm.invoiceCode" label="发票代码" /><t-input v-model="invoiceForm.invoiceNumber" label="发票号码" />
         <t-input v-model="invoiceForm.externalIdentifier" label="外部凭证编号（保留前导零）" />
         <t-input v-if="invoiceForm.invoiceIdentityKind === 'other'" v-model="invoiceForm.voucherType" label="受控凭证类型" />
-        <t-input v-model="invoiceForm.taxExclusiveAmountCents" label="不含税金额（分）" /><t-input v-model="invoiceForm.taxAmountCents" label="税额（分）" />
-        <t-input v-model="invoiceForm.totalAmountCents" label="价税合计（分）" />
+        <YuanMoneyInput v-model="invoiceForm.taxExclusiveAmountCents" label="不含税金额（元）" /><YuanMoneyInput v-model="invoiceForm.taxAmountCents" label="税额（元）" />
+        <YuanMoneyInput v-model="invoiceForm.totalAmountCents" label="价税合计（元）" />
         <t-input v-model="invoiceForm.taxRateSnapshot" label="票面税率快照（固定六位小数）" placeholder="例如 13.000000" />
         <t-upload v-model="invoiceFiles" theme="file-flow" :auto-upload="false" :multiple="false" accept=".pdf,.jpg,.jpeg,.png" />
       </div><t-button theme="primary" type="submit" :loading="submitting" :disabled="!globalInvoiceCapabilities.create">追加全局发票</t-button></t-form>
     </t-card>
     <t-card title="绑定清分版本" class="panel"><t-form label-align="top" @submit.prevent="allocate"><div class="form-grid">
       <t-select v-model="allocationForm.invoiceRecordId" label="全局发票" :options="invoiceOptions" filterable /><t-select v-model="allocationForm.clearingCaseId" label="清分事项" :options="clearingCaseOptions" filterable />
-      <t-select v-model="allocationForm.clearingEventVersionId" label="已确认清分版本" :options="clearingVersionOptions" /><t-input v-model="allocationForm.amountCents" label="分配金额（分）" />
+      <t-select v-model="allocationForm.clearingEventVersionId" label="已确认清分版本" :options="clearingVersionOptions" /><YuanMoneyInput v-model="allocationForm.amountCents" label="分配金额（元）" />
       <t-input v-model="allocationForm.structuredReasonCode" label="金额差异结构化原因（有差异时必填）" />
     </div><t-button theme="primary" type="submit" :loading="submitting" :disabled="!clearingCapabilities.availableActions.includes('clearing.confirm')">追加清分分配</t-button></t-form></t-card>
     <t-card title="反向清分分配" class="panel"><t-form label-align="top" @submit.prevent="requestSensitiveAction('reverse')"><div class="form-grid">
-      <t-select v-model="reversalForm.allocationId" label="原清分分配" :options="allocationOptions" filterable /><t-input v-model="reversalForm.amountCents" label="反向金额（分）" />
+      <t-select v-model="reversalForm.allocationId" label="原清分分配" :options="allocationOptions" filterable /><YuanMoneyInput v-model="reversalForm.amountCents" label="反向金额（元）" />
       <t-input v-model="reversalForm.structuredReasonCode" label="结构化更正原因" />
     </div><t-button variant="outline" theme="danger" type="button" :loading="submitting" :disabled="!clearingCapabilities.availableActions.includes('clearing.confirm')" @click="requestSensitiveAction('reverse')">追加反向分配</t-button></t-form></t-card>
     <t-card title="追加作废、红字或重开" class="panel"><t-form label-align="top"><div class="form-grid">
       <t-select v-model="lifecycleForm.invoiceRecordId" label="作废目标发票" :options="invoiceOptions" filterable /><t-select v-model="lifecycleForm.linkedInvoiceRecordId" label="蓝字/原发票" :options="invoiceOptions" filterable />
       <t-input v-model="lifecycleForm.reasonCode" label="结构化原因" /><t-select v-model="lifecycleForm.blueAllocationId" label="蓝字分配（红字必填）" :options="allocationOptions" filterable />
-      <t-input v-model="lifecycleForm.amountCents" label="红字引用金额（分）" />
+      <YuanMoneyInput v-model="lifecycleForm.amountCents" label="红字引用金额（元）" />
     </div><div class="actions"><t-button type="button" variant="outline" theme="danger" :loading="submitting" :disabled="!globalInvoiceCapabilities.correct" @click="requestSensitiveAction('void')">追加作废</t-button><t-button type="button" variant="outline" :loading="submitting" :disabled="!globalInvoiceCapabilities.correct" @click="requestSensitiveAction('red')">追加红字</t-button><t-button type="button" variant="outline" :loading="submitting" :disabled="!globalInvoiceCapabilities.correct" @click="requestSensitiveAction('reissue')">追加重开</t-button></div></t-form></t-card>
     <t-card title="发票证据待修复" class="panel"><t-alert theme="warning" message="只能用仍有效、公司与方向同一公司主体的发票方向且已绑定附件的蓝字或重开发票逐项解决；原清分、案件和确认版本保持不变。" /><t-form label-align="top" @submit.prevent="requestSensitiveAction('repair')"><div class="form-grid">
       <t-select v-model="repairForm.impactId" label="待修复事项" :options="evidenceRepairImpactOptions" filterable /><t-select v-model="repairForm.replacementInvoiceRecordId" label="替代蓝字或重开发票" :options="replacementInvoiceOptions" filterable /><t-input v-model="repairForm.reasonCode" label="证据修复原因" />

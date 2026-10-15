@@ -40,6 +40,11 @@ test("岗位新增手动预览后原样提交快照与密码并双刷新", async
       })
     })
   );
+  await page.route("**/api/organization/management-capabilities", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ canCreateUser: true, canManageDepartments: true, canManageUsers: true, canManageRoles: true,
+      manageableDepartmentIds: ["department-1"], manageableUserIds: ["user-1"], manageableRoleKeys: ["finance_staff", "contract_director", "project_manager", "super_admin"] })
+  }));
   await page.route("**/api/organization/directory", (route) => {
     directoryReads += 1;
     return route.fulfill({
@@ -146,15 +151,15 @@ test("岗位新增手动预览后原样提交快照与密码并双刷新", async
   await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "新增岗位" }).click();
-  const scopeSelect = page.getByPlaceholder("请选择岗位范围").last();
+  const scopeSelect = page.getByPlaceholder("请选择或填写岗位范围").last();
   await expect(scopeSelect).toBeVisible();
   await scopeSelect.click();
   await page.locator(".t-select__dropdown:visible").getByText("项目岗位", { exact: true }).click();
-  await page.getByPlaceholder("请选择启用项目").last().click();
+  await page.getByPlaceholder("请选择或填写所属项目").last().click();
   const projectDropdown = page.locator(".t-select__dropdown:visible");
   await expect(projectDropdown.getByText("停用项目", { exact: false })).toHaveCount(0);
   await projectDropdown.getByText("科技园项目（XM-001）", { exact: true }).click();
-  await page.getByPlaceholder("请选择待新增岗位").last().click();
+  await page.getByPlaceholder("请选择或填写岗位").last().click();
   const roleDropdown = page.locator(".t-select__dropdown:visible");
   await expect(roleDropdown.getByText("系统管理员", { exact: true })).toHaveCount(0);
   await roleDropdown.getByText("项目经理", { exact: true }).click();
@@ -166,7 +171,7 @@ test("岗位新增手动预览后原样提交快照与密码并双刷新", async
   const passwordInput = page.locator('input[placeholder="请输入当前登录密码"]:visible');
   await passwordInput.fill("  current password  ");
   await page.getByRole("button", { name: "确认新增该岗位" }).click();
-  await expect(page.getByText("岗位已新增，组织目录和岗位数据预检已刷新。")).toBeVisible();
+  await expect(page.locator(".t-drawer__header:visible")).toHaveCount(0);
 
   expect(previewBodies).toEqual([
     {

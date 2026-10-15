@@ -55,8 +55,8 @@
           />
         </label>
         <label>
-          <span>原始合同金额（分）</span>
-          <t-input
+          <span>原始合同金额（元）</span>
+          <YuanMoneyInput
             :model-value="modelValue.contractFacts.originalAmountCents"
             :disabled="!editable"
             @update:model-value="updateContractFact('originalAmountCents', textValue($event))"
@@ -81,8 +81,8 @@
           />
         </label>
         <label>
-          <span>历史累计结算（分）</span>
-          <t-input
+          <span>历史累计结算（元）</span>
+          <YuanMoneyInput
             :model-value="modelValue.historicalSettledCents"
             :disabled="!editable"
             @update:model-value="updateRoot('historicalSettledCents', textValue($event))"
@@ -157,6 +157,7 @@
 </template>
 
 <script setup lang="ts">
+import YuanMoneyInput from "../../../components/YuanMoneyInput.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import type {
   ContractTakeoverPerformanceStatus,

@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 329,
+    "registeredActionCount": 337,
     "pageActionCount": 56,
-    "backgroundActionCount": 273,
-    "reachableVueFileCount": 154,
+    "backgroundActionCount": 281,
+    "reachableVueFileCount": 159,
     "routeRootCount": 62,
-    "totalVueFileCount": 172,
-    "parsedVueFileCount": 172,
-    "reachableProductionModuleCount": 277,
-    "templateEventDirectiveCount": 991,
+    "totalVueFileCount": 174,
+    "parsedVueFileCount": 174,
+    "reachableProductionModuleCount": 284,
+    "templateEventDirectiveCount": 1013,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 319,
-    "candidateProductionMutationConsumerCount": 319,
-    "acceptedProductionMutationConsumerCount": 319,
-    "productionMutationConsumerPairCount": 319,
+    "coveredProductionMutationConsumerCount": 327,
+    "candidateProductionMutationConsumerCount": 327,
+    "acceptedProductionMutationConsumerCount": 327,
+    "productionMutationConsumerPairCount": 327,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 303,
-    "reachableProductionModuleCount": 277,
-    "totalVueFileCount": 172,
-    "parsedVueFileCount": 172
+    "totalProductionModuleCount": 306,
+    "reachableProductionModuleCount": 284,
+    "totalVueFileCount": 174,
+    "parsedVueFileCount": 174
   },
   "actions": [
     {
@@ -2036,7 +2036,7 @@
         "event": "call",
         "handler": "confirmContractBillTransitionsWithCapability",
         "kind": "background_call",
-        "sourceLine": 164,
+        "sourceLine": 165,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2102,7 +2102,7 @@
         "event": "call",
         "handler": "discardContractBillTransitionsWithCapability",
         "kind": "background_call",
-        "sourceLine": 146,
+        "sourceLine": 147,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2168,7 +2168,7 @@
         "event": "call",
         "handler": "saveContractBillTransitionsWithCapability",
         "kind": "background_call",
-        "sourceLine": 124,
+        "sourceLine": 125,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4519,7 +4519,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2020,
+        "sourceLine": 2022,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4584,7 +4584,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1979,
+        "sourceLine": 1981,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4649,7 +4649,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1940,
+        "sourceLine": 1942,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4714,7 +4714,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2071,
+        "sourceLine": 2073,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4779,7 +4779,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2084,
+        "sourceLine": 2086,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4844,7 +4844,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2058,
+        "sourceLine": 2060,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4909,7 +4909,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2123,
+        "sourceLine": 2125,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4974,7 +4974,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2136,
+        "sourceLine": 2138,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5039,7 +5039,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1892,
+        "sourceLine": 1894,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5104,7 +5104,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1916,
+        "sourceLine": 1918,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5169,7 +5169,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2242,
+        "sourceLine": 2244,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5234,7 +5234,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1904,
+        "sourceLine": 1906,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5299,7 +5299,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1965,
+        "sourceLine": 1967,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5364,7 +5364,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1928,
+        "sourceLine": 1930,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5429,7 +5429,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2045,
+        "sourceLine": 2047,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5494,7 +5494,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2221,
+        "sourceLine": 2223,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5559,7 +5559,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2192,
+        "sourceLine": 2194,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5624,7 +5624,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 1952,
+        "sourceLine": 1954,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5689,7 +5689,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2097,
+        "sourceLine": 2099,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5754,7 +5754,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2110,
+        "sourceLine": 2112,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5819,7 +5819,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2206,
+        "sourceLine": 2208,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5884,7 +5884,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2179,
+        "sourceLine": 2181,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5949,7 +5949,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2033,
+        "sourceLine": 2035,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6014,7 +6014,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2007,
+        "sourceLine": 2009,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6079,7 +6079,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1994,
+        "sourceLine": 1996,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6146,7 +6146,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2149,
+        "sourceLine": 2151,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6211,7 +6211,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2164,
+        "sourceLine": 2166,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7163,7 +7163,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 129,
+        "sourceLine": 130,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7228,7 +7228,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 253,
+        "sourceLine": 254,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7293,7 +7293,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 118,
+        "sourceLine": 119,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7358,7 +7358,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 245,
+        "sourceLine": 246,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7423,7 +7423,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 140,
+        "sourceLine": 141,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7553,7 +7553,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 177,
+        "sourceLine": 178,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7618,7 +7618,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 269,
+        "sourceLine": 270,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7683,7 +7683,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 185,
+        "sourceLine": 186,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7748,7 +7748,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 196,
+        "sourceLine": 197,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7813,7 +7813,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 277,
+        "sourceLine": 278,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7878,7 +7878,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 215,
+        "sourceLine": 216,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7943,7 +7943,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 204,
+        "sourceLine": 205,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8008,7 +8008,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 230,
+        "sourceLine": 231,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8073,7 +8073,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 155,
+        "sourceLine": 156,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8142,7 +8142,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 261,
+        "sourceLine": 262,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8207,7 +8207,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 166,
+        "sourceLine": 167,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8272,7 +8272,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 107,
+        "sourceLine": 108,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8337,7 +8337,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 99,
+        "sourceLine": 100,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9004,7 +9004,7 @@
         "event": "call",
         "handler": "allocateGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 194,
+        "sourceLine": 196,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9069,7 +9069,7 @@
         "event": "call",
         "handler": "createGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 170,
+        "sourceLine": 172,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9136,7 +9136,7 @@
         "event": "call",
         "handler": "resolveGlobalInvoiceEvidenceRepairImpactWithCapability",
         "kind": "background_call",
-        "sourceLine": 206,
+        "sourceLine": 208,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9201,7 +9201,7 @@
         "event": "call",
         "handler": "createRedGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 182,
+        "sourceLine": 184,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9267,7 +9267,7 @@
         "event": "call",
         "handler": "createReissueGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 188,
+        "sourceLine": 190,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9333,7 +9333,7 @@
         "event": "call",
         "handler": "reverseGlobalInvoiceAllocationWithCapability",
         "kind": "background_call",
-        "sourceLine": 200,
+        "sourceLine": 202,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9398,7 +9398,7 @@
         "event": "call",
         "handler": "uploadInvoiceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 81,
+        "sourceLine": 83,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9467,7 +9467,7 @@
         "event": "call",
         "handler": "voidGlobalInvoiceWithCapability",
         "kind": "background_call",
-        "sourceLine": 176,
+        "sourceLine": 178,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10421,6 +10421,584 @@
             "localCallChain": [
               "uploadOperatingTakeoverFileWithCapability",
               "uploadOperatingTakeoverSourceFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.department.create",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createOrganizationDepartmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 95,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageDepartments",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "createOrganizationDepartment",
+          "method": "POST",
+          "path": "/organization/departments",
+          "normalizedKey": "POST /organization/departments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/departments",
+            "normalizedKey": "POST /organization/departments",
+            "controller": "OrganizationController",
+            "handler": "createDepartment",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createOrganizationDepartmentWithCapability",
+              "createOrganizationDepartment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.department.update",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateOrganizationDepartmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 102,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageDepartments",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "updateOrganizationDepartment",
+          "method": "PATCH",
+          "path": "/organization/departments/:param",
+          "normalizedKey": "PATCH /organization/departments/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/organization/departments/:departmentId",
+            "normalizedKey": "PATCH /organization/departments/:param",
+            "controller": "OrganizationController",
+            "handler": "updateDepartment",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateOrganizationDepartmentWithCapability",
+              "updateOrganizationDepartment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.role-addition.apply",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyOrganizationRoleAdditionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 392,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "applyOrganizationRoleAddition",
+          "method": "POST",
+          "path": "/organization/role-additions/apply",
+          "normalizedKey": "POST /organization/role-additions/apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/role-additions/apply",
+            "normalizedKey": "POST /organization/role-additions/apply",
+            "controller": "OrganizationController",
+            "handler": "applyRoleAddition",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "general_manager",
+              "material_director",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyOrganizationRoleAdditionWithCapability",
+              "applyOrganizationRoleAddition"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.role-addition.preview",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewOrganizationRoleAdditionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 385,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "previewOrganizationRoleAddition",
+          "method": "POST",
+          "path": "/organization/role-additions/preview",
+          "normalizedKey": "POST /organization/role-additions/preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/role-additions/preview",
+            "normalizedKey": "POST /organization/role-additions/preview",
+            "controller": "OrganizationController",
+            "handler": "previewRoleAddition",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "general_manager",
+              "material_director",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewOrganizationRoleAdditionWithCapability",
+              "previewOrganizationRoleAddition"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.role-removal.apply",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyOrganizationRoleRemovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 367,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "applyOrganizationRoleRemoval",
+          "method": "POST",
+          "path": "/organization/role-changes/apply",
+          "normalizedKey": "POST /organization/role-changes/apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/role-changes/apply",
+            "normalizedKey": "POST /organization/role-changes/apply",
+            "controller": "OrganizationController",
+            "handler": "applyRoleRemoval",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "general_manager",
+              "material_director",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyOrganizationRoleRemovalWithCapability",
+              "applyOrganizationRoleRemoval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.role-removal.preview",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewOrganizationRoleRemovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 360,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoles",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "previewOrganizationRoleRemoval",
+          "method": "POST",
+          "path": "/organization/role-changes/preview",
+          "normalizedKey": "POST /organization/role-changes/preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/role-changes/preview",
+            "normalizedKey": "POST /organization/role-changes/preview",
+            "controller": "OrganizationController",
+            "handler": "previewRoleRemoval",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "general_manager",
+              "material_director",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewOrganizationRoleRemovalWithCapability",
+              "previewOrganizationRoleRemoval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.user.create",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createOrganizationUserWithCapability",
+        "kind": "background_call",
+        "sourceLine": 161,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreateUser",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "createOrganizationUser",
+          "method": "POST",
+          "path": "/organization/users",
+          "normalizedKey": "POST /organization/users",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/users",
+            "normalizedKey": "POST /organization/users",
+            "controller": "OrganizationController",
+            "handler": "createUser",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "general_manager",
+              "material_director",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createOrganizationUserWithCapability",
+              "createOrganizationUser"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "organization.user.update",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateOrganizationUserWithCapability",
+        "kind": "background_call",
+        "sourceLine": 109,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "updateOrganizationUser",
+          "method": "PATCH",
+          "path": "/organization/users/:param",
+          "normalizedKey": "PATCH /organization/users/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/organization/users/:userId",
+            "normalizedKey": "PATCH /organization/users/:param",
+            "controller": "OrganizationController",
+            "handler": "updateUser",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "general_manager",
+              "material_director",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateOrganizationUserWithCapability",
+              "updateOrganizationUser"
             ]
           },
           "ticketFollowups": []

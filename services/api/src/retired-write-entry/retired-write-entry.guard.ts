@@ -97,18 +97,10 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
     handler: "reviewNoInvoiceConfirmation"
   },
   { controller: "MeController", handler: "uploadSignature" },
-  { controller: "OrganizationController", handler: "applyRoleAddition" },
-  { controller: "OrganizationController", handler: "applyRoleRemoval" },
-  { controller: "OrganizationController", handler: "createDepartment" },
-  { controller: "OrganizationController", handler: "createUser" },
-  { controller: "OrganizationController", handler: "previewRoleAddition" },
-  { controller: "OrganizationController", handler: "previewRoleRemoval" },
   {
     controller: "OrganizationController",
     handler: "previewRoleRemovalBatch"
   },
-  { controller: "OrganizationController", handler: "updateDepartment" },
-  { controller: "OrganizationController", handler: "updateUser" },
   { controller: "ProjectController", handler: "recordProxyPayment" },
   { controller: "ProjectController", handler: "recordReceipt" },
   { controller: "ProjectController", handler: "requestSettlementExceptionQuota" },

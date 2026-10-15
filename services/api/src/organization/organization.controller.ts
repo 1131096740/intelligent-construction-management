@@ -31,6 +31,12 @@ export class OrganizationController {
     return this.organization.getDirectory();
   }
 
+  @Get("management-capabilities")
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
+  managementCapabilities(@CurrentUser() actor: AuthenticatedUser) {
+    return this.organization.getManagementCapabilities(actor.id);
+  }
+
   @Get("permission-integrity")
   permissionIntegrity() {
     return this.organization.getPermissionIntegrity();
@@ -87,6 +93,7 @@ export class OrganizationController {
   }
 
   @Post("departments")
+  @RequirePositions("chairman", "super_admin")
   createDepartment(
     @CurrentUser() actor: AuthenticatedUser,
     @Body() body: CreateDepartmentDto
@@ -95,6 +102,7 @@ export class OrganizationController {
   }
 
   @Patch("departments/:departmentId")
+  @RequirePositions("chairman", "super_admin")
   updateDepartment(
     @Param("departmentId") departmentId: string,
     @CurrentUser() actor: AuthenticatedUser,

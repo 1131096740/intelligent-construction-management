@@ -16,7 +16,7 @@ test("合同变更清单在页面保存映射后由主任确认", async ({ page 
   await page.getByText(/承接钢筋.*t/u).click();
   await expect(page.getByPlaceholder("来源已结数量")).toHaveValue("30");
   await expect(page.getByPlaceholder("目标期初数量")).toHaveValue("30");
-  await expect(page.getByPlaceholder("历史金额（分）")).toHaveValue("3000");
+  await expect(page.getByPlaceholder("历史金额（元）")).toHaveValue("30.00");
 
   await page.getByRole("button", { name: "保存映射", exact: true }).click();
   await expect.poll(() => mock.saveBodies).toHaveLength(1);
@@ -49,7 +49,7 @@ async function installRoutes(page: Page) {
   const confirmBodies: unknown[] = [];
   const workbenchRevisions: number[] = [];
 
-  await page.route("**/api/**", (route) => fulfillJson(route, {}));
+  await page.route((url) => url.pathname.startsWith("/api/"), (route) => fulfillJson(route, {}));
   await page.route("**/api/auth/login", (route) => fulfillJson(route, {
     user: {
       id: "seed-user-contract-director",
@@ -147,6 +147,7 @@ function workbench(revision: number) {
       clauseSnapshot: [],
       templateSnapshot: { fieldSchema: [], billSchema: [], clauseSchema: [], attachmentSchema: [], validationSchema: [] }
     },
+    draftOperationAvailableActions: ["save_contract_bill_transitions", ...(revision < 6 ? ["confirm_contract_bill_transitions"] : [])],
     change: { baseVersion: { id: "version-source-e2e", versionNo: 1, amountCents: "10000" }, editableFieldKeys: [], editableClauseKeys: [] },
     parties: [],
     bills: [],

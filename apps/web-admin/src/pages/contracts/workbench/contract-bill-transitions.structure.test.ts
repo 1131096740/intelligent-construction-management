@@ -22,7 +22,7 @@ describe("contract bill transition workbench panel", () => {
     expect(component).toContain("新版目标行");
     expect(component).toContain("来源已结数量");
     expect(component).toContain("目标期初数量");
-    expect(component).toContain("历史金额（分）");
+    expect(component).toContain("历史金额（元）");
     expect(component).toContain("单位变化时填写换算依据");
   });
 

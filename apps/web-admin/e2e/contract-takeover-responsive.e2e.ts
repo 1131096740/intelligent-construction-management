@@ -166,7 +166,7 @@ const departmentTakeover = {
         allocations: [
           {
             id: "allocation-1",
-            allocationType: "historical_settlement",
+            allocationType: "settlement",
             amountCents: "1500000",
             allocationOrder: 0
           }
@@ -324,7 +324,14 @@ async function loginWithMocks(
     const projectId = url.pathname.split("/")[3] ?? "";
     const projectTakeovers = options.takeoversByProject?.[projectId] ?? [takeoverFixture];
     const requestedTakeoverId = url.pathname.match(/\/contract-takeovers\/([^/]+)$/u)?.[1];
-    const body = url.pathname.endsWith("/company-entity-candidates")
+    const body = url.pathname.endsWith("/capability")
+      ? { projectId, availableActions: [
+          ...(roleKeys.some((role) => ["contract_staff", "contract_director"].includes(role)) ? ["save_contract_side", "create_takeover", "update_takeover", "submit_correction"] : []),
+          ...(roleKeys.some((role) => ["finance_staff", "finance_director"].includes(role)) ? ["save_finance_side"] : []),
+          ...(roleKeys.includes("contract_director") ? ["confirm_contract_side", "confirm_change_baseline", "review_correction"] : []),
+          ...(roleKeys.includes("finance_director") ? ["confirm_finance_side", "review_correction"] : [])
+        ] }
+      : url.pathname.endsWith("/company-entity-candidates")
       ? []
       : url.pathname.endsWith("/tax-fact-revisions")
       ? {
@@ -446,7 +453,7 @@ for (const roleCase of [
       .locator("..")
       .getByRole("textbox");
     const paymentAmount = financePanel
-      .getByText("实付金额（分）", { exact: true })
+      .getByText("实付金额（元）", { exact: true })
       .locator("..")
       .getByRole("textbox");
 
@@ -468,6 +475,42 @@ for (const roleCase of [
     ).toHaveCount(roleCase.financeConfirm ? 1 : 0);
   });
 }
+
+test("元金额在合同侧和财务侧精确保存，未完成输入不自动提交", async ({ page }) => {
+  const detail = structuredClone(departmentTakeover);
+  const bodies: Array<{ side: string; body: Record<string, unknown> }> = [];
+  await loginWithMocks(page, detail, { userId: "dual-editor-money", roleKeys: ["contract_staff", "finance_staff"] });
+  for (const side of ["contract", "finance"] as const) {
+    await page.route(`**/takeover-responsive/${side}-side`, (route) => {
+      const body = route.request().postDataJSON();
+      bodies.push({ side, body });
+      const model = side === "contract" ? detail.contractSide : detail.financeSide;
+      Object.assign(model, body, { revision: model.revision + 1 });
+      return route.fulfill({ json: { takeoverId: detail.id, side, revision: model.revision, confirmedRevision: null, savedAt: new Date().toISOString() } });
+    });
+  }
+  await page.route("**/api/projects/project-1/contract-takeovers/takeover-responsive", (route) => route.fulfill({ json: detail }));
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  const contractPanel = page.getByTestId("contract-takeover-contract-side");
+  const financePanel = page.getByTestId("contract-takeover-finance-side");
+  const amount = contractPanel.getByText("原始合同金额（元）", { exact: true }).locator("..").getByRole("textbox");
+  await expect(amount).toHaveValue("30000.00");
+  await amount.fill("1234.");
+  await page.waitForTimeout(2200);
+  expect(bodies).toEqual([]);
+  await expect(amount).toHaveValue("1234.");
+  await amount.fill("1234.56");
+  await contractPanel.getByText("历史累计结算（元）", { exact: true }).locator("..").getByRole("textbox").fill("1200.01");
+  const payment = financePanel.getByText("实付金额（元）", { exact: true }).locator("..").getByRole("textbox");
+  await expect(payment).toHaveValue("15000.00");
+  await payment.fill("0.01");
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(bodies.find((item) => item.side === "contract")?.body).toMatchObject({ contractFacts: { originalAmountCents: "123456" }, historicalSettledCents: "120001" });
+  expect(bodies.find((item) => item.side === "finance")?.body).toMatchObject({ payments: [{ amountCents: "1" }] });
+  await expect(amount).toHaveValue("1234.56");
+  await expect(payment).toHaveValue("0.01");
+});
 
 test("合同侧与财务侧交错自动保存时互不覆盖 model 和 revision", async ({ page }) => {
   const detail = structuredClone(departmentTakeover);
@@ -729,9 +772,9 @@ test("激活后更正展示 before delta after 并由主管复核应用", async 
   await page.goto("/历史合同接管");
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
   const panel = page.getByTestId("contract-takeover-correction");
-  await expect(panel.getByText('改前：{"amountCents":"2000000"}', { exact: true })).toBeVisible();
-  await expect(panel.getByText('差额：{"amountCents":"1"}', { exact: true })).toBeVisible();
-  await expect(panel.getByText('改后：{"amountCents":"2000001"}', { exact: true })).toBeVisible();
+  await expect(panel.getByText('改前：金额 20,000.00 元', { exact: true })).toBeVisible();
+  await expect(panel.getByText('差额：金额 0.01 元', { exact: true })).toBeVisible();
+  await expect(panel.getByText('改后：金额 20,000.01 元', { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "复核并应用" }).click();
   const dialog = page.locator(".t-dialog").filter({ hasText: "复核并应用接管更正" });
   await dialog.getByPlaceholder("说明本次操作原因").fill("主管已核对一分差额");
@@ -1078,6 +1121,7 @@ test("shows the contract confirmation action only after finance review passed", 
 test("keeps the signed-in session when a sensitive download password is incorrect", async ({
   page
 }) => {
+  await page.route("**/api/files/file-downloadable-1/download-ticket-capability", (route) => route.fulfill({ json: { availableActions: ["create_private_file_download_ticket"], action: { key: "create_private_file_download_ticket", enabled: true } } }));
   let downloadTicketRequests = 0;
   let refreshRequests = 0;
   await page.route("**/api/files/file-downloadable-1/download-ticket", (route) => {

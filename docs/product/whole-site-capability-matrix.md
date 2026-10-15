@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f9a86edb7f767f92f7d67804db50487797751722b7acf6b80a9074b02fb42ad5` |
-| webApiWrappers | ready | `652708ff9a319ae0e0e4e1a4ced39139d0e16cd845811e7336462ad3e5eaf434` |
-| webPageActions | ready | `7cf03dcfd3879f0c45b96fad56994999a1740fc2c80a56994c8e9409f55be754` |
-| routeUsage | ready | `a6d44279e856bd282225db1f920a6c6ffe015fce5cc109b003d50e36674185e9` |
+| nestRoutes | ready | `0cf4cbafbdee3fc294c50df4d0cff4f377718cf6d75f22b426fdaf0d5f3012f5` |
+| webApiWrappers | ready | `986737ee5b7ab3af06880db13ce443669dc4403097326eae133dc0422d02c899` |
+| webPageActions | ready | `2f2a97de31e7474effd1aab45498195d421ef668edfdb0eea551ab11cb2f0ec9` |
+| routeUsage | ready | `ebd2cd3ced3248c58e88c0c74cb528e7a5655dce11993d7bcabeff18c3a858b6` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 621 |
-| pageRouteCount | 404 |
+| routeCount | 622 |
+| pageRouteCount | 413 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 108 |
+| exitCandidateRouteCount | 100 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 599 |
+| mainRequestBindingCount | 600 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 329 |
-| actionBindingCount | 374 |
-| acceptedActionBindingCount | 352 |
+| registeredActionCount | 337 |
+| actionBindingCount | 382 |
+| acceptedActionBindingCount | 360 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 319 |
-| coveredProductionMutationConsumerPairCount | 319 |
+| productionMutationConsumerPairCount | 327 |
+| coveredProductionMutationConsumerPairCount | 327 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -136,6 +136,7 @@
 | GET | /operating-projections/project/:projectId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /operating-takeovers/historical-wage/options | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
+| GET | /organization/management-capabilities | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationManagementCapabilities | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
 | GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
 | GET | /payable-settlements/inter-entity-relationships | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchInterEntityRelationships | — | not_applicable | — |
@@ -247,8 +248,8 @@
 | PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionCase | fund-execution.case.update | covered | — |
 | PATCH | /fund-executions/cases/:caseId/reversal | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionReversalReason | fund-execution.reversal.update-reason | covered | — |
-| PATCH | /organization/departments/:departmentId | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | — | not_applicable | — |
-| PATCH | /organization/users/:userId | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | — | not_applicable | — |
+| PATCH | /organization/departments/:departmentId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | organization.department.update | covered | — |
+| PATCH | /organization/users/:userId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | organization.user.update | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
@@ -423,13 +424,13 @@
 | POST | /operating-takeovers/historical-wage/scopes/compensate | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/selection-ref | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /organization/departments | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | — | not_applicable | — |
-| POST | /organization/role-additions/apply | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | — | not_applicable | — |
-| POST | /organization/role-additions/preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition | — | not_applicable | — |
-| POST | /organization/role-changes/apply | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval | — | not_applicable | — |
+| POST | /organization/departments | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | organization.department.create | covered | — |
+| POST | /organization/role-additions/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | organization.role-addition.apply | covered | — |
+| POST | /organization/role-additions/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition | organization.role-addition.preview | covered | — |
+| POST | /organization/role-changes/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval | organization.role-removal.apply | covered | — |
 | POST | /organization/role-changes/batch-preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch | — | not_applicable | — |
-| POST | /organization/role-changes/preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval | — | not_applicable | — |
-| POST | /organization/users | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#createOrganizationUser | — | not_applicable | — |
+| POST | /organization/role-changes/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval | organization.role-removal.preview | covered | — |
+| POST | /organization/users | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationUser | organization.user.create | covered | — |
 | POST | /payable-settlements/:settlementCaseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#confirmPayableSettlement | payable-settlement.confirm | covered | — |
 | POST | /payable-settlements/:settlementCaseId/return | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnPayableSettlement | payable-settlement.return | covered | — |
 | POST | /payable-settlements/:settlementCaseId/submit | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#submitPayableSettlement | payable-settlement.submit | covered | — |

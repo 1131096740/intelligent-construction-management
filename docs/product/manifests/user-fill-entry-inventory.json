@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 320,
+    "activeBusinessActionCount": 328,
     "technicalActionCount": 9,
-    "activeBindingCount": 364,
-    "retiredWriteEntryCount": 97,
+    "activeBindingCount": 372,
+    "retiredWriteEntryCount": 89,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -2397,6 +2397,134 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /projects/:param/operating-takeovers/files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.department.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/departments"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.department.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "PATCH /organization/departments/:param"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.role-addition.apply",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/role-additions/apply"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.role-addition.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/role-additions/preview"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.role-removal.apply",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/role-changes/apply"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.role-removal.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/role-changes/preview"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.user.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/users"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "organization.user.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "PATCH /organization/users/:param"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -5441,20 +5569,6 @@
     },
     {
       "method": "PATCH",
-      "path": "/organization/departments/:departmentId",
-      "controller": "OrganizationController",
-      "handler": "updateDepartment",
-      "status": "gone"
-    },
-    {
-      "method": "PATCH",
-      "path": "/organization/users/:userId",
-      "controller": "OrganizationController",
-      "handler": "updateUser",
-      "status": "gone"
-    },
-    {
-      "method": "PATCH",
       "path": "/settlement-template-versions/:versionId",
       "controller": "SettlementTemplateGovernanceController",
       "handler": "update",
@@ -5784,51 +5898,9 @@
     },
     {
       "method": "POST",
-      "path": "/organization/departments",
-      "controller": "OrganizationController",
-      "handler": "createDepartment",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/organization/role-additions/apply",
-      "controller": "OrganizationController",
-      "handler": "applyRoleAddition",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/organization/role-additions/preview",
-      "controller": "OrganizationController",
-      "handler": "previewRoleAddition",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/organization/role-changes/apply",
-      "controller": "OrganizationController",
-      "handler": "applyRoleRemoval",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/organization/role-changes/batch-preview",
       "controller": "OrganizationController",
       "handler": "previewRoleRemovalBatch",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/organization/role-changes/preview",
-      "controller": "OrganizationController",
-      "handler": "previewRoleRemoval",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/organization/users",
-      "controller": "OrganizationController",
-      "handler": "createUser",
       "status": "gone"
     },
     {

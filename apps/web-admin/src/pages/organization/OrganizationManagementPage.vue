@@ -6,9 +6,11 @@
     <div class="page-head">
       <div>
         <h1>组织权限</h1>
-        <p>只读查看部门层级、人员归属、启停状态和岗位分配。</p>
+        <p>管理部门、人员账号和岗位。新增人员即开通登录账号。</p>
       </div>
       <div class="page-actions">
+        <t-button v-if="capabilities?.canCreateUser" theme="primary" :disabled="refreshing" @click="createUserVisible = true">新增人员和账号</t-button>
+        <t-button v-if="capabilities?.canManageDepartments" variant="outline" :disabled="refreshing" @click="openDepartment()">新增部门</t-button>
         <t-button
           variant="outline"
           :loading="refreshing"
@@ -22,7 +24,7 @@
 
     <t-alert
       theme="info"
-      title="首次上线只读：新增、编辑、启停、授岗和撤岗已从生产页面关闭；既有组织、人员与岗位事实保持可查。"
+      title="新增人员后，用手机号和公司初始密码登录，首次登录填写姓名并修改密码。调岗请先增加新岗位，再预览撤销原岗位；停用账号保留全部历史记录。"
       :close="false"
     />
 
@@ -110,6 +112,9 @@
           :horizontal-scroll-affixed-bottom="true"
           empty="暂无部门"
         >
+          <template #operation="{ row }">
+            <t-button v-if="capabilities?.canManageDepartments" variant="text" @click="openDepartment(row)">调整部门</t-button>
+          </template>
           <template #name="{ row }">
             <span class="department-name">{{ row.path }}</span>
           </template>
@@ -158,6 +163,14 @@
           :horizontal-scroll-affixed-bottom="true"
           empty="暂无人员"
         >
+          <template #operation="{ row }">
+            <div v-if="capabilities?.manageableUserIds.includes(row.id)" class="row-actions">
+              <t-button variant="text" @click="openUser(row)">{{ row.status === 'active' ? '部门 / 停用' : '重新启用' }}</t-button>
+              <t-button v-if="row.status === 'active'" variant="text" @click="openRole(row, 'add')">新增岗位</t-button>
+              <t-button variant="text" @click="openRole(row, 'remove')">撤销岗位</t-button>
+            </div>
+            <span v-else>{{ row.id === auth.user?.id ? '当前账号' : '无管理权限' }}</span>
+          </template>
           <template #status="{ row }">
             <t-tag
               size="small"
@@ -204,22 +217,39 @@
         <span v-if="!directory.positions.length">暂无岗位</span>
       </div>
     </t-card>
+    <OrganizationUserCreationDrawer
+      v-if="createUserVisible && capabilities?.canCreateUser" visible
+      :department-options="manageableDepartmentOptions" :role-options="initialRoleOptions" :project-options="activeProjectOptions"
+      @close="createUserVisible = false" @created="finishManagement"
+    />
+    <OrganizationDetailsDrawer v-if="detailsVisible" :directory="directory" :department="selectedDepartment" :user="selectedUser" @close="detailsVisible = false" @saved="finishManagement" />
+    <OrganizationRoleAdditionDrawer v-if="roleMode === 'add'" visible :user="selectedUser ?? null" :projects="directory.projects" :positions="manageablePositions" @close="roleMode = null" @applied="finishManagement" />
+    <OrganizationRoleRemovalDrawer v-if="roleMode === 'remove'" visible :user="selectedUser ?? null" :positions="manageablePositions" @close="roleMode = null" @applied="finishManagement" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
+import OrganizationUserCreationDrawer from "./components/OrganizationUserCreationDrawer.vue";
+import OrganizationDetailsDrawer from "./components/OrganizationDetailsDrawer.vue";
+import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
+import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 import {
   fetchOrganizationDirectory,
+  fetchOrganizationManagementCapabilities,
+  type OrganizationManagementCapabilities,
+  type OrganizationDirectoryUser,
   fetchPermissionIntegrity,
   type OrganizationDirectory,
   type PermissionIntegrityReadModel
 } from "../../api/organization.api";
 import {
   departmentStatusText,
+  activeOrganizationProjectOptions,
+  type FlatOrganizationDepartment,
   filterOrganizationUsers,
   flattenDepartmentTree,
   globalPositionsText,
@@ -246,6 +276,20 @@ const auth = useAuthStore();
 const isTechnicalAdmin = computed(
   () => auth.user?.globalRoleKeys.includes("super_admin") ?? false
 );
+const capabilities = ref<OrganizationManagementCapabilities | null>(null);
+const createUserVisible = ref(false);
+const detailsVisible = ref(false);
+const selectedDepartment = ref<FlatOrganizationDepartment>();
+const selectedUser = ref<OrganizationDirectoryUser>();
+const roleMode = ref<"add" | "remove" | null>(null);
+const manageablePositions = computed(() => directory.positions.filter((position) => capabilities.value?.manageableRoleKeys.includes(position.key)));
+const initialRoleOptions = computed(() => manageablePositions.value.filter((position) => !["super_admin", "engineering_department_member", "engineering_department_director"].includes(position.key)).map((position) => ({ label: position.name, value: position.key })));
+const activeProjectOptions = computed(() => activeOrganizationProjectOptions(directory.projects));
+const manageableDepartmentOptions = computed(() => flatDepartments.value.filter((department) => department.isActive && capabilities.value?.manageableDepartmentIds.includes(department.id)).map((department) => ({ label: department.path, value: department.id })));
+function openDepartment(department?: FlatOrganizationDepartment) { selectedUser.value = undefined; selectedDepartment.value = department; detailsVisible.value = true; }
+function openUser(user: OrganizationDirectoryUser) { selectedDepartment.value = undefined; selectedUser.value = user; detailsVisible.value = true; }
+function openRole(user: OrganizationDirectoryUser, mode: "add" | "remove") { selectedUser.value = user; roleMode.value = mode; }
+async function finishManagement() { createUserVisible.value = false; detailsVisible.value = false; roleMode.value = null; await refreshPage(); }
 const permissionIntegrity = ref<PermissionIntegrityReadModel | null>(null);
 const directoryLoading = ref(false);
 const integrityLoading = ref(false);
@@ -261,7 +305,8 @@ const filters = reactive<{
 const departmentColumns = [
   { colKey: "name", title: "部门", minWidth: 180 },
   { colKey: "parentName", title: "上级", minWidth: 120 },
-  { colKey: "isActive", title: "状态", width: 82 }
+  { colKey: "isActive", title: "状态", width: 82 },
+  { colKey: "operation", title: "操作", width: 112 }
 ];
 const userColumns = [
   { colKey: "name", title: "姓名", width: 96 },
@@ -271,7 +316,8 @@ const userColumns = [
   { colKey: "mustChangePassword", title: "首次改密", width: 108 },
   { colKey: "globalPositions", title: "全局岗位", minWidth: 150 },
   { colKey: "rosterProjects", title: "项目归属", minWidth: 180 },
-  { colKey: "projectPositions", title: "项目岗位", minWidth: 200 }
+  { colKey: "projectPositions", title: "项目岗位", minWidth: 200 },
+  { colKey: "operation", title: "人员与账号管理", minWidth: 280, fixed: "right" as const }
 ];
 const integrityColumns = [
   { colKey: "severity", title: "严重级别", width: 92 },
@@ -327,10 +373,12 @@ onMounted(() => {
 async function loadDirectory() {
   directoryLoading.value = true;
   try {
-    const result = await fetchOrganizationDirectory();
+    const [result, access] = await Promise.all([fetchOrganizationDirectory(), fetchOrganizationManagementCapabilities()]);
+    capabilities.value = access;
     Object.assign(directory, result);
     directoryMessage.value = "";
   } catch (error) {
+    capabilities.value = null;
     directoryMessage.value = error instanceof Error ? error.message : "读取组织目录失败，请稍后重试。";
   } finally {
     directoryLoading.value = false;
@@ -367,6 +415,7 @@ async function refreshPage() {
 </script>
 
 <style scoped>
+.row-actions { display: flex; flex-wrap: wrap; gap: var(--jg-space-xs); }
 .organization-page {
   display: flex;
   flex-direction: column;

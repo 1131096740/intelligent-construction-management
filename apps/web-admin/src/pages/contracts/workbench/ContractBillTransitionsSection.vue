@@ -50,9 +50,9 @@
             v-model="row.targetQuantity"
             placeholder="目标期初数量"
           />
-          <t-input
+          <YuanMoneyInput
             v-model="row.amountCents"
-            placeholder="历史金额（分）"
+            placeholder="历史金额（元）"
           />
           <t-input
             v-model="row.basis"
@@ -108,6 +108,7 @@
 </template>
 
 <script setup lang="ts">
+import YuanMoneyInput from "../../../components/YuanMoneyInput.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { centsTextToYuanText } from "../../../lib/money";
 import {

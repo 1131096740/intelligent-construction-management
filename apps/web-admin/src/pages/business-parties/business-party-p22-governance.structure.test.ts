@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const FROZEN_TEST_ONLY_WRAPPERS = [
   "createCompanyEntity",
-  "updateCompanyEntity",
+  "updateCompanyEntity"
+] as const;
+
+const RESTORED_ORGANIZATION_WRAPPERS = [
   "applyOrganizationRoleAddition",
   "applyOrganizationRoleRemoval",
   "createOrganizationUser",
@@ -12,7 +15,7 @@ const FROZEN_TEST_ONLY_WRAPPERS = [
   "previewOrganizationRoleRemoval"
 ] as const;
 
-type FrozenTestOnlyWrapper = (typeof FROZEN_TEST_ONLY_WRAPPERS)[number];
+type FrozenTestOnlyWrapper = (typeof FROZEN_TEST_ONLY_WRAPPERS)[number] | (typeof RESTORED_ORGANIZATION_WRAPPERS)[number];
 
 type RetirementManifestEntry = {
   apiFile: string;
@@ -88,7 +91,7 @@ function findWebApiWrapper(name: string): WebApiWrapper | undefined {
 }
 
 describe("POL-19A P22 retirement governance", () => {
-  it("keeps the seven frozen wrappers test-only in the repository-root registry", () => {
+  it("keeps the two company wrappers test-only in the repository-root registry", () => {
     for (const wrapperName of FROZEN_TEST_ONLY_WRAPPERS) {
       const entry = retirementManifest.entries.find((candidate: { wrappers: string[] }) =>
         candidate.wrappers.includes(wrapperName)
@@ -111,6 +114,13 @@ describe("POL-19A P22 retirement governance", () => {
       expect(wrapper?.unreachableConsumers).toContain(
         EXPECTED_UNREACHABLE_CONSUMERS[wrapperName]
       );
+    }
+  });
+
+  it("restores only authorized organization operations with actual page consumers", () => {
+    for (const wrapperName of RESTORED_ORGANIZATION_WRAPPERS) {
+      expect(retirementManifest.entries.some((entry) => entry.wrappers.includes(wrapperName))).toBe(false);
+      expect(findWebApiWrapper(wrapperName)?.productionConsumers).toContain(EXPECTED_UNREACHABLE_CONSUMERS[wrapperName]);
     }
   });
 

@@ -40,6 +40,11 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
       })
     })
   );
+  await page.route("**/api/organization/management-capabilities", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ canCreateUser: true, canManageDepartments: true, canManageUsers: true, canManageRoles: true,
+      manageableDepartmentIds: ["department-1"], manageableUserIds: ["user-1"], manageableRoleKeys: ["finance_staff", "contract_director", "project_manager", "super_admin"] })
+  }));
   await page.route("**/api/organization/directory", (route) => {
     directoryReads += 1;
     return route.fulfill({
@@ -151,7 +156,7 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
   await page.getByText("组织权限", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: "岗位管理" }).click();
+  await page.getByRole("button", { name: "撤销岗位" }).click();
   const globalRow = page.getByRole("row").filter({ hasText: "合同部主管" });
   await globalRow.getByRole("button", { name: "预览撤销影响" }).click();
   await expect(page.getByText("服务端判定不可撤销")).toBeVisible();
@@ -164,7 +169,7 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
   await passwordInput.scrollIntoViewIfNeeded();
   await passwordInput.fill("  current password  ");
   await page.getByRole("button", { name: "确认撤销该岗位" }).click();
-  await expect(page.getByText("岗位已撤销，组织目录和岗位数据预检已刷新。")).toBeVisible();
+  await expect(page.locator(".t-drawer__header:visible")).toHaveCount(0);
 
   expect(previewBodies).toEqual([
     { operation: "remove", userId: "user-1", scope: "global", roleKey: "contract_director" },
