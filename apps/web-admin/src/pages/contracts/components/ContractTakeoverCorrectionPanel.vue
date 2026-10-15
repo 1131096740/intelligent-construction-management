@@ -7,7 +7,7 @@
       <div class="panel-head">
         <div>
           <strong>激活后更正</strong>
-          <span>更正只追加 delta/reclassification/reversal，不覆盖原实付、凭证、分配或流水。</span>
+          <span>通过追加差额、重新分类或冲销更正，保留原有实付和凭证。</span>
         </div>
       </div>
     </template>
@@ -61,7 +61,7 @@
       v-else
       class="empty-state"
     >
-      暂无 schemaVersion=2 更正记录。
+      暂无更正记录。
     </div>
 
     <div
@@ -94,7 +94,7 @@
           />
         </label>
         <label v-if="form.correctionScope === 'historical_payment'">
-          <span>目标 allocation</span>
+          <span>目标实付分配</span>
           <t-select
             v-model="form.targetAllocationId"
             :options="allocationOptions"
@@ -111,7 +111,7 @@
         <label
           v-if="isBalanceScope && form.correctionOperation === 'reclassification'"
         >
-          <span>目标来源 allocation</span>
+          <span>目标来源分配</span>
           <t-select
             v-model="form.targetAllocationId"
             :options="balanceAllocationOptions"
@@ -132,8 +132,8 @@
           />
         </label>
         <label v-if="form.correctionOperation !== 'reversal'">
-          <span>差额（分，可正可负）</span>
-          <t-input v-model="form.deltaCents" />
+          <span>差额（元，可正可负）</span>
+          <YuanMoneyInput v-model="form.deltaCents" signed />
         </label>
         <label>
           <span>更正责任人</span>
@@ -180,6 +180,8 @@
 </template>
 
 <script setup lang="ts">
+import YuanMoneyInput from "../../../components/YuanMoneyInput.vue";
+import { centsTextToYuanText } from "../../../lib/money";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, reactive, ref, watch } from "vue";
 import type {
@@ -295,13 +297,13 @@ const paymentAllocationBalance = computed(() => {
 const paymentOptions = computed(() =>
   props.payments.map((payment) => ({
     value: payment.id,
-    label: `第 ${payment.sequenceNo} 笔 · ${payment.amountCents} 分`
+    label: `第 ${payment.sequenceNo} 笔 · ${centsTextToYuanText(payment.amountCents)} 元`
   }))
 );
 const allocationOptions = computed(() =>
   (selectedPayment.value?.allocations ?? []).map((allocation) => ({
     value: allocation.id,
-    label: `${allocation.allocationType} · ${allocation.amountCents} 分`
+    label: `${allocationLabel(allocation.allocationType)} · ${centsTextToYuanText(allocation.amountCents)} 元`
   }))
 );
 const balanceOptions = computed(() =>
@@ -309,7 +311,7 @@ const balanceOptions = computed(() =>
     .filter((balance) => balance.balanceType === form.correctionScope)
     .map((balance) => ({
       value: balance.id,
-      label: `${scopeLabel(balance.balanceType)} · 当前 ${balance.balanceCents} 分`
+      label: `${scopeLabel(balance.balanceType)} · 当前 ${centsTextToYuanText(balance.balanceCents)} 元`
     }))
 );
 const balanceAllocationOptions = computed(() =>
@@ -318,7 +320,7 @@ const balanceAllocationOptions = computed(() =>
       .filter((allocation) => allocation.allocationType === form.correctionScope)
       .map((allocation) => ({
         value: allocation.id,
-        label: `第 ${payment.sequenceNo} 笔 · ${allocation.amountCents} 分`
+        label: `第 ${payment.sequenceNo} 笔 · ${centsTextToYuanText(allocation.amountCents)} 元`
       }))
   )
 );
@@ -327,7 +329,7 @@ const balanceEntryOptions = computed(() =>
     .filter((entry) => entry.entryKind === "deduction")
     .map((entry) => ({
       value: entry.id,
-      label: `${entry.entryKind} · ${entry.amountCents} 分`
+      label: `已扣减流水 · ${centsTextToYuanText(entry.amountCents)} 元`
     }))
 );
 const canSubmitDraft = computed(() => {
@@ -372,6 +374,10 @@ watch(
   }
 );
 
+function allocationLabel(value: string) {
+  return ({ settlement: "结算核销", historical_advance: "历史预付款", abnormal_overpay: "异常超付" } as Record<string, string>)[value] ?? "历史实付分配";
+}
+
 function scopeLabel(scope: string) {
   return allScopeOptions.find((option) => option.value === scope)?.label ?? scope;
 }
@@ -390,7 +396,18 @@ function statusLabel(status: string) {
 }
 
 function snapshotText(value: unknown) {
-  return JSON.stringify(value);
+  if (!value || typeof value !== "object") return "无金额变化";
+  const labels: Record<string, string> = { amountCents: "金额", deltaCents: "调整差额", balanceCents: "余额", openingCents: "期初金额", historicalSettledCents: "累计结算", historicalPaidCents: "累计实付", sourceBalanceCents: "来源余额", originalEntryAmountCents: "原记录金额" };
+  const amounts = Object.entries(value).flatMap(([key, amount]) =>
+    /Cents$/.test(key) && typeof amount === "string" && /^-?\d+$/.test(amount)
+      ? [`${labels[key] ?? "金额"} ${centsTextToYuanText(amount)} 元`] : []
+  );
+  const factLabels: Record<string, string> = { allocationType: "分配类型", sourceType: "来源", targetType: "目标", from: "转出", to: "转入", originalEntryKind: "原记录类型" };
+  const typeLabels: Record<string, string> = { historical_settlement: "历史结算", settlement: "结算核销", historical_advance: "历史预付款", abnormal_overpay: "异常超付", opening: "期初", deduction: "抵扣", reversal: "冲销", correction: "更正", adjustment: "调整", reclassification: "重新分类" };
+  const facts = Object.entries(value).flatMap(([key, fact]) =>
+    factLabels[key] && typeof fact === "string" ? [`${factLabels[key]}：${typeLabels[fact] ?? "历史记录"}`] : []
+  );
+  return [...amounts, ...facts].join("；") || "无金额变化";
 }
 
 function resetTargets() {

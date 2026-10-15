@@ -7,7 +7,7 @@ import {
   type CreateExpenseClaimPayload,
   type ExpenseClaimCreateOptions
 } from "../../../api/expense-claim.api";
-import { yuanTextToCentsText } from "../../../lib/money";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./ExpenseClaimLineEditor.vue";
 import ExpenseClaimApplicationFields from "./ExpenseClaimApplicationFields.vue";
 import ExpenseClaimPayeeFields from "./ExpenseClaimPayeeFields.vue";
@@ -71,7 +71,7 @@ const applicantOptions = computed(() => options.value?.applicantUsers.map((item)
 const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const isProject = computed(() => Boolean(form.projectId));
 const needsWitness = computed(() => form.claimType === "reimbursement" && !isProject.value);
-const lineTotalYuan = computed(() => {
+const lineTotalCents = computed(() => {
   try {
     return form.lines.reduce((total, line) => total + BigInt(yuanTextToCentsText(line.amountYuan.trim() || "0")), 0n).toString();
   } catch { return null; }
@@ -134,7 +134,7 @@ function validateCurrentStep(): string {
     try {
       const requested = BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim()));
       if (requested <= 0n) return "申请金额必须大于 0";
-      if (lineTotalYuan.value === null || BigInt(lineTotalYuan.value) !== requested) return "费用明细合计必须等于申请金额";
+      if (lineTotalCents.value === null || BigInt(lineTotalCents.value) !== requested) return "费用明细合计必须等于申请金额";
       for (const line of form.lines) {
         if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) return "请补全每一行费用类别、发生日期和用途";
         if (!/^\d+$/.test(line.receiptCount) || Number(line.receiptCount) > 10000) return "单据张数必须是 0 到 10000 的整数";
@@ -396,7 +396,7 @@ async function createExpenseClaimWithCapability(
               </t-descriptions-item><t-descriptions-item label="申请金额">
                 ¥{{ form.requestedAmountYuan || '0.00' }}
               </t-descriptions-item><t-descriptions-item label="费用明细">
-                {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalYuan ?? '金额待核对'} 分` : '不适用' }}
+                {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalCents === null ? '金额待核对' : `${centsTextToYuanText(lineTotalCents)} 元`}` : '不适用' }}
               </t-descriptions-item><t-descriptions-item
                 v-if="form.claimType === 'incidental_expense'"
                 label="零星费用分类"

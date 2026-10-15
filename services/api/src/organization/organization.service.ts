@@ -415,6 +415,7 @@ export class OrganizationService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
+          await this.assertDepartmentManager(tx, actorUserId);
           if (parentId) {
             const parent = await tx.department.findUnique({
               where: { id: parentId },
@@ -471,6 +472,7 @@ export class OrganizationService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
+          await this.assertDepartmentManager(tx, actorUserId);
           const before = await tx.department.findUnique({
             where: { id: departmentId },
             select: { id: true, name: true, parentId: true, isActive: true }
@@ -1122,6 +1124,43 @@ export class OrganizationService {
         warningIssues
       },
       issues
+    };
+  }
+
+  private async assertDepartmentManager(tx: Prisma.TransactionClient, actorUserId: string) {
+    const roles = await this.assertOrganizationManager(tx, actorUserId);
+    if (!roles.includes("super_admin") && !roles.includes("chairman")) {
+      throw new ForbiddenException("只有董事长或系统管理员可以调整部门");
+    }
+  }
+
+  async getManagementCapabilities(actorUserId: string) {
+    const directory = await this.getDirectory();
+    const actor = directory.users.find((user) => user.id === actorUserId);
+    const roles = actor?.globalPositions.map((position) => position.key) ?? [];
+    if (actor?.status !== "active" || !roles.some((role) => ORGANIZATION_MANAGER_ROLE_KEYS.includes(role))) {
+      throw new ForbiddenException("当前账号没有人员账号管理权限");
+    }
+    const bounded = requiresDepartmentBoundary(roles);
+    const allowedDepartments = new Set<string>();
+    const visit = (nodes: DepartmentTreeNode[], parentAllowed = false) => {
+      for (const department of nodes) {
+        const allowed = !bounded || parentAllowed || department.id === actor.departmentId;
+        if (allowed) allowedDepartments.add(department.id);
+        visit(department.children, allowed);
+      }
+    };
+    visit(directory.departments);
+    return {
+      canCreateUser: (!bounded || allowedDepartments.size > 0) && ROLE_KEYS.some((role) => !["super_admin", "engineering_department_member", "engineering_department_director"].includes(role) && canManageRole(roles, role)),
+      canManageUsers: !bounded || allowedDepartments.size > 0,
+      canManageRoles: ROLE_KEYS.some((role) => canManageRole(roles, role)),
+      canManageDepartments: roles.includes("super_admin") || roles.includes("chairman"),
+      manageableDepartmentIds: [...allowedDepartments],
+      manageableUserIds: directory.users.filter((user) =>
+        user.id !== actorUserId && (!bounded || Boolean(user.departmentId && allowedDepartments.has(user.departmentId)))
+      ).map((user) => user.id),
+      manageableRoleKeys: ROLE_KEYS.filter((role) => canManageRole(roles, role))
     };
   }
 

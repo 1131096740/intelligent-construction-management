@@ -1596,3 +1596,22 @@ describe("OrganizationService core writes", () => {
     expect(harness.audit.record).toHaveBeenCalledWith(harness.tx, expect.any(Object));
   });
 });
+
+
+describe("董事长部门管理授权", () => {
+  it("董事长无需技术管理员岗位也能新增部门", async () => {
+    const harness = createWriteHarness({ actorGlobalAdminAssignment: null });
+    harness.tx.userPosition.findMany.mockResolvedValue([{ positionId: "chairman" }]);
+    harness.tx.position.findMany.mockResolvedValue([{ key: "chairman" }]);
+    await expect(harness.service.createDepartment("actor-1", { name: "新部门", confirmationPassword: "password" })).resolves.toMatchObject({ name: "新部门" });
+  });
+  it("普通主管即使通过密码确认仍不能新增或调整部门", async () => {
+    const harness = createWriteHarness({ actorGlobalAdminAssignment: null });
+    harness.tx.userPosition.findMany.mockResolvedValue([{ positionId: "director" }]);
+    harness.tx.position.findMany.mockResolvedValue([{ key: "finance_director" }]);
+    await expect(harness.service.createDepartment("actor-1", { name: "新部门", confirmationPassword: "password" })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(harness.service.updateDepartment("department-1", "actor-1", { name: "修改部门", confirmationPassword: "password" })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(harness.tx.department.create).not.toHaveBeenCalled();
+    expect(harness.tx.department.update).not.toHaveBeenCalled();
+  });
+});

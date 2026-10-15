@@ -155,15 +155,7 @@
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests.",
       "wrappers": [
-        "applyOrganizationRoleAddition",
-        "applyOrganizationRoleRemoval",
-        "createOrganizationDepartment",
-        "createOrganizationUser",
-        "previewOrganizationRoleAddition",
-        "previewOrganizationRoleRemoval",
-        "previewOrganizationRoleRemovalBatch",
-        "updateOrganizationDepartment",
-        "updateOrganizationUser"
+        "previewOrganizationRoleRemovalBatch"
       ]
     },
     {

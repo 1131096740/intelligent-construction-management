@@ -38,38 +38,10 @@
         <div class="section-head">
           <div>
             <h3>新增目标</h3>
-            <p>项目候选来自治理项目目录，不从该人员已有项目岗位反推。</p>
+            <p>请选择岗位；项目岗位还需选择所属项目。</p>
           </div>
         </div>
-        <t-form label-align="top">
-          <t-form-item label="岗位范围">
-            <t-select
-              v-model="scope"
-              :disabled="selectionDisabled"
-              :options="scopeOptions"
-              placeholder="请选择岗位范围"
-            />
-          </t-form-item>
-          <t-form-item
-            v-if="scope === 'project'"
-            label="所属项目"
-          >
-            <t-select
-              v-model="projectId"
-              :disabled="selectionDisabled"
-              :options="projectOptions"
-              placeholder="请选择启用项目"
-            />
-          </t-form-item>
-          <t-form-item label="待新增岗位">
-            <t-select
-              v-model="roleKey"
-              :disabled="selectionDisabled || (scope === 'project' && !projectId)"
-              :options="roleOptions"
-              placeholder="请选择待新增岗位"
-            />
-          </t-form-item>
-        </t-form>
+        <BusinessEntryForm v-model="entryDraft" :definition="entryDefinition" :readonly="selectionDisabled" :options-by-field="{ projectId: projectOptions, roleKey: roleOptions }" />
         <div class="addition-actions">
           <t-button
             theme="primary"
@@ -89,7 +61,7 @@
         <div class="section-head">
           <div>
             <h3>影响预览</h3>
-            <p>只有当前选择与服务端快照完全一致时，才开放密码确认。</p>
+            <p>核对影响后，输入你的当前登录密码确认。</p>
           </div>
         </div>
         <div class="preview-summary">
@@ -129,7 +101,7 @@
             <template #business="{ row }">
               <div class="stacked-cell">
                 <span>{{ row.businessTypeLabel }}</span>
-                <span>{{ row.businessId }}</span>
+
               </div>
             </template>
             <template #resolution="{ row }">
@@ -153,10 +125,6 @@
           </t-table>
         </div>
 
-        <div class="hash-panel">
-          <span>影响版本校验码</span>
-          <code>{{ preview.snapshotHash }}</code>
-        </div>
 
         <div
           v-if="canConfirmAddition"
@@ -201,11 +169,14 @@
 </template>
 
 <script setup lang="ts">
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { formatUnknownApiError } from "../../../api/error-message";
+import { ORGANIZATION_ROLE_ENTRY_DEFINITION, type BusinessEntryDraftPayload, type RoleKey } from "@jiangkong/shared-domain";
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { computed, ref, watch } from "vue";
 import {
   applyOrganizationRoleAddition,
   OrganizationApiError,
+  fetchOrganizationManagementCapabilities,
   previewOrganizationRoleAddition,
   type ApplyOrganizationRoleAdditionResult,
   type OrganizationDirectory,
@@ -248,10 +219,15 @@ const previewStale = ref(false);
 const previewMessage = ref("");
 const confirmationPassword = ref("");
 
-const scopeOptions = [
-  { label: "全局岗位", value: "global" },
-  { label: "项目岗位", value: "project" }
-];
+const entryDefinition = { ...ORGANIZATION_ROLE_ENTRY_DEFINITION, fields: ORGANIZATION_ROLE_ENTRY_DEFINITION.fields.filter((field) => field.key !== "operation") };
+const entryDraft = computed<BusinessEntryDraftPayload>({
+  get: () => ({ sceneKey: entryDefinition.key, values: { scope: scope.value, projectId: projectId.value, roleKey: roleKey.value } }),
+  set: ({ values }) => {
+    scope.value = values.scope === "project" ? "project" : "global";
+    projectId.value = typeof values.projectId === "string" ? values.projectId : undefined;
+    roleKey.value = typeof values.roleKey === "string" ? values.roleKey as RoleKey : undefined;
+  }
+});
 const impactColumns = [
   { colKey: "business", title: "受影响业务", minWidth: 168 },
   { colKey: "nodeName", title: "审批节点", minWidth: 136 },
@@ -361,20 +337,20 @@ async function previewTarget() {
       drawerDirectory()
     );
   } catch (error) {
-    previewMessage.value = error instanceof Error ? error.message : "新增岗位目标无效，请刷新后重试。";
+    previewMessage.value = formatUnknownApiError(error, "新增岗位目标无效，请刷新后重试。");
     return;
   }
   selectedTarget.value = target;
   previewing.value = true;
   try {
-    const result = await previewOrganizationRoleAddition(target);
+    const result = await previewOrganizationRoleAdditionWithCapability(target);
     if (!roleAdditionTargetMatchesPreview(target, result)) {
       previewMessage.value = "服务端返回的岗位目标与当前选择不一致，请刷新后重试。";
       return;
     }
     preview.value = result;
   } catch (error) {
-    previewMessage.value = error instanceof Error ? error.message : "读取岗位新增影响失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "读取岗位新增影响失败，请稍后重试。");
     resetPassword();
   } finally {
     previewing.value = false;
@@ -391,7 +367,7 @@ async function applyAddition() {
       preview.value,
       confirmationPassword.value
     );
-    const result = await applyOrganizationRoleAddition(payload);
+    const result = await applyOrganizationRoleAdditionWithCapability(payload);
     resetFlow();
     emit("applied", result);
   } catch (error) {
@@ -401,10 +377,24 @@ async function applyAddition() {
       selectedTarget.value = null;
       previewStale.value = true;
     }
-    previewMessage.value = error instanceof Error ? error.message : "新增岗位失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "新增岗位失败，请稍后重试。");
   } finally {
     applying.value = false;
   }
+}
+
+async function previewOrganizationRoleAdditionWithCapability(body: Parameters<typeof previewOrganizationRoleAddition>[0]) {
+  const capability = await fetchOrganizationManagementCapabilities();
+  const operationAllowed = capability.canManageRoles;
+  if (!operationAllowed) throw new Error("当前账号不能执行此组织管理操作");
+  return previewOrganizationRoleAddition(body);
+}
+
+async function applyOrganizationRoleAdditionWithCapability(body: Parameters<typeof applyOrganizationRoleAddition>[0]) {
+  const capability = await fetchOrganizationManagementCapabilities();
+  const operationAllowed = capability.canManageRoles;
+  if (!operationAllowed) throw new Error("当前账号不能执行此组织管理操作");
+  return applyOrganizationRoleAddition(body);
 }
 </script>
 

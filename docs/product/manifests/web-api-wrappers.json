@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 29,
-    "exportedFunctionCount": 594,
-    "transportWrapperCount": 574,
+    "exportedFunctionCount": 595,
+    "transportWrapperCount": 575,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 599,
+    "mainRequestBindingCount": 600,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 599,
-    "productionConsumerCount": 469,
+    "requestEdgeCount": 600,
+    "productionConsumerCount": 478,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 303,
-    "reachableProductionModuleCount": 277
+    "productionModuleCount": 306,
+    "reachableProductionModuleCount": 284
   },
   "wrappers": [
     {
@@ -12452,10 +12452,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "applyOrganizationRoleRemoval",
@@ -12482,10 +12482,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "createOrganizationDepartment",
@@ -12512,7 +12512,9 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -12540,10 +12542,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "fetchOrganizationDirectory",
@@ -12573,6 +12575,38 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOrganizationManagementCapabilities",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 376,
+          "method": "GET",
+          "path": "/organization/management-capabilities",
+          "normalizedPath": "/organization/management-capabilities",
+          "normalizedKey": "GET /organization/management-capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOrganizationManagementCapabilities",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
+        "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+        "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+        "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+        "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -12642,10 +12676,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "previewOrganizationRoleRemoval",
@@ -12672,10 +12706,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "previewOrganizationRoleRemovalBatch",
@@ -12732,7 +12766,9 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -12760,7 +12796,9 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -18353,55 +18391,7 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "applyOrganizationRoleAddition",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "applyOrganizationRoleRemoval",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "createOrganizationDepartment",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "createOrganizationUser",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "previewOrganizationRoleAddition",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "previewOrganizationRoleRemoval",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "wrapper": "previewOrganizationRoleRemovalBatch",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "updateOrganizationDepartment",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/organization.api.ts",
-      "wrapper": "updateOrganizationUser",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },

@@ -226,14 +226,14 @@ const confirmationEntryPayload = computed<BusinessEntryDraftPayload>({
 const caseColumns = [
   { colKey: "subject", title: "受控事项", minWidth: 180 },
   { colKey: "category", title: "分类", width: 140 },
-  { colKey: "authoritativeGrossCapCents", title: "权威毛额（分）", width: 150 },
+  { colKey: "authoritativeGrossCapCents", title: "权威毛额（元）", width: 150, cell: (_h: unknown, { row }: { row: ClearingCaseReadModel }) => centsTextToYuanText(row.authoritativeGrossCapCents) },
   { colKey: "revision", title: "修订", width: 80 },
   { colKey: "status", title: "状态", width: 100 }
 ];
 const eventColumns = [
   { colKey: "kind", title: "经济类型", width: 140 },
   { colKey: "workflowStatus", title: "流程状态", width: 120 },
-  { colKey: "amount", title: "当前金额（分）", width: 150 },
+  { colKey: "amount", title: "当前金额（元）", width: 150 },
   { colKey: "revision", title: "修订", width: 80 },
   { colKey: "actions", title: "操作", minWidth: 260 }
 ];
@@ -241,7 +241,7 @@ const timelineColumns = [
   { colKey: "kindLabel", title: "类型", width: 130 },
   { colKey: "versionNo", title: "版本", width: 80 },
   { colKey: "workflowStatus", title: "版本状态", width: 110 },
-  { colKey: "amountCents", title: "金额（分）", width: 140 },
+  { colKey: "amountCents", title: "金额（元）", width: 140, cell: (_h: unknown, { row }: { row: { amountCents: string } }) => centsTextToYuanText(row.amountCents) },
   { colKey: "createdAt", title: "创建时间", minWidth: 180 },
   { colKey: "confirmedAt", title: "确认时间", minWidth: 180 }
 ];
@@ -374,7 +374,7 @@ function openEventRevision(event: ClearingEventReadModel) {
   if (!current || event.workflowStatus !== "draft") return;
   editingEvent.value = event;
   eventForm.kind = event.kind;
-  eventForm.amountYuan = centsTextToYuanText(current.amountCents);
+  eventForm.amountYuan = centsTextToYuanText(current.amountCents).replaceAll(",", "");
   eventForm.evidenceLevel = current.evidenceLevel;
   eventForm.businessReason = typeof current.payloadSnapshot.businessReason === "string" ? current.payloadSnapshot.businessReason : "";
   eventForm.evidenceRef = typeof current.payloadSnapshot.evidenceRef === "string" ? current.payloadSnapshot.evidenceRef : "";
@@ -440,9 +440,9 @@ function requestAction(action: "submit" | "attest" | "confirm" | "return" | "reo
     : event.kind === "returned" ? "final_confirmed" : "authority_cap";
   confirmationForm.sourceEventVersionId = "";
   confirmationForm.sourceSelectionRef = "";
-  confirmationForm.amountYuan = current ? centsTextToYuanText(current.amountCents) : "";
+  confirmationForm.amountYuan = current ? centsTextToYuanText(current.amountCents).replaceAll(",", "") : "";
   confirmationForm.pairedWithheldAmountYuan = event.kind === "pending_reconciliation" && current
-    ? centsTextToYuanText(current.amountCents)
+    ? centsTextToYuanText(current.amountCents).replaceAll(",", "")
     : "";
   actionDialogVisible.value = true;
 }
@@ -590,7 +590,8 @@ async function reopenClearingEventWithCapability(
 }
 
 function currentAmount(event: ClearingEventReadModel) {
-  return event.versions.find((version) => version.versionNo === event.currentVersionNo)?.amountCents ?? "—";
+  const cents = event.versions.find((version) => version.versionNo === event.currentVersionNo)?.amountCents;
+  return cents === undefined ? "—" : centsTextToYuanText(cents);
 }
 
 function assignStringValues(
@@ -612,7 +613,7 @@ function displaySubject(row: ClearingCaseReadModel) {
 }
 
 function authorityOptionLabel(option: import("../../api/clearing.api").AffiliateClearingAuthorityOption) {
-  const cap = option.grossCapCents ? ` · 上限 ${option.grossCapCents} 分` : "";
+  const cap = option.grossCapCents ? ` · 上限 ${centsTextToYuanText(option.grossCapCents)} 元` : "";
   const period = option.period ? ` · ${option.period}` : "";
   return `${option.label ?? "权威业务选项"}${period}${cap}`;
 }
@@ -669,7 +670,7 @@ function formatDate(value: string | null) {
         <t-descriptions-item v-if="detail.sourceDiscriminator" label="权威依据">已按系统权威资料冻结</t-descriptions-item>
         <t-descriptions-item v-if="detail.sourceDiscriminator" label="来源">{{ detail.sourceDiscriminator === "construction_enterprise_guarantee" ? "保证金义务" : "派驻工资" }}</t-descriptions-item>
         <t-descriptions-item v-if="detail.sourceDiscriminator" label="覆盖方式">{{ detail.coverageKind === "ROLE_SUMMARY" ? "岗位汇总（不含人员）" : "人员明细（系统核验）" }}</t-descriptions-item>
-        <t-descriptions-item label="权威毛额（分）">{{ detail.authoritativeGrossCapCents }}</t-descriptions-item>
+        <t-descriptions-item label="权威毛额（元）">{{ centsTextToYuanText(detail.authoritativeGrossCapCents) }}</t-descriptions-item>
         <t-descriptions-item label="事项修订">{{ detail.revision }}</t-descriptions-item>
       </t-descriptions>
       <t-table row-key="id" :columns="eventColumns" :data="detail.events" empty="暂无清分事件">

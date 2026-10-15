@@ -2,6 +2,7 @@ import type { ExecutionContext } from "@nestjs/common";
 import { HttpException } from "@nestjs/common";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { OrganizationController } from "../organization/organization.controller";
 
 import {
   RETIRED_WRITE_ENTRIES,
@@ -56,6 +57,24 @@ function contextFor(input: {
 }
 
 describe("POL-19E retired write entry guard", () => {
+  it.each([
+    "createDepartment", "updateDepartment", "createUser", "updateUser",
+    "previewRoleAddition", "applyRoleAddition", "previewRoleRemoval", "applyRoleRemoval"
+  ] as const)("lets restored organization handler %s reach its authorization and business checks", (handler) => {
+    const context = {
+      getClass: () => OrganizationController,
+      getHandler: () => OrganizationController.prototype[handler],
+      switchToHttp: () => ({ getRequest: () => ({ method: handler.startsWith("update") ? "PATCH" : "POST" }) })
+    } as unknown as ExecutionContext;
+    expect(new RetiredWriteEntryGuard().canActivate(context)).toBe(true);
+  });
+
+  it("keeps the unrequested batch role operation retired", () => {
+    expect(() => new RetiredWriteEntryGuard().canActivate(contextFor({
+      controller: "OrganizationController", handler: "previewRoleRemovalBatch"
+    }))).toThrow(HttpException);
+  });
+
   it("covers every non-read-only exit candidate without an extra tombstone", () => {
     expect(
       RETIRED_WRITE_ENTRIES.map(

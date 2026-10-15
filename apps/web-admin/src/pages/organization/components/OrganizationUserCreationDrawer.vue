@@ -1,7 +1,7 @@
 <template>
   <t-drawer
     :visible="visible"
-    header="新增人员"
+    header="新增人员和账号"
     size="medium"
     :footer="false"
     :close-btn="!submitting"
@@ -28,40 +28,7 @@
       />
 
       <t-form label-align="top">
-        <t-form-item label="手机号">
-          <t-input
-            v-model="form.phone"
-            :disabled="submitting"
-            placeholder="请输入 11 位中国大陆手机号"
-          />
-        </t-form-item>
-        <t-form-item label="所属部门">
-          <t-select
-            v-model="form.departmentId"
-            :disabled="submitting"
-            :options="departmentOptions"
-            placeholder="请选择启用部门"
-          />
-        </t-form-item>
-        <t-form-item label="初始岗位">
-          <t-select
-            v-model="form.initialRoleKey"
-            :disabled="submitting"
-            :options="roleOptions"
-            placeholder="请选择允许授予的初始岗位"
-          />
-        </t-form-item>
-        <t-form-item
-          v-if="requiresProject"
-          label="安排项目"
-        >
-          <t-select
-            v-model="form.projectId"
-            :disabled="submitting"
-            :options="projectOptions"
-            placeholder="请选择启用项目"
-          />
-        </t-form-item>
+        <BusinessEntryForm v-model="entryDraft" :definition="entryDefinition" :readonly="submitting" :options-by-field="{ departmentId: departmentOptions, initialRoleKey: roleOptions, projectId: projectOptions }" />
         <t-form-item>
           <t-checkbox
             v-model="form.passwordRecorded"
@@ -94,7 +61,7 @@
           :loading="submitting"
           @click="submitCreation"
         >
-          确认创建人员
+          创建人员和账号
         </t-button>
       </div>
     </div>
@@ -102,10 +69,13 @@
 </template>
 
 <script setup lang="ts">
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { formatUnknownApiError } from "../../../api/error-message";
+import { ORGANIZATION_USER_ENTRY_DEFINITION, type BusinessEntryDraftPayload, type RoleKey } from "@jiangkong/shared-domain";
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { computed, reactive, ref, watch } from "vue";
 import {
   createOrganizationUser,
+  fetchOrganizationManagementCapabilities,
   GLOBAL_ORGANIZATION_ROLE_KEYS
 } from "../../../api/organization.api";
 import {
@@ -134,6 +104,15 @@ const requiresProject = computed(
     Boolean(form.initialRoleKey) &&
     !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey as RoleKey)
 );
+
+const entryDefinition = computed(() => ({
+  ...ORGANIZATION_USER_ENTRY_DEFINITION,
+  fields: ORGANIZATION_USER_ENTRY_DEFINITION.fields.filter((field) => ["phone", "departmentId", "initialRoleKey", ...(requiresProject.value ? ["projectId"] : [])].includes(field.key))
+}));
+const entryDraft = computed<BusinessEntryDraftPayload>({
+  get: () => ({ sceneKey: entryDefinition.value.key, values: { phone: form.phone, departmentId: form.departmentId, initialRoleKey: form.initialRoleKey, projectId: form.projectId } }),
+  set: ({ values }) => { form.phone = String(values.phone ?? ""); form.departmentId = String(values.departmentId ?? ""); form.initialRoleKey = String(values.initialRoleKey ?? "") as RoleKey | ""; form.projectId = String(values.projectId ?? ""); }
+});
 
 watch(requiresProject, (required) => {
   if (!required) form.projectId = "";
@@ -169,15 +148,22 @@ async function submitCreation() {
   submitting.value = true;
   message.value = "";
   try {
-    await createOrganizationUser(buildOrganizationUserCreatePayload(form));
+    await createOrganizationUserWithCapability(buildOrganizationUserCreatePayload(form));
     resetSensitiveFields();
     emit("created");
   } catch (error) {
     resetSensitiveFields();
-    message.value = error instanceof Error ? error.message : "创建人员失败，请稍后重试。";
+    message.value = formatUnknownApiError(error, "创建人员失败，请稍后重试。");
   } finally {
     submitting.value = false;
   }
+}
+
+async function createOrganizationUserWithCapability(body: Parameters<typeof createOrganizationUser>[0]) {
+  const capability = await fetchOrganizationManagementCapabilities();
+  const operationAllowed = capability.canCreateUser;
+  if (!operationAllowed) throw new Error("当前账号不能执行此组织管理操作");
+  return createOrganizationUser(body);
 }
 </script>
 

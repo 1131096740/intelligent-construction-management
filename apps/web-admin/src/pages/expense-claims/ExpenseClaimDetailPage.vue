@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
@@ -314,7 +315,7 @@ function openPayment() {
 async function recordPayment() {
   if (!detail.value || paymentSubmitting.value) return;
   const voucher = paymentVoucherFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
-  if (!paymentForm.value.amountCents.trim()) { actionError.value = "请填写本次补付金额（分）"; return; }
+  if (!paymentForm.value.amountCents.trim()) { actionError.value = "请填写本次补付金额（元）"; return; }
   if (!paymentForm.value.paidAt) { actionError.value = "请填写付款日期"; return; }
   if (!paymentForm.value.paymentMethod.trim()) { actionError.value = "请填写付款方式"; return; }
   if (!voucher) { actionError.value = "请上传本次付款凭证"; return; }
@@ -332,7 +333,7 @@ async function recordPayment() {
   finally { paymentSubmitting.value = false; }
 }
 function requestPaymentRecord() {
-  if (!paymentForm.value.amountCents.trim()) { actionError.value = "请填写本次补付金额（分）"; return; }
+  if (!paymentForm.value.amountCents.trim()) { actionError.value = "请填写本次补付金额（元）"; return; }
   if (!paymentForm.value.paidAt) { actionError.value = "请填写付款日期"; return; }
   if (!paymentForm.value.paymentMethod.trim()) { actionError.value = "请填写付款方式"; return; }
   const voucher = paymentVoucherFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
@@ -673,9 +674,9 @@ onMounted(() => void loadDetail());
               theme="warning"
               :message="`仅登记本次真实公司补付；当前剩余待付 ${amount(String(BigInt(detail.companyPayableAmountCents) - BigInt(detail.fundedAmountCents)))}`"
             />
-            <t-input
+            <YuanMoneyInput
               v-model="paymentForm.amountCents"
-              label="本次补付金额（分）"
+              label="本次补付金额（元）"
               placeholder="例如 1250"
             />
             <t-input
@@ -740,9 +741,9 @@ onMounted(() => void loadDetail());
           :close-on-overlay-click="false"
         >
           <div class="expense-claim-detail__review-form">
-            <t-input
+            <YuanMoneyInput
               v-model="loanActionForm.amountCents"
-              label="本次金额（分）"
+              label="本次金额（元）"
               placeholder="例如 1250"
             />
             <t-input

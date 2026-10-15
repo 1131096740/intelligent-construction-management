@@ -397,6 +397,22 @@ export function fetchOrganizationDirectory() {
   return readJson<OrganizationDirectory>("/organization/directory");
 }
 
+export interface OrganizationManagementCapabilities {
+  canManageUsers: boolean;
+  canManageRoles: boolean;
+  canCreateUser: boolean;
+  canManageDepartments: boolean;
+  manageableDepartmentIds: string[];
+  manageableUserIds: string[];
+  manageableRoleKeys: RoleKey[];
+}
+
+export function fetchOrganizationManagementCapabilities() {
+  return readJson<OrganizationManagementCapabilities>(
+    "/organization/management-capabilities", "读取组织管理权限失败"
+  );
+}
+
 export function fetchPermissionIntegrity() {
   return readJson<PermissionIntegrityReadModel>(
     "/organization/permission-integrity",

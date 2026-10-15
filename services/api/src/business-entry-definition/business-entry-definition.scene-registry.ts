@@ -1,6 +1,10 @@
 import { SETTLEMENT_TEMPLATE_ENTRY_DEFINITION } from "../settlement/settlement-template-entry-definition";
 import {
   createBusinessEntryDefinitionRegistry,
+  ORGANIZATION_DEPARTMENT_ENTRY_DEFINITION,
+  ORGANIZATION_USER_ENTRY_DEFINITION,
+  ORGANIZATION_ROLE_ENTRY_DEFINITION,
+  ORGANIZATION_ENTRY_MANAGER_ROLE_KEYS,
   OPERATING_TAKEOVER_SCENE_DEFINITIONS,
   PROJECT_OPERATING_TAKEOVER_STATUS_LABELS,
   PROJECT_OPERATING_TAKEOVER_STATUSES,
@@ -15,17 +19,7 @@ import {
 
 const projectFinanceRoles = ["finance_staff", "finance_director"] as const;
 const projectMaintenanceRoles = ["chairman", "general_manager"] as const;
-const organizationRoles = [
-  "chairman",
-  "general_manager",
-  "engineering_department_director",
-  "finance_director",
-  "contract_director",
-  "budget_director",
-  "material_director",
-  "comprehensive_director",
-  "super_admin"
-] as const;
+const organizationRoles = ORGANIZATION_ENTRY_MANAGER_ROLE_KEYS;
 const companyRoles = ["comprehensive_director", "contract_staff", "contract_director"] as const;
 const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
 const businessPartyCreateRoles = [
@@ -464,21 +458,9 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     ]
   },
   ...OPERATING_TAKEOVER_SCENE_DEFINITIONS,
-  globalDefinition("department", "department", "部门", [
-    textField("name", "部门名称", organizationRoles),
-    textField("parentId", "上级部门", organizationRoles)
-  ]),
-  globalDefinition("organization_user", "organization_user", "组织用户", [
-    textField("name", "姓名", organizationRoles),
-    textField("phone", "手机号", organizationRoles),
-    textField("departmentId", "所属部门", organizationRoles)
-  ]),
-  globalDefinition("user_role_assignment_command", "user_role_assignment_command", "用户岗位命令", [
-    textField("operation", "操作", organizationRoles),
-    textField("roleKey", "岗位", organizationRoles),
-    textField("scope", "授权范围", organizationRoles),
-    textField("projectId", "项目", organizationRoles)
-  ]),
+  ORGANIZATION_DEPARTMENT_ENTRY_DEFINITION,
+  ORGANIZATION_USER_ENTRY_DEFINITION,
+  ORGANIZATION_ROLE_ENTRY_DEFINITION,
   globalDefinition("company_entity", "company_entity", "我方公司主体", [
     textField("name", "公司名称", companyRoles),
     textField("unifiedSocialCreditCode", "统一社会信用代码", companyRoles),

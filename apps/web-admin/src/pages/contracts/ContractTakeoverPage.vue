@@ -1025,6 +1025,7 @@
 
           <div class="department-workspace">
             <ContractTakeoverContractSidePanel
+              :key="`contract-${selectedTakeoverId}`"
               :model-value="contractSideState?.model ?? null"
               :revision="contractSideState?.revision ?? 0"
               :finance-basis-revision="selectedRow.takeover.contractSide?.financeBasisRevision ?? 0"
@@ -1037,6 +1038,7 @@
               @upload-evidence="uploadContractSideEvidence"
             />
             <ContractTakeoverFinanceSidePanel
+              :key="`finance-${selectedTakeoverId}`"
               :model-value="financeSideState?.model ?? null"
               :revision="financeSideState?.revision ?? 0"
               :based-on-contract-revision="financeSideState?.model.basedOnContractRevision ?? 0"
@@ -2728,6 +2730,10 @@ async function refreshDepartmentDetail(takeoverId: string) {
   }
 }
 
+function validSideAmount(value: unknown): boolean {
+  return typeof value === "string" && /^\d+$/.test(value) && BigInt(value) <= 9_223_372_036_854_775_807n;
+}
+
 async function saveContractSide(
   projectId = selectedProjectId.value,
   takeoverId = selectedTakeoverId.value
@@ -2735,6 +2741,10 @@ async function saveContractSide(
   const state = contractSideState.value;
   if (!state?.dirty) return true;
   if (!projectId || !takeoverId || !departmentAccess.value.canEditContract) return false;
+  if (![state.model.contractFacts.originalAmountCents, state.model.historicalSettledCents].every(validSideAmount)) {
+    contractSideStatus.value = "请补全元金额，最多保留两位小数；当前输入尚未保存";
+    return false;
+  }
   const attempt = beginTakeoverSideSave(state, () => crypto.randomUUID());
   contractSideStatus.value = "合同侧保存中…";
   try {
@@ -2768,6 +2778,10 @@ async function saveFinanceSide(
   const state = financeSideState.value;
   if (!state?.dirty) return true;
   if (!projectId || !takeoverId || !departmentAccess.value.canEditFinance) return false;
+  if (!state.model.payments.every((payment) => validSideAmount(payment.amountCents))) {
+    financeSideStatus.value = "请补全每笔实付的元金额，最多保留两位小数；当前输入尚未保存";
+    return false;
+  }
   const attempt = beginTakeoverSideSave(state, () => crypto.randomUUID());
   financeSideStatus.value = "财务侧保存中…";
   try {

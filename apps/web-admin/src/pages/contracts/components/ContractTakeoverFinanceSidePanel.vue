@@ -55,8 +55,8 @@
         </div>
         <div class="form-grid">
           <label>
-            <span>实付金额（分）</span>
-            <t-input
+            <span>实付金额（元）</span>
+            <YuanMoneyInput
               :model-value="payment.amountCents"
               :disabled="!editable"
               @update:model-value="updatePayment(index, 'amountCents', textValue($event))"
@@ -123,7 +123,7 @@
             v-for="allocation in payment.allocations"
             :key="allocation.id"
           >
-            {{ allocation.allocationType }}：{{ allocation.amountCents }} 分
+            {{ allocationLabel(allocation.allocationType) }}：{{ centsTextToYuanText(allocation.amountCents) }} 元
           </span>
         </div>
       </div>
@@ -178,8 +178,8 @@
           class="balance-card"
         >
           <strong>{{ balance.balanceType === "historical_advance" ? "历史预付款余额" : "异常超付余额" }}</strong>
-          <span>期初 {{ balance.openingCents }} 分</span>
-          <span>当前 {{ balance.balanceCents }} 分 · 修订 v{{ balance.revision }}</span>
+          <span>期初 {{ centsTextToYuanText(balance.openingCents) }} 元</span>
+          <span>当前 {{ centsTextToYuanText(balance.balanceCents) }} 元 · 修订 v{{ balance.revision }}</span>
         </div>
       </div>
       <p class="status-line">
@@ -196,6 +196,8 @@
 </template>
 
 <script setup lang="ts">
+import YuanMoneyInput from "../../../components/YuanMoneyInput.vue";
+import { centsTextToYuanText } from "../../../lib/money";
 import type { UploadFile } from "tdesign-vue-next";
 import type {
   ContractTakeoverBalanceReadModel,
@@ -242,6 +244,10 @@ const excessOptions = [
   { value: "historical_advance", label: "历史预付款" },
   { value: "abnormal_overpay", label: "异常超付" }
 ];
+
+function allocationLabel(value: string) {
+  return ({ settlement: "结算核销", historical_advance: "历史预付款", abnormal_overpay: "异常超付" } as Record<string, string>)[value] ?? "历史实付分配";
+}
 
 function textValue(value: unknown): string {
   return typeof value === "string" ? value : "";

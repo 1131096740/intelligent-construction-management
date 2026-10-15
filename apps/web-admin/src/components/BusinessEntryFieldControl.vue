@@ -20,7 +20,7 @@ const booleanOptions = [
   { label: "是", value: true },
   { label: "否", value: false }
 ];
-const usesSearchSelect = computed(() => [
+const usesSearchSelect = computed(() => props.options !== undefined || [
   "company",
   "counterparty",
   "contract",

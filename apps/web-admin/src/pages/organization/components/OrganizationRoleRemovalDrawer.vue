@@ -12,7 +12,7 @@
     <div class="role-drawer">
       <t-alert
         theme="info"
-        :title="user ? `当前人员：${user.name}。当前仅支持逐条撤销，岗位新增尚未开放。` : '未读取待管理人员。'"
+        :title="user ? `当前人员：${user.name}。先预览撤销的影响，确认后移除岗位。` : '未读取待管理人员。'"
         :close="false"
       />
 
@@ -128,7 +128,7 @@
               <template #business="{ row }">
                 <div class="impact-business">
                   <span>{{ row.businessTypeLabel }}</span>
-                  <span>{{ row.businessId }}</span>
+
                 </div>
               </template>
               <template #status="{ row }">
@@ -146,10 +146,6 @@
             </t-table>
           </div>
 
-          <div class="hash-panel">
-            <span>影响版本校验码</span>
-            <code>{{ preview.snapshotHash }}</code>
-          </div>
 
           <div
             v-if="canConfirmRemoval"
@@ -195,10 +191,12 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import { computed, ref, watch } from "vue";
 import {
   applyOrganizationRoleRemoval,
   OrganizationApiError,
+  fetchOrganizationManagementCapabilities,
   previewOrganizationRoleRemoval,
   type ApplyOrganizationRoleRemovalResult,
   type OrganizationDirectory,
@@ -320,7 +318,7 @@ async function previewTarget(target: OrganizationRoleRemovalTargetRow) {
   if (!sameTarget) preview.value = null;
   previewing.value = true;
   try {
-    const result = await previewOrganizationRoleRemoval(target);
+    const result = await previewOrganizationRoleRemovalWithCapability(target);
     if (selectedTarget.value?.key !== target.key) return;
     if (!roleRemovalTargetMatchesPreview(target, result)) {
       preview.value = null;
@@ -330,7 +328,7 @@ async function previewTarget(target: OrganizationRoleRemovalTargetRow) {
     preview.value = result;
     previewStale.value = false;
   } catch (error) {
-    previewMessage.value = error instanceof Error ? error.message : "读取岗位撤销影响失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "读取岗位撤销影响失败，请稍后重试。");
   } finally {
     previewing.value = false;
   }
@@ -346,7 +344,7 @@ async function applyRemoval() {
       preview.value,
       confirmationPassword.value
     );
-    const result = await applyOrganizationRoleRemoval(payload);
+    const result = await applyOrganizationRoleRemovalWithCapability(payload);
     resetPassword();
     emit("applied", result);
   } catch (error) {
@@ -354,10 +352,24 @@ async function applyRemoval() {
     if (error instanceof OrganizationApiError && error.status === 409) {
       previewStale.value = true;
     }
-    previewMessage.value = error instanceof Error ? error.message : "撤销岗位失败，请稍后重试。";
+    previewMessage.value = formatUnknownApiError(error, "撤销岗位失败，请稍后重试。");
   } finally {
     applying.value = false;
   }
+}
+
+async function previewOrganizationRoleRemovalWithCapability(body: Parameters<typeof previewOrganizationRoleRemoval>[0]) {
+  const capability = await fetchOrganizationManagementCapabilities();
+  const operationAllowed = capability.canManageRoles;
+  if (!operationAllowed) throw new Error("当前账号不能执行此组织管理操作");
+  return previewOrganizationRoleRemoval(body);
+}
+
+async function applyOrganizationRoleRemovalWithCapability(body: Parameters<typeof applyOrganizationRoleRemoval>[0]) {
+  const capability = await fetchOrganizationManagementCapabilities();
+  const operationAllowed = capability.canManageRoles;
+  if (!operationAllowed) throw new Error("当前账号不能执行此组织管理操作");
+  return applyOrganizationRoleRemoval(body);
 }
 </script>
 

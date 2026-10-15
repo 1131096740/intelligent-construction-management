@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 621,
-    "exactRouteCount": 621,
-    "normalizedRouteCount": 621,
+    "routeCount": 622,
+    "exactRouteCount": 622,
+    "normalizedRouteCount": 622,
     "classificationOverrideCount": 221,
     "consumerSurfaceOverrideCount": 40,
-    "classificationOverrideSha256": "08aaa25f72423ccbdca2d663e851084ec5fee4bee0cc2e44642ec3f4e067dc8b",
+    "classificationOverrideSha256": "4e44a5d1ac665e3d71695a595b97c3cca8fe5f0b5ecfefec99476cea526693e3",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-    "derivedProductionPageCount": 400,
-    "pageRouteCount": 404,
+    "derivedProductionPageCount": 401,
+    "pageRouteCount": 413,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 108,
+    "exitCandidateCount": 100,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 457,
+      "web_api_wrapper": 466,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 37,
-      "none": 119
+      "none": 111
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 457,
+    "productionWrapperRouteCount": 466,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -4073,6 +4073,61 @@
             "normalizedKey": "GET /organization/directory",
             "productionConsumers": [
               "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/organization/management-capabilities",
+      "normalizedKey": "GET /organization/management-capabilities",
+      "controller": "OrganizationController",
+      "handler": "managementCapabilities",
+      "sourceFile": "services/api/src/organization/organization.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "budget_director",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "engineering_department_director",
+        "finance_director",
+        "general_manager",
+        "material_director",
+        "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "fetchOrganizationManagementCapabilities",
+            "method": "GET",
+            "normalizedPath": "/organization/management-capabilities",
+            "normalizedKey": "GET /organization/management-capabilities",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
+              "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
+              "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
+              "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
+              "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
             ]
           }
         ],
@@ -9040,6 +9095,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
+        "chairman",
         "super_admin"
       ],
       "requiredProjectAction": null,
@@ -9047,18 +9103,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "updateOrganizationDepartment",
+            "method": "PATCH",
+            "normalizedPath": "/organization/departments/:param",
+            "normalizedKey": "PATCH /organization/departments/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "PATCH",
@@ -9087,18 +9154,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "updateOrganizationUser",
+            "method": "PATCH",
+            "normalizedPath": "/organization/users/:param",
+            "normalizedKey": "PATCH /organization/users/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "PATCH",
@@ -15680,6 +15758,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
+        "chairman",
         "super_admin"
       ],
       "requiredProjectAction": null,
@@ -15687,18 +15766,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "createOrganizationDepartment",
+            "method": "POST",
+            "normalizedPath": "/organization/departments",
+            "normalizedKey": "POST /organization/departments",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -15727,18 +15817,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "applyOrganizationRoleAddition",
+            "method": "POST",
+            "normalizedPath": "/organization/role-additions/apply",
+            "normalizedKey": "POST /organization/role-additions/apply",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -15767,18 +15868,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "previewOrganizationRoleAddition",
+            "method": "POST",
+            "normalizedPath": "/organization/role-additions/preview",
+            "normalizedKey": "POST /organization/role-additions/preview",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -15807,18 +15919,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "applyOrganizationRoleRemoval",
+            "method": "POST",
+            "normalizedPath": "/organization/role-changes/apply",
+            "normalizedKey": "POST /organization/role-changes/apply",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -15879,18 +16002,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "previewOrganizationRoleRemoval",
+            "method": "POST",
+            "normalizedPath": "/organization/role-changes/preview",
+            "normalizedKey": "POST /organization/role-changes/preview",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -15919,18 +16053,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
+      "usage": "page",
       "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "classificationReason": "owner_requested_organization_management_20261015",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "createOrganizationUser",
+            "method": "POST",
+            "normalizedPath": "/organization/users",
+            "normalizedKey": "POST /organization/users",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
