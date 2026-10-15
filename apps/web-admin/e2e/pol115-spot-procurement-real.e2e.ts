@@ -2,6 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { gotoWithSingleWebKitInternalErrorRetry } from "./support/playwright-navigation";
 
+// 仅输出隔离合成场景的页面文字，不读取会话、请求头或浏览器存储。
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const state = await page.evaluate(() => ({
+    path: window.location.pathname,
+    title: document.title,
+    readyState: document.readyState,
+    pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
+  })).catch(() => ({ pageUnavailable: true }));
+  console.error("零采真实浏览器失败现场", JSON.stringify(state));
+});
+
 type Session = { user: unknown; tokens: { accessToken: string; refreshToken: string } };
 
 async function useSession(page: Page, session: Session) {
