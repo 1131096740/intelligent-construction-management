@@ -1298,7 +1298,7 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
   );
 
-  assert.equal(addedProtected.length, 107);
+  assert.equal(addedProtected.length, 110);
   for (const representative of [
     "ClearingCase",
     "FundExecution",
@@ -1310,6 +1310,42 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
       addedProtected.find((item) => item.name === representative)?.disposition,
       "protected"
     );
+  }
+});
+
+test("员工入职与认证安全记录默认保留且不进入业务归零候选", () => {
+  const names = ["EmployeeRegistration", "AuthRateLimit", "SmsChallenge"];
+  const policy = {
+    ...smallPolicy,
+    tables: [
+      ...smallPolicy.tables,
+      ...BUSINESS_ZEROING_POLICY.tables.filter((item) => names.includes(item.name))
+    ]
+  };
+  const report = buildPreflightReport({
+    policy,
+    inventory: inventory({
+      tables: [
+        ...inventory().tables,
+        ...names.map((name) => ({
+          name,
+          primaryKey: [name === "AuthRateLimit" ? "key" : "id"],
+          rows: [name === "AuthRateLimit" ? { key: "synthetic-auth-limit", hits: 1 } : { id: `${name}-synthetic`, status: "pending" }]
+        }))
+      ]
+    }),
+    decisions: decisionManifest([{
+      businessType: "项目基本资料", table: "Project", primaryKey: { id: "p1" },
+      decision: "preserve", reason: "正式项目必须原样保留"
+    }]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  assert.equal(report.status, "ready");
+  for (const name of names) {
+    assert.equal(report.deletionCandidates.some((item) => item.table === name), false);
+    assert.equal(report.preservationAnchors.some((item) => item.table === name), true);
   }
 });
 
