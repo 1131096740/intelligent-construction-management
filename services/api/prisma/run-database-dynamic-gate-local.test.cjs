@@ -36,6 +36,9 @@ const {
   waitForPostgres: waitForInvoiceLedgerPostgres
 } = require("../src/invoice-ledger/run-invoice-ledger-postgresql16-local.cjs");
 const {
+  waitForPostgres: waitForSettlementDraftPostgres
+} = require("./run-settlement-draft-lifecycle-concurrency-local.cjs");
+const {
   CURRENT_PROCESS_DYNAMIC_TESTS,
   assertCanonicalMigrationBaseline: assertPol275CanonicalMigrationBaseline,
   assertSafeEnvironment: assertPol275SafeEnvironment,
@@ -205,18 +208,33 @@ test("invoice ledger refuses the bootstrap socket-only server before host readin
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 315 pending tests as executable local coverage", () => {
+test("settlement draft readiness waits beyond the bootstrap socket-only server", async () => {
+  const dockerCalls = [];
+  let finalServerReady = false;
+  await waitForSettlementDraftPostgres("settlement-bootstrap-postgres", async (args) => {
+    dockerCalls.push(args);
+    const hostIndex = args.indexOf("-h");
+    if (hostIndex >= 0 && args[hostIndex + 1] === "127.0.0.1") {
+      if (dockerCalls.length === 1) throw new Error("bootstrap has no TCP listener");
+      finalServerReady = true;
+    }
+  });
+  assert.equal(finalServerReady, true, "migration must wait for the final TCP server");
+  assert.equal(dockerCalls.length, 2);
+});
+
+test("manifest derives all 326 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 62,
-    fullyPendingSuites: 51,
+    pendingFiles: 63,
+    fullyPendingSuites: 52,
     partiallyPendingSuites: 11,
-    pendingTests: 315,
-    coveredFiles: 62,
-    coveredTests: 315,
+    pendingTests: 326,
+    coveredFiles: 63,
+    coveredTests: 326,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -598,7 +616,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=315/u
+    /inventory\.coveredTests=26，派生值=326/u
   );
 });
 

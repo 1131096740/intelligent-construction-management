@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
@@ -82,9 +83,10 @@ const columns = [
   { colKey: "evidenceType", title: "证据类型", width: 130 },
   { colKey: "remark", title: "备注", minWidth: 160 }
 ];
-const title = computed(() => detail.value ? ({ reimbursement: "费用报销", loan: "借款申请", incidental_expense: "零星费用" } as const)[detail.value.claimType] : "费用申请");
+const title = computed(() => detail.value?.generalProcurement ? "综合采购付款" : detail.value ? ({ reimbursement: "费用报销", loan: "借款申请", incidental_expense: "零星费用" } as const)[detail.value.claimType] : "费用申请");
 function incidentalExpenseCategoryLabel(value: ExpenseClaimDetailReadModel["incidentalExpenseCategory"]) {
-  return value ? ({ temporary_service: "非材料临时服务", temporary_machinery_shift: "临时机械台班", sporadic_labor: "零星用工", other_incidental: "其他非材料临时费用" } as const)[value] : "未填写";
+  if (value?.startsWith("procurement_")) return GENERAL_PROCUREMENT_CATEGORIES.find((item) => `procurement_${item.key}` === value)?.label ?? "综合采购";
+  return value ? ({ temporary_service: "非材料临时服务", temporary_machinery_shift: "临时机械台班", sporadic_labor: "零星用工", other_incidental: "其他非材料临时费用" } as Record<string, string>)[value] : "未填写";
 }
 function amount(value: string) { return `¥${centsTextToYuanText(value)}`; }
 function statusLabel(value: string) { return ({ draft: "草稿", approval_pending: "审批中", approved_pending_payment: "待公司付款", partially_paid: "部分公司付款", paid: "公司补付完成", approved_pending_disbursement: "待放款", partially_disbursed: "部分放款", disbursed: "已放款", offset_completed: "借款冲销完成", rejected: "已驳回" } as Record<string, string>)[value] ?? value; }
@@ -489,6 +491,11 @@ onMounted(() => void loadDetail());
       @retry="loadDetail"
     >
       <template v-if="detail">
+        <p v-if="detail.generalProcurement">
+          <router-link :to="`/综合采购申请/${encodeURIComponent(detail.generalProcurement.id)}`">
+            查看采购申请 {{ detail.generalProcurement.code }}
+          </router-link>
+        </p>
         <JgPageHeader
           :business-code="detail.code"
           :title="title"

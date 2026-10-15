@@ -8969,6 +8969,249 @@
           "name": "updateProjectStatus"
         }
       ]
+    },
+    {
+      "id": "general-procurement.submitProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canSubmit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "submitProcurement"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.reviewProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "reviewProcurement"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.withdrawProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canWithdraw"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "withdrawProcurement"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.archiveProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "archiveProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canArchive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "archiveProcurement"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.uploadProcurementArchive",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProcurementArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canArchive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "uploadProcurementArchive"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.cancelProcurementPayment",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "cancelProcurementPaymentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCancelPayment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "cancelProcurementPayment"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.createExpenseClaim",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createExpenseClaimWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRequestPayment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "name": "createExpenseClaim"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.downloadPrivateFileByTicket",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPrivateFileByTicketWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.createProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "createProcurement"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.updateProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canEdit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "updateProcurement"
+        }
+      ]
     }
   ]
 }

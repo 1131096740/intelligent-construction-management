@@ -14,6 +14,7 @@ export async function freezeExpenseClaimEntryInTransaction(tx: Prisma.Transactio
     expenseClaimId: claimId, sceneKey: EXPENSE_CLAIM_ENTRY_DEFINITION.key, businessAction: "expense_claim.submit", operationObjectType: "approval_instance", operationObjectId: approvalInstanceId, submissionRevision: approvalInstanceId,
     definitionVersion: EXPENSE_CLAIM_ENTRY_DEFINITION.version, definitionSnapshot: EXPENSE_CLAIM_ENTRY_DEFINITION as unknown as Prisma.InputJsonValue, frozenByUserId: actorUserId,
     valuesSnapshot: {
+      generalProcurementId: claim.generalProcurementId,
       claimType: claim.claimType, companyEntityId: claim.companyEntityId, companyEntityName: claim.companyEntityNameSnapshot, projectId: claim.projectId,
       applicantUserId: claim.applicantUserId, applicantName: claim.applicantNameSnapshot, applicantPhone: claim.applicantPhoneSnapshot, factWitnessUserId: claim.factWitnessUserId, factWitnessName: claim.factWitnessNameSnapshot,
       reason: claim.reason, requestedAmountCents: claim.requestedAmountCents.toString(), loanOffsetAmountCents: claim.loanOffsetAmountCents.toString(), companyPayableAmountCents: claim.companyPayableAmountCents.toString(),

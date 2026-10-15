@@ -34,6 +34,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ContractWorkbenchController: "contract",
   DraftRetentionController: "operations",
   ExpenseClaimController: "expense",
+  GeneralProcurementController: "procurement",
   FileController: "files",
   FundExecutionController: "finance",
   FundMovementController: "finance",

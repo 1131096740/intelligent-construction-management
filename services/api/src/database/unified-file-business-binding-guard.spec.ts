@@ -162,6 +162,7 @@ const projectFundDisputeBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const procurementBindingMigration = readFileSync(join(process.cwd(), "prisma/migrations/20261015150000_general_procurement/migration.sql"), "utf8");
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -186,7 +187,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -205,7 +206,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(94);
+    expect(registered).toHaveLength(95);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(

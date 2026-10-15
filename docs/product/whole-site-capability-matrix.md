@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `3462d83189d5bb1db134a0d07fa1e4f38733245e9ac42744b320dc296ba122f8` |
-| webApiWrappers | ready | `9bb4ebee8513ad7a6406893eb2e66b63f2a37d496d88ca47b70414e415c268de` |
-| webPageActions | ready | `462ee6970a6eb1262ec89ab1586ff063e7be348b418f719c745ce0e696cc31dd` |
-| routeUsage | ready | `8568a3ac66cfaad1d3ab90abefb9f4d27af609b28be5d5d55bb0f898b946178c` |
+| nestRoutes | ready | `d95a10d03a46935c9c00ef7457262bdc8c6cf5131619fbb81bb64dea21c4e217` |
+| webApiWrappers | ready | `03dfea4c02b8c5c20e5a85d86f871a803f78597c16ef8413d2727d254aa597f2` |
+| webPageActions | ready | `3bc039d438a41602edade5b61178f9a662e258721e35beb90d051281eb2a4b9c` |
+| routeUsage | ready | `2812188b2d180f2ca81706e1ed37d1629104c3a2cc1f66d5d3be9878e775aa9a` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 642 |
-| pageRouteCount | 437 |
+| routeCount | 653 |
+| pageRouteCount | 448 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 96 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 620 |
+| mainRequestBindingCount | 639 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 354 |
-| actionBindingCount | 400 |
-| acceptedActionBindingCount | 378 |
+| registeredActionCount | 364 |
+| actionBindingCount | 419 |
+| acceptedActionBindingCount | 388 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 344 |
-| coveredProductionMutationConsumerPairCount | 344 |
+| productionMutationConsumerPairCount | 354 |
+| coveredProductionMutationConsumerPairCount | 354 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -110,7 +110,7 @@
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
-| GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | contract-file.download-private-file-by-ticket | not_applicable | — |
+| GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | contract-file.download-private-file-by-ticket<br>general-procurement.downloadPrivateFileByTicket | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId/classification-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseOptions | — | not_applicable | — |
@@ -121,6 +121,9 @@
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
+| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
+| GET | /general-procurements/create-options | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementOptions | general-procurement.createProcurement | not_applicable | — |
+| GET | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementList | — | not_applicable | — |
 | GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
 | GET | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoices | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
@@ -410,8 +413,8 @@
 | POST | /expense-claims/:claimId/repayments/:repaymentId/reversal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reverseExpenseClaimLoanRepayment | expense-claim.loan.repayment.reverse | covered | — |
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
-| POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
+| POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
@@ -422,6 +425,14 @@
 | POST | /fund-movements/:movementId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /fund-movements/:movementId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /fund-movements | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /general-procurements/:id/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive | general-procurement.uploadProcurementArchive | covered | — |
+| POST | /general-procurements/:id/archive | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement | general-procurement.archiveProcurement | covered | — |
+| POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.updateProcurement | covered | — |
+| POST | /general-procurements/:id/payments/:claimId/cancellation | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment | general-procurement.cancelProcurementPayment | covered | — |
+| POST | /general-procurements/:id/review | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement | general-procurement.reviewProcurement | covered | — |
+| POST | /general-procurements/:id/submission | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#submitProcurement | general-procurement.submitProcurement | covered | — |
+| POST | /general-procurements/:id/withdrawal | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.withdrawProcurement | covered | — |
+| POST | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement | general-procurement.createProcurement | covered | — |
 | POST | /global-invoices/:invoiceRecordId/void | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#voidGlobalInvoice | global-invoice.void | covered | — |
 | POST | /global-invoices | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createGlobalInvoice | global-invoice.create | covered | — |
 | POST | /global-invoices/red | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#createRedGlobalInvoice | global-invoice.red | covered | — |

@@ -7,23 +7,23 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 30,
-    "exportedFunctionCount": 616,
-    "transportWrapperCount": 594,
+    "apiModuleCount": 31,
+    "exportedFunctionCount": 627,
+    "transportWrapperCount": 605,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 620,
+    "mainRequestBindingCount": 639,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 619,
-    "productionConsumerCount": 501,
+    "requestEdgeCount": 630,
+    "productionConsumerCount": 512,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
-    "duplicateNormalizedRouteGroupCount": 10,
+    "duplicateNormalizedRouteGroupCount": 11,
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 315,
-    "reachableProductionModuleCount": 294
+    "productionModuleCount": 319,
+    "reachableProductionModuleCount": 298
   },
   "wrappers": [
     {
@@ -5977,7 +5977,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -7993,6 +7994,7 @@
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
@@ -10969,7 +10971,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 379,
+          "sourceLine": 385,
           "method": "POST",
           "path": "/expense-claims/:param/payment-subject",
           "normalizedPath": "/expense-claims/:param/payment-subject",
@@ -10998,7 +11000,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 248,
+          "sourceLine": 254,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/append",
           "normalizedPath": "/expense-claims/:param/attachments/append",
@@ -11027,7 +11029,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 235,
+          "sourceLine": 241,
           "method": "POST",
           "path": "/expense-claims/:param/attachments",
           "normalizedPath": "/expense-claims/:param/attachments",
@@ -11056,7 +11058,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 431,
+          "sourceLine": 437,
           "method": "POST",
           "path": "/expense-claims/:param/repayments/:param/confirmation",
           "normalizedPath": "/expense-claims/:param/repayments/:param/confirmation",
@@ -11085,7 +11087,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 206,
+          "sourceLine": 212,
           "method": "POST",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -11102,7 +11104,8 @@
         "apps/web-admin/src/api/expense-claim.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue"
+        "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue",
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -11114,7 +11117,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 274,
+          "sourceLine": 280,
           "method": "GET",
           "path": "/expense-claims/:param/capability",
           "normalizedPath": "/expense-claims/:param/capability",
@@ -11141,7 +11144,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 200,
+          "sourceLine": 206,
           "method": "GET",
           "path": "/expense-claims/create-options",
           "normalizedPath": "/expense-claims/create-options",
@@ -11170,7 +11173,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 268,
+          "sourceLine": 274,
           "method": "GET",
           "path": "/expense-claims/:param",
           "normalizedPath": "/expense-claims/:param",
@@ -11199,7 +11202,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 285,
+          "sourceLine": 291,
           "method": "GET",
           "path": "/expense-claims/:param/repayments/:param/capability",
           "normalizedPath": "/expense-claims/:param/repayments/:param/capability",
@@ -11226,7 +11229,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 194,
+          "sourceLine": 200,
           "method": "GET",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -11255,7 +11258,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 413,
+          "sourceLine": 419,
           "method": "POST",
           "path": "/expense-claims/:param/final-disbursement-pdf",
           "normalizedPath": "/expense-claims/:param/final-disbursement-pdf",
@@ -11284,7 +11287,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 407,
+          "sourceLine": 413,
           "method": "POST",
           "path": "/expense-claims/:param/final-payment-pdf",
           "normalizedPath": "/expense-claims/:param/final-payment-pdf",
@@ -11313,7 +11316,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 419,
+          "sourceLine": 425,
           "method": "POST",
           "path": "/expense-claims/:param/disbursements",
           "normalizedPath": "/expense-claims/:param/disbursements",
@@ -11342,7 +11345,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 425,
+          "sourceLine": 431,
           "method": "POST",
           "path": "/expense-claims/:param/repayments",
           "normalizedPath": "/expense-claims/:param/repayments",
@@ -11371,7 +11374,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 397,
+          "sourceLine": 403,
           "method": "POST",
           "path": "/expense-claims/:param/payments",
           "normalizedPath": "/expense-claims/:param/payments",
@@ -11400,7 +11403,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 258,
+          "sourceLine": 264,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/:param/removal",
           "normalizedPath": "/expense-claims/:param/attachments/:param/removal",
@@ -11429,7 +11432,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 437,
+          "sourceLine": 443,
           "method": "POST",
           "path": "/expense-claims/:param/repayments/:param/reversal",
           "normalizedPath": "/expense-claims/:param/repayments/:param/reversal",
@@ -11458,7 +11461,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 222,
+          "sourceLine": 228,
           "method": "POST",
           "path": "/expense-claims/:param/approval",
           "normalizedPath": "/expense-claims/:param/approval",
@@ -11487,7 +11490,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 216,
+          "sourceLine": 222,
           "method": "POST",
           "path": "/expense-claims/:param/submission",
           "normalizedPath": "/expense-claims/:param/submission",
@@ -11516,7 +11519,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 303,
+          "sourceLine": 309,
           "method": "POST",
           "path": "/expense-claims/:param/append-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/append-attachment-file-uploads",
@@ -11544,7 +11547,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 303,
+          "sourceLine": 309,
           "method": "POST",
           "path": "/expense-claims/:param/draft-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/draft-attachment-file-uploads",
@@ -11572,7 +11575,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 303,
+          "sourceLine": 309,
           "method": "POST",
           "path": "/expense-claims/:param/disbursement-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/disbursement-voucher-file-uploads",
@@ -11600,7 +11603,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 303,
+          "sourceLine": 309,
           "method": "POST",
           "path": "/expense-claims/:param/repayment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/repayment-voucher-file-uploads",
@@ -11628,7 +11631,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 303,
+          "sourceLine": 309,
           "method": "POST",
           "path": "/expense-claims/:param/payment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/payment-voucher-file-uploads",
@@ -12161,6 +12164,461 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "archiveProcurement",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "archiveProcurement",
+              "mutate",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/archive",
+          "normalizedPath": "/general-procurements/:param/archive",
+          "normalizedKey": "POST /general-procurements/:param/archive",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "archiveProcurement",
+              "mutate",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "cancelProcurementPayment",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "cancelProcurementPayment",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/payments/:param/cancellation",
+          "normalizedPath": "/general-procurements/:param/payments/:param/cancellation",
+          "normalizedKey": "POST /general-procurements/:param/payments/:param/cancellation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "cancelProcurementPayment",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createProcurement",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/create-options",
+          "normalizedPath": "/general-procurements/create-options",
+          "normalizedKey": "GET /general-procurements/create-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "createProcurement",
+              "fetchProcurementOptions",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements",
+          "normalizedPath": "/general-procurements",
+          "normalizedKey": "POST /general-procurements",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createProcurement",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProcurementDetail",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProcurementList",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements?:param",
+          "normalizedPath": "/general-procurements",
+          "normalizedKey": "GET /general-procurements",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProcurementList",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProcurementOptions",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/create-options",
+          "normalizedPath": "/general-procurements/create-options",
+          "normalizedKey": "GET /general-procurements/create-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProcurementOptions",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reviewProcurement",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "reviewProcurement",
+              "mutate",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/review",
+          "normalizedPath": "/general-procurements/:param/review",
+          "normalizedKey": "POST /general-procurements/:param/review",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewProcurement",
+              "mutate",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "submitProcurement",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "submitProcurement",
+              "mutate",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/submission",
+          "normalizedPath": "/general-procurements/:param/submission",
+          "normalizedKey": "POST /general-procurements/:param/submission",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "submitProcurement",
+              "mutate",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateProcurement",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "updateProcurement",
+              "mutate",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/draft",
+          "normalizedPath": "/general-procurements/:param/draft",
+          "normalizedKey": "POST /general-procurements/:param/draft",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateProcurement",
+              "mutate",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProcurementArchive",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "uploadProcurementArchive",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/archive-file-uploads",
+          "normalizedPath": "/general-procurements/:param/archive-file-uploads",
+          "normalizedKey": "POST /general-procurements/:param/archive-file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadProcurementArchive",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "withdrawProcurement",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "withdrawProcurement",
+              "mutate",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/general-procurements/:param/withdrawal",
+          "normalizedPath": "/general-procurements/:param/withdrawal",
+          "normalizedKey": "POST /general-procurements/:param/withdrawal",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawProcurement",
+              "mutate",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -19131,6 +19589,43 @@
         {
           "apiFile": "apps/web-admin/src/api/fund-execution.api.ts",
           "wrapper": "fetchFundExecutionCaseDetail"
+        }
+      ]
+    },
+    {
+      "normalizedKey": "GET /general-procurements/:param",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "archiveProcurement"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "cancelProcurementPayment"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "fetchProcurementDetail"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "reviewProcurement"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "submitProcurement"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "uploadProcurementArchive"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "withdrawProcurement"
         }
       ]
     },

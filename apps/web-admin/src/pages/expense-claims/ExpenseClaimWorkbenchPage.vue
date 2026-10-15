@@ -6,6 +6,7 @@ import {
   type ExpenseClaimListItemReadModel,
   type ExpenseClaimWorkbenchView
 } from "../../api/expense-claim.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import JgFilterBar from "../../components/JgFilterBar.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import JgStatusTag from "../../components/JgStatusTag.vue";
@@ -48,7 +49,7 @@ const summary = computed(() => ({
 }));
 
 function claimTypeLabel(value: ExpenseClaimListItemReadModel["claimType"]) {
-  return value === "loan" ? "借款申请" : "费用报销";
+  return value === "loan" ? "借款申请" : value === "incidental_expense" ? "费用付款" : "费用报销";
 }
 
 function statusLabel(value: string) {
@@ -104,7 +105,7 @@ async function loadWorkbench() {
   try {
     rows.value = await fetchExpenseClaims(view.value);
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "费用与报销工作台读取失败";
+    loadError.value = formatUnknownApiError(error, "费用与报销工作台读取失败");
   } finally {
     loading.value = false;
   }

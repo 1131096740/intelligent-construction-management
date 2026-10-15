@@ -25,7 +25,8 @@ describe("non-receipt file binding registry", () => {
       ({ table, columns }) =>
         columns.map((column) => `${table}.${column}`)
     );
-    expect(registered).toHaveLength(92);
+    expect(registered).toHaveLength(93);
+    expect(registered).toContain("GeneralProcurement.archiveFileId");
     expect(registered).toContain(
       "InvoiceEvidenceRepairResolution.replacementFileId"
     );

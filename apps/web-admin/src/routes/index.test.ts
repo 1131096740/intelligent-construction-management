@@ -630,6 +630,7 @@ describe("web admin routes", () => {
         path: "/零星材料付款工作台"
       },
       { label: "收货确认工作台", path: "/收货确认工作台" },
+      { label: "综合采购申请", path: "/综合采购申请" },
       { label: "费用与报销工作台", path: "/费用与报销工作台" },
       { label: "资料库", path: "/资料库" },
       { label: "审计日志", path: "/审计日志" },

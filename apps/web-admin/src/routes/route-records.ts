@@ -188,6 +188,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "费用与报销",
     items: [
+      { label: "综合采购申请", path: "/综合采购申请" },
       { label: "费用与报销工作台", path: "/费用与报销工作台" }
     ]
   },
@@ -573,6 +574,8 @@ export const webAdminRoutes: RouteRecordRaw[] = [
           ),
         meta: { title: "收货确认工作台" }
       },
+      { path: "综合采购申请", component: () => import("../pages/general-procurement/GeneralProcurementWorkbenchPage.vue"), meta: { title: "综合采购申请" } },
+      { path: "综合采购申请/:procurementId", component: () => import("../pages/general-procurement/GeneralProcurementDetailPage.vue"), meta: { title: "综合采购申请详情", activeNavigationPath: "/综合采购申请" } },
       {
         path: "费用与报销工作台",
         component: () => import("../pages/expense-claims/ExpenseClaimWorkbenchPage.vue"),

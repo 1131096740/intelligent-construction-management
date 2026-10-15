@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 354,
+    "registeredActionCount": 364,
     "pageActionCount": 56,
-    "backgroundActionCount": 298,
-    "reachableVueFileCount": 168,
-    "routeRootCount": 65,
-    "totalVueFileCount": 182,
-    "parsedVueFileCount": 182,
-    "reachableProductionModuleCount": 294,
-    "templateEventDirectiveCount": 1045,
+    "backgroundActionCount": 308,
+    "reachableVueFileCount": 171,
+    "routeRootCount": 67,
+    "totalVueFileCount": 185,
+    "parsedVueFileCount": 185,
+    "reachableProductionModuleCount": 298,
+    "templateEventDirectiveCount": 1068,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 344,
-    "candidateProductionMutationConsumerCount": 344,
-    "acceptedProductionMutationConsumerCount": 344,
-    "productionMutationConsumerPairCount": 344,
+    "coveredProductionMutationConsumerCount": 354,
+    "candidateProductionMutationConsumerCount": 354,
+    "acceptedProductionMutationConsumerCount": 354,
+    "productionMutationConsumerPairCount": 354,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 315,
-    "reachableProductionModuleCount": 294,
-    "totalVueFileCount": 182,
-    "parsedVueFileCount": 182
+    "totalProductionModuleCount": 319,
+    "reachableProductionModuleCount": 298,
+    "totalVueFileCount": 185,
+    "parsedVueFileCount": 185
   },
   "actions": [
     {
@@ -8251,7 +8251,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 130,
+        "sourceLine": 132,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8316,7 +8316,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 254,
+        "sourceLine": 256,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8381,7 +8381,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 119,
+        "sourceLine": 121,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8446,7 +8446,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 246,
+        "sourceLine": 248,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8511,7 +8511,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 141,
+        "sourceLine": 143,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8641,7 +8641,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 178,
+        "sourceLine": 180,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8706,7 +8706,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 270,
+        "sourceLine": 272,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8771,7 +8771,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 186,
+        "sourceLine": 188,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8836,7 +8836,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 197,
+        "sourceLine": 199,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8901,7 +8901,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 278,
+        "sourceLine": 280,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8966,7 +8966,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 216,
+        "sourceLine": 218,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9031,7 +9031,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 205,
+        "sourceLine": 207,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9096,7 +9096,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 231,
+        "sourceLine": 233,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9161,7 +9161,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 156,
+        "sourceLine": 158,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9230,7 +9230,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 262,
+        "sourceLine": 264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9295,7 +9295,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 167,
+        "sourceLine": 169,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9360,7 +9360,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 108,
+        "sourceLine": 110,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9425,7 +9425,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 100,
+        "sourceLine": 102,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10071,6 +10071,991 @@
             "localCallChain": [
               "updateFundExecutionReversalReasonWithCapability",
               "updateFundExecutionReversalReason"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.archiveProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "archiveProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 89,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canArchive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "archiveProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "archiveProcurementWithCapability",
+              "archiveProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "archiveProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/archive",
+          "normalizedKey": "POST /general-procurements/:param/archive",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/archive",
+            "normalizedKey": "POST /general-procurements/:param/archive",
+            "controller": "GeneralProcurementController",
+            "handler": "archive",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "archiveProcurementWithCapability",
+              "archiveProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.cancelProcurementPayment",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "cancelProcurementPaymentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 101,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCancelPayment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "cancelProcurementPayment",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "cancelProcurementPaymentWithCapability",
+              "cancelProcurementPayment"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "cancelProcurementPayment",
+          "method": "POST",
+          "path": "/general-procurements/:param/payments/:param/cancellation",
+          "normalizedKey": "POST /general-procurements/:param/payments/:param/cancellation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/payments/:claimId/cancellation",
+            "normalizedKey": "POST /general-procurements/:param/payments/:param/cancellation",
+            "controller": "GeneralProcurementController",
+            "handler": "cancelPayment",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "cancelProcurementPaymentWithCapability",
+              "cancelProcurementPayment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.createExpenseClaim",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createExpenseClaimWithCapability",
+        "kind": "background_call",
+        "sourceLine": 107,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRequestPayment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "createExpenseClaim",
+          "method": "POST",
+          "path": "/expense-claims",
+          "normalizedKey": "POST /expense-claims",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/expense-claims",
+            "normalizedKey": "POST /expense-claims",
+            "controller": "ExpenseClaimController",
+            "handler": "create",
+            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "expense_claim.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createExpenseClaimWithCapability",
+              "createExpenseClaim"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.createProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 38,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "createProcurement",
+          "method": "GET",
+          "path": "/general-procurements/create-options",
+          "normalizedKey": "GET /general-procurements/create-options",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/create-options",
+            "normalizedKey": "GET /general-procurements/create-options",
+            "controller": "GeneralProcurementController",
+            "handler": "options",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createProcurementWithCapability",
+              "createProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "createProcurement",
+          "method": "POST",
+          "path": "/general-procurements",
+          "normalizedKey": "POST /general-procurements",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements",
+            "normalizedKey": "POST /general-procurements",
+            "controller": "GeneralProcurementController",
+            "handler": "create",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createProcurementWithCapability",
+              "createProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.downloadPrivateFileByTicket",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPrivateFileByTicketWithCapability",
+        "kind": "background_call",
+        "sourceLine": 113,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPrivateFileByTicketWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5423,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPrivateFileByTicketWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5423,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.reviewProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 77,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "reviewProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewProcurementWithCapability",
+              "reviewProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "reviewProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/review",
+          "normalizedKey": "POST /general-procurements/:param/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/review",
+            "normalizedKey": "POST /general-procurements/:param/review",
+            "controller": "GeneralProcurementController",
+            "handler": "review",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewProcurementWithCapability",
+              "reviewProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.submitProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 71,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canSubmit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "submitProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitProcurementWithCapability",
+              "submitProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "submitProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/submission",
+          "normalizedKey": "POST /general-procurements/:param/submission",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/submission",
+            "normalizedKey": "POST /general-procurements/:param/submission",
+            "controller": "GeneralProcurementController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitProcurementWithCapability",
+              "submitProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.updateProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 44,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canEdit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProcurementWithCapability",
+              "updateProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/draft",
+          "normalizedKey": "POST /general-procurements/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/draft",
+            "normalizedKey": "POST /general-procurements/:param/draft",
+            "controller": "GeneralProcurementController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProcurementWithCapability",
+              "updateProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.uploadProcurementArchive",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProcurementArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 95,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canArchive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "uploadProcurementArchive",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProcurementArchiveWithCapability",
+              "uploadProcurementArchive"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "uploadProcurementArchive",
+          "method": "POST",
+          "path": "/general-procurements/:param/archive-file-uploads",
+          "normalizedKey": "POST /general-procurements/:param/archive-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/archive-file-uploads",
+            "normalizedKey": "POST /general-procurements/:param/archive-file-uploads",
+            "controller": "GeneralProcurementController",
+            "handler": "uploadArchive",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProcurementArchiveWithCapability",
+              "uploadProcurementArchive"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.withdrawProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 83,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canWithdraw",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "withdrawProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawProcurementWithCapability",
+              "withdrawProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "withdrawProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/withdrawal",
+          "normalizedKey": "POST /general-procurements/:param/withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/withdrawal",
+            "normalizedKey": "POST /general-procurements/:param/withdrawal",
+            "controller": "GeneralProcurementController",
+            "handler": "withdraw",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawProcurementWithCapability",
+              "withdrawProcurement"
             ]
           },
           "ticketFollowups": []

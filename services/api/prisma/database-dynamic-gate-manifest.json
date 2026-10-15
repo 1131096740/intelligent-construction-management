@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 173,
-    "terminalMigration": "20261015060000_employee_onboarding",
-    "terminalMigrationChecksum": "c8104c25cc2c4dbfc639a65bdfdf3d6b3ed094fb23b011386df924a2334d315a",
+    "expectedDirectoryCount": 174,
+    "terminalMigration": "20261015150000_general_procurement",
+    "terminalMigrationChecksum": "d0291fd50b53e221ed7b5a92c7b2e92d80c0233ee836fa08d984bdb41181e302",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 62,
-    "fullyPendingSuites": 51,
+    "pendingFiles": 63,
+    "fullyPendingSuites": 52,
     "partiallyPendingSuites": 11,
-    "pendingTests": 315,
-    "coveredFiles": 62,
-    "coveredTests": 315,
+    "pendingTests": 326,
+    "coveredFiles": 63,
+    "coveredTests": 326,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -552,6 +552,22 @@
       "runner": {
         "kind": "node",
         "path": "services/api/prisma/run-employee-onboarding-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "general_procurement",
+      "pendingTests": 11,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
+          "pendingTests": 11,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-general-procurement-local.cjs"
       },
       "state": "executable_local_runner"
     }

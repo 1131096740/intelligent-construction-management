@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 345,
+    "activeBusinessActionCount": 355,
     "technicalActionCount": 9,
-    "activeBindingCount": 390,
+    "activeBindingCount": 409,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -2308,6 +2308,177 @@
         "PATCH /fund-executions/cases/:param/reversal"
       ],
       "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.archiveProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/archive"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.cancelProcurementPayment",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/payments/:param/cancellation"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.createExpenseClaim",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /expense-claims"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.createProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/create-options",
+        "POST /general-procurements"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.downloadPrivateFileByTicket",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "GET /files/:param/download-ticket-capability",
+        "POST /files/:param/download-ticket"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.reviewProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/review"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.submitProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/submission"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.updateProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/draft"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.uploadProcurementArchive",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/archive-file-uploads"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "general-procurement.withdrawProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/withdrawal"
+      ],
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

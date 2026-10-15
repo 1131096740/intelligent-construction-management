@@ -424,6 +424,7 @@ const POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES = new Set([
 ]);
 
 const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
+  "GeneralProcurement.archiveFileId",
   "ContractTakeoverSettlementEvidence.fileId",
   "ContractTakeoverHistoricalPaymentVoucher.fileId",
   "ContractTakeoverExcessEvidence.fileId",

@@ -98,6 +98,8 @@ async function waitForPostgres(containerName, dockerCommand) {
         "exec",
         containerName,
         "pg_isready",
+        "-h",
+        "127.0.0.1",
         "-U",
         "jiangkong",
         "-d",
@@ -288,5 +290,6 @@ module.exports = {
   assertDedicatedLocalDatabase,
   assertLocalDockerEndpoint,
   createSettlementDraftLifecycleCleanup,
-  main
+  main,
+  waitForPostgres
 };

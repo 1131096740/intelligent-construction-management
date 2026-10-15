@@ -1298,7 +1298,7 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
   );
 
-  assert.equal(addedProtected.length, 110);
+  assert.equal(addedProtected.length, 111);
   for (const representative of [
     "ClearingCase",
     "FundExecution",
@@ -1313,8 +1313,8 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
   }
 });
 
-test("员工入职与认证安全记录默认保留且不进入业务归零候选", () => {
-  const names = ["EmployeeRegistration", "AuthRateLimit", "SmsChallenge"];
+test("员工入职、认证安全及综合采购历史默认保留且不进入旧业务归零候选", () => {
+  const names = ["EmployeeRegistration", "AuthRateLimit", "SmsChallenge", "GeneralProcurement"];
   const policy = {
     ...smallPolicy,
     tables: [

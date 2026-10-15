@@ -4783,6 +4783,10 @@ model ProjectExpenseFinancingQuotaUsage {
 // 新费用与报销域与旧 ProjectExpenseRequest 严格隔离。旧表继续只读承载历史
 // 项目支出事实；新报销、借款、冲销和还款只写入以下账本模型。
 model ExpenseClaim {
+  generalProcurementId String?
+  generalProcurementRequestKey String? @unique
+  generalProcurementFingerprint String?
+  @@index([generalProcurementId])
   id                              String                      @id @default(uuid())
   code                            String                      @unique
   claimType                       String
@@ -6750,4 +6754,33 @@ model PayableSettlementCommandReceipt {
   settlementCase PayableSettlementCase? @relation(fields: [settlementCaseId], references: [id], onDelete: Restrict, map: "PayableSettlementCommandReceipt_settlement_case_fkey")
 
   @@index([settlementCaseId])
+}
+
+model GeneralProcurement {
+  id                        String   @id @default(uuid())
+  code                      String   @unique
+  requestKey                String   @unique
+  creationFingerprint       String
+  projectId                 String
+  companyEntityId           String
+  companyNameSnapshot       String
+  applicantUserId           String
+  applicantNameSnapshot     String
+  category                  String
+  reason                    String
+  requestedAmountCents      BigInt
+  status                    String   @default("draft")
+  revision                  Int      @default(1)
+  approvalInstanceId        String?
+  submissions               Json     @default("[]")
+  archivedByUserId           String?
+  archivedAt                DateTime?
+  archiveFileId             String?
+  archiveNote               String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([projectId, status])
+  @@index([applicantUserId, updatedAt])
+  @@index([archiveFileId])
 }

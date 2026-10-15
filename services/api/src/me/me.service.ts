@@ -1,3 +1,5 @@
+import { generalProcurementActor } from "../general-procurement/general-procurement-access";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
@@ -186,7 +188,9 @@ const LEGACY_APPROVAL_TYPES = [
   "contract_version",
   "settlement",
   "payment_request",
-  "project_expense_request"
+  "project_expense_request",
+  "general_procurement",
+  "expense_claim"
 ] as const;
 const SPOT_APPROVAL_TYPES = ["spot_procurement_version", "spot_procurement_payment"] as const;
 const RELEVANT_APPROVAL_TYPES = [...LEGACY_APPROVAL_TYPES, ...SPOT_APPROVAL_TYPES] as const;
@@ -487,7 +491,7 @@ export class MeService {
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
+        description: `${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
           approvalCounts.spotProcurement || approvalCounts.spotPayment
             ? ` · 零星采购 ${approvalCounts.spotProcurement} · 零星付款 ${approvalCounts.spotPayment}`
             : ""
@@ -963,9 +967,9 @@ export class MeService {
       if (!projectId || !node) continue;
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = supportsIndirect
-        ? this.canActOnApprovalNode(node, roleKeys, userId)
-        : this.hasDirectRoleTodo(node, roleKeys);
+      const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
+        ? await this.canActOnProcurementNode(node, userId, projectId)
+        : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys);
       const hasDirectTodo = hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
       const relevantDelegatorIds = supportsIndirect && !hasDirectTodo
@@ -2161,9 +2165,9 @@ export class MeService {
       }
       const roleKeys = roleKeysByProject.get(detail.projectId) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = supportsIndirect
-        ? this.canActOnApprovalNode(node, roleKeys, userId)
-        : this.hasDirectRoleTodo(node, roleKeys);
+      const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
+        ? await this.canActOnProcurementNode(node, userId, detail.projectId)
+        : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys);
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
@@ -2267,6 +2271,15 @@ export class MeService {
 
   private async approvalBusinessDetails(instances: ApprovalInstanceForWorkItem[]) {
     const result = new Map<string, ApprovalBusinessDetail>();
+    const generalIds = instances.filter((instance) => instance.businessType === "general_procurement").map((instance) => instance.businessId);
+    const claimIds = instances.filter((instance) => instance.businessType === "expense_claim").map((instance) => instance.businessId);
+    const generalRows = generalIds.length ? await this.prisma.generalProcurement.findMany({ where: { id: { in: generalIds } } }) : [];
+    const claimRows = claimIds.length ? await this.prisma.expenseClaim.findMany({ where: { id: { in: claimIds }, generalProcurementId: { not: null } } }) : [];
+    const procurementProjectNames = await this.projectNames([...generalRows.map((row) => row.projectId), ...claimRows.flatMap((row) => row.projectId ? [row.projectId] : [])]);
+    for (const row of generalRows) result.set(`general_procurement:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
+      businessCode: row.code, title: `综合采购申请：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/综合采购申请/${row.id}` });
+    for (const row of claimRows) if (row.projectId) result.set(`expense_claim:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
+      businessCode: row.code, title: `综合采购付款：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/费用与报销/${row.id}` });
     const contractVersionIds = instances
       .filter((instance) => instance.businessType === "contract_version")
       .map((instance) => instance.businessId);
@@ -2477,6 +2490,8 @@ export class MeService {
       expense: 0,
       spotProcurement: 0,
       spotPayment: 0,
+      procurement: 0,
+      procurementPayment: 0,
       total: 0
     };
 
@@ -2495,9 +2510,9 @@ export class MeService {
         continue;
       }
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = supportsIndirect
-        ? this.canActOnApprovalNode(currentNode, roleKeys, userId)
-        : this.hasDirectRoleTodo(currentNode, roleKeys);
+      const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
+        ? await this.canActOnProcurementNode(currentNode, userId, projectId)
+        : supportsIndirect ? this.canActOnApprovalNode(currentNode, roleKeys, userId) : this.hasDirectRoleTodo(currentNode, roleKeys);
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, currentNode, roleKeys, userId);
@@ -2520,6 +2535,8 @@ export class MeService {
       if (instance.businessType === "project_expense_request") counts.expense += 1;
       if (instance.businessType === "spot_procurement_version") counts.spotProcurement += 1;
       if (instance.businessType === "spot_procurement_payment") counts.spotPayment += 1;
+      if (instance.businessType === "general_procurement") counts.procurement += 1;
+      if (instance.businessType === "expense_claim") counts.procurementPayment += 1;
       counts.total += 1;
     }
 
@@ -2549,7 +2566,9 @@ export class MeService {
       .filter((instance) => instance.businessType === "spot_procurement_payment")
       .map((instance) => instance.businessId);
 
-    const [versions, settlements, payments, expenses, spotVersions, spotPayments] = await Promise.all([
+    const procurementIds = instances.filter((instance) => instance.businessType === "general_procurement").map((instance) => instance.businessId);
+    const procurementPaymentIds = instances.filter((instance) => instance.businessType === "expense_claim").map((instance) => instance.businessId);
+    const [versions, settlements, payments, expenses, spotVersions, spotPayments, procurements, procurementPayments] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
@@ -2585,7 +2604,9 @@ export class MeService {
             where: { id: { in: spotPaymentIds } },
             select: { id: true, projectId: true }
           })
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      procurementIds.length ? this.prisma.generalProcurement.findMany({ where: { id: { in: procurementIds } }, select: { id: true, projectId: true } }) : Promise.resolve([]),
+      procurementPaymentIds.length ? this.prisma.expenseClaim.findMany({ where: { id: { in: procurementPaymentIds }, generalProcurementId: { not: null } }, select: { id: true, projectId: true } }) : Promise.resolve([])
     ]);
     const [contracts, spotProcurements] = await Promise.all([
       versions.length
@@ -2625,6 +2646,9 @@ export class MeService {
       ids.set(`spot_procurement_payment:${payment.id}`, payment.projectId);
     }
 
+    for (const row of procurements) ids.set(`general_procurement:${row.id}`, row.projectId);
+    for (const row of procurementPayments) if (row.projectId) ids.set(`expense_claim:${row.id}`, row.projectId);
+
     return ids;
   }
 
@@ -2652,8 +2676,21 @@ export class MeService {
     };
   }
 
+  private async canActOnProcurementNode(node: ApprovalNode, userId: string, projectId: string) {
+    try {
+      const actor = await generalProcurementActor(this.prisma, new ProjectVisibilityService(this.prisma), userId, projectId);
+      const identity = resolveApprovalReviewIdentity({ node, actorUserId: userId, actorRoleKeys: [...actor.globalRoleKeys, ...actor.projectRoleKeys], actorRoleScopes: actor });
+      return Boolean(identity && !identity.viaAssignment);
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   private supportsIndirectApproval(businessType: string) {
     return (
+      businessType !== "general_procurement" &&
+      businessType !== "expense_claim" &&
       businessType !== "project_expense_request" &&
       businessType !== "spot_procurement_version" &&
       businessType !== "spot_procurement_payment"
@@ -2925,7 +2962,10 @@ export class MeService {
     expense: number;
     spotProcurement: number;
     spotPayment: number;
+    procurement: number;
+    procurementPayment: number;
   }) {
+    if (counts.procurement > 0 || counts.procurementPayment > 0) return "/审批中心";
     if (counts.payment > 0) return "/付款管理";
     if (counts.settlement > 0) return "/结算管理";
     if (counts.expense > 0) return "/项目经营";

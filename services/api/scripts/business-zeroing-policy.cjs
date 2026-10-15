@@ -6,6 +6,7 @@ const { POLICY_ID } = require("./business-zeroing-core.cjs");
 const protectedTables = Object.freeze({
   _prisma_migrations: "数据库迁移历史",
   AuditLog: "系统与安全审计",
+  GeneralProcurement: "综合采购申请及归档审批历史，本轮保留不纳入旧业务清理",
   EmployeeRegistration: "员工入职申请及审核记录",
   AuthRateLimit: "账号认证限流记录",
   SmsChallenge: "短信验证码安全记录",
