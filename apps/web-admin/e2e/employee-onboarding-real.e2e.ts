@@ -27,9 +27,13 @@ test("真实注册、董事长批准、本人登录与管理员重置密码", as
     await row.getByRole("button", { name: "审核申请", exact: true }).click();
     const drawer = manager.locator(".t-drawer__content-wrapper");
     await drawer.locator('[data-field="departmentId"]').click();
-    await manager.getByText("入职浏览器验收部门", { exact: true }).last().click();
+    const departmentOption = manager.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "入职浏览器验收部门" });
+    await expect(departmentOption).toHaveCount(1);
+    await departmentOption.click();
     await drawer.locator('[data-field="initialRoleKey"]').click();
-    await manager.getByText("财务经办", { exact: true }).last().click();
+    const financeOption = manager.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "财务经办" });
+    await expect(financeOption).toHaveCount(1);
+    await financeOption.click();
     await drawer.getByText("我已核对员工本人及手机号", { exact: true }).click();
     await drawer.getByPlaceholder("请输入本人当前登录密码").fill(password);
     await drawer.getByRole("button", { name: "批准开通", exact: true }).click();
