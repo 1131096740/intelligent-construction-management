@@ -14,7 +14,18 @@ BEGIN
       AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)) THEN
     RAISE EXCEPTION 'migration owner must own the procurement table';
   END IF;
+  -- Existing owner defaults may have granted CRUD when this table was created.
+  EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public."GeneralProcurement" FROM %I', runtime_role);
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON TABLE public."GeneralProcurement" TO %I', runtime_role);
+  IF NOT has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'SELECT')
+    OR NOT has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'INSERT')
+    OR NOT has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'UPDATE')
+    OR has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'DELETE')
+    OR has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'TRUNCATE')
+    OR has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'REFERENCES')
+    OR has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'TRIGGER') THEN
+    RAISE EXCEPTION 'procurement runtime privileges must be limited to select insert update';
+  END IF;
 END;
 $$;
 COMMIT;

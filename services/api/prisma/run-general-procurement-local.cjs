@@ -42,12 +42,13 @@ try {
   console.log(`GENERAL_PROCUREMENT 一次性容器：${name}`);
   docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "general_procurement", "-Atc", "SHOW server_version;"]);
   command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
+  // Preserve the inherited CRUD state on the new table: deployment must remove DELETE itself.
   const runtime = "general_procurement_runtime";
   docker(["exec", containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "general_procurement", "-c", `
     CREATE ROLE ${runtime} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${password}';
     GRANT USAGE ON SCHEMA public TO ${runtime};
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${runtime};
-    REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext", public."GeneralProcurement" FROM ${runtime};
+    REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     REVOKE INSERT, UPDATE, DELETE ON TABLE public."OperatingFact" FROM ${runtime};
   `], process.env, true);
   docker(["cp", path.join(__dirname, "general-procurement-runtime-grants.sql"), `${containerId}:/tmp/procurement-grants.sql`], process.env, true);
