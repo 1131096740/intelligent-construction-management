@@ -21,7 +21,12 @@ test("员工填元金额，按顺序审批归档后由综合部请款", async ({
   const { id } = await createdResponse.json();
   await expect(page.getByText("123.45 元", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "提交审批", exact: true }).click();
-  await page.getByRole("button", { name: "确认提交", exact: true }).click();
+  const submitDialog = page.locator(".t-dialog").filter({ hasText: "提交采购申请" });
+  await submitDialog.evaluate(async (element) => { await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)); });
+  const submitted = page.waitForResponse((response) => response.url().endsWith(`/general-procurements/${id}/submission`) && response.request().method() === "POST");
+  await submitDialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  const submittedResponse = await submitted;
+  expect(submittedResponse.status(), await submittedResponse.text()).toBe(201);
   await expect(page.getByText("当前办理：综合部主管", { exact: true })).toBeVisible();
   for (const role of ["director", "manager", "chairman"]) {
     await login(page, role);
@@ -38,16 +43,30 @@ test("员工填元金额，按顺序审批归档后由综合部请款", async ({
   await expect(page.getByText("已归档", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "发起付款申请", exact: true }).click();
   const payment = page.locator(".t-dialog").filter({ hasText: "综合采购付款申请" });
-  await payment.getByPlaceholder("填写本次付款金额（元）").fill("100.01");
+  const fullAmount = testInfo.project.name === "mobile";
+  await payment.getByPlaceholder("填写本次付款金额（元）").fill(fullAmount ? "123.45" : "100.01");
   await payment.getByPlaceholder("填写供应商或收款人名称").fill("浏览器合成办公用品商");
+  let persistedClaimId = "";
+  await page.route("**/expense-claims", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const response = await route.fetch();
+    expect(response.status()).toBe(201);
+    persistedClaimId = (await response.json()).id;
+    await route.abort("failed");
+    await page.unroute("**/expense-claims");
+  });
+  await payment.getByRole("button", { name: "保存付款草稿", exact: true }).click();
+  await expect.poll(() => persistedClaimId).not.toBe("");
+  await expect(payment.getByRole("button", { name: "保存付款草稿", exact: true })).toBeEnabled();
   const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
   await payment.getByRole("button", { name: "保存付款草稿", exact: true }).click();
   const savedResponse = await saved;
   expect(savedResponse.status(), await savedResponse.text()).toBe(201);
   const claim = await savedResponse.json();
+  expect(claim.id).toBe(persistedClaimId);
   await expect(page.getByRole("heading", { name: "综合采购付款", exact: true })).toBeVisible();
   const source = await request.get(`${process.env.GP_API_URL}/general-procurements/${id}`, { headers: { authorization: `Bearer ${sessions.director.tokens.accessToken}` } });
-  expect(await source.json()).toMatchObject({ status: "archived", paymentSummary: { reservedAmountCents: "10001", availableAmountCents: "2344" }, payments: [expect.objectContaining({ id: claim.id, status: "draft" })] });
+  expect(await source.json()).toMatchObject({ status: "archived", paymentSummary: { reservedAmountCents: fullAmount ? "12345" : "10001", availableAmountCents: fullAmount ? "0" : "2344" }, payments: [expect.objectContaining({ id: claim.id, status: "draft" })] });
   await expect(page.getByRole("link", { name: /查看采购申请/ })).toBeVisible();
   await page.getByRole("link", { name: /查看采购申请/ }).click();
   await page.getByRole("button", { name: "撤销付款草稿", exact: true }).click();

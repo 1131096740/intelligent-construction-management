@@ -12298,7 +12298,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -12327,7 +12327,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
-        "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -12342,7 +12342,7 @@
           "kind": "main",
           "sourceLine": 26,
           "method": "GET",
-          "path": "/general-procurements",
+          "path": "/general-procurements?:param",
           "normalizedPath": "/general-procurements",
           "normalizedKey": "GET /general-procurements",
           "bodyKind": "none",
@@ -12384,7 +12384,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
-        "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -12525,7 +12525,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+        "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []

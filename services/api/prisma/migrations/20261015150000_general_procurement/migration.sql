@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TABLE "GeneralProcurement" (
   "id" TEXT NOT NULL, "code" TEXT NOT NULL, "requestKey" TEXT NOT NULL,
   "creationFingerprint" TEXT NOT NULL, "projectId" TEXT NOT NULL, "companyEntityId" TEXT NOT NULL,
@@ -75,3 +77,19 @@ BEGIN
 END;
 $$;
 CREATE TRIGGER "ExpenseClaim_general_procurement_guard" BEFORE INSERT OR UPDATE ON "ExpenseClaim" FOR EACH ROW EXECUTE FUNCTION "guard_general_procurement_payment"();
+
+SELECT pg_advisory_xact_lock(190731, 13);
+ALTER FUNCTION jg_file_business_binding_columns()
+  RENAME TO jg_file_business_binding_columns_before_general_procurement;
+CREATE FUNCTION jg_file_business_binding_columns()
+RETURNS TABLE ("tableName" TEXT, "columnName" TEXT, "exclusive" BOOLEAN)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT * FROM jg_file_business_binding_columns_before_general_procurement()
+  UNION ALL
+  VALUES ('GeneralProcurement', 'archiveFileId', FALSE);
+$$;
+CREATE TRIGGER jg_efb_general_procurement_archive
+BEFORE INSERT OR UPDATE OF "archiveFileId" ON "GeneralProcurement"
+FOR EACH ROW EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding('archiveFileId', 'false');
+
+COMMIT;

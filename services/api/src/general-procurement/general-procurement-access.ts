@@ -15,5 +15,5 @@ export function canReadGeneralProcurement(
   actor: { id: string; globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] }
 ) {
   return row.applicantUserId === actor.id || actor.globalRoleKeys.some((role) => ["chairman", "comprehensive_director"].includes(role)) || actor.projectRoleKeys.includes("project_manager") ||
-    (row.status === "archived" && [...actor.globalRoleKeys, ...actor.projectRoleKeys].some((role) => ["finance_staff", "finance_director"].includes(role)));
+    (row.status === "archived" && (actor.globalRoleKeys.includes("general_manager") || [...actor.globalRoleKeys, ...actor.projectRoleKeys].some((role) => ["finance_staff", "finance_director"].includes(role))));
 }

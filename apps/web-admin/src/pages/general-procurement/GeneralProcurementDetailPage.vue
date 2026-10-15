@@ -10,7 +10,7 @@ import { centsTextToYuanText } from "../../lib/money";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
-import ProcurementDraftDrawer from "./ProcurementDraftDrawer.vue";
+import ProcurementDraftDrawer from "./components/ProcurementDraftDrawer.vue";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 const route = useRoute(); const router = useRouter(); const detail = ref<ProcurementDetail>(); const loading = ref(true); const loadError = ref(""); const error = ref(""); const busy = ref(false);
 const editing = ref(false); const submitVisible = ref(false); const reviewVisible = ref(false); const withdrawVisible = ref(false); const archiveVisible = ref(false); const paymentVisible = ref(false); const downloadVisible = ref(false);
@@ -20,7 +20,7 @@ const payment = ref({ amountCents: "", payeeName: "", paymentMethod: "银行转�
 const cancelVisible = ref(false); const cancelClaimId = ref(""); const cancelReason = ref("");
 const nextStep = computed(() => !detail.value ? "" : detail.value.status === "archived" ? "综合部按实际采购情况发起付款审批" : detail.value.status === "approved_pending_archive" ? "综合部上传资料并归档" : detail.value.status === "approval_pending" ? `等待${detail.value.currentNodeName}审批` : "核对内容后提交审批");
 const money = (value: string) => `${centsTextToYuanText(value)} 元`;
-const date = (value: string) => value.replace("T", " ").slice(0, 16);
+const date = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const actionLabel = (value: string) => ({ approve: "批准", return_to_applicant: "退回补充", withdraw: "撤回" } as Record<string, string>)[value] ?? "处理记录";
 const paymentStatus = (value: string) => ({ draft: "付款草稿", approval_pending: "付款审批中", approved_pending_payment: "待财务付款", partially_paid: "部分已付", paid: "已付清", rejected: "已驳回或撤销" } as Record<string, string>)[value] ?? "处理中";
 async function load() {
@@ -59,7 +59,7 @@ function openPayment() {
 async function savePayment() { await run(async () => {
   const row = await fetchProcurementDetail(detail.value!.id); const form = payment.value;
   if (!row.canRequestPayment) throw new Error("当前申请不能继续请款，请刷新后核对");
-  if (!form.amountCents || BigInt(form.amountCents) <= 0n || BigInt(form.amountCents) > BigInt(row.paymentSummary.availableAmountCents)) throw new Error("请款金额须大于零，且不超过剩余可申请金额");
+  if (!form.amountCents || BigInt(form.amountCents) <= 0n) throw new Error("请款金额须大于零");
   if (!form.payeeName.trim() || !form.reason.trim()) throw new Error("请填写收款对象和付款事由");
   const saved = await createExpenseClaimWithCapability({ claimType: "incidental_expense", incidentalExpenseCategory: `procurement_${row.category}`, generalProcurementId: row.id, generalProcurementRequestKey: paymentKey.value,
     projectId: row.projectId, companyEntityId: row.companyEntityId, requestedAmountCents: form.amountCents, reason: form.reason.trim(), payeeName: form.payeeName.trim(), paymentMethod: form.paymentMethod.trim(),
@@ -174,7 +174,7 @@ onMounted(load);
               >
                 综合部归档
               </t-button><t-button
-                v-if="detail.canRequestPayment"
+                v-if="detail.canRequestPayment && BigInt(detail.paymentSummary.availableAmountCents) > 0n"
                 :disabled="busy"
                 @click="openPayment"
               >

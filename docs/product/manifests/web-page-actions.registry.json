@@ -9170,7 +9170,7 @@
         "/综合采购申请",
         "/综合采购申请/:procurementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -9195,7 +9195,7 @@
         "/综合采购申请",
         "/综合采购申请/:procurementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
       "trigger": {
         "element": "module",
         "event": "call",

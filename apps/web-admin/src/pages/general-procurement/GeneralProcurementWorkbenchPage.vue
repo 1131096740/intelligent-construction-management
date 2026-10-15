@@ -1,23 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { fetchProcurementList, fetchProcurementOptions, type ProcurementListItem } from "../../api/general-procurement.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import { centsTextToYuanText } from "../../lib/money";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import JgResultState from "../../components/JgResultState.vue";
-import ProcurementDraftDrawer from "./ProcurementDraftDrawer.vue";
+import ProcurementDraftDrawer from "./components/ProcurementDraftDrawer.vue";
 const router = useRouter(); const loading = ref(true); const error = ref(""); const rows = ref<ProcurementListItem[]>([]); const canCreate = ref(false); const createVisible = ref(false); const filter = ref("all"); const search = ref(""); const total = ref(0);
 const filters = [{ label: "全部", value: "all" }, { label: "草稿／待修改", value: "drafts" }, { label: "审批中", value: "approval_pending" }, { label: "待归档", value: "approved_pending_archive" }, { label: "已归档／付款", value: "archived" }];
-const filtered = computed(() => rows.value.filter((row) => (filter.value === "all" || (filter.value === "drafts" ? ["draft", "returned"].includes(row.status) : row.status === filter.value)) && (!search.value.trim() || `${row.code} ${row.reason} ${row.projectName} ${row.applicantName}`.includes(search.value.trim()))));
-async function load() {
-  loading.value = true; error.value = "";
-  try { const [list, options] = await Promise.all([fetchProcurementList(), fetchProcurementOptions()]); rows.value = list.items; total.value = list.total; canCreate.value = options.canCreate; }
-  catch (cause) { error.value = formatUnknownApiError(cause, "采购申请读取失败"); }
-  finally { loading.value = false; }
+const currentPage = ref(1); const pageSize = 20; let loadGeneration = 0;
+async function load(page = 1) {
+  const generation = ++loadGeneration; loading.value = true; error.value = "";
+  try {
+    const [list, options] = await Promise.all([fetchProcurementList({ page, pageSize, search: search.value.trim(), status: filter.value }), fetchProcurementOptions()]);
+    if (generation !== loadGeneration) return;
+    rows.value = list.items; total.value = list.total; currentPage.value = list.page; canCreate.value = options.canCreate;
+  } catch (cause) { if (generation === loadGeneration) error.value = formatUnknownApiError(cause, "采购申请读取失败"); }
+  finally { if (generation === loadGeneration) loading.value = false; }
 }
 function open(id: string) { void router.push(`/综合采购申请/${encodeURIComponent(id)}`); }
-onMounted(load);
+onMounted(() => load());
 </script>
 <template>
   <JgWorkbenchShell
@@ -33,7 +36,7 @@ onMounted(load);
       </t-button><t-button
         theme="default"
         :loading="loading"
-        @click="load"
+        @click="load()"
       >
         刷新
       </t-button>
@@ -44,10 +47,17 @@ onMounted(load);
           v-model="filter"
           :options="filters"
           aria-label="申请状态"
+          @change="load()"
         /><t-input
           v-model="search"
           placeholder="搜索项目、用途或申请人"
-        />
+          @enter="load()"
+        /><t-button
+          :loading="loading"
+          @click="load()"
+        >
+          搜索
+        </t-button>
       </div>
     </template>
     <t-alert
@@ -55,20 +65,18 @@ onMounted(load);
       theme="info"
       message="若需申请，请先由综合部在组织管理中设置您的项目岗位，并补齐费用承担公司。"
     />
-    <p v-if="total > rows.length">
-      当前显示最近 {{ rows.length }} 条，共 {{ total }} 条。
-    </p>
+    <p>共 {{ total }} 条 · 第 {{ currentPage }} 页</p>
     <JgResultState
       :loading="loading"
       :error="error"
-      :has-results="filtered.length > 0"
+      :has-results="rows.length > 0"
       empty-title="暂无综合采购申请"
       empty-description="点击新建申请填写项目、用途与金额，保存后再提交审批。"
-      @retry="load"
+      @retry="load()"
     >
       <div class="procurement-list">
         <t-card
-          v-for="row in filtered"
+          v-for="row in rows"
           :key="row.id"
           :title="row.code"
           :subtitle="row.projectName"
@@ -86,6 +94,25 @@ onMounted(load);
         </t-card>
       </div>
     </JgResultState>
+    <t-space
+      v-if="total > pageSize"
+      break-line
+    >
+      <t-button
+        theme="default"
+        :disabled="loading || currentPage <= 1"
+        @click="load(currentPage - 1)"
+      >
+        上一页
+      </t-button>
+      <t-button
+        theme="default"
+        :disabled="loading || currentPage * pageSize >= total"
+        @click="load(currentPage + 1)"
+      >
+        下一页
+      </t-button>
+    </t-space>
     <ProcurementDraftDrawer
       v-model:visible="createVisible"
       @saved="open"

@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "e4caa9aba5f88dc25f941e0aa19b57c9c39d37e688d651ab21d03efb25bdb995",
+      "sha256": "03dfea4c02b8c5c20e5a85d86f871a803f78597c16ef8413d2727d254aa597f2",
       "status": "ready",
       "summary": {
         "apiModuleCount": 31,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "49eac051cb9bf0046bc8e2c914c78093adc2741ff5b8fd10ef7c61bedd1d33ae",
+      "sha256": "3bc039d438a41602edade5b61178f9a662e258721e35beb90d051281eb2a4b9c",
       "status": "ready",
       "summary": {
         "registeredActionCount": 364,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 185,
         "parsedVueFileCount": 185,
         "reachableProductionModuleCount": 298,
-        "templateEventDirectiveCount": 1063,
+        "templateEventDirectiveCount": 1068,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 354,
         "candidateProductionMutationConsumerCount": 354,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "2340cac47523ceff9553ca7d362731e86d03b39bc64fa79454ccd8c0b243ed38",
+      "sha256": "2812188b2d180f2ca81706e1ed37d1629104c3a2cc1f66d5d3be9878e775aa9a",
       "status": "ready",
       "summary": {
         "routeCount": 653,
@@ -4106,7 +4106,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
         },
@@ -4142,7 +4142,7 @@
           "normalizedKey": "GET /general-procurements/:param",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
         },
@@ -4279,7 +4279,7 @@
           "identity": "general-procurement.updateProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000updateProcurement\u0000GET\u0000GET /general-procurements/:param\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canEdit",
@@ -4289,10 +4289,10 @@
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "updateProcurement",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "accepted": false,
@@ -4382,7 +4382,7 @@
           "normalizedKey": "GET /general-procurements/create-options",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
         },
@@ -4395,7 +4395,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
         }
@@ -4408,7 +4408,7 @@
           "identity": "general-procurement.createProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000createProcurement\u0000GET\u0000GET /general-procurements/create-options\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canCreate",
@@ -4418,10 +4418,10 @@
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "createProcurement",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "accepted": false,
@@ -4457,7 +4457,7 @@
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "fetchProcurementList",
           "method": "GET",
-          "path": "/general-procurements",
+          "path": "/general-procurements?:param",
           "normalizedKey": "GET /general-procurements",
           "bodyKind": "none",
           "productionConsumers": [
@@ -21942,7 +21942,7 @@
           "normalizedKey": "POST /general-procurements/:param/draft",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
         }
@@ -21955,7 +21955,7 @@
           "identity": "general-procurement.updateProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000updateProcurement\u0000POST\u0000POST /general-procurements/:param/draft\u00001",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canEdit",
@@ -21965,10 +21965,10 @@
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "updateProcurement",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -22272,7 +22272,7 @@
           "normalizedKey": "POST /general-procurements",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
         }
@@ -22285,7 +22285,7 @@
           "identity": "general-procurement.createProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000createProcurement\u0000POST\u0000POST /general-procurements\u00001",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canCreate",
@@ -22295,10 +22295,10 @@
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "createProcurement",
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "accepted": true,

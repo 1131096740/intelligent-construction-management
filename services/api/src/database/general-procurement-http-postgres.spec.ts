@@ -86,6 +86,22 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
       status: "draft", reason: "购买办公纸张与笔", requestedAmountCents: "12345", categoryLabel: "办公用品", revision: 1
     } });
   });
+  it("采购台账支持翻页和全量检索，不能绕过人员可见范围", async () => {
+    const db = app.get(PrismaService);
+    const marker = randomUUID();
+    const seeded = Array.from({ length: 201 }, (_, index) => ({ id: randomUUID(), code: `PAGE-${marker}-${index}`, requestKey: randomUUID(), creationFingerprint: marker,
+      projectId, companyEntityId, companyNameSnapshot: "合成费用承担公司", applicantUserId: employee.id, applicantNameSnapshot: "分页合成人员",
+      category: "office_supplies", reason: index === 0 ? `最旧待查-${marker}` : `分页-${marker}`, requestedAmountCents: 100n,
+      updatedAt: new Date(Date.UTC(2025, 0, 1, 0, 0, index)) }));
+    await db.generalProcurement.createMany({ data: seeded });
+    const page = await request(`/general-procurements?search=${marker}&page=5&pageSize=50`, "GET", undefined, director.token);
+    expect(page).toMatchObject({ status: 200, body: { total: 201, page: 5, pageSize: 50, items: [expect.objectContaining({ id: seeded[0].id })] } });
+    expect((await request(`/general-procurements?search=${encodeURIComponent(`最旧待查-${marker}`)}&status=drafts`, "GET", undefined, director.token)).body.items).toEqual([expect.objectContaining({ id: seeded[0].id })]);
+    const stranger = await actor("employee");
+    expect((await request(`/general-procurements?search=${marker}`, "GET", undefined, stranger.token)).body).toMatchObject({ total: 0, items: [] });
+    expect((await request("/general-procurements?page=-1")).status).toBe(400);
+  });
+
   it("固定综合部、项目经理、董事长顺序，禁止越级或总经理替代，完成后仍待归档", async () => {
     const generalManager = await actor("general_manager");
     const created = await request("/general-procurements", "POST", {
@@ -155,10 +171,17 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect(detail.body.canEdit).toBe(false);
     expect((await request(`${path}/draft`, "POST", { revision: 6, projectId, companyEntityId, category: "other", reason: "尝试篡改", requestedAmountCents: "1" })).status).toBe(409);
     const stranger = await actor("employee");
+    expect(await app.get(PrismaService).$queryRawUnsafe(`SELECT "tableName", "columnName" FROM jg_file_business_binding_columns() WHERE "tableName" = 'GeneralProcurement'`))
+      .toEqual([{ tableName: "GeneralProcurement", columnName: "archiveFileId" }]);
+    const generalManager = await actor("general_manager");
+    const generalManagerDetail = await request(path, "GET", undefined, generalManager.token);
+    expect(generalManagerDetail).toMatchObject({ status: 200, body: { canReview: false, canArchive: false, canRequestPayment: false } });
+    expect((await request("/general-procurements?status=archived", "GET", undefined, generalManager.token)).body.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: detail.body.id })]));
     const downloadPath = `/files/${uploaded.body.id}/download-ticket`;
     const download = { confirmationPassword: password, downloadReason: "核对采购依据" };
     expect((await request(downloadPath, "POST", download, stranger.token)).status).toBe(403);
     expect((await request(downloadPath, "POST", download, employee.token)).status).toBe(201);
+    expect((await request(downloadPath, "POST", download, generalManager.token)).status).toBe(201);
   });
 
   it("归档后仅综合部能请款，重试不重复，分批与并发不能超出批准金额", async () => {
@@ -187,12 +210,16 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   it("采购工作台与审批中心显示当前员工应办事项，付款延续原审批链", async () => {
     const options = await request("/general-procurements/create-options");
     expect(options).toMatchObject({ status: 200, body: { canCreate: true, projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]) } });
+    const beforeSummary = await request("/me/workbench-summary", "GET", undefined, director.token);
+    const beforeCount = beforeSummary.body.cards.find((card: { id: string }) => card.id === "approval_todo").count;
     const created = await request("/general-procurements", "POST", { requestKey: randomUUID(), projectId, companyEntityId, category: "utilities", reason: "项目网络服务", requestedAmountCents: "30000" });
     const id = created.body.id;
     const path = `/general-procurements/${id}`;
     expect((await request(`${path}/submission`, "POST", { revision: 1 })).status).toBe(201);
     const todo = await request("/me/work-items", "GET", undefined, director.token);
     expect(todo.status).toBe(200);
+    const summary = await request("/me/workbench-summary", "GET", undefined, director.token);
+    expect(summary.body.cards.find((card: { id: string }) => card.id === "approval_todo").count).toBe(beforeCount + 1);
     expect(todo.body.approvalCenter.pendingApproval).toEqual(expect.arrayContaining([expect.objectContaining({ businessId: id, targetPath: `/综合采购申请/${id}` })]));
     const stranger = await actor("employee");
     expect((await request("/general-procurements", "GET", undefined, stranger.token)).body.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
@@ -205,6 +232,8 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
       generalProcurementRequestKey: randomUUID(), companyEntityId, projectId, reason: "采购网络费付款", requestedAmountCents: "10000", paymentMethod: "银行转账", payeeName: "合成网络公司" }, director.token);
     expect(payment.status).toBe(201);
     expect((await request(`/expense-claims/${payment.body.id}/submission`, "POST", {}, director.token)).status).toBe(201);
+    const paymentSummary = await request("/me/workbench-summary", "GET", undefined, director.token);
+    expect(paymentSummary.body.cards.find((card: { id: string }) => card.id === "approval_todo").count).toBe(beforeCount + 1);
     const paymentTodo = await request("/me/work-items", "GET", undefined, director.token);
     expect(paymentTodo.body.approvalCenter.pendingApproval).toEqual(expect.arrayContaining([expect.objectContaining({ businessId: payment.body.id, targetPath: `/费用与报销/${payment.body.id}` })]));
     expect((await request(`/expense-claims/${payment.body.id}`, "GET", undefined, director.token)).body.approval).toMatchObject({ currentNodeName: "综合部主管", canReview: true, requiresSelfReviewConfirmation: true });

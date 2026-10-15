@@ -491,7 +491,7 @@ export class MeService {
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
+        description: `${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
           approvalCounts.spotProcurement || approvalCounts.spotPayment
             ? ` · 零星采购 ${approvalCounts.spotProcurement} · 零星付款 ${approvalCounts.spotPayment}`
             : ""
@@ -2490,6 +2490,8 @@ export class MeService {
       expense: 0,
       spotProcurement: 0,
       spotPayment: 0,
+      procurement: 0,
+      procurementPayment: 0,
       total: 0
     };
 
@@ -2533,6 +2535,8 @@ export class MeService {
       if (instance.businessType === "project_expense_request") counts.expense += 1;
       if (instance.businessType === "spot_procurement_version") counts.spotProcurement += 1;
       if (instance.businessType === "spot_procurement_payment") counts.spotPayment += 1;
+      if (instance.businessType === "general_procurement") counts.procurement += 1;
+      if (instance.businessType === "expense_claim") counts.procurementPayment += 1;
       counts.total += 1;
     }
 
@@ -2562,7 +2566,9 @@ export class MeService {
       .filter((instance) => instance.businessType === "spot_procurement_payment")
       .map((instance) => instance.businessId);
 
-    const [versions, settlements, payments, expenses, spotVersions, spotPayments] = await Promise.all([
+    const procurementIds = instances.filter((instance) => instance.businessType === "general_procurement").map((instance) => instance.businessId);
+    const procurementPaymentIds = instances.filter((instance) => instance.businessType === "expense_claim").map((instance) => instance.businessId);
+    const [versions, settlements, payments, expenses, spotVersions, spotPayments, procurements, procurementPayments] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
@@ -2598,7 +2604,9 @@ export class MeService {
             where: { id: { in: spotPaymentIds } },
             select: { id: true, projectId: true }
           })
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      procurementIds.length ? this.prisma.generalProcurement.findMany({ where: { id: { in: procurementIds } }, select: { id: true, projectId: true } }) : Promise.resolve([]),
+      procurementPaymentIds.length ? this.prisma.expenseClaim.findMany({ where: { id: { in: procurementPaymentIds }, generalProcurementId: { not: null } }, select: { id: true, projectId: true } }) : Promise.resolve([])
     ]);
     const [contracts, spotProcurements] = await Promise.all([
       versions.length
@@ -2637,6 +2645,9 @@ export class MeService {
     for (const payment of spotPayments) {
       ids.set(`spot_procurement_payment:${payment.id}`, payment.projectId);
     }
+
+    for (const row of procurements) ids.set(`general_procurement:${row.id}`, row.projectId);
+    for (const row of procurementPayments) if (row.projectId) ids.set(`expense_claim:${row.id}`, row.projectId);
 
     return ids;
   }
@@ -2951,7 +2962,10 @@ export class MeService {
     expense: number;
     spotProcurement: number;
     spotPayment: number;
+    procurement: number;
+    procurementPayment: number;
   }) {
+    if (counts.procurement > 0 || counts.procurementPayment > 0) return "/审批中心";
     if (counts.payment > 0) return "/付款管理";
     if (counts.settlement > 0) return "/结算管理";
     if (counts.expense > 0) return "/项目经营";

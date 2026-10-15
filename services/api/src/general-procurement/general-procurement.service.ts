@@ -15,7 +15,7 @@ import { PrismaService } from "../database/prisma.service";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import { canReadGeneralProcurement, generalProcurementActor } from "./general-procurement-access";
-import type { CreateGeneralProcurementDto, ReviewGeneralProcurementDto, UpdateGeneralProcurementDto, WithdrawGeneralProcurementDto, ArchiveGeneralProcurementDto } from "./general-procurement.dto";
+import type { ListGeneralProcurementDto, CreateGeneralProcurementDto, ReviewGeneralProcurementDto, UpdateGeneralProcurementDto, WithdrawGeneralProcurementDto, ArchiveGeneralProcurementDto } from "./general-procurement.dto";
 
 @Injectable()
 export class GeneralProcurementService {
@@ -45,22 +45,29 @@ export class GeneralProcurementService {
       ...members.map((item) => ({ key: item.positionKey, projectId: item.projectId }))];
   }
 
-  async list(actorUserId: string) {
+  async list(actorUserId: string, query: ListGeneralProcurementDto) {
     const roles = await this.listRoles(actorUserId);
     const all = roles.some((role) => !role.projectId && ["chairman", "comprehensive_director"].includes(role.key));
-    const financeGlobal = roles.some((role) => !role.projectId && ["finance_director", "finance_staff"].includes(role.key));
+    const financeGlobal = roles.some((role) => !role.projectId && ["general_manager", "finance_director", "finance_staff"].includes(role.key));
     const managedProjects = roles.filter((role) => role.key === "project_manager" && role.projectId).map((role) => role.projectId!);
     const financeProjects = roles.filter((role) => ["finance_director", "finance_staff"].includes(role.key) && role.projectId).map((role) => role.projectId!);
-    const where: Prisma.GeneralProcurementWhereInput = all ? {} : { OR: [
+    const access: Prisma.GeneralProcurementWhereInput = all ? {} : { OR: [
       { applicantUserId: actorUserId }, { projectId: { in: managedProjects } },
       { status: "archived", ...(financeGlobal ? {} : { projectId: { in: financeProjects } }) }
     ] };
-    const rows = await this.prisma.generalProcurement.findMany({ where, orderBy: { updatedAt: "desc" }, take: 200 });
+    const search = query.search?.trim();
+    const matchedProjects = search ? await this.prisma.project.findMany({ where: { name: { contains: search, mode: "insensitive" } }, select: { id: true } }) : [];
+    const where: Prisma.GeneralProcurementWhereInput = { AND: [access,
+      ...(query.status && query.status !== "all" ? [{ status: query.status === "drafts" ? { in: ["draft", "returned"] } : query.status }] : []),
+      ...(search ? [{ OR: [ { code: { contains: search, mode: "insensitive" as const } }, { reason: { contains: search, mode: "insensitive" as const } },
+        { applicantNameSnapshot: { contains: search, mode: "insensitive" as const } }, { projectId: { in: matchedProjects.map((project) => project.id) } } ] }] : [])
+    ] };
+    const rows = await this.prisma.generalProcurement.findMany({ where, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize });
     const projects = await this.prisma.project.findMany({ where: { id: { in: rows.map((row) => row.projectId) } }, select: { id: true, name: true } });
     return { items: rows.map((row) => ({ id: row.id, code: row.code, projectName: projects.find((item) => item.id === row.projectId)?.name ?? "所属项目",
       applicantName: row.applicantNameSnapshot, categoryLabel: GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === row.category)?.label ?? "其他物资或服务",
       reason: row.reason, requestedAmountCents: row.requestedAmountCents.toString(), status: row.status, statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status], updatedAt: row.updatedAt })),
-      total: await this.prisma.generalProcurement.count({ where }) };
+      total: await this.prisma.generalProcurement.count({ where }), page: query.page, pageSize: query.pageSize };
   }
 
   async create(actorUserId: string, input: CreateGeneralProcurementDto) {
@@ -276,10 +283,10 @@ export class GeneralProcurementService {
         canCancelPayment: actor.globalRoleKeys.includes("comprehensive_director") && payments.some((payment) => payment.status === "draft"), canEdit, canSubmit: canEdit, canReview: Boolean(identity && !identity.viaAssignment), canWithdraw: row.applicantUserId === actorUserId && row.status === "approval_pending",
         canArchive: row.status === "approved_pending_archive" && actor.globalRoleKeys.includes("comprehensive_director"),
         payments: payments.map((payment) => ({ ...payment,
-          canOpen: actor.globalRoleKeys.some((role) => ["chairman", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || actor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)),
+          canOpen: actor.globalRoleKeys.some((role) => ["chairman", "general_manager", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || actor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)),
           canCancel: payment.status === "draft" && actor.globalRoleKeys.includes("comprehensive_director"), requestedAmountCents: payment.requestedAmountCents.toString(), fundedAmountCents: payment.fundedAmountCents.toString() })),
         paymentSummary: { reservedAmountCents: reserved.toString(), availableAmountCents: (row.requestedAmountCents - reserved).toString() },
-        canRequestPayment: row.status === "archived" && actor.globalRoleKeys.includes("comprehensive_director") && reserved < row.requestedAmountCents,
+        canRequestPayment: row.status === "archived" && actor.globalRoleKeys.includes("comprehensive_director"),
         currentNodeName: node?.name ?? null, requiresSelfReviewConfirmation: Boolean(identity && row.applicantUserId === actorUserId), submissions: row.submissions,
         approvals: instances.map((item) => ({ id: item.id, status: item.status, nodes: (item.frozenNodes as unknown as ProcurementNode[]).map((entry) => ({ name: entry.name, approved: Boolean(entry.approvedRoleKeys?.length) })),
           actions: actions.filter((action) => action.approvalInstanceId === item.id).map((action) => ({ action: action.action, actorName: names.get(action.actorUserId) ?? "原审批人", comment: action.comment, createdAt: action.createdAt })) })),

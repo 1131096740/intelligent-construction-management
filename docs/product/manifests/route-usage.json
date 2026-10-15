@@ -3602,7 +3602,7 @@
             "normalizedKey": "GET /general-procurements/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
-              "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+              "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           },
           {
@@ -3632,7 +3632,7 @@
             "normalizedPath": "/general-procurements/:param",
             "normalizedKey": "GET /general-procurements/:param",
             "productionConsumers": [
-              "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+              "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           },
           {
@@ -3693,7 +3693,7 @@
             "normalizedPath": "/general-procurements/create-options",
             "normalizedKey": "GET /general-procurements/create-options",
             "productionConsumers": [
-              "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+              "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           },
           {
@@ -3704,7 +3704,7 @@
             "normalizedKey": "GET /general-procurements/create-options",
             "productionConsumers": [
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
-              "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+              "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           }
         ],
@@ -16025,7 +16025,7 @@
             "normalizedPath": "/general-procurements",
             "normalizedKey": "POST /general-procurements",
             "productionConsumers": [
-              "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+              "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           }
         ],
@@ -16148,7 +16148,7 @@
             "normalizedPath": "/general-procurements/:param/draft",
             "normalizedKey": "POST /general-procurements/:param/draft",
             "productionConsumers": [
-              "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+              "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           }
         ],

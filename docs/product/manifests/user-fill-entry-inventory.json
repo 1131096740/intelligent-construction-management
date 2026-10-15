@@ -2369,7 +2369,7 @@
         "/综合采购申请",
         "/综合采购申请/:procurementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "GET /general-procurements/create-options",
@@ -2438,7 +2438,7 @@
         "/综合采购申请",
         "/综合采购申请/:procurementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "GET /general-procurements/:param",

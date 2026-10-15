@@ -205,18 +205,18 @@ test("invoice ledger refuses the bootstrap socket-only server before host readin
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 315 pending tests as executable local coverage", () => {
+test("manifest derives all 326 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 62,
-    fullyPendingSuites: 51,
+    pendingFiles: 63,
+    fullyPendingSuites: 52,
     partiallyPendingSuites: 11,
-    pendingTests: 315,
-    coveredFiles: 62,
-    coveredTests: 315,
+    pendingTests: 326,
+    coveredFiles: 63,
+    coveredTests: 326,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -598,7 +598,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=315/u
+    /inventory\.coveredTests=26，派生值=326/u
   );
 });
 

@@ -33,7 +33,10 @@ async function read<T>(path: string, init?: RequestInit): Promise<T> {
 const root = "/general-procurements";
 const detailPath = (id: string) => `${root}/${encodeURIComponent(id)}`;
 const post = <T>(path: string, body: unknown) => read<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-export const fetchProcurementList = () => read<{ items: ProcurementListItem[]; total: number }>(root);
+export const fetchProcurementList = (query: { page?: number; pageSize?: number; search?: string; status?: string } = {}) => {
+  const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => [key, String(value)]));
+  return read<{ items: ProcurementListItem[]; total: number; page: number; pageSize: number }>(`${root}?${params.toString()}`);
+};
 export const fetchProcurementOptions = () => read<ProcurementOptions>(`${root}/create-options`);
 export const fetchProcurementDetail = (id: string) => read<ProcurementDetail>(detailPath(id));
 export async function createProcurement(body: ProcurementDraft & { requestKey: string }) {

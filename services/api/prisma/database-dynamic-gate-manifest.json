@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 174,
     "terminalMigration": "20261015150000_general_procurement",
-    "terminalMigrationChecksum": "d92177fd7abfa6090f02253732b348097be57dbb3c7c07c9bccf7c69490f90bd",
+    "terminalMigrationChecksum": "d0291fd50b53e221ed7b5a92c7b2e92d80c0233ee836fa08d984bdb41181e302",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 63,
     "fullyPendingSuites": 52,
     "partiallyPendingSuites": 11,
-    "pendingTests": 325,
+    "pendingTests": 326,
     "coveredFiles": 63,
-    "coveredTests": 325,
+    "coveredTests": 326,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -557,11 +557,11 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 10,
+      "pendingTests": 11,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
-          "pendingTests": 10,
+          "pendingTests": 11,
           "suiteStatus": "fully_pending"
         }
       ],

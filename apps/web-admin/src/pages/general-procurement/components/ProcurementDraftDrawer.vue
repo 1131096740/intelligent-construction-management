@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import type { BusinessEntryDraftPayload, GeneralProcurementCategory } from "@jiangkong/shared-domain";
-import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
-import { createProcurement, fetchProcurementOptions, fetchProcurementDetail, updateProcurement, type ProcurementDetail, type ProcurementOptions } from "../../api/general-procurement.api";
-import { formatUnknownApiError } from "../../api/error-message";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
+import { createProcurement, fetchProcurementOptions, fetchProcurementDetail, updateProcurement, type ProcurementDetail, type ProcurementOptions } from "../../../api/general-procurement.api";
+import { formatUnknownApiError } from "../../../api/error-message";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
 const props = defineProps<{ visible: boolean; detail?: ProcurementDetail }>();
 const emit = defineEmits<{ "update:visible": [value: boolean]; saved: [id: string] }>();
 const options = ref<ProcurementOptions>(); const busy = ref(false); const loading = ref(false); const error = ref("");

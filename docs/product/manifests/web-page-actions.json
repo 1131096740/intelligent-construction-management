@@ -17,7 +17,7 @@
     "totalVueFileCount": 185,
     "parsedVueFileCount": 185,
     "reachableProductionModuleCount": 298,
-    "templateEventDirectiveCount": 1063,
+    "templateEventDirectiveCount": 1068,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 354,
     "candidateProductionMutationConsumerCount": 354,
@@ -10352,7 +10352,7 @@
         "/综合采购申请",
         "/综合采购申请/:procurementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -10391,10 +10391,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -10427,10 +10427,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -10771,7 +10771,7 @@
         "/综合采购申请",
         "/综合采购申请/:procurementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
       "trigger": {
         "element": "module",
         "event": "call",
@@ -10810,10 +10810,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -10846,10 +10846,10 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/general-procurement/ProcurementDraftDrawer.vue"
+            "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
           "causalProof": {
