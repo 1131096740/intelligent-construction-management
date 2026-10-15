@@ -1,5 +1,5 @@
 import { apiFetch } from "./api-fetch";
-import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import type { BusinessEntrySceneDefinition, GeneralProcurementPaymentCategory } from "@jiangkong/shared-domain";
 import { formatApiErrorMessage } from "./error-message";
 
 export type ExpenseClaimWorkbenchView = "all" | "drafts" | "in_progress" | "pending_funds";
@@ -13,6 +13,7 @@ export interface ExpenseClaimListItemReadModel {
     | "temporary_machinery_shift"
     | "sporadic_labor"
     | "other_incidental"
+    | GeneralProcurementPaymentCategory
     | null;
   status: string;
   projectId: string | null;
@@ -29,6 +30,7 @@ export interface ExpenseClaimListItemReadModel {
 }
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  generalProcurement?: { id: string; code: string } | null;
   entrySnapshots: ExpenseClaimEntrySnapshotReadModel[];
   applicantPhoneSnapshot: string | null;
   handledByNameSnapshot: string;
@@ -115,7 +117,8 @@ export interface ExpenseClaimCreateOptions {
       | "temporary_service"
       | "temporary_machinery_shift"
       | "sporadic_labor"
-      | "other_incidental";
+      | "other_incidental"
+    | GeneralProcurementPaymentCategory;
     label: string;
   }>;
 }
@@ -133,12 +136,15 @@ export interface ExpenseClaimRepaymentActionCapabilityReadModel {
 }
 
 export interface CreateExpenseClaimPayload {
+  generalProcurementId?: string;
+  generalProcurementRequestKey?: string;
   claimType: "reimbursement" | "loan" | "incidental_expense";
   incidentalExpenseCategory?:
     | "temporary_service"
     | "temporary_machinery_shift"
     | "sporadic_labor"
-    | "other_incidental";
+    | "other_incidental"
+    | GeneralProcurementPaymentCategory;
   companyEntityId: string;
   projectId?: string;
   factWitnessUserId?: string;

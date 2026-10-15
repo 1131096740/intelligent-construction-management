@@ -5,8 +5,8 @@
   >
     <t-alert
       theme="warning"
-      title="领导自审二次确认"
-      message="当前单据由您本人发起，且已进入您直接持有的董事长/总经理终审节点。请说明自审原因并输入当前密码。"
+      title="本人申请审批确认"
+      message="当前单据由您本人发起，且已进入您的审批节点。请说明自审原因并输入当前密码。"
     />
     <t-textarea
       v-model="reasonModel"

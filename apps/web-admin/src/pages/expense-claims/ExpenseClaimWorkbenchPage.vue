@@ -48,7 +48,7 @@ const summary = computed(() => ({
 }));
 
 function claimTypeLabel(value: ExpenseClaimListItemReadModel["claimType"]) {
-  return value === "loan" ? "借款申请" : "费用报销";
+  return value === "loan" ? "借款申请" : value === "incidental_expense" ? "费用付款" : "费用报销";
 }
 
 function statusLabel(value: string) {

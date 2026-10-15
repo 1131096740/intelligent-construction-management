@@ -8,6 +8,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
+import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
 import { PrismaService } from "../database/prisma.service";
 import type { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
 import type { PreviewRoleRemovalBatchDto } from "./dto/preview-role-removal-batch.dto";
@@ -20,12 +21,16 @@ const LEGACY_BUSINESS_TYPES = [
   "contract_version",
   "settlement",
   "payment_request",
-  "project_expense_request"
+  "project_expense_request",
+  "general_procurement",
+  "expense_claim"
 ] as const;
 const SPOT_BUSINESS_TYPES = ["spot_procurement_version", "spot_procurement_payment"] as const;
 const SUPPORTED_BUSINESS_TYPES = [...LEGACY_BUSINESS_TYPES, ...SPOT_BUSINESS_TYPES] as const;
 type SupportedBusinessType = (typeof SUPPORTED_BUSINESS_TYPES)[number];
 const APPROVAL_ROLE_SETS_BY_BUSINESS_TYPE = {
+  general_procurement: new Set<RoleKey>(["comprehensive_director", "project_manager", "chairman"]),
+  expense_claim: new Set(ACTION_REQUIRED_ROLES["expense_claim.approve"]),
   contract_version: new Set(ACTION_REQUIRED_ROLES["contract.approve"]),
   settlement: new Set(ACTION_REQUIRED_ROLES["settlement.approve"]),
   payment_request: new Set(ACTION_REQUIRED_ROLES["payment.approve"]),
@@ -50,6 +55,8 @@ type PermissionImpactClient = Pick<
   | "spotProcurementVersion"
   | "spotProcurement"
   | "spotProcurementPayment"
+  | "generalProcurement"
+  | "expenseClaim"
 >;
 
 export type RoleRemovalBlockingIssueCode =
@@ -917,6 +924,10 @@ export class PermissionImpactService {
     const contractVersionIds = ids("contract_version");
     const spotVersionIds = ids("spot_procurement_version");
     const spotPaymentIds = ids("spot_procurement_payment");
+    const [procurements, procurementPayments] = await Promise.all([
+      ids("general_procurement").length ? client.generalProcurement.findMany({ where: { id: { in: ids("general_procurement") } }, select: { id: true, projectId: true } }) : [],
+      ids("expense_claim").length ? client.expenseClaim.findMany({ where: { id: { in: ids("expense_claim") }, generalProcurementId: { not: null } }, select: { id: true, projectId: true } }) : []
+    ]);
     const [contractVersions, settlements, payments, expenses, spotVersions, spotPayments] = (await Promise.all([
       client.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
@@ -979,19 +990,22 @@ export class PermissionImpactService {
       if (projectId) projectByBusinessKey.set(`contract_version:${row.id}`, projectId);
     }
     for (const [businessType, rows] of [
+      ["general_procurement", procurements],
+      ["expense_claim", procurementPayments],
       ["settlement", settlements],
       ["payment_request", payments],
       ["project_expense_request", expenses],
       ["spot_procurement_payment", spotPayments]
     ] as const) {
-      for (const row of rows) projectByBusinessKey.set(`${businessType}:${row.id}`, row.projectId);
+      for (const row of rows) if (row.projectId) projectByBusinessKey.set(`${businessType}:${row.id}`, row.projectId);
     }
     for (const row of spotVersions) {
       const projectId = projectBySpotProcurementId.get(row.procurementId);
       if (projectId) projectByBusinessKey.set(`spot_procurement_version:${row.id}`, projectId);
     }
 
-    return instances.map((instance) => ({
+    const procurementPaymentIds = new Set(procurementPayments.map((row) => row.id));
+    return instances.filter((instance) => instance.businessType !== "expense_claim" || procurementPaymentIds.has(instance.businessId)).map((instance) => ({
       ...instance,
       projectId: projectByBusinessKey.get(`${instance.businessType}:${instance.businessId}`) ?? null,
       parsedNode: parseCurrentNode(instance)
@@ -1203,6 +1217,23 @@ function directUsersForRole(facts: DirectFacts, projectId: string | null, roleKe
   ]);
 }
 
+function usesProcurementFrozenCandidates(businessType: string) {
+  return businessType === "general_procurement" || businessType === "expense_claim";
+}
+
+function directUsersForApprovalRole(facts: DirectFacts, instance: MappedApprovalInstance, roleKey: RoleKey) {
+  const candidates = directUsersForRole(facts, instance.projectId, roleKey);
+  if (!usesProcurementFrozenCandidates(instance.businessType)) return candidates;
+  const node = Array.isArray(instance.frozenNodes) ? instance.frozenNodes[instance.currentNodeIndex] : null;
+  if (!isRecord(node)) return [];
+  return candidates.filter((userId) => {
+    const globalRoleKeys = ROLE_KEYS.filter((role) => facts.usersByGlobalRole.get(role)?.has(userId));
+    const projectRoleKeys = ROLE_KEYS.filter((role) => facts.usersByProjectAndRole.get(`${instance.projectId}\u0000${role}`)?.has(userId));
+    const identity = resolveApprovalReviewIdentity({ node: node as FrozenApprovalNode, actorUserId: userId, actorRoleKeys: [...globalRoleKeys, ...projectRoleKeys], actorRoleScopes: { globalRoleKeys, projectRoleKeys } });
+    return identity?.approvedRoleKey === roleKey && !identity.viaAssignment;
+  });
+}
+
 function buildImpact(
   instance: MappedApprovalInstance,
   change: { userId: string },
@@ -1231,7 +1262,7 @@ function buildImpact(
   const supportsIndirect = supportsIndirectApproval(instance.businessType);
   const directRoleByUser = new Map<string, RoleKey>();
   for (const roleKey of instance.parsedNode.roleKeys) {
-    for (const userId of directUsersForRole(directFacts, instance.projectId, roleKey)) {
+    for (const userId of directUsersForApprovalRole(directFacts, instance, roleKey)) {
       if (!directRoleByUser.has(userId)) directRoleByUser.set(userId, roleKey);
     }
   }
@@ -1256,10 +1287,10 @@ function buildImpact(
     }
   }
   const roleCoverage = instance.parsedNode.pendingRoleKeys.map((roleKey) => {
-    const rawDirect = directUsersForRole(directFacts, instance.projectId, roleKey);
+    const rawDirect = directUsersForApprovalRole(directFacts, instance, roleKey);
     const directSelfReviewAllowed = (userId: string) =>
       userId !== instance.applicantUserId ||
-      LEADER_ROLE_KEYS.has(roleKey);
+      LEADER_ROLE_KEYS.has(roleKey) || usesProcurementFrozenCandidates(instance.businessType);
     const directApproverUserIdsAfter = stableText(
       [...directRoleByUser.entries()]
         .filter(
@@ -1309,7 +1340,7 @@ function buildImpact(
       delegationApproverUserIds,
       requiresSelfReviewConfirmation:
         directApproverUserIdsAfter.includes(instance.applicantUserId) &&
-        LEADER_ROLE_KEYS.has(roleKey),
+        (LEADER_ROLE_KEYS.has(roleKey) || usesProcurementFrozenCandidates(instance.businessType)),
       executable: allApprovers.length > 0
     };
   });
@@ -1436,6 +1467,7 @@ function spotApprovalRoleSetForBusinessType(businessType: string): ReadonlySet<R
 
 function supportsIndirectApproval(businessType: string) {
   return (
+    !usesProcurementFrozenCandidates(businessType) &&
     businessType !== "project_expense_request" &&
     businessType !== "spot_procurement_version" &&
     businessType !== "spot_procurement_payment"
@@ -1456,7 +1488,7 @@ function isApprovalActionGuardEligible(
   if (!allowedRoles) return false;
   const hasAllowedDirectRole = (candidateUserId: string) =>
     [...allowedRoles].some((roleKey) =>
-      directUsersForRole(directFacts, instance.projectId, roleKey).includes(candidateUserId)
+      directUsersForApprovalRole(directFacts, instance, roleKey).includes(candidateUserId)
     );
   if (hasAllowedDirectRole(userId)) return true;
   if (!supportsIndirectApproval(instance.businessType)) return false;
@@ -1490,7 +1522,7 @@ function resolveUserOnNode(
   }
   const directRoleByUser = new Map<string, RoleKey>();
   for (const roleKey of node.roleKeys) {
-    for (const directUserId of directUsersForRole(directFacts, instance.projectId, roleKey)) {
+    for (const directUserId of directUsersForApprovalRole(directFacts, instance, roleKey)) {
       if (!directRoleByUser.has(directUserId)) directRoleByUser.set(directUserId, roleKey);
     }
   }

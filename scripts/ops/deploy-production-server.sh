@@ -230,6 +230,9 @@ DATABASE_URL="$database_migration_url" pnpm --filter @jiangkong/api exec prisma 
 DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
   "$repo_root/scripts/ops/operating-ledger-owner-psql.sh" --set=ON_ERROR_STOP=1 \
   --file="$repo_root/services/api/prisma/employee-onboarding-runtime-grants.sql"
+DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
+  "$repo_root/scripts/ops/operating-ledger-owner-psql.sh" --set=ON_ERROR_STOP=1 \
+  --file="$repo_root/services/api/prisma/general-procurement-runtime-grants.sql"
 DATABASE_OWNER_URL="$database_migration_url" \
   OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
   ALLOW_PROJECT_PARTICIPANT_FENCE_ROLE_GRANT=true \

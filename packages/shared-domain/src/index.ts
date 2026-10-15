@@ -57,3 +57,5 @@ export * from "./project-fund-dispute-projection";
 export * from "./operating-projection-export";
 
 export * from "./master-data";
+
+export * from "./general-procurement";

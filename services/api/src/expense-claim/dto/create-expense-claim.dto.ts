@@ -1,9 +1,12 @@
+import { GENERAL_PROCUREMENT_PAYMENT_CATEGORIES, type GeneralProcurementPaymentCategory } from "@jiangkong/shared-domain";
 import { Type } from "class-transformer";
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsIn,
+  IsOptional,
+  IsUUID,
   ValidateIf,
   ValidateNested
 } from "class-validator";
@@ -44,6 +47,11 @@ export class ExpenseClaimLineDto {
 }
 
 export class CreateExpenseClaimDto {
+  @IsOptional() @IsUUID("4", { message: "采购申请编号不正确" })
+  generalProcurementId?: string;
+  @IsOptional() @IsUUID("4", { message: "请款提交标识不正确" })
+  generalProcurementRequestKey?: string;
+
   @IsIn(["reimbursement", "loan", "incidental_expense"], {
     message: "费用业务类型不正确"
   })
@@ -59,7 +67,8 @@ export class CreateExpenseClaimDto {
       "temporary_service",
       "temporary_machinery_shift",
       "sporadic_labor",
-      "other_incidental"
+      "other_incidental",
+      ...GENERAL_PROCUREMENT_PAYMENT_CATEGORIES
     ],
     {
       message:
@@ -70,7 +79,8 @@ export class CreateExpenseClaimDto {
     | "temporary_service"
     | "temporary_machinery_shift"
     | "sporadic_labor"
-    | "other_incidental";
+    | "other_incidental"
+    | GeneralProcurementPaymentCategory;
 
   @IsRequiredText({ requiredMessage: "使用单位不能为空", typeMessage: "使用单位必须是文字", blankMessage: "使用单位不能为空白" })
   companyEntityId!: string;

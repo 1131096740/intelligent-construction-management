@@ -1,3 +1,5 @@
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { canReadGeneralProcurement, generalProcurementActor } from "../general-procurement/general-procurement-access";
 import {
   BadRequestException,
   ConflictException,
@@ -1407,6 +1409,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "NoInvoiceConfirmation" WHERE "proofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "InvoiceExceptionConfirmation" WHERE "proofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectExpenseRequest" WHERE "attachmentFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "GeneralProcurement" WHERE "archiveFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ExpenseClaimAttachment" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectExpenseExecution" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
@@ -2230,6 +2233,15 @@ export class FileService {
         : null;
       if (contract?.ownerUserId === actorUserId && !contract.voidedAt) return;
       throw new ForbiddenException("当前账号无权下载该线下修订稿文件");
+    }
+
+    const procurement = tx.generalProcurement?.findFirst
+      ? await tx.generalProcurement.findFirst({ where: { archiveFileId: file.id } })
+      : null;
+    if (procurement) {
+      const actor = await generalProcurementActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
+      if (canReadGeneralProcurement(procurement, actor)) return;
+      throw new ForbiddenException("当前账号无权下载该采购归档资料");
     }
 
     const expenseAttachmentAccess = await this.resolveExpenseClaimAttachmentAccess(

@@ -941,7 +941,14 @@ function incidentalCostImpacts(
     temporary_service: "site_construction_and_measures",
     temporary_machinery_shift: "machinery_and_rental",
     sporadic_labor: "crew_and_labor",
-    other_incidental: "other_project_cost"
+    other_incidental: "other_project_cost",
+    procurement_office_supplies: "project_daily_expense",
+    procurement_construction_tools: "site_construction_and_measures",
+    procurement_gifts: "project_daily_expense",
+    procurement_logistics: "project_daily_expense",
+    procurement_meals: "project_daily_expense",
+    procurement_utilities: "project_daily_expense",
+    procurement_other: "other_project_cost"
   };
   const costCategoryCode = costCategories[category];
   if (!costCategoryCode) throw new BadRequestException("零星费用分类不支持经营账投影");

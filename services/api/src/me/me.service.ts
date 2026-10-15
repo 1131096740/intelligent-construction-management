@@ -1,3 +1,5 @@
+import { generalProcurementActor } from "../general-procurement/general-procurement-access";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
@@ -186,7 +188,9 @@ const LEGACY_APPROVAL_TYPES = [
   "contract_version",
   "settlement",
   "payment_request",
-  "project_expense_request"
+  "project_expense_request",
+  "general_procurement",
+  "expense_claim"
 ] as const;
 const SPOT_APPROVAL_TYPES = ["spot_procurement_version", "spot_procurement_payment"] as const;
 const RELEVANT_APPROVAL_TYPES = [...LEGACY_APPROVAL_TYPES, ...SPOT_APPROVAL_TYPES] as const;
@@ -963,9 +967,9 @@ export class MeService {
       if (!projectId || !node) continue;
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = supportsIndirect
-        ? this.canActOnApprovalNode(node, roleKeys, userId)
-        : this.hasDirectRoleTodo(node, roleKeys);
+      const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
+        ? await this.canActOnProcurementNode(node, userId, projectId)
+        : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys);
       const hasDirectTodo = hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
       const relevantDelegatorIds = supportsIndirect && !hasDirectTodo
@@ -2161,9 +2165,9 @@ export class MeService {
       }
       const roleKeys = roleKeysByProject.get(detail.projectId) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = supportsIndirect
-        ? this.canActOnApprovalNode(node, roleKeys, userId)
-        : this.hasDirectRoleTodo(node, roleKeys);
+      const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
+        ? await this.canActOnProcurementNode(node, userId, detail.projectId)
+        : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys);
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
@@ -2267,6 +2271,15 @@ export class MeService {
 
   private async approvalBusinessDetails(instances: ApprovalInstanceForWorkItem[]) {
     const result = new Map<string, ApprovalBusinessDetail>();
+    const generalIds = instances.filter((instance) => instance.businessType === "general_procurement").map((instance) => instance.businessId);
+    const claimIds = instances.filter((instance) => instance.businessType === "expense_claim").map((instance) => instance.businessId);
+    const generalRows = generalIds.length ? await this.prisma.generalProcurement.findMany({ where: { id: { in: generalIds } } }) : [];
+    const claimRows = claimIds.length ? await this.prisma.expenseClaim.findMany({ where: { id: { in: claimIds }, generalProcurementId: { not: null } } }) : [];
+    const procurementProjectNames = await this.projectNames([...generalRows.map((row) => row.projectId), ...claimRows.flatMap((row) => row.projectId ? [row.projectId] : [])]);
+    for (const row of generalRows) result.set(`general_procurement:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
+      businessCode: row.code, title: `综合采购申请：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/综合采购申请/${row.id}` });
+    for (const row of claimRows) if (row.projectId) result.set(`expense_claim:${row.id}`, { projectId: row.projectId, projectName: procurementProjectNames.get(row.projectId) ?? "所属项目",
+      businessCode: row.code, title: `综合采购付款：${row.reason}`, amountCents: row.requestedAmountCents, targetPath: `/费用与报销/${row.id}` });
     const contractVersionIds = instances
       .filter((instance) => instance.businessType === "contract_version")
       .map((instance) => instance.businessId);
@@ -2495,9 +2508,9 @@ export class MeService {
         continue;
       }
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = supportsIndirect
-        ? this.canActOnApprovalNode(currentNode, roleKeys, userId)
-        : this.hasDirectRoleTodo(currentNode, roleKeys);
+      const hasRoleTodo = ["general_procurement", "expense_claim"].includes(instance.businessType)
+        ? await this.canActOnProcurementNode(currentNode, userId, projectId)
+        : supportsIndirect ? this.canActOnApprovalNode(currentNode, roleKeys, userId) : this.hasDirectRoleTodo(currentNode, roleKeys);
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, currentNode, roleKeys, userId);
@@ -2652,8 +2665,21 @@ export class MeService {
     };
   }
 
+  private async canActOnProcurementNode(node: ApprovalNode, userId: string, projectId: string) {
+    try {
+      const actor = await generalProcurementActor(this.prisma, new ProjectVisibilityService(this.prisma), userId, projectId);
+      const identity = resolveApprovalReviewIdentity({ node, actorUserId: userId, actorRoleKeys: [...actor.globalRoleKeys, ...actor.projectRoleKeys], actorRoleScopes: actor });
+      return Boolean(identity && !identity.viaAssignment);
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   private supportsIndirectApproval(businessType: string) {
     return (
+      businessType !== "general_procurement" &&
+      businessType !== "expense_claim" &&
       businessType !== "project_expense_request" &&
       businessType !== "spot_procurement_version" &&
       businessType !== "spot_procurement_payment"

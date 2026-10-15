@@ -194,6 +194,7 @@ jobs:
           - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16
           - employee_onboarding
+          - general_procurement
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -278,7 +279,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
 
       - name: Install employee onboarding browser runtime
-        if: ${{ matrix.group == 'employee_onboarding' }}
+        if: ${{ matrix.group == 'employee_onboarding' || matrix.group == 'general_procurement' }}
         run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 
       - name: Verify migration baseline

@@ -1,3 +1,6 @@
+import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
+import { generalProcurementActor } from "../general-procurement/general-procurement-access";
+import { GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -51,7 +54,8 @@ const INCIDENTAL_EXPENSE_CATEGORIES = [
   "temporary_service",
   "temporary_machinery_shift",
   "sporadic_labor",
-  "other_incidental"
+  "other_incidental",
+  ...GENERAL_PROCUREMENT_PAYMENT_CATEGORIES
 ] as const;
 const INCIDENTAL_EXPENSE_CATEGORY_SET = new Set<string>(
   INCIDENTAL_EXPENSE_CATEGORIES
@@ -202,8 +206,13 @@ export class ExpenseClaimService {
         if (!visibleProjectIds.includes(project.id)) throw new ForbiddenException("当前账号无权选择该项目");
       }
 
+      const procurementPayment = await prepareProcurementPayment(tx, this.prisma, actorUserId, input, requestedAmountCents);
+      if (procurementPayment?.existing) {
+        const existing = procurementPayment.existing;
+        return { id: existing.id, code: existing.code, status: existing.status, requestedAmountCents: moneyCentsToApi(existing.requestedAmountCents) };
+      }
       const actorRoles = await this.loadRoleKeys(tx, actorUserId, project?.id);
-      const applicant = await this.applicantSnapshot(tx, actor, input, actorRoles);
+      const applicant = procurementPayment ? { userId: actor.id, name: actor.name, phone: actor.phone } : await this.applicantSnapshot(tx, actor, input, actorRoles);
       const factWitness = await this.factWitnessSnapshot(tx, input, project?.id);
       const code = await this.numbering.allocateDaily(
         tx,
@@ -215,6 +224,9 @@ export class ExpenseClaimService {
       );
       const claim = await tx.expenseClaim.create({
         data: {
+          generalProcurementId: input.generalProcurementId ?? null,
+          generalProcurementRequestKey: input.generalProcurementRequestKey ?? null,
+          generalProcurementFingerprint: procurementPayment?.fingerprint ?? null,
           code,
           claimType,
           incidentalExpenseCategory,
@@ -285,7 +297,7 @@ export class ExpenseClaimService {
     const claim = await this.prisma.expenseClaim.findFirst({
       where: { id: claimId },
       select: {
-        id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
+        generalProcurementId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityNameSnapshot: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
@@ -318,7 +330,9 @@ export class ExpenseClaimService {
       claim.claimType === "reimbursement" &&
       claim.status === "approved_pending_payment" &&
       roles.some((role) => PAYMENT_SUBJECT_ADJUSTMENT_ROLES.includes(role));
-    if (!isOwner && !identity && !canAppendEvidence) throw new NotFoundException("费用申请不存在或当前账号无权读取");
+    const procurementActor = claim.generalProcurementId && claim.projectId ? await generalProcurementActor(this.prisma, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId) : null;
+    const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
+    if (!isOwner && !identity && !canAppendEvidence && !canReadProcurementPayment) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
@@ -354,7 +368,7 @@ export class ExpenseClaimService {
           orderBy: { createdAt: "asc" }
         })
         : Promise.resolve([]),
-      claim.claimType === "reimbursement"
+      (claim.claimType === "reimbursement" || claim.claimType === "incidental_expense")
         ? this.prisma.expenseClaimPaymentExecution.findMany({
           where: { expenseClaimId: claim.id },
           select: { id: true, amountCents: true, paidAt: true, paymentMethod: true, voucherFileId: true, recordedByUserId: true, note: true, createdAt: true },
@@ -407,6 +421,7 @@ export class ExpenseClaimService {
       : [[], []];
     return {
       ...claim,
+      generalProcurement: claim.generalProcurementId ? await this.prisma.generalProcurement.findUnique({ where: { id: claim.generalProcurementId }, select: { id: true, code: true } }) : null,
       project,
       entrySnapshots: await this.prisma.expenseClaimEntrySnapshot.findMany({ where: { expenseClaimId: claim.id }, orderBy: [{ frozenAt: "asc" }, { id: "asc" }] }),
       requestedAmountCents: moneyCentsToApi(claim.requestedAmountCents),
@@ -763,6 +778,11 @@ export class ExpenseClaimService {
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
+      const source = await tx.expenseClaim.findUnique({ where: { id: claim.id }, select: { generalProcurementId: true } });
+      if (source?.generalProcurementId) {
+        const actor = await generalProcurementActor(tx, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId!);
+        if (!actor.globalRoleKeys.includes("comprehensive_director")) throw new ForbiddenException("综合采购付款仍须由当前综合部主管提交");
+      }
       const offset = await this.reserveLoanOffsets(tx, claim, actorUserId);
       const nodes = await this.freezeApprovalNodes(tx, claim);
       const instance = await tx.approvalInstance.create({
