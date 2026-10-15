@@ -124,7 +124,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(profileBefore.status).toBe(200);
     expect((profileBefore.body as unknown as { constructionEnterprise: unknown }).constructionEnterprise).toBeNull();
     for (const projectId of Object.values(projectIds)) {
-      const assignment = await json(`/projects/${projectId}/construction-enterprise`, sessions.get("finance_director")!, "POST", {
+      const assignment = await json(`/projects/${projectId}/construction-enterprise`, sessions.get("comprehensive_director")!, "POST", {
         businessPartyVersionId: constructionEnterpriseVersion.id,
         effectiveFrom: "2026-01-01T00:00:00.000Z",
         changeReason: "#115 零采退款合成项目公开配置"

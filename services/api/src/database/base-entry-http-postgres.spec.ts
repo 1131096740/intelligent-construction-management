@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
@@ -554,19 +554,24 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const companyFirst = order === "company-stop-first";
     const table = companyFirst ? "CompanyEntity" : "Project";
     const id = companyFirst ? company.id : projectId;
+    const coordinationUrl = new URL(process.env.DATABASE_URL!);
+    coordinationUrl.searchParams.set("connection_limit", "2");
+    const coordinator = new PrismaClient({ datasources: { db: { url: coordinationUrl.toString() } } });
     let locked!: () => void;
+    let failReady!: (error: unknown) => void;
     let release!: () => void;
-    const ready = new Promise<void>((resolve) => { locked = resolve; });
+    const ready = new Promise<void>((resolve, reject) => { locked = resolve; failReady = reject; });
     const held = new Promise<void>((resolve) => { release = resolve; });
     // Only hold a real DB boundary lock. Both conflicting business writes use HTTP.
-    const blocker = prisma.$transaction(async (tx) => {
+    const blocker = coordinator.$transaction(async (tx) => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM ${Prisma.raw(`"${table}"`)} WHERE "id" = ${id} FOR UPDATE`);
       locked();
       await held;
     });
+    void blocker.catch(failReady);
     const waitForWaiters = async (count: number) => {
       for (let attempt = 0; attempt < 200; attempt += 1) {
-        const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+        const rows = await coordinator.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
           SELECT count(*) FROM pg_stat_activity
           WHERE datname = current_database() AND wait_event_type = 'Lock'
             AND query LIKE ${`%"${table}"%`} AND query ILIKE '%FOR UPDATE%'
@@ -578,15 +583,20 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     };
     const stop = () => request(`${companyFirst ? "/company-entities" : "/projects"}/${id}/status`, "POST", { isActive: false }, chairman);
     const create = () => request("/expense-claims", "POST", { claimType: "loan", projectId, applicantUserId: employeeId, companyEntityId: company.id, reason: "本机合成并发借款", requestedAmountCents: "10000" }, employee);
-    await ready;
     let first: ReturnType<typeof request> | undefined;
     let second: ReturnType<typeof request> | undefined;
     try {
+      await ready;
       first = order === "expense-first" ? create() : stop();
       await waitForWaiters(1);
       second = order === "expense-first" ? stop() : create();
       await waitForWaiters(2);
-    } finally { release(); await blocker; }
+    } finally {
+      release();
+      await Promise.allSettled([blocker, first, second].filter((pending) => pending !== undefined));
+      await coordinator.$disconnect();
+    }
+    await blocker;
     const [firstResult, secondResult] = await Promise.all([first!, second!]);
     expect(firstResult.status).toBe(201);
     expect(secondResult.status).toBe(order === "expense-first" ? 409 : 404);

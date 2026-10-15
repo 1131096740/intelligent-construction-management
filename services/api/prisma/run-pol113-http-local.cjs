@@ -37,7 +37,9 @@ try {
   console.log(`POL113 一次性容器：${name}`);
   docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "pol113", "-Atc", "SHOW server_version;"]);
   command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
-  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/base-entry-http-postgres.spec.ts"], env);
+  // The existing browser case allows 210s; its parent must also cover pretest and the other HTTP cases.
+  const testTimeout = env.RUN_POL113_PROJECT_BROWSER === "1" ? 300_000 : 180_000;
+  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/base-entry-http-postgres.spec.ts"], env, false, testTimeout);
 } finally {
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
     docker(["rm", "--force", containerId], process.env, true);
