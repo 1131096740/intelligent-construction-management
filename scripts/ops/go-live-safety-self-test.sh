@@ -696,6 +696,7 @@ make_deploy_fixture() {
     "$fixture/systemd" \
     "$fixture/backups"
   cp "$SCRIPT_DIR/operating-ledger-owner-psql.sh" "$fixture/repo/scripts/ops/operating-ledger-owner-psql.sh"
+  cp "$SCRIPT_DIR/../../services/api/prisma/employee-onboarding-runtime-grants.sql" "$fixture/repo/services/api/prisma/employee-onboarding-runtime-grants.sql"
   cp "$SCRIPT_DIR/grant-project-participating-company-fence-runtime-role.sh" "$fixture/repo/scripts/ops/grant-project-participating-company-fence-runtime-role.sh"
   cp "$SCRIPT_DIR/verify-operating-ledger-runtime-role.sh" "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
   chmod +x \

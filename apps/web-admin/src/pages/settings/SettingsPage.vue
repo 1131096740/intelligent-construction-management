@@ -29,6 +29,13 @@
             placeholder="用于确认是本人操作"
             autocomplete="current-password"
           />
+          <SmsCodeField
+            v-if="phoneVerificationRequired"
+            v-model="profileForm.code"
+            :phone="String(profileDraft.values.phone ?? '')"
+            purpose="change_phone"
+            :disabled="profileBusy"
+          />
           <t-alert
             v-if="profileMessage"
             :theme="profileTone"
@@ -84,6 +91,10 @@
           </t-button>
         </form>
       </div>
+      <div v-if="canGenerateRecoveryCode" class="account-session-actions">
+        <span class="muted">董事长可保存一份一次性恢复码，在忘记密码时自行找回。</span>
+        <t-button variant="outline" @click="recoveryDialogOpen = true">生成董事长恢复码</t-button>
+      </div>
       <div class="account-session-actions">
         <span class="muted">退出后需要使用当前登录手机号和密码重新登录。</span>
         <t-button
@@ -96,6 +107,7 @@
         </t-button>
       </div>
     </t-card>
+    <AccountCredentialDialog v-if="recoveryDialogOpen" recovery @close="recoveryDialogOpen = false" />
 
     <t-card
       title="个人签名"
@@ -295,6 +307,9 @@ import {
   type DraftRetentionPreviewReadModel
 } from "../../api/core-flow-read.api";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
+import SmsCodeField from "../../components/SmsCodeField.vue";
+import AccountCredentialDialog from "../../components/AccountCredentialDialog.vue";
+import { fetchAccountOptions } from "../../api/employee-onboarding.api";
 import JgSignaturePanel from "../../components/JgSignaturePanel.vue";
 import JgSignatureHandoff from "../../components/JgSignatureHandoff.vue";
 import {
@@ -309,6 +324,10 @@ import {
 
 const router = useRouter();
 const auth = useAuthStore();
+const recoveryDialogOpen = ref(false);
+const smsAvailable = ref(false);
+const canGenerateRecoveryCode = computed(() => auth.user?.globalRoleKeys?.includes("chairman") === true);
+const phoneVerificationRequired = computed(() => smsAvailable.value && String(profileDraft.value.values.phone ?? "") !== auth.user?.phone);
 const isSuperAdmin = computed(() => auth.user?.roleKeys.includes("super_admin") === true);
 const retentionPreview = ref<DraftRetentionPreviewReadModel | null>(null);
 const retentionLoading = ref(false);
@@ -348,7 +367,8 @@ const signatureAvailableActions = shallowRef<Array<
 let canvasSignaturePromise: Promise<void> | null = null;
 
 const profileForm = reactive({
-  currentPassword: ""
+  currentPassword: "",
+  code: ""
 });
 const loadedDefinition = shallowRef<BusinessEntrySceneDefinition | null>(null);
 const profileErrors = ref<Array<{ fieldKey?: string; message: string }>>([]);
@@ -406,7 +426,8 @@ onMounted(async () => {
     loadProfileDefinition(),
     loadSignature(),
     loadSignatureCapabilities(),
-    loadRetentionPreview()
+    loadRetentionPreview(),
+    fetchAccountOptions().then((options) => { smsAvailable.value = options.smsEnabled; }).catch(() => { /* 服务端仍会强制核验已开启的短信。 */ })
   ]);
 });
 onBeforeUnmount(() => window.removeEventListener("resize", updateSignatureMode));
@@ -417,6 +438,7 @@ function updateSignatureMode() {
 
 function clearProfilePassword() {
   profileForm.currentPassword = "";
+  profileForm.code = "";
 }
 
 async function loadProfileDefinition() {
@@ -477,11 +499,12 @@ async function commitUserSelfProfileWithDefinition(
   name: string,
   phone: string,
   currentPassword: string,
-  expectedRevision: number
+  expectedRevision: number,
+  code?: string
 ) {
   const definition = await readFreshUserSelfProfileDefinition();
   assertFreshUserSelfProfileDefinition(definition, expectedRevision);
-  return updateProfile(name, phone, currentPassword);
+  return updateProfile(name, phone, currentPassword, code);
 }
 
 async function submitProfile() {
@@ -519,7 +542,8 @@ async function submitProfile() {
       String(payload.values.name ?? ""),
       String(payload.values.phone ?? ""),
       profileForm.currentPassword,
-      expectedRevision
+      expectedRevision,
+      phoneVerificationRequired.value ? profileForm.code : undefined
     );
     profileDraft.value = { ...payload, values: { name: auth.user?.name ?? payload.values.name, phone: auth.user?.phone ?? payload.values.phone } };
     profileTone.value = "success";

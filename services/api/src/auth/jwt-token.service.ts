@@ -10,7 +10,7 @@ const DEFAULT_SECRET_MARKERS = new Set([
 const INVALID_TOKEN_MESSAGE = "登录凭证无效，请重新登录";
 const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]+$/u;
 const JWT_HEADER_KEYS = new Set(["alg", "typ"]);
-const JWT_ACCESS_PAYLOAD_KEYS = new Set(["sub", "name", "phone", "type", "iat", "exp"]);
+const JWT_ACCESS_PAYLOAD_KEYS = new Set(["sub", "name", "phone", "type", "iat", "exp", "ver"]);
 const JWT_REFRESH_PAYLOAD_KEYS = new Set([
   "sub",
   "name",
@@ -18,7 +18,8 @@ const JWT_REFRESH_PAYLOAD_KEYS = new Set([
   "type",
   "jti",
   "iat",
-  "exp"
+  "exp",
+  "ver"
 ]);
 const JWT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -59,7 +60,8 @@ function isJwtPayload(value: unknown, now: number): value is JwtPayload {
   if (!hasOnlyKeys(value, allowedKeys)) return false;
 
   return (
-    (value.type === "access" || value.type === "refresh") &&
+    (value.type === "access" || value.type === "refresh" || value.type === "application") &&
+    (value.ver === undefined || (typeof value.ver === "number" && Number.isSafeInteger(value.ver) && value.ver >= 0)) &&
     typeof value.sub === "string" &&
     value.sub.length > 0 &&
     value.sub.trim() === value.sub &&
@@ -105,6 +107,7 @@ export class JwtTokenService {
       name: user.name,
       phone: user.phone,
       type: "access",
+      ...(user.sessionVersion === undefined ? {} : { ver: user.sessionVersion }),
       iat: this.nowSeconds(),
       exp: this.nowSeconds() + this.accessTokenTtlSeconds()
     });
@@ -116,6 +119,7 @@ export class JwtTokenService {
       name: user.name,
       phone: user.phone,
       type: "refresh",
+      ...(user.sessionVersion === undefined ? {} : { ver: user.sessionVersion }),
       jti: randomUUID(),
       iat: this.nowSeconds(),
       exp: this.nowSeconds() + this.refreshTokenTtlSeconds()
@@ -129,6 +133,17 @@ export class JwtTokenService {
       throw new UnauthorizedException("登录凭证类型不正确，请重新登录");
     }
 
+    return payload;
+  }
+
+  signApplicationToken(id: string, version: number) {
+    return this.sign({ sub: id, type: "application", ver: version,
+      iat: this.nowSeconds(), exp: this.nowSeconds() + 30 * 60 });
+  }
+
+  verifyApplicationToken(token: string) {
+    const payload = this.verify(token);
+    if (payload.type !== "application") throw new UnauthorizedException("请重新登录查看入职申请");
     return payload;
   }
 

@@ -19,6 +19,7 @@ import {
   roleScope
 } from "./organization-management-policy";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import { employeeTargetNeedsChairman, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
@@ -140,6 +141,8 @@ export class OrganizationRoleService {
             await tx.projectMember.delete({ where: { id: target.id } });
           }
 
+          await tx.user.update({ where: { id: evaluation.preview.change.userId }, data: { sessionVersion: { increment: 1 },
+            ...(IMPORTANT_EMPLOYEE_ROLES.includes(input.roleKey) ? { requiresChairmanManagement: true } : {}) } });
           const revoked = await tx.refreshToken.updateMany({
             where: { userId: evaluation.preview.change.userId, revokedAt: null },
             data: { revokedAt: evaluatedAt }
@@ -256,6 +259,8 @@ export class OrganizationRoleService {
               update: {}
             });
           }
+          await tx.user.update({ where: { id: change.userId }, data: { sessionVersion: { increment: 1 },
+            ...(IMPORTANT_EMPLOYEE_ROLES.includes(input.roleKey) || input.roleKey === "super_admin" ? { requiresChairmanManagement: true } : {}) } });
           const revoked = await tx.refreshToken.updateMany({
             where: { userId: change.userId, revokedAt: null },
             data: { revokedAt: evaluatedAt }
@@ -341,16 +346,9 @@ export class OrganizationRoleService {
     if (actorUserId === targetUserId) {
       throw new ForbiddenException("不能通过组织管理入口给自己授岗、撤岗或扩权");
     }
-    try {
+    if (roleKey === "super_admin") {
       await this.assertActiveGlobalSuperAdmin(tx as Prisma.TransactionClient, actorUserId, action);
-      if (
-        roleKey !== "engineering_department_member" &&
-        roleKey !== "engineering_department_director"
-      ) {
-        return;
-      }
-    } catch (error) {
-      if (!(error instanceof ForbiddenException)) throw error;
+      return;
     }
     const [actor, target, assignments] = await Promise.all([
       tx.user.findUnique({
@@ -382,6 +380,9 @@ export class OrganizationRoleService {
     }
     if (!canManageRole(actorRoles, roleKey)) {
       throw new ForbiddenException("当前岗位不能授予或撤销该岗位");
+    }
+    if (!actorRoles.includes("chairman") && await employeeTargetNeedsChairman(tx, targetUserId)) {
+      throw new ForbiddenException("管理层和财务人员的岗位仅由董事长调整");
     }
     if (!requiresDepartmentBoundary(actorRoles)) return;
     if (!actor.departmentId || !target.departmentId) {

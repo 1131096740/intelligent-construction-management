@@ -36,7 +36,8 @@ export class JwtAuthGuard implements CanActivate {
       where: { id: payload.sub }
     });
 
-    if (!user?.isActive) {
+    if (!user?.isActive || (user.sessionVersion ?? 0) !== (payload.ver ?? 0) ||
+      (user.temporaryPasswordExpiresAt && user.temporaryPasswordExpiresAt <= new Date())) {
       throw new UnauthorizedException("登录凭证无效，请重新登录");
     }
 
@@ -47,7 +48,8 @@ export class JwtAuthGuard implements CanActivate {
     request.user = {
       id: user.id,
       name: user.name,
-      phone: user.phone
+      phone: user.phone,
+      sessionVersion: user.sessionVersion
     };
 
     return true;

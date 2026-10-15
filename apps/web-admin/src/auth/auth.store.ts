@@ -37,6 +37,10 @@ interface AuthState {
   user: AuthUser | null;
 }
 
+export class AuthRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 function getStorage(): Storage | null {
   return typeof localStorage === "undefined" ? null : localStorage;
 }
@@ -55,7 +59,7 @@ async function postAuth<T>(path: string, body: unknown): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(formatAuthError(text, response.status, "登录请求失败"));
+    throw new AuthRequestError(formatAuthError(text, response.status, "登录请求失败"), response.status);
   }
 
   return response.json() as Promise<T>;
@@ -198,7 +202,7 @@ export const useAuthStore = defineStore("auth", {
       this.user = normalizeUser(result.user);
       this.persist();
     },
-    async updateProfile(name: string, phone: string, currentPassword: string) {
+    async updateProfile(name: string, phone: string, currentPassword: string, code?: string) {
       if (!this.accessToken) {
         throw new Error("请先登录");
       }
@@ -211,7 +215,7 @@ export const useAuthStore = defineStore("auth", {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.accessToken}`
           },
-          body: JSON.stringify({ name, phone, currentPassword })
+          body: JSON.stringify({ name, phone, currentPassword, ...(code ? { code } : {}) })
         });
       } catch (error) {
         throw new Error(formatUnknownApiError(error, "修改账号资料失败"));

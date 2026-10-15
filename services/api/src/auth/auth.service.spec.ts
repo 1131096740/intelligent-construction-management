@@ -158,6 +158,8 @@ describe("authentication request validation", () => {
 describe("AuthService", () => {
   let prisma: {
     $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+    employeeRegistration: { findUnique: jest.Mock };
     user: {
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -189,6 +191,8 @@ describe("AuthService", () => {
     process.env.JWT_REFRESH_SECRET = "test-refresh-secret";
     prisma = {
       $transaction: jest.fn(),
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      employeeRegistration: { findUnique: jest.fn().mockResolvedValue(null) },
       user: {
         findUnique: jest.fn(),
         update: jest.fn()
@@ -434,6 +438,7 @@ describe("AuthService", () => {
       id: "user-1",
       name: "合同部 李工",
       phone: "13800000001",
+      sessionVersion: 0,
       passwordHash: await bcrypt.hash("old-password", 10),
       mustChangePassword: false,
       isActive: true
@@ -455,9 +460,11 @@ describe("AuthService", () => {
       )
     ).resolves.toEqual(expect.objectContaining({ ok: true }));
     expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: "user-1" },
+      where: { id: "user-1", isActive: true, passwordHash: expect.any(String), sessionVersion: 0 },
       data: {
         passwordHash: expect.any(String),
+        sessionVersion: { increment: 1 },
+        temporaryPasswordExpiresAt: null,
         mustChangePassword: false
       }
     });
@@ -474,6 +481,7 @@ describe("AuthService", () => {
       id: "user-1",
       name: "合同部 李工",
       phone: "13800000001",
+      sessionVersion: 0,
       passwordHash: await bcrypt.hash("old-password", 10),
       mustChangePassword: false,
       isActive: true
@@ -496,6 +504,7 @@ describe("AuthService", () => {
       id: "user-1",
       name: "试运行员工",
       phone: "13800000001",
+      sessionVersion: 0,
       passwordHash: await bcrypt.hash("old-password", 10),
       mustChangePassword: true,
       isActive: true
@@ -516,6 +525,7 @@ describe("AuthService", () => {
       id: "user-1",
       name: "试运行员工",
       phone: "13800000001",
+      sessionVersion: 0,
       passwordHash: await bcrypt.hash("old-password", 10),
       mustChangePassword: true,
       isActive: true
@@ -536,10 +546,12 @@ describe("AuthService", () => {
     );
 
     expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: "user-1" },
+      where: { id: "user-1", isActive: true, passwordHash: expect.any(String), sessionVersion: 0 },
       data: {
         name: "李明",
         passwordHash: expect.any(String),
+        sessionVersion: { increment: 1 },
+        temporaryPasswordExpiresAt: null,
         mustChangePassword: false
       }
     });
@@ -560,6 +572,7 @@ describe("AuthService", () => {
       name: "旧姓名",
       phone: "13800000001",
       passwordHash: await bcrypt.hash("current-password", 10),
+      sessionVersion: 0,
       mustChangePassword: false,
       isActive: true
     });
@@ -579,8 +592,8 @@ describe("AuthService", () => {
     );
 
     expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: "user-1" },
-      data: { name: "杨济旭", phone: "13900000001" }
+      where: { id: "user-1", isActive: true, passwordHash: expect.any(String), sessionVersion: 0 },
+      data: { name: "杨济旭", phone: "13900000001", sessionVersion: { increment: 1 } }
     });
     expect(result).toMatchObject({
       user: { name: "杨济旭", phone: "13900000001" },
@@ -594,6 +607,7 @@ describe("AuthService", () => {
       name: "旧姓名",
       phone: "13800000001",
       passwordHash: await bcrypt.hash("current-password", 10),
+      sessionVersion: 0,
       mustChangePassword: false,
       isActive: true
     });
@@ -616,6 +630,7 @@ describe("AuthService", () => {
       name: "旧姓名",
       phone: "13800000001",
       passwordHash: await bcrypt.hash("current-password", 10),
+      sessionVersion: 0,
       mustChangePassword: false,
       isActive: true
     });
@@ -666,6 +681,8 @@ describe("AuthService", () => {
   it("preserves internal spaces when hashing a valid new password", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
+      sessionVersion: 0,
+      isActive: true,
       passwordHash: await bcrypt.hash("old-password", 10)
     });
     prisma.user.update.mockResolvedValue({});
@@ -693,6 +710,7 @@ describe("AuthService", () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
       passwordHash: await bcrypt.hash("current-password", 10),
+      sessionVersion: 0,
       isActive: true
     });
 
@@ -706,6 +724,7 @@ describe("AuthService", () => {
       findUnique: jest.fn().mockResolvedValue({
         id: "user-1",
         passwordHash: await bcrypt.hash("current-password", 10),
+      sessionVersion: 0,
         isActive: true
       })
     };
@@ -726,6 +745,7 @@ describe("AuthService", () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
       passwordHash: await bcrypt.hash("current-password", 10),
+      sessionVersion: 0,
       isActive: true
     });
 

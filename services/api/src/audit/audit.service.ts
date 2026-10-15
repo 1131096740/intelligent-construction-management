@@ -14,15 +14,30 @@ const FILE_DOWNLOAD_AUDIT_ACTION_LABELS = {
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   ...FILE_DOWNLOAD_AUDIT_ACTION_LABELS,
   "auth.login": "登录",
+  "auth.application.login": "登录本人入职申请",
   "auth.logout": "退出登录",
   "permission.change": "权限变更",
   "operating_projection.export": "导出经营投影",
   "password.change": "密码变更",
+  "employee.registration.submit": "提交入职申请",
+  "employee.registration.resubmit": "重新提交入职申请",
+  "employee.registration.approve": "批准员工入职",
+  "employee.registration.refer": "转交董事长审核入职",
+  "employee.registration.return": "退回入职申请",
+  "employee.registration.password_reset": "重置申请人临时密码",
+  "employee.registration.password_change": "申请人设置本人密码",
+  "employee.registration.sms_reset": "申请人通过短信找回密码",
+  "auth.password.admin_reset": "管理员重置临时密码",
+  "auth.password.sms_reset": "通过短信找回密码",
+  "auth.password.recovery_code": "通过恢复码找回密码",
+  "auth.recovery_code.generate": "生成本人恢复码",
   "delegation.create": "创建委托",
   "delegation.revoke": "撤销委托"
 };
 
 const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  employee_registration: "员工入职申请",
+  user: "人员账号",
   approval_instance: "审批事项",
   contract: "合同",
   contract_takeover: "历史合同接管",

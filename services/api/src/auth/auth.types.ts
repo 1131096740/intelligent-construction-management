@@ -2,6 +2,7 @@ export interface AuthenticatedUser {
   id: string;
   name: string;
   phone: string | null;
+  sessionVersion?: number;
 }
 
 export interface AuthenticatedRequest {
@@ -22,7 +23,8 @@ export interface JwtPayload {
   sub: string;
   name?: string;
   phone?: string | null;
-  type: "access" | "refresh";
+  type: "access" | "refresh" | "application";
+  ver?: number;
   jti?: string;
   iat: number;
   exp: number;

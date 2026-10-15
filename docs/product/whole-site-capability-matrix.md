@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `0cf4cbafbdee3fc294c50df4d0cff4f377718cf6d75f22b426fdaf0d5f3012f5` |
-| webApiWrappers | ready | `986737ee5b7ab3af06880db13ce443669dc4403097326eae133dc0422d02c899` |
-| webPageActions | ready | `765c85458b339c60cf6df67106b604f6543355f189c33e283d9cb48772ad165b` |
-| routeUsage | ready | `ebd2cd3ced3248c58e88c0c74cb528e7a5655dce11993d7bcabeff18c3a858b6` |
+| nestRoutes | ready | `5466ecda6cb001de5d3b51f2ba37ea07f07c0a8cfd6a156ed1f54142255213d0` |
+| webApiWrappers | ready | `5bf0158375fd7326054b045d614db313c2609285cf7a0cf0188b348a0a1e7629` |
+| webPageActions | ready | `bbc154c1ab39dc08a58ca26a7a76ea21fbbac654ae9ac772ca91fc6ca1a5dfc4` |
+| routeUsage | ready | `64d1e899a8503e66eea8963cd5c230dd13c249a73b827de9fae7cc2bd03bd840` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 622 |
-| pageRouteCount | 413 |
+| routeCount | 637 |
+| pageRouteCount | 428 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 100 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 600 |
+| mainRequestBindingCount | 615 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 337 |
-| actionBindingCount | 382 |
-| acceptedActionBindingCount | 360 |
+| registeredActionCount | 348 |
+| actionBindingCount | 394 |
+| acceptedActionBindingCount | 372 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 327 |
-| coveredProductionMutationConsumerPairCount | 327 |
+| productionMutationConsumerPairCount | 338 |
+| coveredProductionMutationConsumerPairCount | 338 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -47,6 +47,7 @@
 | DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | DELETE | /projects/:projectId/participating-companies/:participantId | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#removeProjectParticipatingCompany | project-operating-profile.remove-participating-company | covered | — |
 | DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#deleteSpotProcurementReceiptPhoto | spot-procurement-receipt.photo.remove | covered | — |
+| GET | /account-security/options | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchAccountOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/allocation-options/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingAllocationOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/options | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchAffiliateClearingAuthorityOptions | — | not_applicable | — |
 | GET | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listApprovalDelegations | — | not_applicable | — |
@@ -100,6 +101,8 @@
 | GET | /contracts/settlement-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementContractOptions | — | not_applicable | — |
 | GET | /contracts/workbench | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractWorkbenchLedger | — | not_applicable | — |
 | GET | /draft-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDraftRetentionPreview | — | not_applicable | — |
+| GET | /employee-onboarding/applications | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchEmployeeApplications | — | not_applicable | — |
+| GET | /employee-onboarding/mine | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchMyApplication | — | not_applicable | — |
 | GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | — | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
@@ -265,6 +268,13 @@
 | PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.draft.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | spot-procurement-receipt.draft.update | covered | — |
 | PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
+| POST | /account-security/applications/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
+| POST | /account-security/phone-change-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendPhoneChangeSms | employee.phone-change-sms | covered | — |
+| POST | /account-security/recover | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#recoverWithCode | employee.code-recovery | covered | — |
+| POST | /account-security/recovery-code | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#generateRecoveryCode | employee.generate-recovery | covered | — |
+| POST | /account-security/reset-with-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetPasswordWithSms | employee.sms-reset | covered | — |
+| POST | /account-security/sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendAccountSms | employee.sms | covered | — |
+| POST | /account-security/users/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
 | POST | /affiliate-clearing-authorities/:authorityId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
@@ -373,6 +383,11 @@
 | POST | /contracts/:contractVersionId/signing/material-change | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange | contract.signing-material-change | covered | — |
 | POST | /contracts | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft | contract-draft.create | covered | — |
 | POST | /draft-retention/controlled-entry | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /employee-onboarding/applications/:id/review | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#reviewEmployeeApplication | employee.review | covered | — |
+| POST | /employee-onboarding/login | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#loginApplication | employee.application-login | covered | — |
+| POST | /employee-onboarding/mine | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resubmitApplication | employee.resubmit | covered | — |
+| POST | /employee-onboarding/mine/password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#changeApplicationPassword | employee.application-password | covered | — |
+| POST | /employee-onboarding/register | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#registerEmployee | employee.register | covered | — |
 | POST | /expense-claims/:claimId/append-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimAppendAttachmentFile | expense-claim.attachment.append-upload | covered | — |
 | POST | /expense-claims/:claimId/approval | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim | expense-claim.review | covered | — |
 | POST | /expense-claims/:claimId/attachments/:attachmentId/removal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment | expense-claim.attachment.remove | covered | — |

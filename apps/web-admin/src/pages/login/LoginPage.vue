@@ -37,6 +37,10 @@
           登录
         </t-button>
       </form>
+      <nav class="account-links" aria-label="账号帮助">
+        <router-link to="/register">新员工注册</router-link>
+        <router-link to="/forgot-password">忘记密码</router-link>
+      </nav>
     </section>
     <SiteFilingFooter />
   </main>
@@ -45,7 +49,9 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useAuthStore } from "../../auth/auth.store";
+import { AuthRequestError, useAuthStore } from "../../auth/auth.store";
+import { clearApplicationSession, fetchAccountOptions, loginApplication, saveApplicationSession } from "../../api/employee-onboarding.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import SiteFilingFooter from "../../components/SiteFilingFooter.vue";
 
 const route = useRoute();
@@ -69,6 +75,7 @@ async function submitLogin() {
 
   try {
     const user = await auth.login(form.phone.trim(), form.password);
+    clearApplicationSession();
     const target = redirectPath();
     await router.replace(
       user.mustChangePassword
@@ -76,10 +83,22 @@ async function submitLogin() {
         : target
     );
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "登录失败";
+    if (error instanceof AuthRequestError && error.status === 401) {
+      try {
+        const session = await loginApplicationWithCapability();
+        auth.clearSession(); saveApplicationSession(session); form.password = "";
+        await router.replace("/registration-status");
+      } catch (applicationError) { errorMessage.value = formatUnknownApiError(applicationError, "登录失败，请核对手机号和密码后重试"); }
+    } else errorMessage.value = formatUnknownApiError(error, "登录失败，请核对手机号和密码后重试");
   } finally {
     submitting.value = false;
   }
+}
+async function loginApplicationWithCapability() {
+  const capability = await fetchAccountOptions();
+  const operationAllowed = capability.canLoginApplication;
+  if (!operationAllowed) throw new Error("暂时无法查询入职申请，请联系综合部");
+  return loginApplication(form.phone.trim(), form.password);
 }
 </script>
 
@@ -133,6 +152,8 @@ async function submitLogin() {
   display: grid;
   gap: 16px;
 }
+.account-links { display: flex; justify-content: space-between; gap: var(--jg-space-md); margin-top: var(--jg-space-lg); }
+.account-links a { color: var(--jg-brand); }
 
 .login-page :deep(.site-filing-footer) {
   position: absolute;

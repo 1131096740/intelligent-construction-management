@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 29,
-    "exportedFunctionCount": 595,
-    "transportWrapperCount": 575,
-    "pureExportCount": 20,
-    "mainRequestBindingCount": 600,
+    "apiModuleCount": 30,
+    "exportedFunctionCount": 611,
+    "transportWrapperCount": 589,
+    "pureExportCount": 22,
+    "mainRequestBindingCount": 615,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 600,
-    "productionConsumerCount": 478,
+    "requestEdgeCount": 614,
+    "productionConsumerCount": 492,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 306,
-    "reachableProductionModuleCount": 284
+    "productionModuleCount": 314,
+    "reachableProductionModuleCount": 292
   },
   "wrappers": [
     {
@@ -10434,6 +10434,444 @@
       "unreachableConsumers": []
     },
     {
+      "name": "changeApplicationPassword",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "POST",
+          "path": "/api/employee-onboarding/mine/password",
+          "normalizedPath": "/employee-onboarding/mine/password",
+          "normalizedKey": "POST /employee-onboarding/mine/password",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "changeApplicationPassword",
+              "applicationRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "clearApplicationSession",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "pure",
+      "returnProvenance": "none",
+      "requests": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+        "apps/web-admin/src/pages/login/LoginPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchAccountOptions",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 38,
+          "method": "GET",
+          "path": "/api/account-security/options",
+          "normalizedPath": "/account-security/options",
+          "normalizedKey": "GET /account-security/options",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchAccountOptions",
+              "publicRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/SmsCodeField.vue",
+        "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
+        "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+        "apps/web-admin/src/pages/login/LoginPage.vue",
+        "apps/web-admin/src/pages/settings/SettingsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchEmployeeApplications",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "GET",
+          "path": "/employee-onboarding/applications",
+          "normalizedPath": "/employee-onboarding/applications",
+          "normalizedKey": "GET /employee-onboarding/applications",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchEmployeeApplications",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchMyApplication",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "GET",
+          "path": "/api/employee-onboarding/mine",
+          "normalizedPath": "/employee-onboarding/mine",
+          "normalizedKey": "GET /employee-onboarding/mine",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchMyApplication",
+              "applicationRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "generateRecoveryCode",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/account-security/recovery-code",
+          "normalizedPath": "/account-security/recovery-code",
+          "normalizedKey": "POST /account-security/recovery-code",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "generateRecoveryCode",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/AccountCredentialDialog.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "loginApplication",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 38,
+          "method": "POST",
+          "path": "/api/employee-onboarding/login",
+          "normalizedPath": "/employee-onboarding/login",
+          "normalizedKey": "POST /employee-onboarding/login",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "loginApplication",
+              "publicRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/LoginPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recoverWithCode",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 38,
+          "method": "POST",
+          "path": "/api/account-security/recover",
+          "normalizedPath": "/account-security/recover",
+          "normalizedKey": "POST /account-security/recover",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recoverWithCode",
+              "publicRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "registerEmployee",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 38,
+          "method": "POST",
+          "path": "/api/employee-onboarding/register",
+          "normalizedPath": "/employee-onboarding/register",
+          "normalizedKey": "POST /employee-onboarding/register",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "registerEmployee",
+              "publicRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "resetEmployeePassword",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/account-security/applications/:param/reset-password",
+          "normalizedPath": "/account-security/applications/:param/reset-password",
+          "normalizedKey": "POST /account-security/applications/:param/reset-password",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "resetEmployeePassword",
+              "userRequest"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/account-security/users/:param/reset-password",
+          "normalizedPath": "/account-security/users/:param/reset-password",
+          "normalizedKey": "POST /account-security/users/:param/reset-password",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "resetEmployeePassword",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/AccountCredentialDialog.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "resetPasswordWithSms",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 38,
+          "method": "POST",
+          "path": "/api/account-security/reset-with-sms",
+          "normalizedPath": "/account-security/reset-with-sms",
+          "normalizedKey": "POST /account-security/reset-with-sms",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "resetPasswordWithSms",
+              "publicRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "resubmitApplication",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "POST",
+          "path": "/api/employee-onboarding/mine",
+          "normalizedPath": "/employee-onboarding/mine",
+          "normalizedKey": "POST /employee-onboarding/mine",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "resubmitApplication",
+              "applicationRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reviewEmployeeApplication",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/employee-onboarding/applications/:param/review",
+          "normalizedPath": "/employee-onboarding/applications/:param/review",
+          "normalizedKey": "POST /employee-onboarding/applications/:param/review",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "reviewEmployeeApplication",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "saveApplicationSession",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "pure",
+      "returnProvenance": "none",
+      "requests": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+        "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
+        "apps/web-admin/src/pages/login/LoginPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "sendAccountSms",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 38,
+          "method": "POST",
+          "path": "/api/account-security/sms",
+          "normalizedPath": "/account-security/sms",
+          "normalizedKey": "POST /account-security/sms",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "sendAccountSms",
+              "publicRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/SmsCodeField.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "sendPhoneChangeSms",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/account-security/phone-change-sms",
+          "normalizedPath": "/account-security/phone-change-sms",
+          "normalizedKey": "POST /account-security/phone-change-sms",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "sendPhoneChangeSms",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/SmsCodeField.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "adjustExpenseClaimPaymentSubject",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
@@ -12600,7 +13038,9 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/AccountCredentialDialog.vue",
         "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
+        "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",

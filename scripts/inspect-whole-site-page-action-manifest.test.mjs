@@ -2199,7 +2199,8 @@ test("fails closed for missing wrappers and missing Nest routes", async () => {
   );
 });
 
-test("consumes the exact registered self-profile facade auth transport exception", async () => {
+for (const codeParameter of ["", ", code"]) {
+test(`consumes the exact registered self-profile facade auth transport exception${codeParameter ? " with SMS code" : ""}`, async () => {
   const root = await fixture({
     actions: [
       registryAction({
@@ -2244,7 +2245,7 @@ async function submitProfile() {
 </template>
 `,
     extraFiles: {
-      "apps/web-admin/src/lib/user-self-profile.ts": `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword) { return useAuthStore().updateProfile(name, phone, currentPassword); }\n`,
+      "apps/web-admin/src/lib/user-self-profile.ts": `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword${codeParameter}) { return useAuthStore().updateProfile(name, phone, currentPassword${codeParameter}); }\n`,
       "apps/web-admin/src/auth/auth.store.ts": `export function useAuthStore() { return { updateProfile() { return undefined; } }; }\n`
     },
     webManifestOverrides: {
@@ -2273,6 +2274,8 @@ async function submitProfile() {
     "PATCH /auth/profile"
   );
 });
+
+}
 
 test("fails closed for unregistered or mismatched self-profile auth exception evidence", async () => {
   const exactWrapper = {
@@ -2385,6 +2388,18 @@ async function submitProfile() {
     {
       name: "facade argument order mismatch",
       facadeSource: `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword) { return useAuthStore().updateProfile(phone, name, currentPassword); }\n`
+    },
+    {
+      name: "SMS facade drops code",
+      facadeSource: `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword, code) { return useAuthStore().updateProfile(name, phone, currentPassword); }\n`
+    },
+    {
+      name: "SMS facade replaces code",
+      facadeSource: `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword, code) { return useAuthStore().updateProfile(name, phone, currentPassword, "fixed-code"); }\n`
+    },
+    {
+      name: "SMS facade reorders code",
+      facadeSource: `import { useAuthStore } from "../auth/auth.store";\nexport function updateProfile(name, phone, currentPassword, code) { return useAuthStore().updateProfile(name, phone, code, currentPassword); }\n`
     },
     {
       name: "transport owner mismatch",

@@ -72,6 +72,7 @@ function createHarness(input?: {
       | null;
   };
   actor?: { id: string; isActive: boolean } | null;
+  actorRole?: "chairman" | "super_admin";
   adminPosition?: { id: string } | null;
   actorAdminAssignment?: { id: string } | null;
 }) {
@@ -79,13 +80,14 @@ function createHarness(input?: {
     user: {
       findUnique: jest.fn().mockResolvedValue(
         input && "actor" in input ? input.actor : { id: "actor-user", isActive: true }
-      )
+      ),
+      update: jest.fn().mockResolvedValue({ sessionVersion: 1 })
     },
     position: {
       findUnique: jest.fn().mockResolvedValue(
         input && "adminPosition" in input ? input.adminPosition : { id: "position-admin" }
       ),
-      findMany: jest.fn().mockResolvedValue([])
+      findMany: jest.fn().mockResolvedValue(input?.adminPosition === null ? [] : [{ key: input?.actorRole ?? "chairman" }])
     },
     userPosition: {
       findFirst: jest.fn().mockResolvedValue(
@@ -93,7 +95,7 @@ function createHarness(input?: {
           ? input.actorAdminAssignment
           : { id: "actor-admin-assignment" }
       ),
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue(input?.actorAdminAssignment === null ? [] : [{ positionId: "position-manager" }]),
       delete: jest.fn().mockResolvedValue({ id: "server-global-assignment" }),
       create: jest.fn().mockResolvedValue({ id: "created-global-assignment" })
     },
@@ -146,6 +148,14 @@ function createHarness(input?: {
 }
 
 describe("OrganizationRoleService", () => {
+  it("技术管理员不能借岗位管理入口批准财务或其他业务岗位", async () => {
+    const { service, tx } = createHarness({ actorRole: "super_admin" });
+    await expect(service.applyRoleAddition("actor-user", globalAdditionInput)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.applyRoleRemoval("actor-user", globalInput)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.userPosition.create).not.toHaveBeenCalled();
+    expect(tx.userPosition.delete).not.toHaveBeenCalled();
+  });
+
   it("暴露独立的岗位新增 apply 入口", () => {
     const { service } = createHarness();
     expect(typeof (service as unknown as { applyRoleAddition?: unknown }).applyRoleAddition).toBe(
@@ -170,8 +180,8 @@ describe("OrganizationRoleService", () => {
   it.each([
     ["actor 已停用", { actor: { id: "actor-user", isActive: false } }, "当前账号已停用，不能执行岗位撤销"],
     ["actor 不存在", { actor: null }, "当前账号已停用，不能执行岗位撤销"],
-    ["super_admin 岗位字典缺失", { adminPosition: null }, "当前账号没有岗位管理权限"],
-    ["actor 已失去规范全局管理员", { actorAdminAssignment: null }, "当前账号没有岗位管理权限"]
+    ["业务管理岗位字典缺失", { adminPosition: null }, "当前账号没有岗位管理权限"],
+    ["actor 已失去规范全局业务管理岗位", { actorAdminAssignment: null }, "当前账号没有岗位管理权限"]
   ] as const)("%s 时事务内再拒绝且零删除", async (_label, harnessInput, message) => {
     const { service, tx, impacts, audit } = createHarness(harnessInput);
     await expect(service.applyRoleRemoval("actor-user", globalInput)).rejects.toThrow(message);
@@ -217,19 +227,15 @@ describe("OrganizationRoleService", () => {
     );
     expect(tx.user.findUnique).toHaveBeenCalledWith({
       where: { id: "actor-user" },
-      select: { id: true, isActive: true }
+      select: { id: true, isActive: true, departmentId: true }
     });
-    expect(tx.position.findUnique).toHaveBeenCalledWith({
-      where: { key: "super_admin" },
-      select: { id: true }
+    expect(tx.position.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["position-manager"] } },
+      select: { key: true }
     });
-    expect(tx.userPosition.findFirst).toHaveBeenCalledWith({
-      where: {
-        userId: "actor-user",
-        positionId: "position-admin",
-        projectId: null
-      },
-      select: { id: true }
+    expect(tx.userPosition.findMany).toHaveBeenCalledWith({
+      where: { userId: "actor-user", projectId: null },
+      select: { positionId: true }
     });
     expect(impacts.evaluateRoleRemoval).toHaveBeenCalledWith(
       tx,

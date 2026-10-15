@@ -36,6 +36,7 @@
     />
 
     <BusinessStatusSummary :items="summaryItems" />
+    <EmployeeApplicationsCard v-if="capabilities?.canReviewApplications" :directory="directory" :capabilities="capabilities" :refresh-key="applicationRefreshKey" @approved="loadDirectory" />
 
     <t-card
       v-if="isTechnicalAdmin"
@@ -164,10 +165,11 @@
           empty="暂无人员"
         >
           <template #operation="{ row }">
-            <div v-if="capabilities?.manageableUserIds.includes(row.id)" class="row-actions">
-              <t-button variant="text" @click="openUser(row)">{{ row.status === 'active' ? '部门 / 停用' : '重新启用' }}</t-button>
-              <t-button v-if="row.status === 'active'" variant="text" @click="openRole(row, 'add')">新增岗位</t-button>
-              <t-button variant="text" @click="openRole(row, 'remove')">撤销岗位</t-button>
+            <div v-if="canManagePerson(row.id) || canManagePersonRoles(row.id)" class="row-actions">
+              <t-button v-if="canManagePerson(row.id)" variant="text" @click="openUser(row)">{{ row.status === 'active' ? '部门 / 停用' : '重新启用' }}</t-button>
+              <t-button v-if="canManagePersonRoles(row.id) && row.status === 'active'" variant="text" @click="openRole(row, 'add')">新增岗位</t-button>
+              <t-button v-if="canManagePersonRoles(row.id)" variant="text" @click="openRole(row, 'remove')">撤销岗位</t-button>
+              <t-button v-if="canManagePerson(row.id) && row.status === 'active'" variant="text" @click="passwordResetUser = row">重置密码</t-button>
             </div>
             <span v-else>{{ row.id === auth.user?.id ? '当前账号' : '无管理权限' }}</span>
           </template>
@@ -222,6 +224,7 @@
       :department-options="manageableDepartmentOptions" :role-options="initialRoleOptions" :project-options="activeProjectOptions"
       @close="createUserVisible = false" @created="finishManagement"
     />
+    <AccountCredentialDialog v-if="passwordResetUser" :id="passwordResetUser.id" :name="passwordResetUser.name" kind="users" @close="passwordResetUser = undefined" @saved="loadDirectory" />
     <OrganizationDetailsDrawer v-if="detailsVisible" :directory="directory" :department="selectedDepartment" :user="selectedUser" @close="detailsVisible = false" @saved="finishManagement" />
     <OrganizationRoleAdditionDrawer v-if="roleMode === 'add'" visible :user="selectedUser ?? null" :projects="directory.projects" :positions="manageablePositions" @close="roleMode = null" @applied="finishManagement" />
     <OrganizationRoleRemovalDrawer v-if="roleMode === 'remove'" visible :user="selectedUser ?? null" :positions="manageablePositions" @close="roleMode = null" @applied="finishManagement" />
@@ -236,6 +239,8 @@ import OrganizationUserCreationDrawer from "./components/OrganizationUserCreatio
 import OrganizationDetailsDrawer from "./components/OrganizationDetailsDrawer.vue";
 import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
 import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
+import EmployeeApplicationsCard from "./components/EmployeeApplicationsCard.vue";
+import AccountCredentialDialog from "../../components/AccountCredentialDialog.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 import {
@@ -278,6 +283,8 @@ const isTechnicalAdmin = computed(
   () => auth.user?.globalRoleKeys.includes("super_admin") ?? false
 );
 const capabilities = ref<OrganizationManagementCapabilities | null>(null);
+const applicationRefreshKey = ref(0);
+const passwordResetUser = ref<OrganizationDirectoryUser>();
 const createUserVisible = ref(false);
 const detailsVisible = ref(false);
 const selectedDepartment = ref<FlatOrganizationDepartment>();
@@ -290,6 +297,8 @@ const manageableDepartmentOptions = computed(() => flatDepartments.value.filter(
 function openDepartment(department?: FlatOrganizationDepartment) { selectedUser.value = undefined; selectedDepartment.value = department; detailsVisible.value = true; }
 function openUser(user: OrganizationDirectoryUser) { selectedDepartment.value = undefined; selectedUser.value = user; detailsVisible.value = true; }
 function openRole(user: OrganizationDirectoryUser, mode: "add" | "remove") { selectedUser.value = user; roleMode.value = mode; }
+function canManagePerson(id: string) { return capabilities.value?.manageableUserIds.includes(id) === true; }
+function canManagePersonRoles(id: string) { return (capabilities.value?.manageableRoleUserIds ?? capabilities.value?.manageableUserIds)?.includes(id) === true; }
 async function finishManagement() { createUserVisible.value = false; detailsVisible.value = false; roleMode.value = null; await refreshPage(); }
 const permissionIntegrity = ref<PermissionIntegrityReadModel | null>(null);
 const directoryLoading = ref(false);
@@ -377,6 +386,7 @@ async function loadDirectory() {
     const [result, access] = await Promise.all([fetchOrganizationDirectory(), fetchOrganizationManagementCapabilities()]);
     capabilities.value = access;
     Object.assign(directory, result);
+    applicationRefreshKey.value += 1;
     directoryMessage.value = "";
   } catch (error) {
     capabilities.value = null;

@@ -193,6 +193,7 @@ jobs:
           - project_close_profit_pol109
           - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16
+          - employee_onboarding
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -275,6 +276,10 @@ jobs:
           browser_path="$RUNNER_TEMP/pol109-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+
+      - name: Install employee onboarding browser runtime
+        if: ${{ matrix.group == 'employee_onboarding' }}
+        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 
       - name: Verify migration baseline
         run: pnpm check:migration-baseline

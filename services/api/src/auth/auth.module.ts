@@ -13,12 +13,22 @@ import { ProjectVisibilityService } from "./project-visibility.service";
 import { CompanyRoleResolverService } from "./company-role-resolver.service";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
 import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
+import { AccountSecurityController } from "./account-security.controller";
+import { AccountSecurityService } from "./account-security.service";
+import { SmsVerificationService } from "./sms-verification.service";
+import { TencentSmsGateway } from "./tencent-sms.gateway";
+import { AuthRateLimitService } from "./auth-rate-limit.service";
+import { AccountRateLimitGuard } from "./guards/account-rate-limit.guard";
 
 @Module({
   imports: [AuditModule, SpotProcurementAccessModule],
-  controllers: [AuthController],
+  controllers: [AuthController, AccountSecurityController],
   providers: [
     AuthService,
+    AccountSecurityService,
+    SmsVerificationService,
+    TencentSmsGateway,
+    AuthRateLimitService,
     JwtTokenService,
     CompanyRoleResolverService,
     OperationalWriteFreezeService,
@@ -26,11 +36,13 @@ import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-ent
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RetiredWriteEntryGuard },
     { provide: APP_GUARD, useClass: OperationalWriteFreezeGuard },
+    { provide: APP_GUARD, useClass: AccountRateLimitGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_GUARD, useClass: ContractCutoverGuard }
   ],
   exports: [
     AuthService,
+    SmsVerificationService,
     JwtTokenService,
     ProjectVisibilityService,
     CompanyRoleResolverService,

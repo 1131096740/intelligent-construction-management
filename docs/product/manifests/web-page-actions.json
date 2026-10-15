@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 337,
+    "registeredActionCount": 348,
     "pageActionCount": 56,
-    "backgroundActionCount": 281,
-    "reachableVueFileCount": 159,
-    "routeRootCount": 62,
-    "totalVueFileCount": 174,
-    "parsedVueFileCount": 174,
-    "reachableProductionModuleCount": 284,
-    "templateEventDirectiveCount": 1013,
+    "backgroundActionCount": 292,
+    "reachableVueFileCount": 166,
+    "routeRootCount": 65,
+    "totalVueFileCount": 181,
+    "parsedVueFileCount": 181,
+    "reachableProductionModuleCount": 292,
+    "templateEventDirectiveCount": 1034,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 327,
-    "candidateProductionMutationConsumerCount": 327,
-    "acceptedProductionMutationConsumerCount": 327,
-    "productionMutationConsumerPairCount": 327,
+    "coveredProductionMutationConsumerCount": 338,
+    "candidateProductionMutationConsumerCount": 338,
+    "acceptedProductionMutationConsumerCount": 338,
+    "productionMutationConsumerPairCount": 338,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 306,
-    "reachableProductionModuleCount": 284,
-    "totalVueFileCount": 174,
-    "parsedVueFileCount": 174
+    "totalProductionModuleCount": 314,
+    "reachableProductionModuleCount": 292,
+    "totalVueFileCount": 181,
+    "parsedVueFileCount": 181
   },
   "actions": [
     {
@@ -7142,6 +7142,767 @@
             "localCallChain": [
               "confirmSigningMaterialChange",
               "executeContractSigningMaterialChange"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.admin-reset",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置",
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/系统配置",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resetEmployeePasswordWithCapability",
+        "kind": "background_call",
+        "sourceLine": 96,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "resetEmployeePassword",
+          "method": "POST",
+          "path": "/account-security/applications/:param/reset-password",
+          "normalizedKey": "POST /account-security/applications/:param/reset-password",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/applications/:id/reset-password",
+            "normalizedKey": "POST /account-security/applications/:param/reset-password",
+            "controller": "AccountSecurityController",
+            "handler": "resetApplication",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "resetEmployeePasswordWithCapability",
+              "resetEmployeePassword"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "resetEmployeePassword",
+          "method": "POST",
+          "path": "/account-security/users/:param/reset-password",
+          "normalizedKey": "POST /account-security/users/:param/reset-password",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/users/:id/reset-password",
+            "normalizedKey": "POST /account-security/users/:param/reset-password",
+            "controller": "AccountSecurityController",
+            "handler": "resetUser",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "resetEmployeePasswordWithCapability",
+              "resetEmployeePassword"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.application-login",
+      "usage": "background",
+      "routePaths": [
+        "/login"
+      ],
+      "ownerRoutePaths": [
+        "/login"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/LoginPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "loginApplicationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 97,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canLoginApplication",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "loginApplication",
+          "method": "POST",
+          "path": "/api/employee-onboarding/login",
+          "normalizedKey": "POST /employee-onboarding/login",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/employee-onboarding/login",
+            "normalizedKey": "POST /employee-onboarding/login",
+            "controller": "EmployeeOnboardingController",
+            "handler": "login",
+            "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/login/LoginPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/login/LoginPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "loginApplicationWithCapability",
+              "loginApplication"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.application-password",
+      "usage": "background",
+      "routePaths": [
+        "/registration-status"
+      ],
+      "ownerRoutePaths": [
+        "/registration-status"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "changePasswordWithCapability",
+        "kind": "background_call",
+        "sourceLine": 106,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canChangePassword",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "changeApplicationPassword",
+          "method": "POST",
+          "path": "/api/employee-onboarding/mine/password",
+          "normalizedKey": "POST /employee-onboarding/mine/password",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/employee-onboarding/mine/password",
+            "normalizedKey": "POST /employee-onboarding/mine/password",
+            "controller": "EmployeeOnboardingController",
+            "handler": "changePassword",
+            "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "changePasswordWithCapability",
+              "changeApplicationPassword"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.code-recovery",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password"
+      ],
+      "ownerRoutePaths": [
+        "/forgot-password"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 111,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canUseRecoveryCode",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "recoverWithCode",
+          "method": "POST",
+          "path": "/api/account-security/recover",
+          "normalizedKey": "POST /account-security/recover",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/recover",
+            "normalizedKey": "POST /account-security/recover",
+            "controller": "AccountSecurityController",
+            "handler": "recover",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recoverWithCapability",
+              "recoverWithCode"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.generate-recovery",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置",
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/系统配置",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateRecoveryCodeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 90,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canGenerateRecoveryCode",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "generateRecoveryCode",
+          "method": "POST",
+          "path": "/account-security/recovery-code",
+          "normalizedKey": "POST /account-security/recovery-code",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/recovery-code",
+            "normalizedKey": "POST /account-security/recovery-code",
+            "controller": "AccountSecurityController",
+            "handler": "createRecoveryCode",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "generateRecoveryCodeWithCapability",
+              "generateRecoveryCode"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.phone-change-sms",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "ownerRoutePaths": [
+        "/forgot-password",
+        "/register",
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendPhoneChangeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 59,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "sendPhoneChangeSms",
+          "method": "POST",
+          "path": "/account-security/phone-change-sms",
+          "normalizedKey": "POST /account-security/phone-change-sms",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/phone-change-sms",
+            "normalizedKey": "POST /account-security/phone-change-sms",
+            "controller": "AccountSecurityController",
+            "handler": "phoneChangeSms",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "sendPhoneChangeWithCapability",
+              "sendPhoneChangeSms"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.register",
+      "usage": "background",
+      "routePaths": [
+        "/register"
+      ],
+      "ownerRoutePaths": [
+        "/register"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "registerWithCapability",
+        "kind": "background_call",
+        "sourceLine": 106,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRegister",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "registerEmployee",
+          "method": "POST",
+          "path": "/api/employee-onboarding/register",
+          "normalizedKey": "POST /employee-onboarding/register",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/employee-onboarding/register",
+            "normalizedKey": "POST /employee-onboarding/register",
+            "controller": "EmployeeOnboardingController",
+            "handler": "register",
+            "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "registerWithCapability",
+              "registerEmployee"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.resubmit",
+      "usage": "background",
+      "routePaths": [
+        "/registration-status"
+      ],
+      "ownerRoutePaths": [
+        "/registration-status"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resubmitWithCapability",
+        "kind": "background_call",
+        "sourceLine": 100,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canResubmit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "resubmitApplication",
+          "method": "POST",
+          "path": "/api/employee-onboarding/mine",
+          "normalizedKey": "POST /employee-onboarding/mine",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/employee-onboarding/mine",
+            "normalizedKey": "POST /employee-onboarding/mine",
+            "controller": "EmployeeOnboardingController",
+            "handler": "resubmit",
+            "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "resubmitWithCapability",
+              "resubmitApplication"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.review",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 227,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReviewApplications",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "reviewEmployeeApplication",
+          "method": "POST",
+          "path": "/employee-onboarding/applications/:param/review",
+          "normalizedKey": "POST /employee-onboarding/applications/:param/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/employee-onboarding/applications/:id/review",
+            "normalizedKey": "POST /employee-onboarding/applications/:param/review",
+            "controller": "EmployeeOnboardingController",
+            "handler": "review",
+            "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewWithCapability",
+              "reviewEmployeeApplication"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.sms",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password",
+        "/register",
+        "/系统配置"
+      ],
+      "ownerRoutePaths": [
+        "/forgot-password",
+        "/register",
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendWithCapability",
+        "kind": "background_call",
+        "sourceLine": 53,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "sendAccountSms",
+          "method": "POST",
+          "path": "/api/account-security/sms",
+          "normalizedKey": "POST /account-security/sms",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/sms",
+            "normalizedKey": "POST /account-security/sms",
+            "controller": "AccountSecurityController",
+            "handler": "sendSms",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "sendWithCapability",
+              "sendAccountSms"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.sms-reset",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password"
+      ],
+      "ownerRoutePaths": [
+        "/forgot-password"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resetWithCapability",
+        "kind": "background_call",
+        "sourceLine": 117,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "resetPasswordWithSms",
+          "method": "POST",
+          "path": "/api/account-security/reset-with-sms",
+          "normalizedKey": "POST /account-security/reset-with-sms",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/reset-with-sms",
+            "normalizedKey": "POST /account-security/reset-with-sms",
+            "controller": "AccountSecurityController",
+            "handler": "resetWithSms",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "public",
+            "guardAuthorization": "public",
+            "isPublic": true,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "resetWithCapability",
+              "resetPasswordWithSms"
             ]
           },
           "ticketFollowups": []
@@ -19118,7 +19879,7 @@
         "event": "save",
         "handler": "submitCanvasSignature",
         "kind": "event",
-        "sourceLine": 114,
+        "sourceLine": 126,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -23533,7 +24294,7 @@
         "event": "call",
         "handler": "validateUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 467,
+        "sourceLine": 489,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23611,7 +24372,7 @@
         "event": "call",
         "handler": "commitUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 476,
+        "sourceLine": 498,
         "sourceColumn": 0
       },
       "semantic": "business_write",

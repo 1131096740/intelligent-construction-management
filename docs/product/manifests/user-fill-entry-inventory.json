@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 328,
+    "activeBusinessActionCount": 339,
     "technicalActionCount": 9,
-    "activeBindingCount": 372,
+    "activeBindingCount": 384,
     "retiredWriteEntryCount": 89,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -1599,6 +1599,187 @@
         "POST /contracts/:param/signing/material-change"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.admin-reset",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/applications/:param/reset-password",
+        "POST /account-security/users/:param/reset-password"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.application-login",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/login"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/LoginPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /employee-onboarding/login"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.application-password",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/registration-status"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /employee-onboarding/mine/password"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.code-recovery",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/recover"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.generate-recovery",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/recovery-code"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.phone-change-sms",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/phone-change-sms"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.register",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/register"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /employee-onboarding/register"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.resubmit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/registration-status"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /employee-onboarding/mine"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.review",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /employee-onboarding/applications/:param/review"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.sms",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password",
+        "/register",
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/sms"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.sms-reset",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/forgot-password"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/reset-with-sms"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

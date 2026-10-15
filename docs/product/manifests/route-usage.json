@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 622,
-    "exactRouteCount": 622,
-    "normalizedRouteCount": 622,
+    "routeCount": 637,
+    "exactRouteCount": 637,
+    "normalizedRouteCount": 637,
     "classificationOverrideCount": 221,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "4e44a5d1ac665e3d71695a595b97c3cca8fe5f0b5ecfefec99476cea526693e3",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-    "derivedProductionPageCount": 401,
-    "pageRouteCount": 413,
+    "derivedProductionPageCount": 416,
+    "pageRouteCount": 428,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 100,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 466,
+      "web_api_wrapper": 481,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 466,
+    "productionWrapperRouteCount": 481,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -325,6 +325,51 @@
             "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/account-security/options",
+      "normalizedKey": "GET /account-security/options",
+      "controller": "AccountSecurityController",
+      "handler": "options",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "fetchAccountOptions",
+            "method": "GET",
+            "normalizedPath": "/account-security/options",
+            "normalizedKey": "GET /account-security/options",
+            "productionConsumers": [
+              "apps/web-admin/src/components/SmsCodeField.vue",
+              "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue",
+              "apps/web-admin/src/pages/login/ForgotPasswordPage.vue",
+              "apps/web-admin/src/pages/login/LoginPage.vue",
+              "apps/web-admin/src/pages/settings/SettingsPage.vue"
             ]
           }
         ],
@@ -2603,6 +2648,91 @@
     },
     {
       "method": "GET",
+      "path": "/employee-onboarding/applications",
+      "normalizedKey": "GET /employee-onboarding/applications",
+      "controller": "EmployeeOnboardingController",
+      "handler": "applications",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "fetchEmployeeApplications",
+            "method": "GET",
+            "normalizedPath": "/employee-onboarding/applications",
+            "normalizedKey": "GET /employee-onboarding/applications",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/employee-onboarding/mine",
+      "normalizedKey": "GET /employee-onboarding/mine",
+      "controller": "EmployeeOnboardingController",
+      "handler": "mine",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "fetchMyApplication",
+            "method": "GET",
+            "normalizedPath": "/employee-onboarding/mine",
+            "normalizedKey": "GET /employee-onboarding/mine",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/expense-claims",
       "normalizedKey": "GET /expense-claims",
       "controller": "ExpenseClaimController",
@@ -4123,7 +4253,9 @@
             "normalizedPath": "/organization/management-capabilities",
             "normalizedKey": "GET /organization/management-capabilities",
             "productionConsumers": [
+              "apps/web-admin/src/components/AccountCredentialDialog.vue",
               "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
+              "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
               "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
               "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
               "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
@@ -9784,6 +9916,301 @@
     },
     {
       "method": "POST",
+      "path": "/account-security/applications/:id/reset-password",
+      "normalizedKey": "POST /account-security/applications/:param/reset-password",
+      "controller": "AccountSecurityController",
+      "handler": "resetApplication",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "resetEmployeePassword",
+            "method": "POST",
+            "normalizedPath": "/account-security/applications/:param/reset-password",
+            "normalizedKey": "POST /account-security/applications/:param/reset-password",
+            "productionConsumers": [
+              "apps/web-admin/src/components/AccountCredentialDialog.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/phone-change-sms",
+      "normalizedKey": "POST /account-security/phone-change-sms",
+      "controller": "AccountSecurityController",
+      "handler": "phoneChangeSms",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "sendPhoneChangeSms",
+            "method": "POST",
+            "normalizedPath": "/account-security/phone-change-sms",
+            "normalizedKey": "POST /account-security/phone-change-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/SmsCodeField.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/recover",
+      "normalizedKey": "POST /account-security/recover",
+      "controller": "AccountSecurityController",
+      "handler": "recover",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "recoverWithCode",
+            "method": "POST",
+            "normalizedPath": "/account-security/recover",
+            "normalizedKey": "POST /account-security/recover",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/recovery-code",
+      "normalizedKey": "POST /account-security/recovery-code",
+      "controller": "AccountSecurityController",
+      "handler": "createRecoveryCode",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "generateRecoveryCode",
+            "method": "POST",
+            "normalizedPath": "/account-security/recovery-code",
+            "normalizedKey": "POST /account-security/recovery-code",
+            "productionConsumers": [
+              "apps/web-admin/src/components/AccountCredentialDialog.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/reset-with-sms",
+      "normalizedKey": "POST /account-security/reset-with-sms",
+      "controller": "AccountSecurityController",
+      "handler": "resetWithSms",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "resetPasswordWithSms",
+            "method": "POST",
+            "normalizedPath": "/account-security/reset-with-sms",
+            "normalizedKey": "POST /account-security/reset-with-sms",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/ForgotPasswordPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/sms",
+      "normalizedKey": "POST /account-security/sms",
+      "controller": "AccountSecurityController",
+      "handler": "sendSms",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "sendAccountSms",
+            "method": "POST",
+            "normalizedPath": "/account-security/sms",
+            "normalizedKey": "POST /account-security/sms",
+            "productionConsumers": [
+              "apps/web-admin/src/components/SmsCodeField.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/users/:id/reset-password",
+      "normalizedKey": "POST /account-security/users/:param/reset-password",
+      "controller": "AccountSecurityController",
+      "handler": "resetUser",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "resetEmployeePassword",
+            "method": "POST",
+            "normalizedPath": "/account-security/users/:param/reset-password",
+            "normalizedKey": "POST /account-security/users/:param/reset-password",
+            "productionConsumers": [
+              "apps/web-admin/src/components/AccountCredentialDialog.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/affiliate-clearing-authorities",
       "normalizedKey": "POST /affiliate-clearing-authorities",
       "controller": "AffiliateClearingAuthorityController",
@@ -13697,6 +14124,214 @@
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": "super_admin_controlled_preview_entry_execute_forbidden"
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/employee-onboarding/applications/:id/review",
+      "normalizedKey": "POST /employee-onboarding/applications/:param/review",
+      "controller": "EmployeeOnboardingController",
+      "handler": "review",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "reviewEmployeeApplication",
+            "method": "POST",
+            "normalizedPath": "/employee-onboarding/applications/:param/review",
+            "normalizedKey": "POST /employee-onboarding/applications/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/employee-onboarding/login",
+      "normalizedKey": "POST /employee-onboarding/login",
+      "controller": "EmployeeOnboardingController",
+      "handler": "login",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "loginApplication",
+            "method": "POST",
+            "normalizedPath": "/employee-onboarding/login",
+            "normalizedKey": "POST /employee-onboarding/login",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/LoginPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/employee-onboarding/mine",
+      "normalizedKey": "POST /employee-onboarding/mine",
+      "controller": "EmployeeOnboardingController",
+      "handler": "resubmit",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "resubmitApplication",
+            "method": "POST",
+            "normalizedPath": "/employee-onboarding/mine",
+            "normalizedKey": "POST /employee-onboarding/mine",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/employee-onboarding/mine/password",
+      "normalizedKey": "POST /employee-onboarding/mine/password",
+      "controller": "EmployeeOnboardingController",
+      "handler": "changePassword",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "changeApplicationPassword",
+            "method": "POST",
+            "normalizedPath": "/employee-onboarding/mine/password",
+            "normalizedKey": "POST /employee-onboarding/mine/password",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/employee-onboarding/register",
+      "normalizedKey": "POST /employee-onboarding/register",
+      "controller": "EmployeeOnboardingController",
+      "handler": "register",
+      "sourceFile": "services/api/src/organization/employee-onboarding.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+            "wrapper": "registerEmployee",
+            "method": "POST",
+            "normalizedPath": "/employee-onboarding/register",
+            "normalizedKey": "POST /employee-onboarding/register",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/login/EmployeeRegisterPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
