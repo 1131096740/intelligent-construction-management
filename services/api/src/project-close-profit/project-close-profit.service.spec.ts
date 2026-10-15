@@ -1,3 +1,5 @@
+import { ConflictException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import {
   ProjectCloseProfitService,
   calculateExistingFundsApplied,
@@ -1053,6 +1055,43 @@ describe("ProjectCloseProfitService", () => {
       }),
       "finance-user"
     );
+  });
+
+  it.each(["40001", "40P01"])("reports a raw SQL %s conflict during temporary distribution as a business conflict", async (sqlState) => {
+    const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010", clientVersion: Prisma.prismaVersion.client, meta: { code: sqlState }
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn().mockRejectedValue(error) } as never,
+      {} as never, {} as never, {} as never, {} as never
+    );
+    const outcome = service.createTemporaryDistribution("finance-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "46a4526f-d5a1-423e-b417-784759d2a7f2",
+      basis: { summary: "并发暂分验证", evidenceFileIds: [] },
+      projectParticipatingCompanyId: "participant-1",
+      amountCents: "1000"
+    });
+    await expect(outcome).rejects.toBeInstanceOf(ConflictException);
+    await expect(outcome).rejects.toMatchObject({ cause: error, status: 409, message: "暂分利润发生并发冲突，请刷新后重试" });
+  });
+
+  it.each(["23505", undefined])("preserves an unrelated raw SQL failure %s during temporary distribution", async (sqlState) => {
+    const error = new Prisma.PrismaClientKnownRequestError("Raw query failed", {
+      code: "P2010", clientVersion: Prisma.prismaVersion.client,
+      ...(sqlState ? { meta: { code: sqlState } } : {})
+    });
+    const service = new ProjectCloseProfitService(
+      { $transaction: jest.fn().mockRejectedValue(error) } as never,
+      {} as never, {} as never, {} as never, {} as never
+    );
+    await expect(service.createTemporaryDistribution("finance-user", "project-1", {
+      expectedProjectionFingerprint: "projection-fingerprint",
+      idempotencyKey: "56a4526f-d5a1-423e-b417-784759d2a7f2",
+      basis: { summary: "失败原样保留验证", evidenceFileIds: [] },
+      projectParticipatingCompanyId: "participant-1",
+      amountCents: "1000"
+    })).rejects.toBe(error);
   });
 
   it("rejects a temporary distribution above the current projection ceiling", async () => {

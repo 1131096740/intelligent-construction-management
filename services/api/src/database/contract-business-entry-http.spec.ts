@@ -282,7 +282,7 @@ if (enabled) {
         target: intent.target, definitionKey: intent.definitionKey, definitionVersion: intent.definitionVersion, idempotencyKey, values
       });
       const actorToken = token;
-      const identity = identities.get(projectFinanceUserId)!;
+      const identity = identities.get(roleUsers.get("comprehensive_director")!)!;
       token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", identity)).tokens.accessToken;
       try {
         await request("POST", `/projects/${project.id}/construction-enterprise`, {

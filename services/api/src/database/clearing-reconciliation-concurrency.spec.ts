@@ -4385,7 +4385,9 @@ async function seedOperatingLedgerFixture(
     VALUES (1, crypt(${secret}, gen_salt('bf')))
     ON CONFLICT ("id") DO UPDATE SET "secretHash" = EXCLUDED."secretHash"
   `);
+  const maintainerUserId = `${fixture.prefix}_master_data`;
   for (const userId of [
+    maintainerUserId,
     fixture.preparerUserId,
     fixture.attesterUserId,
     fixture.confirmerUserId
@@ -4415,8 +4417,19 @@ async function seedOperatingLedgerFixture(
     update: {},
     select: { id: true }
   });
+  const maintainerPosition = await client.position.upsert({
+    where: { key: "comprehensive_director" },
+    create: { key: "comprehensive_director", name: "综合部主管" },
+    update: {},
+    select: { id: true }
+  });
   await client.userPosition.createMany({
     data: [
+      {
+        id: `${fixture.prefix}_master_data_position`,
+        userId: maintainerUserId,
+        positionId: maintainerPosition.id
+      },
       {
         id: `${fixture.prefix}_preparer_finance_staff`,
         userId: fixture.preparerUserId,
@@ -4436,7 +4449,7 @@ async function seedOperatingLedgerFixture(
   });
   const audit = new AuditService(client as never);
   const projects = new ProjectService(client as never, audit);
-  const project = await projects.createProject(fixture.preparerUserId, {
+  const project = await projects.createProject(maintainerUserId, {
     code: fixture.prefix,
     name: "POL-275核对动态测试项目"
   });
@@ -4471,7 +4484,7 @@ async function seedOperatingLedgerFixture(
   });
   const assignment = await projects.assignAffiliate(
     project.id,
-    fixture.preparerUserId,
+    maintainerUserId,
     {
       businessPartyVersionId: partyVersion.id,
       effectiveFrom: "2026-01-01",
@@ -4505,7 +4518,7 @@ async function seedOperatingLedgerFixture(
     client as never,
     audit
   );
-  await profile.addParticipatingCompany(project.id, fixture.preparerUserId, {
+  await profile.addParticipatingCompany(project.id, maintainerUserId, {
     companyEntityId: company.id,
     effectiveFrom: "2026-08-01",
     changeReason: "POL-275清算核对动态验收"
