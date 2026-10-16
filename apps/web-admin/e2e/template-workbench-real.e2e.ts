@@ -27,8 +27,14 @@ test("模板工作台真实创建、检查预览、取消发布、重试与冻�
   await page.getByPlaceholder("请填写模板名称", { exact: true }).fill(name);
   await page.getByPlaceholder("请填写模板编码", { exact: true }).fill(code);
   await page.getByRole("button", { name: "返回模板库", exact: true }).click();
-  await expect(page.getByText("放弃未保存的结算模板修改？", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "取消", exact: true }).click();
+  const leaveDialog = page.locator(".t-dialog").filter({ hasText: "放弃未保存的结算模板修改？" });
+  await expect(leaveDialog).toBeVisible();
+  // TDesign initially renders a paused, nearly zero-scale dialog. Visibility alone
+  // does not mean its cancel button is ready for a real pointer interaction.
+  await expect(leaveDialog).toHaveCSS("opacity", "1");
+  await expect(leaveDialog).toHaveCSS("transform", "none");
+  await leaveDialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(leaveDialog).toBeHidden();
   await expect(page.getByPlaceholder("请填写模板名称", { exact: true })).toHaveValue(name);
   await page.locator('input[type="file"]').setInputFiles(process.env.TEMPLATE_WORKBENCH_SOURCE!);
   await page.route("**/api/settlement-template-workbench/templates", async route => {
