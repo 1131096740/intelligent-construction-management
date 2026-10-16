@@ -229,12 +229,12 @@ test("manifest derives all 326 pending tests as executable local coverage", () =
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 63,
-    fullyPendingSuites: 52,
+    pendingFiles: 64,
+    fullyPendingSuites: 53,
     partiallyPendingSuites: 11,
-    pendingTests: 326,
-    coveredFiles: 63,
-    coveredTests: 326,
+    pendingTests: 333,
+    coveredFiles: 64,
+    coveredTests: 333,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -616,7 +616,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=326/u
+    /inventory\.coveredTests=26，派生值=333/u
   );
 });
 

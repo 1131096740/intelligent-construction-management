@@ -322,58 +322,65 @@ export class PermissionImpactService {
     input: PreviewRoleRemovalBatchDto,
     evaluatedAt: Date = new Date()
   ): Promise<RoleRemovalBatchImpactPreview> {
-    const targets = normalizeBatchRemovalTargets(input.targets);
+    normalizeBatchRemovalTargets(input.targets);
     return this.prisma.$transaction(
-      async (tx) => {
-        const snapshotClient = cachedPermissionImpactClient(tx);
-        const excludedUserPositionIds = new Set<string>();
-        const excludedProjectMemberIds = new Set<string>();
-        const evaluatedSteps: Array<{
-          preview: RoleRemovalImpactPreview;
-          targetAssignment: RoleRemovalEvaluation["targetAssignment"];
-        }> = [];
-
-        for (const target of targets) {
-          const client = excludingRoleAssignments(
-            snapshotClient,
-            excludedUserPositionIds,
-            excludedProjectMemberIds
-          );
-          const evaluation = await this.evaluateRoleRemoval(client, target, evaluatedAt);
-          evaluatedSteps.push(evaluation);
-          if (!evaluation.preview.canApply || !evaluation.targetAssignment) break;
-          if (evaluation.targetAssignment.source === "user_position") {
-            excludedUserPositionIds.add(evaluation.targetAssignment.id);
-          } else {
-            excludedProjectMemberIds.add(evaluation.targetAssignment.id);
-          }
-        }
-
-        const firstBlockingStep = evaluatedSteps.find((step) => !step.preview.canApply);
-        const combinedSnapshotHash = hashSnapshot({
-          schemaVersion: 1,
-          targets,
-          steps: evaluatedSteps.map((step, sequence) => ({
-            sequence,
-            change: step.preview.change,
-            snapshotHash: step.preview.snapshotHash,
-            targetAssignment: step.targetAssignment
-          }))
-        });
-
-        return {
-          evaluatedAt: evaluatedAt.toISOString(),
-          combinedSnapshotHash,
-          canApply:
-            evaluatedSteps.length === targets.length &&
-            evaluatedSteps.every((step) => step.preview.canApply),
-          simulatedTargets: evaluatedSteps.length,
-          blockingTarget: firstBlockingStep?.preview.change ?? null,
-          steps: evaluatedSteps.map((step, sequence) => ({ sequence, ...step.preview }))
-        };
-      },
+      (tx) => this.evaluateRoleRemovalBatch(tx, input, evaluatedAt),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
     );
+  }
+
+  async evaluateRoleRemovalBatch(
+    tx: Prisma.TransactionClient,
+    input: PreviewRoleRemovalBatchDto,
+    evaluatedAt: Date = new Date()
+  ): Promise<RoleRemovalBatchImpactPreview> {
+    const targets = input.targets.length === 1 ? [normalizeChange(input.targets[0])] : normalizeBatchRemovalTargets(input.targets);
+    const snapshotClient = cachedPermissionImpactClient(tx);
+    const excludedUserPositionIds = new Set<string>();
+    const excludedProjectMemberIds = new Set<string>();
+    const evaluatedSteps: Array<{
+      preview: RoleRemovalImpactPreview;
+      targetAssignment: RoleRemovalEvaluation["targetAssignment"];
+    }> = [];
+
+    for (const target of targets) {
+      const client = excludingRoleAssignments(
+        snapshotClient,
+        excludedUserPositionIds,
+        excludedProjectMemberIds
+      );
+      const evaluation = await this.evaluateRoleRemoval(client, target, evaluatedAt);
+      evaluatedSteps.push(evaluation);
+      if (!evaluation.preview.canApply || !evaluation.targetAssignment) break;
+      if (evaluation.targetAssignment.source === "user_position") {
+        excludedUserPositionIds.add(evaluation.targetAssignment.id);
+      } else {
+        excludedProjectMemberIds.add(evaluation.targetAssignment.id);
+      }
+    }
+
+    const firstBlockingStep = evaluatedSteps.find((step) => !step.preview.canApply);
+    const combinedSnapshotHash = hashSnapshot({
+      schemaVersion: 1,
+      targets,
+      steps: evaluatedSteps.map((step, sequence) => ({
+        sequence,
+        change: step.preview.change,
+        snapshotHash: step.preview.snapshotHash,
+        targetAssignment: step.targetAssignment
+      }))
+    });
+
+    return {
+      evaluatedAt: evaluatedAt.toISOString(),
+      combinedSnapshotHash,
+      canApply:
+        evaluatedSteps.length === targets.length &&
+        evaluatedSteps.every((step) => step.preview.canApply),
+      simulatedTargets: evaluatedSteps.length,
+      blockingTarget: firstBlockingStep?.preview.change ?? null,
+      steps: evaluatedSteps.map((step, sequence) => ({ sequence, ...step.preview }))
+    };
   }
 
   async evaluateRoleRemoval(
@@ -1624,7 +1631,9 @@ function excludingRoleAssignments(
     projectExpenseRequest: client.projectExpenseRequest,
     spotProcurementVersion: client.spotProcurementVersion,
     spotProcurement: client.spotProcurement,
-    spotProcurementPayment: client.spotProcurementPayment
+    spotProcurementPayment: client.spotProcurementPayment,
+    generalProcurement: client.generalProcurement,
+    expenseClaim: client.expenseClaim
   } as unknown as PermissionImpactClient;
 }
 
@@ -1653,7 +1662,9 @@ function cachedPermissionImpactClient(client: PermissionImpactClient): Permissio
     projectExpenseRequest: cachedDelegate(client.projectExpenseRequest),
     spotProcurementVersion: cachedDelegate(client.spotProcurementVersion),
     spotProcurement: cachedDelegate(client.spotProcurement),
-    spotProcurementPayment: cachedDelegate(client.spotProcurementPayment)
+    spotProcurementPayment: cachedDelegate(client.spotProcurementPayment),
+    generalProcurement: cachedDelegate(client.generalProcurement),
+    expenseClaim: cachedDelegate(client.expenseClaim)
   } as unknown as PermissionImpactClient;
 }
 

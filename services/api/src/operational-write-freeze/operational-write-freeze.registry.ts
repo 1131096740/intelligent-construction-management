@@ -47,6 +47,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ProjectFundDisputeController: "finance",
   ProjectCloseProfitController: "finance",
   OrganizationController: "organization",
+  ProjectRosterManagementController: "organization",
   EmployeeOnboardingController: "organization",
   AccountSecurityController: "account",
   OperatingProjectionController: "finance",

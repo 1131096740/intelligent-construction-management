@@ -40,3 +40,10 @@ export const ORGANIZATION_ROLE_ENTRY_DEFINITION = definition("user_role_assignme
   field("projectId", "所属项目", "text", { visibleWhen: { fieldKey: "scope", operator: "eq", value: "project" } }),
   field("roleKey", "岗位")
 ]);
+
+export const PROJECT_ROSTER_ENTRY_DEFINITION = definition("project_roster_change", "项目人员调整", [
+  field("userId", "人员", "text", { required: true,
+    permissions: { view: ["chairman", "comprehensive_director"], edit: ["chairman", "comprehensive_director"], import: [] } }),
+  field("reason", "调整原因", "text", { required: true, format: { maxLength: 300 },
+    permissions: { view: ["chairman", "comprehensive_director"], edit: ["chairman", "comprehensive_director"], import: [] } })
+]);

@@ -9212,6 +9212,54 @@
           "name": "updateProcurement"
         }
       ]
+    },
+    {
+      "id": "project.roster.preview",
+      "usage": "background",
+      "routePaths": [
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoster"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "previewProjectRosterChange"
+        }
+      ]
+    },
+    {
+      "id": "project.roster.apply",
+      "usage": "background",
+      "routePaths": [
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoster"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "applyProjectRosterChange"
+        }
+      ]
     }
   ]
 }

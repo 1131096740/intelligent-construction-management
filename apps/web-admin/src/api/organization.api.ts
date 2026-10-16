@@ -393,6 +393,43 @@ async function sendJson<T>(
   return response.json() as Promise<T>;
 }
 
+export interface ProjectRosterManagementOptions {
+  canManageRoster: boolean;
+  projects: Array<{ id: string; code: string; name: string }>;
+  users: Array<{ id: string; name: string; phone: string | null; canManage: boolean }>;
+}
+
+export interface ProjectRosterChange {
+  operation: "join" | "leave";
+  projectId: string;
+  userId: string;
+  reason: string;
+}
+
+export interface ProjectRosterChangePreview extends ProjectRosterChange {
+  projectName: string;
+  personName: string;
+  snapshotHash: string;
+  canApply: boolean;
+  blockingReasons: string[];
+  projectRoleKeys: RoleKey[];
+  projectRoleNames: string[];
+  affectedApprovals: number;
+  retainsGlobalAccess: boolean;
+}
+
+export function fetchProjectRosterManagementOptions() {
+  return readJson<ProjectRosterManagementOptions>("/organization/project-roster/options", "读取项目人员维护范围失败");
+}
+
+export function previewProjectRosterChange(body: ProjectRosterChange) {
+  return sendJson<ProjectRosterChangePreview>("/organization/project-roster/preview", "POST", body, "预览人员调整失败");
+}
+
+export function applyProjectRosterChange(body: ProjectRosterChange & { snapshotHash: string; confirmationPassword: string }) {
+  return sendJson<{ projectId: string; userId: string; operation: "join" | "leave" }>("/organization/project-roster/apply", "POST", body, "保存人员调整失败");
+}
+
 export function fetchOrganizationDirectory() {
   return readJson<OrganizationDirectory>("/organization/directory");
 }

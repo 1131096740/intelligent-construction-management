@@ -45,7 +45,8 @@ try {
     GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${runtime};
     REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     GRANT INSERT, UPDATE, DELETE ON TABLE public."User", public."UserPosition", public."Position", public."Department",
-      public."Project", public."ProjectMember", public."ProjectRosterMember", public."RefreshToken", public."AuditLog" TO ${runtime};
+      public."Project", public."ProjectMember", public."ProjectRosterMember", public."RefreshToken", public."AuditLog",
+      public."ApprovalInstance", public."ProjectExpenseRequest" TO ${runtime};
   `], process.env, true);
   const before = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc",
     `SELECT has_table_privilege('${runtime}', 'public."AuthRateLimit"', 'DELETE');`], process.env, true);
@@ -54,7 +55,7 @@ try {
   docker(["exec", "--env", `OPERATING_LEDGER_RUNTIME_ROLE=${runtime}`, containerId, "psql", "-v", "ON_ERROR_STOP=1",
     "-U", "jiangkong", "-d", "onboarding", "--file=/tmp/onboarding-grants.sql"], process.env, true);
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/onboarding`;
-  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts"], env);
+  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts"], env);
 } finally {
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
     docker(["rm", "--force", containerId], process.env, true);

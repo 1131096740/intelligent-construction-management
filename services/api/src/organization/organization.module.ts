@@ -8,11 +8,13 @@ import { OrganizationService } from "./organization.service";
 import { PermissionImpactService } from "./permission-impact.service";
 import { EmployeeOnboardingController } from "./employee-onboarding.controller";
 import { EmployeeOnboardingService } from "./employee-onboarding.service";
+import { ProjectRosterManagementController } from "./project-roster-management.controller";
+import { ProjectRosterManagementService } from "./project-roster-management.service";
 
 @Module({
   imports: [DatabaseModule, AuthModule, AuditModule],
-  controllers: [OrganizationController, EmployeeOnboardingController],
-  providers: [OrganizationService, PermissionImpactService, OrganizationRoleService, EmployeeOnboardingService],
+  controllers: [OrganizationController, EmployeeOnboardingController, ProjectRosterManagementController],
+  providers: [OrganizationService, PermissionImpactService, OrganizationRoleService, EmployeeOnboardingService, ProjectRosterManagementService],
   exports: [OrganizationService, OrganizationRoleService]
 })
 export class OrganizationModule {}

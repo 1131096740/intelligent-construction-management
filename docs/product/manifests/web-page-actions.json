@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 364,
+    "registeredActionCount": 366,
     "pageActionCount": 56,
-    "backgroundActionCount": 308,
-    "reachableVueFileCount": 171,
+    "backgroundActionCount": 310,
+    "reachableVueFileCount": 172,
     "routeRootCount": 67,
-    "totalVueFileCount": 185,
-    "parsedVueFileCount": 185,
-    "reachableProductionModuleCount": 298,
-    "templateEventDirectiveCount": 1068,
+    "totalVueFileCount": 186,
+    "parsedVueFileCount": 186,
+    "reachableProductionModuleCount": 299,
+    "templateEventDirectiveCount": 1075,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 354,
-    "candidateProductionMutationConsumerCount": 354,
-    "acceptedProductionMutationConsumerCount": 354,
-    "productionMutationConsumerPairCount": 354,
+    "coveredProductionMutationConsumerCount": 356,
+    "candidateProductionMutationConsumerCount": 356,
+    "acceptedProductionMutationConsumerCount": 356,
+    "productionMutationConsumerPairCount": 356,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 319,
-    "reachableProductionModuleCount": 298,
-    "totalVueFileCount": 185,
-    "parsedVueFileCount": 185
+    "totalProductionModuleCount": 320,
+    "reachableProductionModuleCount": 299,
+    "totalVueFileCount": 186,
+    "parsedVueFileCount": 186
   },
   "actions": [
     {
@@ -18516,6 +18516,140 @@
             "localCallChain": [
               "submit",
               "validateBusinessEntryDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.roster.apply",
+      "usage": "background",
+      "routePaths": [
+        "/项目花名册"
+      ],
+      "ownerRoutePaths": [
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyWithCapability",
+        "kind": "background_call",
+        "sourceLine": 72,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoster",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "applyProjectRosterChange",
+          "method": "POST",
+          "path": "/organization/project-roster/apply",
+          "normalizedKey": "POST /organization/project-roster/apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/project-roster/apply",
+            "normalizedKey": "POST /organization/project-roster/apply",
+            "controller": "ProjectRosterManagementController",
+            "handler": "apply",
+            "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyWithCapability",
+              "applyProjectRosterChange"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.roster.preview",
+      "usage": "background",
+      "routePaths": [
+        "/项目花名册"
+      ],
+      "ownerRoutePaths": [
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 65,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageRoster",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "previewProjectRosterChange",
+          "method": "POST",
+          "path": "/organization/project-roster/preview",
+          "normalizedKey": "POST /organization/project-roster/preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/project-roster/preview",
+            "normalizedKey": "POST /organization/project-roster/preview",
+            "controller": "ProjectRosterManagementController",
+            "handler": "preview",
+            "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewWithCapability",
+              "previewProjectRosterChange"
             ]
           },
           "ticketFollowups": []
