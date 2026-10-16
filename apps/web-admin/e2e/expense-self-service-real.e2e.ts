@@ -45,7 +45,15 @@ test("财务为本人保存并提交借款，只选择本人所属项目", async
   expect((await submitted).status()).toBe(201);
   await page.reload();
   await expect(page.locator(".expense-claim-detail")).toContainText("审批中");
-  expect(await page.locator(".expense-claim-detail").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const layout = await page.locator(".expense-claim-detail").evaluate((root) => ({
+    clientWidth: root.clientWidth,
+    scrollWidth: root.scrollWidth,
+    overflowing: Array.from(root.querySelectorAll("*")).filter((el) =>
+      !el.closest(".t-drawer, .t-dialog__ctx, .t-popup") &&
+      el.getBoundingClientRect().right > root.getBoundingClientRect().right + 1
+    ).map((el) => ({ tag: el.tagName, className: String(el.className), width: el.clientWidth, scrollWidth: el.scrollWidth })).slice(0, 30)
+  }));
+  expect(layout.scrollWidth, JSON.stringify(layout)).toBeLessThanOrEqual(layout.clientWidth);
   await page.screenshot({ path: testInfo.outputPath("finance-self-submitted.png"), fullPage: true });
 });
 
