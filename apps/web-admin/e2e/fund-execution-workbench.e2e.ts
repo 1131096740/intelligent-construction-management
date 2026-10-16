@@ -163,4 +163,6 @@ async function login(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000003");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  // Clicking does not wait for the asynchronous login and session persistence.
+  await expect(page).toHaveURL(new URL("/首页", page.url()).href);
 }

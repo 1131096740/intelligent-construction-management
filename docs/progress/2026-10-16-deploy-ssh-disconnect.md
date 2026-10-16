@@ -1,4 +1,31 @@
-# 2026-10-16 部署 SSH 断连修复（本地候选）
+# 2026-10-16 部署 SSH 断连修复与生产验收
+
+## 当前验收结论
+
+已于2026-10-16完成授权的联合发布。生产准确版本为 `685daba763182b64cff18ac8e565a868816d1ebf`；本次文档归档不重新部署或改变该验收版本。后面的“本地候选”等内容是历史检查点。
+
+- [PR #328](https://github.com/1131096740/intelligent-construction-management/pull/328) 引入断连保护；[PR #330](https://github.com/1131096740/intelligent-construction-management/pull/330) 修复外层077下自测夹具。两个固定头双轴审查均0未决。
+- 准确生产SHA原完整17门通过，收据时间13:10:26 UTC；[主线CI38900901670](https://github.com/1131096740/intelligent-construction-management/actions/runs/38900901670) 自然完成23/23成功。
+- 唯一[正式部署38905897724](https://github.com/1131096740/intelligent-construction-management/actions/runs/38905897724) 于13:11:01 UTC启动、13:19:56 UTC成功结束。健康观察超过5分钟后写入一次准确CONFIRM；`session.4rrBA0ed`终态绑定该SHA且exitCode0。
+- 发布负责人验收后，SSH任务再次只读核对：生产源码干净且SHA一致；API/Web运行文件与构建无差异，三路健康、网页及静态资产均200；锁释放、决定文件已消费，会话0700及文件0600正确。
+- 四份后置systemd文件已安装且匹配源码，原启停状态保持；运行目录0775保持。本轮stage/rollback目录已清理，四个发布前遗留目录原样保留，未清理他人历史资源。
+- 本次迁移前备份的摘要、恢复目录列表和异地回执通过。正式发布没有触发回滚，健康不能单独代替终态、备份和收尾证据。
+
+## 断连与回滚验收边界
+
+生产主机独立/tmp探针复制已发布会话入口并使用无业务动作的载荷：真正断开SSH客户端后，锁仍持有，重连确认成功，终态exitCode0并释放锁。探针未运行真实部署载荷，创建的临时目录由探针清理。
+
+生产主机隔离安全自测使用真实server脚本及测试适配器，在022/002两种掩码下分别验证CONFIRM、ROLLBACK、TIMEOUT、WRONG_SHA，8场景全部通过；包含运行文件恢复、私有收据、锁和清理断言。这是生产主机上的隔离恢复验证，不是实际回滚线上业务。
+
+## 失败记录与证据位置
+
+- 5f83c9d5完整门第9项失败，修复自测环境后在最终SHA从头通过17门，没有拼接前8门结果。
+- 43e54031首轮CI38896329316的手机合作单位创建用例等待POST响应45秒超时。当前代码已含此前的可见弹窗定位修复，未确认本轮唯一根因；原日志保留，GitHub未上传该失败trace。同头本机PG16 30/30、浏览器21通过/1既有条件跳过，原失败手机用例实际通过；仅原失败分片及汇总重跑一次，attempt2为23/23成功。没有修改断言、超时、重试或跳过配置；最终主线CI另行自然全绿。
+- 最终只读核验器首次以ubuntu检查root保护的决定目录时遇到权限错误。私有核验副本仅改用`sudo -n test ! -e`读取存在性，未改生产权限；重新核验通过，原失败保留。
+- 发布原件：`/private/tmp/jgzg-accounting-setup-20261016/`，包括最终17门收据、CI/部署终态、生产前后快照、确认与会话、备份、SSH探针和8场景隔离日志。
+- SSH独立复核：`/private/tmp/jgzg-ssh-release-20261016/`，包括`combined-prerelease-independent-review.json`、`production-final-session-independent.json`、`production-runtime-independent.json`、`production-after-independent.json`及发布交接。原始私有证据不上传公开仓库。
+
+## 历史执行记录
 
 ## 范围与现场证据
 

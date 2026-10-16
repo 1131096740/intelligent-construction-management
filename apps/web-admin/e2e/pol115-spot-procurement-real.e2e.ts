@@ -1,17 +1,122 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readdirSync, readFileSync } from "node:fs";
 
-import { gotoWithSingleWebKitInternalErrorRetry } from "./support/playwright-navigation";
+import { gotoWithSingleWebKitInternalErrorRetry as gotoWithRetry } from "./support/playwright-navigation";
 
-// 仅输出隔离合成场景的页面文字，不读取会话、请求头或浏览器存储。
+const entryEvents = new WeakMap<Page, object[]>();
+const pendingEntryRequests = new WeakMap<Page, Map<object, { path: string; started: number; responseStatus?: number }>>();
+const entryStarted = new WeakMap<Page, number>();
+const processProbes = new WeakMap<Page, ReturnType<typeof setInterval>>();
+function recordEntry(page: Page, event: object) {
+  const events = entryEvents.get(page);
+  if (!events) return;
+  events.push({ elapsedMs: Date.now() - (entryStarted.get(page) ?? Date.now()), ...event });
+  if (events.length > 60) events.shift();
+}
+function classifyBrowserError(message: string) {
+  for (const [pattern, classification] of [
+    [/network process crashed/i, "network-process-crashed"],
+    [/WebKit encountered an internal error/i, "webkit-internal-error"],
+    [/cancelled|canceled|aborted|ERR_ABORTED/i, "cancelled"],
+    [/timed out|timeout/i, "timeout"],
+    [/connection refused|ECONNREFUSED|ERR_CONNECTION_REFUSED/i, "connection-refused"],
+    [/closed|destroyed/i, "target-closed"]
+  ] as const) {
+    if (pattern.test(message)) return classification;
+  }
+  return "other";
+}
+async function gotoWithSingleWebKitInternalErrorRetry(page: Page, path: string) {
+  recordEntry(page, { phase: "goto-start", path });
+  let attempt = 0;
+  const response = await gotoWithRetry({ goto: async (url) => {
+    attempt += 1;
+    recordEntry(page, { phase: "goto-attempt", attempt });
+    try { return await page.goto(url); }
+    catch (error) {
+      recordEntry(page, { phase: "goto-error", attempt, error: classifyBrowserError(error instanceof Error ? error.message : "") });
+      throw error;
+    }
+  } }, path);
+  recordEntry(page, { phase: "goto-complete", path });
+  return response;
+}
+test.beforeEach(async ({ page }) => {
+  const events: object[] = [];
+  entryEvents.set(page, events);
+  entryStarted.set(page, Date.now());
+  const pending = new Map<object, { path: string; started: number; responseStatus?: number }>();
+  pendingEntryRequests.set(page, pending);
+  const record = (event: object) => recordEntry(page, event);
+  if (process.env.CI && process.platform === "linux") {
+    let previous = "";
+    const sample = () => {
+      try {
+        const ids = readdirSync("/proc").filter((id) => /^\d+$/.test(id)).filter((id) => {
+          try { return readFileSync(`/proc/${id}/comm`, "utf8").startsWith("WPENetworkProce"); }
+          catch { return false; }
+        }).map(Number).sort((left, right) => left - right);
+        const current = JSON.stringify(ids);
+        if (current !== previous) { previous = current; record({ networkProcessIds: ids }); }
+      } catch { record({ networkProcessProbeUnavailable: true }); }
+    };
+    sample();
+    processProbes.set(page, setInterval(sample, 500));
+  }
+  // 只记录路径和状态，不记录查询参数、请求头、响应体或凭据。
+  const pathOf = (url: string) => new URL(url).pathname;
+  page.on("request", (request) => pending.set(request, { path: pathOf(request.url()), started: Date.now() }));
+  page.on("requestfinished", (request) => pending.delete(request));
+  page.on("requestfailed", (request) => pending.delete(request));
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) record({ navigation: pathOf(frame.url()) });
+  });
+  page.on("requestfailed", (request) => record({
+    failedRequest: pathOf(request.url()), resourceType: request.resourceType(), error: classifyBrowserError(request.failure()?.errorText ?? "")
+  }));
+  page.on("response", (response) => {
+    const pendingRequest = pending.get(response.request());
+    if (pendingRequest) pendingRequest.responseStatus = response.status();
+    if (response.status() >= 400) record({ response: pathOf(response.url()), status: response.status() });
+  });
+  page.on("websocket", (socket) => {
+    socket.on("socketerror", (error) => record({ socketError: classifyBrowserError(error) }));
+    socket.on("framereceived", ({ payload }) => {
+      try {
+        const message = JSON.parse(String(payload)) as { type?: unknown };
+        if (["connected", "full-reload", "update", "error"].includes(String(message.type))) {
+          record({ viteMessageType: message.type });
+        }
+      } catch { /* Only classify Vite control messages; never retain socket contents. */ }
+    });
+  });
+  page.on("pageerror", (error) => record({ pageError: error.name, error: classifyBrowserError(error.message) }));
+  page.on("crash", () => record({ crashed: true }));
+});
+
+// 会话只记录是否存在，不输出其内容；页面来自隔离合成场景。
 test.afterEach(async ({ page }, testInfo) => {
+  clearInterval(processProbes.get(page));
+  processProbes.delete(page);
   if (testInfo.status === testInfo.expectedStatus) return;
-  const state = await page.evaluate(() => ({
-    path: window.location.pathname,
-    title: document.title,
-    readyState: document.readyState,
-    pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
-  })).catch(() => ({ pageUnavailable: true }));
-  console.error("零采真实浏览器失败现场", JSON.stringify(state));
+  const pending = [...(pendingEntryRequests.get(page)?.values() ?? [])]
+    .slice(0, 40).map(({ path, started, responseStatus }) => ({ path, responseStatus: responseStatus ?? null, elapsedMs: Date.now() - started }));
+  // Emit Node-side evidence even if a crashed page cannot answer the bounded probe.
+  console.error("零采真实浏览器失败事件", JSON.stringify({ events: entryEvents.get(page), pending }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const state = await Promise.race([
+      page.evaluate(() => ({
+        path: window.location.pathname,
+        title: document.title,
+        readyState: document.readyState,
+        sessionPresent: Boolean(localStorage.getItem("jiangkong-web-admin-auth")),
+        pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
+      })).catch(() => ({ pageUnavailable: true })),
+      new Promise((resolve) => { timer = setTimeout(() => resolve({ pageProbeTimedOut: true }), 1_000); })
+    ]);
+    console.error("零采真实浏览器失败页面", JSON.stringify(state));
+  } finally { clearTimeout(timer); }
 });
 
 type Session = { user: unknown; tokens: { accessToken: string; refreshToken: string } };
@@ -20,7 +125,9 @@ async function useSession(page: Page, session: Session) {
   await page.evaluate((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
+  recordEntry(page, { phase: "reload-session-start" });
   await page.reload();
+  recordEntry(page, { phase: "reload-session-complete" });
 }
 
 async function openRefundPayment(page: Page, paymentId: string) {
@@ -253,4 +360,18 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   expect(receiptRead.status()).toBe(403);
   await expect(page.locator("body")).not.toContainText(coordinates.paymentId);
   expect(await page.locator(".spot-payment-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+// 由真实 PG 夹具在原业务链完成后单独执行手机独立启动样本。
+// Playwright 为不同 repeatEachIndex 建立独立 worker/browser，覆盖浏览器首次启动。
+test("零采入口独立浏览器启动保持会话并完成首页读取", async ({ page }) => {
+  const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
+  await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
+  await useSession(page, applicant);
+  const [response] = await Promise.all([
+    page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
+    gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
+  ]);
+  expect(response.status()).toBe(200);
+  await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
 });
