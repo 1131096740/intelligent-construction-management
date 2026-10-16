@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 31,
-    "exportedFunctionCount": 627,
-    "transportWrapperCount": 605,
+    "exportedFunctionCount": 630,
+    "transportWrapperCount": 608,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 639,
+    "mainRequestBindingCount": 642,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 630,
-    "productionConsumerCount": 512,
+    "requestEdgeCount": 633,
+    "productionConsumerCount": 515,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 319,
-    "reachableProductionModuleCount": 298
+    "productionModuleCount": 320,
+    "reachableProductionModuleCount": 299
   },
   "wrappers": [
     {
@@ -7540,6 +7540,7 @@
         "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+        "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
       ],
@@ -13474,6 +13475,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "applyProjectRosterChange",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 387,
+          "method": "POST",
+          "path": "/organization/project-roster/apply",
+          "normalizedPath": "/organization/project-roster/apply",
+          "normalizedKey": "POST /organization/project-roster/apply",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyProjectRosterChange",
+              "sendJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createOrganizationDepartment",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
@@ -13628,6 +13657,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchProjectRosterManagementOptions",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 376,
+          "method": "GET",
+          "path": "/organization/project-roster/options",
+          "normalizedPath": "/organization/project-roster/options",
+          "normalizedKey": "GET /organization/project-roster/options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectRosterManagementOptions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "isOrganizationRoleKey",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "pure",
@@ -13728,6 +13786,34 @@
         "apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue"
       ],
       "productionConsumers": []
+    },
+    {
+      "name": "previewProjectRosterChange",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 387,
+          "method": "POST",
+          "path": "/organization/project-roster/preview",
+          "normalizedPath": "/organization/project-roster/preview",
+          "normalizedKey": "POST /organization/project-roster/preview",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewProjectRosterChange",
+              "sendJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "updateOrganizationDepartment",

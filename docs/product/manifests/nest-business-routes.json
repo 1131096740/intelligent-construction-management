@@ -2129,6 +2129,27 @@
     },
     {
       "method": "GET",
+      "path": "/organization/project-roster/options",
+      "normalizedKey": "GET /organization/project-roster/options",
+      "controller": "ProjectRosterManagementController",
+      "handler": "options",
+      "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/payable-settlements/capabilities",
       "normalizedKey": "GET /payable-settlements/capabilities",
       "controller": "PayableRegistryController",
@@ -8138,6 +8159,48 @@
       "requiredPositions": [
         "chairman",
         "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/organization/project-roster/apply",
+      "normalizedKey": "POST /organization/project-roster/apply",
+      "controller": "ProjectRosterManagementController",
+      "handler": "apply",
+      "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/organization/project-roster/preview",
+      "normalizedKey": "POST /organization/project-roster/preview",
+      "controller": "ProjectRosterManagementController",
+      "handler": "preview",
+      "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

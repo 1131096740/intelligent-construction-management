@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 63,
-    "fullyPendingSuites": 52,
+    "pendingFiles": 64,
+    "fullyPendingSuites": 53,
     "partiallyPendingSuites": 11,
-    "pendingTests": 326,
-    "coveredFiles": 63,
-    "coveredTests": 326,
+    "pendingTests": 335,
+    "coveredFiles": 64,
+    "coveredTests": 335,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -541,11 +541,16 @@
     },
     {
       "id": "employee_onboarding",
-      "pendingTests": 12,
+      "pendingTests": 21,
       "testFiles": [
         {
           "path": "services/api/src/database/employee-onboarding-http-postgres.spec.ts",
           "pendingTests": 12,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
+          "pendingTests": 9,
           "suiteStatus": "fully_pending"
         }
       ],

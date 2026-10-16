@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 355,
+    "activeBusinessActionCount": 357,
     "technicalActionCount": 9,
-    "activeBindingCount": 409,
+    "activeBindingCount": 411,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -4081,6 +4081,38 @@
       "capabilityKind": "server_definition",
       "bindingKeys": [
         "POST /business-entry-definitions/:param/validate"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.roster.apply",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/project-roster/apply"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.roster.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/project-roster/preview"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

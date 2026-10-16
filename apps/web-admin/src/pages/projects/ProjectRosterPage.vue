@@ -3,7 +3,11 @@
     <div class="page-head">
       <div>
         <h1>项目花名册</h1>
-        <p>查看当前账号可见项目的人员、公司岗位和项目业务岗位</p>
+        <p>按项目查看人员；董事长和综合部主管可维护授权范围内的项目成员</p>
+      </div>
+      <div v-if="canManage" class="roster-actions">
+        <t-button theme="primary" :disabled="loading || !selectedProjectId || !management" @click="openJoin">调入人员</t-button>
+        <p>先选择项目，再调入人员。项目岗位可在组织权限中设置。</p>
       </div>
       <t-button
         theme="primary"
@@ -38,6 +42,10 @@
         :horizontal-scroll-affixed-bottom="true"
         empty="暂无可查看的项目人员"
       >
+        <template #operation="{ row }">
+          <t-button v-if="canManagePerson(row.userId)" variant="text" theme="danger" :disabled="loading" @click="openLeave(row)">调出项目</t-button>
+          <span v-else-if="canManage">由董事长或其他有权管理员维护</span>
+        </template>
         <template #globalPositions="{ row }">
           {{ row.globalPositions }}
         </template>
@@ -52,12 +60,19 @@
         {{ message }}
       </p>
     </t-card>
+    <ProjectRosterChangeDrawer :visible="drawerVisible" :operation="operation" :project-id="targetProjectId"
+      :project-name="targetProjectName" :user-id="targetUserId" :users="availableUsers"
+      @close="drawerVisible = false" @saved="onSaved" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { fetchProjectRoster, type ProjectRosterRowReadModel } from "../../api/core-flow-read.api";
+import { fetchProjectRoster, fetchProjects, type ProjectRosterRowReadModel, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
+import { fetchProjectRosterManagementOptions, type ProjectRosterManagementOptions } from "../../api/organization.api";
+import { formatUnknownApiError } from "../../api/error-message";
+import { useAuthStore } from "../../auth/auth.store";
+import ProjectRosterChangeDrawer from "./components/ProjectRosterChangeDrawer.vue";
 
 type RosterTableRow = ProjectRosterRowReadModel & {
   rowKey: string;
@@ -66,17 +81,43 @@ type RosterTableRow = ProjectRosterRowReadModel & {
   projectPositions: string;
 };
 
-const columns = [
+const auth = useAuthStore();
+const canManage = computed(() => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false);
+const columns = computed(() => [
   { colKey: "project", title: "项目", minWidth: 180 },
   { colKey: "name", title: "姓名", width: 120 },
   { colKey: "phone", title: "电话", width: 150 },
   { colKey: "globalPositions", title: "公司岗位", minWidth: 180 },
-  { colKey: "projectPositions", title: "项目岗位", minWidth: 180 }
-];
+  { colKey: "projectPositions", title: "项目岗位", minWidth: 180 },
+  ...(canManage.value ? [{ colKey: "operation", title: "操作", minWidth: 180 }] : [])
+]);
 const loading = ref(false);
 const message = ref("");
 const selectedProjectId = ref("");
 const rows = ref<ProjectRosterRowReadModel[]>([]);
+const projects = ref<ProjectOptionReadModel[]>([]);
+const management = ref<ProjectRosterManagementOptions | null>(null);
+const drawerVisible = ref(false);
+const operation = ref<"join" | "leave">("join");
+const targetProjectId = ref("");
+const targetProjectName = ref("");
+const targetUserId = ref("");
+const availableUsers = computed(() => (management.value?.users ?? []).filter((user) =>
+  operation.value === "leave" || !rows.value.some((row) => row.projectId === targetProjectId.value && row.userId === user.id)
+));
+function canManagePerson(userId: string) { return management.value?.users.some((user) => user.id === userId && user.canManage) ?? false; }
+function openJoin() {
+  const project = projects.value.find((row) => row.id === selectedProjectId.value);
+  if (!project || !management.value) return;
+  operation.value = "join"; targetProjectId.value = project.id; targetProjectName.value = project.name;
+  targetUserId.value = ""; drawerVisible.value = true;
+}
+function openLeave(row: RosterTableRow) {
+  if (!canManagePerson(row.userId)) return;
+  operation.value = "leave"; targetProjectId.value = row.projectId; targetProjectName.value = row.projectName;
+  targetUserId.value = row.userId; drawerVisible.value = true;
+}
+async function onSaved() { drawerVisible.value = false; await loadRoster(); }
 const tableRows = computed<RosterTableRow[]>(() =>
   rows.value.map((row) => ({
     ...row,
@@ -92,9 +133,7 @@ const visibleRows = computed(() =>
     : tableRows.value
 );
 const projectOptions = computed(() =>
-  Array.from(new Map(rows.value.map((row) => [row.projectId, `${row.projectCode} · ${row.projectName}`]))).map(
-    ([value, label]) => ({ value, label })
-  )
+  projects.value.map((project) => ({ value: project.id, label: `${project.code} · ${project.name}` }))
 );
 
 onMounted(loadRoster);
@@ -102,10 +141,14 @@ onMounted(loadRoster);
 async function loadRoster() {
   loading.value = true;
   message.value = "";
+  management.value = null;
   try {
-    rows.value = await fetchProjectRoster();
+    const [nextRows, nextProjects, nextManagement] = await Promise.all([
+      fetchProjectRoster(), fetchProjects(), canManage.value ? fetchProjectRosterManagementOptions() : Promise.resolve(null)
+    ]);
+    rows.value = nextRows; projects.value = nextProjects; management.value = nextManagement;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "读取项目花名册失败";
+    message.value = formatUnknownApiError(error, "读取项目花名册失败");
   } finally {
     loading.value = false;
   }
@@ -154,6 +197,9 @@ async function loadRoster() {
   color: #5d6675;
   font-size: 12px;
 }
+
+.roster-actions { display: flex; align-items: center; gap: var(--jg-space-md); flex-wrap: wrap; margin-bottom: var(--jg-space-md); }
+.roster-actions p { margin: 0; color: var(--jg-text-secondary); }
 
 .message {
   margin-top: 12px;

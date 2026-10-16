@@ -445,10 +445,11 @@ export class ProjectService {
   }
 
   async listActiveOptions(userId: string) {
-    const [globalUserPositions, projectUserPositions, projectMemberPositions] = await Promise.all([
+    const [globalUserPositions, projectUserPositions, projectMemberPositions, rosterMemberships] = await Promise.all([
       this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
       this.prisma.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
-      this.prisma.projectMember.findMany({ where: { userId } })
+      this.prisma.projectMember.findMany({ where: { userId } }),
+      this.prisma.projectRosterMember.findMany({ where: { userId }, select: { projectId: true } })
     ]);
     const positionIds = Array.from(
       new Set([...globalUserPositions, ...projectUserPositions].map((position) => position.positionId))
@@ -472,7 +473,8 @@ export class ProjectService {
         .filter((projectId): projectId is string => typeof projectId === "string"),
       ...projectMemberPositions
         .filter((position) => isProjectOptionPosition(position.positionKey as RoleKey))
-        .map((position) => position.projectId)
+        .map((position) => position.projectId),
+      ...rosterMemberships.map((membership) => membership.projectId)
     ]);
 
     if (!visibleProjectIds.length) {

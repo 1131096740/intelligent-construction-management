@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 653,
-    "exactRouteCount": 653,
-    "normalizedRouteCount": 653,
+    "routeCount": 656,
+    "exactRouteCount": 656,
+    "normalizedRouteCount": 656,
     "classificationOverrideCount": 221,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "085f9bbd84ae8b0133bba665bea7b0214ea2e4d800c626b52eb12e10e46d556e",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-    "derivedProductionPageCount": 432,
-    "pageRouteCount": 448,
+    "derivedProductionPageCount": 435,
+    "pageRouteCount": 451,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 96,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 501,
+      "web_api_wrapper": 504,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 501,
+    "productionWrapperRouteCount": 504,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -4606,6 +4606,51 @@
     },
     {
       "method": "GET",
+      "path": "/organization/project-roster/options",
+      "normalizedKey": "GET /organization/project-roster/options",
+      "controller": "ProjectRosterManagementController",
+      "handler": "options",
+      "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "fetchProjectRosterManagementOptions",
+            "method": "GET",
+            "normalizedPath": "/organization/project-roster/options",
+            "normalizedKey": "GET /organization/project-roster/options",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
+              "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/payable-settlements/capabilities",
       "normalizedKey": "GET /payable-settlements/capabilities",
       "controller": "PayableRegistryController",
@@ -5167,6 +5212,7 @@
               "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+              "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
             ]
@@ -17157,6 +17203,94 @@
             "normalizedKey": "POST /organization/departments",
             "productionConsumers": [
               "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/organization/project-roster/apply",
+      "normalizedKey": "POST /organization/project-roster/apply",
+      "controller": "ProjectRosterManagementController",
+      "handler": "apply",
+      "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "applyProjectRosterChange",
+            "method": "POST",
+            "normalizedPath": "/organization/project-roster/apply",
+            "normalizedKey": "POST /organization/project-roster/apply",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/organization/project-roster/preview",
+      "normalizedKey": "POST /organization/project-roster/preview",
+      "controller": "ProjectRosterManagementController",
+      "handler": "preview",
+      "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/organization.api.ts",
+            "wrapper": "previewProjectRosterChange",
+            "method": "POST",
+            "normalizedPath": "/organization/project-roster/preview",
+            "normalizedKey": "POST /organization/project-roster/preview",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
             ]
           }
         ],
