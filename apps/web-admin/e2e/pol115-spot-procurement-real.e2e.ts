@@ -2,16 +2,40 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { gotoWithSingleWebKitInternalErrorRetry } from "./support/playwright-navigation";
 
-// 仅输出隔离合成场景的页面文字，不读取会话、请求头或浏览器存储。
+const entryEvents = new WeakMap<Page, object[]>();
+test.beforeEach(async ({ page }) => {
+  const events: object[] = [];
+  entryEvents.set(page, events);
+  const record = (event: object) => {
+    events.push(event);
+    if (events.length > 40) events.shift();
+  };
+  // 只记录路径和状态，不记录查询参数、请求头、响应体或凭据。
+  const pathOf = (url: string) => new URL(url).pathname;
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) record({ navigation: pathOf(frame.url()) });
+  });
+  page.on("requestfailed", (request) => record({
+    failedRequest: pathOf(request.url()), resourceType: request.resourceType()
+  }));
+  page.on("response", (response) => {
+    if (response.status() >= 400) record({ response: pathOf(response.url()), status: response.status() });
+  });
+  page.on("pageerror", (error) => record({ pageError: error.name }));
+  page.on("crash", () => record({ crashed: true }));
+});
+
+// 会话只记录是否存在，不输出其内容；页面来自隔离合成场景。
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status === testInfo.expectedStatus) return;
   const state = await page.evaluate(() => ({
     path: window.location.pathname,
     title: document.title,
     readyState: document.readyState,
+    sessionPresent: Boolean(localStorage.getItem("jiangkong-web-admin-auth")),
     pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
   })).catch(() => ({ pageUnavailable: true }));
-  console.error("零采真实浏览器失败现场", JSON.stringify(state));
+  console.error("零采真实浏览器失败现场", JSON.stringify({ state, events: entryEvents.get(page) }));
 });
 
 type Session = { user: unknown; tokens: { accessToken: string; refreshToken: string } };
