@@ -1,10 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { gotoWithSingleWebKitInternalErrorRetry as gotoWithRetry } from "./support/playwright-navigation";
 
 const entryEvents = new WeakMap<Page, object[]>();
 const pendingEntryRequests = new WeakMap<Page, Map<object, { path: string; started: number; responseStatus?: number }>>();
 const entryStarted = new WeakMap<Page, number>();
+const processProbes = new WeakMap<Page, ReturnType<typeof setInterval>>();
 function recordEntry(page: Page, event: object) {
   const events = entryEvents.get(page);
   if (!events) return;
@@ -46,6 +48,21 @@ test.beforeEach(async ({ page }) => {
   const pending = new Map<object, { path: string; started: number; responseStatus?: number }>();
   pendingEntryRequests.set(page, pending);
   const record = (event: object) => recordEntry(page, event);
+  if (process.env.CI && process.platform === "linux") {
+    let previous = "";
+    const sample = () => {
+      try {
+        const ids = readdirSync("/proc").filter((id) => /^\d+$/.test(id)).filter((id) => {
+          try { return readFileSync(`/proc/${id}/comm`, "utf8").startsWith("WPENetworkProce"); }
+          catch { return false; }
+        }).map(Number).sort((left, right) => left - right);
+        const current = JSON.stringify(ids);
+        if (current !== previous) { previous = current; record({ networkProcessIds: ids }); }
+      } catch { record({ networkProcessProbeUnavailable: true }); }
+    };
+    sample();
+    processProbes.set(page, setInterval(sample, 500));
+  }
   // 只记录路径和状态，不记录查询参数、请求头、响应体或凭据。
   const pathOf = (url: string) => new URL(url).pathname;
   page.on("request", (request) => pending.set(request, { path: pathOf(request.url()), started: Date.now() }));
@@ -79,6 +96,8 @@ test.beforeEach(async ({ page }) => {
 
 // 会话只记录是否存在，不输出其内容；页面来自隔离合成场景。
 test.afterEach(async ({ page }, testInfo) => {
+  clearInterval(processProbes.get(page));
+  processProbes.delete(page);
   if (testInfo.status === testInfo.expectedStatus) return;
   const pending = [...(pendingEntryRequests.get(page)?.values() ?? [])]
     .slice(0, 40).map(({ path, started, responseStatus }) => ({ path, responseStatus: responseStatus ?? null, elapsedMs: Date.now() - started }));
@@ -343,7 +362,7 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   expect(await page.locator(".spot-payment-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
-// 由真实 PG 夹具在原业务链完成后单独使用 --repeat-each=5 执行。
+// 由真实 PG 夹具在原业务链完成后单独执行手机独立启动样本。
 // Playwright 为不同 repeatEachIndex 建立独立 worker/browser，覆盖浏览器首次启动。
 test("零采入口独立浏览器启动保持会话并完成首页读取", async ({ page }) => {
   const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
