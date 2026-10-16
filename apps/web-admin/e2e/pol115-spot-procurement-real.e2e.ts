@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { gotoWithSingleWebKitInternalErrorRetry as gotoWithRetry } from "./support/playwright-navigation";
 
 const entryEvents = new WeakMap<Page, object[]>();
-const pendingEntryRequests = new WeakMap<Page, Map<object, { path: string; started: number }>>();
+const pendingEntryRequests = new WeakMap<Page, Map<object, { path: string; started: number; responseStatus?: number }>>();
 const entryStarted = new WeakMap<Page, number>();
 function recordEntry(page: Page, event: object) {
   const events = entryEvents.get(page);
@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
   const events: object[] = [];
   entryEvents.set(page, events);
   entryStarted.set(page, Date.now());
-  const pending = new Map<object, { path: string; started: number }>();
+  const pending = new Map<object, { path: string; started: number; responseStatus?: number }>();
   pendingEntryRequests.set(page, pending);
   const record = (event: object) => recordEntry(page, event);
   // 只记录路径和状态，不记录查询参数、请求头、响应体或凭据。
@@ -36,8 +36,18 @@ test.beforeEach(async ({ page }) => {
     failedRequest: pathOf(request.url()), resourceType: request.resourceType()
   }));
   page.on("response", (response) => {
+    const pendingRequest = pending.get(response.request());
+    if (pendingRequest) pendingRequest.responseStatus = response.status();
     if (response.status() >= 400) record({ response: pathOf(response.url()), status: response.status() });
   });
+  page.on("websocket", (socket) => socket.on("framereceived", ({ payload }) => {
+    try {
+      const message = JSON.parse(String(payload)) as { type?: unknown };
+      if (["connected", "full-reload", "update", "error"].includes(String(message.type))) {
+        record({ viteMessageType: message.type });
+      }
+    } catch { /* Only classify Vite control messages; never retain socket contents. */ }
+  }));
   page.on("pageerror", (error) => record({ pageError: error.name }));
   page.on("crash", () => record({ crashed: true }));
 });
@@ -53,7 +63,7 @@ test.afterEach(async ({ page }, testInfo) => {
     pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
   })).catch(() => ({ pageUnavailable: true }));
   const pending = [...(pendingEntryRequests.get(page)?.values() ?? [])]
-    .slice(0, 40).map(({ path, started }) => ({ path, elapsedMs: Date.now() - started }));
+    .slice(0, 40).map(({ path, started, responseStatus }) => ({ path, responseStatus: responseStatus ?? null, elapsedMs: Date.now() - started }));
   console.error("零采真实浏览器失败现场", JSON.stringify({ state, events: entryEvents.get(page), pending }));
 });
 

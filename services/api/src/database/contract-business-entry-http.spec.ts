@@ -42,7 +42,6 @@ if (enabled) {
 (enabled ? describe : describe.skip)("合同统一录入公开 HTTP", () => {
   let app: INestApplication;
   let baseUrl: string;
-  let token: string;
   let actorUserId: string;
   let actorPhone: string;
   let actorPassword: string;
@@ -50,32 +49,6 @@ if (enabled) {
   let settlementAttachmentSnapshotFailure = false;
   const identities = new Map<string, { phone: string; password: string }>();
   jest.setTimeout(60_000);
-
-  async function request<T = unknown>(method: string, path: string, body?: unknown, leaseToken?: string): Promise<T> {
-    const response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: {
-        "content-type": "application/json",
-        ...(leaseToken ? { "x-contract-draft-lease": leaseToken } : {}),
-        ...(token ? { authorization: `Bearer ${token}` } : {})
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) })
-    });
-    const value = await response.json() as T;
-    if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
-    return value;
-  }
-
-  async function upload(name: string, mimeType: string, data: Uint8Array) {
-    const form = new FormData();
-    form.append("file", new Blob([Uint8Array.from(data).buffer], { type: mimeType }), name);
-    const response = await fetch(`${baseUrl}/files`, {
-      method: "POST", headers: { authorization: `Bearer ${token}` }, body: form
-    });
-    const result = await response.json() as Identified;
-    if (!response.ok) throw new Error(`上传失败：${JSON.stringify(result)}`);
-    return result;
-  }
 
   async function runSettlementBrowserAcceptance(
     settlementId: string,
@@ -88,7 +61,8 @@ if (enabled) {
       delete childEnv.JEST_WORKER_ID;
       const child = spawn(process.env.PNPM_BIN ?? "pnpm", [
         "--filter", "@jiangkong/web-admin", "exec", "playwright", "test",
-        "--config", "playwright.settlement-entry-history-real.config.ts"
+        "--config", "playwright.settlement-entry-history-real.config.ts",
+        "--global-timeout=85000"
       ], {
         cwd: join(__dirname, "../../../.."),
         env: {
@@ -103,7 +77,7 @@ if (enabled) {
         stdio: "inherit"
       });
       child.once("error", reject);
-      child.once("exit", (code, signal) => {
+      child.once("close", (code, signal) => {
         if (code === 0) resolve();
         else reject(new Error(`真实结算历史浏览器验收失败：${signal ?? code ?? "unknown"}`));
       });
@@ -145,12 +119,39 @@ if (enabled) {
       });
       await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id } });
     }
-    token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", { phone, password })).tokens.accessToken;
   });
 
   afterAll(async () => { await app?.close(); });
 
-  it.each(["aggregate", "legacy", "legacy-ownerless"] as const)("合同现役提交与旧入口退出：%s", async (entryMode) => {
+  async function runContractCase(entryMode: "aggregate" | "legacy" | "legacy-ownerless") {
+    // Each case owns its identity, even if Jest eventually aborts an earlier case.
+    let token = "";
+    async function request<T = unknown>(method: string, path: string, body?: unknown, leaseToken?: string): Promise<T> {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers: {
+          "content-type": "application/json",
+          ...(leaseToken ? { "x-contract-draft-lease": leaseToken } : {}),
+          ...(token ? { authorization: `Bearer ${token}` } : {})
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      const value = await response.json() as T;
+      if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
+      return value;
+    }
+
+    async function upload(name: string, mimeType: string, data: Uint8Array) {
+      const form = new FormData();
+      form.append("file", new Blob([Uint8Array.from(data).buffer], { type: mimeType }), name);
+      const response = await fetch(`${baseUrl}/files`, {
+        method: "POST", headers: { authorization: `Bearer ${token}` }, body: form
+      });
+      const result = await response.json() as Identified;
+      if (!response.ok) throw new Error(`上传失败：${JSON.stringify(result)}`);
+      return result;
+    }
+
     token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", {
       phone: actorPhone, password: actorPassword
     })).tokens.accessToken;
@@ -1019,5 +1020,13 @@ if (enabled) {
       })).rejects.toThrow("403");
       expect((await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`)).financeEntry.history).toEqual([]);
     }
-  });
+  }
+
+  for (const entryMode of ["aggregate", "legacy", "legacy-ownerless"] as const) {
+    // Each Playwright invocation owns its global deadline and worker/server cleanup.
+    // The ordinary HTTP modes and each Playwright case retain their original limits.
+    const timeoutMs = process.env.RUN_POL114_BROWSER === "1" && entryMode === "aggregate"
+      ? 60_000 + 2 * (85_000 + 30_000) + 10_000 : 60_000;
+    it(`合同现役提交与旧入口退出：${entryMode}`, () => runContractCase(entryMode), timeoutMs);
+  }
 });
