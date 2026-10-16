@@ -11,9 +11,31 @@ function recordEntry(page: Page, event: object) {
   events.push({ elapsedMs: Date.now() - (entryStarted.get(page) ?? Date.now()), ...event });
   if (events.length > 60) events.shift();
 }
+function classifyBrowserError(message: string) {
+  for (const [pattern, classification] of [
+    [/network process crashed/i, "network-process-crashed"],
+    [/WebKit encountered an internal error/i, "webkit-internal-error"],
+    [/cancelled|canceled|aborted|ERR_ABORTED/i, "cancelled"],
+    [/timed out|timeout/i, "timeout"],
+    [/connection refused|ECONNREFUSED|ERR_CONNECTION_REFUSED/i, "connection-refused"],
+    [/closed|destroyed/i, "target-closed"]
+  ] as const) {
+    if (pattern.test(message)) return classification;
+  }
+  return "other";
+}
 async function gotoWithSingleWebKitInternalErrorRetry(page: Page, path: string) {
   recordEntry(page, { phase: "goto-start", path });
-  const response = await gotoWithRetry(page, path);
+  let attempt = 0;
+  const response = await gotoWithRetry({ goto: async (url) => {
+    attempt += 1;
+    recordEntry(page, { phase: "goto-attempt", attempt });
+    try { return await page.goto(url); }
+    catch (error) {
+      recordEntry(page, { phase: "goto-error", attempt, error: classifyBrowserError(error instanceof Error ? error.message : "") });
+      throw error;
+    }
+  } }, path);
   recordEntry(page, { phase: "goto-complete", path });
   return response;
 }
@@ -33,38 +55,49 @@ test.beforeEach(async ({ page }) => {
     if (frame === page.mainFrame()) record({ navigation: pathOf(frame.url()) });
   });
   page.on("requestfailed", (request) => record({
-    failedRequest: pathOf(request.url()), resourceType: request.resourceType()
+    failedRequest: pathOf(request.url()), resourceType: request.resourceType(), error: classifyBrowserError(request.failure()?.errorText ?? "")
   }));
   page.on("response", (response) => {
     const pendingRequest = pending.get(response.request());
     if (pendingRequest) pendingRequest.responseStatus = response.status();
     if (response.status() >= 400) record({ response: pathOf(response.url()), status: response.status() });
   });
-  page.on("websocket", (socket) => socket.on("framereceived", ({ payload }) => {
-    try {
-      const message = JSON.parse(String(payload)) as { type?: unknown };
-      if (["connected", "full-reload", "update", "error"].includes(String(message.type))) {
-        record({ viteMessageType: message.type });
-      }
-    } catch { /* Only classify Vite control messages; never retain socket contents. */ }
-  }));
-  page.on("pageerror", (error) => record({ pageError: error.name }));
+  page.on("websocket", (socket) => {
+    socket.on("socketerror", (error) => record({ socketError: classifyBrowserError(error) }));
+    socket.on("framereceived", ({ payload }) => {
+      try {
+        const message = JSON.parse(String(payload)) as { type?: unknown };
+        if (["connected", "full-reload", "update", "error"].includes(String(message.type))) {
+          record({ viteMessageType: message.type });
+        }
+      } catch { /* Only classify Vite control messages; never retain socket contents. */ }
+    });
+  });
+  page.on("pageerror", (error) => record({ pageError: error.name, error: classifyBrowserError(error.message) }));
   page.on("crash", () => record({ crashed: true }));
 });
 
 // 会话只记录是否存在，不输出其内容；页面来自隔离合成场景。
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status === testInfo.expectedStatus) return;
-  const state = await page.evaluate(() => ({
-    path: window.location.pathname,
-    title: document.title,
-    readyState: document.readyState,
-    sessionPresent: Boolean(localStorage.getItem("jiangkong-web-admin-auth")),
-    pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
-  })).catch(() => ({ pageUnavailable: true }));
   const pending = [...(pendingEntryRequests.get(page)?.values() ?? [])]
     .slice(0, 40).map(({ path, started, responseStatus }) => ({ path, responseStatus: responseStatus ?? null, elapsedMs: Date.now() - started }));
-  console.error("零采真实浏览器失败现场", JSON.stringify({ state, events: entryEvents.get(page), pending }));
+  // Emit Node-side evidence even if a crashed page cannot answer the bounded probe.
+  console.error("零采真实浏览器失败事件", JSON.stringify({ events: entryEvents.get(page), pending }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const state = await Promise.race([
+      page.evaluate(() => ({
+        path: window.location.pathname,
+        title: document.title,
+        readyState: document.readyState,
+        sessionPresent: Boolean(localStorage.getItem("jiangkong-web-admin-auth")),
+        pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
+      })).catch(() => ({ pageUnavailable: true })),
+      new Promise((resolve) => { timer = setTimeout(() => resolve({ pageProbeTimedOut: true }), 1_000); })
+    ]);
+    console.error("零采真实浏览器失败页面", JSON.stringify(state));
+  } finally { clearTimeout(timer); }
 });
 
 type Session = { user: unknown; tokens: { accessToken: string; refreshToken: string } };

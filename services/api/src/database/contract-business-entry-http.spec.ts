@@ -1027,6 +1027,6 @@ if (enabled) {
     // The ordinary HTTP modes and each Playwright case retain their original limits.
     const timeoutMs = process.env.RUN_POL114_BROWSER === "1" && entryMode === "aggregate"
       ? 60_000 + 2 * (85_000 + 30_000) + 10_000 : 60_000;
-    it(`合同现役提交与旧入口退出：${entryMode}`, () => runContractCase(entryMode), timeoutMs);
+    it.each([entryMode])("合同现役提交与旧入口退出：%s", runContractCase, timeoutMs);
   }
 });
