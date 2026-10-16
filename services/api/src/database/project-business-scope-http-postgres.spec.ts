@@ -155,6 +155,14 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       const claim = await request("/expense-claims", materialDirector, { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id, reason: "合成缺经理费用", requestedAmountCents: "100", loanExpectedClearanceOn: "2026-12-31" });
       expectStatus(claim, 201);
       expect(await request(`/expense-claims/${claim.body.id}/submission`, materialDirector, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+      const position = await db.position.findUniqueOrThrow({ where: { key: "project_manager" } });
+      const selfManager = await db.userPosition.create({ data: { userId: companyContract.id, positionId: position.id, projectId: second } });
+      try {
+        expect(await request("/payments", companyContract, input)).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+        expect(await db.paymentRequest.count({ where: { code: input.code } })).toBe(0);
+      } finally {
+        await db.userPosition.delete({ where: { id: selfManager.id } });
+      }
     } finally {
       await db.user.update({ where: { id: secondManager.id }, data: { isActive: true } });
     }
@@ -210,6 +218,20 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       expect(nodes.find((node) => node.roleKeys.includes("project_manager"))?.candidateUserIds).toEqual([secondManager.id]);
       expect(nodes.flatMap((node) => node.candidateUserIds)).not.toContain(firstManager.id);
     }
+    // Existing static contract routes must obey the same project-role boundary.
+    const badGlobal = await person("chairman", [null]);
+    const manager = await db.position.findUniqueOrThrow({ where: { key: "project_manager" } });
+    await db.userPosition.create({ data: { userId: badGlobal.id, positionId: manager.id, projectId: null } });
+    const legacyVersion = await db.contractVersion.update({ where: { id: created.body.version.id }, data: { status: "in_approval" } });
+    const legacyApproval = await db.approvalInstance.create({ data: {
+      businessType: "contract_version", businessId: legacyVersion.id, flowType: "contract.approve", status: "in_progress", currentNodeIndex: 0, applicantUserId: companyContract.id,
+      frozenNodes: [{ name: "项目经理", mode: "any", roleKeys: ["project_manager"] }, { name: "董事长", mode: "any", roleKeys: ["chairman"] }]
+    } });
+    const review = { decision: "approve", expectedContractUpdatedAt: legacyVersion.updatedAt.toISOString(), expectedApprovalInstanceId: legacyApproval.id, expectedApprovalUpdatedAt: legacyApproval.updatedAt.toISOString(), expectedNodeIndex: 0 };
+    const reviewRoute = `/contracts/${legacyVersion.id}/approval`;
+    expectStatus(await request(reviewRoute, badGlobal, review), 403);
+    expectStatus(await request(reviewRoute, firstManager, review), 403);
+    expectStatus(await request(reviewRoute, secondManager, review), 201);
   });
 
   it("结算现场复核和经理都来自合同项目，项目岗位与花名册不混为专业授权", async () => {

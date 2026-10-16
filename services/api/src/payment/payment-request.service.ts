@@ -765,7 +765,7 @@ export class PaymentRequestService {
       });
 
       if (applicantUserId) {
-        await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES);
+        await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
         await tx.approvalInstance.create({
           data: {
             flowType: "payment.approve",
@@ -942,7 +942,7 @@ export class PaymentRequestService {
     });
 
     if (applicantUserId) {
-      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES);
+      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
       await tx.approvalInstance.create({
         data: {
           flowType: "payment.approve",
@@ -1255,7 +1255,7 @@ export class PaymentRequestService {
     });
 
     if (applicantUserId) {
-      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES);
+      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
       await tx.approvalInstance.create({
         data: {
           flowType: "payment.approve",

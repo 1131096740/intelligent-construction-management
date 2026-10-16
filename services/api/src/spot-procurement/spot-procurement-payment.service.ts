@@ -1393,7 +1393,7 @@ export class SpotProcurementPaymentService {
           amountCents: prepared.supplierBalanceAmountCents,
           actorUserId
         });
-        await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes());
+        await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes(), payment.handlerUserId);
         const now = new Date();
         const approval = await tx.approvalInstance.create({
           data: {
@@ -3677,7 +3677,7 @@ export class SpotProcurementPaymentService {
             "材料申请合计达到 3000 元，请重新走材料采购审批流程"
           );
         }
-        await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes());
+        await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes(), payment.handlerUserId);
         const now = new Date();
         const approval = await tx.approvalInstance.create({
           data: {

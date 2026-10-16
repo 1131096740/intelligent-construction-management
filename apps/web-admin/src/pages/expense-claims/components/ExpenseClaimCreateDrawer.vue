@@ -121,7 +121,7 @@ async function loadOptions() {
 }
 
 watch(() => props.modelValue, (isVisible) => { if (isVisible) void loadOptions(); });
-watch(() => form.claimType, (claimType) => { if (claimType !== "reimbursement") form.projectId = form.projectId || availableProjects.value[0]?.id || ""; });
+watch(() => form.claimType, (claimType) => { if (claimType !== "reimbursement" && !form.projectId && availableProjects.value.length === 1) form.projectId = availableProjects.value[0].id; });
 watch(() => form.applicantMode, (mode) => {
   if (mode === "self") form.applicantUserId = options.value?.selfApplicantUserId ?? "";
 });

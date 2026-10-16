@@ -2,6 +2,12 @@ import { expect, test } from "@playwright/test";
 
 type BrowserSession = { user: unknown; tokens: { accessToken: string; refreshToken: string } };
 
+async function selectBusinessProject(page: import("@playwright/test").Page) {
+  const field = page.locator(".t-drawer .t-form__item").filter({ has: page.getByText("项目", { exact: true }) });
+  await field.locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "入口合成项目" }).click();
+}
+
 async function useSession(page: import("@playwright/test").Page, session: BrowserSession) {
   await page.evaluate((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
@@ -81,6 +87,7 @@ test("桌面费用明细从粘贴事件批量录入两行并准确保存", async
   const drawer = page.locator(".t-drawer");
   await drawer.getByText("借款申请", { exact: true }).click();
   await drawer.getByText("费用报销", { exact: true }).click();
+  await selectBusinessProject(page);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
   await form.locator('[data-field="reason"] textarea').fill("两行粘贴报销");
@@ -119,6 +126,7 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
   const drawer = page.locator(".t-drawer");
   await drawer.getByText("借款申请", { exact: true }).click();
   await drawer.getByText("费用报销", { exact: true }).click();
+  await selectBusinessProject(page);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
   await form.locator('[data-field="reason"] textarea').fill("真实浏览器报销明细");
@@ -174,6 +182,7 @@ test("借款先保存草稿及附件，仅明确提交后冻结审批内容", as
   await page.goto("/费用与报销工作台");
   await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
   await page.locator(".t-drawer").getByText("借款申请", { exact: true }).click();
+  await selectBusinessProject(page);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
   await expect(form).toBeVisible();
