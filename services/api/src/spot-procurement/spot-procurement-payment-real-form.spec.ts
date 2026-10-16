@@ -1,3 +1,4 @@
+import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -278,6 +279,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     const prisma = (service as unknown as { prisma: { spotProcurementPayment: { findUnique: jest.Mock } } }).prisma;
     prisma.spotProcurementPayment.findUnique.mockResolvedValue(completed);
 
+    mockConfiguredApprovalAssignments(tx);
     await service.submit("payment-1", "material-1");
 
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({

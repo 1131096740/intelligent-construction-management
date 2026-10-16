@@ -223,18 +223,18 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 326 pending tests as executable local coverage", () => {
+test("manifest derives all 346 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 64,
-    fullyPendingSuites: 53,
+    pendingFiles: 65,
+    fullyPendingSuites: 54,
     partiallyPendingSuites: 11,
-    pendingTests: 335,
-    coveredFiles: 64,
-    coveredTests: 335,
+    pendingTests: 346,
+    coveredFiles: 65,
+    coveredTests: 346,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -616,7 +616,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=335/u
+    /inventory\.coveredTests=26，派生值=346/u
   );
 });
 

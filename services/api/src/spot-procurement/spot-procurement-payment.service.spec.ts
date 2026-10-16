@@ -1,3 +1,4 @@
+import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import {
   BadRequestException,
@@ -1608,6 +1609,7 @@ describe("SpotProcurementPaymentService", () => {
       suggestedBalanceAmountCents: "3000"
     });
 
+    mockConfiguredApprovalAssignments(tx);
     const result = await service.submit("payment-1", "material-1");
 
     expect(result.status).toBe("approval_pending");
@@ -1746,6 +1748,7 @@ describe("SpotProcurementPaymentService", () => {
       status: "approval_pending"
     });
 
+    mockConfiguredApprovalAssignments(tx);
     await service.submit("payment-1", "material-1");
 
     const submitAudit = audit.record.mock.calls.find(
@@ -2310,6 +2313,7 @@ describe("SpotProcurementPaymentService", () => {
     );
     tx.spotProcurementPayment.findMany.mockResolvedValueOnce([]);
 
+    mockConfiguredApprovalAssignments(tx);
     await service.submit("payment-2", "material-1");
 
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
@@ -3323,6 +3327,7 @@ describe("SpotProcurementPaymentService", () => {
       submittedAt: new Date()
     });
 
+    mockConfiguredApprovalAssignments(tx);
     const result = await service.submit("payment-1", "material-1");
 
     expect(result.status).toBe("approval_pending");

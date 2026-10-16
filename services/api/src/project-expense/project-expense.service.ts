@@ -11,7 +11,9 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  GLOBAL_BUSINESS_ROLE_KEYS,
   canPerform,
+  resolveEffectiveRoleKeys,
   type DetailActionReadModel,
   type ProjectExpenseApprovalDetailReadModel,
   type RoleKey
@@ -2755,7 +2757,7 @@ export class ProjectExpenseService {
       FROM "UserPosition" up
       INNER JOIN "Position" p ON p."id" = up."positionId"
       INNER JOIN "User" u ON u."id" = up."userId"
-      WHERE (up."projectId" IS NULL OR up."projectId" = ${projectId})
+      WHERE (up."projectId" = ${projectId} OR (up."projectId" IS NULL AND p."key" IN (${Prisma.join([...GLOBAL_BUSINESS_ROLE_KEYS])})))
         AND p."key" IN (${Prisma.join(requiredRoles)})
         AND u."isActive" = TRUE
       FOR SHARE OF up, p, u
@@ -3207,10 +3209,14 @@ export class ProjectExpenseService {
     ]);
     const positionIds = [...new Set([...globalPositions, ...projectPositions].map((item) => item.positionId))];
     const positions = await tx.position.findMany({ where: { id: { in: positionIds } } });
-    return [
-      ...positions.map((position) => position.key as RoleKey),
-      ...memberPositions.map((position) => position.positionKey as RoleKey)
-    ];
+    const keys = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    return resolveEffectiveRoleKeys(
+      globalPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+      [
+        ...projectPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+        ...memberPositions.map((member) => member.positionKey as RoleKey)
+      ]
+    );
   }
 
   private positiveInteger(rawValue: string | number | undefined, fallback: number) {

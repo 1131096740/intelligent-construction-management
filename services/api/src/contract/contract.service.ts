@@ -15,6 +15,7 @@ import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, 
 import {
   approvalElapsedHours,
   canRemindApproval,
+  resolveEffectiveRoleKeys,
   suggestedContractSettlementMode,
   isContractSettlementMode,
   type RoleKey,
@@ -3863,10 +3864,7 @@ export class ContractService {
     };
 
     return {
-      roleKeys: Array.from(new Set([
-        ...roleScopes.globalRoleKeys,
-        ...roleScopes.projectRoleKeys
-      ])),
+      roleKeys: resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys),
       roleScopes
     };
   }

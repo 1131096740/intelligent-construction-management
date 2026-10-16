@@ -42,7 +42,7 @@ describe("role constants", () => {
     expect(GLOBAL_BUSINESS_ROLE_KEYS).toContain("engineering_department_director");
     expect(GLOBAL_USER_POSITION_ROLE_KEYS).toContain("contract_staff");
     expect(DUAL_SCOPE_ROLE_KEYS).toEqual(["contract_staff", "finance_staff"]);
-    expect(GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS).not.toContain("contract_staff");
+    expect(GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS).toContain("contract_staff");
     expect(GLOBAL_BUSINESS_ROLE_KEYS).not.toContain("engineering_department_member");
     expect(GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS).toContain("super_admin");
   });
@@ -71,15 +71,15 @@ describe("role constants", () => {
     );
   });
 
-  it("maps every role to exactly one contract read-visibility group", () => {
+  it("permits a dual-scope role in both contract read groups without granting global scope to project-only roles", () => {
     const global = new Set(CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS);
     const project = new Set(CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS);
     for (const role of ROLE_KEYS) {
       const hits = [global.has(role), project.has(role)].filter(Boolean).length;
       expect(
         hits,
-        `role ${role} must appear in at most one full-view group`
-      ).toBeLessThanOrEqual(1);
+        `role ${role} needs an explicit dual-scope declaration for both groups`
+      ).toBeLessThanOrEqual(DUAL_SCOPE_ROLE_KEYS.includes(role) ? 2 : 1);
     }
     expect(global.size).toBe(CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS.length);
     expect(project.size).toBe(CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS.length);
@@ -115,6 +115,7 @@ describe("role constants", () => {
         "chairman",
         "general_manager",
         "contract_director",
+        "contract_staff",
         "material_director",
         "finance_director",
         "finance_staff",
@@ -124,7 +125,7 @@ describe("role constants", () => {
         "super_admin"
       ])
     );
-    expect(new Set(CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS).size).toBe(10);
+    expect(new Set(CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS).size).toBe(11);
   });
 
   it("covers the spec project full-view positions exactly", () => {

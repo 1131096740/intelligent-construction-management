@@ -164,13 +164,17 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     });
   });
 
-  (enabled ? it : it.skip)("本人申请：全局财务查看权限不能代替项目归属", async () => {
+  (enabled ? it : it.skip)("本人申请：有效公司财务岗位可选择全部项目，但仍只能为本人申请", async () => {
     expect(await request("/expense-claims/create-options", undefined, financeToken)).toMatchObject({
-      status: 200, body: { projects: [], selfProjectIds: [], selfApplicantUserId: financeSession.user.id }
+      status: 200, body: { projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]), selfProjectIds: expect.arrayContaining([projectId]), selfApplicantUserId: financeSession.user.id }
     });
     expect(await request("/expense-claims", {
       claimType: "loan", companyEntityId, projectId, applicantUserId: financeSession.user.id,
-      reason: "不可跨项目申请", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+      reason: "公司财务本人项目申请", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+    }, financeToken)).toMatchObject({ status: 201 });
+    expect(await request("/expense-claims", {
+      claimType: "loan", companyEntityId, projectId, applicantUserId,
+      reason: "仍禁止财务代他人申请", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
     }, financeToken)).toMatchObject({ status: 403 });
   });
 
@@ -205,11 +209,11 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(await request(path, undefined, accessToken)).toMatchObject({ status: 200, body: { status: "approval_pending", fundedAmountCents: "0" } });
   });
 
-  (enabled ? it : it.skip)("本人申请：综合部仍可代办系统人员和无账号人员，但本人项目不借用代办范围", async () => {
+  (enabled ? it : it.skip)("本人申请：公司综合部可选择全部项目，原代办能力保持", async () => {
     const accessToken = approvalTokens[0]!;
     const options = await request("/expense-claims/create-options", undefined, accessToken);
-    expect(options).toMatchObject({ status: 200, body: { canProxy: true, selfApplicantUserId: factWitnessUserId, selfProjectIds: [], projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]) } });
-    expect(await request("/expense-claims", selfInput(factWitnessUserId), accessToken)).toMatchObject({ status: 403 });
+    expect(options).toMatchObject({ status: 200, body: { canProxy: true, selfApplicantUserId: factWitnessUserId, selfProjectIds: expect.arrayContaining([projectId]), projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]) } });
+    expect(await request("/expense-claims", selfInput(factWitnessUserId), accessToken)).toMatchObject({ status: 201 });
     for (const applicant of [{ applicantUserId }, { applicantUserId: undefined, applicantName: "无账号合成人员", applicantPhone: "13800000000" }]) {
       const created = await request("/expense-claims", { ...selfInput(applicantUserId, "reimbursement"), ...applicant }, accessToken);
       expect(created.status).toBe(201);
