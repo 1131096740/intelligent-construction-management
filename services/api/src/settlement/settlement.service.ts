@@ -13,6 +13,7 @@ import {
   approvalElapsedHours,
   canCreateSettlementFromContractStatus,
   canRemindApproval,
+  resolveEffectiveRoleKeys,
   contractInvoiceTypeLabel,
   contractTaxModeLabel,
   ContractVersionStatus,
@@ -3881,10 +3882,14 @@ export class SettlementService {
     const positions = positionIds.length
       ? await tx.position.findMany({ where: { id: { in: positionIds } } })
       : [];
-    const positionKeys = positions.map((position) => position.key as RoleKey);
-    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
-
-    return Array.from(new Set([...positionKeys, ...memberKeys]));
+    const keys = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    return resolveEffectiveRoleKeys(
+      globalPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+      [
+        ...projectPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+        ...projectMembers.map((member) => member.positionKey as RoleKey)
+      ]
+    );
   }
 
   private async assignApproval(

@@ -1,3 +1,4 @@
+import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import {
   BadRequestException,
   ConflictException,
@@ -3341,6 +3342,7 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
+    mockConfiguredApprovalAssignments(tx);
     await paymentService.create(
       {
         settlementId: "settlement-1",
@@ -3831,6 +3833,7 @@ describe("PaymentRequestService", () => {
       audit as never
     );
 
+    mockConfiguredApprovalAssignments(tx);
     await paymentService.create(
       {
         settlementId: "settlement-1",

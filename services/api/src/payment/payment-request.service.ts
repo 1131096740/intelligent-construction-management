@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
 import { paymentApprovalAmountEntryValues } from "./payment-approval-amount-business-entry-definition";
 import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
@@ -19,6 +20,7 @@ import {
   canRemindApproval,
   directPaymentAmountNature,
   isContractSettlementMode,
+  resolveEffectiveRoleKeys,
   SettlementStatus,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -763,6 +765,7 @@ export class PaymentRequestService {
       });
 
       if (applicantUserId) {
+        await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES);
         await tx.approvalInstance.create({
           data: {
             flowType: "payment.approve",
@@ -939,6 +942,7 @@ export class PaymentRequestService {
     });
 
     if (applicantUserId) {
+      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES);
       await tx.approvalInstance.create({
         data: {
           flowType: "payment.approve",
@@ -1251,6 +1255,7 @@ export class PaymentRequestService {
     });
 
     if (applicantUserId) {
+      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES);
       await tx.approvalInstance.create({
         data: {
           flowType: "payment.approve",
@@ -4419,10 +4424,14 @@ export class PaymentRequestService {
     const positions = positionIds.length
       ? await tx.position.findMany({ where: { id: { in: positionIds } } })
       : [];
-    const positionKeys = positions.map((position) => position.key as RoleKey);
-    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
-
-    return Array.from(new Set([...positionKeys, ...memberKeys]));
+    const keys = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    return resolveEffectiveRoleKeys(
+      globalPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+      [
+        ...projectPositions.flatMap((position) => keys.get(position.positionId) ?? []),
+        ...projectMembers.map((member) => member.positionKey as RoleKey)
+      ]
+    );
   }
 
   private formatCents(value: bigint) {

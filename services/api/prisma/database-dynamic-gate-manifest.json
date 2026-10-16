@@ -29,9 +29,9 @@
     "pendingFiles": 65,
     "fullyPendingSuites": 54,
     "partiallyPendingSuites": 11,
-    "pendingTests": 344,
+    "pendingTests": 346,
     "coveredFiles": 65,
-    "coveredTests": 344,
+    "coveredTests": 346,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -562,7 +562,7 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 20,
+      "pendingTests": 22,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
@@ -571,7 +571,7 @@
         },
         {
           "path": "services/api/src/database/project-business-scope-http-postgres.spec.ts",
-          "pendingTests": 9,
+          "pendingTests": 11,
           "suiteStatus": "fully_pending"
         }
       ],

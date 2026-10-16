@@ -4,7 +4,7 @@ import { GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
@@ -1532,7 +1532,7 @@ export class ExpenseClaimService {
     const [assignments, memberships] = await Promise.all([
       tx.userPosition.findMany({
         where: claim.projectId ? { OR: [{ projectId: null }, { projectId: claim.projectId }] } : { projectId: null },
-        select: { userId: true, positionId: true }
+        select: { userId: true, positionId: true, projectId: true }
       }),
       claim.projectId
         ? tx.projectMember.findMany({ where: { projectId: claim.projectId }, select: { userId: true, positionKey: true } })
@@ -1545,7 +1545,9 @@ export class ExpenseClaimService {
     const candidatesByRole = new Map<RoleKey, Set<string>>();
     for (const assignment of assignments) {
       const role = roleByPosition.get(assignment.positionId);
-      if (role) addCandidate(candidatesByRole, role, assignment.userId);
+      if (role && (assignment.projectId !== null || GLOBAL_BUSINESS_ROLE_KEYS.includes(role))) {
+        addCandidate(candidatesByRole, role, assignment.userId);
+      }
     }
     for (const membership of memberships) addCandidate(candidatesByRole, membership.positionKey as RoleKey, membership.userId);
     const candidateIds = [...new Set([...candidatesByRole.values()].flatMap((ids) => [...ids]))];

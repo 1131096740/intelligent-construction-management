@@ -110,6 +110,56 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
 
   const ids = (body: Array<{ id: string }>) => body.map((row) => row.id).sort();
 
+  async function advanceInput() {
+    const db = app.get(PrismaService);
+    const contract = await db.contract.create({ data: { code: randomUUID(), name: "合成乙项目预付款合同", counterparty: "合成供应商", projectId: second, contractTypeKey: "material_purchase", ownerUserId: companyContract.id } });
+    const version = await db.contractVersion.create({ data: { contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", effectiveAt: new Date("2026-01-01"), companyEntityIdSnapshot: company, companyEntityNameSnapshot: "合成我方公司", companyEntityCreditCodeSnapshot: "91530000SYNTHETIC01", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: [] } });
+    const terms = await db.paymentTermsVersion.create({ data: { contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "effective", originalText: "合成预付款条款" } });
+    await db.paymentTermsStage.create({ data: { paymentTermsVersionId: terms.id, name: "合成预付款", stageType: "advance", basis: "contract_amount", ratioBps: 10000, triggerAnchor: "contract_effective", triggerEvent: "contract_effective", dueDays: 0, originalText: "合成预付款" } });
+    return { sourceType: "contract_advance", contractVersionId: version.id, paymentTermsVersionId: terms.id, code: randomUUID(), requestedAmountCents: "1000" };
+  }
+
+  it("普通付款继承合同项目，错误全局项目经理或其他项目经理都不能代批", async () => {
+    const db = app.get(PrismaService);
+    const badGlobal = await person("finance_director", [null]);
+    const manager = await db.position.findUniqueOrThrow({ where: { key: "project_manager" } });
+    await db.userPosition.create({ data: { userId: badGlobal.id, positionId: manager.id, projectId: null } });
+    await upload("/me/signature/canvas", badGlobal);
+    const payment = await request("/payments", companyContract, await advanceInput());
+    expectStatus(payment, 201);
+    expect(payment.body.projectId).toBe(second);
+    const route = `/payments/${payment.body.id}`;
+    const firstView = await request(route, director);
+    expectStatus(firstView, 200);
+    expectStatus(await request(`${route}/approval`, director, { decision: "approve", ...firstView.body.reviewApprovalContext }), 201);
+    const managerView = await request(route, secondManager);
+    expectStatus(managerView, 200);
+    const review = { decision: "approve", ...managerView.body.reviewApprovalContext };
+    expect((await request(`${route}/approval`, firstManager, review)).status).toBe(403);
+    expect((await request(`${route}/approval`, badGlobal, review)).status).toBe(403);
+    expectStatus(await request(`${route}/approval`, secondManager, review), 201);
+    for (const actor of [financeDirector, chairman]) {
+      const view = await request(route, actor);
+      expectStatus(await request(`${route}/approval`, actor, { decision: "approve", ...(actor.id === chairman.id ? { approvedAmountCents: "1000" } : {}), ...view.body.reviewApprovalContext }), 201);
+    }
+    expect(await db.paymentRequest.findUnique({ where: { id: payment.body.id } })).toMatchObject({ projectId: second, status: "approved_pending_payment", approvedAmountCents: 1000n });
+  });
+
+  it("普通付款和本人费用不能把错误全局经理当作缺失项目经理的替代人", async () => {
+    const db = app.get(PrismaService);
+    const input = await advanceInput();
+    await db.user.update({ where: { id: secondManager.id }, data: { isActive: false } });
+    try {
+      expect(await request("/payments", companyContract, input)).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+      expect(await db.paymentRequest.count({ where: { code: input.code } })).toBe(0);
+      const claim = await request("/expense-claims", materialDirector, { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id, reason: "合成缺经理费用", requestedAmountCents: "100", loanExpectedClearanceOn: "2026-12-31" });
+      expectStatus(claim, 201);
+      expect(await request(`/expense-claims/${claim.body.id}/submission`, materialDirector, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+    } finally {
+      await db.user.update({ where: { id: secondManager.id }, data: { isActive: true } });
+    }
+  });
+
   it("公司级合同经办可选所有启用项目，项目经办只可选所属项目", async () => {
     const global = await request("/projects", companyContract);
     expect(global.status).toBe(200);
@@ -191,6 +241,13 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     const created = await request("/spot-procurements", applicant, input);
     expect(created).toMatchObject({ status: 201 });
     const route = `/spot-procurements/${created.body.procurementId}`;
+    const db = app.get(PrismaService);
+    await db.user.update({ where: { id: secondManager.id }, data: { isActive: false } });
+    try {
+      expect(await request(`${route}/submission`, applicant, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+    } finally {
+      await db.user.update({ where: { id: secondManager.id }, data: { isActive: true } });
+    }
     expect((await request(`${route}/submission`, applicant, {})).status).toBe(201);
     const materialView = await request(route, materialDirector);
     expect((await request(`${route}/approval`, materialDirector, { decision: "approve", ...materialView.body.reviewApprovalContext })).status).toBe(201);
@@ -210,6 +267,12 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       paymentMethods: ["bank_transfer"], attachments: [], settlementAmountCents: "10000", supplierBalanceAmountCents: "0",
       paymentPath: "supplier_direct", paymentMethod: "bank_transfer", payeeAccountName: "合成商户", payeeBankName: "合成银行", payeeBankAccount: "622200001234", expectedPaymentAt: "2026-12-31"
     }, "PATCH")).toMatchObject({ status: 200 });
+    await db.user.update({ where: { id: secondManager.id }, data: { isActive: false } });
+    try {
+      expect(await request(`${paymentRoute}/submission`, applicant, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+    } finally {
+      await db.user.update({ where: { id: secondManager.id }, data: { isActive: true } });
+    }
     expect(await request(`${paymentRoute}/submission`, applicant, {})).toMatchObject({ status: 201 });
     const projectFinance = await person("finance_staff", [second]);
     expect(await request(`${paymentRoute}/payer`, projectFinance, { companyEntityId: company, paymentMethods: ["bank_transfer"] }, "PATCH")).toMatchObject({ status: 200 });
