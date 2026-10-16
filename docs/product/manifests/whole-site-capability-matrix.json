@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "431e884d0c1cc2f84dcdf956281ccda9843ec409c1f013ebf08d3d784323e8a8",
+      "sha256": "1946db017b5010a1cabbd882a82cf2b10774c54d50450d8f25874c2e0ff65468",
       "status": "ready",
       "summary": {
         "apiModuleCount": 31,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "bc3c6d88366cb5980bd79a0483b260ffa12c73be32a966bbc32baf74c73d6503",
+      "sha256": "6e8a60ca0bde95c9ac3fa5b726421725fe7a7769cb53620ac043f937032f2dbe",
       "status": "ready",
       "summary": {
         "registeredActionCount": 366,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "8dd2afcc669b2f8cd3acb8f837acf2a7f0038c79f6618ceb1cbdcacc26cd65f7",
+      "sha256": "f30cc6cad87791ed323f48fb393f2d5ddd4473ab66b5a6ca5efb6fb4bb8f8379",
       "status": "ready",
       "summary": {
         "routeCount": 656,
@@ -8517,7 +8517,8 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
             "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
