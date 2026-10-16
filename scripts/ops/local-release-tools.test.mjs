@@ -924,3 +924,72 @@ test("GitHub dispatch strips receipt fields that are outside the non-sensitive s
     await rm(testRoot, { recursive: true, force: true });
   }
 });
+
+test("both deployment transports send keepalives and never retry a lost SSH session", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-ssh-disconnect-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const fakeGit = await writeFakeGit(testRoot);
+    await writeExecutable(inputs.fakeSsh, `#!/usr/bin/env bash
+printf 'invocation\\n' >> "$SSH_TEST_LOG.calls"
+printf '%s\\n' "$@" > "$SSH_TEST_LOG.args"
+cat > "$SSH_TEST_LOG.remote"
+exit 255
+`);
+    const baseEnv = {
+      ...process.env, GIT_BIN: fakeGit, SSH_BIN: inputs.fakeSsh,
+      JGZG_DEPLOY_HOST: "example.test", JGZG_DEPLOY_USER: "ubuntu",
+      JGZG_DEPLOY_IDENTITY_FILE: inputs.identityFile,
+      JGZG_DEPLOY_KNOWN_HOSTS: inputs.knownHosts,
+      SSH_TEST_LOG: join(testRoot, "direct")
+    };
+    const direct = runScript(localDeploy, [
+      "--target-sha", candidateSha, "--receipt", inputs.receipt,
+      "--confirm", "DEPLOY JGZG PRODUCTION"
+    ], { env: baseEnv });
+    assert.equal(direct.status, 255, direct.stderr);
+    const workflow = await readFile(join(root, ".github/workflows/deploy-production.yml"), "utf8");
+    const deployStep = workflow.split("- name: Deploy through the existing server safety chain")[1];
+    const run = deployStep.split("        run: |\n")[1].replace(/^ {10}/gmu, "");
+    const github = spawnSync("bash", ["-c", run], {
+      encoding: "utf8", env: {
+        ...baseEnv, PATH: `${testRoot}:${process.env.PATH}`,
+        DEPLOY_HOST: "example.test", DEPLOY_SSH_KEY: "fixture-only",
+        DEPLOY_KNOWN_HOSTS: "fixture-only", TARGET_SHA: candidateSha,
+        DEPLOY_SCOPE: "full", DEPLOY_CONFIRMATION_MODE: "manual",
+        DEPLOY_CONFIRMATION_TIMEOUT_SECONDS: "1800", RUNNER_TEMP: testRoot,
+        SSH_TEST_LOG: join(testRoot, "github")
+      }
+    });
+    assert.equal(github.status, 255, github.stderr);
+    for (const caller of ["direct", "github"]) {
+      const prefix = join(testRoot, caller);
+      assert.equal(await readFile(`${prefix}.calls`, "utf8"), "invocation\n");
+      const args = await readFile(`${prefix}.args`, "utf8");
+      for (const option of ["ServerAliveInterval=15", "ServerAliveCountMax=4", "TCPKeepAlive=yes", "StrictHostKeyChecking=yes"]) {
+        assert.ok(args.split("\n").includes(option), `${caller} lacks ${option}`);
+      }
+      const remote = await readFile(`${prefix}.remote`, "utf8");
+      assert.ok(remote.indexOf("flock --nonblock 9") >= 0);
+      assert.ok(remote.indexOf("flock --nonblock 9") < remote.indexOf("git fetch origin main"));
+      assert.match(remote, /bash \/opt\/jiangkong\/scripts\/ops\/deploy-production-session\.sh/u);
+    }
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("deployment status lookup does not create a session or claim a missing result", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-session-status-"));
+  try {
+    const sessionScript = join(root, "scripts/ops/deploy-production-session.sh");
+    const env = { ...process.env, DEPLOY_SESSION_ROOT: join(testRoot, "missing") };
+    for (const id of ["session.missing", "../outside"]) {
+      const result = runScript(sessionScript, ["--status", id], { env });
+      assert.notEqual(result.status, 0);
+    }
+    await assert.rejects(readFile(join(testRoot, "missing", "target-sha")), { code: "ENOENT" });
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
