@@ -41,7 +41,7 @@ describe("role constants", () => {
   it("keeps company engineering membership project-scoped", () => {
     expect(GLOBAL_BUSINESS_ROLE_KEYS).toContain("engineering_department_director");
     expect(GLOBAL_USER_POSITION_ROLE_KEYS).toContain("contract_staff");
-    expect(DUAL_SCOPE_ROLE_KEYS).toEqual(["contract_staff"]);
+    expect(DUAL_SCOPE_ROLE_KEYS).toEqual(["contract_staff", "finance_staff"]);
     expect(GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS).not.toContain("contract_staff");
     expect(GLOBAL_BUSINESS_ROLE_KEYS).not.toContain("engineering_department_member");
     expect(GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS).toContain("super_admin");

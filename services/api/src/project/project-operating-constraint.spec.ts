@@ -1,4 +1,4 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
 import {
@@ -9,6 +9,29 @@ import {
 } from "./project-operating-constraint";
 
 describe("project operating serialization constraints", () => {
+  it.each([
+    "启用经营账前必须先设置唯一施工企业",
+    "启用经营账前必须至少设置一家我方参与公司"
+  ])("将真实 Prisma 未知包装中的建账约束转为可操作提示：%s", async (message) => {
+    const cause = new Prisma.PrismaClientUnknownRequestError(
+      `ConnectorError(ConnectorError { user_facing_error: None, kind: QueryError(PostgresError { code: "23514", message: "${message}", severity: "ERROR", detail: None, column: None, hint: None }), transient: false })`,
+      { clientVersion: "5.22.0" }
+    );
+    const result = await translateOperatingProfileConstraint(Promise.reject(cause)).catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(BadRequestException);
+    expect((result as BadRequestException).getResponse()).toMatchObject({ statusCode: 400, message });
+    expect(JSON.stringify((result as BadRequestException).getResponse())).not.toContain("ConnectorError");
+  });
+
+  it.each([
+    new Error('PostgresError { code: "23514", message: "启用经营账前必须先设置唯一施工企业", severity: "ERROR" }'),
+    new Prisma.PrismaClientUnknownRequestError('PostgresError { code: "42501", message: "启用经营账前必须先设置唯一施工企业", severity: "ERROR" }', { clientVersion: "5.22.0" }),
+    new Prisma.PrismaClientUnknownRequestError('PostgresError { code: "23514", message: "其他约束及内部详情", severity: "ERROR" }', { clientVersion: "5.22.0" }),
+    new Prisma.PrismaClientUnknownRequestError('PostgresError { code: "23514", message: "启用经营账前必须先设置唯一施工企业 后附内部详情", severity: "ERROR" }', { clientVersion: "5.22.0" })
+  ])("不把其他错误或非精确白名单消息当作建账提示", async (error) => {
+    await expect(translateOperatingProfileConstraint(Promise.reject(error))).rejects.toBe(error);
+  });
+
   it.each([
     new Prisma.PrismaClientKnownRequestError("Raw query failed", {
       code: "P2010",

@@ -788,12 +788,13 @@ describe("OrganizationService permission integrity", () => {
     ]);
   });
 
-  it("提示全局与项目岗位范围错配且不把警告冒充授权", async () => {
+  it("提示范围错配，但认可财务经办的项目岗位", async () => {
     const harness = createIntegrityHarness({
       users: [{ id: "user-1" }],
       positions: [
         { id: "position-manager", key: "project_manager" },
-        { id: "position-finance", key: "finance_staff" }
+        { id: "position-finance", key: "finance_director" },
+        { id: "position-project-finance", key: "finance_staff" }
       ],
       projects: [{ id: "project-1" }],
       userPositions: [
@@ -809,6 +810,12 @@ describe("OrganizationService permission integrity", () => {
           id: "wrong-project-finance",
           userId: "user-1",
           projectId: "project-1",
+          positionKey: "finance_director"
+        },
+        {
+          id: "valid-project-finance",
+          userId: "user-1",
+          projectId: "project-1",
           positionKey: "finance_staff"
         }
       ]
@@ -822,6 +829,7 @@ describe("OrganizationService permission integrity", () => {
       ])
     );
     expect(result.readiness.canonicalRoleWritesReady).toBe(true);
+    expect(result.issues.some((issue) => issue.assignmentIds.includes("valid-project-finance"))).toBe(false);
   });
 
   it("识别两种来源的孤儿人员、UserPosition 孤儿岗位和项目范围孤儿项目", async () => {

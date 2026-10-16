@@ -51,6 +51,9 @@ try {
     GRANT INSERT ON TABLE public."ExpenseClaimEntrySnapshot" TO ${runtime};
     GRANT INSERT, UPDATE ON TABLE public."CompanyEntity", public."ExpenseClaim", public."BusinessDailySequence" TO ${runtime};
     GRANT UPDATE ON TABLE public."ExpenseClaimAttachment" TO ${runtime};
+    -- 项目财务建账用真实公司资料；UPDATE 同时满足生效日触发器的行锁权限。
+    GRANT INSERT ON TABLE public."BusinessParty", public."BusinessPartyVersion", public."CompanyEntityVersion" TO ${runtime};
+    GRANT INSERT, UPDATE ON TABLE public."ProjectAffiliateAssignment", public."ProjectParticipatingCompany" TO ${runtime};
   `], process.env, true);
   const before = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc",
     `SELECT has_table_privilege('${runtime}', 'public."AuthRateLimit"', 'DELETE');`], process.env, true);
