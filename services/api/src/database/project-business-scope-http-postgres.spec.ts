@@ -160,6 +160,26 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       try {
         expect(await request("/payments", companyContract, input)).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
         expect(await db.paymentRequest.count({ where: { code: input.code } })).toBe(0);
+        const delegation = await db.approvalDelegation.create({ data: {
+          fromUserId: companyContract.id, toUserId: employee.id,
+          startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() - 1_000)
+        } });
+        try {
+          expectStatus(await request("/payments", companyContract, input), 400);
+          await db.approvalDelegation.update({ where: { id: delegation.id }, data: { endsAt: new Date(Date.now() + 60_000), enabled: false } });
+          expectStatus(await request("/payments", companyContract, input), 400);
+          await db.approvalDelegation.update({ where: { id: delegation.id }, data: { enabled: true } });
+          const delegatedPayment = await request("/payments", companyContract, input);
+          expectStatus(delegatedPayment, 201);
+          const route = `/payments/${delegatedPayment.body.id}`;
+          const firstView = await request(route, director);
+          expectStatus(await request(`${route}/approval`, director, { decision: "approve", ...firstView.body.reviewApprovalContext }), 201);
+          const delegatedView = await request(route, employee);
+          expectStatus(delegatedView, 200);
+          expectStatus(await request(`${route}/approval`, employee, { decision: "approve", ...delegatedView.body.reviewApprovalContext }), 201);
+        } finally {
+          await db.approvalDelegation.delete({ where: { id: delegation.id } });
+        }
       } finally {
         await db.userPosition.delete({ where: { id: selfManager.id } });
       }

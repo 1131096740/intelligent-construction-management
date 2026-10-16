@@ -23,8 +23,20 @@ export async function assertProjectApprovalNodesConfigured(
       FOR SHARE OF up, p, u
     `) : []
   ]);
-  const configured = new Set([...members, ...globals]
-    .filter((row) => row.userId !== applicantUserId || row.roleKey === "chairman" || row.roleKey === "general_manager")
+  const assignments = [...members, ...globals];
+  const now = new Date();
+  const delegates = assignments.some((row) => row.userId === applicantUserId)
+    ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT d."id" FROM "ApprovalDelegation" d
+      INNER JOIN "User" recipient ON recipient."id" = d."toUserId"
+      WHERE d."fromUserId" = ${applicantUserId} AND d."toUserId" <> ${applicantUserId}
+        AND recipient."isActive" = TRUE AND d."enabled" = TRUE
+        AND d."actionKey" IS NULL AND d."resourceType" IS NULL AND d."resourceId" IS NULL
+        AND d."startsAt" <= ${now} AND d."endsAt" > ${now}
+      FOR SHARE OF d, recipient
+    `) : [];
+  const configured = new Set(assignments
+    .filter((row) => row.userId !== applicantUserId || row.roleKey === "chairman" || row.roleKey === "general_manager" || delegates.length > 0)
     .map((row) => row.roleKey));
   for (const node of nodes) {
     if (!node.roleKeys.some((role) => configured.has(role))) {
