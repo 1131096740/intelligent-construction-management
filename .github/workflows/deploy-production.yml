@@ -278,6 +278,9 @@ jobs:
 
           ssh -i "$key_file" \
             -p "$DEPLOY_PORT" \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            -o TCPKeepAlive=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$known_hosts_file" \
@@ -319,6 +322,12 @@ jobs:
             done
           }
 
+          # Held by the detached worker too; reject overlapping deployment before checkout.
+          deploy_umask="$(umask)"
+          umask 077
+          exec 9>/srv/jiangkong/.deploy.lock
+          umask "$deploy_umask"
+          flock --nonblock 9 || { echo "Another deployment still owns the server lock" >&2; exit 1; }
           git config --global --replace-all safe.directory /opt/jiangkong
           cd /opt/jiangkong
           assert_clean_release_tree
@@ -331,5 +340,5 @@ jobs:
           assert_clean_release_tree
           git rev-parse HEAD
 
-          /opt/jiangkong/scripts/ops/deploy-production-server.sh
+          bash /opt/jiangkong/scripts/ops/deploy-production-session.sh
           REMOTE_DEPLOY

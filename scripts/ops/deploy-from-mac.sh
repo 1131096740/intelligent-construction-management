@@ -146,6 +146,9 @@ fi
 "$SSH_BIN" \
   -i "$JGZG_DEPLOY_IDENTITY_FILE" \
   -p "$JGZG_DEPLOY_PORT" \
+  -o ServerAliveInterval=15 \
+  -o ServerAliveCountMax=4 \
+  -o TCPKeepAlive=yes \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
   -o "UserKnownHostsFile=$JGZG_DEPLOY_KNOWN_HOSTS" \
@@ -187,6 +190,12 @@ assert_dependency_tree_writable() {
   done
 }
 
+# Held by the detached worker too; reject overlapping deployment before checkout.
+deploy_umask="$(umask)"
+umask 077
+exec 9>/srv/jiangkong/.deploy.lock
+umask "$deploy_umask"
+flock --nonblock 9 || { echo "Another deployment still owns the server lock" >&2; exit 1; }
 git config --global --replace-all safe.directory /opt/jiangkong
 cd /opt/jiangkong
 assert_clean_release_tree
@@ -199,5 +208,5 @@ test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 assert_clean_release_tree
 git rev-parse HEAD
 
-/opt/jiangkong/scripts/ops/deploy-production-server.sh
+bash /opt/jiangkong/scripts/ops/deploy-production-session.sh
 REMOTE_DEPLOY

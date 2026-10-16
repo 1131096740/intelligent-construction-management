@@ -129,6 +129,26 @@ GitHub workflow 只接受手动触发，会串行排队且不会取消进行中�
 立即确认或回滚。API-only 仅在已有单独批准时可显式传入 `--scope api-only
 --confirmation-mode immediate`。
 
+两条SSH入口都使用15秒保活、4次无响应断开，并在服务器fetch/checkout前取得同一
+非阻塞部署锁。服务器原部署脚本在独立会话中运行，SSH断连不会取消确认窗口、收尾或
+超时恢复。不要因为SSH退出255就重新发起部署；新任务也会被仍持有的部署锁拒绝。
+
+启动日志打印 `Deployment session: session.<ID>` 与私有日志路径。若SSH断连，重新
+连接服务器后以部署用户只读查询原会话（不要运行启动命令）：
+
+```bash
+bash /opt/jiangkong/scripts/ops/deploy-production-session.sh --status 'session.<ID>'
+tail -n 80 '/srv/jiangkong/.deploy-sessions/session.<ID>/deploy.log'
+```
+
+目录仅部署用户可读，日志不得整体公开。若启动输出也丢失，先只读列出
+`/srv/jiangkong/.deploy-sessions/`，核对会话的 `target-sha` 和时间，不能猜测“最新”即本次。
+查询退出0只表示读到终态，必须同时核对 `targetSha` 和 `exitCode`；只有退出码0才是原
+部署脚本完成。无结果时返回3，表示仍在执行或异常终止，须结合日志和进程只读诊断。
+仍在确认窗口可按原规则写入精确CONFIRM/ROLLBACK；若超时已恢复，不能补写确认或重试。
+SSH失联的GitHub运行仍保留失败，不用服务器结果伪造CI成功。主机重启、SIGKILL、磁盘
+故障或系统清理用户进程不属于该保护的保证范围。
+
 本机收据防止未完整验证或错误 SHA 误部署，但不是针对恶意本机 operator 的密码学证明。
 
 ## 直连 Mac 部署备用路径
@@ -142,8 +162,8 @@ GitHub workflow 只接受手动触发，会串行排队且不会取消进行中�
   环境，不要跳过门禁。
 - 收据 SHA、当前 HEAD 或 `origin/main` 不一致：停止；重新从精确、干净候选运行
   本地门禁。
-- SSH、生产备份、迁移、健康检查任一失败：不要重试发布；按现有生产 runbook 做
-  只读诊断并获得新的生产授权。
+- SSH失败：先按上文查看原会话，绝不自动重启部署。生产备份、迁移、健康检查失败
+  或原会话无终态：按现有生产runbook只读诊断，修复或重新发布须另获生产授权。
 
 ### 本机动态门失败附件
 
