@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -39,6 +39,12 @@ import { centsTextToYuanText } from "../../lib/money";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 
 const route = useRoute();
+const mobileQuery = typeof window !== "undefined" && typeof window.matchMedia === "function"
+  ? window.matchMedia("(max-width: 767px)") : null;
+const isMobile = ref(mobileQuery?.matches ?? false);
+function updateMobileMode(event: MediaQueryListEvent) { isMobile.value = event.matches; }
+onMounted(() => mobileQuery?.addEventListener("change", updateMobileMode));
+onBeforeUnmount(() => mobileQuery?.removeEventListener("change", updateMobileMode));
 const loading = ref(false);
 const loadError = ref("");
 const actionError = ref("");
@@ -837,7 +843,8 @@ onMounted(() => void loadDetail());
           :bordered="true"
         >
           <t-descriptions
-            :column="2"
+            class="expense-claim-detail__business-fields"
+            :column="isMobile ? 1 : 2"
             bordered
           >
             <t-descriptions-item label="使用单位">
@@ -880,7 +887,7 @@ onMounted(() => void loadDetail());
             </t-descriptions-item>
             <t-descriptions-item
               label="事由"
-              :span="2"
+              :span="isMobile ? 1 : 2"
             >
               {{ detail.reason }}
             </t-descriptions-item>
@@ -1145,6 +1152,7 @@ onMounted(() => void loadDetail());
 
 <style scoped>
 .expense-claim-detail { display: grid; gap: var(--jg-space-lg); min-width: 0; }
+.expense-claim-detail__business-fields { overflow-wrap: anywhere; }
 .expense-claim-detail__attachments { display: grid; gap: var(--jg-space-md); min-width: 0; }
 .expense-claim-detail__attachment-cards { display: none; }
 @media (max-width: 767px) {
