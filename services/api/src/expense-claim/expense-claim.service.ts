@@ -82,11 +82,14 @@ export class ExpenseClaimService {
   ) {}
 
   async createOptions(actorUserId: string) {
-    const visibleProjectIds = this.visibility
-      ? await this.visibility.visibleProjectIds(actorUserId)
-      : [];
+    const currentUser = await this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!currentUser?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
     const actorRoles = await this.loadRoleKeys(this.prisma, actorUserId);
     const canProxy = actorRoles.includes(COMPREHENSIVE_ROLE);
+    const selfProjectIds = await this.selfApplicationProjectIds(this.prisma, actorUserId);
+    const visibleProjectIds = canProxy
+      ? await (this.visibility ?? new ProjectVisibilityService(this.prisma)).visibleProjectIds(actorUserId)
+      : selfProjectIds;
     const [companyEntities, projects, activeUsers] = await Promise.all([
       this.prisma.companyEntity.findMany({
         where: { isActive: true, dataStatus: "complete" },
@@ -110,6 +113,8 @@ export class ExpenseClaimService {
     return {
       companyEntities,
       projects,
+      selfProjectIds: selfProjectIds.filter((id) => projects.some((project) => project.id === id)),
+      selfApplicantUserId: actorUserId,
       canProxy,
       entryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
       availableActions: ["create_expense_claim"],
@@ -201,11 +206,6 @@ export class ExpenseClaimService {
       if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
       if (!company) throw new NotFoundException("使用单位不存在或已停用");
       if (input.projectId?.trim() && !project) throw new NotFoundException("项目不存在或已停用");
-      if (project && this.visibility) {
-        const visibleProjectIds = await this.visibility.visibleProjectIds(actorUserId);
-        if (!visibleProjectIds.includes(project.id)) throw new ForbiddenException("当前账号无权选择该项目");
-      }
-
       const procurementPayment = await prepareProcurementPayment(tx, this.prisma, actorUserId, input, requestedAmountCents);
       if (procurementPayment?.existing) {
         const existing = procurementPayment.existing;
@@ -213,6 +213,12 @@ export class ExpenseClaimService {
       }
       const actorRoles = await this.loadRoleKeys(tx, actorUserId, project?.id);
       const applicant = procurementPayment ? { userId: actor.id, name: actor.name, phone: actor.phone } : await this.applicantSnapshot(tx, actor, input, actorRoles);
+      if (project) {
+        const projectIds = applicant.userId === actorUserId && !procurementPayment
+          ? await this.selfApplicationProjectIds(tx, actorUserId)
+          : await (this.visibility ?? new ProjectVisibilityService(this.prisma)).visibleProjectIdsInTransaction(tx, actorUserId);
+        if (!projectIds.includes(project.id)) throw new ForbiddenException("当前账号无权选择该项目");
+      }
       const factWitness = await this.factWitnessSnapshot(tx, input, project?.id);
       const code = await this.numbering.allocateDaily(
         tx,
@@ -779,6 +785,19 @@ export class ExpenseClaimService {
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
       const source = await tx.expenseClaim.findUnique({ where: { id: claim.id }, select: { generalProcurementId: true } });
+      const currentActor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+      if (!currentActor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
+      if (!source?.generalProcurementId && claim.applicantUserId === actorUserId && claim.projectId) {
+        await lockMasterDataRow(tx, "Project", claim.projectId);
+        const project = await tx.project.findFirst({ where: { id: claim.projectId, isActive: true }, select: { id: true } });
+        if (!project) throw new ForbiddenException("申请所属项目不存在或已停用");
+        const projectIds = await this.selfApplicationProjectIds(tx, actorUserId);
+        if (!projectIds.includes(claim.projectId)) throw new ForbiddenException("当前账号已不属于申请项目，不能提交");
+      }
+      if (!source?.generalProcurementId && claim.applicantUserId !== actorUserId) {
+        const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
+        if (!roles.includes(COMPREHENSIVE_ROLE)) throw new ForbiddenException("只有综合部主管可以代办提交费用申请");
+      }
       if (source?.generalProcurementId) {
         const actor = await generalProcurementActor(tx, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId!);
         if (!actor.globalRoleKeys.includes("comprehensive_director")) throw new ForbiddenException("综合采购付款仍须由当前综合部主管提交");
@@ -1471,6 +1490,16 @@ export class ExpenseClaimService {
   private lines(lines: ExpenseClaimLineDto[] | undefined) {
     if (!lines?.length) throw new BadRequestException("报销至少需要一条费用明细");
     return lines;
+  }
+
+  // A company-wide reader role is not membership for an employee's own expenses.
+  private async selfApplicationProjectIds(tx: Prisma.TransactionClient, userId: string): Promise<string[]> {
+    const [positions, members, roster] = await Promise.all([
+      tx.userPosition.findMany({ where: { userId, projectId: { not: null } }, select: { projectId: true } }),
+      tx.projectMember.findMany({ where: { userId }, select: { projectId: true } }),
+      tx.projectRosterMember.findMany({ where: { userId }, select: { projectId: true } })
+    ]);
+    return [...new Set([...positions, ...members, ...roster].flatMap((row) => row.projectId ? [row.projectId] : []))];
   }
 
   private async applicantSnapshot(tx: Prisma.TransactionClient, actor: { id: string; name: string; phone: string | null; isActive: boolean }, input: CreateExpenseClaimDto, actorRoles: RoleKey[]) {

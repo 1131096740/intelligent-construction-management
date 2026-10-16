@@ -21,8 +21,9 @@ export class ExpenseClaimController {
     @Optional() private readonly files?: FileService
   ) {}
 
+  // All active accounts may apply for themselves. JwtAuthGuard checks account state;
+  // the expense domain checks project membership, proxy authority and draft ownership.
   @Post()
-  @RequireProjectRole("expense_claim.create")
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateExpenseClaimDto) {
     return this.claims.create(user.id, body);
   }
@@ -33,7 +34,6 @@ export class ExpenseClaimController {
   }
 
   @Get("create-options")
-  @RequireProjectRole("expense_claim.create")
   createOptions(@CurrentUser() user: AuthenticatedUser) {
     return this.claims.createOptions(user.id);
   }
@@ -65,7 +65,6 @@ export class ExpenseClaimController {
   }
 
   @Post(":claimId/draft-attachment-file-uploads")
-  @RequireProjectRole("expense_claim.create")
   @UseInterceptors(
     FileInterceptor("file", {
       limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
@@ -190,7 +189,6 @@ export class ExpenseClaimController {
   }
 
   @Post(":claimId/submission")
-  @RequireProjectRole("expense_claim.submit")
   submit(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.submit(claimId, user.id);
   }
@@ -206,7 +204,6 @@ export class ExpenseClaimController {
   }
 
   @Post(":claimId/attachments")
-  @RequireProjectRole("expense_claim.create")
   attach(
     @Param("claimId") claimId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -226,7 +223,6 @@ export class ExpenseClaimController {
   }
 
   @Post(":claimId/attachments/:attachmentId/removal")
-  @RequireProjectRole("expense_claim.create")
   removeAttachment(
     @Param("claimId") claimId: string,
     @Param("attachmentId") attachmentId: string,

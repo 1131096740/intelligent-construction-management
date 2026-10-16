@@ -35,7 +35,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
   });
 
   it.each([
-    ["uploadDraftAttachmentFile", "attach_expense_claim_attachment", "expense_claim.create"],
+    ["uploadDraftAttachmentFile", "attach_expense_claim_attachment", undefined],
     ["uploadAppendAttachmentFile", "append_expense_claim_attachment", "expense_claim.attachment.append"],
     ["uploadPaymentVoucherFile", "record_expense_claim_payment", "expense_claim.payment.execute"],
     ["uploadDisbursementVoucherFile", "record_expense_claim_loan_disbursement", "expense_claim.disburse"],

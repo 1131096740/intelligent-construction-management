@@ -108,6 +108,8 @@ export interface ExpenseClaimCreateOptions {
   entryDefinition: BusinessEntrySceneDefinition;
   companyEntities: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; name: string }>;
+  selfProjectIds: string[];
+  selfApplicantUserId: string;
   canProxy: boolean;
   applicantUsers: Array<{ id: string; name: string }>;
   factWitnessUsers: Array<{ id: string; name: string }>;
