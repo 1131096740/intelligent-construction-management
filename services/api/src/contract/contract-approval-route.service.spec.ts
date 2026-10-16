@@ -127,7 +127,7 @@ describe("ContractApprovalRouteService", () => {
       tx as unknown as Prisma.TransactionClient,
       contract("material_purchase"),
       "other-user"
-    )).rejects.toThrow("仅允许所属项目合同员或公司级合同部主管发起合同变更");
+    )).rejects.toThrow("仅允许该项目合同员、公司合同员或合同部主管发起合同变更");
   });
 
   it.each([
@@ -219,7 +219,7 @@ describe("ContractApprovalRouteService", () => {
 
     await expect(
       service.freezeNewContractRoute(tx as Prisma.TransactionClient, contract("generic_contract"), "legacy-director")
-    ).rejects.toThrow("仅允许所属项目合同员或公司级合同部主管发起新合同审批");
+    ).rejects.toThrow("仅允许该项目合同员、公司合同员或合同部主管发起新合同审批");
   });
 
   it.each([null, "", "unknown_type"])("fails closed for an unsupported type: %p", async (contractTypeKey) => {

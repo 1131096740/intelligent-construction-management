@@ -1,3 +1,4 @@
+import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import {
   BadRequestException,
   ConflictException,
@@ -1731,12 +1732,7 @@ export class SettlementService {
     applicantUserId: string,
     governed: GovernedSettlementDraftSubmission
   ) {
-    const projectMembers = await tx.$queryRaw<Array<{ projectId: string; userId: string; roleKey: string; userIsActive: boolean }>>(Prisma.sql`
-      SELECT pm."projectId", pm."userId", pm."positionKey" AS "roleKey", u."isActive" AS "userIsActive"
-      FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
-      WHERE pm."projectId" = ${contract.projectId}
-      FOR SHARE OF pm, u
-    `);
+    const projectMembers = await loadProjectApprovalAssignments(tx, contract.projectId);
     let participants: Awaited<ReturnType<typeof freezeSettlementParticipants>>;
     try {
       participants = await freezeSettlementParticipants({

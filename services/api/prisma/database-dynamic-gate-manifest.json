@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 64,
-    "fullyPendingSuites": 53,
+    "pendingFiles": 65,
+    "fullyPendingSuites": 54,
     "partiallyPendingSuites": 11,
-    "pendingTests": 335,
-    "coveredFiles": 64,
-    "coveredTests": 335,
+    "pendingTests": 344,
+    "coveredFiles": 65,
+    "coveredTests": 344,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -562,11 +562,16 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 11,
+      "pendingTests": 20,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
           "pendingTests": 11,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-business-scope-http-postgres.spec.ts",
+          "pendingTests": 9,
           "suiteStatus": "fully_pending"
         }
       ],

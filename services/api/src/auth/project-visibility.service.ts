@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  GLOBAL_BUSINESS_ROLE_KEYS,
   GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
   resolveEffectiveRoleKeys,
   type RoleKey
@@ -32,6 +33,10 @@ export class ProjectVisibilityService {
     userId: string
   ): Promise<string[]> {
     return this.visibleProjectIdsWithClient(tx, userId);
+  }
+
+  async businessProjectIdsInTransaction(tx: Prisma.TransactionClient, userId: string): Promise<string[]> {
+    return this.visibleProjectIdsWithClient(tx, userId, GLOBAL_BUSINESS_ROLE_KEYS);
   }
 
   async visibleProjectIdsWithinBudgetInTransaction(
@@ -127,7 +132,8 @@ export class ProjectVisibilityService {
 
   private async visibleProjectIdsWithClient(
     client: PrismaService | Prisma.TransactionClient,
-    userId: string
+    userId: string,
+    globalVisibilityRoles: readonly RoleKey[] = GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS
   ): Promise<string[]> {
     const [globalPositions, projectPositions, projectMembers, rosterMembers, activeProjectIds] =
       await Promise.all([
@@ -148,7 +154,7 @@ export class ProjectVisibilityService {
       .map((position) => positionKeyById.get(position.positionId))
       .filter((role): role is RoleKey => Boolean(role));
 
-    if (globalRoleKeys.some((role) => GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(role))) {
+    if (globalRoleKeys.some((role) => globalVisibilityRoles.includes(role))) {
       return activeProjectIds;
     }
 

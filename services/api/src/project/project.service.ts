@@ -20,7 +20,6 @@ import {
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { freezeProjectCreation, validateProjectCreation } from "./project-base-entry";
-import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -109,13 +108,6 @@ import {
   type FinancingQuotaApprovalInstanceSnapshot
 } from "./project-financing-quota-approval";
 
-const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
-  ...PROJECT_OVERVIEW_READ_POSITION_KEYS,
-  "contract_staff",
-  "contract_director",
-  "budget_staff",
-  "budget_director"
-]);
 const ROSTER_ALL_PROJECT_ROLES = new Set<RoleKey>([
   "chairman",
   "general_manager",
@@ -445,42 +437,8 @@ export class ProjectService {
   }
 
   async listActiveOptions(userId: string) {
-    const [globalUserPositions, projectUserPositions, projectMemberPositions, rosterMemberships] = await Promise.all([
-      this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
-      this.prisma.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
-      this.prisma.projectMember.findMany({ where: { userId } }),
-      this.prisma.projectRosterMember.findMany({ where: { userId }, select: { projectId: true } })
-    ]);
-    const positionIds = Array.from(
-      new Set([...globalUserPositions, ...projectUserPositions].map((position) => position.positionId))
-    );
-    const positions = positionIds.length
-      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
-      : [];
-    const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
-    const hasGlobalProjectOptionAccess = globalUserPositions.some((position) =>
-      isProjectOptionPosition(positionKeyById.get(position.positionId))
-    );
-
-    if (hasGlobalProjectOptionAccess) {
-      return this.findActiveProjectOptions();
-    }
-
-    const visibleProjectIds = unique([
-      ...projectUserPositions
-        .filter((position) => isProjectOptionPosition(positionKeyById.get(position.positionId)))
-        .map((position) => position.projectId)
-        .filter((projectId): projectId is string => typeof projectId === "string"),
-      ...projectMemberPositions
-        .filter((position) => isProjectOptionPosition(position.positionKey as RoleKey))
-        .map((position) => position.projectId),
-      ...rosterMemberships.map((membership) => membership.projectId)
-    ]);
-
-    if (!visibleProjectIds.length) {
-      return [];
-    }
-
+    const visibleProjectIds = await new ProjectVisibilityService(this.prisma).visibleProjectIds(userId);
+    if (!visibleProjectIds.length) return [];
     return this.findActiveProjectOptions({ id: { in: visibleProjectIds } });
   }
 
@@ -4209,10 +4167,6 @@ async function validateRemittanceLineage(
     payableAmountCents: netAmountCents,
     settlementLedgerId: settlementReference.ledgerId
   };
-}
-
-function isProjectOptionPosition(positionKey: RoleKey | undefined): boolean {
-  return !!positionKey && PROJECT_OPTION_POSITIONS.has(positionKey);
 }
 
 function unique(values: string[]): string[] {

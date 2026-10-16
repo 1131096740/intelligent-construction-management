@@ -33,6 +33,7 @@ export const GLOBAL_BUSINESS_ROLE_KEYS: readonly RoleKey[] = [
   "finance_staff",
   "finance_director",
   "contract_director",
+  "contract_staff",
   "budget_director",
   "material_director",
   "comprehensive_director"
@@ -46,13 +47,11 @@ export const GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS: readonly RoleKey[] = [
 /**
  * Roles that may be stored as company-wide UserPosition facts.
  *
- * This is intentionally separate from project visibility: a company-wide
- * contract staff assignment is required for company-entity maintenance, but
- * it must not implicitly grant visibility into every project.
+ * Company-wide business assignments apply to every active project.
+ * Project-only roles stored without a project remain invalid global grants.
  */
 export const GLOBAL_USER_POSITION_ROLE_KEYS: readonly RoleKey[] = [
-  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
-  "contract_staff"
+  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS
 ];
 
 /** Roles that legitimately have both a company-wide and a project assignment. */
@@ -98,6 +97,7 @@ export const CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS = [
   "chairman",
   "general_manager",
   "contract_director",
+  "contract_staff",
   "material_director",
   "finance_director",
   "finance_staff",

@@ -23638,7 +23638,7 @@
         "event": "call",
         "handler": "createSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 418,
+        "sourceLine": 424,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23703,7 +23703,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementCreateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 432,
+        "sourceLine": 438,
         "sourceColumn": 0
       },
       "semantic": "business_write",

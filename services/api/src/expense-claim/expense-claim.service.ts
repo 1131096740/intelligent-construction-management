@@ -1492,14 +1492,10 @@ export class ExpenseClaimService {
     return lines;
   }
 
-  // A company-wide reader role is not membership for an employee's own expenses.
+  // Company business positions apply to every active project; project positions
+  // and roster membership stay local. Technical administrator alone is not a business position.
   private async selfApplicationProjectIds(tx: Prisma.TransactionClient, userId: string): Promise<string[]> {
-    const [positions, members, roster] = await Promise.all([
-      tx.userPosition.findMany({ where: { userId, projectId: { not: null } }, select: { projectId: true } }),
-      tx.projectMember.findMany({ where: { userId }, select: { projectId: true } }),
-      tx.projectRosterMember.findMany({ where: { userId }, select: { projectId: true } })
-    ]);
-    return [...new Set([...positions, ...members, ...roster].flatMap((row) => row.projectId ? [row.projectId] : []))];
+    return (this.visibility ?? new ProjectVisibilityService(this.prisma)).businessProjectIdsInTransaction(tx, userId);
   }
 
   private async applicantSnapshot(tx: Prisma.TransactionClient, actor: { id: string; name: string; phone: string | null; isActive: boolean }, input: CreateExpenseClaimDto, actorRoles: RoleKey[]) {

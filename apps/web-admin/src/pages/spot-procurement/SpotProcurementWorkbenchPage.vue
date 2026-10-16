@@ -5,6 +5,7 @@ import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
+import { fetchProjects } from "../../api/core-flow-read.api";
 import {
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
@@ -44,6 +45,7 @@ const rows = ref<SpotProcurementListItemReadModel[]>([]);
 const listMeta = ref({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
 const serverStatistics = ref({ total: 0, byStatus: {} as Record<string, number> });
 const projects = ref<SpotProcurementCreateProjectOptionReadModel[]>([]);
+const creatableProjects = ref<SpotProcurementCreateProjectOptionReadModel[]>([]);
 const applicationTextSuggestions = ref<
   SpotProcurementApplicationTextSuggestionReadModel[]
 >([]);
@@ -111,7 +113,7 @@ const projectOptions = computed(() => [
 ]);
 
 const createProjectOptions = computed(() =>
-  projects.value.map((project) => ({
+  creatableProjects.value.map((project) => ({
     label: `${project.code} · ${project.name}`,
     value: project.id
   }))
@@ -258,7 +260,9 @@ async function loadWorkbench(page = 1) {
 async function loadReferenceData() {
   referenceError.value = "";
   try {
-    projects.value = await fetchSpotProcurementCreateProjectOptions();
+    const [visible, creatable] = await Promise.all([fetchProjects(), fetchSpotProcurementCreateProjectOptions()]);
+    projects.value = visible;
+    creatableProjects.value = creatable;
   } catch (error) {
     referenceError.value = formatUnknownApiError(error, "零星采购项目读取失败");
   }
@@ -284,9 +288,11 @@ function changeLifecycleView() {
 async function openCreate() {
   createError.value = "";
   createVisible.value = true;
-  if (!projects.value.length) await loadReferenceData();
-  if (!createForm.projectId && projects.value.length) {
-    createForm.projectId = projects.value[0]?.id ?? "";
+  if (!creatableProjects.value.length) await loadReferenceData();
+  if (!createForm.projectId) {
+    createForm.projectId = creatableProjects.value.some((project) => project.id === filters.projectId)
+      ? filters.projectId
+      : creatableProjects.value.length === 1 ? creatableProjects.value[0]!.id : "";
   }
   if (createForm.projectId) {
     await Promise.all([

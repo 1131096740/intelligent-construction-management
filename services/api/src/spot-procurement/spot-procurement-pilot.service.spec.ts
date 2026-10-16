@@ -22,8 +22,8 @@ describe("SpotProcurementPilotService", () => {
     return new SpotProcurementPilotService();
   }
 
-  it("keeps every project disabled when the configuration is empty", () => {
-    expect(createService().isEnabled("project-1")).toBe(false);
+  it("defaults to all projects but permits an explicit emergency stop", () => {
+    expect(createService().isEnabled("project-1")).toBe(true);
     expect(createService("").isEnabled("project-1")).toBe(false);
     expect(createService("   ").isEnabled("project-1")).toBe(false);
   });
@@ -51,11 +51,12 @@ describe("SpotProcurementPilotService", () => {
     expect(service.isEnabled("project-alpha")).toBe(false);
   });
 
-  it("always rejects wildcard configuration", () => {
+  it("opens all project IDs with the explicit all-project setting", () => {
     const service = createService("*");
 
     expect(service.isEnabled("*")).toBe(false);
-    expect(service.isEnabled("project-1")).toBe(false);
+    expect(service.isEnabled("project-1")).toBe(true);
+    expect(service.isEnabled("future-project")).toBe(true);
   });
 
   it.each(["*,project-1", "project-1,*", " *, project-1 "])(
