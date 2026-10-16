@@ -980,6 +980,18 @@ describe("organization config", () => {
     ).toContain("contract_staff");
   });
 
+  it("提供项目财务选项并生成仅绑定所选项目的授岗目标", () => {
+    const directory: OrganizationDirectory = {
+      ...additionDirectory,
+      positions: [...additionDirectory.positions, { id: "finance-staff", key: "finance_staff", name: "财务部成员/出纳" }]
+    };
+    expect(organizationRoleAdditionOptions(users[0], "project", "project-2", directory.positions))
+      .toContainEqual({ label: "财务部成员/出纳", value: "finance_staff" });
+    expect(buildOrganizationRoleAdditionTarget(users[0], {
+      scope: "project", projectId: "project-2", roleKey: "finance_staff"
+    }, directory)).toEqual({ operation: "add", userId: "user-1", scope: "project", projectId: "project-2", roleKey: "finance_staff" });
+  });
+
   it("builds additions only from an active user, active project and latest position directory", () => {
     expect(
       buildOrganizationRoleAdditionTarget(users[0], {

@@ -56,7 +56,7 @@ export const GLOBAL_USER_POSITION_ROLE_KEYS: readonly RoleKey[] = [
 ];
 
 /** Roles that legitimately have both a company-wide and a project assignment. */
-export const DUAL_SCOPE_ROLE_KEYS: readonly RoleKey[] = ["contract_staff"];
+export const DUAL_SCOPE_ROLE_KEYS: readonly RoleKey[] = ["contract_staff", "finance_staff"];
 
 /**
  * 历史合同接管的读取与导出岗位。

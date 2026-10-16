@@ -69,6 +69,63 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
   });
   afterAll(async () => { await app?.close(); });
 
+  it("董事长按项目授予财务岗位后可建账，其他项目仍不可见且综合部不能授岗", async () => {
+    const db = app.get(PrismaService);
+    const chairman = await person("chairman");
+    const manager = await person("comprehensive_director");
+    const finance = await person();
+    const first = await project();
+    const second = await project();
+    await db.position.upsert({ where: { key: "finance_staff" }, update: {},
+      create: { key: "finance_staff", name: "财务经办" } });
+    const body = { operation: "add", userId: finance.id, scope: "project", projectId: first.id, roleKey: "finance_staff" };
+    expect((await request("/organization/role-additions/preview", manager.token, body)).status).toBe(403);
+    const preview = await request("/organization/role-additions/preview", chairman.token, body);
+    expect(preview.status).toBe(201);
+    expect(preview.body.canApply).toBe(true);
+    const confirmed = { ...body, snapshotHash: preview.body.snapshotHash, confirmationPassword: password };
+    expect((await request("/organization/role-additions/apply", manager.token, confirmed)).status).toBe(403);
+    expect((await request("/organization/role-additions/apply", chairman.token,
+      { ...confirmed, confirmationPassword: "Incorrect-Password" })).status).toBe(400);
+    expect((await request("/organization/role-additions/apply", chairman.token, confirmed)).status).toBe(201);
+    expect((await request("/projects", finance.token)).status).toBe(401);
+    const token = await login(finance.phone!);
+    const visible = await request("/projects", token);
+    expect(visible.status).toBe(200);
+    expect(visible.body.map((row: { id: string }) => row.id)).toEqual([first.id]);
+    expect((await request(`/projects/${first.id}/operating-profile`, token)).body.canManage).toBe(true);
+    const update = (projectId: string) => fetch(`${base}/projects/${projectId}/operating-profile`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ operatingLedgerEffectiveDate: "2026-10-16" })
+    });
+    expect((await update(second.id)).status).toBe(403);
+    // 岗位授权不能跳过建账前提；仍需唯一施工企业及有效我方参与公司。
+    expect((await update(first.id)).status).toBe(400);
+    const effectiveFrom = new Date("2026-10-16T00:00:00.000Z");
+    const partyName = `财务建账合成施工企业${sequence++}`;
+    const party = await db.businessParty.create({ data: { name: partyName, normalizedName: partyName, createdByUserId: chairman.id } });
+    const partyVersion = await db.businessPartyVersion.create({ data: {
+      businessPartyId: party.id, versionNo: 1, snapshot: { name: partyName }, createdByUserId: chairman.id
+    } });
+    await db.projectAffiliateAssignment.create({ data: { projectId: first.id, businessPartyId: party.id,
+      businessPartyVersionId: partyVersion.id, affiliateNameSnapshot: partyName, effectiveFrom,
+      changeReason: "隔离测试建账", assignedByUserId: chairman.id } });
+    expect((await update(first.id)).status).toBe(400);
+    const company = await db.companyEntity.create({ data: { name: "财务建账合成我方公司", dataStatus: "complete", currentVersionNo: 1 } });
+    const companyVersion = await db.companyEntityVersion.create({ data: { companyEntityId: company.id,
+      versionNo: 1, name: company.name, isActive: true, action: "create", actorUserId: chairman.id } });
+    await db.projectParticipatingCompany.create({ data: { projectId: first.id, companyEntityId: company.id,
+      companyEntityVersionId: companyVersion.id, companyNameSnapshot: company.name, effectiveFrom,
+      changeReason: "隔离测试建账", addedByUserId: chairman.id } });
+    const saved = await update(first.id);
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ operatingLedgerEffectiveDate: "2026-10-16" });
+    expect((await request(`/projects/${first.id}/operating-profile`, token)).body.operatingLedgerEffectiveDate).toBe("2026-10-16");
+    expect(await db.userPosition.count({ where: { userId: finance.id, projectId: null } })).toBe(0);
+    expect(await db.auditLog.count({ where: { actorUserId: chairman.id, action: "permission.role.add" } })).toBe(1);
+    expect(await db.auditLog.count({ where: { actorUserId: finance.id, action: "project.operating_profile.update", businessId: first.id } })).toBe(1);
+  });
+
   it("综合部将普通人员调入空项目并调出，其他项目保留，旧会话立即失效", async () => {
     const manager = await person("comprehensive_director");
     const employee = await person();

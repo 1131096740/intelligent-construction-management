@@ -44,6 +44,7 @@ function fixture(): Fixture {
       { id: "position-manager", key: "project_manager" },
       { id: "position-budget", key: "budget_director" },
       { id: "position-finance", key: "finance_director" },
+      { id: "position-finance-staff", key: "finance_staff" },
       { id: "position-contract-staff", key: "contract_staff" },
       { id: "position-engineering-member", key: "engineering_department_member" },
       { id: "position-engineering-director", key: "engineering_department_director" },
@@ -129,6 +130,7 @@ async function evaluate(
       | "budget_director"
       | "contract_staff"
       | "finance_director"
+      | "finance_staff"
       | "engineering_department_member"
       | "engineering_department_director"
       | "chairman";
@@ -193,6 +195,16 @@ function addProjectExpense(
 }
 
 describe("PermissionImpactService role addition", () => {
+  it("允许已有公司财务岗位的人员按项目受任财务，不要求扩大公司权限", async () => {
+    const data = fixture();
+    data.userPositions.push({ id: "company-finance", userId: "target", positionId: "position-finance-staff", projectId: null });
+    const { result } = await evaluate(data, {
+      operation: "add", userId: "target", scope: "project", projectId: "project-2", roleKey: "finance_staff"
+    });
+    expect(result.preview).toMatchObject({ canApply: true, blockingIssues: [] });
+    expect(result.targetCreate).toEqual({ source: "project_member", userId: "target", projectId: "project-2", roleKey: "finance_staff" });
+  });
+
   it("允许合同员分别获得公司级与项目级岗位", async () => {
     const global = await evaluate(fixture(), {
       operation: "add",

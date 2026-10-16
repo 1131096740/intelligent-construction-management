@@ -57,6 +57,13 @@ export function isPostgresSerializationFailure(error: unknown): boolean {
 }
 
 export function projectOperatingConstraintMessage(error: unknown) {
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    // Prisma 5.22 的模型更新会把 PostgreSQL 触发器约束放入未知错误包装。
+    // 只返回精确匹配的既有业务提示，不把任意数据库详情或其他 SQLSTATE 暴露给用户。
+    return PROJECT_OPERATING_CONSTRAINT_MESSAGES.find((message) => error.message.includes(
+      `PostgresError { code: "23514", message: ${JSON.stringify(message)}, severity:`
+    )) ?? null;
+  }
   if (
     !(error instanceof Prisma.PrismaClientKnownRequestError) ||
     (error.code !== "P2004" && error.code !== "P2010")
