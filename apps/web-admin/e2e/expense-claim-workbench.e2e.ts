@@ -336,6 +336,8 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
     body: JSON.stringify({
       companyEntities: [{ id: "company-1", name: "建工智管有限公司" }],
       projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }],
+      selfProjectIds: ["project-1"],
+      selfApplicantUserId: "expense-claim-canary",
       canProxy: false,
       applicantUsers: [{ id: "expense-claim-canary", name: "费用金丝雀" }],
       factWitnessUsers: [{ id: "witness-1", name: "事实证明人" }]

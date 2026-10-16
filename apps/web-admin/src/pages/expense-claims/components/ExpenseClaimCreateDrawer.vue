@@ -66,7 +66,12 @@ const payeeFields = computed({
     form.loanExpectedClearanceOn = value.loanExpectedClearanceOn;
   }
 });
-const projectOptions = computed(() => [{ label: "非项目报销", value: "" }, ...(options.value?.projects.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id })) ?? [])]);
+const isSelfApplicant = computed(() => form.applicantMode === "self"
+  || (form.applicantMode === "system_user" && form.applicantUserId === options.value?.selfApplicantUserId));
+const availableProjects = computed(() => options.value?.projects.filter((project) =>
+  !isSelfApplicant.value || options.value?.selfProjectIds.includes(project.id)
+) ?? []);
+const projectOptions = computed(() => [...(form.claimType === "reimbursement" ? [{ label: "非项目报销", value: "" }] : []), ...availableProjects.value.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id }))]);
 const applicantOptions = computed(() => options.value?.applicantUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const isProject = computed(() => Boolean(form.projectId));
@@ -89,7 +94,7 @@ function resetForm() {
   form.companyEntityId = options.value?.companyEntities[0]?.id ?? "";
   form.projectId = "";
   form.applicantMode = "self";
-  form.applicantUserId = options.value?.applicantUsers[0]?.id ?? "";
+  form.applicantUserId = options.value?.selfApplicantUserId ?? "";
   form.applicantName = "";
   form.applicantPhone = "";
   form.factWitnessUserId = "";
@@ -116,13 +121,20 @@ async function loadOptions() {
 }
 
 watch(() => props.modelValue, (isVisible) => { if (isVisible) void loadOptions(); });
-watch(() => form.claimType, (claimType) => { if (claimType === "loan") form.projectId = form.projectId || options.value?.projects[0]?.id || ""; });
+watch(() => form.claimType, (claimType) => { if (claimType !== "reimbursement") form.projectId = form.projectId || availableProjects.value[0]?.id || ""; });
+watch(() => form.applicantMode, (mode) => {
+  if (mode === "self") form.applicantUserId = options.value?.selfApplicantUserId ?? "";
+});
+watch(availableProjects, (projects) => {
+  if (form.projectId && !projects.some((project) => project.id === form.projectId)) form.projectId = "";
+});
 watch(() => form.projectId, (projectId) => { if (projectId) form.factWitnessUserId = ""; });
 
 function validateCurrentStep(): string {
   if (step.value === 0) {
     if (!form.companyEntityId) return "请选择使用单位";
     if (form.claimType === "loan" && !form.projectId) return "借款申请必须选择项目";
+    if (form.claimType === "incidental_expense" && !form.projectId) return "零星费用申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.incidentalExpenseCategory) return "请选择零星费用分类";
     if (needsWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
     if (form.applicantMode === "no_account" && (!form.applicantName.trim() || !form.applicantPhone.trim())) return "请填写无账号人员的姓名和电话";
@@ -161,7 +173,7 @@ function payload(): CreateExpenseClaimPayload {
     companyEntityId: form.companyEntityId,
     projectId: form.projectId || undefined,
     factWitnessUserId: needsWitness.value ? form.factWitnessUserId : undefined,
-    applicantUserId: form.applicantMode === "no_account" ? undefined : form.applicantUserId,
+    applicantUserId: form.applicantMode === "no_account" ? undefined : form.applicantMode === "self" ? options.value?.selfApplicantUserId : form.applicantUserId,
     applicantName: form.applicantMode === "no_account" ? form.applicantName.trim() : undefined,
     applicantPhone: form.applicantMode === "no_account" ? form.applicantPhone.trim() : undefined,
     reason: form.reason.trim(),
@@ -281,10 +293,11 @@ async function createExpenseClaimWithCapability(
               </t-form-item>
               <t-form-item label="项目">
                 <t-select
+                  :key="`${form.claimType}:${isSelfApplicant}`"
                   v-model="form.projectId"
                   :options="projectOptions"
-                  :disabled="form.claimType === 'loan' && !projectOptions.length"
-                  placeholder="项目报销可选；借款必选"
+                  :disabled="form.claimType !== 'reimbursement' && !availableProjects.length"
+                  :placeholder="form.claimType !== 'reimbursement' && !availableProjects.length ? '暂无可申请的所属项目' : '报销项目可选；借款及零星费用必选'"
                 />
               </t-form-item>
               <t-form-item

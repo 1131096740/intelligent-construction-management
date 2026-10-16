@@ -8409,10 +8409,10 @@
             "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.create"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
@@ -8474,10 +8474,10 @@
             "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.create"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
@@ -8539,10 +8539,10 @@
             "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.create"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
@@ -8576,7 +8576,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 199,
+        "sourceLine": 211,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8604,10 +8604,10 @@
             "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.create"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue"
@@ -9453,10 +9453,10 @@
             "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.submit"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
@@ -10319,10 +10319,10 @@
             "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.create"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"

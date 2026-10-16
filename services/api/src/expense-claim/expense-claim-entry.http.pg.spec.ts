@@ -9,7 +9,7 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "../database/prisma.service";
 import { createApiValidationPipe } from "../validation/api-validation";
-import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import { ROLE_KEYS, GLOBAL_USER_POSITION_ROLE_KEYS, type RoleKey, type BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 
 const enabled = process.env.RUN_POL115_ENTRY_PG16 === "1";
 type BrowserAuthSession = {
@@ -32,6 +32,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   const approvalTokens: string[] = [];
   let browserSession: BrowserAuthSession;
   let financeSession: BrowserAuthSession;
+  let proxySession: BrowserAuthSession;
   let financeDirectorSession: BrowserAuthSession;
   const browserRepaymentProjectIds: Record<"desktop" | "mobile", string> = { desktop: "", mobile: "" };
   const browserRepaymentClaimIds: Record<"desktop" | "mobile", string> = { desktop: "", mobile: "" };
@@ -79,6 +80,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         expect(positionLogin.status).toBe(201);
         const positionSession = await positionLogin.json() as BrowserAuthSession;
         const positionToken = positionSession.tokens.accessToken;
+        if (key === "comprehensive_director") proxySession = positionSession;
         if (key === "finance_staff") {
           financeToken = positionToken;
           financeSession = positionSession;
@@ -122,6 +124,149 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     return { status: response.status, body: await response.json() as { id: string; status: string; entryDefinition: BusinessEntrySceneDefinition; entrySnapshots: Array<{ definitionSnapshot: BusinessEntrySceneDefinition; valuesSnapshot: Record<string, unknown> }> } };
   }
 
+  async function selfAccount(role?: RoleKey) {
+    const prisma = app.get(PrismaService);
+    const suffix = randomUUID();
+    const user = await prisma.user.create({ data: { name: `本人申请${role ?? "未配置岗位"}`, phone: `self-${suffix}`, passwordHash: await hash(accountPassword, 4), mustChangePassword: false } });
+    if (role) {
+      const position = await prisma.position.upsert({ where: { key: role }, create: { key: role, name: role }, update: {} });
+      await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId: GLOBAL_USER_POSITION_ROLE_KEYS.includes(role) ? null : projectId } });
+    }
+    const response = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: user.phone, password: accountPassword }) });
+    expect(response.status).toBe(201);
+    return await response.json() as BrowserAuthSession;
+  }
+
+  function selfInput(userId: string, claimType: "reimbursement" | "loan" | "incidental_expense" = "loan") {
+    return {
+      claimType, companyEntityId, projectId, applicantUserId: userId, reason: "合成本人费用申请", requestedAmountCents: "1",
+      ...(claimType === "loan" ? { loanExpectedClearanceOn: "2026-12-01" } : {}),
+      ...(claimType === "incidental_expense" ? { incidentalExpenseCategory: "temporary_service", payeeName: "合成服务提供方" } : {}),
+      ...(claimType === "reimbursement" ? { lines: [{ expenseCategory: "办公费", occurredOn: "2026-10-16", purpose: "合成文具", receiptCount: 0, amountCents: "1", evidenceType: "none", noEvidenceReason: "隔离测试" }] } : {})
+    };
+  }
+
+  (enabled ? it : it.skip)("本人申请：保存后撤销项目归属，提交拒绝且保留未提交草稿", async () => {
+    const prisma = app.get(PrismaService);
+    const session = await selfAccount();
+    await prisma.projectRosterMember.create({ data: { userId: session.user.id, projectId } });
+    const created = await request("/expense-claims", selfInput(session.user.id), session.tokens.accessToken);
+    expect(created.status).toBe(201);
+    await prisma.projectRosterMember.deleteMany({ where: { userId: session.user.id, projectId } });
+    expect(await request(`/expense-claims/${created.body.id}/submission`, {}, session.tokens.accessToken)).toMatchObject({ status: 403 });
+    expect(await request(`/expense-claims/${created.body.id}`, undefined, session.tokens.accessToken)).toMatchObject({ status: 200, body: { status: "draft", entrySnapshots: [] } });
+  });
+
+  (enabled ? it : it.skip)("本人申请：财务岗位可以读取创建表单且只能选择本人", async () => {
+    expect(await request("/expense-claims/create-options", undefined, financeToken)).toMatchObject({
+      status: 200,
+      body: { canProxy: false, applicantUsers: [{ id: financeSession.user.id }], availableActions: ["create_expense_claim"] }
+    });
+  });
+
+  (enabled ? it : it.skip)("本人申请：全局财务查看权限不能代替项目归属", async () => {
+    expect(await request("/expense-claims/create-options", undefined, financeToken)).toMatchObject({
+      status: 200, body: { projects: [], selfProjectIds: [], selfApplicantUserId: financeSession.user.id }
+    });
+    expect(await request("/expense-claims", {
+      claimType: "loan", companyEntityId, projectId, applicantUserId: financeSession.user.id,
+      reason: "不可跨项目申请", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+    }, financeToken)).toMatchObject({ status: 403 });
+  });
+
+  (enabled ? it : it.skip).each([undefined, ...ROLE_KEYS])("本人申请：启用岗位 %s 可以为本人创建并提交三类费用", async (role) => {
+    const session = await selfAccount(role);
+    await app.get(PrismaService).projectRosterMember.create({ data: { userId: session.user.id, projectId } });
+    for (const claimType of ["reimbursement", "loan", "incidental_expense"] as const) {
+      const created = await request("/expense-claims", selfInput(session.user.id, claimType), session.tokens.accessToken);
+      expect(created.status).toBe(201);
+      const path = `/expense-claims/${created.body.id}`;
+      expect(await request(`${path}/submission`, {}, session.tokens.accessToken)).toMatchObject({ status: 201, body: { status: "approval_pending" } });
+      expect(await request(path, undefined, session.tokens.accessToken)).toMatchObject({ status: 200, body: { applicantUserId: session.user.id, handledByUserId: session.user.id, status: "approval_pending", entrySnapshots: [expect.objectContaining({ valuesSnapshot: expect.objectContaining({ applicantUserId: session.user.id }) })] } });
+    }
+  });
+
+  (enabled ? it : it.skip)("本人申请：无项目人员可报销非项目费用，不能代办或审批付款", async () => {
+    const session = await selfAccount();
+    const accessToken = session.tokens.accessToken;
+    expect(await request("/expense-claims/create-options", undefined, accessToken)).toMatchObject({ status: 200, body: { projects: [], canProxy: false } });
+    const input = { ...selfInput(session.user.id, "reimbursement"), projectId: undefined, factWitnessUserId };
+    expect(await request("/expense-claims", { ...input, applicantUserId }, accessToken)).toMatchObject({ status: 403 });
+    expect(await request("/expense-claims", { ...input, applicantUserId: undefined, applicantName: "无账号合成人员", applicantPhone: "13800000000" }, accessToken)).toMatchObject({ status: 403 });
+    expect((await request("/expense-claims", undefined, accessToken)).body).toEqual([]);
+    const created = await request("/expense-claims", input, accessToken);
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    expect(await request(`${path}/submission`, {}, strangerToken)).toMatchObject({ status: 403 });
+    expect(await request(`${path}/submission`, {}, accessToken)).toMatchObject({ status: 201 });
+    for (const endpoint of ["approval", "payments", "disbursements"]) {
+      expect(await request(`${path}/${endpoint}`, { decision: "approve" }, accessToken)).toMatchObject({ status: 403 });
+    }
+    expect(await request(path, undefined, accessToken)).toMatchObject({ status: 200, body: { status: "approval_pending", fundedAmountCents: "0" } });
+  });
+
+  (enabled ? it : it.skip)("本人申请：综合部仍可代办系统人员和无账号人员，但本人项目不借用代办范围", async () => {
+    const accessToken = approvalTokens[0]!;
+    const options = await request("/expense-claims/create-options", undefined, accessToken);
+    expect(options).toMatchObject({ status: 200, body: { canProxy: true, selfApplicantUserId: factWitnessUserId, selfProjectIds: [], projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]) } });
+    expect(await request("/expense-claims", selfInput(factWitnessUserId), accessToken)).toMatchObject({ status: 403 });
+    for (const applicant of [{ applicantUserId }, { applicantUserId: undefined, applicantName: "无账号合成人员", applicantPhone: "13800000000" }]) {
+      const created = await request("/expense-claims", { ...selfInput(applicantUserId, "reimbursement"), ...applicant }, accessToken);
+      expect(created.status).toBe(201);
+      expect(await request(`/expense-claims/${created.body.id}/submission`, {}, accessToken)).toMatchObject({ status: 201 });
+    }
+  });
+
+  (enabled ? it : it.skip)("本人申请：停用账户的旧会话不能加载、创建或提交", async () => {
+    const prisma = app.get(PrismaService);
+    const session = await selfAccount();
+    await prisma.projectRosterMember.create({ data: { userId: session.user.id, projectId } });
+    const input = selfInput(session.user.id);
+    const created = await request("/expense-claims", input, session.tokens.accessToken);
+    expect(created.status).toBe(201);
+    await prisma.user.update({ where: { id: session.user.id }, data: { isActive: false } });
+    expect(await request("/expense-claims/create-options", undefined, session.tokens.accessToken)).toMatchObject({ status: 401 });
+    expect(await request("/expense-claims", input, session.tokens.accessToken)).toMatchObject({ status: 401 });
+    expect(await request(`/expense-claims/${created.body.id}/submission`, {}, session.tokens.accessToken)).toMatchObject({ status: 401 });
+    expect(await request("/expense-claims/create-options", undefined, "")).toMatchObject({ status: 401 });
+  });
+
+  (enabled ? it : it.skip)("本人申请：停用项目不能创建或提交，原草稿仍可读取", async () => {
+    const prisma = app.get(PrismaService);
+    const session = await selfAccount();
+    const project = await prisma.project.create({ data: { code: `SELF-${randomUUID()}`, name: "停用归属合成项目" } });
+    await prisma.projectMember.create({ data: { userId: session.user.id, projectId: project.id, positionKey: "employee" } });
+    const input = { ...selfInput(session.user.id), projectId: project.id };
+    const created = await request("/expense-claims", input, session.tokens.accessToken);
+    expect(created.status).toBe(201);
+    await prisma.project.update({ where: { id: project.id }, data: { isActive: false } });
+    expect(await request("/expense-claims/create-options", undefined, session.tokens.accessToken)).toMatchObject({ status: 200, body: { projects: [] } });
+    expect(await request("/expense-claims", input, session.tokens.accessToken)).toMatchObject({ status: 404 });
+    expect(await request(`/expense-claims/${created.body.id}/submission`, {}, session.tokens.accessToken)).toMatchObject({ status: 403 });
+    expect(await request(`/expense-claims/${created.body.id}`, undefined, session.tokens.accessToken)).toMatchObject({ status: 200, body: { status: "draft", entrySnapshots: [] } });
+  });
+
+  (enabled ? it : it.skip)("本人申请：未配置岗位的经办人可上传、登记和移除自己的草稿附件", async () => {
+    const session = await selfAccount();
+    const accessToken = session.tokens.accessToken;
+    await app.get(PrismaService).projectRosterMember.create({ data: { userId: session.user.id, projectId } });
+    const created = await request("/expense-claims", selfInput(session.user.id), accessToken);
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    const body = new FormData();
+    body.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "本人成本凭证.png");
+    body.append("idempotencyKey", randomUUID());
+    const upload = await fetch(`${baseUrl}${path}/draft-attachment-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body });
+    expect(upload.status).toBe(201);
+    const file = await upload.json() as { id: string };
+    expect(await request(`${path}/attachments`, { fileId: file.id, category: "receipt_or_other" }, strangerToken)).toMatchObject({ status: 403 });
+    const attachment = await request(`${path}/attachments`, { fileId: file.id, category: "receipt_or_other" }, accessToken);
+    expect(attachment.status).toBe(201);
+    expect(await request(`${path}/attachments/${attachment.body.id}/removal`, {}, strangerToken)).toMatchObject({ status: 403 });
+    expect(await request(`${path}/attachments/${attachment.body.id}/removal`, {}, accessToken)).toMatchObject({ status: 201 });
+    expect(await request(path, undefined, accessToken)).toMatchObject({ status: 200, body: { status: "draft", entrySnapshots: [] } });
+  });
+
   (enabled ? it : it.skip)("草稿附件上传仍拒绝无关账号和非法幂等键，不改变草稿或提交快照", async () => {
     const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "附件权限验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
     expect(created.status).toBe(201);
@@ -132,7 +277,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       if (idempotencyKey !== undefined) body.append("idempotencyKey", idempotencyKey);
       return fetch(`${baseUrl}${path}/draft-attachment-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body });
     }
-    expect((await upload(strangerToken)).status).toBe(403);
+    // Authentication now reaches the domain, which conceals unrelated claims.
+    expect((await upload(strangerToken)).status).toBe(404);
     expect((await upload(token, "invalid-key")).status).toBe(400);
     const detail = await request(path);
     expect(detail).toMatchObject({ status: 200, body: { status: "draft", requestedAmountCents: "1", attachments: [], entrySnapshots: [] } });
@@ -290,12 +436,14 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   }, 60_000);
 
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机通过真实页面创建费用草稿而不自动提交", async () => {
+    await app.get(PrismaService).projectRosterMember.upsert({ where: { projectId_userId: { projectId, userId: financeSession.user.id } }, create: { projectId, userId: financeSession.user.id }, update: {} });
     await new Promise<void>((done, reject) => {
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         POL115_API_URL: baseUrl,
         POL115_BROWSER_SESSION: JSON.stringify(browserSession),
         POL115_FINANCE_SESSION: JSON.stringify(financeSession),
+        POL115_PROXY_SESSION: JSON.stringify(proxySession),
         POL115_FINANCE_DIRECTOR_SESSION: JSON.stringify(financeDirectorSession),
         POL115_REPAYMENT_CLAIM_IDS: JSON.stringify(browserRepaymentClaimIds),
         POL115_ACCOUNT_PASSWORD: accountPassword

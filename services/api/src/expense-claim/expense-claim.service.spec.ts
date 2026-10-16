@@ -5,12 +5,13 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
-    project: { findFirst: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
+    project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }), findMany: jest.fn(), findUnique: jest.fn() },
     userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId }) => ({ userId, positionId })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}` }))) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    projectRosterMember: { findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }]) },
     position: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ positionId, role }) => ({ id: positionId, key: role })) : (options?.roles ?? []).map((key, index) => ({ id: `position-${index}`, key })) ) },
     user: {
-      findUnique: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({ id: "user-a", name: "经办人", isActive: true }),
       findMany: jest.fn().mockResolvedValue(approvalAssignments.map(({ userId }) => ({ id: userId })))
     },
     expenseClaim: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -29,10 +30,10 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
   const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeProjectLoanEntry: tx.employeeProjectLoanEntry, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
-  Object.assign(prisma, { expenseClaimEntrySnapshot: tx.expenseClaimEntrySnapshot });
+  Object.assign(prisma, { expenseClaimEntrySnapshot: tx.expenseClaimEntrySnapshot, projectRosterMember: tx.projectRosterMember });
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
-  const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+  const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]) };
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never);
   return { service, tx, prisma, numbering, audit, visibility };
 }
@@ -77,12 +78,11 @@ const actor = { id: "user-a", name: "经办人", phone: "13800000000", isActive:
 
 describe("ExpenseClaimService", () => {
   it("returns all selectable active company entities but only the actor's visible projects", async () => {
-    const { service, tx, visibility } = createHarness();
+    const { service, tx } = createHarness();
     tx.companyEntity.findMany.mockResolvedValue([{ id: "company-1", name: "建工智管" }]);
     tx.project.findMany.mockResolvedValue([{ id: "project-1", code: "JGXM-001", name: "科技园项目" }]);
     tx.user.findMany.mockResolvedValue([{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }]);
     await expect(service.createOptions("user-a")).resolves.toEqual(expect.objectContaining({ companyEntities: [{ id: "company-1", name: "建工智管" }], projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }], canProxy: false, applicantUsers: [{ id: "user-a", name: "经办人" }], factWitnessUsers: [{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }], availableActions: ["create_expense_claim"] }));
-    expect(visibility.visibleProjectIds).toHaveBeenCalledWith("user-a");
     expect(tx.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["project-1"] }, isActive: true } }));
   });
 
@@ -1268,7 +1268,9 @@ describe("ExpenseClaimService", () => {
         { userId: "leader-1", positionId: "position-leader", role: "general_manager" }
       ]
     });
-    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([{ id: "account-1", balanceAmountCents: 10000n, reservedOffsetAmountCents: 1000n }]);
+    tx.$queryRaw.mockImplementation(async (query: { sql: string }) => query.sql.includes('"EmployeeProjectLoanAccount"')
+      ? [{ id: "account-1", balanceAmountCents: 10000n, reservedOffsetAmountCents: 1000n }]
+      : query.sql.includes('"ExpenseClaim"') ? [claim] : []);
     tx.employeeProjectLoanEntry.findMany.mockResolvedValue([{ id: "entry-old", amountCents: 5000n }, { id: "entry-new", amountCents: 6000n }]);
     tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ loanEntryId: "entry-old", amountCents: 1000n }]);
     tx.approvalInstance.create.mockResolvedValue({ id: "approval-r" });
