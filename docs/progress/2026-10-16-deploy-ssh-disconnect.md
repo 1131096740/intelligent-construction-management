@@ -30,3 +30,15 @@
 ## 后续发布授权
 
 用户已明确授权继续提交、推送、上线及生产验收；专项Issue #326。上述本地范围是初次修复检查点；本轮继续固定提交双审、CI、准确合并main完整17门及生产确认/收尾验证，生产回滚与隔离恢复证据分别报告。
+
+## 联合发布第9门失败与测试环境修复
+
+#328已合并为dfd034c4，固定d497438e的CI23/23通过。用户批准与#329一次检查和发布；最终5f83c9d5的原完整17门前8门通过，第9门实际失败 `session changed API runtime traversal permissions`，失败候选保留干净且未生成发布收据、未部署。
+
+新的独立候选基于5f83c9d5。以 `umask 077; bash scripts/ops/go-live-safety-self-test.sh` 稳定复现：发布门为证据文件设置077，自测继承后却仍硬编码期待755/644。真实session按契约保留调用方掩码，生产脚本没有新的权限回归。
+
+修复仅涉及自测：在独立子shell中显式构造022和002两组部署调用环境，分别严格检查755/644与775/664；每组运行CONFIRM、ROLLBACK、TIMEOUT、WRONG_SHA四场景，原内容、私有收据、锁、清理和四个systemd文件断言全部保留。子shell不改变发布门及其他夹具的私有掩码。
+
+在外层077下，Mac和Linux完整运维安全自测均通过八场景；日志分别为 `/private/tmp/jgzg-ssh-release-20261016/umask077-green.log` 和 `umask077-linux-green.log`，红灯为 `umask077-red.log`。生产脚本、workflow、权限、业务与Schema均未改。补丁仍需固定SHA双审、CI及合并；唯一完整17门与正式部署继续由联合发布任务负责，旧部分检查不拼接为通过。
+
+补丁候选296项编排测试通过，外层077下原第9门四条命令整组通过（`patch-original-phase9.log` / `ORIGINAL_PHASE_9_PASSED`）；不代表完整17门成功。
