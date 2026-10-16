@@ -38,11 +38,12 @@ test("财务为本人保存并提交借款，只选择本人所属项目", async
   expect(response.status(), await response.text()).toBe(201);
   expect(response.request().postDataJSON().applicantUserId).toBe(session.user.id);
   const claim = await response.json();
-  await page.goto(`/费用与报销/${claim.id}`);
+  await page.waitForURL((url) => decodeURIComponent(url.pathname) === `/费用与报销/${claim.id}`);
   const submitted = page.waitForResponse((response) => response.url().endsWith(`/expense-claims/${claim.id}/submission`));
   await page.getByRole("button", { name: "提交审批", exact: true }).click();
   await page.getByRole("button", { name: "确认提交", exact: true }).click();
   expect((await submitted).status()).toBe(201);
+  await expect(page.locator(".expense-claim-detail")).toContainText("审批中");
   await page.reload();
   await expect(page.locator(".expense-claim-detail")).toContainText("审批中");
   const layout = await page.locator(".expense-claim-detail").evaluate((root) => ({
