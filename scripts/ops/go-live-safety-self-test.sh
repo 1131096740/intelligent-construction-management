@@ -13,6 +13,7 @@ bash -n \
   "$SCRIPT_DIR/db-backup.sh" \
   "$SCRIPT_DIR/db-restore-drill.sh" \
   "$SCRIPT_DIR/deploy-production-server.sh" \
+  "$SCRIPT_DIR/deploy-production-session.sh" \
   "$SCRIPT_DIR/deploy-from-mac.sh" \
   "$SCRIPT_DIR/run-local-release-gate.sh" \
   "$SCRIPT_DIR/run-production-db-backup.sh"
@@ -127,6 +128,12 @@ case "${1:-}:${2:-}" in
   -c:%u:%g:%a)
     printf '0:0:600\n'
     ;;
+  -c:%u:%a)
+    if /usr/bin/stat -c '%u:%a' "$3" >/dev/null 2>&1; then
+      exec /usr/bin/stat -c '%u:%a' "$3"
+    fi
+    exec /usr/bin/stat -f '%u:%Lp' "$3"
+    ;;
   -c:%a)
     if /usr/bin/stat -c '%a' "$3" >/dev/null 2>&1; then
       exec /usr/bin/stat -c '%a' "$3"
@@ -202,6 +209,9 @@ cat > "$FAKE_BIN/pnpm" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'pnpm %s\n' "$*" >> "${FAKE_LOG:?}"
+if [[ "${FAKE_NEW_BUILD_FILE:-false}" == true && " $* " == *" @jiangkong/web-admin build "* ]]; then
+  printf 'new static asset\n' > "$REPO_ROOT_OVERRIDE/apps/web-admin/dist/new-static.txt"
+fi
 if [[ " $* " == *" prisma migrate deploy "* && "${FAKE_MIGRATE_FAIL:-false}" == true ]]; then
   exit 1
 fi
@@ -272,6 +282,7 @@ FAKE
 cat > "$FAKE_BIN/sleep" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${FAKE_REAL_SLEEP:-false}" == true ]]; then exec /bin/sleep "$@"; fi
 if [[ -n "${FAKE_DEPLOY_CONFIRMATION_FILE:-}" ]] &&
   [[ ! -e "$FAKE_DEPLOY_CONFIRMATION_FILE" ]]; then
   printf '%s %s\n' \
@@ -764,7 +775,7 @@ run_deploy_fixture() {
     ROLLBACK_PARENT_DIR="$fixture/rollback-parent" \
     HEALTH_ATTEMPTS=1 \
     "$@" \
-    "$SCRIPT_DIR/deploy-production-server.sh"
+    bash "${DEPLOY_FIXTURE_ENTRY:-$SCRIPT_DIR/deploy-production-server.sh}"
 }
 
 for frozen_control in \
@@ -917,6 +928,48 @@ run_deploy_fixture "$manual_confirmation_fixture" env \
   fail "manually confirmed deployment did not keep the new Web runtime"
 [[ ! -e "$manual_confirmation_file" ]] ||
   fail "manual confirmation marker was not removed"
+
+# Exercise the real server entry point with its SSH output pipes closed while
+# awaiting a decision. Network peers and production services are fixture adapters.
+for disconnect_decision in CONFIRM ROLLBACK TIMEOUT WRONG_SHA; do
+  disconnect_fixture="$TEST_ROOT/deploy-disconnected-$disconnect_decision"
+  make_deploy_fixture "$disconnect_fixture"
+  DEPLOY_FIXTURE_ENTRY="$SCRIPT_DIR/deploy-production-session.sh" \
+  run_deploy_fixture "$disconnect_fixture" env \
+    DEPLOY_SESSION_ROOT="$disconnect_fixture/sessions" \
+    DEPLOY_CONFIRMATION_MODE=manual \
+    DEPLOY_CONFIRMATION_DIR="$disconnect_fixture" \
+    DEPLOY_CONFIRMATION_FILE="$disconnect_fixture/decision" \
+    DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=6 \
+    DISCONNECT_DECISION="$disconnect_decision" \
+    FAKE_RUNTIME_HEALTH_ALLOW_NEW=true \
+    FAKE_REAL_SLEEP=true \
+    FAKE_NEW_BUILD_FILE=true \
+    python3 "$SCRIPT_DIR/deploy-disconnect-test.py"
+  if [[ "$disconnect_decision" == CONFIRM ]]; then
+    expected_api=new-api-release
+    expected_web=new-web-release
+    [[ "$(file_mode "$disconnect_fixture/runtime/api")" == 755 ]] ||
+      fail "session changed API runtime traversal permissions"
+    [[ "$(file_mode "$disconnect_fixture/runtime/web-admin")" == 755 ]] ||
+      fail "session changed Web runtime traversal permissions"
+    [[ "$(file_mode "$disconnect_fixture/runtime/web-admin/dist/new-static.txt")" == 644 ]] ||
+      fail "session changed newly built static asset read permissions"
+    assert_file "$disconnect_fixture/systemd/jiangkong-draft-retention.service"
+    assert_file "$disconnect_fixture/systemd/jiangkong-draft-retention.timer"
+    assert_file "$disconnect_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.service"
+    assert_file "$disconnect_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer"
+  else
+    expected_api=old-api
+    expected_web=old-web
+  fi
+  [[ "$(< "$disconnect_fixture/runtime/api/dist/release.txt")" == "$expected_api" ]] ||
+    fail "disconnected $disconnect_decision left an incorrect API runtime"
+  [[ "$(< "$disconnect_fixture/runtime/web-admin/dist/release.txt")" == "$expected_web" ]] ||
+    fail "disconnected $disconnect_decision left an incorrect Web runtime"
+  [[ -z "$(ls -A "$disconnect_fixture/staging-parent")" && -z "$(ls -A "$disconnect_fixture/rollback-parent")" ]] ||
+    fail "disconnected deployment did not complete staging/snapshot cleanup"
+done
 
 manual_rollback_fixture="$TEST_ROOT/deploy-manual-rollback"
 make_deploy_fixture "$manual_rollback_fixture"

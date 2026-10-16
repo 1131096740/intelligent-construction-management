@@ -137,7 +137,7 @@ test("repository restores bounded CI beside the manual deploy workflow", async (
   assert.match(deployWorkflow, /timeout-minutes: 90/u);
   assert.match(deployWorkflow, /DEPLOY_CONFIRMATION_TIMEOUT_SECONDS/u);
   assert.match(deployWorkflow, /StrictHostKeyChecking=yes/u);
-  assert.match(deployWorkflow, /deploy-production-server\.sh/u);
+  assert.match(deployWorkflow, /deploy-production-session\.sh/u);
 
   for (const forbiddenStep of [
     "actions/checkout",
