@@ -1,17 +1,34 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { gotoWithSingleWebKitInternalErrorRetry } from "./support/playwright-navigation";
+import { gotoWithSingleWebKitInternalErrorRetry as gotoWithRetry } from "./support/playwright-navigation";
 
 const entryEvents = new WeakMap<Page, object[]>();
+const pendingEntryRequests = new WeakMap<Page, Map<object, { path: string; started: number }>>();
+const entryStarted = new WeakMap<Page, number>();
+function recordEntry(page: Page, event: object) {
+  const events = entryEvents.get(page);
+  if (!events) return;
+  events.push({ elapsedMs: Date.now() - (entryStarted.get(page) ?? Date.now()), ...event });
+  if (events.length > 60) events.shift();
+}
+async function gotoWithSingleWebKitInternalErrorRetry(page: Page, path: string) {
+  recordEntry(page, { phase: "goto-start", path });
+  const response = await gotoWithRetry(page, path);
+  recordEntry(page, { phase: "goto-complete", path });
+  return response;
+}
 test.beforeEach(async ({ page }) => {
   const events: object[] = [];
   entryEvents.set(page, events);
-  const record = (event: object) => {
-    events.push(event);
-    if (events.length > 40) events.shift();
-  };
+  entryStarted.set(page, Date.now());
+  const pending = new Map<object, { path: string; started: number }>();
+  pendingEntryRequests.set(page, pending);
+  const record = (event: object) => recordEntry(page, event);
   // 只记录路径和状态，不记录查询参数、请求头、响应体或凭据。
   const pathOf = (url: string) => new URL(url).pathname;
+  page.on("request", (request) => pending.set(request, { path: pathOf(request.url()), started: Date.now() }));
+  page.on("requestfinished", (request) => pending.delete(request));
+  page.on("requestfailed", (request) => pending.delete(request));
   page.on("framenavigated", (frame) => {
     if (frame === page.mainFrame()) record({ navigation: pathOf(frame.url()) });
   });
@@ -35,7 +52,9 @@ test.afterEach(async ({ page }, testInfo) => {
     sessionPresent: Boolean(localStorage.getItem("jiangkong-web-admin-auth")),
     pageText: document.getElementById("app")?.textContent?.slice(0, 2_000) ?? ""
   })).catch(() => ({ pageUnavailable: true }));
-  console.error("零采真实浏览器失败现场", JSON.stringify({ state, events: entryEvents.get(page) }));
+  const pending = [...(pendingEntryRequests.get(page)?.values() ?? [])]
+    .slice(0, 40).map(({ path, started }) => ({ path, elapsedMs: Date.now() - started }));
+  console.error("零采真实浏览器失败现场", JSON.stringify({ state, events: entryEvents.get(page), pending }));
 });
 
 type Session = { user: unknown; tokens: { accessToken: string; refreshToken: string } };
@@ -44,7 +63,9 @@ async function useSession(page: Page, session: Session) {
   await page.evaluate((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
+  recordEntry(page, { phase: "reload-session-start" });
   await page.reload();
+  recordEntry(page, { phase: "reload-session-complete" });
 }
 
 async function openRefundPayment(page: Page, paymentId: string) {
@@ -53,22 +74,6 @@ async function openRefundPayment(page: Page, paymentId: string) {
     gotoWithSingleWebKitInternalErrorRetry(page, `/零星材料付款/${paymentId}`)
   ]);
   expect(response.status()).toBe(200);
-}
-
-// 每项使用 Playwright 独立浏览器上下文，避免沿用上一项的会话或模块缓存。
-// 只读入口，业务写入仍由下面的原生命周期用例覆盖。
-for (let attempt = 1; attempt <= 5; attempt += 1) {
-  test(`零采入口连续冷启动 ${attempt} 保持会话并完成首页读取`, async ({ page }) => {
-    const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
-    await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
-    await useSession(page, applicant);
-    const [response] = await Promise.all([
-      page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
-      gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
-    ]);
-    expect(response.status()).toBe(200);
-    await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
-  });
 }
 
 test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, context }, testInfo) => {
@@ -294,3 +299,20 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   await expect(page.locator("body")).not.toContainText(coordinates.paymentId);
   expect(await page.locator(".spot-payment-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
+
+// 保持原业务用例先执行，避免新增检查预热服务端模块后掩盖原故障。
+// 每项使用 Playwright 独立浏览器上下文，避免沿用上一项的会话或模块缓存。
+// 只读入口，业务写入仍由下面的原生命周期用例覆盖。
+for (let attempt = 1; attempt <= 5; attempt += 1) {
+  test(`零采入口连续冷启动 ${attempt} 保持会话并完成首页读取`, async ({ page }) => {
+    const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
+    await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
+    await useSession(page, applicant);
+    const [response] = await Promise.all([
+      page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
+      gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
+    ]);
+    expect(response.status()).toBe(200);
+    await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
+  });
+}
