@@ -1,3 +1,4 @@
+import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import { ConflictException } from "@nestjs/common";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -434,6 +435,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
       .mockResolvedValueOnce([procurement()])
       .mockResolvedValueOnce([version()]);
 
+    mockConfiguredApprovalAssignments(tx);
     await service.submit("procurement-1", "material-1");
 
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
@@ -469,6 +471,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
       })
     ]);
 
+    mockConfiguredApprovalAssignments(tx);
     await service.submit("procurement-1", "material-1");
 
     expect(entryTransactions.freezeSubmissionSnapshotInTransaction.mock.calls).toEqual([

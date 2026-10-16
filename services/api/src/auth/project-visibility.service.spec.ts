@@ -118,7 +118,7 @@ describe("ProjectVisibilityService", () => {
     await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1"]);
   });
 
-  it("does not expand all-project visibility for company-wide contract staff", async () => {
+  it("includes all active projects for company-wide contract staff", async () => {
     const prisma = {
       userPosition: {
         findMany: jest
@@ -143,7 +143,7 @@ describe("ProjectVisibilityService", () => {
     };
     const service = new ProjectVisibilityService(prisma as never);
 
-    await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1"]);
+    await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1", "project-2"]);
   });
 
   it("grants project visibility through roster assignment without requiring a project position", async () => {

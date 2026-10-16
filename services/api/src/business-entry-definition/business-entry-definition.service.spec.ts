@@ -927,7 +927,7 @@ describe("BusinessEntryDefinitionService", () => {
     )).rejects.toThrow(ForbiddenException);
   });
 
-  it("rejects a global-only contract staff role for project operating takeover", async () => {
+  it("allows company contract staff to use the contract takeover entry in every project", async () => {
     const service = new BusinessEntryDefinitionService(
       registeredDefinitions,
       registeredAccess,
@@ -948,7 +948,7 @@ describe("BusinessEntryDefinitionService", () => {
       "user-1",
       "import",
       ownerSettlementTarget
-    )).rejects.toThrow(ForbiddenException);
+    )).resolves.toMatchObject({ defaultFactKind: "owner_settlement" });
   });
 
   it("allows project contract staff and canonical global contract director for takeover", async () => {

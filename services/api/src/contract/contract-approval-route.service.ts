@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import type { RoleKey } from "@jiangkong/shared-domain";
 
 export type NewContractTypeKey =
@@ -150,36 +151,23 @@ export class ContractApprovalRouteService {
     if (projects.length !== 1 || !projects[0]?.isActive) {
       throw new BadRequestException("合同所属项目不存在或已停用");
     }
-    const projectApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-      SELECT pm."userId", pm."positionKey" AS "roleKey"
-      FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
-      WHERE pm."projectId" = ${lockedContract.projectId}
-        AND pm."userId" = ${applicantUserId}
-        AND pm."positionKey" = 'contract_staff' AND u."isActive" = TRUE
-      FOR SHARE OF pm, u
-    `);
+    const projectApplicantRoles = await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["contract_staff"], applicantUserId);
     const globalApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up
       INNER JOIN "Position" p ON p."id" = up."positionId"
       INNER JOIN "User" u ON u."id" = up."userId"
       WHERE up."projectId" IS NULL AND up."userId" = ${applicantUserId}
-        AND p."key" = 'contract_director' AND u."isActive" = TRUE
+        AND p."key" IN ('contract_director', 'contract_staff') AND u."isActive" = TRUE
       FOR SHARE OF up, p, u
     `);
     const applicantRoles = [...projectApplicantRoles, ...globalApplicantRoles];
     if (!applicantRoles.some((row) =>
       row.roleKey === "contract_staff" || row.roleKey === "contract_director")) {
-      throw new BadRequestException("仅允许所属项目合同员或公司级合同部主管发起合同变更");
+      throw new BadRequestException("仅允许该项目合同员、公司合同员或合同部主管发起合同变更");
     }
     const isDirectorApplicant = applicantRoles.some((row) => row.roleKey === "contract_director");
-    const projectCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-      SELECT pm."userId", pm."positionKey" AS "roleKey"
-      FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId"
-      WHERE pm."projectId" = ${lockedContract.projectId}
-        AND pm."positionKey" = 'project_manager' AND u."isActive" = TRUE
-      FOR SHARE OF pm, u
-    `);
+    const projectCandidates = await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["project_manager", "engineering_director"]);
     const globalCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up
@@ -239,16 +227,7 @@ export class ContractApprovalRouteService {
       throw new BadRequestException("合同所属项目不存在或已停用");
     }
 
-    const projectApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-      SELECT pm."userId", pm."positionKey" AS "roleKey"
-      FROM "ProjectMember" pm
-      INNER JOIN "User" u ON u."id" = pm."userId"
-      WHERE pm."projectId" = ${lockedContract.projectId}
-        AND pm."userId" = ${applicantUserId}
-        AND pm."positionKey" = 'contract_staff'
-        AND u."isActive" = TRUE
-      FOR SHARE OF pm, u
-    `);
+    const projectApplicantRoles = await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["contract_staff"], applicantUserId);
     const globalApplicantRoles = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up
@@ -256,30 +235,22 @@ export class ContractApprovalRouteService {
       INNER JOIN "User" u ON u."id" = up."userId"
       WHERE up."projectId" IS NULL
         AND up."userId" = ${applicantUserId}
-        AND p."key" = 'contract_director'
+        AND p."key" IN ('contract_director', 'contract_staff')
         AND u."isActive" = TRUE
       FOR SHARE OF up, p, u
     `);
 
-    const isProjectContractStaff = projectApplicantRoles.some(
+    const isContractStaff = [...projectApplicantRoles, ...globalApplicantRoles].some(
       (row) => row.userId === applicantUserId && row.roleKey === "contract_staff"
     );
     const isGlobalContractDirector = globalApplicantRoles.some(
       (row) => row.userId === applicantUserId && row.roleKey === "contract_director"
     );
-    if (!isProjectContractStaff && !isGlobalContractDirector) {
-      throw new BadRequestException("仅允许所属项目合同员或公司级合同部主管发起新合同审批");
+    if (!isContractStaff && !isGlobalContractDirector) {
+      throw new BadRequestException("仅允许该项目合同员、公司合同员或合同部主管发起新合同审批");
     }
 
-    const projectCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-      SELECT pm."userId", pm."positionKey" AS "roleKey"
-      FROM "ProjectMember" pm
-      INNER JOIN "User" u ON u."id" = pm."userId"
-      WHERE pm."projectId" = ${lockedContract.projectId}
-        AND u."isActive" = TRUE
-        AND pm."positionKey" IN ('project_manager', 'engineering_director')
-      FOR SHARE OF pm, u
-    `);
+    const projectCandidates = await loadProjectApprovalAssignments(tx, lockedContract.projectId, ["project_manager", "engineering_director"]);
     const globalCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up

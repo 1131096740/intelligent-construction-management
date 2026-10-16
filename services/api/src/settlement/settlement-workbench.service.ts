@@ -1,3 +1,4 @@
+import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type {
@@ -180,14 +181,9 @@ export class SettlementWorkbenchService {
     const allowedRoles = materialRoute
       ? ["material_staff"]
       : ["engineering_foreman", "engineering_tech"];
-    const memberships = await client.projectMember.findMany({
-      where: {
-        projectId: contract.projectId,
-        positionKey: { in: allowedRoles },
-        userId: { not: actorUserId }
-      },
-      select: { userId: true, positionKey: true }
-    });
+    const memberships = (await loadProjectApprovalAssignments(client, contract.projectId, allowedRoles))
+      .filter((assignment) => assignment.userId !== actorUserId)
+      .map((assignment) => ({ userId: assignment.userId, positionKey: assignment.roleKey }));
     const userIds = [...new Set(memberships.map((membership) => membership.userId))];
     const users = userIds.length
       ? await client.user.findMany({

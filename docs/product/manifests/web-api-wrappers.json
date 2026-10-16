@@ -7542,7 +7542,8 @@
         "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
         "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     },

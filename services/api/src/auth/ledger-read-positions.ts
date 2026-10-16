@@ -18,7 +18,6 @@ import {
 export const LEDGER_READ_POSITION_KEYS = [
   ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
   "project_manager",
-  "contract_staff",
   "budget_staff",
   "material_staff",
   "engineering_department_member",
@@ -30,9 +29,10 @@ export const LEDGER_READ_POSITION_KEYS = [
 
 /**
  * The project overview is a management read model. It is available to every
- * global business position and to the project manager in the current project.
+ * existing management positions and to the project manager in the current project.
+ * Company-wide contract handling does not grant financial-overview duties.
  */
 export const PROJECT_OVERVIEW_READ_POSITION_KEYS = [
-  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.filter((role) => role !== "contract_staff"),
   "project_manager"
 ] as const satisfies readonly RoleKey[];

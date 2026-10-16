@@ -33,7 +33,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   Object.assign(prisma, { expenseClaimEntrySnapshot: tx.expenseClaimEntrySnapshot, projectRosterMember: tx.projectRosterMember });
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
-  const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]) };
+  const visibility = { businessProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]), visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"]) };
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never);
   return { service, tx, prisma, numbering, audit, visibility };
 }

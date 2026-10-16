@@ -16,12 +16,16 @@ function field(page: Page, label: string) {
   return page.locator(".t-drawer .t-form__item").filter({ has: page.getByText(label, { exact: true }) }).locator("input");
 }
 
-test("财务为本人保存并提交借款，只选择本人所属项目", async ({ page }, testInfo) => {
+test("公司财务可选各项目，为本人借款时必须明确选择业务项目", async ({ page }, testInfo) => {
   const session = await openForm(page, "POL115_FINANCE_SESSION");
   const drawer = page.locator(".t-drawer");
   await expect(field(page, "选择人员")).toHaveValue(session.user.name);
   await expect(drawer.getByText("代办系统账号", { exact: true })).toHaveCount(0);
   await drawer.getByText("借款申请", { exact: true }).click();
+  await expect(field(page, "项目")).toHaveValue("");
+  await field(page, "项目").click();
+  await expect(page.locator(".t-select-option")).toHaveCount(3);
+  await page.locator(".t-select-option").filter({ hasText: "入口合成项目" }).click();
   await expect(field(page, "项目")).toHaveValue(/入口合成项目/);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
@@ -60,7 +64,7 @@ test("财务为本人保存并提交借款，只选择本人所属项目", async
   await page.screenshot({ path: testInfo.outputPath("finance-self-submitted.png"), fullPage: true });
 });
 
-test("综合部本人模式锁定本人，切换代办后保留原项目范围", async ({ page }) => {
+test("公司综合部本人和代办均可选各项目，切换模式保留有效项目", async ({ page }) => {
   const session = await openForm(page, "POL115_PROXY_SESSION");
   const drawer = page.locator(".t-drawer");
   await expect(field(page, "选择人员")).toHaveValue(session.user.name);
@@ -74,5 +78,5 @@ test("综合部本人模式锁定本人，切换代办后保留原项目范围",
   await expect(field(page, "项目")).toHaveValue(/入口合成项目/);
   await drawer.getByText("本人", { exact: true }).click();
   await expect(field(page, "选择人员")).toHaveValue(session.user.name);
-  await expect(field(page, "项目")).toHaveValue("");
+  await expect(field(page, "项目")).toHaveValue(/入口合成项目/);
 });

@@ -1,4 +1,5 @@
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
+import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import {
   BadRequestException,
   ConflictException,
@@ -407,6 +408,7 @@ export class SpotProcurementApplicationService {
         );
         const now = new Date();
         const frozenNodes = procurementApprovalNodes(actorRoles);
+        await assertProjectApprovalNodesConfigured(tx, procurement.projectId, frozenNodes, procurement.applicantUserId);
         const approval = await tx.approvalInstance.create({
           data: {
             flowType: "spot_procurement.approve",

@@ -64,3 +64,6 @@ try {
     console.log(`GENERAL_PROCUREMENT 已清理自身容器：${name}`);
   }
 }
+
+// Keep cross-project scope and approval isolation in the same mandatory CI shard.
+command(process.execPath, [path.join(__dirname, "run-project-business-scope-local.cjs")], process.env, false, 360_000);

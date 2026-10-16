@@ -3,6 +3,7 @@ import {
   CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS,
   CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS,
   CONTRACT_SUMMARY_VIEW_ROLE_KEYS,
+  DUAL_SCOPE_ROLE_KEYS,
   ROLE_KEYS
 } from "@jiangkong/shared-domain";
 import { ContractReadService } from "./contract-read.service";
@@ -3339,7 +3340,7 @@ describe("ContractReadService", () => {
       expect(service.getContractVisibilityLevel([role])).toBe(expected);
     });
 
-    it("covers every role in exactly one visibility group", () => {
+    it("covers every role while allowing explicitly declared dual-scope positions", () => {
       const groups = [
         CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS,
         CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS,
@@ -3347,9 +3348,8 @@ describe("ContractReadService", () => {
       ];
       for (const role of ROLE_KEYS) {
         const hits = groups.filter((group) => group.some((candidate) => candidate === role)).length;
-        if (hits !== 1) {
-          throw new Error(`role ${role} must be in exactly one visibility group`);
-        }
+        expect(hits).toBeGreaterThanOrEqual(1);
+        expect(hits).toBeLessThanOrEqual(DUAL_SCOPE_ROLE_KEYS.includes(role) ? 2 : 1);
       }
     });
 

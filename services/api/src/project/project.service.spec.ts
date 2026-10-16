@@ -350,7 +350,7 @@ describe("ProjectService", () => {
       },
       projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
-        findMany: jest.fn()
+        findMany: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([
@@ -367,7 +367,7 @@ describe("ProjectService", () => {
       where: { userId: "finance-user", projectId: null }
     });
     expect(prisma.project.findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
+      where: { isActive: true, id: { in: ["project-1"] } },
       select: { id: true, code: true, name: true },
       orderBy: [{ code: "asc" }, { name: "asc" }]
     });
@@ -423,7 +423,7 @@ describe("ProjectService", () => {
       },
       projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
-        findMany: jest.fn()
+        findMany: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([
@@ -437,13 +437,13 @@ describe("ProjectService", () => {
       { id: "project-1", code: "JG-001", name: "总部综合楼" }
     ]);
     expect(prisma.project.findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
+      where: { isActive: true, id: { in: ["project-1"] } },
       select: { id: true, code: true, name: true },
       orderBy: [{ code: "asc" }, { name: "asc" }]
     });
   });
 
-  it("lists all active project options for global settlement creation budget positions", async () => {
+  it("does not promote a project-only budget role stored globally", async () => {
     const prisma = {
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "position-budget" }])
@@ -453,7 +453,7 @@ describe("ProjectService", () => {
       },
       projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
-        findMany: jest.fn()
+        findMany: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([
@@ -463,14 +463,7 @@ describe("ProjectService", () => {
     };
     const service = new ProjectService(prisma as never);
 
-    await expect(service.listActiveOptions("budget-staff")).resolves.toEqual([
-      { id: "project-1", code: "JG-001", name: "总部综合楼" }
-    ]);
-    expect(prisma.project.findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
-      select: { id: true, code: true, name: true },
-      orderBy: [{ code: "asc" }, { name: "asc" }]
-    });
+    await expect(service.listActiveOptions("budget-staff")).resolves.toEqual([]);
   });
 
   it("lists scoped project options for project contract takeover members", async () => {
@@ -552,7 +545,7 @@ describe("ProjectService", () => {
     });
   });
 
-  it("returns no project options for employees without funds overview positions", async () => {
+  it("lists project memberships for employees without financial overview rights", async () => {
     const prisma = {
       userPosition: {
         findMany: jest
@@ -568,13 +561,12 @@ describe("ProjectService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-2", positionKey: "employee" }])
       },
       project: {
-        findMany: jest.fn()
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", code: "JG-001", name: "项目甲" }, { id: "project-2", code: "JG-002", name: "项目乙" }])
       }
     };
     const service = new ProjectService(prisma as never);
 
-    await expect(service.listActiveOptions("employee-user")).resolves.toEqual([]);
-    expect(prisma.project.findMany).not.toHaveBeenCalled();
+    await expect(service.listActiveOptions("employee-user")).resolves.toEqual([{ id: "project-1", code: "JG-001", name: "项目甲" }, { id: "project-2", code: "JG-002", name: "项目乙" }]);
   });
 
   it("lists every project roster for company leaders", async () => {
