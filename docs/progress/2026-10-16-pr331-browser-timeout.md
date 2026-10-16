@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-本记录对应 [Issue #332](https://github.com/1131096740/intelligent-construction-management/issues/332) 与 [PR #331](https://github.com/1131096740/intelligent-construction-management/pull/331)。根因尚未证实，PR保持草稿，不以重跑或诊断候选CI通过代替修复。未改业务权限、Schema或生产，也未重新部署。
+本记录对应 [Issue #332](https://github.com/1131096740/intelligent-construction-management/issues/332) 与 [PR #331](https://github.com/1131096740/intelligent-construction-management/pull/331)。原生CI已捕获WebKit网络进程崩溃、进程替换、会话丢失及返回登录页的直接机制；修复固定浏览器运行时，并保留真实入口回归。原始两次无trace、具体libsoup崩溃栈缺失的边界仍保留。固定提交CI和最终交付回执完成前，PR保持草稿。未改业务权限、Schema或生产，也未重新部署。
 
 SSH断连修复的已发布版本及生产验收见[独立验收记录](2026-10-16-deploy-ssh-disconnect.md)。该验收结论不能替代本浏览器故障的关闭条件。
 
@@ -90,6 +90,14 @@ SSH断连修复的已发布版本及生产验收见[独立验收记录](2026-10-
 已撤回的构建预览候选保留反例：其Linux仿真在退款成功后的普通刷新仍挂起一个构建脚本，complete空白、会话仍在、网络进程未变化。因此预览方案没有入库，也未被当作根因修复。容器内直接提供静态资源的私有对照原手机2项及20次启动通过，但不同网络/服务方式同时变化，只能帮助区分仿真环境问题。此前1.64仿真模块挂起仍保留，不能由原生崩溃定位自动关闭。
 
 运行库守卫已经用真实旧/新Linux二进制验证：旧libsoup3.6.5拒绝（exit1），新1.64.0/WebKit2370/libsoup3.6.6通过（exit0）。原生固定提交的完整CI、双轴审查和合并验收待完成。
+
+## 固定修复候选检查
+
+实现候选 `736736273a6dffe52863e1bab8a06dead1f7341d`：真实PG16三项、原桌面/手机业务4项（29.4秒）、20次独立手机启动（24.4秒）全部通过；296项CI编排、Web与E2E类型检查通过，Web lint为0 errors/798既有warnings。固定提交Standards和Spec审查各0项P0/P1/P2未决。原生[CI38936617971](https://github.com/1131096740/intelligent-construction-management/actions/runs/38936617971)单独绑定该SHA，其结果不自动代表后续文档或测试变更。
+
+浏览器升级的附加RC06契约检查首次15/16通过，Chromium资金执行案件测试失败。Trace显示点击登录返回后约1毫秒即调用下一次goto，登录请求未完成（网络记录status=-1），最终回到/login。该helper只等待click，没有等待异步登录完成。补上已进入首页的URL断言后，原16项完整通过；保留响应丢失重试、相同幂等键和全部业务断言。中间版本直接以中文正则匹配百分号编码URL而失败，已改用URL序列化，原失败记录保留。该项是独立测试时序修复，不冒充原WebKit崩溃根因。
+
+本机日志保留在任务私有证据目录：`playwright164-native-spot.log`、`playwright164-orchestration.log`、`playwright164-rc06.log`、`playwright164-rc06-login-fixed.log`和`playwright164-rc06-login-final.log`。后续最终候选仍须重新绑定完整CI和双轴审查。
 
 ## 关闭条件
 
