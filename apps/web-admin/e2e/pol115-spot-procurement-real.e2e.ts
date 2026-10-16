@@ -300,19 +300,16 @@ test("付款详情登记退款并回读，桌面与390窄屏保持隔离", async
   expect(await page.locator(".spot-payment-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
-// 保持原业务用例先执行，避免新增检查预热服务端模块后掩盖原故障。
-// 每项使用 Playwright 独立浏览器上下文，避免沿用上一项的会话或模块缓存。
-// 只读入口，业务写入仍由下面的原生命周期用例覆盖。
-for (let attempt = 1; attempt <= 5; attempt += 1) {
-  test(`零采入口连续冷启动 ${attempt} 保持会话并完成首页读取`, async ({ page }) => {
-    const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
-    await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
-    await useSession(page, applicant);
-    const [response] = await Promise.all([
-      page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
-      gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
-    ]);
-    expect(response.status()).toBe(200);
-    await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
-  });
-}
+// 由真实 PG 夹具在原业务链完成后单独使用 --repeat-each=5 执行。
+// Playwright 为不同 repeatEachIndex 建立独立 worker/browser，覆盖浏览器首次启动。
+test("零采入口独立浏览器启动保持会话并完成首页读取", async ({ page }) => {
+  const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
+  await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
+  await useSession(page, applicant);
+  const [response] = await Promise.all([
+    page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
+    gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
+  ]);
+  expect(response.status()).toBe(200);
+  await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
+});
