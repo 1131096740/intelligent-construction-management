@@ -99,6 +99,18 @@ SSH断连修复的已发布版本及生产验收见[独立验收记录](2026-10-
 
 本机日志保留在任务私有证据目录：`playwright164-native-spot.log`、`playwright164-orchestration.log`、`playwright164-rc06.log`、`playwright164-rc06-login-fixed.log`和`playwright164-rc06-login-final.log`。后续最终候选仍须重新绑定完整CI和双轴审查。
 
+## 联合候选与交付回执
+
+`736736273a6dffe52863e1bab8a06dead1f7341d` 的原生CI业务分片117093623301已成功：安装包核验输出1.64.0/WebKit2370/libsoup3.6.6，原零采4项46.9秒、20次独立手机启动约1分钟，真实PG3通过，未记录网络进程崩溃。合同3项及两处浏览器检查点共4项、模板PG9/浏览器2亦通过。该轮用于修复对照，不能替代后续联合候选完整CI。
+
+与最新main `5f5dbe4e4063c6df1c623344aaa67ae4b4e838c0` 无冲突整合后，`c7af5cebb89af3607fa4a99b792294cf1f693096` 本机真实PG3、原业务4项23.9秒、20次手机启动24.4秒通过，固定Standards/Spec各0项P0/P1/P2。共享根目录的用户修改未纳入。
+
+用户在“推动建工智管真实上线”任务明确批准本次协调和统一验收上线。经读取并核对PR335准确差异，联合候选保留来源提交 `4904d4fa2236a9a94f2d65297f79f6c54ca3bfd5`，仅增加模板弹窗就绪与取消后隐藏断言及该任务证据；详见[模板验收补强](2026-10-17-template-browser-readiness.md)。原PR335的失败CI没有改写为通过，其内容是否被替代由上线任务在合并后核对。
+
+**最终交付回执保存在[PR331](https://github.com/1131096740/intelligent-construction-management/pull/331)及[Issue332](https://github.com/1131096740/intelligent-construction-management/issues/332)：登记最终固定候选SHA、双轴结果、完整CI链接、准确合并SHA与main CI结果。** 文档形成的新提交必须重新运行CI；不拿本文引用的旧候选收据替代。此处记录进入最终验收前已验证的事实，实际合并状态以该回执为准。
+
+本任务没有新的生产部署、生产迁移、人员权限或真实业务数据写入。SSH发布与回滚边界仍见独立记录；最终联合main的完整17门及生产发布由已授权上线任务串行执行。
+
 ## 关闭条件
 
 1. 捕获与原CI相同的失败路径及阶段，证明触发机制；相似的模块挂起不能替代。
