@@ -46,7 +46,8 @@ try {
     REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     GRANT INSERT, UPDATE, DELETE ON TABLE public."User", public."UserPosition", public."Position", public."Department",
       public."Project", public."ProjectMember", public."ProjectRosterMember", public."RefreshToken", public."AuditLog",
-      public."ApprovalInstance", public."ProjectExpenseRequest" TO ${runtime};
+      public."ApprovalInstance", public."ProjectExpenseRequest", public."Contract", public."ContractVersion", public."ApprovalDelegation" TO ${runtime};
+    GRANT INSERT ON TABLE public."ApprovalActionLog" TO ${runtime};
   `], process.env, true);
   const before = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc",
     `SELECT has_table_privilege('${runtime}', 'public."AuthRateLimit"', 'DELETE');`], process.env, true);

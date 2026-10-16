@@ -29,9 +29,9 @@
     "pendingFiles": 64,
     "fullyPendingSuites": 53,
     "partiallyPendingSuites": 11,
-    "pendingTests": 333,
+    "pendingTests": 334,
     "coveredFiles": 64,
-    "coveredTests": 333,
+    "coveredTests": 334,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -541,7 +541,7 @@
     },
     {
       "id": "employee_onboarding",
-      "pendingTests": 19,
+      "pendingTests": 20,
       "testFiles": [
         {
           "path": "services/api/src/database/employee-onboarding-http-postgres.spec.ts",
@@ -550,7 +550,7 @@
         },
         {
           "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
-          "pendingTests": 7,
+          "pendingTests": 8,
           "suiteStatus": "fully_pending"
         }
       ],

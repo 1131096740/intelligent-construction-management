@@ -232,9 +232,9 @@ test("manifest derives all 326 pending tests as executable local coverage", () =
     pendingFiles: 64,
     fullyPendingSuites: 53,
     partiallyPendingSuites: 11,
-    pendingTests: 333,
+    pendingTests: 334,
     coveredFiles: 64,
-    coveredTests: 333,
+    coveredTests: 334,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -616,7 +616,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=333/u
+    /inventory\.coveredTests=26，派生值=334/u
   );
 });
 

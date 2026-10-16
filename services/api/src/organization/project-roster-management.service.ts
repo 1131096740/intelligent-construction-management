@@ -101,19 +101,23 @@ export class ProjectRosterManagementService {
           operation: "remove" as const, scope: "project" as const, userId: row.userId, projectId: row.projectId, roleKey: row.positionKey as RoleKey
         })) }) : null;
     if (batch && !batch.canApply) {
-      blockingReasons.push("调出会导致待办审批无人办理或岗位关系异常，请先完成交接或安排接替人员");
+      blockingReasons.push("调出会导致待办审批无人办理或岗位关系异常，请先完成现有审批交接后再调出");
     }
+    const departure = input.operation === "leave"
+      ? await this.impacts.evaluateProjectRosterDeparture(tx, input.projectId, input.userId) : null;
+    if (departure?.indirectApprovalIds.length) blockingReasons.push("该人员还有本项目的转审或委托待办，请先办完任务或完成相应交接后再调出");
     const globalRoleKeys = assignments.filter((row) => row.projectId === null)
       .map((row) => positions.find((position) => position.id === row.positionId)?.key as RoleKey);
     const projectRoleKeys = members.map((row) => row.positionKey as RoleKey);
     const change = { operation: input.operation, projectId: input.projectId, userId: input.userId, reason: input.reason.trim() };
     const snapshotHash = `sha256:${createHash("sha256").update(JSON.stringify({ change, project, person, roster, members, assignments,
-      batchHash: batch?.combinedSnapshotHash ?? null })).digest("hex")}`;
+      batchHash: batch?.combinedSnapshotHash ?? null, departureHash: departure?.snapshotHash ?? null })).digest("hex")}`;
     return {
       ...change, projectName: project.name, personName: person.name, snapshotHash,
       canApply: blockingReasons.length === 0, blockingReasons, projectRoleKeys,
       projectRoleNames: projectRoleKeys.map((role) => positions.find((position) => position.key === role)?.name ?? "待核对岗位"),
-      affectedApprovals: new Set(batch?.steps.flatMap((step) => step.impacts.map((impact) => impact.approvalInstanceId)) ?? []).size,
+      affectedApprovals: new Set([...(batch?.steps.flatMap((step) => step.impacts.map((impact) => impact.approvalInstanceId)) ?? []),
+        ...(departure?.indirectApprovalIds ?? [])]).size,
       retainsGlobalAccess: globalRoleKeys.some((role) => GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(role))
     };
   }

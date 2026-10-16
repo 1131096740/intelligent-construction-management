@@ -4,6 +4,7 @@ import * as bcrypt from "bcryptjs";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { AppModule } from "../app.module";
+import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { PrismaService } from "./prisma.service";
 
@@ -61,6 +62,7 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     }
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
+    app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
     await app.listen(0, "127.0.0.1");
     base = await app.getUrl();
@@ -164,7 +166,7 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     expect((await request("/organization/project-roster/preview", manager.token, body)).body.canApply).toBe(false);
   });
 
-  it("新增待办使旧预览失效，唯一项目经理需先交接，接替后可调出且待办保留", async () => {
+  it("新增冻结待办使旧预览失效，后来同岗人员不能接手旧单，撤回交接后可调出", async () => {
     const db = app.get(PrismaService);
     const chairman = await person("chairman");
     const employee = await person();
@@ -178,19 +180,95 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     const expense = await db.projectExpenseRequest.create({ data: { projectId: projectRow.id, code: `ROSTER-EXP-${sequence++}`,
       expenseType: "comprehensive_expense", expenseSubtype: "travel", paymentSubject: "合成费用", reason: "仅隔离测试",
       requestedAmountCents: 100n, paymentMethod: "bank_transfer", handlerUserId: applicant.id, applicantUserId: applicant.id, status: "approval_pending" } });
-    const approval = await db.approvalInstance.create({ data: { flowType: "project_expense", businessType: "project_expense_request",
+    const approval = await db.approvalInstance.create({ data: { flowType: "project_expense.approve", businessType: "project_expense_request",
       businessId: expense.id, status: "in_progress", currentNodeIndex: 0, applicantUserId: applicant.id,
-      frozenNodes: [{ name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }] } });
+      // 已退役入口的历史冻结单，保持真实候选结构；后续通过实际审批/撤回 HTTP 核验。
+      frozenNodes: [{ name: "项目经理审批", mode: "any", roleKeys: ["project_manager"],
+        candidateUserIds: [employee.id], candidateUserIdsByRole: { project_manager: [employee.id] } }] } });
     expect((await apply(chairman.token, body, oldPreview.body.snapshotHash)).status).toBe(409);
     const blocked = await request("/organization/project-roster/preview", chairman.token, body);
     expect(blocked.body).toMatchObject({ canApply: false, affectedApprovals: 1 });
     expect((await apply(chairman.token, body, blocked.body.snapshotHash)).status).toBe(409);
     await assign(successor.id, projectRow.id, "project_manager");
+    const version = { expectedExpenseUpdatedAt: expense.updatedAt.toISOString(), expectedApprovalInstanceId: approval.id,
+      expectedNodeIndex: 0, expectedApprovalUpdatedAt: approval.updatedAt.toISOString() };
+    expect((await request(`/projects/${projectRow.id}/expense-requests/${expense.id}/approval`, successor.token,
+      { ...version, decision: "reject", comment: "合成交接验证" })).status).toBe(403);
+    const stillBlocked = await request("/organization/project-roster/preview", chairman.token, body);
+    expect(stillBlocked.body).toMatchObject({ canApply: false, affectedApprovals: 1 });
+    expect((await apply(chairman.token, body, stillBlocked.body.snapshotHash)).status).toBe(409);
+    expect((await request(`/projects/${projectRow.id}/expense-requests/${expense.id}/approval-withdrawal`, applicant.token, version)).status).toBe(201);
     const ready = await request("/organization/project-roster/preview", chairman.token, body);
     expect(ready.body.canApply).toBe(true);
     expect((await apply(chairman.token, body, ready.body.snapshotHash)).status).toBe(201);
-    expect(await db.approvalInstance.findUnique({ where: { id: approval.id } })).toMatchObject({ status: "in_progress", businessId: expense.id });
+    expect(await db.approvalInstance.findUnique({ where: { id: approval.id } })).toMatchObject({ status: "withdrawn", businessId: expense.id });
     expect(await db.auditLog.count({ where: { actorUserId: chairman.id, action: "project.roster.leave", businessId: projectRow.id } })).toBe(1);
+  });
+
+  it("本项目未交接转审和后续节点委托阻止调出，交接或到期后只移除本项目关系", async () => {
+    const db = app.get(PrismaService);
+    const chairman = await person("chairman");
+    const manager = await person("comprehensive_director");
+    for (const kind of ["transfer", "delegation"] as const) {
+      const employee = await person();
+      const approver = await person();
+      const successor = await person();
+      const applicant = await person();
+      const first = await project();
+      const second = await project();
+      // 覆盖只有花名册关系和持普通项目岗位两种情况。
+      if (kind === "transfer") await db.projectRosterMember.create({ data: { projectId: first.id, userId: employee.id } });
+      else await assign(employee.id, first.id, "employee");
+      await assign(employee.id, second.id, "employee");
+      await assign(approver.id, first.id, "project_manager");
+      await assign(approver.id, second.id, "project_manager");
+      const pendingContract = async (projectId: string, otherProject: boolean) => {
+        const contract = await db.contract.create({ data: { projectId, name: "合成交接合同", counterparty: "合成单位" } });
+        const version = await db.contractVersion.create({ data: { contractId: contract.id, versionNo: 1,
+          changeType: "original", status: "in_approval", amountCents: 100n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} } });
+        const managerNode = { name: "项目经理", mode: "any", roleKeys: ["project_manager"],
+          candidateUserIdsByRole: { project_manager: [approver.id] }, roleScopesByRole: { project_manager: "project" },
+          assignments: otherProject ? [{ kind: "transfer", fromUserId: approver.id, fromRoleKey: "project_manager", toUserId: employee.id }] : [] };
+        const nodes = kind === "delegation" && !otherProject
+          ? [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman"], candidateUserIdsByRole: { chairman: [chairman.id] },
+              roleScopesByRole: { chairman: "global" } }, managerNode] : [managerNode];
+        const approval = await db.approvalInstance.create({ data: { flowType: "contract.approve", businessType: "contract_version",
+          businessId: version.id, status: "in_progress", currentNodeIndex: 0, applicantUserId: applicant.id, frozenNodes: nodes } });
+        return { version, approval };
+      };
+      const own = await pendingContract(first.id, false);
+      const other = await pendingContract(second.id, true);
+      const body = { operation: "leave", projectId: first.id, userId: employee.id, reason: "合成项目交接" };
+      const before = await request("/organization/project-roster/preview", manager.token, body);
+      expect(before.body.canApply).toBe(true);
+      let delegationId: string | undefined;
+      if (kind === "transfer") {
+        expect((await request(`/contracts/${own.version.id}/approval-transfer`, approver.token, { toUserId: employee.id })).status).toBe(201);
+      } else {
+        // 通用委托新建/撤销入口已退役；构造仍受审批器认可的历史有效委托。
+        const delegation = await db.approvalDelegation.create({ data: { fromUserId: approver.id, toUserId: employee.id,
+          startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 3_600_000) } });
+        delegationId = delegation.id;
+      }
+      const blocked = await request("/organization/project-roster/preview", manager.token, body);
+      expect(blocked.body).toMatchObject({ canApply: false, affectedApprovals: 1 });
+      expect((await apply(manager.token, body, before.body.snapshotHash)).status).toBe(409);
+      expect((await apply(manager.token, body, blocked.body.snapshotHash)).status).toBe(409);
+      if (kind === "transfer") {
+        expect((await request(`/contracts/${own.version.id}/approval-transfer`, approver.token, { toUserId: successor.id })).status).toBe(201);
+      } else {
+        await db.approvalDelegation.update({ where: { id: delegationId }, data: { endsAt: new Date(Date.now() - 1000) } });
+      }
+      const ready = await request("/organization/project-roster/preview", manager.token, body);
+      expect(ready.body.canApply).toBe(true);
+      expect((await apply(manager.token, body, ready.body.snapshotHash)).status).toBe(201);
+      const roster = await request("/projects/roster", manager.token);
+      expect(roster.body.filter((row: { userId: string }) => row.userId === employee.id)).toEqual([
+        expect.objectContaining({ projectId: second.id })
+      ]);
+      expect((await db.approvalInstance.findUniqueOrThrow({ where: { id: other.approval.id } })).frozenNodes).toEqual(other.approval.frozenNodes);
+      if (delegationId) expect((await db.approvalDelegation.findUniqueOrThrow({ where: { id: delegationId } })).enabled).toBe(true);
+    }
   });
 
   it("人员停用、项目停用、旧任职关系及维护冻结均阻止写入", async () => {

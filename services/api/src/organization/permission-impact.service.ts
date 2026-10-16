@@ -8,7 +8,8 @@ import {
 } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
-import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
+import { isGovernedFrozenApprovalNode, resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
+import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import { PrismaService } from "../database/prisma.service";
 import type { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
 import type { PreviewRoleRemovalBatchDto } from "./dto/preview-role-removal-batch.dto";
@@ -380,6 +381,54 @@ export class PermissionImpactService {
       simulatedTargets: evaluatedSteps.length,
       blockingTarget: firstBlockingStep?.preview.change ?? null,
       steps: evaluatedSteps.map((step, sequence) => ({ sequence, ...step.preview }))
+    };
+  }
+
+  async evaluateProjectRosterDeparture(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    userId: string,
+    evaluatedAt = new Date()
+  ) {
+    const instances = await tx.approvalInstance.findMany({
+      where: { status: "in_progress", businessType: { in: LEGACY_BUSINESS_TYPES.filter(supportsIndirectApproval) } },
+      select: { id: true, businessType: true, businessId: true, applicantUserId: true, currentNodeIndex: true, frozenNodes: true },
+      orderBy: { id: "asc" }
+    });
+    const relevant = (await this.mapApprovalProjects(tx, instances)).filter((row) => row.projectId === projectId);
+    const delegatorIds = await activeApprovalDelegatorIds(tx, userId, evaluatedAt);
+    const actorIds = [userId, ...delegatorIds];
+    const [users, positions, userPositions, projectMembers] = await Promise.all([
+      tx.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, isActive: true }, orderBy: { id: "asc" } }),
+      tx.position.findMany({ select: { id: true, key: true }, orderBy: { id: "asc" } }),
+      tx.userPosition.findMany({ where: { userId: { in: actorIds }, OR: [{ projectId: null }, { projectId }] },
+        select: { id: true, userId: true, positionId: true, projectId: true }, orderBy: { id: "asc" } }),
+      tx.projectMember.findMany({ where: { projectId, userId: { in: actorIds } },
+        select: { id: true, userId: true, projectId: true, positionKey: true }, orderBy: { id: "asc" } })
+    ]);
+    const facts = buildDirectFacts(users, positions,
+      userPositions.filter((row) => row.userId !== userId || row.projectId !== projectId),
+      projectMembers.filter((row) => row.userId !== userId));
+    const activeDelegators = delegatorIds.map((id) => {
+      const roleScopes = approvalActorScopes(facts, projectId, id);
+      return { userId: id, roleKeys: [...roleScopes.globalRoleKeys, ...roleScopes.projectRoleKeys], roleScopes };
+    });
+    const indirectApprovalIds = new Set<string>();
+    for (const instance of relevant) {
+      if (!Array.isArray(instance.frozenNodes)) continue;
+      for (const node of instance.frozenNodes.slice(instance.currentNodeIndex)) {
+        if (!isRecord(node)) continue;
+        // 只检测调出后仍存在的转审/委托职责；公司直接岗位另行保留并在预览说明。
+        const identity = resolveApprovalReviewIdentity({
+          node, actorUserId: userId, actorRoleKeys: [], actorRoleScopes: { globalRoleKeys: [], projectRoleKeys: [] },
+          activeDelegators, legacyContractRoute: instance.businessType === "contract_version"
+        });
+        if (identity && (identity.viaAssignment || identity.representedUserId !== userId)) indirectApprovalIds.add(instance.id);
+      }
+    }
+    return {
+      indirectApprovalIds: [...indirectApprovalIds],
+      snapshotHash: hashSnapshot({ projectId, userId, instances: relevant, users, positions, userPositions, projectMembers, delegatorIds: stableText(delegatorIds) })
     };
   }
 
@@ -1224,19 +1273,25 @@ function directUsersForRole(facts: DirectFacts, projectId: string | null, roleKe
   ]);
 }
 
+function approvalActorScopes(facts: DirectFacts, projectId: string | null, userId: string) {
+  return {
+    globalRoleKeys: ROLE_KEYS.filter((role) => facts.usersByGlobalRole.get(role)?.has(userId)),
+    projectRoleKeys: ROLE_KEYS.filter((role) => facts.usersByProjectAndRole.get(`${projectId}\u0000${role}`)?.has(userId))
+  };
+}
+
 function usesProcurementFrozenCandidates(businessType: string) {
   return businessType === "general_procurement" || businessType === "expense_claim";
 }
 
 function directUsersForApprovalRole(facts: DirectFacts, instance: MappedApprovalInstance, roleKey: RoleKey) {
   const candidates = directUsersForRole(facts, instance.projectId, roleKey);
-  if (!usesProcurementFrozenCandidates(instance.businessType)) return candidates;
   const node = Array.isArray(instance.frozenNodes) ? instance.frozenNodes[instance.currentNodeIndex] : null;
+  if (!usesProcurementFrozenCandidates(instance.businessType) && !isGovernedFrozenApprovalNode(node)) return candidates;
   if (!isRecord(node)) return [];
   return candidates.filter((userId) => {
-    const globalRoleKeys = ROLE_KEYS.filter((role) => facts.usersByGlobalRole.get(role)?.has(userId));
-    const projectRoleKeys = ROLE_KEYS.filter((role) => facts.usersByProjectAndRole.get(`${instance.projectId}\u0000${role}`)?.has(userId));
-    const identity = resolveApprovalReviewIdentity({ node: node as FrozenApprovalNode, actorUserId: userId, actorRoleKeys: [...globalRoleKeys, ...projectRoleKeys], actorRoleScopes: { globalRoleKeys, projectRoleKeys } });
+    const { globalRoleKeys, projectRoleKeys } = approvalActorScopes(facts, instance.projectId, userId);
+    const identity = resolveApprovalReviewIdentity({ node: node as FrozenApprovalNode, actorUserId: userId, actorRoleKeys: [...globalRoleKeys, ...projectRoleKeys], actorRoleScopes: { globalRoleKeys, projectRoleKeys }, legacyContractRoute: instance.businessType === "contract_version" });
     return identity?.approvedRoleKey === roleKey && !identity.viaAssignment;
   });
 }
