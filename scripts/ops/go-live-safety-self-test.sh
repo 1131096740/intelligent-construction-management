@@ -931,44 +931,57 @@ run_deploy_fixture "$manual_confirmation_fixture" env \
 
 # Exercise the real server entry point with its SSH output pipes closed while
 # awaiting a decision. Network peers and production services are fixture adapters.
-for disconnect_decision in CONFIRM ROLLBACK TIMEOUT WRONG_SHA; do
-  disconnect_fixture="$TEST_ROOT/deploy-disconnected-$disconnect_decision"
-  make_deploy_fixture "$disconnect_fixture"
-  DEPLOY_FIXTURE_ENTRY="$SCRIPT_DIR/deploy-production-session.sh" \
-  run_deploy_fixture "$disconnect_fixture" env \
-    DEPLOY_SESSION_ROOT="$disconnect_fixture/sessions" \
-    DEPLOY_CONFIRMATION_MODE=manual \
-    DEPLOY_CONFIRMATION_DIR="$disconnect_fixture" \
-    DEPLOY_CONFIRMATION_FILE="$disconnect_fixture/decision" \
-    DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=6 \
-    DISCONNECT_DECISION="$disconnect_decision" \
-    FAKE_RUNTIME_HEALTH_ALLOW_NEW=true \
-    FAKE_REAL_SLEEP=true \
-    FAKE_NEW_BUILD_FILE=true \
-    python3 "$SCRIPT_DIR/deploy-disconnect-test.py"
-  if [[ "$disconnect_decision" == CONFIRM ]]; then
-    expected_api=new-api-release
-    expected_web=new-web-release
-    [[ "$(file_mode "$disconnect_fixture/runtime/api")" == 755 ]] ||
-      fail "session changed API runtime traversal permissions"
-    [[ "$(file_mode "$disconnect_fixture/runtime/web-admin")" == 755 ]] ||
-      fail "session changed Web runtime traversal permissions"
-    [[ "$(file_mode "$disconnect_fixture/runtime/web-admin/dist/new-static.txt")" == 644 ]] ||
-      fail "session changed newly built static asset read permissions"
-    assert_file "$disconnect_fixture/systemd/jiangkong-draft-retention.service"
-    assert_file "$disconnect_fixture/systemd/jiangkong-draft-retention.timer"
-    assert_file "$disconnect_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.service"
-    assert_file "$disconnect_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer"
-  else
-    expected_api=old-api
-    expected_web=old-web
-  fi
-  [[ "$(< "$disconnect_fixture/runtime/api/dist/release.txt")" == "$expected_api" ]] ||
-    fail "disconnected $disconnect_decision left an incorrect API runtime"
-  [[ "$(< "$disconnect_fixture/runtime/web-admin/dist/release.txt")" == "$expected_web" ]] ||
-    fail "disconnected $disconnect_decision left an incorrect Web runtime"
-  [[ -z "$(ls -A "$disconnect_fixture/staging-parent")" && -z "$(ls -A "$disconnect_fixture/rollback-parent")" ]] ||
-    fail "disconnected deployment did not complete staging/snapshot cleanup"
+# The full release gate deliberately runs with umask 077. Each scenario owns
+# its mask so these exact permission assertions test preservation, not the caller
+# of this suite. A subshell keeps the release gate and other fixtures private.
+for disconnect_umask in 022 002; do
+  (
+    umask "$disconnect_umask"
+    case "$disconnect_umask" in
+      022) expected_runtime_mode=755; expected_asset_mode=644 ;;
+      002) expected_runtime_mode=775; expected_asset_mode=664 ;;
+    esac
+    for disconnect_decision in CONFIRM ROLLBACK TIMEOUT WRONG_SHA; do
+      disconnect_fixture="$TEST_ROOT/deploy-disconnected-$disconnect_umask-$disconnect_decision"
+      make_deploy_fixture "$disconnect_fixture"
+      DEPLOY_FIXTURE_ENTRY="$SCRIPT_DIR/deploy-production-session.sh" \
+      run_deploy_fixture "$disconnect_fixture" env \
+        DEPLOY_SESSION_ROOT="$disconnect_fixture/sessions" \
+        DEPLOY_CONFIRMATION_MODE=manual \
+        DEPLOY_CONFIRMATION_DIR="$disconnect_fixture" \
+        DEPLOY_CONFIRMATION_FILE="$disconnect_fixture/decision" \
+        DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=6 \
+        DISCONNECT_DECISION="$disconnect_decision" \
+        FAKE_RUNTIME_HEALTH_ALLOW_NEW=true \
+        FAKE_REAL_SLEEP=true \
+        FAKE_NEW_BUILD_FILE=true \
+        python3 "$SCRIPT_DIR/deploy-disconnect-test.py"
+      if [[ "$disconnect_decision" == CONFIRM ]]; then
+        expected_api=new-api-release
+        expected_web=new-web-release
+        [[ "$(file_mode "$disconnect_fixture/runtime/api")" == "$expected_runtime_mode" ]] ||
+          fail "session changed API runtime traversal permissions"
+        [[ "$(file_mode "$disconnect_fixture/runtime/web-admin")" == "$expected_runtime_mode" ]] ||
+          fail "session changed Web runtime traversal permissions"
+        [[ "$(file_mode "$disconnect_fixture/runtime/web-admin/dist/new-static.txt")" == "$expected_asset_mode" ]] ||
+          fail "session changed newly built static asset read permissions"
+        assert_file "$disconnect_fixture/systemd/jiangkong-draft-retention.service"
+        assert_file "$disconnect_fixture/systemd/jiangkong-draft-retention.timer"
+        assert_file "$disconnect_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.service"
+        assert_file "$disconnect_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer"
+      else
+        expected_api=old-api
+        expected_web=old-web
+      fi
+      [[ "$(< "$disconnect_fixture/runtime/api/dist/release.txt")" == "$expected_api" ]] ||
+        fail "disconnected $disconnect_decision left an incorrect API runtime"
+      [[ "$(< "$disconnect_fixture/runtime/web-admin/dist/release.txt")" == "$expected_web" ]] ||
+        fail "disconnected $disconnect_decision left an incorrect Web runtime"
+      [[ -z "$(ls -A "$disconnect_fixture/staging-parent")" && -z "$(ls -A "$disconnect_fixture/rollback-parent")" ]] ||
+        fail "disconnected deployment did not complete staging/snapshot cleanup"
+      printf 'Disconnected %s with umask %s passed\n' "$disconnect_decision" "$disconnect_umask"
+    done
+  )
 done
 
 manual_rollback_fixture="$TEST_ROOT/deploy-manual-rollback"
