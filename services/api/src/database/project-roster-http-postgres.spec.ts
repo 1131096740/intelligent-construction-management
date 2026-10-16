@@ -205,6 +205,39 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     expect(await db.auditLog.count({ where: { actorUserId: chairman.id, action: "project.roster.leave", businessId: projectRow.id } })).toBe(1);
   });
 
+  it("普通借款的后续项目经理审批阻止调出，实际退回后可调出且保留单据", async () => {
+    const db = app.get(PrismaService);
+    const chairman = await person("chairman");
+    const director = await person("comprehensive_director");
+    await person("finance_director");
+    const manager = await person();
+    const applicant = await person();
+    const projectRow = await project();
+    const company = await db.companyEntity.create({ data: { name: "花名册合成借款公司", dataStatus: "complete" } });
+    await assign(manager.id, projectRow.id, "project_manager");
+    await db.projectRosterMember.create({ data: { projectId: projectRow.id, userId: applicant.id } });
+    const body = { operation: "leave", projectId: projectRow.id, userId: manager.id, reason: "普通费用审批交接" };
+    const oldPreview = await request("/organization/project-roster/preview", chairman.token, body);
+    expect(oldPreview.body.canApply).toBe(true);
+    const created = await request("/expense-claims", applicant.token, {
+      claimType: "loan", companyEntityId: company.id, projectId: projectRow.id, applicantUserId: applicant.id,
+      reason: "合成调出检查", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+    });
+    expect(created.status).toBe(201);
+    const claimId = created.body.id as string;
+    expect((await request(`/expense-claims/${claimId}/submission`, applicant.token, {})).status).toBe(201);
+    const blocked = await request("/organization/project-roster/preview", chairman.token, body);
+    expect(blocked.body).toMatchObject({ canApply: false, affectedApprovals: 1 });
+    expect((await apply(chairman.token, body, oldPreview.body.snapshotHash)).status).toBe(409);
+    expect((await apply(chairman.token, body, blocked.body.snapshotHash)).status).toBe(409);
+    expect((await request(`/expense-claims/${claimId}/approval`, director.token,
+      { decision: "reject", comment: "隔离交接回归" })).status).toBe(201);
+    const ready = await request("/organization/project-roster/preview", chairman.token, body);
+    expect(ready.body.canApply).toBe(true);
+    expect((await apply(chairman.token, body, ready.body.snapshotHash)).status).toBe(201);
+    expect(await db.expenseClaim.findUniqueOrThrow({ where: { id: claimId } })).toMatchObject({ status: "rejected", projectId: projectRow.id });
+  });
+
   it("本项目未交接转审和后续节点委托阻止调出，交接或到期后只移除本项目关系", async () => {
     const db = app.get(PrismaService);
     const chairman = await person("chairman");

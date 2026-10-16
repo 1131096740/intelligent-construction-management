@@ -980,9 +980,9 @@ export class PermissionImpactService {
     const contractVersionIds = ids("contract_version");
     const spotVersionIds = ids("spot_procurement_version");
     const spotPaymentIds = ids("spot_procurement_payment");
-    const [procurements, procurementPayments] = await Promise.all([
+    const [procurements, projectExpenseClaims] = await Promise.all([
       ids("general_procurement").length ? client.generalProcurement.findMany({ where: { id: { in: ids("general_procurement") } }, select: { id: true, projectId: true } }) : [],
-      ids("expense_claim").length ? client.expenseClaim.findMany({ where: { id: { in: ids("expense_claim") }, generalProcurementId: { not: null } }, select: { id: true, projectId: true } }) : []
+      ids("expense_claim").length ? client.expenseClaim.findMany({ where: { id: { in: ids("expense_claim") }, projectId: { not: null } }, select: { id: true, projectId: true } }) : []
     ]);
     const [contractVersions, settlements, payments, expenses, spotVersions, spotPayments] = (await Promise.all([
       client.contractVersion.findMany({
@@ -1047,7 +1047,7 @@ export class PermissionImpactService {
     }
     for (const [businessType, rows] of [
       ["general_procurement", procurements],
-      ["expense_claim", procurementPayments],
+      ["expense_claim", projectExpenseClaims],
       ["settlement", settlements],
       ["payment_request", payments],
       ["project_expense_request", expenses],
@@ -1060,8 +1060,8 @@ export class PermissionImpactService {
       if (projectId) projectByBusinessKey.set(`spot_procurement_version:${row.id}`, projectId);
     }
 
-    const procurementPaymentIds = new Set(procurementPayments.map((row) => row.id));
-    return instances.filter((instance) => instance.businessType !== "expense_claim" || procurementPaymentIds.has(instance.businessId)).map((instance) => ({
+    const projectExpenseClaimIds = new Set(projectExpenseClaims.map((row) => row.id));
+    return instances.filter((instance) => instance.businessType !== "expense_claim" || projectExpenseClaimIds.has(instance.businessId)).map((instance) => ({
       ...instance,
       projectId: projectByBusinessKey.get(`${instance.businessType}:${instance.businessId}`) ?? null,
       parsedNode: parseCurrentNode(instance)

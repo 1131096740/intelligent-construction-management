@@ -48,6 +48,9 @@ try {
       public."Project", public."ProjectMember", public."ProjectRosterMember", public."RefreshToken", public."AuditLog",
       public."ApprovalInstance", public."ProjectExpenseRequest", public."Contract", public."ContractVersion", public."ApprovalDelegation" TO ${runtime};
     GRANT INSERT ON TABLE public."ApprovalActionLog" TO ${runtime};
+    GRANT INSERT ON TABLE public."ExpenseClaimEntrySnapshot" TO ${runtime};
+    GRANT INSERT, UPDATE ON TABLE public."CompanyEntity", public."ExpenseClaim", public."BusinessDailySequence" TO ${runtime};
+    GRANT UPDATE ON TABLE public."ExpenseClaimAttachment" TO ${runtime};
   `], process.env, true);
   const before = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc",
     `SELECT has_table_privilege('${runtime}', 'public."AuthRateLimit"', 'DELETE');`], process.env, true);
