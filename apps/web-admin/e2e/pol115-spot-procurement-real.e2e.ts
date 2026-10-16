@@ -55,6 +55,22 @@ async function openRefundPayment(page: Page, paymentId: string) {
   expect(response.status()).toBe(200);
 }
 
+// 每项使用 Playwright 独立浏览器上下文，避免沿用上一项的会话或模块缓存。
+// 只读入口，业务写入仍由下面的原生命周期用例覆盖。
+for (let attempt = 1; attempt <= 5; attempt += 1) {
+  test(`零采入口连续冷启动 ${attempt} 保持会话并完成首页读取`, async ({ page }) => {
+    const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
+    await gotoWithSingleWebKitInternalErrorRetry(page, "/login");
+    await useSession(page, applicant);
+    const [response] = await Promise.all([
+      page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
+      gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
+    ]);
+    expect(response.status()).toBe(200);
+    await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
+  });
+}
+
 test("零采申请退回修订后完成两级审批，桌面与390窄屏回读冻结版本", async ({ page, context }, testInfo) => {
   const applicant = JSON.parse(process.env.POL115_BROWSER_SESSION!) as Session;
   const director = JSON.parse(process.env.POL115_SPOT_DIRECTOR_SESSION!) as Session;

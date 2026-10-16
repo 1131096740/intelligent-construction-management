@@ -541,7 +541,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     await new Promise<void>((done, reject) => {
       const env: NodeJS.ProcessEnv = { ...process.env, POL115_API_URL: baseUrl, POL115_BROWSER_SESSION: JSON.stringify(applicant), POL115_SPOT_DIRECTOR_SESSION: JSON.stringify(director), POL115_SPOT_MANAGER_SESSION: JSON.stringify(manager), POL115_SPOT_REFUND_SESSION: JSON.stringify(refundFinance), POL115_SPOT_PROJECT_IDS: JSON.stringify({ desktop: projectIds.desktop, mobile: projectIds.mobile }), POL115_SPOT_REFUND_COORDINATES: JSON.stringify(refundCoordinates), POL115_BROWSER_SPEC: "pol115-spot-procurement-real.e2e.ts" };
       delete env.JEST_WORKER_ID;
-      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts", "--grep", "(零采申请退回修订后完成两级审批|付款详情登记退款并回读)"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
+      const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts", "--grep", "(零采入口连续冷启动|零采申请退回修订后完成两级审批|付款详情登记退款并回读)"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
       child.on("error", reject);
       child.on("exit", (code) => code === 0 ? done() : reject(new Error("零采真实浏览器验证失败")));
     });
