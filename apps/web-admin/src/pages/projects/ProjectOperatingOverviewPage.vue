@@ -94,7 +94,7 @@
     </div>
 
     <div
-      v-if="loadingProjects || projectSwitching"
+      v-if="loadingProjects"
       class="message"
       role="status"
     >
