@@ -42,7 +42,7 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
   }
 
   async function project() {
-    return app.get(PrismaService).project.create({ data: { code: `ROSTER-${sequence}`, name: `花名册合成空项目${sequence++}` } });
+    return app.get(PrismaService).project.create({ data: { id: `legacy-roster-${sequence}`, code: `ROSTER-${sequence}`, name: `花名册合成空项目${sequence++}` } });
   }
 
   async function assign(userId: string, projectId: string, positionKey: string) {
