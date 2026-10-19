@@ -223,7 +223,7 @@ export class ContractTaxFactsService {
       }
       if (pristine) {
         const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
-          SELECT public.jg_delete_unsubmitted_tax_revision(${revision.id}, ${actorUserId}, ${expectedUpdatedAt}::timestamp) AS deleted
+          SELECT public.jg_delete_unsubmitted_tax_revision(${revision.id}, ${actorUserId}, (${expectedUpdatedAt}::timestamptz AT TIME ZONE 'UTC')) AS deleted
         `);
         if (!result?.deleted) throw new ConflictException("税务修订已进入复核或状态已变化，不能删除，请刷新后核对");
         return { id: revision.id, status: "deleted", deleted: true };

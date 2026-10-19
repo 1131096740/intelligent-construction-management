@@ -940,7 +940,7 @@ export class SpotProcurementPaymentService {
           }
         }
         const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
-          SELECT public.jg_delete_unsubmitted_spot_payment(${payment.id}, ${actorUserId}, ${expectedUpdatedAt}::timestamp, ${reason}) AS deleted
+          SELECT public.jg_delete_unsubmitted_spot_payment(${payment.id}, ${actorUserId}, (${expectedUpdatedAt}::timestamptz AT TIME ZONE 'UTC'), ${reason}) AS deleted
         `);
         if (!result?.deleted) throw new ConflictException("付款草稿已有审批或正式资金事实，不能删除，请刷新后核对");
         return { id: payment.id, procurementId: version.procurementId, status: "deleted", deleted: true };

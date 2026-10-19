@@ -792,7 +792,7 @@ export class ExpenseClaimService {
         if (!roles.includes(COMPREHENSIVE_ROLE)) throw new ForbiddenException("只有当前综合部主管可以办理代办草稿");
       }
       const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
-        SELECT public.jg_delete_unsubmitted_expense_claim(${claimId}, ${actorUserId}, ${new Date(expectedUpdatedAt)}::timestamp) AS deleted
+        SELECT public.jg_delete_unsubmitted_expense_claim(${claimId}, ${actorUserId}, (${new Date(expectedUpdatedAt)}::timestamptz AT TIME ZONE 'UTC')) AS deleted
       `);
       if (!result?.deleted) throw new ConflictException("只能删除从未提交审批的草稿；内容或状态已变化，请刷新后重试");
       return { id: claimId, deleted: true };

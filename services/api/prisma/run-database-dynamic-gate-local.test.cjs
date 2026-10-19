@@ -223,7 +223,7 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 412 pending tests as executable local coverage", () => {
+test("manifest derives all 451 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -232,9 +232,9 @@ test("manifest derives all 412 pending tests as executable local coverage", () =
     pendingFiles: 70,
     fullyPendingSuites: 59,
     partiallyPendingSuites: 11,
-    pendingTests: 412,
+    pendingTests: 451,
     coveredFiles: 70,
-    coveredTests: 412,
+    coveredTests: 451,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -299,7 +299,7 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
-test("canonical manifest executes all 114 entry tests including the template workbench", () => {
+test("canonical manifest executes all 153 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -307,7 +307,7 @@ test("canonical manifest executes all 114 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 114,
+    pendingTests: 153,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -341,7 +341,7 @@ test("canonical manifest executes all 114 entry tests including the template wor
       },
       {
         path: "services/api/src/database/draft-hard-deletion.pg.spec.ts",
-        pendingTests: 18,
+        pendingTests: 57,
         suiteStatus: "fully_pending"
       },
       {
@@ -615,7 +615,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=412/u
+    /inventory\.coveredTests=26，派生值=451/u
   );
 });
 
