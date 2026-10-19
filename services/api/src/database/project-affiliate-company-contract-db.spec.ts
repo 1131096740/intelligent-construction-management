@@ -28,6 +28,8 @@ import { AuditService } from "../audit/audit.service";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ProjectAffiliateCompanyContractService } from "../project/project-affiliate-company-contract.service";
 
 const TEST_DATABASE = "jiangkong_project_affiliate_company_contract_test";
@@ -78,11 +80,42 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
         })
       : new PrismaClient();
   const prisma = createTestClient();
+  let financeRuntime: PrismaClient;
 
   jest.setTimeout(15_000);
 
   afterAll(async () => {
+    await financeRuntime?.$disconnect();
     await prisma.$disconnect();
+  });
+
+  beforeAll(async () => {
+    const role = `finance_runtime_${randomUUID().replaceAll("-", "")}`;
+    const password = randomUUID();
+    await prisma.$executeRawUnsafe(`CREATE ROLE ${role} LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT`);
+    await prisma.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${role}`);
+    // Mirror the existing application table grants, preserving protected ledger boundaries.
+    await prisma.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${role}`);
+    await prisma.$executeRawUnsafe(`REVOKE ALL ON "OperatingLedgerWriteSecret", "OperatingLedgerWriteContext" FROM ${role}`);
+    await prisma.$executeRawUnsafe(`REVOKE INSERT, UPDATE, DELETE ON "OperatingFact", "OperatingImpactEntry", "ProjectParticipatingCompanyMutationFence" FROM ${role}`);
+    for (const signature of [
+      '"appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayload",TEXT,TEXT)',
+      '"appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayload",TEXT,TEXT)',
+      '"serializeProjectParticipatingCompanyMutation"(TEXT)'
+    ]) await prisma.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION public.${signature} TO ${role}`);
+    const grants = readFileSync(resolve(__dirname, "../../prisma/contract-finance-runtime-grants.sql"), "utf8");
+    await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT set_config('app.contract_finance_runtime_role', ${role}, true)`;
+      await tx.$executeRawUnsafe(grants.slice(grants.indexOf("DO $$"), grants.indexOf("COMMIT;")));
+    });
+    const url = new URL(databaseUrl!); url.username = role; url.password = password;
+    financeRuntime = new PrismaClient({datasources: {db: {url: url.toString()}}});
+    const [privileges] = await financeRuntime.$queryRaw<Array<{internal: boolean; legacy: boolean; entry: boolean; secret: boolean}>>`
+      SELECT has_function_privilege(current_user, 'public."authorizeOperatingLedgerWrite"(text,text)', 'EXECUTE') AS internal,
+      has_function_privilege(current_user, 'public.issue_contract_bank_holder(text,text,text,text,text)', 'EXECUTE') AS legacy,
+      has_function_privilege(current_user, 'public.issue_contract_bank_holder(text,text,text,text,text,text)', 'EXECUTE') AS entry,
+      has_table_privilege(current_user, 'public."OperatingLedgerWriteSecret"', 'SELECT') AS secret`;
+    expect(privileges).toEqual({internal: false, legacy: false, entry: true, secret: false});
   });
 
   it("公司互转真实PG：独立领导OR终审、两侧流水、在途、借款归还、自有资金与项目权限", async()=>{
@@ -97,8 +130,26 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     await prisma.project.update({where:{id:f.projectId},data:{operatingLedgerEffectiveDate:new Date("2026-07-01")}});
     await prisma.projectReceipt.create({data:{projectId:f.projectId,receivedAt:new Date("2026-08-01"),amountCents:100000n,payerName:"合成测试",sourceType:"other",voucherFileId:await file(),recordedByUserId:f.recorderId}});
     const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET!;await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;
-    const audit=new AuditService(),visibility=new ProjectVisibilityService(prisma as never),auth={confirmPassword:async(_a:string,p:string)=>{if(p!=="test-password")throw new BadRequestException("密码错误");}},ledger=new OperatingLedgerService(prisma as never),replay=new OperatingSourceReplayService(prisma as never,ledger,new OperatingSourceAdapterRegistry([new CompanyTransferOperatingSourceAdapter()]));
-    const service=new CompanyTransferService(prisma as never,visibility,auth as never,audit,new ProjectFundingAvailabilityService(),replay),reader=new CompanyTransferReadService(prisma as never,visibility),bankService=new ContractBankVerificationService(prisma as never,visibility,auth as never,audit);
+    const counts = async () => Promise.all([prisma.paymentExecutionPayerVerification.count(), prisma.verifiedBankTransactionObservation.count(), prisma.companyTransferEvent.count(), prisma.auditLog.count()]);
+    const beforeDenied = await counts();
+    await expect(financeRuntime.$queryRaw`SELECT public.issue_contract_bank_holder('missing',${f.directorId},'file','signature','hash','wrong-secret')`).rejects.toThrow("经营账写入授权上下文无效");
+    const observationPayload = JSON.stringify({createdByUserId: f.directorId});
+    const transferPayload = JSON.stringify({recordedByUserId: f.recorderId});
+    await expect(financeRuntime.$queryRaw`SELECT * FROM public.record_verified_bank_observation(${observationPayload}::jsonb,'wrong-secret')`).rejects.toThrow("经营账写入授权上下文无效");
+    await expect(financeRuntime.$queryRaw`SELECT * FROM public.append_company_transfer_event(${transferPayload}::jsonb,'wrong-secret')`).rejects.toThrow("经营账写入授权上下文无效");
+    const untrusted = `finance_untrusted_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$executeRawUnsafe(`CREATE ROLE ${untrusted} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT`);
+    for (const command of [
+      Prisma.sql`SELECT public.issue_contract_bank_holder('missing',${f.directorId},'file','signature','hash',${secret})`,
+      Prisma.sql`SELECT * FROM public.record_verified_bank_observation(${observationPayload}::jsonb,${secret})`,
+      Prisma.sql`SELECT * FROM public.append_company_transfer_event(${transferPayload}::jsonb,${secret})`
+    ]) await expect(prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SET LOCAL ROLE ${untrusted}`);
+      await tx.$queryRaw(command);
+    })).rejects.toThrow("permission denied for function");
+    expect(await counts()).toEqual(beforeDenied);
+    const audit=new AuditService(),visibility=new ProjectVisibilityService(financeRuntime as never),auth={confirmPassword:async(_a:string,p:string)=>{if(p!=="test-password")throw new BadRequestException("密码错误");}},ledger=new OperatingLedgerService(financeRuntime as never),replay=new OperatingSourceReplayService(financeRuntime as never,ledger,new OperatingSourceAdapterRegistry([new CompanyTransferOperatingSourceAdapter()]));
+    const service=new CompanyTransferService(financeRuntime as never,visibility,auth as never,audit,new ProjectFundingAvailabilityService(),replay),reader=new CompanyTransferReadService(financeRuntime as never,visibility),bankService=new ContractBankVerificationService(financeRuntime as never,visibility,auth as never,audit);
     const decision={action:"approve" as const,confirmationPassword:"test-password"};
     const request=async(kind:"storage"|"loan"|"repayment",amountCents:string,source=f.companyId,destination=b.companyId,projectId:string|null=f.projectId,originalTransferId?:string)=>service.create(f.recorderId,{kind,sourceCompanyId:source,destinationCompanyId:destination,sourceProjectId:projectId,destinationProjectId:projectId,sourceAccount:source===f.companyId?"6222000011111111":"6222000022222222",destinationAccount:destination===b.companyId?"6222000022222222":"6222000011111111",amountCents,reason:"隔离互转用途",evidenceFileId:await file(),confirmationPassword:"test-password",idempotencyKey:randomUUID(),originalTransferId});
     const bank=async(companyEntityId:string,direction:"inflow"|"outflow",amountCents:string,projectId:string|null=f.projectId,occurredAt="2026-08-20")=>{const accountNumber=companyEntityId===f.companyId?"6222000011111111":"6222000022222222";const r=await bankService.prepare(f.recorderId,{projectId,companyEntityId,accountNumber,bankReference:randomUUID(),direction,amountCents,occurredAt,evidenceFileId:await file(),reason:"隔离银行回单",idempotencyKey:randomUUID(),confirmationPassword:"test-password"});await bankService.decide(f.directorId,r.id,{decision:"confirm",accountNumber,holderEvidenceFileId:await file(f.directorId),confirmationPassword:"test-password"});return (await prisma.contractBankVerificationRequest.findUniqueOrThrow({where:{id:r.id}})).observationId!;};
@@ -157,6 +208,13 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     const sourceAdapter=new CompanyTransferOperatingSourceAdapter();
     for (const eventId of [exitPay.id,exitReceive.id]) await prisma.$transaction(async tx=>{const snapshot=await sourceAdapter.readSourceSnapshot(tx,{projectId:f.projectId,sourceType:"company_transfer_event",sourceBusinessId:eventId});const input=sourceAdapter.toOperatingFactInput(snapshot!).input;const materialized=await ledger.materializeSourceForComparisonInTransaction(tx,input);expect(materialized.input.occurredAt.toISOString().slice(0,10)).toBe("2026-10-15");});
     const repaid=(await reader.list(f.recorderId,{projectId:f.projectId})).rows.find(r=>r.id===exitedRepayment.id)!;expect(repaid).toMatchObject({receivedCents:"1000",inTransitCents:"0"});
+    for (const verified of await prisma.contractBankVerificationRequest.findMany({where: {recordedByUserId: f.recorderId, status: "confirmed"}})) {
+      expect(await prisma.auditLog.count({where: {businessId: verified.id, action: "contract.bank_verification.confirm", actorUserId: f.directorId}})).toBe(1);
+    }
+    for (const event of await prisma.companyTransferEvent.findMany({where: {recordedByUserId: {in: [f.recorderId, f.directorId]}}})) {
+      expect(await prisma.auditLog.count({where: {businessId: event.transferId, action: `company_transfer.${event.kind}`, actorUserId: event.recordedByUserId, metadata: {path: ["eventId"], equals: event.id}}})).toBe(1);
+    }
+
 
   },60000);
 

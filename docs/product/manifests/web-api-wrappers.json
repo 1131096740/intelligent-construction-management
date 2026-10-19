@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 348,
-    "reachableProductionModuleCount": 327
+    "productionModuleCount": 349,
+    "reachableProductionModuleCount": 328
   },
   "wrappers": [
     {
