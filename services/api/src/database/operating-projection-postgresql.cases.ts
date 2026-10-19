@@ -64,16 +64,19 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
     if (cases.has(title)) throw new Error(`重复的 POL-108 测试：${title}`);
     cases.set(title, [run, timeout]);
   }
-  let timingPhase: { name: string; started: number; queries: Record<string, { count: number; ms: number }> } | null = null;
+  let timingPhase: { name: string; started: number; cpuStarted: NodeJS.CpuUsage; queries: Record<string, { count: number; ms: number }> } | null = null;
   function startPhase(name: string) {
     finishPhase();
-    timingPhase = { name, started: performance.now(), queries: {} };
+    timingPhase = { name, started: performance.now(), cpuStarted: process.cpuUsage(), queries: {} };
   }
   function finishPhase() {
     if (!timingPhase) return;
     console.log("[pol108-timing] " + JSON.stringify({
       shard, phase: timingPhase.name, durationMs: Math.round(performance.now() - timingPhase.started),
-      queries: timingPhase.queries
+      processCpuMicros: process.cpuUsage(timingPhase.cpuStarted),
+      processMemoryBytes: process.memoryUsage(),
+      queries: Object.fromEntries(Object.entries(timingPhase.queries).map(([key, metric]) =>
+        [key, { count: metric.count, ms: Math.round(metric.ms * 1000) / 1000 }]))
     }));
     timingPhase = null;
   }
@@ -100,15 +103,19 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
     }
     const phase = timingPhase;
     const queryStarted = performance.now();
-    const result = await next(params);
-    if (phase) {
-      const key = sql.includes('appendOperatingImpactThroughService') ? "guardedImpactWrite"
-        : sql.includes('appendOperatingFactThroughService') ? "guardedFactWrite"
-          : `${params.model ?? "raw"}.${params.action}`;
-      const metric = phase.queries[key] ??= { count: 0, ms: 0 };
-      metric.count += 1;
-      metric.ms += Math.round(performance.now() - queryStarted);
-    }
+    const result = await next(params).finally(() => {
+      if (phase) {
+        const key = sql.includes('appendOperatingImpactThroughService') ? "guardedImpactWrite"
+          : sql.includes('appendOperatingFactThroughService') ? "guardedFactWrite"
+            : params.model === "OperatingImpactEntry" && params.action === "findUnique"
+              ? params.args?.where?.id ? "impact.createdAtReadback" : "impact.idempotencyLookup"
+              : `${params.model ?? "raw"}.${params.action}`;
+        const metric = phase.queries[key] ??= { count: 0, ms: 0 };
+        metric.count += 1;
+        // Accumulate sub-millisecond calls before rounding once at phase output.
+        metric.ms += performance.now() - queryStarted;
+      }
+    });
     if (capturedWorkBudgets && sql.includes('AS "workFactCount"')) {
       capturedWorkBudgets.push(...result);
     }
@@ -172,6 +179,7 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
   });
 
   beforeAll(async () => {
+    startPhase("suite.fixture");
     if (!process.env.DATABASE_URL || process.env.NODE_ENV === "production") {
       throw new Error("POL-108 PG16 测试必须连接非生产 disposable database");
     }
@@ -357,9 +365,11 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
       impacts: [impact("future-income", "confirmed_income", 9_999n, "increase")]
     });
     await createCurrentClearingRiskFixture();
+    finishPhase();
   });
 
   afterAll(async () => {
+    finishPhase();
     await prisma.$disconnect();
   });
 

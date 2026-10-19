@@ -146,6 +146,112 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     };
   }
 
+  (enabled ? it.each(["loan", "reimbursement", "incidental_expense"] as const) : it.skip.each(["loan", "reimbursement", "incidental_expense"] as const))("删除未提交草稿：%s 实体和明细彻底删除，审计保留", async claimType => {
+    const prisma = app.get(PrismaService);
+    const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
+    expect(created.status).toBe(201);
+    const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: created.body.id } });
+    const result = await request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: row.updatedAt.toISOString() });
+    expect(result).toMatchObject({ status: 201, body: { id: row.id } });
+    expect(await prisma.expenseClaim.findUnique({ where: { id: row.id } })).toBeNull();
+    expect(await prisma.expenseClaimLine.count({ where: { expenseClaimId: row.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { businessId: row.id, action: "expense_claim.draft.delete" } })).toBe(1);
+    expect((await request(`/expense-claims/${row.id}`)).status).toBe(404);
+  });
+
+  (enabled ? it : it.skip)("删除未提交草稿：拒绝他人、过期版本和已经提交的费用", async () => {
+    const prisma = app.get(PrismaService);
+    const created = await request("/expense-claims", selfInput(applicantUserId));
+    const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: created.body.id } });
+    const body = { expectedUpdatedAt: row.updatedAt.toISOString() };
+    expect((await request(`/expense-claims/${row.id}/draft-deletion`, body, financeToken)).status).toBe(403);
+    expect((await request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: "2000-01-01T00:00:00.000Z" })).status).toBe(409);
+    expect((await request(`/expense-claims/${row.id}/submission`, {})).status).toBe(201);
+    expect((await request(`/expense-claims/${row.id}/draft-deletion`, body)).status).toBe(409);
+    expect(await prisma.expenseClaim.count({ where: { id: row.id } })).toBe(1);
+  });
+
+  (enabled ? it : it.skip)("删除未提交草稿：综合采购删除和旧请求防复活", async () => {
+    const prisma = app.get(PrismaService);
+    const body = { projectId, companyEntityId, category: "office_supplies", reason: "删除草稿测试", requestedAmountCents: "100", requestKey: randomUUID() };
+    const created = await request("/general-procurements", body);
+    expect(created.status).toBe(201);
+    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 1 }, financeToken)).status).toBe(403);
+    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 2 })).status).toBe(409);
+    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 1 })).status).toBe(201);
+    expect(await prisma.generalProcurement.findUnique({ where: { id: created.body.id } })).toBeNull();
+    expect((await request("/general-procurements", body)).status).toBe(409);
+    expect(await prisma.auditLog.count({ where: { businessId: created.body.id, action: "general_procurement.draft.delete" } })).toBe(1);
+  });
+
+  (enabled ? it : it.skip)("删除未提交草稿：综合采购审批后即使退回也不能硬删除", async () => {
+    const created = await request("/general-procurements", { projectId, companyEntityId, category: "office_supplies", reason: "保留审批测试", requestedAmountCents: "100", requestKey: randomUUID() });
+    expect(created.status).toBe(201);
+    expect((await request(`/general-procurements/${created.body.id}/submission`, { revision: 1 })).status).toBe(201);
+    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 2 })).status).toBe(409);
+    const prisma = app.get(PrismaService);
+    await prisma.generalProcurement.update({ where: { id: created.body.id }, data: { status: "draft" } });
+    expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 2 })).status).toBe(409);
+  });
+
+  (enabled ? it : it.skip)("删除未提交草稿：附件关联删除，文件保留既有私有回收边界", async () => {
+    const prisma = app.get(PrismaService);
+    const created = await request("/expense-claims", selfInput(applicantUserId));
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成凭证.png");
+    const uploaded = await fetch(`${baseUrl}/expense-claims/${created.body.id}/draft-attachment-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form });
+    expect(uploaded.status).toBe(201);
+    const file = await uploaded.json() as { id: string };
+    expect((await request(`/expense-claims/${created.body.id}/attachments`, { fileId: file.id, category: "other" })).status).toBe(201);
+    const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: created.body.id } });
+    expect((await request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: row.updatedAt.toISOString() })).status).toBe(201);
+    expect(await prisma.expenseClaimAttachment.count({ where: { expenseClaimId: row.id } })).toBe(0);
+    expect(await prisma.fileObject.count({ where: { id: file.id } })).toBe(1);
+  });
+
+  (enabled ? it : it.skip)("删除未提交草稿：费用和采购的提交删除并发只能一个成功", async () => {
+    const prisma = app.get(PrismaService);
+    const expense = await request("/expense-claims", selfInput(applicantUserId));
+    const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: expense.body.id } });
+    const results = await Promise.all([
+      request(`/expense-claims/${row.id}/submission`, {}),
+      request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: row.updatedAt.toISOString() })
+    ]);
+    expect(results.filter(result => result.status === 201)).toHaveLength(1);
+    expect(results.filter(result => result.status >= 400 && result.status < 500)).toHaveLength(1);
+    const procurement = await request("/general-procurements", { projectId, companyEntityId, category: "office_supplies", reason: "并发删除验证", requestedAmountCents: "100", requestKey: randomUUID() });
+    const procurementResults = await Promise.all([
+      request(`/general-procurements/${procurement.body.id}/submission`, { revision: 1 }),
+      request(`/general-procurements/${procurement.body.id}/draft-deletion`, { revision: 1 })
+    ]);
+    expect(procurementResults.filter(result => result.status === 201)).toHaveLength(1);
+    expect(procurementResults.filter(result => result.status >= 400 && result.status < 500)).toHaveLength(1);
+  });
+
+  (enabled ? it : it.skip)("删除未提交草稿：受限数据库账号只可调用窄入口，不能直接删表", async () => {
+    const prisma = app.get(PrismaService);
+    const created = await request("/general-procurements", { projectId, companyEntityId, category: "office_supplies", reason: "受限删除验证", requestedAmountCents: "100", requestKey: randomUUID() });
+    const role = `draft_delete_${randomUUID().replaceAll("-", "")}`;
+    await prisma.$executeRawUnsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    try {
+      await prisma.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO "${role}"`);
+      await prisma.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_general_procurement(TEXT,TEXT,INTEGER), public.jg_delete_unsubmitted_expense_claim(TEXT,TEXT,TIMESTAMP) TO "${role}"`);
+      await expect(prisma.$transaction(async tx => {
+        await tx.$executeRawUnsafe(`SET LOCAL ROLE "${role}"`);
+        await tx.$executeRaw`DELETE FROM "GeneralProcurement" WHERE "id" = ${created.body.id}`;
+      })).rejects.toThrow();
+      await prisma.$transaction(async tx => {
+        await tx.$executeRawUnsafe(`SET LOCAL ROLE "${role}"`);
+        expect(await tx.$queryRaw`SELECT public.jg_delete_unsubmitted_general_procurement(${created.body.id}, ${financeSession.user.id}, 1) AS deleted`).toEqual([{ deleted: false }]);
+        expect(await tx.$queryRaw`SELECT public.jg_delete_unsubmitted_general_procurement(${created.body.id}, ${applicantUserId}, 1) AS deleted`).toEqual([{ deleted: true }]);
+      });
+      expect(await prisma.generalProcurement.count({ where: { id: created.body.id } })).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP OWNED BY "${role}"`);
+      await prisma.$executeRawUnsafe(`DROP ROLE "${role}"`);
+    }
+  });
+
   (enabled ? it : it.skip)("本人申请：保存后撤销项目归属，提交拒绝且保留未提交草稿", async () => {
     const prisma = app.get(PrismaService);
     const session = await selfAccount();

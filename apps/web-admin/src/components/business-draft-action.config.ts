@@ -31,7 +31,7 @@ export const businessDraftActionConfig: Readonly<Record<DraftLifecycleAction, Bu
     danger: true,
     requireReason: false,
     confirmText: "确认删除草稿",
-    description: "这份纯净草稿将结束，正式业务记录不受影响。"
+    description: "尚未提交且无正式资金事实的草稿将彻底删除，审计记录保留。"
   },
   abandon_application: {
     label: "放弃申请",

@@ -939,35 +939,12 @@ export class SpotProcurementPaymentService {
             });
           }
         }
-        const now = new Date();
-        const invalidated = await tx.spotProcurementPayment.updateMany({
-          where: {
-            id: payment.id,
-            status: "draft",
-            submittedAt: null,
-            invalidatedAt: null,
-            updatedAt: expectedUpdatedAt
-          },
-          data: { status: "invalidated", invalidatedAt: now, invalidatedByUserId: actorUserId, invalidatedReason: reason }
-        });
-        if (invalidated.count !== 1) {
-          throw new ConflictException("付款草稿状态已变化，请刷新后重试");
-        }
-        await this.audit.record(tx, {
-          actorUserId,
-          action: "spot_procurement.payment.draft.abandon",
-          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
-          businessId: payment.id,
-          metadata: { procurementId: version.procurementId, procurementVersionId: version.id, reason }
-        });
-        return this.paymentReadModel({
-          ...payment,
-          status: "invalidated",
-          invalidatedAt: now,
-          invalidatedByUserId: actorUserId,
-          invalidatedReason: reason,
-          updatedAt: now
-        });
+        const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+          SELECT public.jg_delete_unsubmitted_spot_payment(${payment.id}, ${actorUserId}, ${expectedUpdatedAt}::timestamp, ${reason}) AS deleted
+        `);
+        if (!result?.deleted) throw new ConflictException("付款草稿已有审批或正式资金事实，不能删除，请刷新后核对");
+        return { id: payment.id, procurementId: version.procurementId, status: "deleted", deleted: true };
+
       })
     );
   }
@@ -2889,6 +2866,41 @@ export class SpotProcurementPaymentService {
     return discrepancy.actualCostCentsSnapshot;
   }
 
+  private async nextPaymentCode(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payments: PaymentLockRow[]
+  ) {
+    // Call only under the existing procurement/version lock. Deletion audits remain
+    // after a draft disappears, so its business number must not be allocated again.
+    const prefix = `${version.procurementCode}-V${version.versionNo}-P`;
+    const current = payments.filter(payment => payment.procurementVersionId === version.id);
+    const deletionAudits = await tx.auditLog.findMany({
+      where: {
+        action: "spot_procurement.payment.draft.delete",
+        businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        metadata: { path: ["procurementId"], equals: version.procurementId }
+      },
+      select: { metadata: true }
+    });
+    const deletedCodes = deletionAudits.map(log => {
+      const metadata = log.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata) || typeof metadata.code !== "string") {
+        throw new ConflictException("付款编号审计不完整，请联系管理员核对后重试");
+      }
+      return metadata.code;
+    });
+    let highest = BigInt(current.length);
+    for (const code of [...current.map(payment => payment.code), ...deletedCodes]) {
+      if (!code.startsWith(prefix)) continue; // Other versions keep their own numbering.
+      const suffix = code.slice(prefix.length);
+      if (!/^[0-9]+$/.test(suffix)) throw new ConflictException("付款编号审计不完整，请联系管理员核对后重试");
+      const sequence = BigInt(suffix);
+      if (sequence > highest) highest = sequence;
+    }
+    return `${prefix}${String(highest + 1n).padStart(3, "0")}`;
+  }
+
   private async createDraftFromFacts(
     tx: Prisma.TransactionClient,
     version: VersionLockRow,
@@ -2918,16 +2930,13 @@ export class SpotProcurementPaymentService {
       sourcePaymentId: string;
     }
   ) {
-    const versionPaymentCount = existingPayments.filter(
-      (payment) => payment.procurementVersionId === version.id
-    ).length;
-    const suffix = String(versionPaymentCount + 1).padStart(3, "0");
+    const code = await this.nextPaymentCode(tx, version, existingPayments);
     return tx.spotProcurementPayment.create({
       data: {
         projectId: version.projectId,
         procurementId: version.procurementId,
         procurementVersionId: version.id,
-        code: `${version.procurementCode}-V${version.versionNo}-P${suffix}`,
+        code,
         status: "draft",
         settlementAmountCents: facts.settlementAmountCents,
         supplierBalanceAmountCents:
@@ -3075,16 +3084,13 @@ export class SpotProcurementPaymentService {
         "付款申请冻结事实不完整，不能退回修改"
       );
     }
-    const versionPaymentCount = payments.filter(
-      (payment) => payment.procurementVersionId === version.id
-    ).length;
-    const suffix = String(versionPaymentCount + 1).padStart(3, "0");
+    const code = await this.nextPaymentCode(tx, version, payments);
     const draft = await tx.spotProcurementPayment.create({
       data: {
         projectId: version.projectId,
         procurementId: version.procurementId,
         procurementVersionId: version.id,
-        code: `${version.procurementCode}-V${version.versionNo}-P${suffix}`,
+        code,
         status: "draft",
         settlementAmountCents: source.settlementAmountCents,
         supplierBalanceAmountCents:

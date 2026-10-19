@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -27,6 +28,7 @@ import { RequirePositions } from "../auth/decorators/require-positions.decorator
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTaxFactsService } from "../contract-tax-facts/contract-tax-facts.service";
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { FileService } from "../file/file.service";
 import {
   FileInterceptor,
@@ -194,10 +196,10 @@ export class ContractTakeoverController {
   uploadPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     if (!file) {
-      throw new Error("请选择要上传的资料文件");
+      throw new BadRequestException("请选择要上传的资料文件");
     }
     return this.files.uploadPrivateFile({
       originalName: normalizeUploadedOriginalName(file.originalname),
@@ -205,7 +207,7 @@ export class ContractTakeoverController {
       sizeBytes: file.size,
       uploadedByUserId: user.id,
       buffer: file.buffer,
-      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+      ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey })
     });
   }
 

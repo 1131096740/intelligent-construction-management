@@ -71,6 +71,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -121,7 +122,7 @@ async function loadWorkItems() {
   try {
     workItems.value = await fetchWorkItems();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "读取审批中心失败";
+    errorMessage.value = formatUnknownApiError(error, "读取审批中心失败");
   } finally {
     loading.value = false;
   }

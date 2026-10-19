@@ -97,7 +97,7 @@ describe("SettlementDraftService", () => {
         create: jest.fn(),
         findMany: jest.fn().mockResolvedValue([])
       },
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
+      $queryRaw: jest.fn().mockImplementation((query) => Promise.resolve(query.strings.join("").includes("jg_delete_unsubmitted_settlement") ? [{ deleted: true }] : [{ id: "locked" }])),
       ...overrides
     };
     const prisma = {
@@ -858,7 +858,7 @@ describe("SettlementDraftService", () => {
     expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
   });
 
-  it("abandons a pristine final-settlement draft and releases its active-draft occupancy", async () => {
+  it("deletes an unsubmitted final-settlement draft and releases its active-draft occupancy", async () => {
     const draft = {
       id: "draft-final",
       projectId: "project-1",
@@ -871,7 +871,7 @@ describe("SettlementDraftService", () => {
       submittedSettlementId: null,
       submittedAt: null
     };
-    const { tx, audit, service } = context({
+    const { tx, service } = context({
       settlementDraft: {
         findUnique: jest.fn().mockResolvedValue(draft),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -884,15 +884,11 @@ describe("SettlementDraftService", () => {
     });
 
     expect(result).toMatchObject({
-      status: "abandoned",
+      status: "deleted",
       releasedFinalSettlementOccupancy: true
     });
-    expect(tx.settlementDraft.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
-    }));
-    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
-      action: "settlement.draft.delete"
-    }));
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls.some(([query]) => query.strings.join("").includes("jg_delete_unsubmitted_settlement"))).toBe(true);
   });
 
   it.each([
@@ -952,7 +948,7 @@ describe("SettlementDraftService", () => {
     }
   );
 
-  it("keeps a draft in the application lifecycle after earlier signing evidence was invalidated", async () => {
+  it("keeps an unsubmitted draft deletable even with invalidated signing evidence", async () => {
     const draft = {
       id: "draft-1",
       projectId: "project-1",
@@ -982,10 +978,9 @@ describe("SettlementDraftService", () => {
 
     const result = await service.get("project-1", "draft-1", "owner-1");
 
-    expect(result.lifecycleKind).toBe("approval_draft");
+    expect(result.lifecycleKind).toBe("pristine_draft");
     expect(result.availableActions).toContainEqual(expect.objectContaining({
-      key: "abandon_application",
-      requiresComment: true
+      key: "delete_pristine_draft"
     }));
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
@@ -1102,7 +1097,7 @@ describe("SettlementDraftService", () => {
     ]);
   });
 
-  it("requires application abandonment when only historical signing evidence remains", async () => {
+  it("requires application abandonment when approval history remains", async () => {
     const draft = {
       id: "draft-1",
       projectId: "project-1",
@@ -1131,6 +1126,7 @@ describe("SettlementDraftService", () => {
         findUnique: jest.fn().mockResolvedValue(draft),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([{ id: "approval-1", businessType: "settlement_draft", businessId: "draft-1" }]) },
       settlementSignedDocument: {
         findMany,
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
@@ -1165,7 +1161,7 @@ describe("SettlementDraftService", () => {
     }));
   });
 
-  it("allows logical deletion when only a different formal settlement reuses the draft coordinate", async () => {
+  it("allows physical deletion when only a different formal settlement reuses the draft coordinate", async () => {
     const draft = {
       id: "draft-reused-code",
       projectId: "project-1",
@@ -1207,7 +1203,7 @@ describe("SettlementDraftService", () => {
         action: "delete_pristine_draft"
       }
     )).resolves.toMatchObject({
-      status: "abandoned",
+      status: "deleted",
       action: "delete_pristine_draft"
     });
 
@@ -1232,6 +1228,7 @@ describe("SettlementDraftService", () => {
         findUnique: jest.fn().mockResolvedValue(draft),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([{ id: "approval-1", businessType: "settlement_draft", businessId: "draft-1" }]) },
       settlementSignedDocument: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -1328,7 +1325,7 @@ describe("SettlementDraftService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("invalidates active line attachment bindings but preserves their rows and files", async () => {
+  it("deletes unsubmitted line bindings through the guarded transaction", async () => {
     const draft = {
       id: "draft-1",
       projectId: "project-1",
@@ -1361,14 +1358,8 @@ describe("SettlementDraftService", () => {
       action: "delete_pristine_draft"
     });
 
-    expect(tx.settlementLineAttachment.updateMany).toHaveBeenCalledWith({
-      where: {
-        settlementDraftLineId: { in: ["draft-line-1"] },
-        status: "active"
-      },
-      data: { status: "invalidated" }
-    });
-    expect((tx.settlementLineAttachment as Record<string, unknown>).deleteMany).toBeUndefined();
+    expect(tx.settlementLineAttachment.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls.some(([query]) => query.strings.join("").includes("jg_delete_unsubmitted_settlement"))).toBe(true);
     expect((tx.fileObject as Record<string, unknown>).deleteMany).toBeUndefined();
   });
 

@@ -17,6 +17,14 @@ BEGIN
   -- Existing owner defaults may have granted CRUD when this table was created.
   EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE public."GeneralProcurement" FROM %I', runtime_role);
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON TABLE public."GeneralProcurement" TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_general_procurement(TEXT,TEXT,INTEGER) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_expense_claim(TEXT,TEXT,TIMESTAMP) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_settlement(TEXT,TEXT,INTEGER) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_takeover(TEXT,TEXT,TIMESTAMP) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_spot_payment(TEXT,TEXT,TIMESTAMP,TEXT) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_spot_procurement(TEXT,TEXT) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_tax_revision(TEXT,TEXT,TIMESTAMP) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_operating_batch(TEXT,TEXT,TEXT,INTEGER) TO %I', runtime_role);
   IF NOT has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'SELECT')
     OR NOT has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'INSERT')
     OR NOT has_table_privilege(runtime_role, 'public."GeneralProcurement"', 'UPDATE')

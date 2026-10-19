@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 31,
-    "exportedFunctionCount": 630,
-    "transportWrapperCount": 608,
+    "exportedFunctionCount": 633,
+    "transportWrapperCount": 611,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 642,
+    "mainRequestBindingCount": 648,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 633,
-    "productionConsumerCount": 515,
+    "requestEdgeCount": 638,
+    "productionConsumerCount": 518,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 330,
-    "reachableProductionModuleCount": 309
+    "productionModuleCount": 332,
+    "reachableProductionModuleCount": 311
   },
   "wrappers": [
     {
@@ -10973,7 +10973,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 388,
           "method": "POST",
           "path": "/expense-claims/:param/payment-subject",
           "normalizedPath": "/expense-claims/:param/payment-subject",
@@ -11002,7 +11002,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 256,
+          "sourceLine": 257,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/append",
           "normalizedPath": "/expense-claims/:param/attachments/append",
@@ -11031,7 +11031,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 243,
+          "sourceLine": 244,
           "method": "POST",
           "path": "/expense-claims/:param/attachments",
           "normalizedPath": "/expense-claims/:param/attachments",
@@ -11060,7 +11060,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 439,
+          "sourceLine": 440,
           "method": "POST",
           "path": "/expense-claims/:param/repayments/:param/confirmation",
           "normalizedPath": "/expense-claims/:param/repayments/:param/confirmation",
@@ -11089,7 +11089,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 214,
+          "sourceLine": 215,
           "method": "POST",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -11112,6 +11112,48 @@
       "unreachableConsumers": []
     },
     {
+      "name": "deleteExpenseClaimDraft",
+      "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 283,
+          "method": "GET",
+          "path": "/expense-claims/:param/capability",
+          "normalizedPath": "/expense-claims/:param/capability",
+          "normalizedKey": "GET /expense-claims/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "deleteExpenseClaimDraft",
+              "fetchExpenseClaimActionCapability"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 454,
+          "method": "POST",
+          "path": "/expense-claims/:param/draft-deletion",
+          "normalizedPath": "/expense-claims/:param/draft-deletion",
+          "normalizedKey": "POST /expense-claims/:param/draft-deletion",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deleteExpenseClaimDraft"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchExpenseClaimActionCapability",
       "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
       "kind": "transport",
@@ -11119,7 +11161,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 282,
+          "sourceLine": 283,
           "method": "GET",
           "path": "/expense-claims/:param/capability",
           "normalizedPath": "/expense-claims/:param/capability",
@@ -11146,7 +11188,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 208,
+          "sourceLine": 209,
           "method": "GET",
           "path": "/expense-claims/create-options",
           "normalizedPath": "/expense-claims/create-options",
@@ -11175,7 +11217,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 276,
+          "sourceLine": 277,
           "method": "GET",
           "path": "/expense-claims/:param",
           "normalizedPath": "/expense-claims/:param",
@@ -11204,7 +11246,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 293,
+          "sourceLine": 294,
           "method": "GET",
           "path": "/expense-claims/:param/repayments/:param/capability",
           "normalizedPath": "/expense-claims/:param/repayments/:param/capability",
@@ -11231,7 +11273,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 202,
+          "sourceLine": 203,
           "method": "GET",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -11260,7 +11302,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 421,
+          "sourceLine": 422,
           "method": "POST",
           "path": "/expense-claims/:param/final-disbursement-pdf",
           "normalizedPath": "/expense-claims/:param/final-disbursement-pdf",
@@ -11289,7 +11331,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 415,
+          "sourceLine": 416,
           "method": "POST",
           "path": "/expense-claims/:param/final-payment-pdf",
           "normalizedPath": "/expense-claims/:param/final-payment-pdf",
@@ -11318,7 +11360,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 427,
+          "sourceLine": 428,
           "method": "POST",
           "path": "/expense-claims/:param/disbursements",
           "normalizedPath": "/expense-claims/:param/disbursements",
@@ -11347,7 +11389,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 433,
+          "sourceLine": 434,
           "method": "POST",
           "path": "/expense-claims/:param/repayments",
           "normalizedPath": "/expense-claims/:param/repayments",
@@ -11376,7 +11418,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 405,
+          "sourceLine": 406,
           "method": "POST",
           "path": "/expense-claims/:param/payments",
           "normalizedPath": "/expense-claims/:param/payments",
@@ -11405,7 +11447,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 266,
+          "sourceLine": 267,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/:param/removal",
           "normalizedPath": "/expense-claims/:param/attachments/:param/removal",
@@ -11434,7 +11476,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 445,
+          "sourceLine": 446,
           "method": "POST",
           "path": "/expense-claims/:param/repayments/:param/reversal",
           "normalizedPath": "/expense-claims/:param/repayments/:param/reversal",
@@ -11463,7 +11505,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 230,
+          "sourceLine": 231,
           "method": "POST",
           "path": "/expense-claims/:param/approval",
           "normalizedPath": "/expense-claims/:param/approval",
@@ -11492,7 +11534,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 224,
+          "sourceLine": 225,
           "method": "POST",
           "path": "/expense-claims/:param/submission",
           "normalizedPath": "/expense-claims/:param/submission",
@@ -11521,7 +11563,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 311,
+          "sourceLine": 312,
           "method": "POST",
           "path": "/expense-claims/:param/append-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/append-attachment-file-uploads",
@@ -11549,7 +11591,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 311,
+          "sourceLine": 312,
           "method": "POST",
           "path": "/expense-claims/:param/draft-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/draft-attachment-file-uploads",
@@ -11577,7 +11619,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 311,
+          "sourceLine": 312,
           "method": "POST",
           "path": "/expense-claims/:param/disbursement-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/disbursement-voucher-file-uploads",
@@ -11605,7 +11647,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 311,
+          "sourceLine": 312,
           "method": "POST",
           "path": "/expense-claims/:param/repayment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/repayment-voucher-file-uploads",
@@ -11633,7 +11675,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 311,
+          "sourceLine": 312,
           "method": "POST",
           "path": "/expense-claims/:param/payment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/payment-voucher-file-uploads",
@@ -12176,7 +12218,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12193,7 +12235,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/archive",
           "normalizedPath": "/general-procurements/:param/archive",
@@ -12223,7 +12265,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12239,7 +12281,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/payments/:param/cancellation",
           "normalizedPath": "/general-procurements/:param/payments/:param/cancellation",
@@ -12268,7 +12310,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/create-options",
           "normalizedPath": "/general-procurements/create-options",
@@ -12284,7 +12326,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements",
           "normalizedPath": "/general-procurements",
@@ -12306,6 +12348,53 @@
       "unreachableConsumers": []
     },
     {
+      "name": "deleteProcurementDraft",
+      "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 27,
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedPath": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "deleteProcurementDraft",
+              "mutate",
+              "fetchProcurementDetail",
+              "read"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 27,
+          "method": "POST",
+          "path": "/general-procurements/:param/draft-deletion",
+          "normalizedPath": "/general-procurements/:param/draft-deletion",
+          "normalizedKey": "POST /general-procurements/:param/draft-deletion",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deleteProcurementDraft",
+              "mutate",
+              "post",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchProcurementDetail",
       "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
       "kind": "transport",
@@ -12313,7 +12402,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12342,7 +12431,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements?:param",
           "normalizedPath": "/general-procurements",
@@ -12370,7 +12459,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/create-options",
           "normalizedPath": "/general-procurements/create-options",
@@ -12399,7 +12488,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12416,7 +12505,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/review",
           "normalizedPath": "/general-procurements/:param/review",
@@ -12446,7 +12535,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12463,7 +12552,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/submission",
           "normalizedPath": "/general-procurements/:param/submission",
@@ -12493,7 +12582,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12510,7 +12599,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/draft",
           "normalizedPath": "/general-procurements/:param/draft",
@@ -12540,7 +12629,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12556,7 +12645,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/archive-file-uploads",
           "normalizedPath": "/general-procurements/:param/archive-file-uploads",
@@ -12584,7 +12673,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -12601,7 +12690,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 26,
+          "sourceLine": 27,
           "method": "POST",
           "path": "/general-procurements/:param/withdrawal",
           "normalizedPath": "/general-procurements/:param/withdrawal",
@@ -13044,7 +13133,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 99,
+          "sourceLine": 100,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/:param/activation",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/activation",
@@ -13074,7 +13163,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 99,
+          "sourceLine": 100,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/:param/attachments",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/attachments",
@@ -13104,7 +13193,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 99,
+          "sourceLine": 100,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/:param/confirmations",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/confirmations",
@@ -13134,7 +13223,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 99,
+          "sourceLine": 100,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers",
           "normalizedPath": "/projects/:param/operating-takeovers",
@@ -13155,6 +13244,50 @@
       "unreachableConsumers": []
     },
     {
+      "name": "deleteOperatingTakeoverDraft",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 94,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/:param",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "deleteOperatingTakeoverDraft",
+              "fetchOperatingTakeoverDetail",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 100,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/draft-deletion",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/draft-deletion",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/draft-deletion",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deleteOperatingTakeoverDraft",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "downloadOperatingTakeoverTemplate",
       "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
       "kind": "transport",
@@ -13162,7 +13295,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 186,
+          "sourceLine": 188,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/workbook-template",
           "normalizedPath": "/projects/:param/operating-takeovers/workbook-template",
@@ -13189,7 +13322,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 93,
+          "sourceLine": 94,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/historical-financial/manifests",
           "normalizedPath": "/projects/:param/operating-takeovers/historical-financial/manifests",
@@ -13217,7 +13350,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 93,
+          "sourceLine": 94,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers",
           "normalizedPath": "/projects/:param/operating-takeovers",
@@ -13247,7 +13380,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 93,
+          "sourceLine": 94,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/capability",
           "normalizedPath": "/projects/:param/operating-takeovers/capability",
@@ -13275,7 +13408,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 93,
+          "sourceLine": 94,
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/:param",
           "normalizedPath": "/projects/:param/operating-takeovers/:param",
@@ -13303,7 +13436,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 99,
+          "sourceLine": 100,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/precheck",
           "normalizedPath": "/projects/:param/operating-takeovers/precheck",
@@ -13333,7 +13466,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 120,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/precheck-xlsx",
           "normalizedPath": "/projects/:param/operating-takeovers/precheck-xlsx",
@@ -13363,7 +13496,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 109,
+          "sourceLine": 110,
           "method": "PATCH",
           "path": "/projects/:param/operating-takeovers/:param/rows/:param",
           "normalizedPath": "/projects/:param/operating-takeovers/:param/rows/:param",
@@ -13393,7 +13526,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 119,
+          "sourceLine": 120,
           "method": "POST",
           "path": "/projects/:param/operating-takeovers/files",
           "normalizedPath": "/projects/:param/operating-takeovers/files",
@@ -15558,7 +15691,8 @@
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
       ],
       "unreachableConsumers": []
     },
@@ -19689,6 +19823,10 @@
         {
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "cancelProcurementPayment"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft"
         },
         {
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",

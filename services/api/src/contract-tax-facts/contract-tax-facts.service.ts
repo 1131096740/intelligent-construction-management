@@ -76,6 +76,17 @@ export class ContractTaxFactsService {
     actorUserId: string
   ) {
     return this.prisma.$transaction(async (tx) => {
+      // Follow takeover deletion's parent lock order before allocating on its version.
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "id" FROM "ContractTakeover"
+        WHERE "id" = ${takeoverId} AND "projectId" = ${projectId} FOR UPDATE
+      `);
+      await tx.$queryRaw(Prisma.sql`
+        SELECT version."id" FROM "ContractVersion" version
+        JOIN "ContractTakeover" takeover ON takeover."contractVersionId" = version."id"
+        WHERE takeover."id" = ${takeoverId} AND takeover."projectId" = ${projectId}
+        FOR UPDATE OF version
+      `);
       const context = await this.loadContext(tx, projectId, takeoverId);
       const candidate = await this.normalizeCandidate(
         tx,
@@ -106,12 +117,29 @@ export class ContractTaxFactsService {
         orderBy: { revisionNo: "desc" },
         select: { revisionNo: true }
       });
+      const deletedRevisions = await tx.auditLog.findMany({
+        where: {
+          action: "contract.tax_fact_revision.draft.delete",
+          businessType: "contract_tax_fact_revision",
+          metadata: { path: ["contractVersionId"], equals: context.version.id }
+        },
+        select: { metadata: true }
+      });
+      let lastRevisionNo = latest?.revisionNo ?? 0;
+      for (const deleted of deletedRevisions) {
+        const deletedNo = (deleted.metadata as Record<string, unknown>).revisionNo;
+        if (typeof deletedNo !== "number" || !Number.isSafeInteger(deletedNo) || deletedNo < 1) {
+          throw new ConflictException("税务修订历史编号异常，请联系管理员核对");
+        }
+        lastRevisionNo = Math.max(lastRevisionNo, deletedNo);
+      }
+      if (lastRevisionNo >= 2_147_483_647) throw new ConflictException("税务修订编号已达到上限，请联系管理员核对");
       const revision = await tx.contractTaxFactRevision.create({
         data: {
           projectId,
           contractId: context.contract.id,
           contractVersionId: context.version.id,
-          revisionNo: (latest?.revisionNo ?? 0) + 1,
+          revisionNo: lastRevisionNo + 1,
           kind: input.kind,
           status: "draft",
           invoiceType: candidate.invoiceType,
@@ -192,6 +220,13 @@ export class ContractTaxFactsService {
             ? "当前税务修订仍是纯净草稿，请刷新后使用“删除草稿”"
             : "当前税务修订已进入复核，只能放弃修订并保留历史"
         );
+      }
+      if (pristine) {
+        const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+          SELECT public.jg_delete_unsubmitted_tax_revision(${revision.id}, ${actorUserId}, ${expectedUpdatedAt}::timestamp) AS deleted
+        `);
+        if (!result?.deleted) throw new ConflictException("税务修订已进入复核或状态已变化，不能删除，请刷新后核对");
+        return { id: revision.id, status: "deleted", deleted: true };
       }
       const now = new Date();
       const updated = await tx.contractTaxFactRevision.updateMany({

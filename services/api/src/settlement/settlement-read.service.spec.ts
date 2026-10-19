@@ -1250,8 +1250,15 @@ describe("SettlementReadService", () => {
     const result = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
 
     expect(result.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 1, ended: 2 });
-    expect(result.rows[0]).toEqual(expect.objectContaining({ id: "d1", lifecycleKind: "approval_draft", revision: 2 }));
+    // 附件不代表已经发起审批；从未审批且无正式事实的草稿允许彻底删除。
+    expect(result.rows[0]).toEqual(expect.objectContaining({ id: "d1", lifecycleKind: "pristine_draft", revision: 2 }));
     expect(prisma.settlementDraft.findMany).toHaveBeenCalledTimes(1);
+    prisma.approvalInstance.findMany.mockResolvedValue([
+      { id: "draft-approval-1", businessType: "settlement_draft", businessId: "d1" }
+    ]);
+    const reviewedDrafts = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
+    expect(reviewedDrafts.rows[0]).toEqual(expect.objectContaining({ id: "d1", lifecycleKind: "approval_draft", revision: 2 }));
+    prisma.approvalInstance.findMany.mockResolvedValue([]);
     const ended = await service.lifecycleLedger("ended", 1, 20, ["p1"], "u1");
     expect(ended.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({

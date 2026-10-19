@@ -111,6 +111,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { fetchContractRelationshipLedger } from "../../api/contract-relationship-ledger.api";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
@@ -202,7 +203,7 @@ async function loadSearchIndex() {
     });
     message.value = "";
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "读取全局搜索数据失败";
+    loadError.value = formatUnknownApiError(error, "读取全局搜索数据失败");
   } finally {
     loading.value = false;
   }

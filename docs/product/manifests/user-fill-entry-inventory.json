@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 357,
+    "activeBusinessActionCount": 361,
     "technicalActionCount": 9,
-    "activeBindingCount": 411,
+    "activeBindingCount": 417,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -1960,6 +1960,23 @@
       "causalVerified": true
     },
     {
+      "id": "expense-claim.delete-draft",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "GET /expense-claims/:param/capability",
+        "POST /expense-claims/:param/draft-deletion"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "expense-claim.final-payment-pdf.generate",
       "status": "unified_candidate",
       "usage": "background",
@@ -2380,6 +2397,23 @@
       "causalVerified": true
     },
     {
+      "id": "general-procurement.delete-draft",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/draft-deletion"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "general-procurement.downloadPrivateFileByTicket",
       "status": "unified_candidate",
       "usage": "background",
@@ -2767,6 +2801,23 @@
         "POST /projects/:param/operating-takeovers"
       ],
       "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "operating-takeover.delete-draft",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /projects/:param/operating-takeovers/:param",
+        "POST /projects/:param/operating-takeovers/:param/draft-deletion"
+      ],
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -4579,10 +4630,9 @@
       "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
       "capabilityKind": "available_action_string",
       "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments",
-        "POST /projects/:param/settlement-drafts/files"
+        "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments"
       ],
-      "bindingCount": 2,
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -4597,6 +4647,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "settlement-line-attachment.upload",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/settlement-drafts/files"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

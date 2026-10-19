@@ -2648,7 +2648,7 @@ async function finishSettlementDraftLifecycleAction(
     ? "草稿已删除，历史审计记录仍保留。"
     : "申请已放弃，已转入已结束记录。";
   pageMessageTone.value = "success";
-  await router.push({ path: "/结算管理", query: { view: "ended" } });
+  await router.push({ path: "/结算管理", query: result.context.action === "delete_pristine_draft" ? {} : { view: "ended" } });
 }
 
 function hideInvalidSettlementDraftLifecycleCapability(error: unknown) {

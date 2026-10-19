@@ -196,4 +196,26 @@ describe("OperatingTakeoverService", () => {
     })).rejects.toThrow("版本已变化");
     expect(definitions.validateDraft).not.toHaveBeenCalled();
   });
+  it("reuses the exact attachment group after a lost response without bypassing actor scope", async () => {
+    const group = { id: "group-1", links: [{ fileId: "file-1" }, { fileId: "file-2" }] };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "batch-1" }]),
+      operatingTakeoverBatch: { findFirst: jest.fn().mockResolvedValue({ id: "batch-1" }) },
+      operatingTakeoverRow: { findFirst: jest.fn().mockResolvedValue({ id: "row-1" }) },
+      operatingTakeoverAttachmentGroup: { findMany: jest.fn().mockResolvedValue([group]), create: jest.fn() }
+    };
+    const files = { assertCanUseHistoricalTakeoverFile: jest.fn() };
+    const audit = { record: jest.fn() };
+    const service = new OperatingTakeoverService(
+      { project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1" }) }, $transaction: async (fn: (tx: unknown) => unknown) => fn(tx) } as never, {} as never,
+      { effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"]) } as never,
+      files as never, {} as never, audit as never
+    );
+    expect(await service.addAttachmentGroup("project-1","batch-1","user-1",{ rowId: "row-1", purpose: "凭证", fileIds: ["file-2","file-1"] })).toBe(group);
+    expect(tx.operatingTakeoverAttachmentGroup.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { batchId: "batch-1", rowId: "row-1", purpose: "凭证", createdByUserId: "user-1" } }));
+    expect(files.assertCanUseHistoricalTakeoverFile).not.toHaveBeenCalled();
+    expect(tx.operatingTakeoverAttachmentGroup.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
 });

@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "9cef035f012fc9e2f9f61dc3095adbcfa10136b45bf115a672b35492f777baea",
+      "sha256": "59779d8a5242cc3244a0e9b0b86412f4edbef57efe52d337e61fc94934c95793",
       "status": "ready",
       "summary": {
-        "routeCount": 656
+        "routeCount": 659
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "bcaf76303431aa066f704b70af7e120d85c8991837457d33dfb225a42eb7a598",
+      "sha256": "00cb25387653ad0562b38d48a239094a130713083b5f6265d1ea908229e942e9",
       "status": "ready",
       "summary": {
         "apiModuleCount": 31,
-        "exportedFunctionCount": 630,
-        "transportWrapperCount": 608,
+        "exportedFunctionCount": 633,
+        "transportWrapperCount": 611,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 642,
+        "mainRequestBindingCount": 648,
         "ticketFollowupCount": 4,
-        "requestEdgeCount": 633,
-        "productionConsumerCount": 515,
+        "requestEdgeCount": 638,
+        "productionConsumerCount": 518,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "5a7002f3c1da16a9839200cb69827ba3ae672eabc32e466ce5ffd5640d09a151",
+      "sha256": "7f23d8cd46ead470db978894a356f926348671bd0c366de25d8af2f8aed4d9d1",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 366,
+        "registeredActionCount": 370,
         "pageActionCount": 56,
-        "backgroundActionCount": 310,
+        "backgroundActionCount": 314,
         "reachableVueFileCount": 178,
         "routeRootCount": 67,
         "totalVueFileCount": 192,
         "parsedVueFileCount": 192,
-        "reachableProductionModuleCount": 309,
-        "templateEventDirectiveCount": 1096,
+        "reachableProductionModuleCount": 311,
+        "templateEventDirectiveCount": 1099,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 356,
-        "candidateProductionMutationConsumerCount": 356,
-        "acceptedProductionMutationConsumerCount": 356,
-        "productionMutationConsumerPairCount": 356,
+        "coveredProductionMutationConsumerCount": 359,
+        "candidateProductionMutationConsumerCount": 359,
+        "acceptedProductionMutationConsumerCount": 359,
+        "productionMutationConsumerPairCount": 359,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "f30cc6cad87791ed323f48fb393f2d5ddd4473ab66b5a6ca5efb6fb4bb8f8379",
+      "sha256": "99297d193407eaef5a258d428877b6fa8faa4cae8f25cb213e4622b5816a686b",
       "status": "ready",
       "summary": {
-        "routeCount": 656,
-        "exactRouteCount": 656,
-        "normalizedRouteCount": 656,
+        "routeCount": 659,
+        "exactRouteCount": 659,
+        "normalizedRouteCount": 659,
         "classificationOverrideCount": 221,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "085f9bbd84ae8b0133bba665bea7b0214ea2e4d800c626b52eb12e10e46d556e",
         "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-        "derivedProductionPageCount": 435,
-        "pageRouteCount": 451,
+        "derivedProductionPageCount": 438,
+        "pageRouteCount": 454,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 96,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 504,
+          "web_api_wrapper": 507,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 656,
-    "pageRouteCount": 451,
+    "routeCount": 659,
+    "pageRouteCount": 454,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 96,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 642,
+    "mainRequestBindingCount": 648,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 366,
-    "actionBindingCount": 421,
-    "acceptedActionBindingCount": 390,
+    "registeredActionCount": 370,
+    "actionBindingCount": 427,
+    "acceptedActionBindingCount": 393,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 356,
-    "coveredProductionMutationConsumerPairCount": 356,
+    "productionMutationConsumerPairCount": 359,
+    "coveredProductionMutationConsumerPairCount": 359,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -3330,6 +3330,18 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "deleteExpenseClaimDraft",
+          "method": "GET",
+          "path": "/expense-claims/:param/capability",
+          "normalizedKey": "GET /expense-claims/:param/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "testConsumers": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
           "wrapper": "fetchExpenseClaimActionCapability",
           "method": "GET",
           "path": "/expense-claims/:param/capability",
@@ -3342,7 +3354,34 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "expense-claim.delete-draft",
+          "bindingIndex": 0,
+          "identity": "expense-claim.delete-draft\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000deleteExpenseClaimDraft\u0000GET\u0000GET /expense-claims/:param/capability\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "delete_expense_claim_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "deleteExpenseClaimDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -4099,6 +4138,18 @@
         },
         {
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "testConsumers": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "fetchProcurementDetail",
           "method": "GET",
           "path": "/general-procurements/:param",
@@ -4213,6 +4264,31 @@
           },
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "cancelProcurementPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "general-procurement.delete-draft",
+          "bindingIndex": 0,
+          "identity": "general-procurement.delete-draft\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000deleteProcurementDraft\u0000GET\u0000GET /general-procurements/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canDeleteDraft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
           ],
@@ -7526,6 +7602,18 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "deleteOperatingTakeoverDraft",
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/:param",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
           "wrapper": "fetchOperatingTakeoverDetail",
           "method": "GET",
           "path": "/projects/:param/operating-takeovers/:param",
@@ -7538,7 +7626,33 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.delete-draft",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.delete-draft\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000deleteOperatingTakeoverDraft\u0000GET\u0000GET /projects/:param/operating-takeovers/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canDeleteDraft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "deleteOperatingTakeoverDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -7954,7 +8068,8 @@
           "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-drafts.api.test.ts"
@@ -19979,6 +20094,73 @@
     {
       "route": {
         "method": "POST",
+        "path": "/expense-claims/:claimId/draft-deletion",
+        "normalizedKey": "POST /expense-claims/:param/draft-deletion",
+        "controller": "ExpenseClaimController",
+        "handler": "deleteDraft",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "deleteExpenseClaimDraft",
+          "method": "POST",
+          "path": "/expense-claims/:param/draft-deletion",
+          "normalizedKey": "POST /expense-claims/:param/draft-deletion",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "expense-claim.delete-draft",
+          "bindingIndex": 1,
+          "identity": "expense-claim.delete-draft\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000deleteExpenseClaimDraft\u0000POST\u0000POST /expense-claims/:param/draft-deletion\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "delete_expense_claim_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "deleteExpenseClaimDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/expense-claims/:claimId/final-disbursement-pdf",
         "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
         "controller": "ExpenseClaimController",
@@ -21944,6 +22126,72 @@
           },
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "archiveProcurement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/general-procurements/:id/draft-deletion",
+        "normalizedKey": "POST /general-procurements/:param/draft-deletion",
+        "controller": "GeneralProcurementController",
+        "handler": "deleteDraft",
+        "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft",
+          "method": "POST",
+          "path": "/general-procurements/:param/draft-deletion",
+          "normalizedKey": "POST /general-procurements/:param/draft-deletion",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "general-procurement.delete-draft",
+          "bindingIndex": 1,
+          "identity": "general-procurement.delete-draft\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000deleteProcurementDraft\u0000POST\u0000POST /general-procurements/:param/draft-deletion\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canDeleteDraft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
           ],
@@ -30901,6 +31149,72 @@
     {
       "route": {
         "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/:batchId/draft-deletion",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/:param/draft-deletion",
+        "controller": "OperatingTakeoverController",
+        "handler": "deleteDraft",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "deleteOperatingTakeoverDraft",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/draft-deletion",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/draft-deletion",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.delete-draft",
+          "bindingIndex": 1,
+          "identity": "operating-takeover.delete-draft\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000deleteOperatingTakeoverDraft\u0000POST\u0000POST /projects/:param/operating-takeovers/:param/draft-deletion\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canDeleteDraft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "deleteOperatingTakeoverDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/projects/:projectId/operating-takeovers/authority-manifests/:manifestId/abandon",
         "normalizedKey": "POST /projects/:param/operating-takeovers/authority-manifests/:param/abandon",
         "controller": "OperatingTakeoverController",
@@ -32366,9 +32680,9 @@
           "blockerCodes": []
         },
         {
-          "actionId": "settlement-line-attachment.attach",
-          "bindingIndex": 1,
-          "identity": "settlement-line-attachment.attach\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000uploadSettlementDraftPrivateFile\u0000POST\u0000POST /projects/:param/settlement-drafts/files\u00001",
+          "actionId": "settlement-line-attachment.upload",
+          "bindingIndex": 0,
+          "identity": "settlement-line-attachment.upload\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000uploadSettlementDraftPrivateFile\u0000POST\u0000POST /projects/:param/settlement-drafts/files\u00000",
           "usage": "background",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",

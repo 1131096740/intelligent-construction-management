@@ -82,6 +82,8 @@ export class GeneralProcurementService {
       if (!visible.includes(input.projectId)) throw new ForbiddenException("当前账号无权为该项目申请采购");
       const company = await tx.companyEntity.findFirst({ where: { id: input.companyEntityId, isActive: true, dataStatus: "complete" } });
       if (!company) throw new BadRequestException("费用承担公司不存在、已停用或资料未补齐");
+      const deleted = await tx.auditLog.findFirst({ where: { action: "general_procurement.draft.delete", metadata: { path: ["requestKey"], equals: input.requestKey } }, select: { id: true } });
+      if (deleted) throw new ConflictException("此草稿已删除，请重新发起申请");
       const existing = await tx.generalProcurement.findUnique({ where: { requestKey: input.requestKey } });
       if (existing) {
         if (existing.applicantUserId !== actorUserId || existing.creationFingerprint !== fingerprint) throw new ConflictException("重复提交内容不一致，请刷新后核对");
@@ -94,6 +96,24 @@ export class GeneralProcurementService {
       } });
       await this.audit.record(tx, { actorUserId, action: "general_procurement.create", businessType: "general_procurement", businessId: row.id, metadata: { code: row.code } });
       return { id: row.id, code: row.code, revision: row.revision };
+    });
+  }
+
+  async deleteUnsubmittedDraft(id: string, actorUserId: string, revision: number) {
+    return this.prisma.$transaction(async (tx) => {
+      // Same parent lock order as creation: an old create retry cannot resurrect deletion.
+      const source = await tx.generalProcurement.findUnique({ where: { id }, select: { projectId: true, companyEntityId: true } });
+      if (!source) throw new NotFoundException("采购草稿不存在或已删除");
+      await lockMasterDataRow(tx, "Project", source.projectId);
+      await lockMasterDataRow(tx, "CompanyEntity", source.companyEntityId);
+      const row = await this.lock(tx, id, revision);
+      await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
+      if (row.applicantUserId !== actorUserId) throw new ForbiddenException("只有申请人可以删除采购草稿");
+      const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+        SELECT public.jg_delete_unsubmitted_general_procurement(${id}, ${actorUserId}, ${revision}::integer) AS deleted
+      `);
+      if (!result?.deleted) throw new ConflictException("只能删除从未提交审批的采购草稿，请刷新后核对状态");
+      return { id, deleted: true };
     });
   }
 
@@ -280,6 +300,7 @@ export class GeneralProcurementService {
         reason: row.reason, requestedAmountCents: row.requestedAmountCents.toString(), status: row.status,
         statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status], revision: row.revision,
         archive: archiveFile ? { fileId: archiveFile.id, fileName: archiveFile.originalName, note: row.archiveNote, archivedAt: row.archivedAt } : null,
+        canDeleteDraft: canEdit && row.status === "draft" && !row.approvalInstanceId && instances.length === 0 && Array.isArray(row.submissions) && row.submissions.length === 0,
         canCancelPayment: actor.globalRoleKeys.includes("comprehensive_director") && payments.some((payment) => payment.status === "draft"), canEdit, canSubmit: canEdit, canReview: Boolean(identity && !identity.viaAssignment), canWithdraw: row.applicantUserId === actorUserId && row.status === "approval_pending",
         canArchive: row.status === "approved_pending_archive" && actor.globalRoleKeys.includes("comprehensive_director"),
         payments: payments.map((payment) => ({ ...payment,

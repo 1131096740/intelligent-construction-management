@@ -318,6 +318,7 @@ export class OperatingTakeoverService {
     );
     return {
       ...this.serializeBatch(batch),
+      canDeleteDraft: batch.createdByUserId === actorUserId && ["draft", "under_review"].includes(batch.status) && !batch.activatedAt && !batch.confirmations.length && !batch.activation && batch.rows.every(row => !row.generatedFactId),
       rows: visibleRows.map((row) => ({
         id: row.id,
         rowNo: row.rowNo,
@@ -472,16 +473,34 @@ export class OperatingTakeoverService {
     return result;
   }
 
+  async deleteDraft(projectId: string, batchId: string, actorUserId: string, expectedRevision: number) {
+    await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
+    return this.prisma.$transaction(async tx => {
+      const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+        SELECT public.jg_delete_unsubmitted_operating_batch(${batchId}, ${actorUserId}, ${projectId}, ${expectedRevision}::integer) AS deleted
+      `);
+      if (!result?.deleted) throw new ConflictException("只能删除本人尚未确认、未生成正式事实且版本未变化的接管草稿，请刷新后核对");
+      return { id: batchId, deleted: true };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
   async addAttachmentGroup(projectId: string, batchId: string, actorUserId: string, input: AddOperatingTakeoverAttachmentGroupDto) {
     await this.assertProjectAction(projectId, actorUserId, "operating_takeover.file.upload");
     if (!textValue(input.purpose) || !input.fileIds.length) throw new BadRequestException("附件用途和附件不能为空");
     const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "OperatingTakeoverBatch" WHERE "id" = ${batchId} AND "projectId" = ${projectId} FOR UPDATE`);
       const batch = await tx.operatingTakeoverBatch.findFirst({ where: { id: batchId, projectId }, select: { id: true } });
       if (!batch) throw new NotFoundException("历史接管批次不存在，请刷新后重试");
       if (input.rowId) {
         const row = await tx.operatingTakeoverRow.findFirst({ where: { id: input.rowId, batchId }, select: { id: true } });
         if (!row) throw new BadRequestException("附件行不属于当前历史接管批次");
       }
+      const groups = await tx.operatingTakeoverAttachmentGroup.findMany({
+        where: { batchId, rowId: input.rowId ?? null, purpose: textValue(input.purpose)!, createdByUserId: actorUserId }, include: { links: true }
+      });
+      const requestedFiles = new Set(input.fileIds);
+      const existing = groups.find(group => group.links.length === requestedFiles.size && group.links.every(link => requestedFiles.has(link.fileId)));
+      if (existing) return existing;
       for (const fileId of input.fileIds) await this.files.assertCanUseHistoricalTakeoverFile(tx, fileId, actorUserId, true);
       const group = await tx.operatingTakeoverAttachmentGroup.create({ data: { id: randomUUID(), batchId, rowId: input.rowId, purpose: textValue(input.purpose)!, createdByUserId: actorUserId } });
       for (const fileId of input.fileIds) await tx.operatingTakeoverAttachmentLink.create({ data: { id: randomUUID(), groupId: group.id, fileId } });

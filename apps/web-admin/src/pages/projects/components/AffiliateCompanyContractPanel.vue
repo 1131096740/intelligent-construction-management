@@ -260,7 +260,7 @@ function openRecord() {
 function submitRecord() {
   const context = captureRecordOperation();
   let amountCents:string|undefined;
-  try {amountCents=form.value.amountNature === "fixed" ? yuanTextToCentsText(form.value.amountYuan) : undefined;} catch(error){if(recordContextIsCurrent(context))recordError.value=error instanceof Error?error.message:"合同金额不正确";return Promise.resolve();}
+  try {amountCents=form.value.amountNature === "fixed" ? yuanTextToCentsText(form.value.amountYuan) : undefined;} catch(error){if(recordContextIsCurrent(context))recordError.value=formatUnknownApiError(error, "合同金额不正确");return Promise.resolve();}
   const request = recordProjectAffiliateCompanyContractWithUpload(
     context.projectId,
     {

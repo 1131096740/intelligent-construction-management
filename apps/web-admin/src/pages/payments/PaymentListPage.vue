@@ -226,6 +226,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
@@ -413,7 +414,7 @@ async function loadPaymentLedger() {
     lifecycleSummary.value = result.viewCounts;
     lifecycleMeta.value = result.pagination;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     errorMessage.value = `付款记录读取失败：${reason}。这不代表当前没有付款记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
