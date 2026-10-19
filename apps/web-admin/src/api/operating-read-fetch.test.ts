@@ -87,15 +87,15 @@ describe("operating projection read coordination", () => {
     expect(fetchApi).toHaveBeenCalledTimes(1);
   });
 
-  it("does not delay unrelated reads or business submissions", async () => {
+  it("does not delay unrelated reads or unrelated business submissions", async () => {
     const first = deferred<Response>();
     const fetchApi = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(new Response("{}"));
     const api = createOperatingReadFetch(fetchApi, () => null);
     const reading = api(paths[0]);
     const body = { method: "POST", body: "{}", retryUnauthorized: false };
     await api("/projects", {});
-    await api("/projects/p-1/close-profit/confirm", body);
-    expect(fetchApi).toHaveBeenNthCalledWith(3, "/projects/p-1/close-profit/confirm", body);
+    await api("/expense-claims", body);
+    expect(fetchApi).toHaveBeenNthCalledWith(3, "/expense-claims", body);
     first.resolve(new Response("{}"));
     await reading;
   });

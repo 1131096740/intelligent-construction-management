@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "af4b14898c8244bec3f8ea2f130d09a0c4e7b86bb94d54fa6dce1333d58e6bd5",
+      "sha256": "d88881d272976051b3bd93059eba789e6f119a1796e3c50c42a08cced9764318",
       "status": "ready",
       "summary": {
         "apiModuleCount": 38,
@@ -4651,7 +4651,8 @@
             "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/funds-workbench.api.test.ts"
+            "apps/web-admin/src/api/funds-workbench.api.test.ts",
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
           ]
         }
       ],
@@ -5669,7 +5670,9 @@
           "productionConsumers": [
             "apps/web-admin/src/components/ContractFinancialBalances.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
+          ]
         },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -5682,7 +5685,8 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/api/core-flow-read.api.test.ts",
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
           ]
         }
       ],
@@ -5765,7 +5769,9 @@
           "productionConsumers": [
             "apps/web-admin/src/components/ContractFinancialBalances.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -5847,7 +5853,9 @@
           "productionConsumers": [
             "apps/web-admin/src/components/ContractFinancialBalances.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -6891,6 +6899,7 @@
             "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
           ],
           "testConsumers": [
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts",
             "apps/web-admin/src/api/project-close-profit.api.test.ts"
           ]
         }
@@ -8120,7 +8129,8 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/api/core-flow-read.api.test.ts",
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
           ]
         }
       ],
@@ -8940,7 +8950,8 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/api/core-flow-read.api.test.ts",
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
           ]
         }
       ],
@@ -25107,7 +25118,8 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/api/core-flow-read.api.test.ts",
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
           ]
         }
       ],
@@ -29004,6 +29016,7 @@
             "apps/web-admin/src/pages/projects/components/ProjectCloseProfitPanel.vue"
           ],
           "testConsumers": [
+            "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts",
             "apps/web-admin/src/api/project-close-profit.api.test.ts"
           ]
         }

@@ -6533,7 +6533,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -7269,10 +7270,12 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/components/ContractFinancialBalances.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -7972,7 +7975,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -8030,7 +8034,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -8117,7 +8122,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -12883,7 +12889,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/funds-workbench.api.test.ts"
+        "apps/web-admin/src/api/funds-workbench.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
@@ -15193,6 +15200,7 @@
         }
       ],
       "testConsumers": [
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts",
         "apps/web-admin/src/api/project-close-profit.api.test.ts"
       ],
       "productionConsumers": [
@@ -15282,6 +15290,7 @@
         }
       ],
       "testConsumers": [
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts",
         "apps/web-admin/src/api/project-close-profit.api.test.ts"
       ],
       "productionConsumers": [
