@@ -194,7 +194,7 @@ async function ensureOk(response: Response): Promise<void> {
   } catch {
     message = formatApiErrorMessage(message, response.status, "读取费用与报销工作台失败");
   }
-  throw new Error(message);
+  throw Object.assign(new Error(message), { status: response.status });
 }
 
 export async function fetchExpenseClaims(view: ExpenseClaimWorkbenchView = "all") {

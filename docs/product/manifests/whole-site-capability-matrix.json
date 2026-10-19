@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1946db017b5010a1cabbd882a82cf2b10774c54d50450d8f25874c2e0ff65468",
+      "sha256": "bcaf76303431aa066f704b70af7e120d85c8991837457d33dfb225a42eb7a598",
       "status": "ready",
       "summary": {
         "apiModuleCount": 31,
@@ -42,18 +42,18 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "6e8a60ca0bde95c9ac3fa5b726421725fe7a7769cb53620ac043f937032f2dbe",
+      "sha256": "5a7002f3c1da16a9839200cb69827ba3ae672eabc32e466ce5ffd5640d09a151",
       "status": "ready",
       "summary": {
         "registeredActionCount": 366,
         "pageActionCount": 56,
         "backgroundActionCount": 310,
-        "reachableVueFileCount": 172,
+        "reachableVueFileCount": 178,
         "routeRootCount": 67,
-        "totalVueFileCount": 186,
-        "parsedVueFileCount": 186,
-        "reachableProductionModuleCount": 299,
-        "templateEventDirectiveCount": 1075,
+        "totalVueFileCount": 192,
+        "parsedVueFileCount": 192,
+        "reachableProductionModuleCount": 309,
+        "templateEventDirectiveCount": 1096,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 356,
         "candidateProductionMutationConsumerCount": 356,

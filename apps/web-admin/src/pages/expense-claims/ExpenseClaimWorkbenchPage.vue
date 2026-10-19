@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import BusinessMobileCards from "../../components/BusinessMobileCards.vue";
 import {
   fetchExpenseClaims,
   type ExpenseClaimListItemReadModel,
@@ -20,6 +21,7 @@ const loading = ref(false);
 const loadError = ref("");
 const rows = ref<ExpenseClaimListItemReadModel[]>([]);
 const createVisible = ref(false);
+let latestRequest = 0;
 
 const viewOptions = [
   { label: "全部", value: "all" },
@@ -100,18 +102,27 @@ function created(claim: { id: string }) {
 }
 
 async function loadWorkbench() {
+  const request = ++latestRequest;
   loading.value = true;
   loadError.value = "";
   try {
-    rows.value = await fetchExpenseClaims(view.value);
+    const result = await fetchExpenseClaims(view.value);
+    if (request === latestRequest) rows.value = result;
   } catch (error) {
+    if (request !== latestRequest) return;
     loadError.value = formatUnknownApiError(error, "费用与报销工作台读取失败");
   } finally {
-    loading.value = false;
+    if (request === latestRequest) loading.value = false;
   }
 }
 
 watch(view, () => void loadWorkbench());
+const mobileRows = computed(() => rows.value.map((row) => ({
+  id: row.id, title: row.reason || claimTypeLabel(row.claimType), code: row.code, meta: scope(row),
+  status: statusLabel(row.status), tone: statusTone(row.status), amount: `申请 ${amount(row.requestedAmountCents)}`,
+  facts: [{ label: "业务类型", value: claimTypeLabel(row.claimType) }, { label: "付款结果", value: result(row) }],
+  nextAction: row.status === "draft" ? "继续填写" : "查看办理进度"
+})));
 onMounted(() => void loadWorkbench());
 </script>
 
@@ -178,6 +189,7 @@ onMounted(() => void loadWorkbench());
         :bordered="true"
       >
         <t-table
+          class="jg-desktop-record-list"
           row-key="id"
           size="small"
           table-layout="fixed"
@@ -220,6 +232,11 @@ onMounted(() => void loadWorkbench());
             {{ dateTime(row.updatedAt) }}
           </template>
         </t-table>
+        <BusinessMobileCards
+          :items="mobileRows"
+          :loading="loading"
+          @open="openDetail"
+        />
       </t-card>
     </JgResultState>
     <ExpenseClaimCreateDrawer

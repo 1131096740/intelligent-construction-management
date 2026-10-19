@@ -426,9 +426,23 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await loginWithMockedAuth(page, ["contract_staff", "contract_director"]);
 
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
-  await expect(page.getByText("待复核历史合同")).toBeVisible();
-  await expect(page.getByText("合同接管复核")).toBeVisible();
-  await expect(page.getByText("已停留 1 天")).toBeVisible();
+  const desktopItems = page.locator(".jg-desktop-record-list");
+  const mobileItems = page.locator(".business-mobile-cards");
+  await expect(mobileItems).toHaveCount(1);
+  await expect(mobileItems).toBeHidden();
+  await expect(desktopItems.getByText("待复核历史合同")).toBeVisible();
+  await expect(desktopItems.getByText("合同接管复核")).toBeVisible();
+  await expect(desktopItems.getByText("已停留 1 天")).toBeVisible();
+  const desktopViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(desktopItems).toBeHidden();
+  await expect(mobileItems.getByText("待复核历史合同")).toBeVisible();
+  await expect(mobileItems).toContainText("合同接管复核");
+  await expect(mobileItems).toContainText("已停留 1 天");
+  await expect(mobileItems.getByRole("button", { name: "进入接管台账", exact: true })).toBeVisible();
+  await page.setViewportSize(desktopViewport);
+  await expect(mobileItems).toBeHidden();
+  await expect(desktopItems).toBeVisible();
 
   await page.getByText("历史合同接管").click();
   await expect(page.getByRole("heading", { name: "历史合同接管" })).toBeVisible();

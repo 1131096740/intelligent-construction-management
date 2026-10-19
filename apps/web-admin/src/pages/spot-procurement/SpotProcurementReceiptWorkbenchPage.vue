@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import BusinessMobileCards from "../../components/BusinessMobileCards.vue";
+import ProcurementBusinessNav from "./components/ProcurementBusinessNav.vue";
 import { fetchSpotProcurements, type SpotProcurementListItemReadModel, type SpotProcurementReceiptSummaryReadModel } from "../../api/spot-procurement.api";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -37,8 +39,25 @@ const tableRows=computed(()=>rows.value.map(row=>({
   paymentStatus:paymentStatus(row),
   receiptStatus:receiptStatus(row)
 })));
-async function load(page=1){loading.value=true;error.value="";try{const result=await fetchSpotProcurements({surface:"receipt",view:"active",status:status.value||undefined,page,pageSize:listMeta.value.pageSize});rows.value=result.items;listMeta.value=result.pagination;}catch(e){error.value=e instanceof Error?e.message:'读取收货工作台失败';}finally{loading.value=false;}}
+let latestRequest = 0;
+async function load(page = 1) {
+  const request = ++latestRequest;
+  loading.value = true; error.value = "";
+  try {
+    const result = await fetchSpotProcurements({ surface: "receipt", view: "active", status: status.value || undefined, page, pageSize: listMeta.value.pageSize });
+    if (request !== latestRequest) return;
+    rows.value = result.items; listMeta.value = result.pagination;
+  } catch (cause) {
+    if (request === latestRequest) error.value = cause instanceof Error ? cause.message : "读取收货工作台失败";
+  } finally { if (request === latestRequest) loading.value = false; }
+}
 function changePage(page:number){void load(page);}
+const mobileRows = computed(() => tableRows.value.map((row) => ({
+  id: row.id, title: row.materialSummary, code: row.code, meta: row.projectName,
+  status: row.receiptStatus, amount: `已实付 ${row.actualPaidText}`,
+  facts: [{ label: "批准数量", value: row.approvedQuantitySummary }, { label: "收货责任", value: row.receiptResponsible }, { label: "付款状态", value: row.paymentStatus }],
+  nextAction: row.status === "closed" ? "查看收货记录" : "查看收货与复核"
+})));
 onMounted(load);
 </script>
 <template>
@@ -46,7 +65,9 @@ onMounted(load);
     <BusinessPageHeader
       title="收货确认工作台"
       description="首笔实际付款后才开放收货；同一次最终收货可上传多张现场照片，不创建收货批次。"
-    /><BusinessTableToolbar
+    />
+    <ProcurementBusinessNav />
+    <BusinessTableToolbar
       title="最终收货任务"
       description="收货状态直接来自实际付款与收货复核事实，不再展示供应商或余额抵扣。"
     >
@@ -71,6 +92,7 @@ onMounted(load);
       :description="error"
     /><t-table
       v-else
+      class="jg-desktop-record-list"
       row-key="id"
       :loading="loading"
       :columns="[{colKey:'code',title:'采购/付款编号',width:150},{colKey:'projectName',title:'项目',width:140},{colKey:'materialSummary',title:'材料摘要',minWidth:220},{colKey:'actualPaidText',title:'已付金额',width:120},{colKey:'approvedQuantitySummary',title:'批准数量',minWidth:150},{colKey:'receiptResponsible',title:'收货责任人/受托人',minWidth:180},{colKey:'receiptStatus',title:'状态',width:120},{colKey:'updatedAtText',title:'更新时间',width:150},{colKey:'operation',title:'操作',width:90}]"
@@ -84,7 +106,15 @@ onMounted(load);
           办理
         </t-link>
       </template>
-    </t-table><t-pagination
+    </t-table>
+    <BusinessMobileCards
+      v-if="!error"
+      :items="mobileRows"
+      :loading="loading"
+      empty-text="当前没有收货记录"
+      @open="router.push(`/零星采购收货/${encodeURIComponent($event)}`)"
+    />
+    <t-pagination
       v-if="listMeta.total>listMeta.pageSize"
       :current="listMeta.page"
       :page-size="listMeta.pageSize"

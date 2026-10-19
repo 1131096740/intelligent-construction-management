@@ -4,6 +4,8 @@ import TDesign from "tdesign-vue-next";
 import "tdesign-vue-next/es/style/index.css";
 import "./app/design-tokens.css";
 import "./app/responsive-layout.css";
+import "./app/business-layout.css";
+import { installMobileViewport } from "./app/mobile-viewport";
 import App from "./app/App.vue";
 import { useAuthStore } from "./auth/auth.store";
 import { router } from "./routes";
@@ -15,3 +17,4 @@ app.use(pinia);
 useAuthStore().restore();
 
 app.use(router).use(TDesign).mount("#app");
+installMobileViewport();

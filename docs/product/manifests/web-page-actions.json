@@ -12,12 +12,12 @@
     "registeredActionCount": 366,
     "pageActionCount": 56,
     "backgroundActionCount": 310,
-    "reachableVueFileCount": 172,
+    "reachableVueFileCount": 178,
     "routeRootCount": 67,
-    "totalVueFileCount": 186,
-    "parsedVueFileCount": 186,
-    "reachableProductionModuleCount": 299,
-    "templateEventDirectiveCount": 1075,
+    "totalVueFileCount": 192,
+    "parsedVueFileCount": 192,
+    "reachableProductionModuleCount": 309,
+    "templateEventDirectiveCount": 1096,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 356,
     "candidateProductionMutationConsumerCount": 356,
@@ -26,10 +26,10 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 320,
-    "reachableProductionModuleCount": 299,
-    "totalVueFileCount": 186,
-    "parsedVueFileCount": 186
+    "totalProductionModuleCount": 330,
+    "reachableProductionModuleCount": 309,
+    "totalVueFileCount": 192,
+    "parsedVueFileCount": 192
   },
   "actions": [
     {
@@ -8576,7 +8576,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 211,
+        "sourceLine": 263,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10358,7 +10358,7 @@
         "event": "call",
         "handler": "createProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 38,
+        "sourceLine": 77,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10777,7 +10777,7 @@
         "event": "call",
         "handler": "updateProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 44,
+        "sourceLine": 95,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23638,7 +23638,7 @@
         "event": "call",
         "handler": "createSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 424,
+        "sourceLine": 507,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23703,7 +23703,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementCreateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 438,
+        "sourceLine": 537,
         "sourceColumn": 0
       },
       "semantic": "business_write",

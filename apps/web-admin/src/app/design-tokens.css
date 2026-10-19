@@ -1,29 +1,29 @@
 :root {
   --jg-export-control-width: 240px;
   --jg-export-panel-width: 520px;
-  --jg-color-bg-page: #ffffff;
+  --jg-color-bg-page: #f7f6f3;
   --jg-color-bg-panel: #ffffff;
   --jg-color-bg-surface: #ffffff;
-  --jg-color-bg-muted: #f5f7fa;
-  --jg-color-bg-subtle: #f5f7fa;
-  --jg-color-bg-hover: #f3f6fb;
-  --jg-color-bg-disabled: #f5f7fa;
-  --jg-color-bg-brand-soft: #edf4ff;
+  --jg-color-bg-muted: #f3f2ef;
+  --jg-color-bg-subtle: #faf9f7;
+  --jg-color-bg-hover: #eeede9;
+  --jg-color-bg-disabled: #f3f2ef;
+  --jg-color-bg-brand-soft: #eaf0f5;
   --jg-color-bg-success-soft: #f3faf5;
   --jg-color-bg-warning-soft: #fff8ed;
   --jg-color-bg-danger-soft: #fff5f5;
-  --jg-color-border: #dcdfe6;
-  --jg-color-border-strong: #b8bec7;
-  --jg-color-text-primary: #1f2329;
-  --jg-color-text-secondary: #373c43;
-  --jg-color-text-tertiary: #646a73;
-  --jg-color-text-muted: #8f959e;
+  --jg-color-border: #e3e1dc;
+  --jg-color-border-strong: #bfbcb5;
+  --jg-color-text-primary: #2d2d2b;
+  --jg-color-text-secondary: #484844;
+  --jg-color-text-tertiary: #706e68;
+  --jg-color-text-muted: #77746e;
   --jg-color-text-disabled: #b8bec7;
   --jg-color-text-inverse: #ffffff;
-  --jg-color-brand: #0052d9;
-  --jg-color-brand-hover: #266fe8;
-  --jg-color-brand-active: #003cab;
-  --jg-color-focus-outline: #0052d9;
+  --jg-color-brand: #315d85;
+  --jg-color-brand-hover: #244c71;
+  --jg-color-brand-active: #1b3c5b;
+  --jg-color-focus-outline: #315d85;
   --jg-color-success: #2ba471;
   --jg-color-warning: #d9822b;
   --jg-color-required: #6b4ce6;
@@ -38,7 +38,7 @@
   --jg-font-size-stat: 15px;
   --jg-font-size-table-secondary: 13px;
   --jg-font-size-body: 14px;
-  --jg-font-size-meta: 12px;
+  --jg-font-size-meta: 13px;
   --jg-font-size-mini: 11px;
 
   --jg-font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
@@ -64,9 +64,9 @@
   --jg-space-xl: 24px;
   --jg-space-xxl: 32px;
 
-  --jg-radius-control: 4px;
-  --jg-radius-panel: 6px;
-  --jg-radius-overlay: 8px;
+  --jg-radius-control: 6px;
+  --jg-radius-panel: 8px;
+  --jg-radius-overlay: 10px;
   --jg-radius-sm: var(--jg-radius-control);
   --jg-radius-md: var(--jg-radius-panel);
   --jg-radius-lg: var(--jg-radius-overlay);
@@ -76,8 +76,8 @@
   --jg-shadow-overlay: 0 8px 24px rgba(21, 25, 34, 0.14);
 
   --jg-layout-page-max-width: 1440px;
-  --jg-layout-sidebar-width: 208px;
-  --jg-layout-header-height: 48px;
+  --jg-layout-sidebar-width: 224px;
+  --jg-layout-header-height: 60px;
   --jg-layout-content-padding: 24px;
   --jg-layout-content-padding-compact: 16px;
   --jg-layout-table-row-height: 44px;
@@ -92,8 +92,8 @@
   --jg-layout-workbench-recommendation-max-width: 880px;
   --jg-layout-form-field-min-width-wide: 160px;
   --jg-layout-form-field-min-width-compact: 140px;
-  --jg-layout-control-min-height: 32px;
-  --jg-layout-control-height: 32px;
+  --jg-layout-control-min-height: 36px;
+  --jg-layout-control-height: 36px;
   --jg-layout-page-min-width-fallback: 720px;
   --jg-layout-form-max-width: 960px;
   --jg-layout-ledger-table-min-width: 960px;
@@ -143,4 +143,19 @@
   --jg-font-body: var(--jg-font-size-body);
   --jg-font-meta: var(--jg-font-size-meta);
   --jg-font-mini: var(--jg-font-size-mini);
+
+  --td-brand-color: var(--jg-color-brand);
+  --td-brand-color-hover: var(--jg-color-brand-hover);
+  --td-brand-color-active: var(--jg-color-brand-active);
+  --td-brand-color-light: var(--jg-color-bg-brand-soft);
+  --td-text-color-primary: var(--jg-color-text-primary);
+  --td-text-color-secondary: var(--jg-color-text-secondary);
+  --td-text-color-placeholder: var(--jg-color-text-tertiary);
+  --td-bg-color-page: var(--jg-color-bg-page);
+  --td-bg-color-container: var(--jg-color-bg-surface);
+  --td-bg-color-container-hover: var(--jg-color-bg-hover);
+  --td-component-stroke: var(--jg-color-border);
+  --td-component-border: var(--jg-color-border-strong);
+  --td-radius-default: var(--jg-radius-control);
+  --td-font-family: var(--jg-font-family-sans);
 }
