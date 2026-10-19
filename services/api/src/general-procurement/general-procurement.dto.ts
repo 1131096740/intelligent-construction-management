@@ -4,7 +4,8 @@ import { GENERAL_PROCUREMENT_CATEGORIES, type GeneralProcurementCategory } from 
 import { IsCanonicalMoneyText, IsRequiredText } from "../validation/static-field-validation";
 
 export class GeneralProcurementDraftDto {
-  @IsUUID("4", { message: "请选择所属项目" }) projectId!: string;
+  @IsRequiredText({ requiredMessage: "请选择所属项目", typeMessage: "请选择有效项目", blankMessage: "请选择所属项目" })
+  @MaxLength(128, { message: "项目标识超出长度限制" }) projectId!: string;
   @IsUUID("4", { message: "请选择费用承担公司" }) companyEntityId!: string;
   @IsIn(GENERAL_PROCUREMENT_CATEGORIES.map((item) => item.key), { message: "请选择费用类别" }) category!: GeneralProcurementCategory;
   @IsRequiredText({ requiredMessage: "请填写用途和具体需求", typeMessage: "用途必须是文字", blankMessage: "用途不能为空白" })

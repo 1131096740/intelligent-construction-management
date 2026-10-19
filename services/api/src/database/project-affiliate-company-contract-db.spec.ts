@@ -195,14 +195,25 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     try {
     for(const [userId,roleKey] of [[f.recorderId,"finance_staff"],[f.directorId,"finance_director"]]){const position=await prisma.position.upsert({where:{key:roleKey},create:{key:roleKey,name:roleKey},update:{}});await prisma.userPosition.create({data:{userId,positionId:position.id}});}
     const unrelatedProject=await createFixture(prisma);
-    const bankVerification=new ContractBankVerificationService(prisma as never,new ProjectVisibilityService(prisma as never),auth as never,audit);
+    const runtimeUrl = process.env.CONTRACT_BANK_RUNTIME_DATABASE_URL;
+    if (!runtimeUrl) throw new Error("银行核验验收必须提供独立运行身份");
+    const bankRuntime = new PrismaClient({datasources:{db:{url:projectAffiliateCompanyContractDatabaseUrl(runtimeUrl)}}});
+    const [identity] = await bankRuntime.$queryRaw<Array<{name:string;allowed:boolean;backup:boolean;publicAllowed:boolean}>>`
+      SELECT current_user AS name,
+        has_function_privilege(current_user,'public.issue_contract_bank_holder(text,text,text,text,text)','EXECUTE') AS allowed,
+        has_function_privilege('contract_backup','public.issue_contract_bank_holder(text,text,text,text,text)','EXECUTE') AS backup,
+        EXISTS (SELECT 1 FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+          WHERE p.oid='public.issue_contract_bank_holder(text,text,text,text,text)'::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS "publicAllowed"`;
+    expect(identity).toEqual({name:"contract_runtime",allowed:true,backup:false,publicAllowed:false});
+    const bankVerification=new ContractBankVerificationService(bankRuntime as never,new ProjectVisibilityService(bankRuntime as never),auth as never,audit);
+    try {
     const bankObservation=async(amountCents:string,direction:"inflow"|"outflow",date="2026-08-20")=>{
       const bankInput={projectId:f.projectId,companyEntityId:f.companyId,accountNumber:"6222000012345678",bankReference:randomUUID(),direction,amountCents,occurredAt:date,evidenceFileId:await newFile(),reason:"真实开户公司和银行交易人工独立核验",idempotencyKey:randomUUID(),confirmationPassword:"test-password"};
       const row=await bankVerification.prepare(f.recorderId,bankInput);
       expect((await bankVerification.prepare(f.recorderId,bankInput)).id).toBe(row.id);
       await expect(bankVerification.prepare(f.recorderId,{...bankInput,accountNumber:"6222-0000 12345678",idempotencyKey:randomUUID()})).rejects.toThrow("已提交核验");
       await expect(bankVerification.decide(f.recorderId,row.id,{decision:"confirm",holderEvidenceFileId:await newFile(),confirmationPassword:"test-password"})).rejects.toThrow("独立");
-      await expect(prisma.$queryRaw`SELECT public.issue_contract_bank_holder(${row.id},${f.directorId},${await newFile(f.directorId)},${"not-a-signature"},${"a".repeat(64)})`).rejects.toThrow();
+      await expect(bankRuntime.$queryRaw`SELECT public.issue_contract_bank_holder(${row.id},${f.directorId},${await newFile(f.directorId)},${"not-a-signature"},${"a".repeat(64)})`).rejects.toThrow();
       const decision={decision:"confirm" as const,accountNumber:"6222-0000 12345678",holderEvidenceFileId:await newFile(f.directorId),confirmationPassword:"test-password"};
       await expect(bankVerification.decide(f.directorId,row.id,{...decision,accountNumber:"9999000012345678"})).rejects.toThrow("完整银行账号");
       await bankVerification.decide(f.directorId,row.id,decision);await bankVerification.decide(f.directorId,row.id,decision);
@@ -332,6 +343,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       expect(net(["receivable_increase","receivable_decrease"])).toBe(30000n);expect(net(["company_project_funds_increase","company_project_funds_decrease"])).toBe(cashBefore+10000n);expect(net(["construction_enterprise_funds_increase","construction_enterprise_funds_decrease"])).toBe(-50000n);
       expect(net(["confirmed_cost"])).toBe(100000n);
 
+    } finally { await bankRuntime.$disconnect(); }
     } finally { await app.close(); }
   },60000);
 
