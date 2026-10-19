@@ -713,6 +713,10 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
       }
       await migrate(databaseUrl, environment);
       await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
+      if (group.id === "affiliate_company_contract") {
+        environment.CONTRACT_BANK_RUNTIME_DATABASE_URL = require("./contract-bank-runtime-fixture.cjs")
+          .prepareContractBankRuntime({ name: containerName, db: group.database, password, target: databaseUrl, env: dockerEnv });
+      }
       await run(
         pnpm,
         ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath", ...group.files],

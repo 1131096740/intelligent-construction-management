@@ -1,10 +1,13 @@
 import { IsIn, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
 
+import { IsRequiredText } from "../../validation/static-field-validation";
+
 export class ProjectRosterChangeDto {
   @IsIn(["join", "leave"], { message: "请选择调入或调出" })
   operation!: "join" | "leave";
 
-  @IsUUID("all", { message: "请选择有效项目" })
+  @IsRequiredText({ requiredMessage: "请选择有效项目", typeMessage: "请选择有效项目", blankMessage: "请选择有效项目" })
+  @MaxLength(128, { message: "项目标识超出长度限制" })
   projectId!: string;
 
   @IsUUID("all", { message: "请选择有效人员" })
