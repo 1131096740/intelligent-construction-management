@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type VerifiedBankTransactionObservation } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
 import { PrismaService } from "../database/prisma.service";
@@ -30,7 +30,8 @@ export class VerifiedBankTransactionObservationService {
   }
 
   async recordInTransaction(tx:Prisma.TransactionClient,input:RecordVerifiedBankTransactionObservationInput){
-        await this.authorizeContext(tx, input);
+        const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET?.trim();
+        if (!secret) throw new ForbiddenException("资金执行受控写入密钥未配置");
         const [verification, evidence, executedBy] = await Promise.all([
           tx.paymentExecutionPayerVerification.findUnique({
             where: { id: input.payerVerificationId }
@@ -93,8 +94,7 @@ export class VerifiedBankTransactionObservationService {
             }
           }
         );
-        return tx.verifiedBankTransactionObservation.create({
-          data: {
+        const data = {
             id: randomUUID(),
             reference: input.reference.trim(),
             payerVerificationId: verification.id,
@@ -129,27 +129,10 @@ export class VerifiedBankTransactionObservationService {
             auditRequestId: input.auditRequestId,
             createdTransactionId: 0n,
             createdBackendPid: 0
-          }
-        });
-  }
-
-  private async authorizeContext(
-    tx: Prisma.TransactionClient,
-    input: RecordVerifiedBankTransactionObservationInput
-  ) {
-    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET?.trim();
-    if (!secret) throw new ForbiddenException("资金执行受控写入密钥未配置");
-    await tx.$executeRaw(
-      Prisma.sql`SELECT public."authorizeOperatingLedgerWrite"(${input.createdByUserId}, ${secret})`
-    );
-    await tx.$executeRaw(
-      Prisma.sql`SELECT set_config('app.fund_execution_actor', ${input.createdByUserId}, true)`
-    );
-    await tx.$executeRaw(
-      Prisma.sql`SELECT set_config('app.fund_execution_request_id', ${input.auditRequestId}, true)`
-    );
-    await tx.$executeRaw(
-      Prisma.sql`SELECT set_config('app.fund_execution_action', 'observe', true)`
-    );
+        };
+        const payload = JSON.stringify(data, (_key, value) => typeof value === "bigint" ? value.toString() : value);
+        const [created] = await tx.$queryRaw<VerifiedBankTransactionObservation[]>`
+          SELECT * FROM public.record_verified_bank_observation(${payload}::jsonb, ${secret})`;
+        return created;
   }
 }

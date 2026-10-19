@@ -29,6 +29,10 @@ BEGIN
   -- The secret and transaction-local actor/request checks remain authoritative.
   EXECUTE format('GRANT EXECUTE ON FUNCTION public."authorizeOperatingLedgerWrite"(TEXT,TEXT) TO %I', runtime_role);
   EXECUTE format('GRANT EXECUTE ON FUNCTION public.assert_fund_execution_server_context(TEXT,TEXT,TEXT) TO %I', runtime_role);
+  -- New entries keep service writes narrow without revoking existing fund commands' context grants.
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.issue_contract_bank_holder(TEXT,TEXT,TEXT,TEXT,TEXT,TEXT) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.record_verified_bank_observation(JSONB,TEXT) TO %I', runtime_role);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION public.append_company_transfer_event(JSONB,TEXT) TO %I', runtime_role);
 END;
 $$;
 COMMIT;

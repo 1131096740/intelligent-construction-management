@@ -31,7 +31,7 @@ try{
  run('docker',['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d','contract_restored','-f','/tmp/backup-role.sql']);
  const restored=run('docker',['exec',name,'psql','-At','-U','jiangkong','-d','contract_restored','-c',`
    SELECT count(*)>0 FROM "ContractBankVerificationRequest" WHERE status='confirmed';
-   SELECT has_function_privilege('contract_runtime','issue_contract_bank_holder(text,text,text,text,text)','EXECUTE'),has_function_privilege('contract_backup','issue_contract_bank_holder(text,text,text,text,text)','EXECUTE');
+   SELECT has_function_privilege('contract_runtime','issue_contract_bank_holder(text,text,text,text,text,text)','EXECUTE'),has_function_privilege('contract_backup','issue_contract_bank_holder(text,text,text,text,text,text)','EXECUTE');
  `]).trim();
  if(restored!=="t\nt|f") throw Error('Restored bank facts and role ACL must survive the complete backup');
  const coreDb='jiangkong_pol114';

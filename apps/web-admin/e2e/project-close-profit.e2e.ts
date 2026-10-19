@@ -57,6 +57,21 @@ function centsToYuan(cents: string) {
   return `${negative ? "-" : ""}${padded.slice(0, -2)}.${padded.slice(-2)}`;
 }
 
+test("经营概览读取失败仍显示独立收口数据和明确原因", async ({ page }) => {
+  await page.route("**/api/projects/*/operating-funds-overview", async (route) => {
+    await route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "经营投影读取过于频繁，请稍后重试" })
+    });
+  });
+  await login(page);
+  await openCloseProfit(page);
+  await expect(page.getByText("经营投影读取过于频繁，请稍后重试", { exact: true })).toBeVisible();
+  await expect(page.locator(".stage-card")).toHaveCount(7);
+  await expect(page.getByText("收口历史版本", { exact: true })).toBeVisible();
+});
+
 test("真实 API/PG16 项目收口桌面刷新和重进仍回读七阶段与历史", async ({ page }) => {
   await login(page);
   await openCloseProfit(page);
