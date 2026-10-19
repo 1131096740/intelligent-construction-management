@@ -1006,7 +1006,7 @@ if (enabled) {
       const financeIdentity = await loginAs(roleUsers.get("finance_staff")!);
       const voucher = await upload("synthetic-payment-voucher.pdf", "application/pdf", await pdf.save());
       let bankReceiptReference:string|undefined;const actualPaidAt=new Date().toISOString();
-      if(process.env.COMPANY_TRANSFER_CORE_RECEIPT){
+      {
        const bank=await request<Identified>("POST","/contract-bank-verifications",{projectId:project.id,companyEntityId:company.id,accountNumber:"6222000011111111",bankReference:randomUUID(),direction:"outflow",amountCents:expectedApprovedAmountCents,occurredAt:actualPaidAt,evidenceFileId:(await upload("synthetic-bank-proof.pdf","application/pdf",await pdf.save())).id,reason:"合成表内实付银行回单",idempotencyKey:randomUUID(),confirmationPassword:financeIdentity.password});
        const checker=await loginAs(projectFinanceUserId);const holder=await upload("synthetic-holder.pdf","application/pdf",await pdf.save());
        await request("POST",`/contract-bank-verifications/${bank.id}/decision`,{decision:"confirm",accountNumber:"6222000011111111",holderEvidenceFileId:holder.id,confirmationPassword:checker.password});

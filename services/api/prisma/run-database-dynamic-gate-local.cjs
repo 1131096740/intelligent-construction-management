@@ -429,6 +429,8 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
     PATH: sourceEnv.PATH ?? "",
     HOME: sourceEnv.HOME ?? temporaryRoot,
     TMPDIR: temporaryRoot,
+    // Chromium uses the process locale to encode download filenames on Linux.
+    LANG: "C.UTF-8",
     NODE_ENV: "test",
     CI: "true",
     DOCKER_HOST: dockerEndpoint,

@@ -1139,6 +1139,7 @@ async function main() {
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
     RUN_PAYMENT_EXECUTION_CONCURRENCY: "1",
+    OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(),
     SEED_PASSWORD: randomUUID()
   };
   dockerCommand.containerName = containerName;

@@ -77,6 +77,7 @@ const GROUPS = [
   },
   {
     id: "affiliate_company_contract",
+    requiresOperatingLedgerWriteSecret: true,
     database: "jiangkong_project_affiliate_company_contract_test",
     files: ["src/database/project-affiliate-company-contract-db.spec.ts"],
     flags: {
