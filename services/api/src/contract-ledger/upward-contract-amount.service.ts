@@ -26,7 +26,7 @@ export class UpwardContractAmountService {
   const roles=await this.authorize(tx,actor,projectId,"read");
   const contracts=await tx.projectAffiliateCompanyContract.findMany({where:{projectId,status:"confirmed"}});
   const revisions=await tx.upwardContractAmountRevision.findMany({where:{projectId},orderBy:{createdAt:"desc"}});
-  return {canPrepare:roles.some(r=>["contract_staff","contract_director"].includes(r)),contracts:contracts.map(c=>({id:c.id,label:`${c.contractReference} · ${c.companyEntityNameSnapshot}`,amountNature:c.amountNature,amountCents:c.amountCents?.toString()??null})),revisions:revisions.map(r=>({...r,amountCents:r.amountCents?.toString()??null,canConfirm:r.status==="pending_confirm"&&r.recordedByUserId!==actor&&roles.includes("contract_director")}))};
+  return {canReview:roles.includes("contract_director"),canPrepare:roles.some(r=>["contract_staff","contract_director"].includes(r)),contracts:contracts.map(c=>({id:c.id,label:`${c.contractReference} · ${c.companyEntityNameSnapshot}`,amountNature:c.amountNature,amountCents:c.amountCents?.toString()??null})),revisions:revisions.map(r=>({...r,amountCents:r.amountCents?.toString()??null,canConfirm:r.status==="pending_confirm"&&r.recordedByUserId!==actor&&roles.includes("contract_director")}))};
  });}
  async prepare(actor:string,input:PrepareUpwardAmount){
   if(!input||typeof input.projectId!=="string"||typeof input.contractId!=="string"||typeof input.reason!=="string"||!input.reason.trim()||input.reason.length>2000||typeof input.evidenceFileId!=="string"||typeof input.idempotencyKey!=="string"||!input.idempotencyKey.trim()||!["fixed","uncapped"].includes(input.amountNature))throw new BadRequestException("请完整填写对上合同金额修订依据");

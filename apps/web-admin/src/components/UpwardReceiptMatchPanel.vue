@@ -12,8 +12,21 @@ const options=computed(()=>(data.value?.receipts??[]).map(r=>({value:r.id,label:
 async function load(){const current=++generation;data.value=null;try{const result=await fetchReceiptMatches(props.projectId);if(current===generation)data.value=result;}catch(cause){if(current===generation)error.value=formatUnknownApiError(cause,"到账匹配读取失败");}}
 watch(()=>props.projectId,()=>{visible.value=false;password.value="";busy.value=false;error.value="";void load();},{immediate:true});onBeforeUnmount(()=>{generation++;});
 function open(original?:ReceiptMatchData["matches"][number]){Object.assign(form,{receiptFactId:original?.receiptFactId??"",settlementLedgerId:original?.settlementLedgerId??"",originalId:original?.id??"",amountYuan:"",reason:""});key.value=crypto.randomUUID();password.value="";visible.value=true;}
-async function save(){if(busy.value)return;const context=generation;busy.value=true;error.value="";try{await prepareReceiptMatch({projectId:props.projectId,receiptFactId:form.receiptFactId,settlementLedgerId:form.settlementLedgerId,...(form.originalId?{originalId:form.originalId}:{}),amountCents:yuanTextToCentsText(form.amountYuan),occurredAt:form.occurredAt,reason:form.reason,confirmationPassword:password.value,idempotencyKey:key.value});if(context!==generation)return;visible.value=false;password.value="";busy.value=false;await load();emit("changed");}catch(cause){if(context===generation)error.value=formatUnknownApiError(cause,"核销登记失败");}finally{if(context===generation)busy.value=false;}}
-async function decide(id:string,decision:string){if(busy.value)return;const context=generation;busy.value=true;error.value="";try{await decideReceiptMatch(id,decision,password.value);if(context!==generation)return;password.value="";busy.value=false;await load();emit("changed");}catch(cause){if(context===generation)error.value=formatUnknownApiError(cause,"核销确认失败");}finally{if(context===generation)busy.value=false;}}
+async function save(){if(busy.value)return;const context=generation;busy.value=true;error.value="";try{await prepareReceiptMatchWithCapability({projectId:props.projectId,receiptFactId:form.receiptFactId,settlementLedgerId:form.settlementLedgerId,...(form.originalId?{originalId:form.originalId}:{}),amountCents:yuanTextToCentsText(form.amountYuan),occurredAt:form.occurredAt,reason:form.reason,confirmationPassword:password.value,idempotencyKey:key.value});if(context!==generation)return;visible.value=false;password.value="";busy.value=false;await load();emit("changed");}catch(cause){if(context===generation)error.value=formatUnknownApiError(cause,"核销登记失败");}finally{if(context===generation)busy.value=false;}}
+async function decide(id:string,decision:string){if(busy.value)return;const context=generation;busy.value=true;error.value="";try{await decideReceiptMatchWithCapability(id,decision,password.value);if(context!==generation)return;password.value="";busy.value=false;await load();emit("changed");}catch(cause){if(context===generation)error.value=formatUnknownApiError(cause,"核销确认失败");}finally{if(context===generation)busy.value=false;}}
+
+async function prepareReceiptMatchWithCapability(arg0: Parameters<typeof prepareReceiptMatch>[0]) {
+  const capability = await fetchReceiptMatches(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return prepareReceiptMatch(arg0);
+}
+async function decideReceiptMatchWithCapability(arg0: Parameters<typeof decideReceiptMatch>[0], arg1: Parameters<typeof decideReceiptMatch>[1], arg2: Parameters<typeof decideReceiptMatch>[2]) {
+  const capability = await fetchReceiptMatches(props.projectId);
+  const operationAllowed = capability.canReview;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return decideReceiptMatch(arg0, arg1, arg2);
+}
 </script>
 <template>
   <section aria-label="对上到账匹配与核销">

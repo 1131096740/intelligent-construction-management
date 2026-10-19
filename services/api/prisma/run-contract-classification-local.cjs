@@ -9,13 +9,16 @@ const artifacts=mkdtempSync(join(tmpdir(),'jg-contract-check-'));
 function run(bin,args,env=process.env){const r=spawnSync(bin,args,{cwd,env,encoding:'utf8',maxBuffer:64*1024*1024}); if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr); if(r.status!==0)throw new Error('Local command failed: '+bin+' '+args[0]);return r.stdout;}
 if(process.env.NODE_ENV==='production'||Object.keys(process.env).some(k=>k==='DATABASE_URL'||k.endsWith('_DATABASE_URL')))throw Error('Refuse inherited database target');
 const endpoint=run('docker',['context','inspect','--format','{{.Endpoints.docker.Host}}']).trim();
-if(!endpoint.startsWith('unix://'))throw Error('Local Docker socket required');
+if(!endpoint.startsWith('unix://')||(process.env.DOCKER_HOST&&!process.env.DOCKER_HOST.startsWith('unix://')))throw Error('Local Docker socket required');
+process.env.DOCKER_HOST=endpoint; delete process.env.DOCKER_CONTEXT;
 const name='jg-contract-test-'+randomUUID().slice(0,8),password=randomUUID(),db='jiangkong_project_affiliate_company_contract_test';
 const env={...process.env,POSTGRES_PASSWORD:password};
 try{
- run('docker',['run','--rm','--detach','--pull=never','--name',name,'--env','POSTGRES_USER=jiangkong','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+db,'--publish','127.0.0.1::5432','postgres:16'],env);
+ run('docker',['run','--rm','--detach',"--pull=never",'--name',name,'--env','POSTGRES_USER=jiangkong','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+db,'--publish','127.0.0.1::5432',"postgres:16"],env);
  const port=run('docker',['port',name,'5432/tcp']).trim().split(':').pop();
- for(let i=0;i<40;i++){const r=spawnSync('docker',['exec',name,'pg_isready','-U','jiangkong','-d',db]);if(r.status===0)break;Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,500);}
+ let ready=false;
+ for(let i=0;i<40;i++){const r=spawnSync('docker',['exec',name,'pg_isready','-h','127.0.0.1','-U','jiangkong','-d',db]);if(r.status===0){ready=true;break;}Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,500);}
+ if(!ready)throw Error('Disposable PostgreSQL TCP server did not become ready');
  const target='postgresql://jiangkong:'+password+'@127.0.0.1:'+port+'/'+db;
  let testEnv={...process.env,NODE_ENV:'test',DATABASE_URL:target,PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL:target,RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS:'1',OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(),FILE_STORAGE_DRIVER:"local",FILE_STORAGE_ROOT:join(artifacts,"files"),INITIAL_USER_TEMPORARY_PASSWORD:"Local-Transfer-Initial-01",SMS_ENABLED:"false",RUN_COMPANY_TRANSFER_HTTP:"1"};
  run('pnpm',['exec','prisma','migrate','deploy'],testEnv);
@@ -33,5 +36,5 @@ try{
  run('pnpm',['exec','prisma','migrate','deploy'],testEnv);
  run('pnpm',['exec','jest','--runInBand','src/database/payment-execution-concurrency.spec.ts','--json','--outputFile',join(artifacts,'payment-tests.json')],testEnv);
  console.log('Test receipts: '+artifacts);
- console.log('LOCAL UNCOMMITTED DEVELOPMENT CHECK PASS; synthetic empty database only; not release gate');
+ console.log('ISOLATED CONTRACT FINANCE CHECK PASS; synthetic empty database only; exact-SHA CI evidence requires the outer dynamic gate');
 }finally{run('docker',['rm','--force',name]);}

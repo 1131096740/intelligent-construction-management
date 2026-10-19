@@ -3,7 +3,7 @@ import {computed,onBeforeUnmount,reactive,ref,watch} from "vue";
 import {useRoute} from "vue-router";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import ContractBankVerificationPanel from "../../components/ContractBankVerificationPanel.vue";
-import {exportCompanyTransfers,fetchCompanyTransfers,createCompanyTransfer,decideCompanyTransfer,executeCompanyTransfer,fetchCompanyTransferBanks,type TransferData,type TransferRow} from "../../api/company-transfer.api";
+import {fetchCompanyTransferCapabilities,exportCompanyTransfers,fetchCompanyTransfers,createCompanyTransfer,decideCompanyTransfer,executeCompanyTransfer,fetchCompanyTransferBanks,type TransferData,type TransferRow} from "../../api/company-transfer.api";
 import {uploadPrivateFile,downloadPrivateFileByTicket} from "../../api/core-flow-read.api";
 import {formatUnknownApiError} from "../../api/error-message";
 import {centsTextToYuanText,yuanTextToCentsText} from "../../lib/money";
@@ -14,14 +14,46 @@ const projectOptions=computed(()=>[...(data.value?.canUseOwnFunds?[{value:"",lab
 const companyOptions=computed(()=>(data.value?.companies??[]).map(c=>({value:c.id,label:c.name})));
 const originals=computed(()=>[...(data.value?.legacyOptions??[]).map(r=>({value:`${r.legacyType}:${r.id}`,label:`${r.reference} · 未清 ${money(r.remainingCents)} · 可申请 ${money(r.availableCents)}`})),...(data.value?.originalLoans??[]).map(r=>({value:`loan:${r.id}`,label:`${r.code} · ${r.sourceCompany} → ${r.destinationCompany} · 未清 ${money(r.remainingCents)} · 可申请 ${money(r.availableCents)}`})),...(data.value?.originalProxies??[]).map(r=>({value:`proxy:${r.id}`,label:`代付 ${r.source.reference} · ${r.source.actualPayer.name}`}))]);
 const money=centsTextToYuanText;
+const transferSelectPopupProps = { overlayInnerStyle: (trigger: HTMLElement) => ({ width: `${trigger.offsetWidth}px`, maxWidth: "calc(100vw - 32px)" }) };
 async function exportLedger(){try{await exportCompanyTransfers({...(project.value?{projectId:project.value}:{}),...(company.value?{companyId:company.value}:{}),...(asOf.value?{asOf:asOf.value}:{})});}catch(e){error.value=formatUnknownApiError(e,"互转台账导出失败");}}
 async function load(){const g=++generation;error.value="";try{const r=await fetchCompanyTransfers({...(project.value?{projectId:project.value}:{}),...(company.value?{companyId:company.value}:{}),...(asOf.value?{asOf:asOf.value}:{}),page:String(page.value)});if(g===generation){data.value=r;if(!openedOriginal&&(typeof route.query.originalProxyId==="string"||typeof route.query.originalInterEntityRelationshipId==="string"||typeof route.query.originalFundMovementRelationshipId==="string")&&r.canCreate){openedOriginal=true;form.kind="repayment";form.original=route.query.originalProxyId?`proxy:${route.query.originalProxyId}`:route.query.originalInterEntityRelationshipId?`inter_entity:${route.query.originalInterEntityRelationshipId}`:`movement:${route.query.originalFundMovementRelationshipId}`;originalChanged();await start("create");}}}catch(e){if(g===generation){data.value=null;error.value=formatUnknownApiError(e,"互转台账读取失败");}}}
 function originalChanged(){const legacy=data.value?.legacyOptions.find(r=>`${r.legacyType}:${r.id}`===form.original);if(legacy)Object.assign(form,{sourceCompanyId:legacy.sourceCompanyId,destinationCompanyId:legacy.destinationCompanyId,sourceProjectId:legacy.sourceProjectId,destinationProjectId:legacy.destinationProjectId});const [kind,id]=form.original.split(":");const loan=data.value?.originalLoans.find(r=>r.id===id),proxy=data.value?.originalProxies.find(r=>r.id===id);if(kind==="loan"&&loan)Object.assign(form,{sourceCompanyId:loan.destinationCompanyId,destinationCompanyId:loan.sourceCompanyId,sourceProjectId:loan.destinationProjectId??"",destinationProjectId:loan.sourceProjectId??""});if(kind==="proxy"&&proxy)Object.assign(form,{sourceCompanyId:proxy.source.debtor.id,destinationCompanyId:proxy.source.actualPayer.id,sourceProjectId:proxy.projectId,destinationProjectId:proxy.projectId});}
 async function start(action:string,row:TransferRow|null=null){selected.value=row;password.value="";comment.value="";bank.value="";outgoing.value="";file.value=null;fileId.value="";form.sourceAccount="";form.destinationAccount="";key=crypto.randomUUID();mode.value=action;if(row&&["outgoing","incoming","returned"].includes(action)){try{banks.value=await fetchCompanyTransferBanks(row.id,action);}catch(e){error.value=formatUnknownApiError(e,"银行流水读取失败");}}}
 function choose(e:Event){file.value=(e.target as HTMLInputElement).files?.[0]??null;fileId.value="";}
-async function save(){if(busy.value)return;busy.value=true;error.value="";try{if(mode.value==="evidence"){await downloadPrivateFileByTicket(selected.value!.evidenceFileId!,{confirmationPassword:password.value,downloadReason:"公司互转申请依据核对"});}else if(mode.value==="create"){if(!file.value)throw new Error("请上传互转申请依据");if(!fileId.value)fileId.value=(await uploadPrivateFile(file.value,file.value.name)).id;const [type,id]=form.original.split(":");await createCompanyTransfer({...form,amountCents:yuanTextToCentsText(form.amountYuan),...(form.kind==="repayment"?type==="loan"?{originalTransferId:id}:type==="movement"?{originalFundMovementRelationshipId:id}:type==="inter_entity"?{originalInterEntityRelationshipId:id}:{originalProxyId:id}:{}),evidenceFileId:fileId.value,idempotencyKey:key,confirmationPassword:password.value});}else if(["approve","reject","withdraw"].includes(mode.value))await decideCompanyTransfer(selected.value!.id,{action:mode.value,comment:comment.value,confirmationPassword:password.value});else await executeCompanyTransfer(selected.value!.id,{kind:mode.value,observationId:bank.value,outgoingEventId:outgoing.value||undefined,idempotencyKey:key,confirmationPassword:password.value});mode.value="";password.value="";form.sourceAccount="";form.destinationAccount="";await load();}catch(e){error.value=formatUnknownApiError(e,"互转提交失败");}finally{busy.value=false;}}
-async function evidence(r:TransferRow){if(!r.evidenceFileId)return;try{await downloadPrivateFileByTicket(r.evidenceFileId,{confirmationPassword:password.value,downloadReason:"公司互转审批核对"});}catch(e){error.value=formatUnknownApiError(e,"请填写当前密码后查看申请依据");}}
+async function save(){if(busy.value)return;busy.value=true;error.value="";try{if(mode.value==="evidence"){await downloadPrivateFileByTicketWithCapability(selected.value!.evidenceFileId!,{confirmationPassword:password.value,downloadReason:"公司互转申请依据核对"});}else if(mode.value==="create"){if(!file.value)throw new Error("请上传互转申请依据");if(!fileId.value)fileId.value=(await uploadPrivateFileWithCapability(file.value,file.value.name)).id;const [type,id]=form.original.split(":");await createCompanyTransferWithCapability({...form,amountCents:yuanTextToCentsText(form.amountYuan),...(form.kind==="repayment"?type==="loan"?{originalTransferId:id}:type==="movement"?{originalFundMovementRelationshipId:id}:type==="inter_entity"?{originalInterEntityRelationshipId:id}:{originalProxyId:id}:{}),evidenceFileId:fileId.value,idempotencyKey:key,confirmationPassword:password.value});}else if(["approve","reject","withdraw"].includes(mode.value))await decideCompanyTransferWithCapability(selected.value!.id,{action:mode.value,comment:comment.value,confirmationPassword:password.value});else await executeCompanyTransferWithCapability(selected.value!.id,{kind:mode.value,observationId:bank.value,outgoingEventId:outgoing.value||undefined,idempotencyKey:key,confirmationPassword:password.value});mode.value="";password.value="";form.sourceAccount="";form.destinationAccount="";await load();}catch(e){error.value=formatUnknownApiError(e,"互转提交失败");}finally{busy.value=false;}}
+async function evidence(r:TransferRow){if(!r.evidenceFileId)return;try{await downloadPrivateFileByTicketWithCapability(r.evidenceFileId,{confirmationPassword:password.value,downloadReason:"公司互转审批核对"});}catch(e){error.value=formatUnknownApiError(e,"请填写当前密码后查看申请依据");}}
 watch([project,company,asOf],()=>{page.value=1;void load();},{immediate:true});onBeforeUnmount(()=>{generation++;password.value="";form.sourceAccount="";form.destinationAccount="";});
+
+async function createCompanyTransferWithCapability(arg0: Parameters<typeof createCompanyTransfer>[0]) {
+  const capability = await fetchCompanyTransferCapabilities(project.value, page.value, company.value, asOf.value);
+  const operationAllowed = capability.canCreate;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return createCompanyTransfer(arg0);
+}
+async function decideCompanyTransferWithCapability(arg0: Parameters<typeof decideCompanyTransfer>[0], arg1: Parameters<typeof decideCompanyTransfer>[1]) {
+  const capability = await fetchCompanyTransferCapabilities(project.value, page.value, company.value, asOf.value);
+  const operationAllowed = capability.canDecide;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return decideCompanyTransfer(arg0, arg1);
+}
+async function executeCompanyTransferWithCapability(arg0: Parameters<typeof executeCompanyTransfer>[0], arg1: Parameters<typeof executeCompanyTransfer>[1]) {
+  const capability = await fetchCompanyTransferCapabilities(project.value, page.value, company.value, asOf.value);
+  const operationAllowed = capability.canExecute;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return executeCompanyTransfer(arg0, arg1);
+}
+async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPrivateFile>[0], arg1: Parameters<typeof uploadPrivateFile>[1]) {
+  const capability = await fetchCompanyTransferCapabilities(project.value, page.value, company.value, asOf.value);
+  const operationAllowed = capability.canCreate;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return uploadPrivateFile(arg0, arg1);
+}
+async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof downloadPrivateFileByTicket>[0], arg1: Parameters<typeof downloadPrivateFileByTicket>[1]) {
+  const capability = await fetchCompanyTransferCapabilities(project.value, page.value, company.value, asOf.value);
+  const operationAllowed = capability.canReadEvidence;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return downloadPrivateFileByTicket(arg0, arg1);
+}
 </script>
 <template>
   <section class="company-transfer-page">
@@ -61,12 +93,12 @@ watch([project,company,asOf],()=>{page.value=1;void load();},{immediate:true});o
       <t-alert v-if="error" theme="error" :message="error" />
       <t-form label-align="top">
         <template v-if="mode==='create'">
-          <t-form-item label="办理类别"><t-select v-model="form.kind" :options="[{value:'storage',label:'资金转存'},{value:'loan',label:'临时借款调剂'},{value:'repayment',label:'归还已有往来'}]" /></t-form-item>
-          <t-form-item v-if="form.kind==='repayment'" label="原借款或代付往来"><t-select v-model="form.original" :options="originals" @change="originalChanged" /></t-form-item>
-          <t-form-item label="转出公司"><t-select v-model="form.sourceCompanyId" :options="companyOptions" /></t-form-item>
-          <t-form-item label="转出资金归属"><t-select v-model="form.sourceProjectId" :options="projectOptions" /></t-form-item>
-          <t-form-item label="转入公司"><t-select v-model="form.destinationCompanyId" :options="companyOptions" /></t-form-item>
-          <t-form-item label="转入资金归属"><t-select v-model="form.destinationProjectId" :options="projectOptions" /></t-form-item>
+          <t-form-item label="办理类别"><t-select :popup-props="transferSelectPopupProps" v-model="form.kind" :options="[{value:'storage',label:'资金转存'},{value:'loan',label:'临时借款调剂'},{value:'repayment',label:'归还已有往来'}]" /></t-form-item>
+          <t-form-item v-if="form.kind==='repayment'" label="原借款或代付往来"><t-select :popup-props="transferSelectPopupProps" v-model="form.original" :options="originals" @change="originalChanged" /></t-form-item>
+          <t-form-item label="转出公司"><t-select :popup-props="transferSelectPopupProps" v-model="form.sourceCompanyId" :options="companyOptions" /></t-form-item>
+          <t-form-item label="转出资金归属"><t-select :popup-props="transferSelectPopupProps" v-model="form.sourceProjectId" :options="projectOptions" /></t-form-item>
+          <t-form-item label="转入公司"><t-select :popup-props="transferSelectPopupProps" v-model="form.destinationCompanyId" :options="companyOptions" /></t-form-item>
+          <t-form-item label="转入资金归属"><t-select :popup-props="transferSelectPopupProps" v-model="form.destinationProjectId" :options="projectOptions" /></t-form-item>
           <t-form-item label="转出银行完整账号"><t-input v-model="form.sourceAccount" autocomplete="off" /></t-form-item>
           <t-form-item label="转入银行完整账号"><t-input v-model="form.destinationAccount" autocomplete="off" /></t-form-item>
           <t-form-item label="申请金额（元）"><t-input v-model="form.amountYuan" /></t-form-item>
@@ -85,8 +117,8 @@ watch([project,company,asOf],()=>{page.value=1;void load();},{immediate:true});o
           <t-button v-if="selected?.evidenceFileId" variant="outline" @click="evidence(selected)">查看申请依据</t-button>
         </template>
         <template v-else>
-          <t-form-item v-if="mode!=='outgoing'" label="对应出款（须由另一位财务确认）"><t-select v-model="outgoing" :options="(selected?.events??[]).filter(e=>e.canReconcile&&BigInt(e.remainingCents)>0n).map(e=>({value:e.id,label:`${new Date(e.occurredAt).toLocaleDateString('zh-CN')} · 尚待核对 ${money(e.remainingCents)} 元`}))" /></t-form-item>
-          <t-form-item label="已核验且未认领的实际银行流水"><t-select v-model="bank" :options="banks" /></t-form-item>
+          <t-form-item v-if="mode!=='outgoing'" label="对应出款（须由另一位财务确认）"><t-select :popup-props="transferSelectPopupProps" v-model="outgoing" :options="(selected?.events??[]).filter(e=>e.canReconcile&&BigInt(e.remainingCents)>0n).map(e=>({value:e.id,label:`${new Date(e.occurredAt).toLocaleDateString('zh-CN')} · 尚待核对 ${money(e.remainingCents)} 元`}))" /></t-form-item>
+          <t-form-item label="已核验且未认领的实际银行流水"><t-select :popup-props="transferSelectPopupProps" v-model="bank" :options="banks" /></t-form-item>
         </template>
         <t-form-item label="当前登录密码"><t-input v-model="password" type="password" autocomplete="current-password" /></t-form-item>
         <t-button :loading="busy" @click="save">{{ mode==='create'?'提交领导终审':mode==='approve'?'签署并终审通过':mode==='evidence'?'核验并下载依据':'确认办理' }}</t-button>

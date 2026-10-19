@@ -70,6 +70,10 @@ const recordBusy = ref(false);
 const recordError = ref("");
 const signedFiles = ref<UploadFile[]>([]);
 const form = ref(createForm());
+watch(() => [form.value.amountYuan, form.value.amountNature], () => {
+  try { form.value.amountCents = form.value.amountNature === "fixed" ? yuanTextToCentsText(form.value.amountYuan) : undefined; }
+  catch { form.value.amountCents = undefined; }
+}, { flush: "sync" });
 let affiliateCompanyContractCapability: ProjectAffiliateCompanyContractsReadModel | null =
   null;
 const affiliateCompanyContractRootActions = shallowRef<
@@ -259,12 +263,10 @@ function openRecord() {
 
 function submitRecord() {
   const context = captureRecordOperation();
-  let amountCents:string|undefined;
-  try {amountCents=form.value.amountNature === "fixed" ? yuanTextToCentsText(form.value.amountYuan) : undefined;} catch(error){if(recordContextIsCurrent(context))recordError.value=formatUnknownApiError(error, "合同金额不正确");return Promise.resolve();}
   const request = recordProjectAffiliateCompanyContractWithUpload(
     context.projectId,
     {
-      form: { ...form.value, amountCents },
+      form: form.value,
       files: signedFiles.value,
       idempotencyKey: context.idempotencyKey,
       context,
@@ -562,6 +564,7 @@ function createForm() {
     signedAt: todayText(),
     amountNature: "fixed" as "fixed" | "uncapped",
     amountYuan: "",
+    amountCents: undefined as string | undefined,
     rightsObligationsSummary: "",
     companyEntityId: ""
   };

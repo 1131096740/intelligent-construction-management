@@ -22,17 +22,36 @@ function start(entryKind="payment",entry:ProxyEntry|null=null){if(entryKind==="r
 function decide(entry:ProxyEntry,action:"confirm"|"return"){decision.value={id:entry.id,action};password.value="";show.value=true;}
 function selectFile(event:Event){file.value=(event.target as HTMLInputElement).files?.[0]??null;fileId.value=null;}
 async function save(){if(busy.value)return;const projectId=props.projectId,context=sequence;busy.value=true;error.value="";try{
- if(decision.value)await decideContractProxyExecution(decision.value.id,decision.value.action,password.value);
+ if(decision.value)await decideContractProxyExecutionWithCapability(decision.value.id,decision.value.action,password.value);
  else {
   if(!file.value)throw new Error("请上传本次银行收付凭证");
-  if(!fileId.value)fileId.value=(await uploadPrivateFile(file.value,file.value.name)).id;
+  if(!fileId.value)fileId.value=(await uploadPrivateFileWithCapability(file.value,file.value.name)).id;
   if(projectId!==props.projectId||context!==sequence)return;
-  await prepareContractProxyExecution({projectId,...(receivingBankObservation.value?{receivingBankObservationId:receivingBankObservation.value}:{}),...(bankObservation.value?{bankObservationId:bankObservation.value}:{}),sourceRef:source.value,...(requestId.value?{paymentRequestId:requestId.value}:{}),...(allocations.value.length?{allocations:allocations.value.map(a=>({sourceRef:a.sourceRef,amountCents:yuanTextToCentsText(a.amountYuan)}))}:{}),entryKind:kind.value,...(original.value?{originalId:original.value.id}:{}),amountCents:yuanTextToCentsText(amount.value),occurredAt:`${date.value}T00:00:00+08:00`,actualPayerKey:payer.value,bankReference:bank.value,evidenceFileId:fileId.value,reason:reason.value,idempotencyKey:key,confirmationPassword:password.value});
+  await prepareContractProxyExecutionWithCapability({projectId,...(receivingBankObservation.value?{receivingBankObservationId:receivingBankObservation.value}:{}),...(bankObservation.value?{bankObservationId:bankObservation.value}:{}),sourceRef:source.value,...(requestId.value?{paymentRequestId:requestId.value}:{}),...(allocations.value.length?{allocations:allocations.value.map(a=>({sourceRef:a.sourceRef,amountCents:yuanTextToCentsText(a.amountYuan)}))}:{}),entryKind:kind.value,...(original.value?{originalId:original.value.id}:{}),amountCents:yuanTextToCentsText(amount.value),occurredAt:`${date.value}T00:00:00+08:00`,actualPayerKey:payer.value,bankReference:bank.value,evidenceFileId:fileId.value,reason:reason.value,idempotencyKey:key,confirmationPassword:password.value});
  }
  if(projectId!==props.projectId||context!==sequence)return;
  password.value="";show.value=false;await load();emit("changed");
  }catch(cause){error.value=formatUnknownApiError(cause,"代付往来办理失败");}finally{busy.value=false;}}
 watch(()=>props.projectId,()=>{show.value=false;password.value="";void load();},{immediate:true});onBeforeUnmount(()=>{sequence++;password.value="";});
+
+async function prepareContractProxyExecutionWithCapability(arg0: Parameters<typeof prepareContractProxyExecution>[0]) {
+  const capability = await fetchContractProxyExecutions(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return prepareContractProxyExecution(arg0);
+}
+async function decideContractProxyExecutionWithCapability(arg0: Parameters<typeof decideContractProxyExecution>[0], arg1: Parameters<typeof decideContractProxyExecution>[1], arg2: Parameters<typeof decideContractProxyExecution>[2]) {
+  const capability = await fetchContractProxyExecutions(props.projectId);
+  const operationAllowed = capability.canReview;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return decideContractProxyExecution(arg0, arg1, arg2);
+}
+async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPrivateFile>[0], arg1: Parameters<typeof uploadPrivateFile>[1]) {
+  const capability = await fetchContractProxyExecutions(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return uploadPrivateFile(arg0, arg1);
+}
 </script>
 <template>
   <section

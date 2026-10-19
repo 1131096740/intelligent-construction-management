@@ -6,9 +6,9 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 203 条 |
+| Controller 源码路由 | 已扫描 221 条 |
 | Web API 请求 | 已扫描 159 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 659 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 686 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 58 条合同专项候选；物理删除授权固定为否 |
 
@@ -18,7 +18,7 @@
 | --- | ---: |
 | matched | 108 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 37 |
+| backend_without_frontend | 55 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
 | exit_candidate | 58 |
@@ -46,6 +46,9 @@
 | POST | `/company-entities/:param/status` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/company-entities/management` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/company-entities/management-capability` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-bank-verifications` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-bank-verifications` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-bank-verifications/:param/decision` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-bill-imports/:param/apply` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-bills/:param/excel-imports` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/contract-bills/:param/excel-template` | — |  | backend_without_frontend | 补入口 | 否 | — |
@@ -75,6 +78,11 @@
 | POST | `/contract-drafts/:param/preview-generation` | queueContractDraftPreview | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/submission` | submitContractDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-economic-reviews` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-economic-reviews` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-economic-reviews/:param/decision` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-economic-reviews/counterparties` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-economic-reviews/settlement-coverage` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-ended-retention/:param/hold-release` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-ended-retention/:param/holds` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contract-ended-retention/preview` | — |  | backend_without_frontend | 补入口 | 否 | — |
@@ -98,6 +106,13 @@
 | POST | `/contract-number-rules/:param/stop` | stopContractNumberRule |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-offline-revisions/:param/preview-download-ticket` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-offline-revisions/:param/retry` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| GET | `/contract-proxy-executions` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-proxy-executions` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-proxy-executions/:param/decision` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-proxy-executions/bank-options` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-relationship-ledger` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-relationship-ledger/export` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-relationship-ledger/preflight` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | PATCH | `/contract-scenario-template-mappings/:param` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | PATCH | `/contract-template-versions/:param` | updateContractTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-template-versions/:param/clone` | cloneContractTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
@@ -234,6 +249,9 @@
 | POST | `/settlement-workbench/contract-versions/:param/preview` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/settlement-workbench/contract-versions/:param/source-lines` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/settlement-workbench/projects/:param/contract-versions/:param/template-recommendations` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/upward-contract-amount-revisions` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/upward-contract-amount-revisions` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/upward-contract-amount-revisions/:param/decision` | — |  | backend_without_frontend | 补入口 | 否 | — |
 
 ## 复核结论
 

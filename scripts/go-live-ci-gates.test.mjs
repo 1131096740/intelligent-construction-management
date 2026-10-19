@@ -60,7 +60,8 @@ test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on succe
 
 for (const [stepName, group] of [
   ["Install POL-113/POL-115 browser and document runtimes", "pol113_pol115_business_entries"],
-  ["Install POL-109 browser runtime", "project_close_profit_pol109"]
+  ["Install POL-109 browser runtime", "project_close_profit_pol109"],
+  ["Install contract finance browser and document runtimes", "contract_finance_acceptance"]
 ]) {
   test(`${stepName} removes only the Azure mirror with an existing official HTTPS fallback`, async () => {
     const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
@@ -293,13 +294,13 @@ test("CI fans out independent static and database gates behind one stable summar
   );
   assert.equal(
     dynamic.match(/libreoffice-writer/gu)?.length,
-    1,
-    "document conversion runtime must remain isolated to the entry shard"
+    2,
+    "document conversion runtime must remain isolated to the entry and contract finance shards"
   );
   assert.equal(
     dynamic.match(/libreoffice-calc/gu)?.length,
-    1,
-    "spreadsheet conversion runtime must remain isolated to the entry shard"
+    2,
+    "spreadsheet conversion runtime must remain isolated to the entry and contract finance shards"
   );
 
   assert.match(summary, /name: Release gates/u);

@@ -63,7 +63,7 @@ export class ContractEconomicReviewService {
      return {pendingSettlements,documents:documents.map(d=>({...d,amountCents:d.amountCents?.toString()??null,settledCents:d.settledCents.toString()})),
        reviews:reviews.map(r=>({...r,canContractReview:r.status==="pending_review"&&r.preparedByUserId!==actor&&roles.includes("contract_director"),
          canFinanceReview:r.status==="pending_finance"&&r.preparedByUserId!==actor&&r.contractReviewedById!==actor&&roles.includes("finance_director")})),
-       candidates,canPrepare:roles.some(r=>PREPARERS.includes(r))};
+       canReview:roles.some(r=>["contract_director","finance_director"].includes(r)),candidates,canPrepare:roles.some(r=>PREPARERS.includes(r))};
    },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
  async prepareSettlement(actor:string,input:{projectId:string;sourceRef:string;allocations:unknown;confirmationPassword:string}) {

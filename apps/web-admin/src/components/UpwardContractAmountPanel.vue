@@ -12,13 +12,13 @@ let key=crypto.randomUUID(),generation=0;
 async function load(){const current=++generation;data.value=null;try{const result=await fetchUpwardAmounts(props.projectId);if(current===generation)data.value=result;}catch(cause){if(current===generation)error.value=formatUnknownApiError(cause,"金额修订读取失败");}}
 function start(){contract.value="";nature.value="fixed";amount.value="";reason.value="";password.value="";file.value=null;fileId.value=null;decision.value=null;key=crypto.randomUUID();show.value=true;}
 async function save(){if(busy.value)return;const projectId=props.projectId,context=generation;busy.value=true;error.value="";try{
- if(decision.value)await decideUpwardAmount(decision.value.id,decision.value.action,password.value);
+ if(decision.value)await decideUpwardAmountWithCapability(decision.value.id,decision.value.action,password.value);
  else {
   if(!file.value)throw new Error("请上传本次金额确认或修订依据");
-  if(!fileId.value)fileId.value=(await uploadPrivateFile(file.value,file.value.name)).id;
+  if(!fileId.value)fileId.value=(await uploadPrivateFileWithCapability(file.value,file.value.name)).id;
   if(projectId!==props.projectId||context!==generation)return;
   const previous=data.value?.revisions.filter(r=>r.contractId===contract.value&&r.status==='confirmed').sort((a,b)=>b.effectiveAt.localeCompare(a.effectiveAt)||(b.confirmedAt??"").localeCompare(a.confirmedAt??"")||b.id.localeCompare(a.id))[0];
-  await prepareUpwardAmount({projectId,contractId:contract.value,...(previous?{supersedesId:previous.id}:{}),amountNature:nature.value,...(nature.value==='fixed'?{amountCents:yuanTextToCentsText(amount.value)}:{}),effectiveAt:`${date.value}T00:00:00+08:00`,reason:reason.value,evidenceFileId:fileId.value,confirmationPassword:password.value,idempotencyKey:key});
+  await prepareUpwardAmountWithCapability({projectId,contractId:contract.value,...(previous?{supersedesId:previous.id}:{}),amountNature:nature.value,...(nature.value==='fixed'?{amountCents:yuanTextToCentsText(amount.value)}:{}),effectiveAt:`${date.value}T00:00:00+08:00`,reason:reason.value,evidenceFileId:fileId.value,confirmationPassword:password.value,idempotencyKey:key});
  }
  if(projectId!==props.projectId||context!==generation)return;
  show.value=false;password.value="";await load();emit("changed");
@@ -26,6 +26,25 @@ async function save(){if(busy.value)return;const projectId=props.projectId,conte
 function chooseFile(event:Event){file.value=(event.target as HTMLInputElement).files?.[0]??null;fileId.value=null;}
 function decide(id:string,action:string){decision.value={id,action};password.value="";show.value=true;}
 watch(()=>props.projectId,()=>{show.value=false;password.value="";void load();},{immediate:true});onBeforeUnmount(()=>{generation++;password.value="";});
+
+async function prepareUpwardAmountWithCapability(arg0: Parameters<typeof prepareUpwardAmount>[0]) {
+  const capability = await fetchUpwardAmounts(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return prepareUpwardAmount(arg0);
+}
+async function decideUpwardAmountWithCapability(arg0: Parameters<typeof decideUpwardAmount>[0], arg1: Parameters<typeof decideUpwardAmount>[1], arg2: Parameters<typeof decideUpwardAmount>[2]) {
+  const capability = await fetchUpwardAmounts(props.projectId);
+  const operationAllowed = capability.canReview;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return decideUpwardAmount(arg0, arg1, arg2);
+}
+async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPrivateFile>[0], arg1: Parameters<typeof uploadPrivateFile>[1]) {
+  const capability = await fetchUpwardAmounts(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return uploadPrivateFile(arg0, arg1);
+}
 </script>
 <template>
   <section aria-label="对上合同金额修订">

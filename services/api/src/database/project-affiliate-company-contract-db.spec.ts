@@ -142,6 +142,22 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     // Project money lent to own funds retains each side's separate ownership.
     const mixed=await service.create(f.recorderId,{kind:"loan",sourceCompanyId:f.companyId,destinationCompanyId:b.companyId,sourceProjectId:f.projectId,destinationProjectId:null,sourceAccount:"6222000011111111",destinationAccount:"6222000022222222",amountCents:"1000",reason:"项目与自有资金混合归属",evidenceFileId:await file(),confirmationPassword:"test-password",idempotencyKey:randomUUID()});await service.decide(gm.directorId,mixed.id,decision);const mixedOut=await execute(mixed.id,"outgoing",f.companyId,"1000");await execute(mixed.id,"incoming",b.companyId,"1000",mixedOut.id,null);
     const mixedProject=await reader.list(manager.recorderId,{projectId:f.projectId});expect(mixedProject.balances.every(b=>b.projectId===f.projectId)).toBe(true);expect(mixedProject.rows.find(r=>r.id===mixed.id)?.events.map(e=>e.kind)).toEqual(["outgoing"]);
+    // A former participant can repay its approved original debt, but cannot originate new transfers.
+    const exitedLoan=await request("loan","1000");await service.decide(gm.directorId,exitedLoan.id,decision);
+    const exitedOut=await execute(exitedLoan.id,"outgoing",f.companyId,"1000");await execute(exitedLoan.id,"incoming",b.companyId,"1000",exitedOut.id);
+    await prisma.projectParticipatingCompany.updateMany({where:{projectId:f.projectId,companyEntityId:b.companyId},data:{endedAt:new Date("2026-10-10")}});
+    await expect(request("loan","1000")).rejects.toThrow();await expect(request("storage","1000")).rejects.toThrow();
+    const exitedRepayment=await request("repayment","1000",b.companyId,f.companyId,f.projectId,exitedLoan.id);await service.decide(gm.directorId,exitedRepayment.id,decision);
+    const exitPay=await execute(exitedRepayment.id,"outgoing",b.companyId,"1000",undefined,f.projectId,"2026-10-15");
+    const exitReceive=await execute(exitedRepayment.id,"incoming",f.companyId,"1000",exitPay.id,f.projectId,"2026-10-15");
+    await prisma.projectMember.create({data:{projectId:f.projectId,userId:f.directorId,positionKey:"finance_director"}});
+    const beforeReplay=await prisma.operatingFact.count({where:{projectId:f.projectId}});
+    for (const eventId of [exitPay.id,exitReceive.id]) await replay.replaySource({projectId:f.projectId,sourceType:"company_transfer_event",sourceBusinessId:eventId},f.directorId);
+    expect(await prisma.operatingFact.count({where:{projectId:f.projectId}})).toBe(beforeReplay);
+    const sourceAdapter=new CompanyTransferOperatingSourceAdapter();
+    for (const eventId of [exitPay.id,exitReceive.id]) await prisma.$transaction(async tx=>{const snapshot=await sourceAdapter.readSourceSnapshot(tx,{projectId:f.projectId,sourceType:"company_transfer_event",sourceBusinessId:eventId});const input=sourceAdapter.toOperatingFactInput(snapshot!).input;const materialized=await ledger.materializeSourceForComparisonInTransaction(tx,input);expect(materialized.input.occurredAt.toISOString().slice(0,10)).toBe("2026-10-15");});
+    const repaid=(await reader.list(f.recorderId,{projectId:f.projectId})).rows.find(r=>r.id===exitedRepayment.id)!;expect(repaid).toMatchObject({receivedCents:"1000",inTransitCents:"0"});
+
   },60000);
 
   it("真实HTTP及PG16：表外合同结算→我方代付→退款及归还→一次核销和往来余额", async () => {

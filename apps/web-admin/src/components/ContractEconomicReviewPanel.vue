@@ -14,7 +14,7 @@ const lines=ref<Array<{scope:string;left:string;right:string;owner:"left"|"right
 const scopeSettlement=ref<EconomicReviewData["pendingSettlements"][number]|null>(null);
 const scopeAmounts=ref<Record<string,string>>({});
 const scopeVisible=ref(false);
-async function saveScope(){if(busy.value||!scopeSettlement.value)return;busy.value=true;error.value="";try{await prepareEconomicSettlement({projectId:props.projectId,sourceRef:scopeSettlement.value.ref,confirmationPassword:password.value,allocations:Object.entries(scopeAmounts.value).filter(([,v])=>v.trim()).map(([scopeKey,value])=>({scopeKey,amountCents:yuanTextToCentsText(value)}))});scopeVisible.value=false;password.value="";await load();emit("changed");}catch(cause){error.value=formatUnknownApiError(cause,"结算履约范围保存失败");}finally{busy.value=false;}}
+async function saveScope(){if(busy.value||!scopeSettlement.value)return;busy.value=true;error.value="";try{await prepareEconomicSettlementWithCapability({projectId:props.projectId,sourceRef:scopeSettlement.value.ref,confirmationPassword:password.value,allocations:Object.entries(scopeAmounts.value).filter(([,v])=>v.trim()).map(([scopeKey,value])=>({scopeKey,amountCents:yuanTextToCentsText(value)}))});scopeVisible.value=false;password.value="";await load();emit("changed");}catch(cause){error.value=formatUnknownApiError(cause,"结算履约范围保存失败");}finally{busy.value=false;}}
 const decision=ref<{id:string;revision:number;decision:"confirm"|"return"}|null>(null);
 let sequence=0;let alive=true;let key=crypto.randomUUID();
 const relations=[{label:"独立履约",value:"independent"},{label:"补充文书（有部分覆盖）",value:"supplement"},{label:"替代文书",value:"replacement"},{label:"共同依据",value:"shared_evidence"}];
@@ -25,13 +25,32 @@ async function load(){const current=++sequence;data.value=null;error.value="";bu
 function start(l="",r="",prior?:string){supersedes.value=prior;targetSource.value="";left.value=l;right.value=r;relation.value="independent";reason.value="";password.value="";lines.value=[];decision.value=null;key=crypto.randomUUID();show.value=true;}
 function review(id:string,revision:number,action:"confirm"|"return"){decision.value={id,revision,decision:action};password.value="";reason.value="";show.value=true;}
 async function save(){if(busy.value)return;busy.value=true;error.value="";try{
- if(decision.value)await decideEconomicReview(decision.value.id,{...decision.value,reason:reason.value,confirmationPassword:password.value});
- else await prepareEconomicReview({targetSourceRef:targetSource.value||undefined,supersedesReviewId:supersedes.value,projectId:props.projectId,leftSourceRef:left.value,rightSourceRef:right.value,relation:relation.value,reason:reason.value,confirmationPassword:password.value,idempotencyKey:key,
+ if(decision.value)await decideEconomicReviewWithCapability(decision.value.id,{...decision.value,reason:reason.value,confirmationPassword:password.value});
+ else await prepareEconomicReviewWithCapability({targetSourceRef:targetSource.value||undefined,supersedesReviewId:supersedes.value,projectId:props.projectId,leftSourceRef:left.value,rightSourceRef:right.value,relation:relation.value,reason:reason.value,confirmationPassword:password.value,idempotencyKey:key,
  coverage:relation.value==="independent"?[]:lines.value.map(l=>({scope:l.scope,owner:l.owner,leftAmountCents:yuanTextToCentsText(l.left),rightAmountCents:yuanTextToCentsText(l.right)}))});
  password.value="";show.value=false;await load();emit("changed");
  }catch(e){error.value=formatUnknownApiError(e,"履约复核办理失败");}finally{busy.value=false;}}
 watch(()=>props.projectId,()=>{show.value=false;scopeVisible.value=false;password.value="";void load();},{immediate:true});
 onBeforeUnmount(()=>{alive=false;sequence++;password.value="";});
+
+async function prepareEconomicReviewWithCapability(arg0: Parameters<typeof prepareEconomicReview>[0]) {
+  const capability = await fetchEconomicReviews(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return prepareEconomicReview(arg0);
+}
+async function decideEconomicReviewWithCapability(arg0: Parameters<typeof decideEconomicReview>[0], arg1: Parameters<typeof decideEconomicReview>[1]) {
+  const capability = await fetchEconomicReviews(props.projectId);
+  const operationAllowed = capability.canReview;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return decideEconomicReview(arg0, arg1);
+}
+async function prepareEconomicSettlementWithCapability(arg0: Parameters<typeof prepareEconomicSettlement>[0]) {
+  const capability = await fetchEconomicReviews(props.projectId);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return prepareEconomicSettlement(arg0);
+}
 </script>
 <template>
   <section

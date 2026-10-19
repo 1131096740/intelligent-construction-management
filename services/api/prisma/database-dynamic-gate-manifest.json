@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 188,
-    "terminalMigration": "20261020120000_company_transfer",
-    "terminalMigrationChecksum": "2afc9e06f49ab98cd7456b1388dd8401624e52843c9489f93d8f95ce05e48f6b",
+    "expectedDirectoryCount": 189,
+    "terminalMigration": "20261020130000_company_transfer_repayment_ownership",
+    "terminalMigrationChecksum": "b388f99f9768f8ed794866e21edfdb2cd874abf9789892bb33b405b16a2a8217",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 69,
-    "fullyPendingSuites": 58,
+    "pendingFiles": 70,
+    "fullyPendingSuites": 59,
     "partiallyPendingSuites": 11,
-    "pendingTests": 403,
-    "coveredFiles": 69,
-    "coveredTests": 403,
+    "pendingTests": 411,
+    "coveredFiles": 70,
+    "coveredTests": 411,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -388,7 +388,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 149,
+      "pendingTests": 156,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -442,7 +442,7 @@
         },
         {
           "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
-          "pendingTests": 4,
+          "pendingTests": 11,
           "suiteStatus": "partial_pending"
         },
         {
@@ -622,6 +622,23 @@
       "runner": {
         "kind": "node",
         "path": "services/api/prisma/run-general-procurement-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "contract_finance_acceptance",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/company-transfer-http-postgres.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "apiScript",
+        "script": "verify:contract-classification:local",
+        "path": "services/api/prisma/run-contract-classification-local.cjs"
       },
       "state": "executable_local_runner"
     }

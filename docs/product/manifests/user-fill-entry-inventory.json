@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 361,
+    "activeBusinessActionCount": 381,
     "technicalActionCount": 9,
-    "activeBindingCount": 417,
+    "activeBindingCount": 439,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -311,6 +311,87 @@
       "causalVerified": true
     },
     {
+      "id": "company-transfer.createCompanyTransfer",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-transfer.decideCompanyTransfer",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/decision"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-transfer.downloadPrivateFileByTicket",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /files/:param/download-ticket-capability",
+        "POST /files/:param/download-ticket"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 2,
+      "causalVerified": true
+    },
+    {
+      "id": "company-transfer.executeCompanyTransfer",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /company-transfers/:param/events"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "company-transfer.uploadPrivateFile",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 2,
+      "causalVerified": true
+    },
+    {
       "id": "contract-approval.delegate",
       "status": "unified_candidate",
       "usage": "background",
@@ -513,6 +594,71 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /contract-drafts/:param/files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-bank-verification.decideBankVerification",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-bank-verifications/:param/decision"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-bank-verification.downloadPrivateFileByTicket",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /files/:param/download-ticket-capability",
+        "POST /files/:param/download-ticket"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-bank-verification.prepareBankVerification",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-bank-verifications"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-bank-verification.uploadPrivateFile",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /files"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -848,6 +994,54 @@
       "causalVerified": true
     },
     {
+      "id": "contract-economic-review.decideEconomicReview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-economic-reviews/:param/decision"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-economic-review.prepareEconomicReview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-economic-reviews"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-economic-review.prepareEconomicSettlement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-economic-reviews/settlement-coverage"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-ended-retention.create-hold",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -987,6 +1181,54 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /contract-drafts/:param/files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-proxy-execution.decideContractProxyExecution",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-proxy-executions/:param/decision"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-proxy-execution.prepareContractProxyExecution",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-proxy-executions"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-proxy-execution.uploadPrivateFile",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /files"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -5741,6 +5983,86 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /settlement-template-workbench/versions/:param/submission"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "upward-contract-amount.decideUpwardAmount",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /upward-contract-amount-revisions/:param/decision"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "upward-contract-amount.prepareUpwardAmount",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /upward-contract-amount-revisions"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "upward-contract-amount.uploadPrivateFile",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "upward-receipt-match.decideReceiptMatch",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /upward-receipt-matches/:param/decision"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "upward-receipt-match.prepareReceiptMatch",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /upward-receipt-matches"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

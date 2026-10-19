@@ -12,13 +12,38 @@ async function load(){const g=++generation;data.value=null;try{const r=await fet
 function start(d:typeof decision.value=null){decision.value=d;password.value="";file.value=null;fileId.value=undefined;form.accountNumber="";key=crypto.randomUUID();show.value=true;}
 function choose(e:Event){file.value=(e.target as HTMLInputElement).files?.[0]??null;fileId.value=undefined;}
 async function save(){if(busy.value)return;const g=generation,p=props.projectId;busy.value=true;error.value="";try{
- if(decision.value?.decision!=="return"){if(!file.value)throw new Error(decision.value?"请上传本人核对的开户名称及账号证明":"请上传银行交易回单");if(!fileId.value)fileId.value=(await uploadPrivateFile(file.value,file.value.name)).id;if(g!==generation)return;}
- if(decision.value)await decideBankVerification(decision.value.id,{decision:decision.value.decision,holderEvidenceFileId:fileId.value,accountNumber:form.accountNumber,confirmationPassword:password.value});
- else await prepareBankVerification({projectId:p,companyEntityId:form.companyEntityId,accountNumber:form.accountNumber,bankReference:form.bankReference,direction:form.direction,amountCents:yuanTextToCentsText(form.amountYuan),occurredAt:`${form.occurredAt}T00:00:00+08:00`,evidenceFileId:fileId.value!,reason:form.reason,idempotencyKey:key,confirmationPassword:password.value});
+ if(decision.value?.decision!=="return"){if(!file.value)throw new Error(decision.value?"请上传本人核对的开户名称及账号证明":"请上传银行交易回单");if(!fileId.value)fileId.value=(await uploadPrivateFileWithCapability(file.value,file.value.name)).id;if(g!==generation)return;}
+ if(decision.value)await decideBankVerificationWithCapability(decision.value.id,{decision:decision.value.decision,holderEvidenceFileId:fileId.value,accountNumber:form.accountNumber,confirmationPassword:password.value});
+ else await prepareBankVerificationWithCapability({projectId:p,companyEntityId:form.companyEntityId,accountNumber:form.accountNumber,bankReference:form.bankReference,direction:form.direction,amountCents:yuanTextToCentsText(form.amountYuan),occurredAt:`${form.occurredAt}T00:00:00+08:00`,evidenceFileId:fileId.value!,reason:form.reason,idempotencyKey:key,confirmationPassword:password.value});
  if(g!==generation)return;show.value=false;password.value="";form.accountNumber="";busy.value=false;await load();emit("changed");
  }catch(c){if(g===generation)error.value=formatUnknownApiError(c,"银行核验提交失败");}finally{if(g===generation)busy.value=false;}}
-async function evidence(row:BankVerificationData["rows"][number]){try{await downloadPrivateFileByTicket(row.evidenceFileId,{confirmationPassword:password.value,downloadReason:"独立核验银行账户和交易依据"});}catch(c){error.value=formatUnknownApiError(c,"原交易依据下载失败，请填写当前密码");}}
+async function evidence(row:BankVerificationData["rows"][number]){try{await downloadPrivateFileByTicketWithCapability(row.evidenceFileId,{confirmationPassword:password.value,downloadReason:"独立核验银行账户和交易依据"});}catch(c){error.value=formatUnknownApiError(c,"原交易依据下载失败，请填写当前密码");}}
 watch(()=>props.projectId,()=>{page.value=1;show.value=false;password.value="";form.accountNumber="";busy.value=false;void load();},{immediate:true});onBeforeUnmount(()=>{generation++;password.value="";form.accountNumber="";});
+
+async function prepareBankVerificationWithCapability(arg0: Parameters<typeof prepareBankVerification>[0]) {
+  const capability = await fetchBankVerifications(props.projectId,page.value,status.value);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return prepareBankVerification(arg0);
+}
+async function decideBankVerificationWithCapability(arg0: Parameters<typeof decideBankVerification>[0], arg1: Parameters<typeof decideBankVerification>[1]) {
+  const capability = await fetchBankVerifications(props.projectId,page.value,status.value);
+  const operationAllowed = capability.canReview;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return decideBankVerification(arg0, arg1);
+}
+async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPrivateFile>[0], arg1: Parameters<typeof uploadPrivateFile>[1]) {
+  const capability = await fetchBankVerifications(props.projectId,page.value,status.value);
+  const operationAllowed = capability.canPrepare;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return uploadPrivateFile(arg0, arg1);
+}
+async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof downloadPrivateFileByTicket>[0], arg1: Parameters<typeof downloadPrivateFileByTicket>[1]) {
+  const capability = await fetchBankVerifications(props.projectId,page.value,status.value);
+  const operationAllowed = capability.canReadEvidence;
+  if (!operationAllowed) throw new Error("当前账号没有本次办理权限，请刷新台账");
+  return downloadPrivateFileByTicket(arg0, arg1);
+}
 </script>
 <template>
   <section
