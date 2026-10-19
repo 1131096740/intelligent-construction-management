@@ -244,7 +244,10 @@ test("CI fans out independent static and database gates behind one stable summar
   const tests = jobBlock(workflow, "unit-test-gates");
   const build = jobBlock(workflow, "build-manifest-gates");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
-  assert.ok(dynamic.includes("timeout-minutes: ${{ matrix.group == 'operating_projection_pol108' && 90 || 20 }}"));
+  assert.ok(dynamic.includes("timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}"));
+  for (const group of ["operating_projection_pol108", "operating_projection_pol108_facts", "operating_projection_pol108_impacts"]) {
+    assert.ok(dynamic.includes(`          - ${group}\n`));
+  }
   const summary = jobBlock(workflow, "release-gates");
 
   for (const independentJob of [quality, tests, build, dynamic]) {

@@ -26,11 +26,11 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 65,
-    "fullyPendingSuites": 54,
+    "pendingFiles": 67,
+    "fullyPendingSuites": 56,
     "partiallyPendingSuites": 11,
     "pendingTests": 346,
-    "coveredFiles": 65,
+    "coveredFiles": 67,
     "coveredTests": 346,
     "remainingFiles": 0,
     "remainingTests": 0
@@ -264,17 +264,51 @@
     },
     {
       "id": "operating_projection_pol108",
-      "pendingTests": 14,
+      "pendingTests": 12,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-projection-postgresql.spec.ts",
-          "pendingTests": 14,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
         "kind": "workspaceScript",
-        "script": "verify:pol108-operating-projection:local",
+        "script": "verify:pol108-operating-projection:core:local",
+        "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "operating_projection_pol108_facts",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/operating-projection-postgresql-facts.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol108-operating-projection:facts:local",
+        "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "operating_projection_pol108_impacts",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/operating-projection-postgresql-impacts.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol108-operating-projection:impacts:local",
         "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
       },
       "state": "executable_local_runner"

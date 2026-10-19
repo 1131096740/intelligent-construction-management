@@ -171,7 +171,7 @@ jobs:
     name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
     runs-on: ubuntu-latest
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
-    timeout-minutes: ${{ matrix.group == 'operating_projection_pol108' && 90 || 20 }}
+    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -190,6 +190,8 @@ jobs:
           - necessary_expense_reserve_pol279
           - project_fund_dispute_pol280
           - operating_projection_pol108
+          - operating_projection_pol108_facts
+          - operating_projection_pol108_impacts
           - project_close_profit_pol109
           - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16

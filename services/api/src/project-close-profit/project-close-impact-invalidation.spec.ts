@@ -1,4 +1,5 @@
 import {
+  createOperatingImpactInvalidator,
   invalidateProjectCloseForOperatingImpact,
   invalidateProjectCloseForParticipationChange
 } from "./project-close-impact-invalidation";
@@ -123,3 +124,73 @@ function stage(stageKey: string, projectionCutoffAt: Date) {
     confirmedAt: projectionCutoffAt
   };
 }
+
+
+describe("one-envelope operating impact invalidation", () => {
+  const cutoff = new Date("2026-09-18T02:00:00.000Z");
+  const impact = (key: string, kind = "confirmed_income", observedAt = new Date("2026-09-18T03:00:00.000Z")) => ({
+    id: key, projectId: "project-1", sourceType: "owner_settlement", sourceBusinessId: "source-1",
+    sourceImpactKey: key, impactKind: kind, amountCents: 1n, direction: "increase", observedAt, actorUserId: "actor-1"
+  });
+
+  it("reopens a completed stage once and preserves the first impact's audit basis", async () => {
+    const tx = transactionMock([stage("owner_settlement_completed", cutoff)]);
+    const invalidate = createOperatingImpactInvalidator(tx as never, "project-1");
+    await invalidate(impact("first"));
+    await invalidate(impact("second"));
+    expect(tx.projectCloseStageVersion.create).toHaveBeenCalledTimes(1);
+    expect(tx.projectCloseImpact.create).toHaveBeenCalledTimes(1);
+    expect(tx.projectCloseStageVersion.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      revision: 2, status: "needs_reconfirmation", previousVersionId: "stage-owner_settlement_completed",
+      basisSnapshot: expect.objectContaining({ operatingImpactEntryId: "first" })
+    }) });
+  });
+
+  it("does not cache a completed stage merely because the first impact precedes its cutoff", async () => {
+    const tx = transactionMock([stage("owner_settlement_completed", cutoff)]);
+    const invalidate = createOperatingImpactInvalidator(tx as never, "project-1");
+    await invalidate(impact("before", "confirmed_income", new Date("2026-09-18T01:00:00.000Z")));
+    expect(tx.projectCloseImpact.create).not.toHaveBeenCalled();
+    await invalidate(impact("after"));
+    expect(tx.projectCloseImpact.create).toHaveBeenCalledTimes(1);
+    expect(tx.projectCloseStageVersion.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("checks newly encountered policy stages even after another policy was inactive", async () => {
+    const tx = transactionMock([]);
+    tx.projectCloseStageVersion.findMany.mockResolvedValueOnce([])
+      .mockResolvedValueOnce([stage("downstream_cost_confirmed", cutoff)]);
+    const invalidate = createOperatingImpactInvalidator(tx as never, "project-1");
+    await invalidate(impact("income"));
+    await invalidate(impact("cost", "confirmed_cost"));
+    expect(tx.projectCloseStageVersion.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      stageKey: "downstream_cost_confirmed", status: "needs_reconfirmation"
+    }) });
+  });
+
+  it("does not carry inactive-stage observations into the next envelope, even in the same transaction", async () => {
+    const tx = transactionMock([]);
+    await createOperatingImpactInvalidator(tx as never, "project-1")(impact("old"));
+    tx.projectCloseStageVersion.findMany.mockResolvedValue([stage("owner_settlement_completed", cutoff)]);
+    await createOperatingImpactInvalidator(tx as never, "project-1")(impact("new"));
+    expect(tx.projectCloseStageVersion.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.projectCloseImpact.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("still rejects a different project and unknown impact kind after observing inactive stages", async () => {
+    const tx = transactionMock([]);
+    const invalidate = createOperatingImpactInvalidator(tx as never, "project-1");
+    await invalidate(impact("known"));
+    await expect(invalidate({ ...impact("other"), projectId: "project-2" })).rejects.toThrow("项目不一致");
+    await expect(invalidate(impact("unknown", "unknown_kind"))).rejects.toThrow("未知经营影响类型");
+  });
+
+  it("does not turn an existing invalidation replay into permission to skip another impact", async () => {
+    const tx = transactionMock([stage("owner_settlement_completed", cutoff)]);
+    tx.projectCloseImpact.findUnique.mockResolvedValueOnce({ id: "existing" });
+    const invalidate = createOperatingImpactInvalidator(tx as never, "project-1");
+    await invalidate(impact("replayed"));
+    await invalidate(impact("new"));
+    expect(tx.projectCloseImpact.create).toHaveBeenCalledTimes(1);
+  });
+});

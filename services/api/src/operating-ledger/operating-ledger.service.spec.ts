@@ -118,6 +118,24 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingImpactEntry.create).not.toHaveBeenCalled();
   });
 
+  it("checks locked inactive close stages once per source envelope while retaining every guarded write", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord()
+    });
+    const input = baseInput();
+    input.impacts = Array.from({ length: 20 }, (_, index) => ({
+      ...input.impacts[0]!, sourceImpactKey: `cost-${index}`, idempotencyKey: `cost-${index}`
+    }));
+    const result = await new OperatingLedgerService(prisma as never).appendFromSource(input, "actor-1");
+    expect(result.impactIds).toHaveLength(20);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(21);
+    expect(prisma.operatingImpactEntry.findUnique).toHaveBeenCalledTimes(20);
+    expect(prisma.projectCloseAggregate.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.projectCloseStageVersion.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it("invalidates completed close stages in the same transaction when a new economic impact is appended", async () => {
     // The business confirmation date in baseInput is historical. Reopening must
     // use the database insertion watermark, not that older business date.

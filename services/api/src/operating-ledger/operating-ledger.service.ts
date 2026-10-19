@@ -24,7 +24,7 @@ import {
 
 import { PrismaService } from "../database/prisma.service";
 import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
-import { invalidateProjectCloseForOperatingImpact } from "../project-close-profit/project-close-impact-invalidation";
+import { createOperatingImpactInvalidator } from "../project-close-profit/project-close-impact-invalidation";
 
 export async function translateOperatingLedgerWriteConstraint<T>(
   operation: Promise<T>
@@ -613,6 +613,7 @@ export class OperatingLedgerService {
       }
     }
 
+    const invalidateImpact = createOperatingImpactInvalidator(tx, input.projectId);
     if (existing) {
       if (
         entryKind === "reversal" &&
@@ -633,6 +634,7 @@ export class OperatingLedgerService {
           input,
           impact,
           actorUserId,
+          invalidateImpact,
           ownershipOccurredAt
         );
         if (!impactIds.includes(result.id)) impactIds.push(result.id);
@@ -696,6 +698,7 @@ export class OperatingLedgerService {
         input,
         impact,
         actorUserId,
+        invalidateImpact,
         ownershipOccurredAt
       );
       impactIds.push(result.id);
@@ -710,6 +713,7 @@ export class OperatingLedgerService {
     input: AppendOperatingFactInput,
     impact: OperatingImpactInput,
     actorUserId: string,
+    invalidateImpact: ReturnType<typeof createOperatingImpactInvalidator>,
     ownershipOccurredAt: Date = input.occurredAt
   ) {
     const impactSnapshot = await this.impactSnapshotWithSubject(
@@ -768,7 +772,7 @@ export class OperatingLedgerService {
     if (!persisted?.createdAt) {
       throw new Error("经营影响写入未返回数据库创建时间，已拒绝继续项目收口失效处理");
     }
-    await invalidateProjectCloseForOperatingImpact(tx, {
+    await invalidateImpact({
       id: created.id,
       projectId,
       sourceType: input.sourceType,
