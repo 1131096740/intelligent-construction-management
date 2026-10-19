@@ -90,7 +90,7 @@ describe("跨页面统一签约关系台账", () => {
     tx.operatingFact.findMany.mockResolvedValue([{ sourceType: "project_proxy_payment", sourceBusinessId: "proxy1", sourceSnapshot: {
       signingSubjectType: "affiliate", affiliate: { assignmentId: "a", businessPartyVersionId: "av" }
     } }]);
-    const result = await service.list("actor", { section: "payments" });
+    const result = await service.list("actor", { section: "payments", asOf: "2026-10-19" });
     expect(result.rows.find((r) => r.id === "proxy1")).toMatchObject({ relationship: "outside", amountCents: "5000", actualPayer: "施工企业甲" });
     expect(result.rows.find((r) => r.id === "proxy2")).toMatchObject({ relationship: "unclassified", amountCents: "3000" });
     expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { projectId: { in: ["p"] }, OR:[{voidedAt:null},{voidedAt:{gt:new Date("2026-10-19T23:59:59.999+08:00")}}] } }));

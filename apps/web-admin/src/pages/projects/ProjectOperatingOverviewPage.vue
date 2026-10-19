@@ -13,6 +13,7 @@
             v-model="selectedProjectId"
             :disabled="loadingProjects || projectSwitching || projects.length === 0"
             :options="projectSelectOptions"
+            :popup-props="projectSelectPopupProps"
             @change="handleProjectChange"
           />
         </div>
@@ -1036,6 +1037,11 @@ interface ProjectExpenseActionFormState {
 
 const auth = useAuthStore();
 const router = useRouter();
+const projectSelectPopupProps = {
+  overlayInnerStyle: (trigger: HTMLElement) => ({
+    width: `${trigger.offsetWidth}px`, maxWidth: "calc(100vw - 32px)"
+  })
+};
 const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const executiveOverview = ref<ExecutiveProjectOverview | null>(null);

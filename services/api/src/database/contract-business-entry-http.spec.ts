@@ -92,7 +92,7 @@ if (enabled) {
     await app.listen(0, "127.0.0.1");
     baseUrl = await app.getUrl();
     prisma = app.get(PrismaService);
-    if(process.env.COMPANY_TRANSFER_CORE_RECEIPT){const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET!;await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;}
+    if(process.env.OPERATING_LEDGER_DB_WRITE_SECRET){const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET;await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;}
     // Test-only database-boundary fault; all earlier writes use the real PG transaction.
     // No production service is replaced and no persistent database object is installed.
     prisma.$use(async (params, next) => {

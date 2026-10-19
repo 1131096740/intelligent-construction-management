@@ -132,7 +132,12 @@ test("综合部主管通过统一字段新增参与公司，空白原因保留�
   });
   await page.goto("/项目经营");
   await page.locator(".project-picker input").click();
+  const dropdownBounds = await page.locator(".t-select__dropdown:visible").boundingBox();
+  expect(dropdownBounds).not.toBeNull();
+  expect(dropdownBounds!.x + dropdownBounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
+  await expect(page.locator(".project-picker input")).toBeEnabled();
+  await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
   await page.getByText("项目设置", { exact: true }).click();
   const form = page.getByRole("region", { name: "新增参与公司单条业务表单" });
   await expect(form).toBeVisible();
@@ -179,6 +184,8 @@ test("综合部主管通过统一字段新增参与公司，空白原因保留�
   await page.reload();
   await page.locator(".project-picker input").click();
   await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
+  await expect(page.locator(".project-picker input")).toBeEnabled();
+  await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
   await page.getByText("项目设置", { exact: true }).click();
   await expect(page.getByText("已停止新增业务", { exact: true })).toBeVisible();
   const history = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });

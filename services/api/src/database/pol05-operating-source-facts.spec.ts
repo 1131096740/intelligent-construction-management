@@ -53,6 +53,8 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
         ]);
 
         for (const [sourceType, sourceBusinessId] of [
+          ["contract_version", fixture.contractVersionId],
+          ["contract_version", fixture.affiliateContractVersionId],
           ["project_upstream_settlement", fixture.upstreamSettlementId],
           ["settlement", fixture.settlement2Id],
           ["payment_execution", fixture.paymentExecutionId],
@@ -75,7 +77,7 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
 
         const summary = await operatingSummary(clients[0]!, fixture.projectId);
         expect(summary).toEqual({
-          factCount: 6n,
+          factCount: 8n,
           confirmedCostCents: 300_000n,
           payableIncreaseCents: 270_000n,
           payableDecreaseCents: 80_000n,
@@ -83,6 +85,13 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           affiliateFundsDecreaseCents: 20_000n,
           interSubjectCents: 60_000n
         });
+
+        const commitments = await clients[0]!.operatingFact.findMany({
+          where: { projectId: fixture.projectId, sourceType: "contract_version" }, include: { impacts: true }
+        });
+        expect(commitments.map((fact) => fact.amountCents).sort()).toEqual([100_000n, 500_000n]);
+        expect(commitments.every((fact) => fact.impacts.length === 1 &&
+          fact.impacts[0]!.impactKind === "contract_commitment_reference")).toBe(true);
 
         const paymentFact = await clients[0]!.operatingFact.findUnique({
           where: {
@@ -161,10 +170,10 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           expect.objectContaining({
             consistent: true,
             summary: {
-              expectedFacts: 6,
-              actualFacts: 6,
-              expectedImpacts: 13,
-              actualImpacts: 13,
+              expectedFacts: 8,
+              actualFacts: 8,
+              expectedImpacts: 15,
+              actualImpacts: 15,
               differenceCount: 0
             }
           })
@@ -542,6 +551,19 @@ async function seedFixture(
       contentSha256: "a".repeat(64)
     }))
   });
+
+  for (const contractVersionId of [fixture.contractVersionId, fixture.affiliateContractVersionId]) {
+    const fileId = `${contractVersionId}_archive`;
+    await client.fileObject.create({ data: {
+      id: fileId, bucket: "pol05-local-test", objectKey: fileId, originalName: "合成签章合同.pdf",
+      mimeType: "application/pdf", sizeBytes: 1, uploadedByUserId: fixture.financeUserId,
+      contentSha256: "b".repeat(64)
+    } });
+    await client.contractArchiveFile.create({ data: {
+      contractVersionId, fileId, uploadedByUserId: fixture.financeUserId,
+      confirmedByUserId: fixture.financeUserId, confirmedAt: new Date("2026-08-01T00:00:00.000Z"), status: "confirmed"
+    } });
+  }
 
   for (const settlement of [
     {
