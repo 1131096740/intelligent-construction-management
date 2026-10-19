@@ -93,7 +93,17 @@
       正在加载项目经营数据
     </div>
 
-    <ContractRelationshipLedger :project-id="selectedProjectId" />
+    <div
+      v-if="loadingProjects || projectSwitching"
+      class="message"
+      role="status"
+    >
+      正在加载项目分类台账
+    </div>
+    <ContractRelationshipLedger
+      v-else-if="selectedProjectId"
+      :project-id="selectedProjectId"
+    />
     <t-tabs
       v-if="overview || canViewExecutiveOverview || financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && selectedProjectId)"
       v-model="activeTab"
