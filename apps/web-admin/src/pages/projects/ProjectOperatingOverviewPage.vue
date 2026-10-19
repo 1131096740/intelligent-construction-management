@@ -1039,7 +1039,7 @@ const auth = useAuthStore();
 const router = useRouter();
 const projectSelectPopupProps = {
   overlayInnerStyle: (trigger: HTMLElement) => ({
-    width: `${trigger.offsetWidth}px`, maxWidth: "calc(100vw - 32px)"
+    width: `${trigger.offsetWidth}px`
   })
 };
 const projects = ref<ProjectOptionReadModel[]>([]);
