@@ -78,6 +78,7 @@
       </nav>
     </t-layout>
     <t-drawer
+      v-if="navigationVisible"
       v-model:visible="navigationVisible"
       header="全部业务"
       placement="left"

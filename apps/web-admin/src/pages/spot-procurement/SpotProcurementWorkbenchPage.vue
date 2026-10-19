@@ -73,6 +73,7 @@ const referencePhotoFiles = ref<UploadFile[]>([]);
 let capabilityRequestId = 0;
 let workbenchRequestId = 0;
 let createOpenGeneration = 0;
+let creationRequestStarted = false;
 
 const filters = reactive({
   projectId: "",
@@ -427,6 +428,7 @@ async function saveDraft() {
   }
   createBusy.value = true;
   createError.value = "";
+  creationRequestStarted = false;
   try {
     const current = recovery;
     if (!current) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
@@ -455,6 +457,8 @@ async function saveDraft() {
       );
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
+    submissionUncertain.value = true;
+    if (!persistRecovery()) { submissionUncertain.value = false; throw new Error("本机暂存失败，本次尚未提交。请保留当前页面并检查浏览器存储。"); }
     const result = await createSpotProcurementDraftWithCapability(projectId, {
       projectId,
       entryDefinitionVersions: entryDefinitions.value
@@ -492,6 +496,8 @@ async function saveDraft() {
     await router.push(`/零星采购/${encodeURIComponent(result.procurementId)}`);
     });
   } catch (error) {
+    const status = (error as { status?: number }).status;
+    if (!creationRequestStarted || (status && status >= 400 && status < 500)) { submissionUncertain.value = false; persistRecovery(); }
     createError.value = formatUnknownApiError(error, "零星采购草稿保存失败");
   } finally {
     createBusy.value = false;
@@ -509,18 +515,12 @@ async function createSpotProcurementDraftWithCapability(
     "create_spot_procurement"
   );
   if (!operationAllowed) throw new Error("当前项目不可创建零星采购");
-  if (!recovery) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
-  if (auth.user?.id !== recoveryOwner) throw new Error("登录状态已变化，本次未提交，请重新打开填写窗口。");
-  try {
-    submissionUncertain.value = true;
-    if (!persistRecovery()) { submissionUncertain.value = false; throw new Error("本机暂存失败，本次尚未提交。请保留当前页面并检查浏览器存储。"); }
-    return await createSpotProcurementDraft(body);
-  }
-  catch (cause) {
-    const status = (cause as { status?: number }).status;
-    if (status && status >= 400 && status < 500) { submissionUncertain.value = false; persistRecovery(); }
-    throw cause;
-  }
+  const currentUser = auth.user;
+  if (!currentUser) throw new Error("请重新登录后核对填写。");
+  const ownerMatches = currentUser.id === recoveryOwner;
+  if (!ownerMatches) throw new Error("登录状态已变化，本次未提交，请重新打开填写窗口。");
+  creationRequestStarted = true;
+  return createSpotProcurementDraft(body);
 }
 
 function finishRecovery() {
@@ -545,7 +545,10 @@ async function uploadSpotProcurementCreateFileWithCapability(
     "create_spot_procurement"
   );
   if (!operationAllowed) throw new Error("当前项目不可上传零星采购附件");
-  if (auth.user?.id !== recoveryOwner) throw new Error("登录状态已变化，本次未上传，请重新打开填写窗口。");
+  const currentUser = auth.user;
+  if (!currentUser) throw new Error("请重新登录后核对填写。");
+  const ownerMatches = currentUser.id === recoveryOwner;
+  if (!ownerMatches) throw new Error("登录状态已变化，本次未上传，请重新打开填写窗口。");
   return uploadSpotProcurementCreateFile(projectId, file, file.name, (file as File & { uploadRequestKey?: string }).uploadRequestKey);
 }
 

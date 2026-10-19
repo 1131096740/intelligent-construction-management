@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import BusinessMobileCards from "../../components/BusinessMobileCards.vue";
 import ProcurementBusinessNav from "./components/ProcurementBusinessNav.vue";
 import {
@@ -133,7 +134,7 @@ async function loadPayments() {
     listMeta.value = { limit: result.limit, truncated: result.truncated };
   } catch (error) {
     if (requestId !== latestPaymentRequestId) return;
-    loadError.value = error instanceof Error ? error.message : "零星材料付款工作台读取失败";
+    loadError.value = formatUnknownApiError(error, "零星材料付款工作台读取失败");
   } finally {
     if (requestId === latestPaymentRequestId) loading.value = false;
   }
@@ -153,7 +154,7 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
   } catch (error) {
-    projectError.value = error instanceof Error ? error.message : "项目筛选选项读取失败";
+    projectError.value = formatUnknownApiError(error, "项目筛选选项读取失败");
   }
 }
 

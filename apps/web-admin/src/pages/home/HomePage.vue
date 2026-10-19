@@ -195,6 +195,7 @@
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   fetchWorkItems,
   type WorkItemsReadModel
@@ -282,7 +283,7 @@ async function loadSummary() {
   try {
     workItems.value = await fetchWorkItems();
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "工作项读取失败");
     errorMessage.value = `未能刷新工作项：${reason}。当前无法判断是否有新的待办；已加载内容不会被清空，请检查网络与账号权限后重试。`;
   } finally {
     loading.value = false;

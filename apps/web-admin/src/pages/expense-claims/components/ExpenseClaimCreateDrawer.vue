@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { useAuthStore } from "../../../auth/auth.store";
+import { formatUnknownApiError } from "../../../api/error-message";
 import { localBusinessForm } from "../../../lib/local-business-form";
 import {
   createExpenseClaim,
@@ -54,6 +55,9 @@ const recoveryMessage = ref("");
 const submissionUncertain = ref(false);
 let recovery: ReturnType<typeof localBusinessForm<{ form: typeof form; step: number; submissionUncertain: boolean }>> | undefined;
 let recoveryReady = false;
+let creationRequestStarted = false;
+let recoveryOwner = "";
+let optionsLoadGeneration = 0;
 function persistRecovery() {
   if (!recoveryReady || !recovery) return false;
   try {
@@ -126,15 +130,21 @@ function resetForm() {
 }
 
 async function loadOptions() {
+  const generation = ++optionsLoadGeneration;
+  const owner = auth.user?.id ?? "";
   recoveryReady = false;
+  recovery = undefined;
+  recoveryOwner = owner;
   loadingOptions.value = true;
   error.value = "";
   try {
-    options.value = await fetchExpenseClaimCreateOptions();
+    const loaded = await fetchExpenseClaimCreateOptions();
+    if (generation !== optionsLoadGeneration || !props.modelValue || auth.user?.id !== owner) return;
+    options.value = loaded;
     resetForm();
     submissionUncertain.value = false;
-    if (auth.user?.id) {
-      recovery = localBusinessForm(localStorage, auth.user.id, "expense-create");
+    if (owner) {
+      recovery = localBusinessForm(localStorage, owner, "expense-create");
       try {
         const saved = recovery.restore();
         if (saved) {
@@ -145,11 +155,11 @@ async function loadOptions() {
     }
     recoveryReady = true;
   } catch (requestError) {
-    error.value = requestError instanceof Error ? requestError.message : "读取费用创建选项失败";
-  } finally { loadingOptions.value = false; }
+    if (generation === optionsLoadGeneration) error.value = formatUnknownApiError(requestError, "读取费用创建选项失败");
+  } finally { if (generation === optionsLoadGeneration) loadingOptions.value = false; }
 }
 
-watch(() => props.modelValue, (isVisible) => { if (isVisible) void loadOptions(); });
+watch(() => props.modelValue, (isVisible) => { if (isVisible) void loadOptions(); else optionsLoadGeneration += 1; });
 watch(() => form.claimType, (claimType) => { if (claimType !== "reimbursement" && !form.projectId && availableProjects.value.length === 1) form.projectId = availableProjects.value[0].id; });
 watch(() => form.applicantMode, (mode) => {
   if (mode === "self") form.applicantUserId = options.value?.selfApplicantUserId ?? "";
@@ -229,14 +239,24 @@ async function save() {
   error.value = validateCurrentStep();
   if (error.value || saving.value) return;
   saving.value = true;
+  creationRequestStarted = false;
   try {
-    const claim = await createExpenseClaimWithCapability(payload());
-    recoveryReady = false;
-    try { recovery?.complete({ form: JSON.parse(JSON.stringify(form)), step: step.value, submissionUncertain: false }); } catch { /* The server has confirmed the result; do not replay. */ }
+    const current = recovery;
+    if (!current) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
+    const claim = await current.submit(async () => {
+      submissionUncertain.value = true;
+      if (!persistRecovery()) { submissionUncertain.value = false; throw new Error("本机暂存失败，本次尚未提交。请保留当前页面并检查浏览器存储。"); }
+      const result = await createExpenseClaimWithCapability(payload());
+      recoveryReady = false;
+      try { current.complete({ form: JSON.parse(JSON.stringify(form)), step: step.value, submissionUncertain: false }); } catch { /* The server has confirmed the result; do not replay. */ }
+      return result;
+    });
     visible.value = false;
     emit("saved", claim);
   } catch (requestError) {
-    error.value = requestError instanceof Error ? requestError.message : "创建费用申请失败";
+    const status = (requestError as { status?: number }).status;
+    if (!creationRequestStarted || (status && status >= 400 && status < 500)) { submissionUncertain.value = false; persistRecovery(); }
+    error.value = formatUnknownApiError(requestError, "创建费用申请失败");
   } finally { saving.value = false; }
 }
 
@@ -246,17 +266,12 @@ async function createExpenseClaimWithCapability(
   const capability = await fetchExpenseClaimCreateOptions();
   const operationAllowed = capability.availableActions.includes("create_expense_claim");
   if (!operationAllowed) throw new Error("当前用户不能新建费用申请");
-  if (!recovery) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
-  try { return await recovery.submit(async () => {
-    submissionUncertain.value = true;
-    if (!persistRecovery()) { submissionUncertain.value = false; throw new Error("本机暂存失败，本次尚未提交。请保留当前页面并检查浏览器存储。"); }
-    return createExpenseClaim(body);
-  }); }
-  catch (cause) {
-    const status = (cause as { status?: number }).status;
-    if (status && status >= 400 && status < 500) { submissionUncertain.value = false; persistRecovery(); }
-    throw cause;
-  }
+  const currentUser = auth.user;
+  if (!currentUser) throw new Error("请重新登录后核对填写。");
+  const ownerMatches = currentUser.id === recoveryOwner;
+  if (!ownerMatches) throw new Error("登录状态已变化，本次未提交，请重新打开填写窗口。");
+  creationRequestStarted = true;
+  return createExpenseClaim(body);
 }
 
 function finishRecovery() {

@@ -57,25 +57,32 @@ async function save() {
     const payload = pendingSubmission.value ?? { projectId: String(value.projectId ?? ""), companyEntityId: String(value.companyEntityId ?? ""), category: String(value.category ?? "") as GeneralProcurementCategory,
       reason: String(value.reason ?? "").trim(), requestedAmountCents: yuanTextToCentsText(String(value.requestedAmountYuan ?? "")) };
     if (!payload.projectId || !payload.companyEntityId || !payload.reason || BigInt(payload.requestedAmountCents) <= 0n) throw new Error("请填齐项目、费用承担公司、用途和大于零的金额");
-    const saved = props.detail ? await updateProcurementWithCapability(props.detail.id, { ...payload, revision: props.detail.revision }) : await createProcurementWithCapability({ ...payload, requestKey: requestKey.value });
+    const saved = props.detail ? await updateProcurementWithCapability(props.detail.id, { ...payload, revision: props.detail.revision }) : await submitNewProcurement({ ...payload, requestKey: requestKey.value });
     recoveryReady = false;
     if (!props.detail) { try { recovery?.complete({ draft: draft.value, requestKey: requestKey.value }); } catch { /* Keep the confirmed server result. */ } }
     emit("update:visible", false); emit("saved", saved.id);
   } catch (cause) { error.value = formatUnknownApiError(cause, "草稿保存失败"); }
   finally { busy.value = false; }
 }
-async function createProcurementWithCapability(body: Parameters<typeof createProcurement>[0]) {
-  const capability = await fetchProcurementOptions();
-  const operationAllowed = capability.canCreate;
-  if (!operationAllowed) throw new Error("当前账号不能创建申请，请联系综合部");
+async function submitNewProcurement(body: Parameters<typeof createProcurement>[0]) {
   // A retry must carry the original payload as well as its server request key.
   if (!recovery) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
   return recovery.submit(async () => {
     if (auth.user?.id !== recoveryOwner) throw new Error("登录状态已变化，请保留填写，重新打开申请表后再核对。");
     recovery!.save({ draft: draft.value, requestKey: requestKey.value, pendingSubmission: body });
     pendingSubmission.value = body;
-    return createProcurement(body);
+    return createProcurementWithCapability(body);
   });
+}
+async function createProcurementWithCapability(body: Parameters<typeof createProcurement>[0]) {
+  const capability = await fetchProcurementOptions();
+  const operationAllowed = capability.canCreate;
+  if (!operationAllowed) throw new Error("当前账号不能创建申请，请联系综合部");
+  const currentUser = auth.user;
+  if (!currentUser) throw new Error("请重新登录后核对填写。");
+  const ownerMatches = currentUser.id === recoveryOwner;
+  if (!ownerMatches) throw new Error("登录状态已变化，请重新打开申请表后核对。");
+  return createProcurement(body);
 }
 function finishRecovery() {
   if (busy.value || !recovery || !pendingSubmission.value) return;

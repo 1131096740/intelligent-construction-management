@@ -7,6 +7,7 @@ onMounted(() => { trigger.value = window.matchMedia('(hover: hover)').matches ? 
 function focusOpen(event: FocusEvent) {
   if ((event.target as HTMLElement)?.matches(':focus-visible')) visible.value = true;
 }
+function preventFormSubmission(event: MouseEvent) { event.preventDefault(); }
 </script>
 
 <template>
@@ -26,7 +27,7 @@ function focusOpen(event: FocusEvent) {
       @focus="focusOpen"
       @blur="visible = false"
       @keydown.esc.stop="visible = false"
-      @click.prevent
+      @click="preventFormSubmission"
     >
       ?
     </t-button>
