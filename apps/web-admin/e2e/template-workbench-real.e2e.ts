@@ -64,6 +64,13 @@ test("模板工作台真实创建、检查预览、取消发布、重试与冻�
   await expect(page.getByText("当前修订样张已生成。", { exact: true })).toBeVisible();
   await page.getByPlaceholder("请填写明细必填列", { exact: true }).click();
   await page.getByText("调整原因", { exact: true }).last().click();
+  // A multi-select stays open for further choices. Dismiss it with an outside
+  // pointer action before saving; its mobile popup can cover the save button.
+  const editorHeading = page.getByText("模板与版本", { exact: true });
+  if (testInfo.project.name === "mobile") await editorHeading.tap();
+  else await editorHeading.click();
+  await expect(page.getByRole("checkbox", { name: "调整原因", exact: true })).toBeHidden();
+  await expect(page.locator(".t-tag").filter({ hasText: "调整原因" })).toBeVisible();
   await expect(page.getByRole("button", { name: "执行检查", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "生成 XLSX/PDF", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "提交发布", exact: true })).toBeDisabled();
