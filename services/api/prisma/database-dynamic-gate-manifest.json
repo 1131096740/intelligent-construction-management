@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 177,
-    "terminalMigration": "20261019140000_operating_context_noop_update",
-    "terminalMigrationChecksum": "4f22018eed019478384ae27af7f768c6dc3fb745ea9d69cc41b2adc382b0d865",
+    "expectedDirectoryCount": 178,
+    "terminalMigration": "20261019160000_draft_audit_source_backup_read",
+    "terminalMigrationChecksum": "8c8da21baa39476d19296f9b27cd60d71b973cf7ef2239d7aa0604d13d4ba501",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 69,
     "fullyPendingSuites": 58,
     "partiallyPendingSuites": 11,
-    "pendingTests": 403,
+    "pendingTests": 404,
     "coveredFiles": 69,
-    "coveredTests": 403,
+    "coveredTests": 404,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 113,
+      "pendingTests": 114,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -371,7 +371,7 @@
         },
         {
           "path": "services/api/src/database/draft-hard-deletion.pg.spec.ts",
-          "pendingTests": 17,
+          "pendingTests": 18,
           "suiteStatus": "fully_pending"
         },
         {
