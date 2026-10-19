@@ -1,3 +1,4 @@
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
   Body,
@@ -161,7 +162,7 @@ export class PaymentController {
     @Param("paymentId") paymentId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     const detail = await this.paymentRead.getDetail(
       paymentId,
@@ -228,7 +229,7 @@ export class PaymentController {
     @Param("paymentId") paymentId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     const detail = await this.paymentRead.getDetail(
       paymentId,

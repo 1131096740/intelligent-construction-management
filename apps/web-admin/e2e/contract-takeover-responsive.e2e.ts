@@ -1154,3 +1154,66 @@ test("keeps the signed-in session when a sensitive download password is incorrec
   expect(downloadTicketRequests).toBe(1);
   expect(refreshRequests).toBe(0);
 });
+
+for (const kind of ["contract", "voucher"] as const) {
+for (const width of [1280, 390]) {
+  for (const failureStage of ["upload", "attach", "lost-attach"] as const) {
+    test(`接管资料失败就地提示并保留文件重试 ${width} ${failureStage} ${kind}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 844 });
+      const fixture = kind === "voucher" ? {
+        ...takeover, takeoverStatus: "needs_supplement", historicalPaidCents: "100",
+        evidenceChecklist: [{ ...takeover.evidenceChecklist[0], purpose: "historical_payment_voucher", purposeLabel: "历史付款凭证" }]
+      } : takeover;
+      await loginWithMocks(page, fixture, kind === "voucher" ? { roleKeys: ["finance_staff"] } : {});
+      await page.route("**/api/projects/project-1/contract-takeovers/capability", (route) => route.fulfill({
+        json: { projectId: "project-1", availableActions: ["upload_takeover_file", kind === "voucher" ? "attach_payment_voucher" : "attach_contract_evidence"] }
+      }));
+      let linked = false;
+      const linkedFixture = { ...fixture, evidenceFiles: takeoverWithDownloadableEvidence.evidenceFiles.map(item => ({ ...item, purpose: kind === "voucher" ? "historical_payment_voucher" : item.purpose })), evidenceChecklist: fixture.evidenceChecklist.map(item => ({ ...item, uploaded: true, statusLabel: "已补齐" })) };
+      await page.route("**/api/projects/project-1/contract-takeovers/takeover-responsive", (route) => route.fulfill({ json: linked ? linkedFixture : fixture }));
+      let uploadCount = 0;
+      let attachCount = 0;
+      const retryKeys: string[] = [];
+      await page.route("**/api/projects/project-1/contract-takeovers/files", async (route) => {
+        uploadCount++;
+        const body = route.request().postData() ?? "";
+        retryKeys.push(body.match(/name="idempotencyKey"\r\n\r\n([^\r]+)/u)?.[1] ?? "");
+        expect(body).toContain("历史合同.pdf");
+        if (failureStage === "upload" && uploadCount === 1) {
+          await route.fulfill({ status: 400, json: { message: "提交内容格式不正确，请检查后重试" } });
+        } else await route.fulfill({ json: { id: "file-downloadable-1" } });
+      });
+      await page.route(`**/api/projects/project-1/contract-takeovers/takeover-responsive/${kind === "voucher" ? "payment-evidence-files" : "evidence-files"}`, async (route) => {
+        attachCount++;
+        if (failureStage === "lost-attach" && attachCount === 1) {
+          linked = true;
+          await route.abort("failed");
+        } else if (failureStage === "attach" && attachCount === 1) {
+          await route.fulfill({ status: 503, json: { message: "服务暂时不可用" } });
+        } else await route.fulfill({ json: { ...fixture, evidenceFiles: takeoverWithDownloadableEvidence.evidenceFiles, evidenceChecklist: fixture.evidenceChecklist.map(item => ({ ...item, uploaded: true, statusLabel: "已补齐" })) } });
+      });
+      await page.goto("/历史合同接管");
+      await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+      const uploader = page.locator(".evidence-uploader").first();
+      const input = uploader.locator('input[type="file"]');
+      await input.setInputFiles({ name: "历史合同.pdf", mimeType: "application/pdf", buffer: Buffer.from("local-browser-upload-fixture") });
+      await uploader.getByRole("button", { name: kind === "voucher" ? "上传历史付款凭证" : "上传接管资料", exact: true }).click();
+      const alert = uploader.getByRole("alert");
+      await expect(alert).toContainText("已保留所选文件");
+      await expect(alert).toBeInViewport();
+      await expect(alert).toContainText(failureStage === "upload" ? "上传请求未通过系统校验" : "未能确认关联结果");
+      expect(await input.evaluate((element: HTMLInputElement) => element.files?.[0]?.name)).toBe("历史合同.pdf");
+      await expectNoDocumentHorizontalOverflow(page);
+      await page.screenshot({ path: testInfo.outputPath(`upload-error-${width}-${failureStage}.png`) });
+      await uploader.getByRole("button", { name: "重试上传", exact: true }).click();
+      await expect(uploader.getByRole("status")).toContainText("已上传并绑定");
+      await expect(alert).toHaveCount(0);
+      expect(await input.evaluate((element: HTMLInputElement) => element.files?.length)).toBe(0);
+      expect(uploadCount).toBe(failureStage === "upload" ? 2 : 1);
+      expect(attachCount).toBe(failureStage === "attach" ? 2 : 1);
+      expect(retryKeys[0]).toMatch(/^[a-f0-9-]{36}$/u);
+      if (retryKeys.length === 2) expect(retryKeys[1]).toBe(retryKeys[0]);
+    });
+  }
+}
+}

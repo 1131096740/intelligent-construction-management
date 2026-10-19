@@ -1,3 +1,4 @@
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
   Body,
@@ -81,7 +82,7 @@ export class SpotProcurementPaymentController {
     @Param("paymentId") paymentId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(
       paymentId,

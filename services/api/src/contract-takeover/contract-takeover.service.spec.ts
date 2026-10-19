@@ -6417,9 +6417,10 @@ describe("ContractTakeoverService", () => {
     };
   }
 
-  it("closes a pristine takeover and its generated draft version without deleting facts", async () => {
+  it("deletes an unsubmitted takeover using the guarded deletion transaction", async () => {
     const record = takeoverRecord();
     const tx = abandonmentTx(record);
+    tx.$queryRaw.mockResolvedValueOnce([record]).mockResolvedValueOnce([{ deleted: true }] as never);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ContractTakeoverService(prisma as never, audit as never);
 
@@ -6433,18 +6434,10 @@ describe("ContractTakeoverService", () => {
       "contract-user"
     );
 
-    expect(result).toMatchObject({ status: "abandoned", action: "delete_pristine_draft" });
-    expect(tx.contractTakeover.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ takeoverStatus: "abandoned", abandonReason: null })
-    }));
-    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "abandoned" })
-    }));
-    expect(tx.paymentTermsVersion.updateMany).toHaveBeenCalledWith({
-      where: { id: "terms-version-1", status: "draft" },
-      data: { status: "voided" }
-    });
-    expect((tx.contractTakeover as Record<string, unknown>).delete).toBeUndefined();
+    expect(result).toMatchObject({ status: "deleted", action: "delete_pristine_draft" });
+    expect(tx.contractTakeover.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls).toHaveLength(2);
   });
 
   it("keeps evidence and requires abandonment semantics for a reviewed takeover", async () => {

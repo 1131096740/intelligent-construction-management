@@ -136,7 +136,7 @@ function createPrisma(overrides: Record<string, unknown> = {}) {
       create: jest.fn(),
       update: jest.fn()
     },
-    auditLog: { create: jest.fn() },
+    auditLog: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     ...overrides
   };
   return {
@@ -254,6 +254,47 @@ describe("ContractTaxFactsService", () => {
     });
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+  });
+
+  it.each([[4, 10], [12, 13], [null, 10]])("keeps tax revision numbers above deleted audit history when latest live number is %s", async (liveNo, expected) => {
+    const { prisma, tx } = createPrisma();
+    tx.contractTaxFactRevision.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(liveNo === null ? null : { revisionNo: liveNo });
+    tx.auditLog.findMany.mockResolvedValue([{ metadata: { revisionNo: 9 } }, { metadata: { revisionNo: 2 } }]);
+    tx.contractTaxFactRevision.create.mockImplementation(({ data }) => Promise.resolve(revision(data)));
+    const result = await new ContractTaxFactsService(prisma as never).create("project-1", "takeover-1", { kind: "supplement" }, "contract-staff-1");
+    expect(result.revisionNo).toBe(expected);
+    expect(tx.auditLog.findMany).toHaveBeenCalledWith({
+      where: { action: "contract.tax_fact_revision.draft.delete", businessType: "contract_tax_fact_revision", metadata: { path: ["contractVersionId"], equals: "version-1" } },
+      select: { metadata: true }
+    });
+  });
+
+  it.each([0, "9", 2_147_483_647])("refuses invalid or exhausted deleted revision numbers: %s", async deletedNo => {
+    const { prisma, tx } = createPrisma();
+    tx.contractTaxFactRevision.findFirst.mockResolvedValue(null);
+    tx.auditLog.findMany.mockResolvedValue([{ metadata: { revisionNo: deletedNo } }]);
+    await expect(new ContractTaxFactsService(prisma as never).create("project-1", "takeover-1", { kind: "supplement" }, "contract-staff-1")).rejects.toThrow(/税务修订.*编号/);
+    expect(tx.contractTaxFactRevision.create).not.toHaveBeenCalled();
+  });
+
+  it("waits for the parent locks before checking active revisions or allocating a number", async () => {
+    const { prisma, tx } = createPrisma();
+    let unlock!: () => void;
+    const lock = new Promise<void>(resolve => { unlock = resolve; });
+    tx.$queryRaw.mockImplementation(() => lock.then(() => []));
+    tx.contractTaxFactRevision.findFirst.mockResolvedValue(null);
+    tx.contractTaxFactRevision.create.mockResolvedValue(revision());
+    const creating = new ContractTaxFactsService(prisma as never).create("project-1", "takeover-1", { kind: "supplement" }, "contract-staff-1");
+    await new Promise(resolve => setImmediate(resolve));
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.contractTaxFactRevision.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractTaxFactRevision.create).not.toHaveBeenCalled();
+    unlock();
+    await creating;
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect((tx.$queryRaw.mock.calls[0] as unknown as [Prisma.Sql])[0].sql).toContain('FROM "ContractTakeover"');
+    expect((tx.$queryRaw.mock.calls[1] as unknown as [Prisma.Sql])[0].sql).toContain('FOR UPDATE OF version');
+    expect(tx.contractTaxFactRevision.create).toHaveBeenCalledTimes(1);
   });
 
   it("returns a Chinese business error for an invalid tax fact rate", async () => {
@@ -445,7 +486,7 @@ describe("ContractTaxFactsService", () => {
   it("deletes a never-submitted tax revision draft without changing current contract facts", async () => {
     const current = revision();
     const { prisma, tx } = createPrisma({
-      $queryRaw: jest.fn().mockResolvedValue([current]),
+      $queryRaw: jest.fn().mockResolvedValueOnce([current]).mockResolvedValueOnce([{ deleted: true }]),
       contractTaxFactRevision: {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
@@ -469,11 +510,9 @@ describe("ContractTaxFactsService", () => {
       "contract-staff-1"
     );
 
-    expect(result).toMatchObject({ status: "abandoned", action: "delete_pristine_draft" });
-    expect((tx.contractTaxFactRevision as unknown as { updateMany: jest.Mock }).updateMany)
-      .toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
-    }));
+    expect(result).toMatchObject({ status: "deleted", deleted: true });
+    expect((tx.contractTaxFactRevision as unknown as { updateMany: jest.Mock }).updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.contractBill.update).not.toHaveBeenCalled();
     expect(tx.contractBillRow.update).not.toHaveBeenCalled();

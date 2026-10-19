@@ -28,6 +28,8 @@ export async function prepareProcurementPayment(tx: Prisma.TransactionClient, pr
   if (!source || source.status !== "archived") throw new ConflictException("采购申请完成审批并由综合部归档后才能请款");
   if (source.projectId !== input.projectId || source.companyEntityId !== input.companyEntityId || `procurement_${source.category}` !== input.incidentalExpenseCategory) throw new BadRequestException("请款项目、费用承担公司和类别必须与采购申请一致");
   const fingerprint = procurementPaymentFingerprint(input, actorUserId);
+  const deleted = await tx.auditLog.findFirst({ where: { action: "expense_claim.draft.delete", metadata: { path: ["requestKey"], equals: input.generalProcurementRequestKey } }, select: { id: true } });
+  if (deleted) throw new ConflictException("此付款草稿已删除，请重新发起请款");
   const existing = await tx.expenseClaim.findUnique({ where: { generalProcurementRequestKey: input.generalProcurementRequestKey } });
   if (existing) {
     if (existing.generalProcurementFingerprint !== fingerprint) throw new ConflictException("重复请款内容不一致，请刷新后核对");

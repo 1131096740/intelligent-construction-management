@@ -85,10 +85,7 @@ export function classifySettlementDraftLifecycle(
     ...(facts.formalApprovalInstanceCount > 0
       ? ["存在正式结算审批"]
       : []),
-    ...(facts.draftApprovalInstanceCount > 0 ? ["存在草稿审批记录"] : []),
-    ...(facts.historicalEvidenceCount > 0
-      ? ["存在冻结或签章文件"]
-      : [])
+    ...(facts.draftApprovalInstanceCount > 0 ? ["存在草稿审批记录"] : [])
   ];
   const hasFormalFacts =
     draft.status === "submitted" ||
@@ -108,7 +105,7 @@ export function classifySettlementDraftLifecycle(
   }
 
   const hasApplicationEvidence =
-    facts.historicalEvidenceCount > 0 ||
+    (draft.status === "abandoned" && facts.historicalEvidenceCount > 0) ||
     facts.draftApprovalInstanceCount > 0 ||
     Boolean(draft.abandonReason);
 

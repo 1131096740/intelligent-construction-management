@@ -4020,7 +4020,7 @@ export class ContractTakeoverService {
       ...(!actorUserId ? ["未提供当前操作人"] : [])
     ];
     const pristine = takeover.takeoverStatus === "draft" && !takeover.submittedAt &&
-      contract.evidenceFiles.length === 0 && contract.corrections.length === 0;
+      contract.corrections.length === 0;
     const lifecycleKind = takeover.takeoverStatus === "abandoned" || terminal
       ? "formal_record" : pristine ? "pristine_draft" : "approval_draft";
     const availableActions = lifecycleKind === "formal_record" ? [] : [{
@@ -4327,7 +4327,7 @@ export class ContractTakeoverService {
       ...(paymentCount ? ["存在关联付款"] : [])
     ];
     const pristine = takeover.takeoverStatus === "draft" && !takeover.submittedAt &&
-      evidenceCount === 0 && correctionCount === 0;
+      correctionCount === 0;
     return {
       action: pristine ? "delete_pristine_draft" as const : "abandon_application" as const,
       blockers,
@@ -4366,6 +4366,13 @@ export class ContractTakeoverService {
     if (facts.action === "abandon_application" && !reason) {
       throw new BadRequestException("放弃历史接管申请必须填写原因");
     }
+    if (facts.action === "delete_pristine_draft") {
+      const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+        SELECT public.jg_delete_unsubmitted_takeover(${takeover.id}, ${actorUserId}, ${expectedUpdatedAt}::timestamp) AS deleted
+      `);
+      if (!result?.deleted) throw new ConflictException("接管草稿已有确认、审批或正式业务事实，不能删除，请刷新后核对");
+      return { takeoverId: takeover.id, status: "deleted", action: facts.action, idempotent: false };
+    }
     const now = new Date();
     const updated = await tx.contractTakeover.updateMany({
       where: { id: takeover.id, takeoverStatus: takeover.takeoverStatus, updatedAt: expectedUpdatedAt },
@@ -4403,9 +4410,7 @@ export class ContractTakeoverService {
     }
     await this.audit.record(tx, {
       actorUserId,
-      action: facts.action === "delete_pristine_draft"
-        ? "contract_takeover.draft.delete"
-        : "contract_takeover.application.abandon",
+      action: "contract_takeover.application.abandon",
       businessType: "contract_takeover",
       businessId: takeover.id,
       metadata: {

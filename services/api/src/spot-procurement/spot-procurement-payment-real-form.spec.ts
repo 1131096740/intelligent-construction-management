@@ -100,7 +100,7 @@ function createHarness() {
         unifiedSocialCreditCode: "91530000TEST000001"
       })
     },
-    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    auditLog: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue([
       {
         id: "version-1",

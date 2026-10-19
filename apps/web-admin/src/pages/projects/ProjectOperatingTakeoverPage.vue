@@ -162,9 +162,15 @@
           :disabled="!precheckResult || !canCreate"
           @click="createBatch"
         >
-          生成整批草稿
+          {{ sourceError ? "重试生成整批草稿" : "生成整批草稿" }}
         </t-button>
       </div>
+      <t-alert
+        v-if="sourceError"
+        theme="error"
+        :message="sourceError"
+        role="alert"
+      />
       <t-alert
         v-if="precheckResult"
         theme="info"
@@ -202,6 +208,28 @@
     >
       <div class="detail-head">
         <span>{{ detail.batchNo }} · {{ batchStatusLabel(detail.status) }} · 修订 {{ detail.revision }}</span>
+        <t-popconfirm
+          v-if="detail.canDeleteDraft"
+          content="彻底删除此未确认接管草稿及其明细、附件关联？审计记录保留，删除后无法恢复。"
+          confirm-btn="确认删除"
+          cancel-btn="保留草稿"
+          @confirm="deleteBatchDraft"
+        >
+          <t-button
+            theme="danger"
+            variant="outline"
+            :disabled="actionSubmitting"
+          >
+            删除批次草稿
+          </t-button>
+        </t-popconfirm>
+        <t-alert
+          v-if="deleteBatchError"
+          theme="error"
+          :message="deleteBatchError"
+          role="alert"
+        />
+
         <div
           v-if="POL_215_WRITE_UI_ENABLED"
           class="form-actions"
@@ -280,9 +308,14 @@
             当前附件目标：第 {{ attachmentTargetRow.rowNo }} 行 · {{ String(attachmentTargetRow.values.businessRef ?? "—") }}
             <t-link @click="clearAttachmentTarget">改为批次附件</t-link>
           </div>
-          <t-input v-model="attachmentPurpose" placeholder="附件用途，例如：付款凭据、对账单" />
+          <t-input
+            v-model="attachmentPurpose"
+            :disabled="actionSubmitting"
+            placeholder="附件用途，例如：付款凭据、对账单"
+          />
           <t-upload
             :model-value="attachmentFiles"
+            :disabled="actionSubmitting"
             theme="file-flow"
             :multiple="true"
             :auto-upload="false"
@@ -293,9 +326,20 @@
             :disabled="!attachmentPurpose.trim() || !attachmentFiles.length"
             @click="attachFiles"
           >
-            {{ attachmentTargetRow ? "关联到当前行" : "关联到批次" }}
+            {{ attachmentError ? "重试上传" : attachmentTargetRow ? "关联到当前行" : "关联到批次" }}
           </t-button>
         </div>
+        <t-alert
+          v-if="attachmentError"
+          theme="error"
+          :message="attachmentError"
+          role="alert"
+        />
+        <t-alert
+          v-if="attachmentSuccess"
+          theme="success"
+          :message="attachmentSuccess"
+        />
         <ul v-if="detail.rows.some((row) => row.attachmentGroups.length)" class="attachment-list">
           <li v-for="group in detail.rows.flatMap((row) => row.attachmentGroups)" :key="group.id">
             {{ group.purpose }} · {{ group.links.length }} 份文件
@@ -372,7 +416,7 @@
 <script setup lang="ts">
 import type { BusinessEntryDraftPayload } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -385,6 +429,7 @@ import {
   fetchOperatingTakeoverBatches,
   fetchOperatingTakeoverCapability,
   fetchOperatingTakeoverDetail,
+  deleteOperatingTakeoverDraft,
   fetchHistoricalFinancialTakeoverBatches,
   precheckOperatingTakeoverXlsx,
   updateOperatingTakeoverRow,
@@ -410,6 +455,20 @@ const detail = ref<OperatingTakeoverDetailReadModel | null>(null);
 const selectedProjectId = ref("");
 const selectedSceneKey = ref("");
 const excelFiles = ref<UploadFile[]>([]);
+const sourceError = ref("");
+const attachmentError = ref("");
+const attachmentSuccess = ref("");
+let uploadGeneration = 0;
+let uploadedFiles = new WeakMap<File, { key: string; id?: string }>();
+async function uploadRetainedFile(projectId: string, file: File) {
+  let receipt = uploadedFiles.get(file);
+  if (!receipt) { receipt = { key: crypto.randomUUID() }; uploadedFiles.set(file, receipt); }
+  if (!receipt.id) receipt.id = (await uploadOperatingTakeoverFileWithCapability(projectId, file, receipt.key)).id;
+  return receipt.id;
+}
+function localUploadError(error: unknown, fallback: string) {
+  return `${formatUnknownApiError(error, fallback)} 已保留所选文件，请重试；文件过大时请压缩后重新选择。`;
+}
 const pendingSourceFile = ref<File | null>(null);
 const pendingSceneKey = ref<string | undefined>();
 const draftRows = ref<Array<{ sceneKey: string; definitionVersion?: number; values: Record<string, unknown> }>>([]);
@@ -436,6 +495,7 @@ const confirmationDialogVisible = ref(false);
 const confirmationProfession = ref<OperatingTakeoverProfession>("finance");
 const activationDialogVisible = ref(false);
 const actionSubmitting = ref(false);
+const deleteBatchError = ref("");
 
 const sceneOptions = computed(() => scenes.value.map((scene) => ({ label: scene.name, value: scene.key })));
 const selectedScene = computed(() => scenes.value.find((scene) => scene.key === selectedSceneKey.value));
@@ -489,14 +549,23 @@ const draftColumns = [
 ];
 
 onMounted(load);
+onBeforeUnmount(() => { uploadGeneration += 1; });
 
 watch([selectedProjectId, selectedSceneKey], () => {
+  uploadGeneration += 1; uploadedFiles = new WeakMap(); sourceError.value = "";
   precheckResult.value = null;
   pendingRows.value = [];
   excelFiles.value = [];
   pendingSourceFile.value = null;
   pendingSceneKey.value = undefined;
   draftRows.value = [];
+});
+
+watch([selectedProjectId, () => detail.value?.id], () => {
+  deleteBatchError.value = "";
+  uploadGeneration += 1;
+  attachmentFiles.value = []; attachmentPurpose.value = ""; attachmentTargetRowId.value = null;
+  attachmentError.value = ""; attachmentSuccess.value = "";
 });
 
 async function load() {
@@ -586,25 +655,46 @@ async function precheckExcel() {
 }
 
 async function createBatch() {
-  if (!precheckResult.value) return;
+  if (!precheckResult.value || submitting.value || !pendingRows.value.length) return;
+  const generation = uploadGeneration;
+  const projectId = selectedProjectId.value;
+  const sceneKey = pendingSceneKey.value;
+  const rows = pendingRows.value;
   try {
-    submitting.value = true;
-    if (!pendingRows.value.length) return;
-    const sourceFileId = pendingSourceFile.value
-      ? (await uploadOperatingTakeoverFileWithCapability(selectedProjectId.value, pendingSourceFile.value)).id
-      : undefined;
-    detail.value = await createOperatingTakeoverBatchWithCapability(selectedProjectId.value, {
-      ...(pendingSceneKey.value ? { sceneKey: pendingSceneKey.value } : {}),
-      ...(sourceFileId ? { sourceFileId } : {}),
-      rows: pendingRows.value
-    });
-    pendingSourceFile.value = null;
-    batches.value = await fetchOperatingTakeoverBatches(selectedProjectId.value);
+    submitting.value = true; sourceError.value = "";
+    const sourceFileId = pendingSourceFile.value ? await uploadRetainedFile(projectId, pendingSourceFile.value) : undefined;
+    if (generation !== uploadGeneration) return;
+    // An upload receipt also allows recovery when batch creation succeeded but its response was lost.
+    const existing = sourceFileId ? (await fetchOperatingTakeoverBatches(projectId)).find(batch => batch.sourceFileId === sourceFileId) : undefined;
+    if (generation !== uploadGeneration) return;
+    const created = existing ? await fetchOperatingTakeoverDetail(projectId, existing.id)
+      : await createOperatingTakeoverBatchWithCapability(projectId, {
+        ...(sceneKey ? { sceneKey } : {}), ...(sourceFileId ? { sourceFileId } : {}), rows
+      });
+    if (generation !== uploadGeneration) return;
+    detail.value = created; pendingSourceFile.value = null;
+    batches.value = await fetchOperatingTakeoverBatches(projectId);
   } catch (error) {
-    message.value = formatUnknownApiError(error, "生成批次失败");
-  } finally {
-    submitting.value = false;
-  }
+    if (generation === uploadGeneration) sourceError.value = localUploadError(error, "生成批次失败，请稍后重试");
+  } finally { submitting.value = false; }
+}
+
+async function deleteBatchDraft() {
+  if (!detail.value || actionSubmitting.value) return;
+  const context = { projectId: selectedProjectId.value, batchId: detail.value.id, revision: detail.value.revision };
+  actionSubmitting.value = true; deleteBatchError.value = "";
+  try {
+    const capability = await fetchOperatingTakeoverDetail(context.projectId, context.batchId);
+    const operationAllowed = capability.canDeleteDraft && capability.revision === context.revision;
+    if (!operationAllowed) throw new Error("当前接管草稿不能删除，请刷新后核对");
+    await deleteOperatingTakeoverDraft(context.projectId, context.batchId, context.revision);
+    if (selectedProjectId.value === context.projectId && detail.value?.id === context.batchId) {
+      detail.value = null;
+      batches.value = batches.value.filter(row => row.id !== context.batchId);
+    }
+  } catch (error) {
+    if (detail.value?.id === context.batchId) deleteBatchError.value = formatUnknownApiError(error, "删除接管草稿失败，请刷新后重试");
+  } finally { actionSubmitting.value = false; }
 }
 
 async function openBatch({ row }: { row: OperatingTakeoverBatchReadModel }) {
@@ -737,32 +827,36 @@ async function saveRowEdit() {
 }
 
 async function attachFiles() {
-  if (!detail.value) return;
+  if (!detail.value || actionSubmitting.value) return;
   const files = attachmentFiles.value.map((item) => item.raw).filter((file): file is File => file instanceof File);
-  if (!files.length || !attachmentPurpose.value.trim()) return;
+  const purpose = attachmentPurpose.value.trim();
+  if (!files.length || !purpose) return;
+  const generation = uploadGeneration;
+  const projectId = selectedProjectId.value;
+  const batchId = detail.value.id;
+  const rowId = attachmentTargetRowId.value;
   try {
-    actionSubmitting.value = true;
-    const capability = await fetchOperatingTakeoverCapability(selectedProjectId.value);
-    if (capability.projectId !== selectedProjectId.value || !capability.availableActions.includes("file_upload")) {
+    actionSubmitting.value = true; attachmentError.value = ""; attachmentSuccess.value = "";
+    const capability = await fetchOperatingTakeoverCapability(projectId);
+    if (capability.projectId !== projectId || !capability.availableActions.includes("file_upload")) {
       throw new Error("当前用户不能上传或关联历史经营接管附件");
     }
-    const uploaded = [];
-    for (const file of files) uploaded.push(await uploadOperatingTakeoverFileWithCapability(selectedProjectId.value, file));
-    await addOperatingTakeoverAttachmentGroupWithCapability(selectedProjectId.value, detail.value.id, {
-      purpose: attachmentPurpose.value.trim(),
-      fileIds: uploaded.map((file) => file.id),
-      ...(attachmentTargetRowId.value ? { rowId: attachmentTargetRowId.value } : {})
-    });
-    detail.value = await fetchOperatingTakeoverDetail(selectedProjectId.value, detail.value.id);
-    attachmentFiles.value = [];
-    attachmentPurpose.value = "";
-    attachmentTargetRowId.value = null;
-    message.value = "附件已关联到接管批次";
+    const fileIds: string[] = [];
+    for (const file of files) {
+      if (generation !== uploadGeneration) return;
+      fileIds.push(await uploadRetainedFile(projectId, file));
+    }
+    if (generation !== uploadGeneration) return;
+    await addOperatingTakeoverAttachmentGroupWithCapability(projectId, batchId, { purpose, fileIds, ...(rowId ? { rowId } : {}) });
+    if (generation !== uploadGeneration) return;
+    attachmentFiles.value = []; attachmentPurpose.value = ""; attachmentTargetRowId.value = null;
+    attachmentSuccess.value = "附件已关联到接管批次";
+    const refreshed = await fetchOperatingTakeoverDetail(projectId, batchId);
+    if (generation === uploadGeneration) detail.value = refreshed;
   } catch (error) {
-    message.value = formatUnknownApiError(error, "关联附件失败");
-  } finally {
-    actionSubmitting.value = false;
-  }
+    if (generation === uploadGeneration) attachmentError.value = attachmentSuccess.value
+      ? "附件已关联，但列表刷新失败，请刷新批次查看。" : localUploadError(error, "附件上传或关联失败，请稍后重试");
+  } finally { actionSubmitting.value = false; }
 }
 
 function stringValues(values: Record<string, unknown>) {
@@ -836,13 +930,13 @@ async function activateOperatingTakeoverWithCapability(
   return activateOperatingTakeover(projectId, batchId, idempotencyKey);
 }
 
-async function uploadOperatingTakeoverFileWithCapability(projectId: string, file: File) {
+async function uploadOperatingTakeoverFileWithCapability(projectId: string, file: File, idempotencyKey?: string) {
   const capability = await fetchOperatingTakeoverCapability(projectId);
   const matchesRequestedProject = capability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes("file_upload");
   if (!operationAllowed) throw new Error("当前用户不能上传历史经营接管附件");
-  return uploadOperatingTakeoverSourceFile(projectId, file);
+  return uploadOperatingTakeoverSourceFile(projectId, file, idempotencyKey);
 }
 
 async function updateOperatingTakeoverRowWithCapability(

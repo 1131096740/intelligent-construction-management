@@ -928,6 +928,13 @@ export class SpotProcurementApplicationService {
           actorUserId,
           reason ?? "删除从未提交的采购草稿"
         );
+        if (!hasApprovalHistory) {
+          const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+            SELECT public.jg_delete_unsubmitted_spot_procurement(${procurementId}, ${actorUserId}) AS deleted
+          `);
+          if (!result?.deleted) throw new ConflictException("采购草稿已有提交或正式业务事实，不能删除，请刷新后核对");
+          return { procurementId, status: "deleted", action: expectedAction, idempotent: false };
+        }
         await this.invalidateSafeChildren(
           tx,
           procurementId,
@@ -2195,10 +2202,24 @@ export class SpotProcurementApplicationService {
       where: { code: { startsWith: prefix } },
       select: { code: true }
     });
+    const deletionAudits = await tx.auditLog.findMany({
+      where: { action: "spot_procurement.draft.delete", metadata: { path: ["code"], string_starts_with: prefix } },
+      select: { metadata: true }
+    });
+    const deletedCodes = deletionAudits.map(log => {
+      const metadata = log.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata) || typeof metadata.code !== "string") {
+        throw new ConflictException("采购编号审计不完整，请联系管理员核对后重试");
+      }
+      return metadata.code;
+    });
+    // Keep the original daily advisory lock; removed drafts still own their numbers.
     const sequence =
       Math.max(
         0,
-        ...existing.map((procurement) => applicationCodeSequence(procurement.code, prefix))
+        ...[...existing.map(procurement => procurement.code), ...deletedCodes]
+          .filter(code => code.startsWith(prefix))
+          .map(code => applicationCodeSequence(code, prefix))
       ) + 1;
     return `${prefix}${String(sequence).padStart(3, "0")}`;
   }

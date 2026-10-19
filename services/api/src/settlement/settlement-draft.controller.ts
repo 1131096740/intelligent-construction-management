@@ -1,3 +1,4 @@
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
   Body,
@@ -83,7 +84,7 @@ export class SettlementDraftController {
   uploadPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     if (!file) throw new BadRequestException("请选择要上传的结算资料文件");
     if (!this.files) {

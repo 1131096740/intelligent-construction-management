@@ -166,6 +166,7 @@ function context(roleKey = "material_staff") {
       ),
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
+    auditLog: { findMany: jest.fn().mockResolvedValue([]) },
     $executeRaw: jest.fn().mockResolvedValue(undefined),
     $queryRaw: jest.fn()
   };
@@ -321,6 +322,18 @@ describe("SpotProcurementApplicationService real-form application", () => {
         ])
       }
     });
+  });
+
+  it.each([3, 10000])("已删除零采申请的日编号 %i 不得在新申请中复用", async sequence => {
+    const { service, tx } = context();
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const values = new Map(parts.map(part => [part.type, part.value]));
+    const prefix = `LXCG-${values.get("year")}${values.get("month")}${values.get("day")}-`;
+    tx.spotProcurement.findMany.mockResolvedValue([{ code: `${prefix}001` }]);
+    tx.auditLog.findMany.mockResolvedValue([{ metadata: { code: `${prefix}${String(sequence).padStart(3, "0")}` } }]);
+    await service.createDraft("material-1", realFormDraft);
+    expect(tx.spotProcurement.create).toHaveBeenCalledWith({ data: expect.objectContaining({ code: `${prefix}${String(sequence + 1).padStart(3, "0")}` }) });
+    expect(tx.auditLog.findMany).toHaveBeenCalledWith({ where: { action: "spot_procurement.draft.delete", metadata: { path: ["code"], string_starts_with: prefix } }, select: { metadata: true } });
   });
 
   it("freezes the paper A4 application facts without supplier, price, amount, or invoice data", async () => {
@@ -1796,36 +1809,23 @@ describe("SpotProcurementApplicationService real-form application", () => {
     ).rejects.toMatchObject({ message: "采购已发生实际付款历史，不能放弃或撤销" });
   });
 
-  it("deletes a never-submitted procurement draft without deleting evidence", async () => {
-    const { service, tx, audit } = context("material_staff");
+  it("deletes a never-submitted procurement draft with database audit retained", async () => {
+    const { service, tx } = context("material_staff");
     mockAbandonmentLocks(tx);
+    tx.$queryRaw.mockResolvedValueOnce([{ deleted: true }]);
 
     await expect(
       service.abandonDraft("procurement-1", "material-1", {
         action: "delete_pristine_draft"
       })
     ).resolves.toMatchObject({
-      status: "abandoned",
+      status: "deleted",
       action: "delete_pristine_draft",
       idempotent: false
     });
-    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
-      where: { id: "version-1" },
-      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
-    });
-    expect(tx.spotProcurement.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: "procurement-1",
-        status: "draft",
-        currentVersionId: "version-1"
-      },
-      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
-    });
-    expect(tx.fileObject.findMany).not.toHaveBeenCalled();
-    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
-      action: "spot_procurement.draft.delete",
-      businessId: "procurement-1"
-    }));
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls.some(([query]) => query.strings.join("").includes("jg_delete_unsubmitted_spot_procurement"))).toBe(true);
   });
 
   it("requires abandonment with a reason when any procurement version was submitted", async () => {
@@ -1951,7 +1951,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
     });
   });
 
-  it("releases only the residual reserved balance once before invalidating a child draft", async () => {
+  it("releases only the residual reserved balance once before deleting a child draft", async () => {
     const { service, tx, balances } = context("material_staff");
     mockAbandonmentLocks(tx, {
       root: { ...procurement(), supplierKey: "party:supplier-1" } as never,
@@ -1970,6 +1970,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
       }]
     });
 
+    tx.$queryRaw.mockResolvedValueOnce([{ deleted: true }]);
     await service.abandonDraft("procurement-1", "material-1", {
       action: "delete_pristine_draft"
     });

@@ -587,7 +587,7 @@ describe("PaymentController authorization wiring", () => {
         "FK-2026-011",
         file,
         { id: "finance-1" } as never,
-        "upload-1"
+        { idempotencyKey: "upload-1" }
       )
     ).resolves.toEqual({ id: "file-1" });
     expect(files.uploadPrivateFile).toHaveBeenCalledWith(

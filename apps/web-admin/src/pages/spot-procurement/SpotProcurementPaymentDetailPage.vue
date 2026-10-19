@@ -1124,7 +1124,7 @@ function openConfirmation(kind: ConfirmationKind) {
     review_approve: { title: "确认通过付款审批", description: "审批通过只进入待付款；不会自动生成实际付款记录。", confirmText: "确认通过", confirmTheme: "primary", requireReason: false, requirePassword: reviewRequiresSelfReviewConfirmation.value, reasonLabel: "审批意见" },
     review_return: { title: "退回付款申请人", description: "退回会保留当前审批历史并生成新的付款草稿。", confirmText: "确认退回", confirmTheme: "danger", requireReason: true, requirePassword: reviewRequiresSelfReviewConfirmation.value, reasonLabel: "退回原因" },
     withdraw: { title: "撤回付款审批", description: "仅经办人可撤回审批中的付款申请。", confirmText: "确认撤回", confirmTheme: "danger", requireReason: false, requirePassword: false, reasonLabel: "撤回说明" },
-    abandon_payment_draft: { title: "放弃付款草稿", description: "当前付款草稿将结束并保留历史。返回采购详情后，可重新创建新的付款草稿。", confirmText: "确认放弃付款草稿", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "放弃原因" },
+    abandon_payment_draft: { title: "删除付款草稿", description: "彻底删除尚未提交的付款草稿，释放余额预占，保留审计记录。删除后无法恢复。", confirmText: "确认删除付款草稿", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "删除原因" },
     void: { title: "作废付款申请", description: "付款执行前可作废；作废会保留完整审计历史。", confirmText: "确认作废", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "作废原因" },
     download: { title: "下载付款审批单", description: "审批单下载会写入下载人、原因和审计轨迹。", confirmText: "确认下载", confirmTheme: "primary", requireReason: true, requirePassword: true, reasonLabel: "下载用途" },
   };
@@ -1143,7 +1143,10 @@ async function confirmAction(values: { reason: string; password: string }) {
         expectedUpdatedAt: current.payment.updatedAt,
         reason: values.reason
       });
-      showSuccess("付款草稿已放弃。原记录继续保留，可从采购详情重新创建付款申请。");
+      showSuccess("付款草稿已删除，余额预占已释放，审计记录保留。");
+      confirmation.visible = false;
+      await router.replace(`/零星材料采购/${encodeURIComponent(current.payment.procurement.id)}`);
+      return;
     } else if (confirmation.kind === "void") {
       await voidSpotProcurementPaymentWithCapability(current.payment.id, { reason: values.reason }); showSuccess("付款申请已作废。");
     } else if (confirmation.kind === "download") {

@@ -95,3 +95,9 @@ export class AddOperatingTakeoverAttachmentGroupDto {
 }
 
 export const operatingTakeoverEvidenceLevels = EVIDENCE_LEVELS;
+
+export class DeleteOperatingTakeoverDraftDto {
+  @IsInt({ message: "草稿版本必须是整数" })
+  @Min(1, { message: "草稿版本无效，请刷新后重试" })
+  expectedRevision!: number;
+}

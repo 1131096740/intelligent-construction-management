@@ -622,7 +622,8 @@ async function executeDraftAction(request: BusinessDraftActionRequest) {
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
   });
   showSuccess(request.action === "delete_pristine_draft" ? "采购草稿已删除，历史审计仍保留。" : "采购申请已放弃，历史事实仍可追溯。");
-  await loadDetail();
+  if (request.action === "delete_pristine_draft") await router.replace("/零星材料采购");
+  else await loadDetail();
 }
 
 async function recreatePaymentDraft() {

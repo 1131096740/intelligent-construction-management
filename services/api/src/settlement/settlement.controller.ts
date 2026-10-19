@@ -1,3 +1,4 @@
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
   Body,
@@ -193,7 +194,7 @@ export class SettlementController {
     @Param("settlementId") settlementId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     await this.requireSettlementUploadAction(
       settlementId,
@@ -316,7 +317,7 @@ export class SettlementController {
     @Param("settlementId") settlementId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     await this.requireSettlementUploadAction(
       settlementId,

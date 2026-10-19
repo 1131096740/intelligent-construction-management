@@ -1,3 +1,4 @@
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
   Body,
@@ -101,7 +102,7 @@ export class ProjectExpenseController {
   uploadCreatePrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     if (!file) throw new BadRequestException("请选择要上传的项目支出附件");
     if (!this.files) {
@@ -218,7 +219,7 @@ export class ProjectExpenseController {
     @Param("expenseRequestId") expenseRequestId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     const detail = await this.expenses.getApprovalDetail(
       projectId,

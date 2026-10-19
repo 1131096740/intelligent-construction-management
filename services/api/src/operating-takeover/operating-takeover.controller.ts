@@ -1,3 +1,4 @@
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   Body,
   BadRequestException,
@@ -18,6 +19,7 @@ import { RequireProjectRole } from "../auth/decorators/require-project-role.deco
 import { FileInterceptor, normalizeUploadedOriginalName, type MemoryUploadedFile } from "../file/uploaded-file";
 import {
   AddOperatingTakeoverAttachmentGroupDto,
+  DeleteOperatingTakeoverDraftDto,
   ActivateOperatingTakeoverDto,
   ConfirmOperatingTakeoverDto,
   CreateOperatingTakeoverBatchDto,
@@ -129,6 +131,12 @@ export class OperatingTakeoverController {
     return new StreamableFile(result.buffer);
   }
 
+  @Post(":batchId/draft-deletion")
+  @RequireProjectRole("operating_takeover.manage")
+  deleteDraft(@Param("projectId") projectId: string, @Param("batchId") batchId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: DeleteOperatingTakeoverDraftDto) {
+    return this.takeovers.deleteDraft(projectId, batchId, user.id, body.expectedRevision);
+  }
+
   @Post("precheck")
   @RequireProjectRole("operating_takeover.manage")
   precheck(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: PrecheckOperatingTakeoverDto) {
@@ -156,7 +164,7 @@ export class OperatingTakeoverController {
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: MemoryUploadedFile | undefined,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     if (!file) throw new BadRequestException("请选择历史经营接管资料文件");
     return this.takeovers.uploadSourceFile(projectId, user.id, {

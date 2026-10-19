@@ -968,7 +968,7 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain('actionEnabled("create_payment_draft")');
     expect(payment).toContain("abandonSpotProcurementPaymentDraft");
     expect(payment).toContain("expectedUpdatedAt: current.payment.updatedAt");
-    expect(payment).toContain("放弃付款草稿");
+    expect(payment).toContain("删除付款草稿");
     expect(paymentWorkbench).toContain('view: activeView.value');
     expect(paymentWorkbench).toContain('result.viewCounts');
     expect(paymentWorkbench).toContain('result.amountSummary');

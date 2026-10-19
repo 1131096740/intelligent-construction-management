@@ -1,6 +1,17 @@
 import { AuditService } from "./audit.service";
 
 describe("AuditService", () => {
+  it("identifies deleted drafts from retained audit metadata without exposing private file data", async () => {
+    const service = new AuditService({
+      auditLog: { findMany: jest.fn().mockResolvedValue([{ id: "deletion-audit", actorUserId: "user-1", action: "expense_claim.draft.delete", businessType: "expense_claim", businessId: "deleted-claim", createdAt: new Date(), metadata: { code: "BX-2026-001", files: [{ id: "secret-file-id", objectKey: "private-key" }] } }]) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "user-1", name: "经办人" }]) }
+    } as never);
+    const result = await service.listRecent();
+    expect(result.rows[0]).toMatchObject({ action: "删除费用草稿", businessType: "费用申请", businessTarget: "BX-2026-001" });
+    expect(JSON.stringify(result)).not.toContain("private-key");
+    expect(JSON.stringify(result)).not.toContain("secret-file-id");
+  });
+
   it("lists recent audit logs with actor names and summary counts", async () => {
     const prisma = {
       auditLog: {

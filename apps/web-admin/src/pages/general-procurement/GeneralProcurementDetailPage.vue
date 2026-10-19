@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
-import { cancelProcurementPayment, archiveProcurement, fetchProcurementDetail, reviewProcurement, submitProcurement, uploadProcurementArchive, withdrawProcurement, type ProcurementDetail } from "../../api/general-procurement.api";
+import { deleteProcurementDraft, cancelProcurementPayment, archiveProcurement, fetchProcurementDetail, reviewProcurement, submitProcurement, uploadProcurementArchive, withdrawProcurement, type ProcurementDetail } from "../../api/general-procurement.api";
 import { createExpenseClaim } from "../../api/expense-claim.api";
 import { downloadPrivateFileByTicket, getPrivateFileDownloadTicketCapability } from "../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -33,6 +33,19 @@ async function run(action: () => Promise<void>) {
   if (busy.value) return;
   busy.value = true; error.value = "";
   try { const procurementId = route.params.procurementId; await action(); if (route.params.procurementId === procurementId) await load(); } catch (cause) { error.value = formatUnknownApiError(cause, "操作未完成，请核对后重试"); }
+  finally { busy.value = false; }
+}
+async function deleteDraft() {
+  if (!detail.value || busy.value) return;
+  busy.value = true; error.value = "";
+  try {
+    const row = detail.value;
+    const capability = await fetchProcurementDetail(row.id);
+    const operationAllowed = capability.id === row.id && capability.canDeleteDraft && capability.revision === row.revision;
+    if (!operationAllowed) throw new Error("当前草稿不能删除，请刷新后核对");
+    await deleteProcurementDraft(row.id, row.revision);
+    await router.replace("/综合采购申请");
+  } catch (cause) { error.value = formatUnknownApiError(cause, "删除草稿失败，请刷新后重试"); }
   finally { busy.value = false; }
 }
 async function submit() { await run(async () => { await submitProcurementWithCapability(detail.value!.id, detail.value!.revision); submitVisible.value = false; }); }
@@ -141,6 +154,21 @@ onMounted(load);
         >
           <template #actions>
             <t-space break-line>
+              <t-popconfirm
+                v-if="detail.canDeleteDraft"
+                content="彻底删除此未提交的采购草稿？删除后无法恢复。"
+                confirm-btn="确认删除"
+                cancel-btn="保留草稿"
+                @confirm="deleteDraft"
+              >
+                <t-button
+                  theme="danger"
+                  variant="outline"
+                  :disabled="busy"
+                >
+                  删除草稿
+                </t-button>
+              </t-popconfirm>
               <t-button
                 v-if="detail.canEdit"
                 theme="default"

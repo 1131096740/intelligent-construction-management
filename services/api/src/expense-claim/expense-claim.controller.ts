@@ -1,3 +1,4 @@
+import { DeleteExpenseClaimDraftDto } from "./dto/delete-expense-claim-draft.dto";
 import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
@@ -41,6 +42,11 @@ export class ExpenseClaimController {
   @Get(":claimId")
   detail(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.getMine(claimId, user.id);
+  }
+
+  @Post(":claimId/draft-deletion")
+  deleteDraft(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: DeleteExpenseClaimDraftDto) {
+    return this.claims.deleteUnsubmittedDraft(claimId, user.id, body.expectedUpdatedAt);
   }
 
   @Get(":claimId/capability")

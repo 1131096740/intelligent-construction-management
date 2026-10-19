@@ -126,7 +126,7 @@ export interface AbandonSettlementDraftPayload {
 
 export interface AbandonSettlementDraftReadModel {
   draftId: string;
-  status: "abandoned";
+  status: "abandoned" | "deleted";
   action: "delete_pristine_draft" | "abandon_application";
   abandonedAt?: string;
   releasedFinalSettlementOccupancy?: boolean;
@@ -465,7 +465,7 @@ function assertSettlementDraftLifecycleResponse(
 ) {
   if (
     response.draftId !== context.draftId ||
-    response.status !== "abandoned" ||
+    (response.status !== "abandoned" && !(context.action === "delete_pristine_draft" && response.status === "deleted")) ||
     response.action !== context.action
   ) {
     throw settlementDraftLifecycleOperationError(
