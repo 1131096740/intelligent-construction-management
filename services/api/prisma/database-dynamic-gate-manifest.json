@@ -29,9 +29,9 @@
     "pendingFiles": 69,
     "fullyPendingSuites": 58,
     "partiallyPendingSuites": 11,
-    "pendingTests": 403,
+    "pendingTests": 404,
     "coveredFiles": 69,
-    "coveredTests": 403,
+    "coveredTests": 404,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 113,
+      "pendingTests": 114,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -371,7 +371,7 @@
         },
         {
           "path": "services/api/src/database/draft-hard-deletion.pg.spec.ts",
-          "pendingTests": 17,
+          "pendingTests": 18,
           "suiteStatus": "fully_pending"
         },
         {
