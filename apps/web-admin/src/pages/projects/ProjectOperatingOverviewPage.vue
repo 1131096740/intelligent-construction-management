@@ -1859,8 +1859,12 @@ async function loadOverview() {
         : Promise.resolve({ definition: null, error: "" })
     ]);
     let nextOverview: ProjectOperatingOverviewReadModel | null = null;
+    let overviewError = "";
     if (canReadProjectOverview.value) {
-      nextOverview = await fetchProjectOperatingOverview(projectId);
+      nextOverview = await fetchProjectOperatingOverview(projectId).catch((error: unknown) => {
+        overviewError = formatUnknownApiError(error, "加载项目经营数据失败");
+        return null;
+      });
     }
     const [
       nextUpstreamFundFacts,
@@ -1882,6 +1886,7 @@ async function loadOverview() {
       selectedProjectId.value === projectId
     ) {
       overview.value = nextOverview;
+      message.value = overviewError;
       upstreamFundFacts.value = nextUpstreamFundFacts.facts;
       upstreamFundFactsNextCursor.value = nextUpstreamFundFacts.nextCursor;
       upstreamFundFactsError.value = nextUpstreamFundFacts.error;

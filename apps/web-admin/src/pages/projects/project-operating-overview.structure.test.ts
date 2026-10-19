@@ -28,7 +28,7 @@ describe("project operating overview structure", () => {
   });
 
   it("separates overview, expense-ledger and expense-create capabilities", () => {
-    expect(source).toContain("if (canReadProjectOverview.value) {\n      nextOverview = await fetchProjectOperatingOverview(projectId);");
+    expect(source).toContain("if (canReadProjectOverview.value) {\n      nextOverview = await fetchProjectOperatingOverview(projectId).catch(");
     expect(source).toContain("loadOptionalProjectUpstreamFundFacts(\n        projectId");
     expect(source).toContain("canRecordUpstreamFunds.value,\n        fetchProjectUpstreamFundFacts");
     expect(source).toContain("upstreamFundFacts.value = nextUpstreamFundFacts.facts");

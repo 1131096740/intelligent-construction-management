@@ -54,6 +54,22 @@ describe("operating projection read coordination", () => {
     expect(fetchApi.mock.calls.map(([path]) => path)).toEqual([paths[0], paths[2]]);
   });
 
+  it("lets a new login read without waiting for the old login's stalled request", async () => {
+    let session = {};
+    const first = deferred<Response>();
+    const fetchApi = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(new Response("{}"));
+    const api = createOperatingReadFetch(fetchApi, () => session);
+    const oldReading = api(paths[0]);
+    session = {};
+    const newReading = api(paths[1]);
+    try {
+      expect(fetchApi).toHaveBeenCalledTimes(2);
+    } finally {
+      first.resolve(new Response("{}"));
+      await Promise.all([oldReading, newReading]);
+    }
+  });
+
   it("releases the queue after a failed request without replaying it", async () => {
     const fetchApi = vi.fn().mockRejectedValueOnce(new Error("network down")).mockResolvedValue(new Response("{}"));
     const api = createOperatingReadFetch(fetchApi, () => null);
@@ -93,9 +109,9 @@ describe("operating projection read coordination", () => {
     const aborted = api(paths[1], { signal: controller.signal });
     const rejected = expect(aborted).rejects.toMatchObject({ name: "AbortError" });
     controller.abort();
+    await rejected;
     first.resolve(new Response("{}"));
     await reading;
-    await rejected;
     await api(paths[2]);
     expect(fetchApi.mock.calls.map(([path]) => path)).toEqual([paths[0], paths[2]]);
   });
