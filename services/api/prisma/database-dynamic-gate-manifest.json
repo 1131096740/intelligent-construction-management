@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 176,
     "terminalMigration": "20261019140000_operating_context_noop_update",
-    "terminalMigrationChecksum": "f46aa0e867d030775286f571a78bd8f3bca19b7147521541c93b8daa9e97bb60",
+    "terminalMigrationChecksum": "4f22018eed019478384ae27af7f768c6dc3fb745ea9d69cc41b2adc382b0d865",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

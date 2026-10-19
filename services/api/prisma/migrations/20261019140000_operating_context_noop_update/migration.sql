@@ -41,4 +41,3 @@ BEGIN
       IS DISTINCT FROM (EXCLUDED."actorUserId", EXCLUDED."createdAt");
 END;
 $$;
-

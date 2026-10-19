@@ -39,7 +39,7 @@
 - 六轮累计限流时间各为 0.139～0.214 秒；共 740 条定时样本，采样错误0，deadlocks0、wal_buffers_full0。样本只表示采样瞬间，不能直接换算等待时间百分比。
 - 旧实现三次总耗时范围 10分53秒～11分23秒，同机仍有波动；不能据此追溯确定此前两个GitHub runner的波动根因。新增观测用于后续准确提交的CI分析。
 - 原14项在两侧全部通过：core12、facts1、impacts1；分录用例各额外重复两次。所有结果无跳过，测试身份/数量与源码不变检查通过。
-- 基线快照源码指纹 `c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d`；优化快照 `15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a`，每轮前后一致。观测helper和原POL108用例两侧逐字节一致；最终迁移/用例/helper与测量快照一致。
+- 基线快照源码指纹 `c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d`；优化快照 `15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a`，每轮前后一致。观测helper和原POL108用例两侧逐字节一致；最终用例/helper与测量快照一致；提交差异检查另去除新迁移EOF多余空行并同步清单校验和，SQL语义不变。
 - 原始数据见本机 `/private/tmp/pol108-context-pair-*`、`/private/tmp/pol108-context-before-core`、`/private/tmp/pol108-context-before-facts`、`/private/tmp/pol108-context-after-core`、`/private/tmp/pol108-context-after-facts`；配对驱动日志 `/private/tmp/pol108-context-paired-series.log`。本记录旁的JSON仅保留无秘密的计数、指纹与耗时。
 
 其他分组仅各运行一次完整回归，不据此宣称稳定提速：
