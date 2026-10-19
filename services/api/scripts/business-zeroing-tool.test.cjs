@@ -1298,7 +1298,7 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
   );
 
-  assert.equal(addedProtected.length, 113);
+  assert.equal(addedProtected.length, 124);
   for (const representative of [
     "ClearingCase",
     "FundExecution",
@@ -1369,6 +1369,49 @@ test("新增主线 Prisma 模型均有唯一显式中文归类", () => {
 
   for (const [name, [disposition, chineseName]] of Object.entries(expected)) {
     assert.deepEqual(policyByName.get(name), { name, chineseName, disposition });
+  }
+});
+
+test("合同分类与公司互转事实全部保留且显式删除决定也被拒绝", () => {
+  const names = [
+    "CompanyTransfer", "CompanyTransferBankClaim", "CompanyTransferEvent",
+    "ContractBankEventClaim", "ContractBankVerificationRequest",
+    "ContractEconomicReview", "ContractEconomicSettlementCoverage",
+    "ContractProxyBankClaim", "ContractProxyExecution",
+    "UpwardContractAmountRevision", "UpwardReceiptMatch"
+  ];
+  const policy = {
+    ...smallPolicy,
+    tables: [
+      ...smallPolicy.tables,
+      ...BUSINESS_ZEROING_POLICY.tables.filter((item) => names.includes(item.name))
+    ]
+  };
+  const source = inventory({
+    tables: [
+      ...inventory().tables,
+      ...names.map((name) => ({
+        name, primaryKey: ["id"], rows: [{ id: `${name}-synthetic` }]
+      }))
+    ]
+  });
+  const decisions = decisionManifest([
+    { businessType: "项目基本资料", table: "Project", primaryKey: { id: "p1" }, decision: "preserve", reason: "保留正式项目" },
+    { businessType: "合同业务", table: "Contract", primaryKey: { id: "c1" }, decision: "preserve", reason: "保留正式合同" }
+  ]);
+  const report = buildPreflightReport({
+    policy, inventory: source, decisions, backup: backupReceipt(),
+    codeSha: SHA_40, generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  assert.equal(report.status, "ready");
+  assert.deepEqual(report.deletionCandidates, []);
+  for (const name of names) {
+    assert.equal(report.preservationCounts[name], 1);
+    assert.ok(report.preservationAnchors.some((item) => item.table === name));
+    assert.throws(() => validateDecisionManifest(decisionManifest([{
+      businessType: "合同及公司互转事实", table: name,
+      primaryKey: { id: `${name}-synthetic` }, decision: "delete", reason: "测试禁止删除保护"
+    }]), policy, source), /只能包含需逐条复核/);
   }
 });
 
@@ -3124,9 +3167,15 @@ test("受信启动器 capability 工件为 0600 且命令结束后无残留", as
     const modeOutput = path.join(tmpdir(), `pol22-capability-mode-${process.pid}`);
     await mkdir(fakeBin);
     const fakeNode = path.join(fakeBin, "node");
+    const modeProbe = path.join(fakeBin, "capability-mode.cjs");
+    await writeFile(modeProbe, [
+      'const { statSync, writeFileSync } = require("node:fs");',
+      'const mode = statSync(process.env.POL22_LAUNCHER_CAPABILITY_PATH).mode & 0o7777;',
+      'writeFileSync(process.env.POL22_CAPABILITY_MODE_OUTPUT, mode.toString(8));'
+    ].join("\n"), "utf8");
     await writeFile(
       fakeNode,
-      "#!/bin/sh\nstat -f '%Lp' \"$POL22_LAUNCHER_CAPABILITY_PATH\" >\"$POL22_CAPABILITY_MODE_OUTPUT\"\n",
+      '#!/bin/sh\nexec "$POL22_REAL_NODE" "$POL22_CAPABILITY_PROBE"\n',
       "utf8"
     );
     await chmod(fakeNode, 0o700);
@@ -3140,6 +3189,8 @@ test("受信启动器 capability 工件为 0600 且命令结束后无残留", as
           PATH: `${fakeBin}:${process.env.PATH}`,
           TMPDIR: capabilityRoot,
           POL22_CAPABILITY_MODE_OUTPUT: modeOutput,
+          POL22_REAL_NODE: process.execPath,
+          POL22_CAPABILITY_PROBE: modeProbe,
           NODE_OPTIONS: undefined,
           NODE_PATH: undefined
         }
