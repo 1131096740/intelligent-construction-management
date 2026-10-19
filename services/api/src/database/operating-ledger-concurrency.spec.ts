@@ -41,6 +41,7 @@ describe("operating ledger PostgreSQL concurrency", () => {
         if (setupClient !== clients[0]!) await setupClient.$connect();
         await assertImpactWriterUpgrade(setupClient);
         await seedFixture(setupClient, fixture);
+        await assertAuthorizationContextReuse(setupClient, fixture);
         const service = new OperatingLedgerService(clients[0]! as never);
 
         await expect(
@@ -646,4 +647,94 @@ async function assertImpactWriterUpgrade(owner: PrismaClient) {
     await tx.$executeRawUnsafe(upgrade);
   })).rejects.toThrow("delegated grants");
   expect(await metadata(owner)).toEqual(before);
+}
+
+async function assertAuthorizationContextReuse(owner: PrismaClient, fixture: ReturnType<typeof fixtureIds>) {
+  const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET!;
+  await owner.$transaction(async tx => {
+    const authorize = (actor: string, key = secret) => tx.$executeRaw(Prisma.sql`
+      SELECT public."authorizeOperatingLedgerWrite"(${actor}, ${key})
+    `);
+    const context = async () => (await tx.$queryRaw<Array<{ version: string; actor: string; createdAt: Date }>>(Prisma.sql`
+      SELECT ctid::text AS version, "actorUserId" AS actor, "createdAt"
+      FROM "OperatingLedgerWriteContext"
+      WHERE "backendPid" = pg_backend_pid() AND "transactionId" = txid_current()
+    `))[0]!;
+    await authorize(fixture.financeUserId);
+    const first = await context();
+    await authorize(fixture.financeUserId);
+    // ctid identifies the actual heap tuple: an identical authorization must not
+    // create another row version, but every call must still validate its secret.
+    expect(await context()).toEqual(first);
+
+    // A different connection cannot borrow the active transaction's context.
+    await expect(owner.$transaction(other => other.$executeRaw(Prisma.sql`
+      SELECT public."assertOperatingLedgerWriteContext"(${fixture.financeUserId})
+    `))).rejects.toThrow("正式经营账必须通过受控写入函数登记");
+
+    // Existing context must never act as a cached password authorization.
+    await tx.$executeRawUnsafe("SAVEPOINT wrong_secret");
+    await expect(authorize(fixture.financeUserId, "incorrect-local-test-key")).rejects.toThrow("经营账写入授权上下文无效");
+    await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT wrong_secret");
+    expect(await context()).toEqual(first);
+    await tx.$executeRawUnsafe("RELEASE SAVEPOINT wrong_secret");
+
+    await authorize(fixture.projectManagerId);
+    const switched = await context();
+    expect(switched.actor).toBe(fixture.projectManagerId);
+    expect(switched.version).not.toBe(first.version);
+    expect(switched.createdAt).toEqual(first.createdAt);
+    await tx.$executeRawUnsafe("SAVEPOINT previous_actor");
+    await expect(tx.$executeRaw(Prisma.sql`
+      SELECT public."assertOperatingLedgerWriteContext"(${fixture.financeUserId})
+    `)).rejects.toThrow("正式经营账必须通过受控写入函数登记");
+    await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT previous_actor");
+    await tx.$executeRawUnsafe("RELEASE SAVEPOINT previous_actor");
+    await authorize(fixture.projectManagerId);
+    expect(await context()).toEqual(switched);
+
+    // Secret rotation in this transaction must be seen on the very next call.
+    await tx.$executeRawUnsafe("SAVEPOINT rotated_secret");
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "OperatingLedgerWriteSecret" SET "secretHash" = crypt('rotated-local-test-key', gen_salt('bf')) WHERE "id" = 1
+    `);
+    await expect(authorize(fixture.projectManagerId)).rejects.toThrow("经营账写入授权上下文无效");
+    await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT rotated_secret");
+    await tx.$executeRawUnsafe("RELEASE SAVEPOINT rotated_secret");
+    await authorize(fixture.projectManagerId);
+    expect(await context()).toEqual(switched);
+
+    // The original per-call expiry cleanup remains effective on repeated auth.
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "OperatingLedgerWriteContext" ("backendPid", "transactionId", "actorUserId", "createdAt")
+      VALUES (-2147483647, txid_current(), ${fixture.financeUserId}, CURRENT_TIMESTAMP - INTERVAL '2 days'),
+             (-2147483646, txid_current(), ${fixture.financeUserId}, CURRENT_TIMESTAMP)
+    `);
+    await authorize(fixture.projectManagerId);
+    const remaining = await tx.$queryRaw<Array<{ backendPid: number }>>(Prisma.sql`
+      SELECT "backendPid" FROM "OperatingLedgerWriteContext"
+      WHERE "backendPid" IN (-2147483647, -2147483646) AND "transactionId" = txid_current()
+    `);
+    expect(remaining).toEqual([{ backendPid: -2147483646 }]);
+    await tx.$executeRaw(Prisma.sql`
+      DELETE FROM "OperatingLedgerWriteContext" WHERE "backendPid" = -2147483646 AND "transactionId" = txid_current()
+    `);
+  });
+  // A committed previous transaction cannot authorize a fresh transaction.
+  await expect(owner.$transaction(tx => tx.$executeRaw(Prisma.sql`
+    SELECT public."assertOperatingLedgerWriteContext"(${fixture.projectManagerId})
+  `))).rejects.toThrow("正式经营账必须通过受控写入函数登记");
+
+  const rollback = new Error("rollback local authorization fixture");
+  let transactionId: bigint | undefined;
+  await expect(owner.$transaction(async tx => {
+    await tx.$executeRaw(Prisma.sql`SELECT public."authorizeOperatingLedgerWrite"(${fixture.financeUserId}, ${secret})`);
+    const [row] = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`SELECT txid_current() AS id`);
+    transactionId = row!.id;
+    throw rollback;
+  })).rejects.toBe(rollback);
+  const [rolledBack] = await owner.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT count(*) AS count FROM "OperatingLedgerWriteContext" WHERE "transactionId" = ${transactionId!}
+  `);
+  expect(rolledBack?.count).toBe(0n);
 }

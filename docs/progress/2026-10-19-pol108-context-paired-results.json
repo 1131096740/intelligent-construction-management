@@ -1,0 +1,555 @@
+{
+  "mode": "local_diagnostic",
+  "acceptanceEvidence": false,
+  "medianBeforeMs": 675865,
+  "medianAfterMs": 601948,
+  "medianPairReductionPct": 10.601525452568195,
+  "allOriginalTestsPassedPerVariant": 14,
+  "otherShards": {
+    "before-core": {
+      "mode": "local_diagnostic",
+      "acceptanceEvidence": false,
+      "baseSha": "2b81d01fcadca901d936cdfc0b21b8563cd1c6b1",
+      "sourceSha256": "c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d",
+      "sourceUnchanged": true,
+      "durationMs": 28520,
+      "results": [
+        {
+          "status": "fulfilled",
+          "value": {
+            "mode": "local_diagnostic",
+            "acceptanceEvidence": false,
+            "shard": "core",
+            "actualTests": 12,
+            "durationMs": 27772,
+            "productionTouched": false
+          }
+        }
+      ]
+    },
+    "before-facts": {
+      "mode": "local_diagnostic",
+      "acceptanceEvidence": false,
+      "baseSha": "2b81d01fcadca901d936cdfc0b21b8563cd1c6b1",
+      "sourceSha256": "c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d",
+      "sourceUnchanged": true,
+      "durationMs": 430991,
+      "results": [
+        {
+          "status": "fulfilled",
+          "value": {
+            "mode": "local_diagnostic",
+            "acceptanceEvidence": false,
+            "shard": "facts",
+            "actualTests": 1,
+            "durationMs": 430398,
+            "productionTouched": false
+          }
+        }
+      ]
+    },
+    "after-core": {
+      "mode": "local_diagnostic",
+      "acceptanceEvidence": false,
+      "baseSha": "2b81d01fcadca901d936cdfc0b21b8563cd1c6b1",
+      "sourceSha256": "15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a",
+      "sourceUnchanged": true,
+      "durationMs": 27006,
+      "results": [
+        {
+          "status": "fulfilled",
+          "value": {
+            "mode": "local_diagnostic",
+            "acceptanceEvidence": false,
+            "shard": "core",
+            "actualTests": 12,
+            "durationMs": 26394,
+            "productionTouched": false
+          }
+        }
+      ]
+    },
+    "after-facts": {
+      "mode": "local_diagnostic",
+      "acceptanceEvidence": false,
+      "baseSha": "2b81d01fcadca901d936cdfc0b21b8563cd1c6b1",
+      "sourceSha256": "15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a",
+      "sourceUnchanged": true,
+      "durationMs": 448523,
+      "results": [
+        {
+          "status": "fulfilled",
+          "value": {
+            "mode": "local_diagnostic",
+            "acceptanceEvidence": false,
+            "shard": "facts",
+            "actualTests": 1,
+            "durationMs": 447901,
+            "productionTouched": false
+          }
+        }
+      ]
+    }
+  },
+  "pairs": [
+    {
+      "before": {
+        "label": "context-pair-1-before-valid",
+        "shard": "impacts",
+        "sourceSha256": "c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d",
+        "sourceUnchanged": true,
+        "success": true,
+        "durationMs": 675865,
+        "writeMs": 656080,
+        "functions": {
+          "appendOperatingFactThroughService": {
+            "calls": 14,
+            "total_time": 73.356,
+            "self_time": 7.027
+          },
+          "appendOperatingImpactThroughService": {
+            "calls": 100021,
+            "total_time": 498860.327,
+            "self_time": 20799.699
+          },
+          "authorizeOperatingLedgerWrite": {
+            "calls": 100035,
+            "total_time": 447998.877,
+            "self_time": 43117.506
+          },
+          "crypt": {
+            "calls": 100036,
+            "total_time": 404886.323,
+            "self_time": 404886.323
+          }
+        },
+        "contextDelta": {
+          "n_tup_del": 0,
+          "n_tup_ins": 14,
+          "n_tup_upd": 100021,
+          "n_dead_tup": 49862,
+          "n_live_tup": 14,
+          "n_tup_hot_upd": 99087
+        },
+        "walDelta": {
+          "wal_fpi": 1927,
+          "wal_bytes": 160674220,
+          "wal_records": 1224458,
+          "wal_buffers_full": 0
+        },
+        "databaseDelta": {
+          "blks_hit": 47038108,
+          "blks_read": 185,
+          "deadlocks": 0,
+          "temp_bytes": 69827346,
+          "xact_commit": 431,
+          "blk_read_time": 1.4429999999999996,
+          "xact_rollback": 3,
+          "blk_write_time": 283.03
+        },
+        "cpuDelta": {
+          "usage_usec": 522123159,
+          "user_usec": 515201934,
+          "system_usec": 6921225,
+          "nice_usec": 0,
+          "nr_periods": 6614,
+          "nr_throttled": 2,
+          "throttled_usec": 139439,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "waitObservations": {
+          "('active', None, None)": 105,
+          "('idle', 'Client', 'ClientRead')": 130,
+          "('idle in transaction', 'Client', 'ClientRead')": 24,
+          "('active', 'Client', 'ClientRead')": 1
+        },
+        "sampleCount": 131,
+        "sampleErrors": [],
+        "idempotencyLookupCount": 100001
+      },
+      "after": {
+        "label": "context-pair-1-after",
+        "shard": "impacts",
+        "sourceSha256": "15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a",
+        "sourceUnchanged": true,
+        "success": true,
+        "durationMs": 604213,
+        "writeMs": 585464,
+        "functions": {
+          "appendOperatingFactThroughService": {
+            "calls": 14,
+            "total_time": 69.902,
+            "self_time": 6.202
+          },
+          "appendOperatingImpactThroughService": {
+            "calls": 100021,
+            "total_time": 431997.528,
+            "self_time": 20510.932
+          },
+          "authorizeOperatingLedgerWrite": {
+            "calls": 100035,
+            "total_time": 407839.489,
+            "self_time": 3679.064
+          },
+          "crypt": {
+            "calls": 100036,
+            "total_time": 404165.033,
+            "self_time": 404165.033
+          }
+        },
+        "contextDelta": {
+          "n_tup_del": 0,
+          "n_tup_ins": 14,
+          "n_tup_upd": 0,
+          "n_dead_tup": 0,
+          "n_live_tup": 14,
+          "n_tup_hot_upd": 0
+        },
+        "walDelta": {
+          "wal_fpi": 782,
+          "wal_bytes": 144005359,
+          "wal_records": 1019550,
+          "wal_buffers_full": 0
+        },
+        "databaseDelta": {
+          "blks_hit": 5364218,
+          "blks_read": 185,
+          "deadlocks": 0,
+          "temp_bytes": 69825282,
+          "xact_commit": 396,
+          "blk_read_time": 1.693999999999999,
+          "xact_rollback": 3,
+          "blk_write_time": 247.67299999999997
+        },
+        "cpuDelta": {
+          "usage_usec": 454317833,
+          "user_usec": 448275475,
+          "system_usec": 6042358,
+          "nice_usec": 0,
+          "nr_periods": 5910,
+          "nr_throttled": 2,
+          "throttled_usec": 205406,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "waitObservations": {
+          "('active', None, None)": 87,
+          "('idle', 'Client', 'ClientRead')": 116,
+          "('idle in transaction', 'Client', 'ClientRead')": 29
+        },
+        "sampleCount": 117,
+        "sampleErrors": [],
+        "idempotencyLookupCount": 100001
+      },
+      "totalReductionPct": 10.601525452568195,
+      "writeReductionPct": 10.763321546152904
+    },
+    {
+      "before": {
+        "label": "context-pair-2-before",
+        "shard": "impacts",
+        "sourceSha256": "c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d",
+        "sourceUnchanged": true,
+        "success": true,
+        "durationMs": 682972,
+        "writeMs": 667384,
+        "functions": {
+          "appendOperatingFactThroughService": {
+            "calls": 14,
+            "total_time": 72.719,
+            "self_time": 6.847
+          },
+          "appendOperatingImpactThroughService": {
+            "calls": 100021,
+            "total_time": 502324.177,
+            "self_time": 21459.385
+          },
+          "authorizeOperatingLedgerWrite": {
+            "calls": 100035,
+            "total_time": 450436.022,
+            "self_time": 43722.506
+          },
+          "crypt": {
+            "calls": 100036,
+            "total_time": 406717.578,
+            "self_time": 406717.578
+          }
+        },
+        "contextDelta": {
+          "n_tup_del": 0,
+          "n_tup_ins": 14,
+          "n_tup_upd": 100021,
+          "n_dead_tup": 49862,
+          "n_live_tup": 14,
+          "n_tup_hot_upd": 99087
+        },
+        "walDelta": {
+          "wal_fpi": 1920,
+          "wal_bytes": 160735155,
+          "wal_records": 1223825,
+          "wal_buffers_full": 0
+        },
+        "databaseDelta": {
+          "blks_hit": 47265463,
+          "blks_read": 185,
+          "deadlocks": 0,
+          "temp_bytes": 69822026,
+          "xact_commit": 435,
+          "blk_read_time": 1.1790000000000003,
+          "xact_rollback": 3,
+          "blk_write_time": 274.941
+        },
+        "cpuDelta": {
+          "usage_usec": 526894507,
+          "user_usec": 519662097,
+          "system_usec": 7232411,
+          "nice_usec": 0,
+          "nr_periods": 6726,
+          "nr_throttled": 2,
+          "throttled_usec": 214418,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "waitObservations": {
+          "('active', None, None)": 104,
+          "('idle', 'Client', 'ClientRead')": 132,
+          "('idle in transaction', 'Client', 'ClientRead')": 29
+        },
+        "sampleCount": 133,
+        "sampleErrors": [],
+        "idempotencyLookupCount": 100001
+      },
+      "after": {
+        "label": "context-pair-2-after",
+        "shard": "impacts",
+        "sourceSha256": "15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a",
+        "sourceUnchanged": true,
+        "success": true,
+        "durationMs": 601948,
+        "writeMs": 585224,
+        "functions": {
+          "appendOperatingFactThroughService": {
+            "calls": 14,
+            "total_time": 74.295,
+            "self_time": 6.39
+          },
+          "appendOperatingImpactThroughService": {
+            "calls": 100021,
+            "total_time": 431190.258,
+            "self_time": 20017.79
+          },
+          "authorizeOperatingLedgerWrite": {
+            "calls": 100035,
+            "total_time": 407645.735,
+            "self_time": 3417.493
+          },
+          "crypt": {
+            "calls": 100036,
+            "total_time": 404233.362,
+            "self_time": 404233.362
+          }
+        },
+        "contextDelta": {
+          "n_tup_del": 0,
+          "n_tup_ins": 14,
+          "n_tup_upd": 0,
+          "n_dead_tup": 0,
+          "n_live_tup": 14,
+          "n_tup_hot_upd": 0
+        },
+        "walDelta": {
+          "wal_fpi": 661,
+          "wal_bytes": 143359893,
+          "wal_records": 1019571,
+          "wal_buffers_full": 0
+        },
+        "databaseDelta": {
+          "blks_hit": 5364207,
+          "blks_read": 185,
+          "deadlocks": 0,
+          "temp_bytes": 69840081,
+          "xact_commit": 396,
+          "blk_read_time": 1.6080000000000005,
+          "xact_rollback": 3,
+          "blk_write_time": 235.786
+        },
+        "cpuDelta": {
+          "usage_usec": 452856298,
+          "user_usec": 446954580,
+          "system_usec": 5901719,
+          "nice_usec": 0,
+          "nr_periods": 5904,
+          "nr_throttled": 2,
+          "throttled_usec": 190961,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "waitObservations": {
+          "('active', None, None)": 91,
+          "('idle', 'Client', 'ClientRead')": 116,
+          "('idle in transaction', 'Client', 'ClientRead')": 24,
+          "('idle in transaction', None, None)": 2
+        },
+        "sampleCount": 117,
+        "sampleErrors": [],
+        "idempotencyLookupCount": 100001
+      },
+      "totalReductionPct": 11.863443889354174,
+      "writeReductionPct": 12.310753629095094
+    },
+    {
+      "before": {
+        "label": "context-pair-3-before",
+        "shard": "impacts",
+        "sourceSha256": "c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d",
+        "sourceUnchanged": true,
+        "success": true,
+        "durationMs": 652685,
+        "writeMs": 637444,
+        "functions": {
+          "appendOperatingFactThroughService": {
+            "calls": 14,
+            "total_time": 71.573,
+            "self_time": 6.199
+          },
+          "appendOperatingImpactThroughService": {
+            "calls": 100021,
+            "total_time": 491122.256,
+            "self_time": 19040.438
+          },
+          "authorizeOperatingLedgerWrite": {
+            "calls": 100035,
+            "total_time": 440754.802,
+            "self_time": 37950.948
+          },
+          "crypt": {
+            "calls": 100036,
+            "total_time": 402809.156,
+            "self_time": 402809.156
+          }
+        },
+        "contextDelta": {
+          "n_tup_del": 0,
+          "n_tup_ins": 14,
+          "n_tup_upd": 100021,
+          "n_dead_tup": 49906,
+          "n_live_tup": 14,
+          "n_tup_hot_upd": 99087
+        },
+        "walDelta": {
+          "wal_fpi": 1960,
+          "wal_bytes": 160825631,
+          "wal_records": 1223808,
+          "wal_buffers_full": 0
+        },
+        "databaseDelta": {
+          "blks_hit": 52358908,
+          "blks_read": 185,
+          "deadlocks": 0,
+          "temp_bytes": 38495870,
+          "xact_commit": 421,
+          "blk_read_time": 1.2069999999999999,
+          "xact_rollback": 3,
+          "blk_write_time": 199.297
+        },
+        "cpuDelta": {
+          "usage_usec": 512122558,
+          "user_usec": 506159287,
+          "system_usec": 5963272,
+          "nice_usec": 0,
+          "nr_periods": 6424,
+          "nr_throttled": 2,
+          "throttled_usec": 208493,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "waitObservations": {
+          "('active', None, None)": 95,
+          "('idle', 'Client', 'ClientRead')": 126,
+          "('idle in transaction', None, None)": 2,
+          "('idle in transaction', 'Client', 'ClientRead')": 30
+        },
+        "sampleCount": 127,
+        "sampleErrors": [],
+        "idempotencyLookupCount": 100001
+      },
+      "after": {
+        "label": "context-pair-3-after",
+        "shard": "impacts",
+        "sourceSha256": "15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a",
+        "sourceUnchanged": true,
+        "success": true,
+        "durationMs": 591039,
+        "writeMs": 576035,
+        "functions": {
+          "appendOperatingFactThroughService": {
+            "calls": 14,
+            "total_time": 69.052,
+            "self_time": 5.874
+          },
+          "appendOperatingImpactThroughService": {
+            "calls": 100021,
+            "total_time": 430270.069,
+            "self_time": 19562.986
+          },
+          "authorizeOperatingLedgerWrite": {
+            "calls": 100035,
+            "total_time": 407442.684,
+            "self_time": 3255.297
+          },
+          "crypt": {
+            "calls": 100036,
+            "total_time": 404193.091,
+            "self_time": 404193.091
+          }
+        },
+        "contextDelta": {
+          "n_tup_del": 0,
+          "n_tup_ins": 14,
+          "n_tup_upd": 0,
+          "n_dead_tup": 0,
+          "n_live_tup": 14,
+          "n_tup_hot_upd": 0
+        },
+        "walDelta": {
+          "wal_fpi": 614,
+          "wal_bytes": 143184587,
+          "wal_records": 1019552,
+          "wal_buffers_full": 0
+        },
+        "databaseDelta": {
+          "blks_hit": 5362071,
+          "blks_read": 185,
+          "deadlocks": 0,
+          "temp_bytes": 69794509,
+          "xact_commit": 392,
+          "blk_read_time": 1.0390000000000006,
+          "xact_rollback": 3,
+          "blk_write_time": 183.146
+        },
+        "cpuDelta": {
+          "usage_usec": 451729943,
+          "user_usec": 445760945,
+          "system_usec": 5968998,
+          "nice_usec": 0,
+          "nr_periods": 5810,
+          "nr_throttled": 3,
+          "throttled_usec": 143785,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "waitObservations": {
+          "('idle in transaction', 'Client', 'ClientRead')": 30,
+          "('active', None, None)": 84,
+          "('idle', 'Client', 'ClientRead')": 113
+        },
+        "sampleCount": 115,
+        "sampleErrors": [],
+        "idempotencyLookupCount": 100001
+      },
+      "totalReductionPct": 9.444984946796698,
+      "writeReductionPct": 9.633630562057217
+    }
+  ]
+}

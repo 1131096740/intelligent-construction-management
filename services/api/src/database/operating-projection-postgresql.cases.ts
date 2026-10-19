@@ -64,15 +64,17 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
     if (cases.has(title)) throw new Error(`重复的 POL-108 测试：${title}`);
     cases.set(title, [run, timeout]);
   }
-  let timingPhase: { name: string; started: number; queries: Record<string, { count: number; ms: number }> } | null = null;
+  let timingPhase: { name: string; started: number; cpuStarted: NodeJS.CpuUsage; queries: Record<string, { count: number; ms: number }> } | null = null;
   function startPhase(name: string) {
     finishPhase();
-    timingPhase = { name, started: performance.now(), queries: {} };
+    timingPhase = { name, started: performance.now(), cpuStarted: process.cpuUsage(), queries: {} };
   }
   function finishPhase() {
     if (!timingPhase) return;
     console.log("[pol108-timing] " + JSON.stringify({
       shard, phase: timingPhase.name, durationMs: Math.round(performance.now() - timingPhase.started),
+      processCpuMicros: process.cpuUsage(timingPhase.cpuStarted),
+      processMemoryBytes: process.memoryUsage(),
       queries: Object.fromEntries(Object.entries(timingPhase.queries).map(([key, metric]) =>
         [key, { count: metric.count, ms: Math.round(metric.ms * 1000) / 1000 }]))
     }));
