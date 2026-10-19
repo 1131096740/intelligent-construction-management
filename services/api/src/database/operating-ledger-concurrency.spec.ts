@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { randomUUID } from "node:crypto";
 import * as assert from "node:assert/strict";
 
@@ -36,6 +39,7 @@ describe("operating ledger PostgreSQL concurrency", () => {
       try {
         await Promise.all(clients.map((client) => client.$connect()));
         if (setupClient !== clients[0]!) await setupClient.$connect();
+        await assertImpactWriterUpgrade(setupClient);
         await seedFixture(setupClient, fixture);
         const service = new OperatingLedgerService(clients[0]! as never);
 
@@ -43,7 +47,29 @@ describe("operating ledger PostgreSQL concurrency", () => {
           service.appendFromSource(baseInput(fixture, "forbidden"), fixture.projectManagerId)
         ).rejects.toThrow("只有当前项目财务人员可以登记经营事实");
 
+        const insertedRows: Array<{ id: string; createdAt: Date }> = [];
+        let timestampReadbacks = 0;
+        clients[0]!.$use(async (params, next) => {
+          const result = await next(params);
+          if (params.model === "OperatingImpactEntry" && params.action === "findUnique" && params.args?.where?.id) {
+            timestampReadbacks += 1;
+          }
+          const sql = params.action === "queryRaw" ? params.args?.[0]?.sql : undefined;
+          if (typeof sql === "string" && sql.includes("appendOperatingImpactThroughService")) insertedRows.push(...result);
+          return result;
+        });
         const first = await service.appendFromSource(baseInput(fixture, "formal"), fixture.financeUserId);
+        // The controlled INSERT must return the actual database watermark, with
+        // no extra client read; every permission and idempotency guard still runs.
+        expect(insertedRows).toHaveLength(2);
+        expect(timestampReadbacks).toBe(0);
+        for (const row of insertedRows) {
+          expect(row.createdAt).toBeInstanceOf(Date);
+          const stored = await clients[0]!.operatingImpactEntry.findUniqueOrThrow({
+            where: { id: row.id }, select: { createdAt: true }
+          });
+          expect(row.createdAt).toEqual(stored.createdAt);
+        }
         // The second row collides only at the guarded DB write, after the first
         // row has exercised close-stage invalidation. The entire envelope must roll back.
         const rollbackInput = baseInput(fixture, "batch_rollback");
@@ -575,4 +601,49 @@ async function insertDirectFact(
 
 async function expectDatabaseError(action: () => Promise<unknown>, message: string) {
   await expect(action()).rejects.toThrow(message);
+}
+
+
+async function assertImpactWriterUpgrade(owner: PrismaClient) {
+  const signature = 'public."appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayload",text,text)';
+  const oldMigration = readFileSync(join(__dirname, "../../prisma/migrations/20260831120000_pol13d_fund_execution_v7/migration.sql"), "utf8");
+  const oldFunction = oldMigration.slice(oldMigration.indexOf('CREATE OR REPLACE FUNCTION "appendOperatingImpactThroughService"('), oldMigration.indexOf('CREATE TABLE "ExecutionAllocationConsequence"'));
+  const upgrade = readFileSync(join(__dirname, "../../prisma/migrations/20261019120000_operating_impact_created_at_return/migration.sql"), "utf8");
+  const rollback = new Error("rollback isolated function upgrade fixture");
+  const metadata = (tx: Prisma.TransactionClient) => tx.$queryRaw(Prisma.sql`
+    SELECT pg_get_userbyid(p.proowner) AS owner, p.proacl::text AS acl,
+      p.prosecdef AS definer, p.proconfig AS config, obj_description(p.oid, 'pg_proc') AS comment
+    FROM pg_proc p WHERE p.oid = ${signature}::regprocedure
+  `);
+  await expect(owner.$transaction(async tx => {
+    await tx.$executeRawUnsafe(`DROP FUNCTION ${signature}`);
+    await tx.$executeRawUnsafe(oldFunction);
+    await tx.$executeRawUnsafe(`ALTER FUNCTION ${signature} OWNER TO "jg_pol275_owner"`);
+    await tx.$executeRawUnsafe(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC`);
+    await tx.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signature} TO "jg_pol275_runtime" WITH GRANT OPTION`);
+    await tx.$executeRawUnsafe(`COMMENT ON FUNCTION ${signature} IS 'upgrade fixture comment'`);
+    const before = await metadata(tx);
+    await tx.$executeRawUnsafe(upgrade);
+    expect(await metadata(tx)).toEqual(before);
+    const result = await tx.$queryRaw<Array<{ definition: string }>>(Prisma.sql`
+      SELECT pg_get_function_result(${signature}::regprocedure) AS definition
+    `);
+    expect(result[0]?.definition).toBe('TABLE(id text, "createdAt" timestamp without time zone)');
+    throw rollback;
+  })).rejects.toBe(rollback);
+  // A dependent view must stop the migration and leave the writer untouched.
+  const before = await metadata(owner);
+  await expect(owner.$transaction(async tx => {
+    await tx.$executeRawUnsafe(`CREATE TEMP VIEW pol108_writer_dependency AS SELECT id FROM ${signature.split("(")[0]}(NULL::public."OperatingLedgerImpactWritePayload", NULL::text, NULL::text)`);
+    await tx.$executeRawUnsafe(upgrade);
+  })).rejects.toThrow(/depend/i);
+  expect(await metadata(owner)).toEqual(before);
+  await expect(owner.$transaction(async tx => {
+    await tx.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signature} TO "jg_pol275_runtime" WITH GRANT OPTION`);
+    await tx.$executeRawUnsafe('SET LOCAL ROLE "jg_pol275_runtime"');
+    await tx.$executeRawUnsafe(`GRANT EXECUTE ON FUNCTION ${signature} TO "jg_pol275_owner"`);
+    await tx.$executeRawUnsafe("RESET ROLE");
+    await tx.$executeRawUnsafe(upgrade);
+  })).rejects.toThrow("delegated grants");
+  expect(await metadata(owner)).toEqual(before);
 }
