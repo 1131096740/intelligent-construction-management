@@ -3170,7 +3170,7 @@ test("受信启动器 capability 工件为 0600 且命令结束后无残留", as
     const modeProbe = path.join(fakeBin, "capability-mode.cjs");
     await writeFile(modeProbe, [
       'const { statSync, writeFileSync } = require("node:fs");',
-      'const mode = statSync(process.env.POL22_LAUNCHER_CAPABILITY_PATH).mode & 0o777;',
+      'const mode = statSync(process.env.POL22_LAUNCHER_CAPABILITY_PATH).mode & 0o7777;',
       'writeFileSync(process.env.POL22_CAPABILITY_MODE_OUTPUT, mode.toString(8));'
     ].join("\n"), "utf8");
     await writeFile(
