@@ -14,6 +14,14 @@ const {
 
 const { runSelectedShards, assertTestResults } = require("./pol108-shards.cjs");
 
+const { collectEnvironment, collectContainerResources, observeDatabase, startDatabaseSampling } = require("./pol108-observability.cjs");
+
+function emitObservations(phase, { samples, errors, intervalMs }, details = {}) {
+  for (const sample of samples) console.log(`[pol108-observation] ${JSON.stringify({ phase: "sample", ...sample })}`);
+  for (const error of errors) console.log(`[pol108-observation] ${JSON.stringify({ phase: "sampling-error", ...error })}`);
+  console.log(`[pol108-observation] ${JSON.stringify({ phase, intervalMs, sampleCount: samples.length, errorCount: errors.length, ...details })}`);
+}
+
 const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const prismaCli = require.resolve("prisma/build/index.js");
@@ -155,12 +163,14 @@ async function runShard(shard) {
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
 
+  let stopSampling;
   try {
+    console.log(`[pol108-observation] ${JSON.stringify({ phase: "environment", ...await collectEnvironment(), postgresImageId: dockerEvidence.imageId })}`);
     await command(docker, [
       "run", "--detach", "--rm", "--pull=never", "--name", containerName,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
       "--env", `POSTGRES_DB=${DATABASE_NAME}`,
-      "--publish", `127.0.0.1:${port}:5432`, IMAGE, "-c", "track_functions=all"
+      "--publish", `127.0.0.1:${port}:5432`, IMAGE, "-c", "track_functions=all", "-c", "track_io_timing=on"
     ], {
       env: { ...process.env, POSTGRES_PASSWORD: password },
       forwardOutput: true,
@@ -183,6 +193,10 @@ async function runShard(shard) {
       timeoutMs: 15 * 60 * 1000
     });
     console.log(`[pol108-timing] ${JSON.stringify({ phase: "database.migrate-and-seed", durationMs: Date.now() - setupStarted })}`);
+    const resourcesBefore = await collectContainerResources(command, docker, containerName);
+    const databaseBefore = await observeDatabase(command, docker, containerName, DATABASE_NAME);
+    console.log(`[pol108-observation] ${JSON.stringify({ phase: "before", resources: resourcesBefore, database: databaseBefore })}`);
+    stopSampling = startDatabaseSampling({ command, docker, containerName, databaseName: DATABASE_NAME });
     const resultPath = path.join(temporaryRoot, "jest-results.json");
     await command(process.execPath, [
       jestCli,
@@ -197,6 +211,12 @@ async function runShard(shard) {
       // This runner-only allowance does not alter API transaction/read timeouts.
       timeoutMs: 90 * 60 * 1000
     });
+    const observations = await stopSampling();
+    emitObservations("after", observations, {
+      resources: await collectContainerResources(command, docker, containerName),
+      database: await observeDatabase(command, docker, containerName, DATABASE_NAME)
+    });
+    stopSampling = undefined;
     const actualTests = assertTestResults(JSON.parse(await readFile(resultPath, "utf8")), shards);
     const functionStats = await command(docker, [
       "exec", containerName, "psql", "-U", "jiangkong", "-d", DATABASE_NAME, "-At", "-c",
@@ -225,6 +245,9 @@ async function runShard(shard) {
     }));
     return actualTests;
   } finally {
+    if (stopSampling) {
+      emitObservations("incomplete", await stopSampling());
+    }
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
     await cleanup();
