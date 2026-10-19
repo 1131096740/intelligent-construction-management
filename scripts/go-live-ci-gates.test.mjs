@@ -266,6 +266,11 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(quality, /pnpm lint/u);
   assert.match(tests, /pnpm test/u);
   assert.match(build, /pnpm --filter @jiangkong\/web-admin build/u);
+  assert.match(build, /pnpm test:business-zeroing-tools/u);
+  assert.ok(
+    build.indexOf("pnpm --filter @jiangkong/api build") >= 0 &&
+      build.indexOf("pnpm --filter @jiangkong/api build") < build.indexOf("pnpm test:business-zeroing-tools")
+  );
   assert.match(build, /pnpm inspect:release-manifests/u);
 
   const configuredGroups = [

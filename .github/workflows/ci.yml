@@ -158,8 +158,13 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @jiangkong/api exec prisma generate
 
-      - name: Build Web production application
-        run: pnpm --filter @jiangkong/web-admin build
+      - name: Build API and Web production applications
+        run: |
+          pnpm --filter @jiangkong/api build
+          pnpm --filter @jiangkong/web-admin build
+
+      - name: Verify business cleanup preservation and safety
+        run: pnpm test:business-zeroing-tools
 
       - name: Verify Web UI governance
         run: pnpm --filter @jiangkong/web-admin check:ui
