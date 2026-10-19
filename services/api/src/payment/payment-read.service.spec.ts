@@ -1,3 +1,4 @@
+jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
 import { PaymentReadService } from "./payment-read.service";
 
 describe("PaymentReadService", () => {

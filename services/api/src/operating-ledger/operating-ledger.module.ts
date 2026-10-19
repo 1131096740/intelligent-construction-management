@@ -1,3 +1,9 @@
+import {CompanyTransferOperatingSourceAdapter} from "../company-transfer/company-transfer-operating-source.adapter";
+import {FundCounterpartyCashAdapter} from "../contract-ledger/fund-counterparty-cash.adapter";
+import { UpwardReceiptMatchOperatingSourceAdapter } from "../contract-ledger/upward-receipt-match-operating-source.adapter";
+import { ContractProxyOperatingSourceAdapter } from "../contract-ledger/contract-proxy-operating-source.adapter";
+import { ContractEconomicReviewOperatingSourceAdapter } from "../contract-ledger/contract-economic-review-operating-source.adapter";
+import { ContractOperatingSourceAdapter } from "../contract/contract-operating-source.adapter";
 import { Module } from "@nestjs/common";
 
 import {
@@ -65,6 +71,12 @@ import {
 } from "../project-fund-dispute/project-fund-dispute-operating-source.adapter";
 
 export const OPERATING_SOURCE_TYPES = Object.freeze([
+  "contract_version",
+  "contract_economic_review",
+  "contract_proxy_execution",
+  "company_transfer_event",
+  "upward_receipt_match",
+  "fund_execution_counterparty",
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
   PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
@@ -90,6 +102,11 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
 export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry {
   return new OperatingSourceAdapterRegistry(
     [
+      new ContractOperatingSourceAdapter(),
+      new ContractEconomicReviewOperatingSourceAdapter(),
+  new ContractProxyOperatingSourceAdapter(),
+  new CompanyTransferOperatingSourceAdapter(),
+      new UpwardReceiptMatchOperatingSourceAdapter(),new FundCounterpartyCashAdapter(),
       new ProjectUpstreamSettlementOperatingSourceAdapter(),
       new ProjectUpstreamFundFactOperatingSourceAdapter(),
       new ProjectAffiliateContractFactOperatingSourceAdapter(),

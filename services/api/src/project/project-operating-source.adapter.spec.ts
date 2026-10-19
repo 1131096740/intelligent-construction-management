@@ -10,7 +10,7 @@ import {
 describe("POL-08 construction-enterprise operating source adapters", () => {
   it("projects confirmed construction-enterprise contracts without turning them into cost or payable", async () => {
     const adapter = new ProjectAffiliateContractFactOperatingSourceAdapter();
-    const tx = {
+    const tx = { contractEconomicReview: { findMany: jest.fn().mockResolvedValue([]) },
       project: {
         findUnique: jest.fn().mockResolvedValue({
           operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
@@ -25,6 +25,7 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
         })
       },
       projectAffiliateContractFact: {
+        findMany:jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-fact-1",
           ledgerId: "contract-ledger-1",
@@ -67,8 +68,8 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     expect(input.impacts).toEqual([
       expect.objectContaining({
         impactKind: "contract_commitment_reference",
-        amountCents: 0n,
-        direction: "notice"
+        amountCents: 2_000_00n,
+        direction: "increase"
       })
     ]);
     expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
@@ -297,9 +298,10 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     );
     expect(input.impacts).toEqual([
       expect.objectContaining({
-        impactKind: "contract_commitment_reference",
-        amountCents: 0n,
-        direction: "notice"
+        impactKind: "receivable_increase",
+        amountCents: 200000n,
+        direction: "increase",
+        subject: { kind: "participating_company", id: "company-1" }
       })
     ]);
     expect(

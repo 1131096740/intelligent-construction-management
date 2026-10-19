@@ -1311,6 +1311,7 @@ describe("SettlementReadService", () => {
           abandonReason: null
         }])
       },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
         findMany: jest.fn().mockResolvedValue([
           { id: "c1", code: "HT-1", temporaryCode: null }

@@ -88,6 +88,12 @@ describeDatabase("project affiliate business PostgreSQL constraints", () => {
   it("rejects the same external payment reference across projects", async () => {
     const externalPaymentReference = `BANK-${randomUUID()}`;
     const firstId = randomUUID();
+    const enterprise = await prisma.businessParty.create({ data: {
+      name: "挂靠建设集团", normalizedName: `bank-enterprise-${firstId}`, createdByUserId: "finance-constraint"
+    } });
+    const enterpriseVersion = await prisma.businessPartyVersion.create({ data: {
+      businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: "finance-constraint"
+    } });
     const payment = {
       contractLedgerId: `contract-ledger-${firstId}`,
       settlementLedgerId: `settlement-ledger-${firstId}`,
@@ -97,7 +103,7 @@ describeDatabase("project affiliate business PostgreSQL constraints", () => {
       paymentKind: "normal",
       externalPaymentReference,
       affiliateAssignmentId: `assignment-${firstId}`,
-      affiliateBusinessPartyVersionId: `party-version-${firstId}`,
+      affiliateBusinessPartyVersionId: enterpriseVersion.id,
       affiliateNameSnapshot: "挂靠建设集团",
       basisType: "oral",
       requestFingerprint: "c".repeat(64),
@@ -125,7 +131,9 @@ describeDatabase("project affiliate business PostgreSQL constraints", () => {
           ...payment
         }
       })
-    ).rejects.toMatchObject({ code: "P2002" });
+    ).rejects.toThrow("施工企业该银行流水已登记，不得跨入口重复付款");
+    expect(await prisma.projectAffiliatePaymentFact.findUnique({ where: { id: secondId } })).toBeNull();
+    expect(await prisma.projectAffiliatePaymentFact.findUnique({ where: { id: firstId } })).toMatchObject({ amountCents: 1000n });
   });
 
   it("rejects one external evidence file bound to two business facts", async () => {

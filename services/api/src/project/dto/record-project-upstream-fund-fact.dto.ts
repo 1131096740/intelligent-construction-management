@@ -44,6 +44,9 @@ export type ProjectAffiliateDeductionCategory =
   (typeof PROJECT_AFFILIATE_DEDUCTION_CATEGORIES)[number];
 
 export class RecordProjectUpstreamFundFactDto {
+ @IsOptional()
+ @IsString()
+ bankObservationReference?:string;
   @IsIn(PROJECT_UPSTREAM_FUND_FACT_TYPES, { message: "上游资金事实类型不正确" })
   factType!: ProjectUpstreamFundFactType;
 

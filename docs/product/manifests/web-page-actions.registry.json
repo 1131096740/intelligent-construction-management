@@ -9354,6 +9354,486 @@
           "name": "deleteOperatingTakeoverDraft"
         }
       ]
+    },
+    {
+      "id": "contract-bank-verification.prepareBankVerification",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareBankVerificationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+          "name": "prepareBankVerification"
+        }
+      ]
+    },
+    {
+      "id": "contract-bank-verification.decideBankVerification",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideBankVerificationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+          "name": "decideBankVerification"
+        }
+      ]
+    },
+    {
+      "id": "contract-bank-verification.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-bank-verification.downloadPrivateFileByTicket",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPrivateFileByTicketWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReadEvidence"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
+    },
+    {
+      "id": "contract-economic-review.prepareEconomicReview",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareEconomicReviewWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+          "name": "prepareEconomicReview"
+        }
+      ]
+    },
+    {
+      "id": "contract-economic-review.decideEconomicReview",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideEconomicReviewWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+          "name": "decideEconomicReview"
+        }
+      ]
+    },
+    {
+      "id": "contract-economic-review.prepareEconomicSettlement",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareEconomicSettlementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+          "name": "prepareEconomicSettlement"
+        }
+      ]
+    },
+    {
+      "id": "contract-proxy-execution.prepareContractProxyExecution",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareContractProxyExecutionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+          "name": "prepareContractProxyExecution"
+        }
+      ]
+    },
+    {
+      "id": "contract-proxy-execution.decideContractProxyExecution",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideContractProxyExecutionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+          "name": "decideContractProxyExecution"
+        }
+      ]
+    },
+    {
+      "id": "contract-proxy-execution.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "upward-contract-amount.prepareUpwardAmount",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareUpwardAmountWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+          "name": "prepareUpwardAmount"
+        }
+      ]
+    },
+    {
+      "id": "upward-contract-amount.decideUpwardAmount",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideUpwardAmountWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+          "name": "decideUpwardAmount"
+        }
+      ]
+    },
+    {
+      "id": "upward-contract-amount.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "upward-receipt-match.prepareReceiptMatch",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareReceiptMatchWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+          "name": "prepareReceiptMatch"
+        }
+      ]
+    },
+    {
+      "id": "upward-receipt-match.decideReceiptMatch",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideReceiptMatchWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+          "name": "decideReceiptMatch"
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.createCompanyTransfer",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createCompanyTransferWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "name": "createCompanyTransfer"
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.decideCompanyTransfer",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideCompanyTransferWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDecide"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "name": "decideCompanyTransfer"
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.executeCompanyTransfer",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "executeCompanyTransferWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canExecute"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "name": "executeCompanyTransfer"
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.downloadPrivateFileByTicket",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPrivateFileByTicketWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReadEvidence"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
     }
   ]
 }

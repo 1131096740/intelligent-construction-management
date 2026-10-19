@@ -1392,6 +1392,7 @@ export interface AssignSettlementApprovalPayload {
 }
 
 export interface RecordPaymentExecutionPayload {
+  bankReceiptReference?:string;
   amountCents: string;
   paidAt: string;
   voucherFileId: string;
@@ -1401,6 +1402,7 @@ export interface RecordPaymentExecutionPayload {
 }
 
 export interface RecordPaymentExecutionWithUploadInput<TContext> {
+  bankReceiptReference?:string;
   amountCents: string;
   paidAt: string;
   confirmationPassword: string;
@@ -1413,6 +1415,7 @@ export interface RecordPaymentExecutionWithUploadInput<TContext> {
 }
 
 export interface PaymentExecutionRecordSubmission {
+  bankReceiptReference?:string;
   paymentId: string;
   amountCents: string;
   paidAt: string;
@@ -1493,6 +1496,7 @@ export type LedgerTone = "default" | "primary" | "warning" | "danger" | "success
 
 export interface ContractLedgerListReadModel {
   rows: Array<{
+    contractRelationshipLabel?: string;
     id: string;
     contractNo: string;
     name: string;
@@ -1521,6 +1525,7 @@ export interface ContractLedgerListReadModel {
 
 export interface SettlementLedgerListReadModel {
   rows: Array<{
+    contractRelationshipLabel?: string;
     id: string;
     settlementNo: string;
     contractNo: string;
@@ -1548,6 +1553,7 @@ export interface SettlementLedgerListReadModel {
 
 export interface PaymentLedgerListReadModel {
   rows: Array<{
+    contractRelationshipLabel?: string;
     id: string;
     paymentNo: string;
     contractNo: string;
@@ -1622,6 +1628,7 @@ export interface FileDownloadAuditListReadModel {
 
 export interface ArchiveListReadModel {
   rows: Array<{
+    contractRelationshipLabel?: string;
     id: string;
     documentNo: string;
     fileId: string;
@@ -1698,13 +1705,16 @@ export interface AssignProjectAffiliatePayload {
 }
 
 export interface OperatingProjectionAggregateReadModel {
+  companyTransferBalances?:Array<{companyId:string;companyName:string;projectId:string|null;projectName?:string;cashChangeCents:string;inTransitCents:string;receivableCents:string;payableCents:string;legacyReceivableCents?:string;legacyPayableCents?:string}>;
   scope: { label: string; projectCount: number };
   asOf: { businessDate: string; readAt: string; retroactiveFactCount: number };
   integrity: { statusLabel: string; moneyComplete: boolean; notices: string[] };
   commitments: { contractCommitmentCents: string };
+  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string; receivableCents: string; payableCents: string; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
   operating: {
     confirmedIncomeCents: string;
     confirmedCostCents: string;
+    internalReceivableCents?: string;
     receivableCents: string;
     payableCents: string;
   };
@@ -1848,6 +1858,7 @@ export interface ProjectUpstreamFundFactPageReadModel {
 }
 
 export interface RecordProjectUpstreamFundFactPayload {
+  bankObservationReference?:string;
   factType: ProjectUpstreamFundFactType;
   basisType: ProjectUpstreamFundBasisType;
   occurredAt: string;
@@ -2013,6 +2024,7 @@ export interface ProjectAffiliateBusinessFactsReadModel {
 }
 
 export interface RecordProjectAffiliateContractFactPayload {
+  counterpartyVersionId?: string;
   contractType: ProjectAffiliateContractType;
   externalContractReference: string;
   counterpartyName: string;
@@ -2076,6 +2088,8 @@ export interface ProjectAffiliateCompanyContractReadModel {
   contractReference: string;
   contractName: string;
   signedAt: string;
+  amountNature?: "fixed" | "uncapped" | "unconfirmed";
+  amountCents?: string | null;
   rightsObligationsSummary: string;
   affiliateAssignmentId: string;
   affiliateBusinessPartyVersionId: string;
@@ -2116,6 +2130,8 @@ export interface RecordProjectAffiliateCompanyContractPayload {
   contractReference: string;
   contractName: string;
   signedAt: string;
+  amountNature?: "fixed" | "uncapped" | "unconfirmed";
+  amountCents?: string | null;
   rightsObligationsSummary: string;
   companyEntityId: string;
   fileId: string;
@@ -2127,7 +2143,9 @@ export interface RecordProjectAffiliateCompanyContractWithUploadInput<TContext> 
     contractReference: string;
     contractName: string;
     signedAt: string;
-    rightsObligationsSummary: string;
+    amountNature?: "fixed" | "uncapped" | "unconfirmed";
+  amountCents?: string | null;
+  rightsObligationsSummary: string;
     companyEntityId: string;
   };
   files: Array<{
@@ -2143,6 +2161,8 @@ export interface ProjectAffiliateCompanyContractRecordSubmission {
   contractReference: string;
   contractName: string;
   signedAt: string;
+  amountNature?: "fixed" | "uncapped" | "unconfirmed";
+  amountCents?: string | null;
   rightsObligationsSummary: string;
   companyEntityId: string;
   idempotencyKey: string;
@@ -2541,6 +2561,7 @@ export type ApprovalCenterViewKey =
   | "overdueReminder";
 
 export interface WorkItemReadModel {
+  contractRelationshipLabel?: string; signingParty?: string; accountingEffect?: string;
   id: string;
   type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
   title: string;
@@ -4104,6 +4125,7 @@ function normalizePaymentExecutionRecord<TContext>(
     throw new Error("付款时间格式不正确");
   }
   return Object.freeze({
+    ...(input.bankReceiptReference?{bankReceiptReference:input.bankReceiptReference}:{}),
     paymentId: requiredPaymentExecutionText(
       paymentId,
       "付款编号"
@@ -4173,6 +4195,7 @@ async function executePaymentExecutionRecord(
     response = await recordPaymentExecution(
       submission.paymentId,
       {
+        ...(submission.bankReceiptReference?{bankReceiptReference:submission.bankReceiptReference}:{}),
         amountCents: submission.amountCents,
         paidAt: submission.paidAt,
         voucherFileId: fileId,
@@ -5301,6 +5324,8 @@ function normalizeAffiliateCompanyContractRecord<TContext>(
       input.form.signedAt,
       "签订日期"
     ),
+    amountNature: input.form.amountNature,
+    amountCents: input.form.amountCents,
     rightsObligationsSummary:
       requiredAffiliateCompanyContractRecordText(
         input.form.rightsObligationsSummary,
@@ -5365,6 +5390,8 @@ async function executeAffiliateCompanyContractRecord(
     contractReference: submission.contractReference,
     contractName: submission.contractName,
     signedAt: submission.signedAt,
+    amountNature: submission.amountNature,
+    ...(submission.amountCents != null ? { amountCents: submission.amountCents } : {}),
     rightsObligationsSummary: submission.rightsObligationsSummary,
     companyEntityId: submission.companyEntityId,
     idempotencyKey: submission.idempotencyKey,
@@ -7289,4 +7316,14 @@ export function createApprovalDelegation(body: CreateApprovalDelegationPayload) 
 
 export function revokeApprovalDelegation(delegationId: string) {
   return deleteJson<ApprovalDelegationReadModel>(`/approval-delegations/${delegationId}`);
+}
+
+export function fetchContractFinancialBalances(input:{projectId?:string;companyEntityId?:string;asOf?:string}) {
+ const query=new URLSearchParams();
+ if(input.companyEntityId)query.set("companyEntityId",input.companyEntityId);
+ if(input.asOf)query.set("asOf",input.asOf);
+ if(input.projectId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/project/${encodeURIComponent(input.projectId)}?${query}`);
+ if(input.companyEntityId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/company/${encodeURIComponent(input.companyEntityId)}?${query}`);
+ query.set("scopeKind","projects");
+ return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/as-of?${query}`);
 }

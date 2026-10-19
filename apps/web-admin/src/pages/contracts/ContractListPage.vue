@@ -21,6 +21,8 @@
         </t-button>
       </template>
     </BusinessPageHeader>
+    <ContractRelationshipLedger initial-section="contracts" />
+
 
     <t-tabs
       v-model="activeTab"
@@ -298,6 +300,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { MessagePlugin } from "tdesign-vue-next";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
@@ -427,7 +431,7 @@ const contractColumnOptions = computed(() =>
 const visibleContractLedgerColumns = computed(() => {
   const visible = new Set(visibleContractColumnKeys.value);
   return contractLedgerColumns.filter((column) =>
-    column.colKey === "operation" || visible.has(String(column.colKey))
+    column.colKey === "operation" || column.colKey === "contractRelationshipLabel" || visible.has(String(column.colKey))
   );
 });
 
@@ -462,7 +466,7 @@ async function loadContractLifecycleLedger() {
     lifecycleSummary.value = result.summary;
     lifecycleMeta.value = result.meta;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     noticeMessage.value = `合同记录读取失败：${reason}。这不代表当前没有合同记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
@@ -483,9 +487,7 @@ async function exportContractLedger() {
     await MessagePlugin.success("合同台账已导出，内容仅包含当前账号可见范围。");
   } catch (error) {
     await MessagePlugin.error(
-      error instanceof Error
-        ? `${error.message}。请检查网络与权限后重试。`
-        : "合同台账导出失败，请检查网络与权限后重试。"
+      formatUnknownApiError(error, "合同台账导出失败，请检查网络与权限后重试。")
     );
   } finally {
     exportLoading.value = false;

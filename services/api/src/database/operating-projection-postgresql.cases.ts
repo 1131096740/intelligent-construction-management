@@ -390,6 +390,7 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
     expect(view.operating).toEqual({
       confirmedIncomeCents: "1000",
       confirmedCostCents: "300",
+      internalReceivableCents: "0",
       receivableCents: "200",
       payableCents: "200"
     });

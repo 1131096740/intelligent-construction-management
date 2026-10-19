@@ -7,6 +7,7 @@ import {
   PrismaClient,
   type PrismaClient as PrismaClientType
 } from "@prisma/client";
+import { VerifiedBankTransactionObservationService } from "../fund-execution/verified-bank-transaction-observation.service";
 import { AuditService } from "../audit/audit.service";
 import { FileService } from "../file/file.service";
 import { PaymentAmountService } from "../payment/payment-amount.service";
@@ -321,6 +322,7 @@ async function expectImmutableMutationFailure(
 }
 
 async function seedFixture(client: PrismaClientType, fixture: Fixture) {
+  const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET!;await client.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;
   await client.user.create({
     data: {
       id: fixture.actorUserId,
@@ -363,6 +365,14 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
       storageStatus: "active"
     }))
   });
+  const position=await client.position.upsert({where:{key:"finance_director"},create:{key:"finance_director",name:"财务负责人"},update:{}});
+  await client.userPosition.create({data:{userId:fixture.actorUserId,positionId:position.id}});
+  const verificationId=randomUUID();
+  const newBankEvidence=async()=>{const id=randomUUID();await client.fileObject.create({data:{id,bucket:"local-private",objectKey:`${fixture.prefix}/${id}.pdf`,originalName:"银行核验.pdf",mimeType:"application/pdf",sizeBytes:128,uploadedByUserId:fixture.actorUserId,contentSha256:"a".repeat(64),storageStatus:"active"}});return id;};
+  const evidenceId=await newBankEvidence();
+  await client.$queryRaw`SELECT * FROM public."jg_issue_payment_execution_payer_verification_trusted"(${JSON.stringify({id:verificationId,reference:randomUUID(),holderCompanyEntityId:COMPANY_ENTITY_ID,holderNameSnapshot:COMPANY_ENTITY_NAME,holderCreditCodeSnapshot:COMPANY_ENTITY_CREDIT_CODE,verificationReference:randomUUID(),verifiedByUserId:fixture.actorUserId,verifiedAt:new Date(Date.now()-120000).toISOString(),verificationEvidenceFileId:evidenceId,verificationEvidenceContentSha256:"a".repeat(64),status:"verified",sourceType:"bank_account_legal_holder",sourceRecordId:randomUUID()})}::JSONB)`;
+  const amounts={remainingA:700n,remainingB:700n,replay:400n,crossShared:300n,shortage:500n};
+  for(const [key,file] of Object.entries(fixture.vouchers))await new VerifiedBankTransactionObservationService(client as never).record({reference:`bank-${file}`,payerVerificationId:verificationId,transactionSourceType:"isolated_payment_test",transactionSourceId:randomUUID(),transactionSourceIdentity:randomUUID().replaceAll("-","").repeat(2),transactionEvidenceFileId:await newBankEvidence(),transactionExecutedByUserId:fixture.actorUserId,amountCents:amounts[key as keyof typeof amounts],currencyCode:"CNY",direction:"outflow",occurredAt:new Date(Date.now()-60000),createdByUserId:fixture.actorUserId,auditRequestId:randomUUID()});
 }
 
 async function seedScenario(
@@ -851,6 +861,7 @@ function executionInput(
     amountCents,
     paidAt,
     voucherFileId,
+    bankReceiptReference:`bank-${voucherFileId}`,
     confirmationPassword: "local-concurrency-confirmation"
   };
 }

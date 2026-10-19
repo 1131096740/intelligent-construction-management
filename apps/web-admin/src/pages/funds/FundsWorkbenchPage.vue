@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -98,6 +99,8 @@ onMounted(() => void loadWorkbench());
     title="统一资金办理工作台"
     description="汇集合同付款、零星材料付款、费用报销补付、零星费用实际付款和借款放款；本页只读投影，实际付款仍在各来源的受控流程中办理。"
   >
+    <ContractRelationshipLedger initial-section="payments" />
+
     <template #actions>
       <t-button
         variant="outline"

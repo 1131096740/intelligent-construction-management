@@ -1,3 +1,4 @@
+jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), lockEconomicProject: jest.fn().mockResolvedValue(undefined), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import {
   BadRequestException,
   ForbiddenException

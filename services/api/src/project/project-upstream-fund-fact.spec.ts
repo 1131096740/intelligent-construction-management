@@ -1,3 +1,5 @@
+jest.mock("../file/file-business-binding",()=>({...jest.requireActual("../file/file-business-binding"),acquireFileBusinessBindingTransactionLock:jest.fn().mockResolvedValue(undefined)}));
+jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 import { ConflictException } from "@nestjs/common";
 import { ProjectService } from "./project.service";
 
@@ -186,6 +188,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("records an owner payment as a pending external fact instead of company cash", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
@@ -316,6 +320,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("rejects an owner payment whose counterparty differs from the linked upstream settlement", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
@@ -372,6 +378,8 @@ describe("ProjectService upstream fund facts", () => {
   it("inherits the upstream settlement link when reversing an owner payment", async () => {
     let created: Record<string, unknown> | null = null;
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -469,6 +477,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("records an oral unresolved difference without inventing a file, cash, or cost fact", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
@@ -552,6 +562,8 @@ describe("ProjectService upstream fund facts", () => {
       confirmationSignatureSha256: "c".repeat(64)
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
         .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
@@ -620,6 +632,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("serializes a cash-decreasing confirmation with funding allocation and rolls back on overdraw", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
         .mockResolvedValueOnce([{ id: "settlement-fact-1" }])
@@ -707,6 +721,8 @@ describe("ProjectService upstream fund facts", () => {
       amountCents: 20000n
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
         .mockResolvedValueOnce([{ id: "settlement-fact-1" }])
@@ -782,6 +798,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("requires a finance director to confirm oral notification facts", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn().mockResolvedValue([{ id: "fund-fact-1" }]),
       ...roleTables("finance_staff"),
       projectUpstreamFundFact: {
@@ -826,6 +844,8 @@ describe("ProjectService upstream fund facts", () => {
       confirmationSignatureSha256: "c".repeat(64)
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
         .mockResolvedValueOnce([{ id: "finance-director-1", isActive: true }])
@@ -882,6 +902,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("does not let a pending settlement increase authorize remittance registration", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([{
@@ -978,6 +1000,8 @@ describe("ProjectService upstream fund facts", () => {
   it("replays an identical recording idempotently and rejects key reuse with a changed amount", async () => {
     let stored: ReturnType<typeof fundFact> | null = null;
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([{
@@ -1115,6 +1139,8 @@ describe("ProjectService upstream fund facts", () => {
 
   it("locks the original difference and rejects cumulative reclassification above its amount", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn().mockResolvedValue([{ id: "difference-1" }]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {

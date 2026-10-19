@@ -1,3 +1,6 @@
+import {companyTransferWorkItems} from "../company-transfer/company-transfer-workitems";
+import {contractHandlingWorkItems} from "../contract-ledger/contract-handling-workitems";
+import { addContractRelationshipSummaries } from "../contract-ledger/contract-relationship-summary";
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
@@ -73,6 +76,7 @@ export type WorkItemKind =
   | "blocker";
 
 export interface WorkItem {
+  contractRelationshipLabel?: string; signingParty?: string; accountingEffect?: string;
   id: string;
   type: WorkItemKind;
   title: string;
@@ -573,6 +577,8 @@ export class MeService {
       "contract.submit"
     ]);
     const pending = [
+      ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
+      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
       ...(await this.contractTakeoverWorkItems(
         contractDraftProjectIds,
         ["needs_supplement"],
@@ -720,6 +726,8 @@ export class MeService {
       (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
     );
 
+    await addContractRelationshipSummaries(this.prisma,[...pending,...blocked,...started,...draftResult.items,...handledByMe,...delegatedToMe]);
+
     return {
       generatedAt: evaluatedAt.toISOString(),
       visibleProjectCount: scopes.length,
@@ -755,6 +763,8 @@ export class MeService {
     const projectIds = scopes.map((scope) => scope.projectId);
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
+      ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
+      ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
       ...(await this.paymentExecutionWorkItems(
         this.projectIdsFor(scopes, ["payment.execution"]),
         projectNameById,
@@ -767,7 +777,9 @@ export class MeService {
       )),
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
+    await addContractRelationshipSummaries(this.prisma,pending);
     return pending.filter((item) =>
+      ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") ||
       item.businessType === "payment_request" ||
       item.businessType === "spot_procurement_payment" ||
       item.businessType === "spot_payment"
@@ -1036,7 +1048,9 @@ export class MeService {
       )),
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
-    return pending.filter((item) => item.businessType === "contract_version");
+    await addContractRelationshipSummaries(this.prisma,pending);
+    return pending.filter((item) =>
+      ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") || item.businessType === "contract_version");
   }
 
   async getSettlementPendingWorkItems(userId: string): Promise<WorkItem[]> {
@@ -1062,7 +1076,9 @@ export class MeService {
       )),
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
-    return pending.filter((item) => item.businessType === "settlement");
+    await addContractRelationshipSummaries(this.prisma,pending);
+    return pending.filter((item) =>
+      ["company_transfer","contract_bank_verification","upward_receipt_match","contract_proxy_execution"].includes(item.businessType??"") || item.businessType === "settlement");
   }
 
   private async myDraftWorkItems(

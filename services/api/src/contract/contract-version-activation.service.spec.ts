@@ -1,3 +1,5 @@
+// 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
+jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import { Prisma } from "@prisma/client";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
 
@@ -27,6 +29,8 @@ function tx(overrides: Record<string, unknown> = {}) {
     update: jest.fn().mockResolvedValue({ ...target, status: "effective" })
   };
   return {
+    contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+    project: { findUnique: jest.fn().mockResolvedValue({ operatingLedgerEffectiveDate: null }) },
     $queryRaw: jest.fn(),
     contractVersion,
     paymentTermsVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -53,6 +57,17 @@ function effectiveSettlementFindMany(ids = ["settlement-1"]) {
 }
 
 describe("ContractVersionActivationService", () => {
+  it("前版承诺未接管时阻止仅将变更差额当作全部合同额", async () => {
+    const transaction = tx({
+      project: { findUnique: jest.fn().mockResolvedValue({ operatingLedgerEffectiveDate: new Date("2026-07-01") }) },
+      operatingFact: { findFirst: jest.fn().mockResolvedValue(null) }
+    });
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
+    const service = new ContractVersionActivationService(operatingSources as never);
+    await expect(service.activate(transaction as never, { contractVersionId: "version-2", actorUserId: "director-1" })).rejects.toThrow("历史承诺基线");
+    expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+  });
+
   it("writes an exact zero carry quantity for a new row with no historical allocation", async () => {
     const originalTarget = {
       ...target,

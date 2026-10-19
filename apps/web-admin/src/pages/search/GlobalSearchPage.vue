@@ -111,6 +111,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
+import { fetchContractRelationshipLedger } from "../../api/contract-relationship-ledger.api";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
@@ -185,13 +187,15 @@ async function loadSearchIndex() {
   loading.value = true;
   loadError.value = "";
   try {
-    const [contracts, settlements, payments, archives] = await Promise.all([
+    const [contracts, settlements, payments, archives, relationships] = await Promise.all([
       fetchContractLedger(),
       fetchSettlementLedger(),
       fetchPaymentLedger(),
-      fetchArchives()
+      fetchArchives(),
+      Promise.all((["contracts","settlements","payments"] as const).map(section=>fetchContractRelationshipLedger({section})))
     ]);
     allItems.value = buildGlobalSearchItems({
+      relationships:relationships.flatMap(r=>r.rows),
       contracts: contracts.rows,
       settlements: settlements.rows,
       payments: payments.rows,
@@ -199,7 +203,7 @@ async function loadSearchIndex() {
     });
     message.value = "";
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "读取全局搜索数据失败";
+    loadError.value = formatUnknownApiError(error, "读取全局搜索数据失败");
   } finally {
     loading.value = false;
   }

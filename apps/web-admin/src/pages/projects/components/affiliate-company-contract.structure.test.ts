@@ -98,6 +98,8 @@ type PanelBindings = {
   confirmVisible: MutableValue<boolean>;
   data: MutableValue<AffiliateContractsReadModel | null>;
   form: MutableValue<{
+    amountNature?:string;
+    amountYuan?:string;
     contractReference: string;
     contractName: string;
     signedAt: string;
@@ -392,6 +394,7 @@ describe("affiliate-company offline contract panel", () => {
       await flushPromises();
 
       expect(bindings.recordVisible.value).toBe(false);
+      bindings.form.value.amountNature="uncapped";
       await bindings.submitRecord();
       expect(affiliateContractRuntime.record).toHaveBeenCalledTimes(1);
       expect(
@@ -437,6 +440,7 @@ describe("affiliate-company offline contract panel", () => {
       await bindings.load();
       bindings.openRecord();
 
+      bindings.form.value.amountNature="uncapped";
       await bindings.submitRecord();
       expect(bindings.recordError.value).toBe(
         "请上传已由双方线下签署的正式合同文件"
@@ -451,6 +455,7 @@ describe("affiliate-company offline contract panel", () => {
           })
         }
       ];
+      bindings.form.value.amountNature="uncapped";
       await bindings.submitRecord();
       expect(bindings.recordError.value).toBe("请填写线下合同编号");
       expect(bindings.recordBusy.value).toBe(false);

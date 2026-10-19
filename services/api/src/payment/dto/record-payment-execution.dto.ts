@@ -81,6 +81,8 @@ export class PaymentExecutionPayerAttestationDto {
 }
 
 export class RecordPaymentExecutionDto {
+  @IsOptionalNonBlankText({typeMessage:"银行交易引用格式不正确",blankMessage:"银行交易引用不能为空白"})
+  bankReceiptReference?:string;
   @IsRequiredText({
     requiredMessage: "缺少预期付款申请版本",
     typeMessage: "预期付款申请版本格式不正确",

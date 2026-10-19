@@ -1,3 +1,4 @@
+import { CONTRACT_RELATIONSHIP_LABELS, downstreamContractRelationship } from "@jiangkong/shared-domain";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY } from "../spot-procurement/spot-procurement.constants";
@@ -123,7 +124,8 @@ export class ArchiveService {
       ...spotArchives.payments.map((row) => row.projectId)
     ]);
 
-    const versionById = new Map(contractVersions.map((row) => [row.id, row]));
+    const detailVersions=await this.findContractVersions([...settlements.map(s=>s.contractVersionId),...payments.map(p=>p.contractVersionId)]);
+    const versionById = new Map([...contractVersions,...detailVersions].map((row) => [row.id, row]));
     const contractById = new Map(contracts.map((row) => [row.id, row]));
     const settlementById = new Map(settlements.map((row) => [row.id, row]));
     const paymentById = new Map(payments.map((row) => [row.id, row]));
@@ -149,6 +151,7 @@ export class ArchiveService {
         return {
           projectId: contract?.projectId,
           id: `contract-${row.id}`,
+          contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version??{})],
           documentNo: row.id,
           fileId: row.fileId,
           fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
@@ -173,6 +176,7 @@ export class ArchiveService {
         return [{
           projectId: settlement?.projectId,
           id: `settlement-${row.id}`,
+          contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(settlement?.contractVersionId??"")??{})],
           documentNo: row.id,
           fileId: row.fileId,
           fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
@@ -196,6 +200,7 @@ export class ArchiveService {
         return {
           projectId: payment?.projectId,
           id: `voucher-${row.id}`,
+          contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(payment?.contractVersionId??"")??{})],
           documentNo: row.voucherFileId,
           fileId: row.voucherFileId,
           fileSizeBytes: fileById.get(row.voucherFileId)?.sizeBytes ?? 0,
@@ -486,6 +491,7 @@ export class ArchiveService {
       .slice(0, take)
       .map((row) => ({
         id: row.id,
+        contractRelationshipLabel:"contractRelationshipLabel" in row?row.contractRelationshipLabel:row.documentType.includes("合同")||row.documentType.includes("结算")||row.documentType.includes("付款")?"待确认分类":"无合同业务",
         documentNo: row.documentNo,
         fileId: row.fileId,
         documentType: row.documentType,

@@ -75,6 +75,7 @@ describe("settlement ledger page configuration", () => {
 
   it("shows period, amount, payment terms version, and owner columns", () => {
     expect(settlementLedgerColumns.map((column) => column.title)).toEqual([
+      "合同分类",
       "结算编号",
       "关联合同",
       "项目",

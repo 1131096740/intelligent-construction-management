@@ -1,3 +1,4 @@
+import { upwardAmountRevisions } from "../contract-ledger/upward-contract-amount.service";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
@@ -31,6 +32,8 @@ type AffiliateCompanyContractRow = {
   contractName: string;
   signedAt: Date;
   rightsObligationsSummary: string;
+  amountNature?: string;
+  amountCents?: bigint | null;
   affiliateAssignmentId: string;
   affiliateBusinessPartyVersionId: string;
   affiliateNameSnapshot: string;
@@ -76,11 +79,12 @@ export class ProjectAffiliateCompanyContractService {
         where: { projectId },
         orderBy: [{ signedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }]
       });
+      const revisions=await upwardAmountRevisions(tx,contracts.map(c=>c.id),new Date());
       return {
         availableActions: roles.includes("contract_staff")
           ? (["record_affiliate_company_contract"] as const)
           : [],
-        contracts: contracts.map((contract) => toReadModel(contract, roles))
+        contracts: contracts.map((contract) => {const revision=revisions.find(r=>r.contractId===contract.id);return {...toReadModel(contract, roles),originalAmountCents:contract.amountCents?.toString()??null,...(revision?{amountNature:revision.amountNature,amountCents:revision.amountCents?.toString()??null,amountRevisionId:revision.id}:{})};})
       };
     });
   }
@@ -90,6 +94,16 @@ export class ProjectAffiliateCompanyContractService {
     actorUserId: string,
     input: RecordProjectAffiliateCompanyContractDto
   ) {
+    if (!["fixed", "uncapped"].includes(input.amountNature)) {
+      throw new BadRequestException("请选择对上合同金额性质，不能将未知金额记为零");
+    }
+    if (input.amountNature === "fixed" && !/^(0|[1-9]\d*)$/.test(input.amountCents ?? "")) {
+      throw new BadRequestException("请填写对上合同的确定金额");
+    }
+    if (input.amountNature === "uncapped" && input.amountCents !== undefined) {
+      throw new BadRequestException("未约定总额的合同不能同时填写固定金额");
+    }
+    const amountCents = input.amountNature === "fixed" ? BigInt(input.amountCents!) : null;
     const contractReference = requiredTrimmed(
       input.contractReference,
       "请填写施工企业与我方线下合同编号"
@@ -122,6 +136,8 @@ export class ProjectAffiliateCompanyContractService {
       contractName,
       signedAt: signedAt.toISOString(),
       rightsObligationsSummary,
+      amountNature: input.amountNature,
+      amountCents: amountCents?.toString() ?? null,
       companyEntityId,
       fileId
     });
@@ -174,6 +190,8 @@ export class ProjectAffiliateCompanyContractService {
             contractName,
             signedAt,
             rightsObligationsSummary,
+            amountNature: input.amountNature,
+            amountCents,
             affiliateAssignmentId: affiliate.assignmentId,
             affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
             affiliateNameSnapshot: affiliate.name,
@@ -538,6 +556,9 @@ function toReadModel(
 ) {
   return {
     ...contract,
+    amountNature: contract.amountNature ?? "unconfirmed",
+    amountCents: contract.amountCents?.toString() ?? null,
+    contractRelationship: "upward" as const,
     agreementScope: "affiliate_to_our_company" as const,
     ownerContractReplacementAllowed: false,
     ownerReceiptCreated: false,

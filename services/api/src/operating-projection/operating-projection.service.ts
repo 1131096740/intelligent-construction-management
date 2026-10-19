@@ -1,3 +1,4 @@
+import {readCompanyTransferBalances} from "../company-transfer/company-transfer-summary";
 import { createReadStream } from "node:fs";
 import { mkdtemp, open, rm, type FileHandle } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -501,6 +502,7 @@ export class OperatingProjectionService {
       "来源类型",
       "来源业务编号",
       "事实类型",
+      "合同分类",
       "证据等级",
       "金额口径",
       "业务状态",
@@ -1247,6 +1249,7 @@ export class OperatingProjectionService {
         holderAliases,
         restrictionSources
       });
+      projection.companyTransferBalances=await readCompanyTransferBalances(tx,projectIds,cutoffAt,scope.filters?.companyEntityId);
       const riskDetailsAllowed = projection.restrictions.relationshipCompleteness !==
           "integrity_conflict" &&
         projection.restrictions.relationshipCompleteness !== "legacy_unmodeled" &&
@@ -2137,6 +2140,8 @@ function projectionFactFromStored(
     sourceSnapshot: fact.sourceSnapshot,
     entryKind: fact.entryKind,
     adjustsFactId: fact.adjustsFactId,
+    debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null,
+    creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null,
     subjectReferences: projectionFactSubjectReferences(fact),
     impacts: impacts.map(projectionImpactFromStored)
   };
@@ -2534,6 +2539,7 @@ function projectionFilters(input: ProjectionFilters): ProjectionFilters {
     companyEntityId: input.companyEntityId?.trim(),
     counterpartyId: input.counterpartyId?.trim(),
     costCategoryCode: input.costCategoryCode?.trim(),
+    contractRelationship: input.contractRelationship,
     sourceType: input.sourceType?.trim()
   }).filter(([, value]) => Boolean(value)));
 }
@@ -2720,6 +2726,7 @@ function projectionExportCsvRow(
     stringValue(item.sourceTypeLabel),
     stringValue(item.sourceBusinessCode),
     stringValue(item.factKindLabel),
+    stringValue(item.contractRelationshipLabel) || "非合同业务",
     evidenceLevel ?? "待核对",
     amountBasis,
     OPERATING_PROJECTION_ROW_STATUS_LABELS[rowStatus],

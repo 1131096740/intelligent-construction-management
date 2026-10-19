@@ -77,13 +77,14 @@ const GROUPS = [
   },
   {
     id: "affiliate_company_contract",
+    requiresOperatingLedgerWriteSecret: true,
     database: "jiangkong_project_affiliate_company_contract_test",
     files: ["src/database/project-affiliate-company-contract-db.spec.ts"],
     flags: {
       RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS: "1",
       PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 4
+    pendingTests: 11
   },
   {
     id: "spot_material_classification",

@@ -42,6 +42,7 @@ describe("payment ledger page configuration", () => {
 
   it("shows approval status and actual payment status as separate ledger columns", () => {
     expect(paymentLedgerColumns.map((column) => column.title)).toEqual([
+      "合同分类",
       "付款编号",
       "关联合同",
       "付款来源",

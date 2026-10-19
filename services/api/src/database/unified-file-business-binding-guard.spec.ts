@@ -182,12 +182,13 @@ function schemaFileBindings(): string[] {
   return bindings.sort();
 }
 
+const contractLedgerBindings=["20261019210000_contract_proxy_execution","20261019230000_upward_contract_amount_revision","20261020000000_contract_bank_verification_entry","20261020120000_company_transfer"].map(name=>readFileSync(join(process.cwd(),"prisma/migrations",name,"migration.sql"),"utf8")).join("\n");
 function migrationBindings(): Array<{
   binding: string;
   exclusive: boolean;
 }> {
   return Array.from(
-      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}\n${contractLedgerBindings}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -206,7 +207,7 @@ function migrationBindings(): Array<{
 describe("unified file business binding migration", () => {
   it("registers every current Prisma FileObject reference exactly once", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(95);
+    expect(registered).toHaveLength(100);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -265,6 +266,7 @@ describe("unified file business binding migration", () => {
       .map(({ binding }) => binding)
       .sort();
     expect(exclusive).toEqual([
+      "ContractProxyExecution.evidenceFileId",
       "ContractTakeoverExcessEvidence.fileId",
       "ContractTakeoverHistoricalPaymentVoucher.fileId",
       "ContractTakeoverSettlementEvidence.fileId",
@@ -291,6 +293,7 @@ describe("unified file business binding migration", () => {
       "SpotProcurementReceiptPhoto.originalFileId",
       "SpotProcurementReceiptPhoto.watermarkedFileId",
       "SpotProcurementRefund.voucherFileId",
+      "UpwardContractAmountRevision.evidenceFileId",
       "WageApprovedSourceVersion.evidenceFileId"
     ]);
     expect(wageStatementBindingMigration).toContain(

@@ -124,6 +124,7 @@ function filtersAndAsOf(query: OperatingProjectionScopedQueryDto) {
     companyEntityId: query.companyEntityId,
     counterpartyId: query.counterpartyId,
     costCategoryCode: query.costCategoryCode,
+    contractRelationship: query.contractRelationship,
     sourceType: query.sourceType
   };
 }

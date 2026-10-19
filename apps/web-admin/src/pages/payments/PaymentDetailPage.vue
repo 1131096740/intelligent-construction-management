@@ -308,6 +308,10 @@
                   required
                 />
                 <label class="action-field">
+                  <CompanyBankEventSelect
+                    v-model="paymentActionForm.bankReceiptReference"
+                    :project-id="paymentDetail?.projectId ?? ''"
+                  />
                   <span>付款时间 <b aria-hidden="true">*</b></span>
                   <t-date-picker
                     v-model="paymentActionForm.paidAt"
@@ -730,6 +734,7 @@
 </template>
 
 <script setup lang="ts">
+import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import {
@@ -838,6 +843,7 @@ interface PaymentReviewConfirmationState {
 }
 
 interface PaymentExecutionSelection {
+  bankReceiptReference?:string;
   ownerScope: string;
   routeGeneration: number;
   detailEpoch: number;
@@ -913,6 +919,7 @@ const paymentReviewConfirmation =
     requiresSelfReviewConfirmation: false
   });
 const paymentActionForm = reactive({
+  bankReceiptReference:"",
   approvedAmountYuan: "",
   approvalComment: "",
   selfReviewReason: "",
@@ -1758,6 +1765,7 @@ function requestExecution() {
     );
     paymentExecutionDialogGeneration += 1;
     paymentExecutionSelection = Object.freeze({
+      bankReceiptReference:paymentActionForm.bankReceiptReference,
       ownerScope: paymentExecutionOwnerScope,
       routeGeneration: paymentDetailRouteGeneration,
       detailEpoch: paymentDetailEpoch,
@@ -1840,6 +1848,7 @@ function confirmPaymentExecution(values: {
   const request = recordPaymentExecutionWithUpload(
     selection.paymentId,
     {
+      bankReceiptReference:selection.bankReceiptReference,
       amountCents: selection.amountCents,
       paidAt: selection.paidAt,
       confirmationPassword: values.password,

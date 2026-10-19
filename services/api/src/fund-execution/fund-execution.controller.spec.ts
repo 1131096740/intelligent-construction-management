@@ -94,7 +94,7 @@ describe("FundExecutionController authorization wiring", () => {
       const authorizationQueries: string[] = [];
       const businessQueries: string[] = [];
       const prisma = {
-        bankTransactionClaim: {
+        companyTransferBankClaim:{count:jest.fn().mockResolvedValue(0),findMany:jest.fn().mockResolvedValue([])},contractBankEventClaim:{findMany:jest.fn().mockResolvedValue([])},contractProxyBankClaim:{findMany:jest.fn().mockResolvedValue([])}, bankTransactionClaim: {
           findMany: jest.fn().mockResolvedValue([])
         },
         verifiedBankTransactionObservation: {

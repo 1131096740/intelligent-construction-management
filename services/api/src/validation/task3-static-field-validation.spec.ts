@@ -212,7 +212,7 @@ describe("Task 3 DTO static field validation coverage", () => {
 
   it("keeps every optional association failure mutually exclusive", async () => {
     const groups = groupsWithRule("staticOptionalNonBlankText");
-    expect(groups).toHaveLength(12);
+    expect(groups).toHaveLength(13);
     expect(
       groups
         .filter((group) => group.dtoType === RecordPaymentExecutionDto)

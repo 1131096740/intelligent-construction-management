@@ -1,3 +1,4 @@
+import { CONTRACT_RELATIONSHIP_LABELS, downstreamContractRelationship } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
   ConflictException,
@@ -2316,7 +2317,7 @@ export class ApprovalFormService {
           })
         ]);
 
-      return buildProjectPaymentApprovalRows({
+      return [{label:"合同分类",value:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(contractVersion??{})]},{label:"原签约主体",value:contractVersion?.signingSubjectType==="affiliate"?contractVersion.affiliateNameSnapshot??"待核对":contractVersion?.companyEntityNameSnapshot??"待核对"},...buildProjectPaymentApprovalRows({
         payment,
         applicantName: context.applicantName,
         companyName: context.companyName,
@@ -2331,7 +2332,7 @@ export class ApprovalFormService {
           paymentTermsStage.paymentTermsVersionId === payment.paymentTermsVersionId
             ? paymentTermsStage.name
             : null
-      });
+      })];
     }
 
     if (businessType === "settlement") {
@@ -2340,7 +2341,9 @@ export class ApprovalFormService {
       const contract = await prisma.contract.findUnique({
         where: { id: settlement.contractId }
       });
+      const version=await prisma.contractVersion.findUnique({where:{id:settlement.contractVersionId}});
       const rows: Array<{ label: string; value: string }> = [
+        { label:"合同分类",value:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version??{})] },
         { label: "结算期次", value: settlement.periodLabel },
         { label: "结算金额", value: formatYuan(settlement.amountCents) },
         { label: "应付金额", value: formatYuan(settlement.payableAmountCents) }
@@ -2361,7 +2364,9 @@ export class ApprovalFormService {
         rows.push({ label: "合同名称", value: contract.name });
         rows.push({ label: "对方单位", value: contract.counterparty });
       }
-      rows.push({ label: "合同金额", value: formatYuan(version.amountCents) });
+      rows.push({ label:"合同分类",value:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version)] });
+      rows.push({ label:"签约主体",value:version.signingSubjectType==="affiliate"?version.affiliateNameSnapshot??"待核对":version.companyEntityNameSnapshot??"待核对" });
+      rows.push({ label: "合同金额", value: version.amountLimitType==="uncapped"?"未约定总额":formatYuan(version.amountCents) });
       rows.push({ label: "版本号", value: `第 ${version.versionNo} 版` });
       return rows;
     }

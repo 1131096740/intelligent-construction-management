@@ -1,3 +1,5 @@
+import {FundCounterpartyCashAdapter} from "../contract-ledger/fund-counterparty-cash.adapter";
+import { matchedUpwardReceipts } from "../contract-ledger/upward-receipt-capacity";
 import { ConflictException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -580,6 +582,9 @@ export class FundExecutionCanonicalAdapterService {
       operatingInput,
       context.input.actorUserId
     );
+    const mirrorAdapter=new FundCounterpartyCashAdapter();
+    const mirror=await mirrorAdapter.readSourceSnapshot(tx,{projectId:operatingInput.projectId,sourceType:mirrorAdapter.sourceType,sourceBusinessId:result.id});
+    if(mirror)await this.operatingLedger.appendConfirmedSourceInTransaction(tx,mirrorAdapter.toOperatingFactInput(mirror).input,context.input.actorUserId);
     const impactId = result.impactIds[0];
     if (!impactId) throw new ConflictException("经营轴未生成正式影响分录");
     return {
@@ -1122,11 +1127,13 @@ export class FundExecutionCanonicalAdapterService {
     if (
       !fact ||
       fact.impacts.length !== 1 ||
-      fact.impacts[0]!.id !== original.operatingImpactEntryId
+      !fact.impacts.some(i => i.id === original.operatingImpactEntryId) ||
+      fact.impacts.some(i => i.amountCents !== fact.amountCents)
     ) {
       throw new ConflictException("原经营事实与影响分录不完整");
     }
-    const originalImpact = fact.impacts[0]!;
+    if (await matchedUpwardReceipts(tx,{receiptFactId:fact.id},true)>0n) throw new ConflictException("到账已匹配对上应收，请先解除核销再办理资金反向处理");
+    const originalImpact = fact.impacts.find(i => i.id === original.operatingImpactEntryId)!;
     const subjects = operatingSubjectsFromFact(fact);
     const impact: OperatingImpactInput = {
       idempotencyKey: `fund-execution:${allocationLineId}:operating-impact`,
@@ -1228,6 +1235,9 @@ export class FundExecutionCanonicalAdapterService {
       input,
       context.input.actorUserId
     );
+    const mirrorAdapter=new FundCounterpartyCashAdapter();
+    const mirror=await mirrorAdapter.readSourceSnapshot(tx,{projectId:fact.projectId,sourceType:mirrorAdapter.sourceType,sourceBusinessId:result.id});
+    if(mirror)await this.operatingLedger.appendConfirmedSourceInTransaction(tx,mirrorAdapter.toOperatingFactInput(mirror).input,context.input.actorUserId);
     const impactId = result.impactIds[0];
     if (!impactId) throw new ConflictException("经营轴反向影响未生成");
     return {

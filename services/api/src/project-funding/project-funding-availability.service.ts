@@ -1,3 +1,5 @@
+import {companyTransferProjectCash} from "../company-transfer/company-transfer.balance";
+import { proxyRepaymentCompanyCash } from "../contract-ledger/contract-proxy-capacity";
 import {
   BadRequestException,
   ConflictException,
@@ -15,6 +17,7 @@ import {
 } from "../project/project-financing-quota-approval";
 
 export type ProjectFundingExecutionType =
+  | "contract_proxy_execution"
   | "payment_execution"
   | "fund_movement"
   | "project_expense_execution"
@@ -209,8 +212,9 @@ export class ProjectFundingAvailabilityService {
         approvalByQuotaId.get(quota.id)
       );
     }
+    const proxyRepayments = await proxyRepaymentCompanyCash(tx, projectId);
     return this.assertFundingLedgerCoverage({
-      receipts,
+      receipts: [...receipts, { amountCents: proxyRepayments + await companyTransferProjectCash(tx,projectId) }],
       affiliateRemittances,
       quotas,
       allocations

@@ -223,18 +223,18 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 404 pending tests as executable local coverage", () => {
+test("manifest derives all 412 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 69,
-    fullyPendingSuites: 58,
+    pendingFiles: 70,
+    fullyPendingSuites: 59,
     partiallyPendingSuites: 11,
-    pendingTests: 404,
-    coveredFiles: 69,
-    coveredTests: 404,
+    pendingTests: 412,
+    coveredFiles: 70,
+    coveredTests: 412,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -615,7 +615,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=404/u
+    /inventory\.coveredTests=26，派生值=412/u
   );
 });
 
@@ -838,7 +838,9 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
       CONTRACT_DATABASE_URL: "postgresql://must-not-leak",
       NODE_OPTIONS: "--require must-not-leak",
       POSTGRES_PASSWORD: "must-not-leak",
-      DOCKER_CONTEXT: "must-not-leak"
+      DOCKER_CONTEXT: "must-not-leak",
+      LANG: "C",
+      LC_ALL: "C"
     },
     "/tmp/dynamic-gate",
     "unix:///var/run/docker.sock"
@@ -848,6 +850,7 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
     PATH: "/usr/bin",
     HOME: "/tmp/local-home",
     TMPDIR: "/tmp/dynamic-gate",
+    LANG: "C.UTF-8",
     NODE_ENV: "test",
     CI: "true",
     DOCKER_HOST: "unix:///var/run/docker.sock",
@@ -1068,4 +1071,12 @@ module.exports.capturePreparation = async () => {
 test("outer gate delegates preparation only to the remaining runner that always prepares itself", async () => {
   assert.equal((await artifactLifecycleFixture(false)).preparations, 1);
   assert.equal((await artifactLifecycleFixture(false, "remaining_dynamic_postgresql16")).preparations, 0);
+});
+
+test("contract finance remaining subgroup creates its own ledger write credential", () => {
+  const group = remainingGroups.find(({ id }) => id === "affiliate_company_contract");
+  assert.ok(group);
+  const env = createRemainingRuntimeEnvironment({ PATH: "/usr/bin", OPERATING_LEDGER_DB_WRITE_SECRET: "caller-secret" }, "/tmp/gate", "postgresql://localhost/synthetic", group);
+  assert.match(env.OPERATING_LEDGER_DB_WRITE_SECRET, /^[0-9a-f-]{36}$/u);
+  assert.notEqual(env.OPERATING_LEDGER_DB_WRITE_SECRET, "caller-secret");
 });

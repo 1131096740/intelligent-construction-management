@@ -1,3 +1,4 @@
+import {transferRepaymentUsage} from "../company-transfer/company-transfer-legacy";
 import { createHash, randomUUID } from "node:crypto";
 
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
@@ -825,9 +826,11 @@ export class PayableRegistryService {
         }
       }
     });
-    return rows.map((row) => {
+    return Promise.all(rows.map(async (row) => {
+      const usage=await transferRepaymentUsage(this.prisma,{originalInterEntityRelationshipId:row.id});
       const balance = deriveInterEntityRelationshipBalance([
         { direction: "increase", amountCents: row.amountCents },
+        { direction: "decrease", amountCents: usage.received },
         ...row.adjustments.map((entry) => ({
           direction: entry.direction as InterEntityRelationshipEntryInput["direction"],
           amountCents: entry.amountCents
@@ -843,7 +846,7 @@ export class PayableRegistryService {
         status: balance.remainingAmountCents === 0n ? "returned" : "open",
         statusLabel: balance.remainingAmountCents === 0n ? "已归还" : "未结"
       };
-    });
+    }));
   }
 
   async assertInterEntityRelationshipEvidenceUpload(
@@ -1050,6 +1053,7 @@ export class PayableRegistryService {
       ) {
         throw new ConflictException("代付往来不存在或尚未确认");
       }
+      if(root.originalDebtorCompanyId!==root.creditorCompanyId)throw new ConflictException("公司间往来归还请从公司互转台账发起，须经领导终审和两侧银行核对");
       if (
         root.createdByUserId === actorUserId ||
         root.confirmedByUserId === actorUserId ||

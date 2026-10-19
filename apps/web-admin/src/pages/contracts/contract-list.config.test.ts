@@ -297,6 +297,7 @@ describe("contract ledger page configuration", () => {
 
   it("shows version, archive, owner, and next-node columns in the ledger", () => {
     expect(contractLedgerColumns.map((column) => column.title)).toEqual([
+      "合同分类",
       "合同编号",
       "合同名称",
       "项目",

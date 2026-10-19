@@ -11,6 +11,7 @@ export type FundMovementKind =
   | "profit_distribution_execution";
 
 export interface FundMovementListItem {
+  repaymentBalances?:Array<{originalId:string;remainingCents:string;availableCents:string}>;
   id: string;
   kind: FundMovementKind;
   status: string;

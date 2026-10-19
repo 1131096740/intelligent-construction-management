@@ -1,3 +1,4 @@
+import { assertEconomicContractReady } from "../contract-ledger/contract-economic-coverage";
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -168,6 +169,7 @@ export class ContractTakeoverActivationService {
       }
     }
 
+    await assertEconomicContractReady(tx, takeover.projectId, `contract:${takeover.contractId}`, historicalSettledCents, undefined, takeover.contractVersionId);
     const capacityCents = isSettlementContract ? historicalSettledCents : 0n;
     const requestedExcessTreatment =
       financeFacts.excessTreatment === "historical_advance" ||
@@ -340,6 +342,9 @@ export class ContractTakeoverActivationService {
       );
     }
 
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, {
+      projectId: takeover.projectId, sourceType: "contract_version", sourceBusinessId: takeover.contractVersionId
+    }, actorUserId);
     if (historicalInitialSettlementId) {
       await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
         tx,
