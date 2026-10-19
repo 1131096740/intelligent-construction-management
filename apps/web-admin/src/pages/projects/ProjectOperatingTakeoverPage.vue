@@ -679,15 +679,20 @@ async function createBatch() {
   } finally { submitting.value = false; }
 }
 
+async function deleteOperatingTakeoverDraftWithCapability(projectId: string, batchId: string, revision: number) {
+  const capability = await fetchOperatingTakeoverDetail(projectId, batchId);
+  const matchesRequestedRevision = capability.revision === revision;
+  if (!matchesRequestedRevision) throw new Error("当前接管草稿已变化，请刷新后核对");
+  const operationAllowed = capability.canDeleteDraft;
+  if (!operationAllowed) throw new Error("当前接管草稿不能删除，请刷新后核对");
+  return deleteOperatingTakeoverDraft(projectId, batchId, revision);
+}
 async function deleteBatchDraft() {
   if (!detail.value || actionSubmitting.value) return;
   const context = { projectId: selectedProjectId.value, batchId: detail.value.id, revision: detail.value.revision };
   actionSubmitting.value = true; deleteBatchError.value = "";
   try {
-    const capability = await fetchOperatingTakeoverDetail(context.projectId, context.batchId);
-    const operationAllowed = capability.canDeleteDraft && capability.revision === context.revision;
-    if (!operationAllowed) throw new Error("当前接管草稿不能删除，请刷新后核对");
-    await deleteOperatingTakeoverDraft(context.projectId, context.batchId, context.revision);
+    await deleteOperatingTakeoverDraftWithCapability(context.projectId, context.batchId, context.revision);
     if (selectedProjectId.value === context.projectId && detail.value?.id === context.batchId) {
       detail.value = null;
       batches.value = batches.value.filter(row => row.id !== context.batchId);

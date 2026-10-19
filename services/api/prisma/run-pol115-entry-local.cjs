@@ -22,7 +22,7 @@ try {
   command(process.execPath, [path.join(__dirname, "wait-for-local-tcp-ready.cjs"), port]);
   const env = { ...process.env, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: mkdtempSync(path.join(tmpdir(), "pol115-entry-files-")), XDG_CACHE_HOME: mkdtempSync(path.join(tmpdir(), "pol115-entry-cache-")), NODE_ENV: "test", RUN_POL115_ENTRY_PG16: "1", DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/jiangkong_pol115_entry_test` };
   command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
-  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...process.argv.slice(2).length ? process.argv.slice(2) : ["src/expense-claim/expense-claim-entry.http.pg.spec.ts", "src/fund-execution/fund-execution-entry.http.pg.spec.ts"]], env);
+  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...process.argv.slice(2).length ? process.argv.slice(2) : ["src/expense-claim/expense-claim-entry.http.pg.spec.ts", "src/fund-execution/fund-execution-entry.http.pg.spec.ts", "src/database/draft-hard-deletion.pg.spec.ts", "src/database/draft-deletion-numbering.pg.spec.ts"]], env);
 } finally {
   command("docker", ["rm", "--force", name]);
 }

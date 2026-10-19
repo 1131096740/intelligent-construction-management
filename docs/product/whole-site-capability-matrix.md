@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `9cef035f012fc9e2f9f61dc3095adbcfa10136b45bf115a672b35492f777baea` |
-| webApiWrappers | ready | `bcaf76303431aa066f704b70af7e120d85c8991837457d33dfb225a42eb7a598` |
-| webPageActions | ready | `5a7002f3c1da16a9839200cb69827ba3ae672eabc32e466ce5ffd5640d09a151` |
-| routeUsage | ready | `f30cc6cad87791ed323f48fb393f2d5ddd4473ab66b5a6ca5efb6fb4bb8f8379` |
+| nestRoutes | ready | `59779d8a5242cc3244a0e9b0b86412f4edbef57efe52d337e61fc94934c95793` |
+| webApiWrappers | ready | `00cb25387653ad0562b38d48a239094a130713083b5f6265d1ea908229e942e9` |
+| webPageActions | ready | `7f23d8cd46ead470db978894a356f926348671bd0c366de25d8af2f8aed4d9d1` |
+| routeUsage | ready | `99297d193407eaef5a258d428877b6fa8faa4cae8f25cb213e4622b5816a686b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 656 |
-| pageRouteCount | 451 |
+| routeCount | 659 |
+| pageRouteCount | 454 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 96 |
 | internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 642 |
+| mainRequestBindingCount | 648 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 366 |
-| actionBindingCount | 421 |
-| acceptedActionBindingCount | 390 |
+| registeredActionCount | 370 |
+| actionBindingCount | 427 |
+| acceptedActionBindingCount | 393 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 356 |
-| coveredProductionMutationConsumerPairCount | 356 |
+| productionMutationConsumerPairCount | 359 |
+| coveredProductionMutationConsumerPairCount | 359 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -105,7 +105,7 @@
 | GET | /draft-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDraftRetentionPreview | — | not_applicable | — |
 | GET | /employee-onboarding/applications | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchEmployeeApplications | — | not_applicable | — |
 | GET | /employee-onboarding/mine | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchMyApplication | — | not_applicable | — |
-| GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | — | not_applicable | — |
+| GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft<br>apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | expense-claim.delete-draft | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
@@ -121,7 +121,7 @@
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
-| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
+| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
 | GET | /general-procurements/create-options | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementOptions | general-procurement.createProcurement | not_applicable | — |
 | GET | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementList | — | not_applicable | — |
 | GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
@@ -182,7 +182,7 @@
 | GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request<br>project-financing-quota.review-approve<br>project-financing-quota.review-reject<br>project-financing-quota.terminate | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectOperatingProfile | — | not_applicable | — |
-| GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#deleteOperatingTakeoverDraft<br>apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | operating-takeover.delete-draft | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/capability | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverCapability | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/historical-financial/active-projection | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/historical-financial/manifests/:batchId | internal_task | operator_endpoint | — | — | not_applicable | — |
@@ -404,6 +404,7 @@
 | POST | /expense-claims/:claimId/disbursement-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimLoanDisbursementVoucherFile | expense-claim.loan.disbursement-voucher.upload | covered | — |
 | POST | /expense-claims/:claimId/disbursements | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanDisbursement | expense-claim.loan.disbursement.record | covered | — |
 | POST | /expense-claims/:claimId/draft-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimDraftAttachmentFile | expense-claim.attachment.draft-upload | covered | — |
+| POST | /expense-claims/:claimId/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft | expense-claim.delete-draft | covered | — |
 | POST | /expense-claims/:claimId/final-disbursement-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalDisbursementPdf | expense-claim.loan.final-disbursement-pdf.generate | covered | — |
 | POST | /expense-claims/:claimId/final-payment-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalPaymentPdf | expense-claim.final-payment-pdf.generate | covered | — |
 | POST | /expense-claims/:claimId/payment-subject | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject | expense-claim.payment-subject.adjust | covered | — |
@@ -428,6 +429,7 @@
 | POST | /fund-movements | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /general-procurements/:id/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive | general-procurement.uploadProcurementArchive | covered | — |
 | POST | /general-procurements/:id/archive | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement | general-procurement.archiveProcurement | covered | — |
+| POST | /general-procurements/:id/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft | general-procurement.delete-draft | covered | — |
 | POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.updateProcurement | covered | — |
 | POST | /general-procurements/:id/payments/:claimId/cancellation | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment | general-procurement.cancelProcurementPayment | covered | — |
 | POST | /general-procurements/:id/review | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement | general-procurement.reviewProcurement | covered | — |
@@ -557,6 +559,7 @@
 | POST | /projects/:projectId/operating-takeovers/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#activateOperatingTakeover | operating-takeover.activate | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#addOperatingTakeoverAttachmentGroup | operating-takeover.attach-files | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#confirmOperatingTakeover | operating-takeover.confirm | covered | — |
+| POST | /projects/:projectId/operating-takeovers/:batchId/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#deleteOperatingTakeoverDraft | operating-takeover.delete-draft | covered | — |
 | POST | /projects/:projectId/operating-takeovers/authority-manifests/:manifestId/abandon | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /projects/:projectId/operating-takeovers/authority-manifests/:manifestId/activate | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /projects/:projectId/operating-takeovers/authority-manifests/:manifestId/apply | internal_task | operator_endpoint | — | — | not_applicable | — |
@@ -585,7 +588,7 @@
 | POST | /projects/:projectId/settlement-drafts/:draftId/frozen-document | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument | settlement-draft.generate-frozen-document | covered | — |
 | POST | /projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#invalidateSettlementDraftLineAttachment | settlement-line-attachment.invalidate | covered | — |
 | POST | /projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile | settlement-line-attachment.attach | covered | — |
-| POST | /projects/:projectId/settlement-drafts/files | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#uploadSettlementDraftPrivateFile | settlement-draft.upload-signed-document<br>settlement-import.preview-local-gate<br>settlement-line-attachment.attach | covered | — |
+| POST | /projects/:projectId/settlement-drafts/files | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#uploadSettlementDraftPrivateFile | settlement-draft.upload-signed-document<br>settlement-import.preview-local-gate<br>settlement-line-attachment.upload | covered | — |
 | POST | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | settlement-draft.save-local-gate | covered | — |
 | POST | /projects/:projectId/settlement-exception-quotas/:quotaId/approval | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota | — | not_applicable | — |
 | POST | /projects/:projectId/settlement-exception-quotas | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota | — | not_applicable | — |

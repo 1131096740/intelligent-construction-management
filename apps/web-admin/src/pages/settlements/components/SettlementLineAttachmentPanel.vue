@@ -138,22 +138,33 @@ function selectFile(event: Event) {
   if (file) { uploadState.choose(file); void uploadAndAttach(); }
 }
 
-async function attachSettlementLineFileWithCapability() {
+async function uploadSettlementLineFileWithCapability(projectId: string, file: File, key: string) {
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("attach_line_file");
+  if (!operationAllowed) throw new Error("当前用户不能上传结算明细附件");
+  return uploadSettlementDraftPrivateFile(projectId, file, file.name, key);
+}
+
+async function attachSettlementLineFileWithCapability(projectId: string, draftId: string, selectedLine: string, fileId: string, selectedPurpose: string, revision: number) {
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("attach_line_file");
+  if (!operationAllowed) throw new Error("当前用户不能关联结算明细附件");
+  return attachSettlementDraftLineFile(projectId, draftId, selectedLine, {
+    fileId, purpose: selectedPurpose, expectedRevision: revision
+  });
+}
+
+async function uploadAndAttachRetainedFile() {
   const { projectId, draftId, revision } = props;
   const selectedLine = lineKey.value;
   const selectedPurpose = purpose.value.trim();
   return uploadState.run(
-    async (file, key) => {
-      const capability = await fetchSettlementProjectCapability(projectId);
-      const matchesRequestedProject = capability.projectId === projectId;
-      if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
-      const operationAllowed = capability.availableActions.includes("attach_line_file");
-      if (!operationAllowed) throw new Error("当前用户不能上传结算明细附件");
-      return uploadSettlementDraftPrivateFile(projectId, file, file.name, key);
-    },
-    (fileId) => attachSettlementDraftLineFile(projectId, draftId, selectedLine, {
-      fileId, purpose: selectedPurpose, expectedRevision: revision
-    }),
+    (file, key) => uploadSettlementLineFileWithCapability(projectId, file, key),
+    (fileId) => attachSettlementLineFileWithCapability(projectId, draftId, selectedLine, fileId, selectedPurpose, revision),
     async (fileId) => {
       const existing = await listSettlementDraftLineAttachments(projectId, draftId);
       if (!existing.some(item => item.fileId === fileId && item.lineKey === selectedLine && item.purpose === selectedPurpose && item.status === "active")) return undefined;
@@ -181,7 +192,7 @@ async function invalidateSettlementLineAttachmentWithCapability(attachmentId: st
 
 async function uploadAndAttach() {
   if (props.disabledReason || !lineKey.value || !purpose.value.trim() || uploading.value) return;
-  const result = await attachSettlementLineFileWithCapability();
+  const result = await uploadAndAttachRetainedFile();
   if (!result) return;
   if (fileInput.value) fileInput.value.value = "";
   purpose.value = "";

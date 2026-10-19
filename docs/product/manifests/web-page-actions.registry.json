@@ -5984,10 +5984,6 @@
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-          "name": "uploadSettlementDraftPrivateFile"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
           "name": "attachSettlementDraftLineFile"
         }
       ]
@@ -9258,6 +9254,104 @@
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
           "name": "applyProjectRosterChange"
+        }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.upload",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSettlementLineFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attach_line_file"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "uploadSettlementDraftPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "expense-claim.delete-draft",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteExpenseClaimDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "delete_expense_claim_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "name": "deleteExpenseClaimDraft"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.delete-draft",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteProcurementDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDeleteDraft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "deleteProcurementDraft"
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.delete-draft",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteOperatingTakeoverDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDeleteDraft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "name": "deleteOperatingTakeoverDraft"
         }
       ]
     }

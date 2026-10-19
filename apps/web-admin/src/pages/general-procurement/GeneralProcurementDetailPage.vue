@@ -35,15 +35,21 @@ async function run(action: () => Promise<void>) {
   try { const procurementId = route.params.procurementId; await action(); if (route.params.procurementId === procurementId) await load(); } catch (cause) { error.value = formatUnknownApiError(cause, "操作未完成，请核对后重试"); }
   finally { busy.value = false; }
 }
+async function deleteProcurementDraftWithCapability(procurementId: string, revision: number) {
+  const capability = await fetchProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.id === procurementId;
+  const matchesRequestedRevision = capability.revision === revision;
+  if (!matchesRequestedProcurement || !matchesRequestedRevision) throw new Error("当前草稿已变化，请刷新后核对");
+  const operationAllowed = capability.canDeleteDraft;
+  if (!operationAllowed) throw new Error("当前草稿不能删除，请刷新后核对");
+  return deleteProcurementDraft(procurementId, revision);
+}
 async function deleteDraft() {
   if (!detail.value || busy.value) return;
   busy.value = true; error.value = "";
   try {
     const row = detail.value;
-    const capability = await fetchProcurementDetail(row.id);
-    const operationAllowed = capability.id === row.id && capability.canDeleteDraft && capability.revision === row.revision;
-    if (!operationAllowed) throw new Error("当前草稿不能删除，请刷新后核对");
-    await deleteProcurementDraft(row.id, row.revision);
+    await deleteProcurementDraftWithCapability(row.id, row.revision);
     await router.replace("/综合采购申请");
   } catch (cause) { error.value = formatUnknownApiError(cause, "删除草稿失败，请刷新后重试"); }
   finally { busy.value = false; }

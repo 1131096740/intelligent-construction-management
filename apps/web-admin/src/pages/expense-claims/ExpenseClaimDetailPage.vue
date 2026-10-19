@@ -293,15 +293,20 @@ async function uploadExpenseClaimLoanRepaymentVoucherWithCapability(claimId: str
   if (!operationAllowed) throw new Error("当前借款申请不能上传还款凭证");
   return uploadExpenseClaimLoanRepaymentVoucherFile(claimId, file, file.name);
 }
+async function deleteExpenseClaimDraftWithCapability(claimId: string, updatedAt: string) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("当前草稿已变化，请刷新后核对");
+  const operationAllowed = capability.availableActions.includes("delete_expense_claim_draft");
+  if (!operationAllowed) throw new Error("当前草稿不能删除，请刷新后核对");
+  return deleteExpenseClaimDraft(claimId, updatedAt);
+}
 async function deleteDraft() {
   if (!detail.value || submitting.value) return;
   const row = detail.value;
   submitting.value = true; actionError.value = "";
   try {
-    const capability = await fetchExpenseClaimActionCapability(row.id);
-    const operationAllowed = capability.claimId === row.id && capability.availableActions.includes("delete_expense_claim_draft");
-    if (!operationAllowed) throw new Error("当前草稿不能删除，请刷新后核对");
-    await deleteExpenseClaimDraft(row.id, row.updatedAt);
+    await deleteExpenseClaimDraftWithCapability(row.id, row.updatedAt);
     await router.replace("/费用与报销工作台");
   } catch (cause) { actionError.value = formatUnknownApiError(cause, "删除草稿失败，请刷新后重试"); }
   finally { submitting.value = false; }
