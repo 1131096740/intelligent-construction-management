@@ -52,9 +52,14 @@ test("综合部主管从公开入口创建合作单位，错误资料零写且�
   await expect(page.getByRole("heading", { name: `${name}更名`, exact: true })).toBeVisible();
   for (const action of ["停用", "重新启用"]) {
     await page.getByRole("button", { name: action, exact: true }).click();
+    const statusDialog = page.locator(".t-dialog:visible");
+    await expect(statusDialog).toContainText(`${action}合作单位`);
+    await expect(statusDialog).toHaveCSS("opacity", "1");
+    await expect(statusDialog).toHaveCSS("transform", "none");
     const saved = page.waitForResponse((res) => new URL(res.url()).pathname === `/api/business-parties/${result.party.id}/status` && res.request().method() === "POST");
-    await page.locator(".t-dialog:visible").getByRole("button", { name: "确认", exact: true }).click();
+    await statusDialog.getByRole("button", { name: "确认", exact: true }).click();
     expect((await saved).status()).toBe(201);
+    await expect(statusDialog).toBeHidden();
     await expect(page.getByText(action === "停用" ? "当前状态：停用" : "当前状态：启用", { exact: true })).toBeVisible();
   }
   const history = await request.get(`${api}/business-parties/${result.party.id}`, { headers });
