@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import BusinessMobileCards from "../../components/BusinessMobileCards.vue";
+import ProcurementBusinessNav from "./components/ProcurementBusinessNav.vue";
 import {
   fetchSpotProcurementPayments,
   type SpotPaymentListAmountSummary,
@@ -162,6 +164,14 @@ function resetFilters() {
   void loadPayments();
 }
 
+const mobileRows = computed(() => rows.value.map((row) => ({
+  id: row.id, title: row.merchantName ?? row.payee?.name ?? row.payeeName ?? "材料付款", code: row.code,
+  meta: `${row.project.code} · ${row.project.name}`, status: row.statusLabel,
+  amount: `审批金额 ${money(row.approvalAmountCents)}`,
+  facts: [{ label: "采购编号", value: row.procurement.code }, { label: "付款进度", value: paymentProgress(row) },
+    { label: "收货发票", value: receiptInvoice(row) }, { label: "当前办理", value: row.currentTask.label }],
+  nextAction: taskPresentation(row).actionLabel
+})));
 onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
 </script>
 
@@ -181,6 +191,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
         </t-button>
       </template>
     </BusinessPageHeader>
+    <ProcurementBusinessNav />
 
     <PaymentTaskQueue
       :rows="rows"
@@ -292,7 +303,7 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
       />
       <div
         v-if="rows.length"
-        class="jg-table-region jg-table-region--wide"
+        class="jg-table-region jg-table-region--wide jg-desktop-record-list"
       >
         <t-table
           row-key="id"
@@ -353,6 +364,11 @@ onMounted(() => void Promise.all([loadProjects(), loadPayments()]));
       <t-empty
         v-else
         description="当前视图暂无可查看的零星材料付款申请"
+      />
+      <BusinessMobileCards
+        :items="mobileRows"
+        :loading="loading"
+        @open="openDetail"
       />
       <t-alert
         v-if="rows.some((row) => row.voucherStatus === 'anomaly')"

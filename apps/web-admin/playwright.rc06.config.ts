@@ -15,11 +15,11 @@ const settlementMockCoverage =
   /(?:结算签章治理五步|超过 100 行的结算清单)/u;
 const fundExecutionMockCoverage = /资金执行案件响应丢失重试复用幂等键/u;
 const chromiumMockCoverage = new RegExp(
-  `${settlementMockCoverage.source}|${fundExecutionMockCoverage.source}|core detail pages expose flow summaries|结算详情展示双证据|separates the payment ledger|P0 desktop Chromium|P0 mobile WebKit`,
+  `${settlementMockCoverage.source}|${fundExecutionMockCoverage.source}|core detail pages expose flow summaries|结算详情展示双证据|separates the payment ledger|P0 desktop Chromium|P0 mobile WebKit|V6.1`,
   "u"
 );
 const webkitMockCoverage = new RegExp(
-  `${settlementMockCoverage.source}|${fundExecutionMockCoverage.source}|RC-06 mocked contract detail|本人可在设置页|资料库只在服务端授权后`,
+  `${settlementMockCoverage.source}|${fundExecutionMockCoverage.source}|RC-06 mocked contract detail|本人可在设置页|资料库只在服务端授权后|V6.1`,
   "u"
 );
 
@@ -27,6 +27,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: [
     "p0-browser-smoke.e2e.ts",
+    "v61-business-recovery.e2e.ts",
     "payment-workbench.e2e.ts",
     "settlement-signature-governance.e2e.ts",
     "handwritten-signature.e2e.ts",

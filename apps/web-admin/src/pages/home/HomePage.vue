@@ -15,6 +15,8 @@
       </template>
     </BusinessPageHeader>
 
+    <BusinessLauncher />
+
     <BusinessFeedback
       v-if="errorMessage"
       state="error"
@@ -32,12 +34,12 @@
     />
 
     <EmptyBusinessState
-      v-else-if="!hasPermissionData"
+      v-else-if="!errorMessage && !hasPermissionData"
       title="暂无可见工作项"
       description="当前账号没有可汇总的项目业务权限，或暂未分配可见项目。"
     />
 
-    <template v-else>
+    <template v-else-if="workItems">
       <BusinessStatusSummary
         :items="summaryItems"
         appearance="metrics"
@@ -152,6 +154,7 @@
 
           <t-table
             v-else
+            class="jg-desktop-record-list"
             row-key="id"
             size="small"
             :columns="columns"
@@ -177,6 +180,11 @@
               </t-link>
             </template>
           </t-table>
+          <BusinessMobileCards
+            :items="mobileRows"
+            :loading="loading"
+            @open="openMobileRow"
+          />
         </section>
       </template>
     </template>
@@ -192,6 +200,8 @@ import {
   type WorkItemsReadModel
 } from "../../api/core-flow-read.api";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessLauncher from "../../components/BusinessLauncher.vue";
+import BusinessMobileCards from "../../components/BusinessMobileCards.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
@@ -254,6 +264,17 @@ const visibleRows = computed(() =>
     filters
   )
 );
+
+const mobileRows = computed(() => visibleRows.value.map((row) => ({
+  id: row.id, title: row.title, code: row.businessCode, meta: row.projectName,
+  status: row.statusLabel, tone: row.statusTone, amount: row.amountText,
+  facts: [{ label: "当前办理", value: row.currentNode }, { label: "停留时间", value: row.stayedText }],
+  nextAction: row.nextAction
+})));
+function openMobileRow(id: string) {
+  const row = visibleRows.value.find((item) => item.id === id);
+  if (row) go(row.targetPath);
+}
 
 async function loadSummary() {
   loading.value = true;

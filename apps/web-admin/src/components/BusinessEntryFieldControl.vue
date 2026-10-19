@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import BusinessHelp from "./BusinessHelp.vue";
 import type { BusinessEntryFieldDefinition } from "@jiangkong/shared-domain";
 
 const props = withDefaults(defineProps<{
@@ -34,6 +35,11 @@ const usesSearchSelect = computed(() => props.options !== undefined || [
     <span class="business-entry-field__label">
       {{ field.label }}{{ field.required ? " *" : "" }}
       <small v-if="field.unit">（{{ field.unit }}）</small>
+      <BusinessHelp
+        v-if="field.description && field.description !== field.label"
+        :label="field.label"
+        :text="field.description"
+      />
     </span>
     <t-textarea
       v-if="field.type === 'long_text'"
@@ -95,10 +101,6 @@ const usesSearchSelect = computed(() => props.options !== undefined || [
       v-if="error"
       class="business-entry-field__error"
     >{{ error }}</small>
-    <small
-      v-else
-      class="business-entry-field__hint"
-    >{{ field.description }}</small>
   </label>
 </template>
 

@@ -129,7 +129,7 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
   }
 }
 
-@container jg-status-summary (max-width: 420px) {
+@container jg-status-summary (max-width: 280px) {
   .business-status-summary--metrics :deep(.t-card__body) {
     grid-template-columns: 1fr;
   }
