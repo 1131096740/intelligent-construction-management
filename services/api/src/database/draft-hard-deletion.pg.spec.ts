@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { OperatingTakeoverService } from "../operating-takeover/operating-takeover.service";
@@ -24,6 +26,39 @@ describe("未提交草稿实际删除 PostgreSQL 回归", () => {
     await db.projectMember.create({ data: { projectId: project, userId: actor, positionKey: "material_staff" } });
   });
   afterAll(async () => { await db.$disconnect(); });
+
+  run("审计来源补充迁移仅恢复原只读默认授权，不扩大运行时或 PUBLIC 权限", async () => {
+    const suffix = randomUUID().replaceAll("-", "");
+    const reader = `audit_reader_${suffix}`;
+    const writer = `audit_writer_${suffix}`;
+    const outsider = `audit_outsider_${suffix}`;
+    const migration = readFileSync(resolve(__dirname, "../../prisma/migrations/20261019160000_draft_audit_source_backup_read/migration.sql"), "utf8");
+    // Roll back roles, default ACLs and table grants together; no fixture cleanup leak.
+    const rollback = new Error("rollback isolated ACL regression");
+    await expect(db.$transaction(async tx => {
+      for (const role of [reader, writer, outsider]) await tx.$executeRawUnsafe(`CREATE ROLE "${role}" NOLOGIN`);
+      await tx.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "${reader}"`);
+      await tx.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO "${writer}"`);
+      await tx.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT INSERT ON TABLES TO "${writer}"`);
+      const privileges = () => tx.$queryRaw<Array<{ tableName: string; readerSelect: boolean; readerWrites: boolean; writerSelect: boolean; outsiderSelect: boolean }>>(Prisma.sql`
+        SELECT c.relname AS "tableName", has_table_privilege(${reader}, c.oid, 'SELECT') AS "readerSelect",
+          has_table_privilege(${reader}, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS "readerWrites",
+          has_table_privilege(${writer}, c.oid, 'SELECT') AS "writerSelect",
+          has_table_privilege(${outsider}, c.oid, 'SELECT') AS "outsiderSelect"
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname IN ('SpotProcurementAuditSource','SpotPaymentAuditSource') ORDER BY c.relname`);
+      expect((await privileges()).every(row => !row.readerSelect)).toBe(true);
+      await tx.$executeRawUnsafe(migration);
+      await tx.$executeRawUnsafe(migration);
+      const rows = await privileges();
+      expect(rows).toHaveLength(2);
+      for (const row of rows) expect(row).toMatchObject({ readerSelect: true, readerWrites: false, writerSelect: false, outsiderSelect: false });
+      expect(await tx.$queryRaw(Prisma.sql`SELECT count(*)::int AS count FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(c.relacl) a
+        WHERE n.nspname='public' AND c.relname IN ('SpotProcurementAuditSource','SpotPaymentAuditSource') AND a.grantee=0`)).toEqual([{ count: 0 }]);
+      throw rollback;
+    })).rejects.toBe(rollback);
+  });
 
   async function contract(historical = false) {
     const c = await db.contract.create({ data: { projectId: project, code: randomUUID(), name: "合成合同", counterparty: "合成供应商", contractTypeKey: "material_purchase", ownerUserId: actor, source: historical ? "historical_takeover" : "system" } });
