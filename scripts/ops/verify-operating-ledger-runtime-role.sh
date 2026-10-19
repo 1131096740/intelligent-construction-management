@@ -94,15 +94,21 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'operating-ledger runtime role cannot execute the participant mutation fence';
   END IF;
-  IF NOT has_function_privilege(runtime_role,
-    'public.issue_contract_bank_holder(text,text,text,text,text)', 'EXECUTE') OR EXISTS (
+  FOREACH privilege IN ARRAY ARRAY[
+    'public.issue_contract_bank_holder(text,text,text,text,text)',
+    'public."authorizeOperatingLedgerWrite"(text,text)',
+    'public.assert_fund_execution_server_context(text,text,text)',
+    'public.assert_fund_movement_write_context()',
+    'public.issue_contract_bank_holder(text,text,text,text,text,text)',
+    'public.record_verified_bank_observation(jsonb,text)',
+    'public.append_company_transfer_event(jsonb,text)'
+  ] LOOP
+    IF NOT has_function_privilege(runtime_role, privilege, 'EXECUTE') OR EXISTS (
       SELECT 1 FROM pg_catalog.pg_proc p,
         LATERAL aclexplode(COALESCE(p.proacl, acldefault('f',p.proowner))) a
-      WHERE p.oid = 'public.issue_contract_bank_holder(text,text,text,text,text)'::regprocedure
-        AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'
-    ) THEN
-    RAISE EXCEPTION 'bank verification issuer requires runtime EXECUTE and no PUBLIC EXECUTE';
-  END IF;
+      WHERE p.oid = privilege::regprocedure AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+    ) THEN RAISE EXCEPTION 'financial entry requires runtime EXECUTE and no PUBLIC EXECUTE'; END IF;
+  END LOOP;
   FOREACH privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] LOOP
     IF has_table_privilege(
       runtime_role,

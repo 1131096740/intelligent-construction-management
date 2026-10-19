@@ -37,6 +37,10 @@ function prepareContractBankRuntime({ name, db, password, target, env = process.
  if(badGrant.status===0||!badGrant.stderr.includes('existing restricted operating-ledger runtime role')) throw Error('Backup identity must not receive runtime grants');
  const denied=spawnSync(docker,['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d',db,'-c',"SELECT issue_contract_bank_holder('missing','missing','missing','missing','missing')"],{encoding:'utf8',env});
  if(denied.status===0||!denied.stderr.includes('permission denied for function issue_contract_bank_holder')) throw Error('Backup issuer invocation must fail at the privilege boundary');
+ for (const signature of ["issue_contract_bank_holder(text,text,text,text,text,text)","record_verified_bank_observation(jsonb,text)","append_company_transfer_event(jsonb,text)"]) {
+   const allowed=runDocker(['exec',name,'psql','-At','-U','jiangkong','-d',db,'-c',`SELECT has_function_privilege('contract_runtime','public.${signature}','EXECUTE'),has_function_privilege('contract_backup','public.${signature}','EXECUTE')`]).trim();
+   if(allowed!=="t|f") throw Error('Only runtime may execute the narrow financial entries');
+ }
  runDocker(['cp',path.resolve(__dirname,'../../../scripts/ops/db-backup-read-role.sql'),name+':/tmp/backup-role.sql']);
  runDocker(['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d',db,'-f','/tmp/backup-role.sql']);
  return target.replace('://jiangkong:', '://contract_runtime:');
