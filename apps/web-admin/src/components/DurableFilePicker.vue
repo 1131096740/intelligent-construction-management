@@ -102,7 +102,11 @@ async function removeConfirmed(ids: readonly string[]) {
   await store.removeConfirmed(owner, scope, ids);
   await refresh(owner, scope, request);
 }
-defineExpose({ removeConfirmed });
+async function synchronize() {
+  await refresh(props.owner, props.scope, generation);
+  if (pending.value) throw new Error("已找到另一页面保留的附件，请先点“继续添加”，核对完成后再保存草稿。");
+}
+defineExpose({ removeConfirmed, synchronize });
 onBeforeUnmount(() => { disposed = true; closePreview(); });
 </script>
 

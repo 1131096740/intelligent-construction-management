@@ -21,19 +21,26 @@ export function localBusinessForm<T>(storage: Storage, owner: string, scene: str
     storage.setItem(key, JSON.stringify({ value: sanitizeContractDraftRecoverySnapshot(value), revision: next, owner, savedAt: Date.now(), completed } satisfies SavedForm<T>));
     revision = next;
   }
+  function restore() {
+    const saved = read();
+    revision = saved?.revision;
+    return saved && !saved.completed ? saved.value : undefined;
+  }
+  async function locked<R>(task: () => Promise<R>): Promise<R> {
+    if (!globalThis.navigator?.locks) throw new Error("浏览器暂不支持安全恢复提交，请保留当前填写，使用新版 Safari 或 Chrome 后再试。");
+    return globalThis.navigator.locks.request(key, task);
+  }
   return {
+    async resume<R>(task: (saved: T | undefined) => Promise<R>): Promise<R> {
+      return locked(() => task(restore()));
+    },
     async submit<R>(task: () => Promise<R>): Promise<R> {
-      if (!globalThis.navigator?.locks) throw new Error("浏览器暂不支持安全恢复提交，请保留当前填写，使用新版 Safari 或 Chrome 后再试。");
-      return globalThis.navigator.locks.request(key, async () => {
+      return locked(async () => {
         if (read()?.revision !== revision) throw new Error("另一页面已更新这份草稿，请回到原页面核对，当前没有重复提交。");
         return task();
       });
     },
-    restore() {
-      const saved = read();
-      revision = saved?.revision;
-      return saved && !saved.completed ? saved.value : undefined;
-    },
+    restore,
     save: write,
     complete(value: T) { write(value, true); }
   };

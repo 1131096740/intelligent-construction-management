@@ -72,6 +72,7 @@ const quotationFiles = ref<UploadFile[]>([]);
 const referencePhotoFiles = ref<UploadFile[]>([]);
 let capabilityRequestId = 0;
 let workbenchRequestId = 0;
+let createOpenGeneration = 0;
 
 const filters = reactive({
   projectId: "",
@@ -169,6 +170,7 @@ const summary = computed(() => {
 });
 
 const createDisabledReason = computed(() => {
+  if (!recoveryReady.value) return "正在恢复本机填写，请稍候。";
   if (submissionUncertain.value) return "上次保存结果待确认，请关闭窗口，到采购台账核对本次草稿，确认前不要重复创建。";
   if (fileBusy.quotation || fileBusy.photo) return "附件原文件仍在处理，请完成添加后保存。";
   if (capabilityBusy.value) return "正在核对该项目的发起权限。";
@@ -321,33 +323,37 @@ function changeLifecycleView() {
 }
 
 async function openCreate() {
+  const generation = ++createOpenGeneration;
+  const owner = auth.user?.id ?? "";
   recoveryReady.value = false;
   recovery = undefined;
-  recoveryOwner = auth.user?.id ?? "";
-  if (auth.user?.id) {
-    recovery = localBusinessForm(localStorage, auth.user.id, "spot-procurement-create");
-    try {
-      const saved = recovery.restore();
-      if (saved) { Object.assign(createForm, saved.form); localDraftId.value = saved.id; submissionUncertain.value = saved.uncertain; recoveryMessage.value = "已恢复上次填写，附件按原项目分别恢复。"; }
-    } catch { recoveryMessage.value = "无法读取本机暂存，请保留原页面，当前不会覆盖它。"; }
-  }
+  recoveryOwner = owner;
+  resetCreateForm();
+  localDraftId.value = crypto.randomUUID();
+  submissionUncertain.value = false;
+  recoveryMessage.value = "正在恢复本机填写，请稍候。";
   createError.value = "";
   createVisible.value = true;
   if (!creatableProjects.value.length) await loadReferenceData();
-  if (!createForm.projectId) {
-    createForm.projectId = creatableProjects.value.some((project) => project.id === filters.projectId)
-      ? filters.projectId
-      : creatableProjects.value.length === 1 ? creatableProjects.value[0]!.id : "";
-  }
-  if (createForm.projectId) {
-    await Promise.all([
-      loadCapabilities(createForm.projectId),
-      loadEntryDefinitions(createForm.projectId),
-      loadApplicationTextSuggestions(createForm.projectId)
+  if (generation !== createOpenGeneration || !owner || auth.user?.id !== owner || !createVisible.value) return;
+  const current = localBusinessForm<{ form: typeof createForm; id: string; uncertain: boolean }>(localStorage, owner, "spot-procurement-create");
+  recovery = current;
+  try {
+    // Opening another tab participates in the same lock as staging originals.
+    // A completed record starts an empty form; old window memory is never reused.
+    await current.resume(async (saved) => {
+      if (generation !== createOpenGeneration || current !== recovery || auth.user?.id !== owner || !createVisible.value) return;
+      if (saved) { Object.assign(createForm, saved.form); localDraftId.value = saved.id; submissionUncertain.value = saved.uncertain; }
+      if (!createForm.projectId) createForm.projectId = creatableProjects.value.some((project) => project.id === filters.projectId)
+        ? filters.projectId : creatableProjects.value.length === 1 ? creatableProjects.value[0]!.id : "";
+      recoveryReady.value = true;
+      if (!persistRecovery()) { recoveryReady.value = false; throw new Error("本机填写尚未恢复，请保留原页面，关闭本窗口后重试。"); }
+    });
+    if (!recoveryReady.value || current !== recovery) return;
+    if (createForm.projectId) await Promise.all([
+      loadCapabilities(createForm.projectId), loadEntryDefinitions(createForm.projectId), loadApplicationTextSuggestions(createForm.projectId)
     ]);
-  }
-  recoveryReady.value = true;
-  persistRecovery();
+  } catch (cause) { if (generation === createOpenGeneration) createError.value = formatUnknownApiError(cause, "无法恢复本机填写，请保留原页面，关闭本窗口后重试。"); }
 }
 
 async function handleCreateProjectChange(value: unknown) {
@@ -426,6 +432,8 @@ async function saveDraft() {
     if (!current) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
     await current.submit(async () => {
     if (auth.user?.id !== recoveryOwner || current !== recovery) throw new Error("登录或草稿状态已变化，本次未提交，请重新打开填写窗口。");
+    if (!quotationPicker.value || !photoPicker.value) throw new Error("附件尚未读取完成，请稍后再保存。");
+    await Promise.all([quotationPicker.value.synchronize(), photoPicker.value.synchronize()]);
     const submittedForm = JSON.parse(JSON.stringify(createForm)) as typeof createForm;
     const submittedQuotes = selectedUploadFiles(quotationFiles.value);
     const submittedPhotos = selectedUploadFiles(referencePhotoFiles.value);
@@ -469,13 +477,13 @@ async function saveDraft() {
       })),
       attachments
     });
-    recoveryReady.value = false;
     try { recovery?.complete({ form: submittedForm, id: localDraftId.value, uncertain: false }); } catch { /* Business creation is already confirmed. */ }
     const attachmentIds = (files: File[]) => files.flatMap((file) => {
       const id = (file as File & { uploadRequestKey?: string }).uploadRequestKey;
       return id ? [id] : [];
     });
     await Promise.allSettled([quotationPicker.value?.removeConfirmed(attachmentIds(submittedQuotes)), photoPicker.value?.removeConfirmed(attachmentIds(submittedPhotos))]);
+    recoveryReady.value = false;
     localDraftId.value = crypto.randomUUID();
     submissionUncertain.value = false;
     createVisible.value = false;
@@ -848,7 +856,7 @@ onMounted(() => {
     >
       <div
         class="create-form"
-        :inert="createBusy || undefined"
+        :inert="createBusy || !recoveryReady || undefined"
       >
         <p role="status">
           {{ recoveryMessage }}
@@ -875,7 +883,7 @@ onMounted(() => {
             <t-select
               :value="createForm.projectId"
               :options="createProjectOptions"
-              :disabled="projectLockedByAttachments || submissionUncertain"
+              :disabled="projectLockedByAttachments || submissionUncertain || !recoveryReady"
               placeholder="请选择项目"
               @change="handleCreateProjectChange"
             />
@@ -953,7 +961,7 @@ onMounted(() => {
             ref="quotationPicker"
             v-model="quotationFiles"
             :owner="auth.user?.id || ''"
-            :scope="createForm.projectId ? `${localDraftId}:${createForm.projectId}:quotation` : ''"
+            :scope="recoveryReady && createForm.projectId ? `${localDraftId}:${createForm.projectId}:quotation` : ''"
             :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
             :limit-bytes="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes"
             :disabled="createBusy || submissionUncertain || !recoveryReady"
@@ -970,7 +978,7 @@ onMounted(() => {
             ref="photoPicker"
             v-model="referencePhotoFiles"
             :owner="auth.user?.id || ''"
-            :scope="createForm.projectId ? `${localDraftId}:${createForm.projectId}:photo` : ''"
+            :scope="recoveryReady && createForm.projectId ? `${localDraftId}:${createForm.projectId}:photo` : ''"
             :accept="SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptAttribute"
             :limit-bytes="SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitBytes"
             :disabled="createBusy || submissionUncertain || !recoveryReady"

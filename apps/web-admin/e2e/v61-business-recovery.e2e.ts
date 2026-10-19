@@ -129,3 +129,68 @@ test("V6.1 仅移除已确认关联的附件且原生读取失败给出中文下
   await expect(picker).not.toContainText("NotReadableError");
   await expect(picker).not.toContainText("File is not readable");
 });
+
+test("V6.1 另一页添加原文件期间重开会等待并完整恢复附件", async ({ page, context }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    const original = File.prototype.arrayBuffer;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    File.prototype.arrayBuffer = async function () { await gate; return original.call(this); };
+    Object.assign(window, { releaseOriginalRead: release });
+  });
+  const picker = page.locator(".durable-file-picker").nth(1);
+  await picker.locator('input[type="file"]').setInputFiles({ name: "in-flight.png", mimeType: "image/png", buffer: Buffer.from("original") });
+  await expect(picker.getByText("正在保留原文件，请稍候再关闭页面。", { exact: true })).toBeVisible();
+  const second = await context.newPage();
+  await prepare(second);
+  await expect(second.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
+  await expect(second.locator(".create-form")).toHaveAttribute("inert", "");
+  await page.evaluate(() => { (window as unknown as { releaseOriginalRead: () => void }).releaseOriginalRead(); });
+  const recovered = second.locator(".durable-file-picker").nth(1);
+  await expect(recovered.locator("li")).toHaveCount(1);
+  await expect(recovered.locator("li")).toContainText("in-flight.png");
+  await recovered.getByRole("button", { name: "继续添加", exact: true }).click();
+  await expect(recovered.getByText("已在本机保留 1 份附件，保存草稿时上传。", { exact: true })).toBeVisible();
+  await second.reload();
+  await second.getByRole("button", { name: "新建采购申请", exact: true }).click();
+  await expect(recovered.locator("li")).toHaveCount(1);
+  await expect(recovered.locator("li")).toContainText("in-flight.png");
+  await second.close();
+});
+
+test("V6.1 已完成申请不会被旧标签关闭重开复活", async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepare(page);
+  await page.getByPlaceholder("如：工程部").fill("本次已完成申请");
+  await page.getByPlaceholder("如：杨帅").fill("隔离经办");
+  const date = page.locator(".t-dialog:visible .t-date-picker input");
+  await date.click();
+  await page.locator(".t-date-picker__cell--now:visible").click();
+  await expect(date).not.toHaveValue("");
+  await page.locator(".t-dialog:visible textarea").first().fill("隔离申请用途");
+  const lines = page.locator(".procurement-line-editor__cards");
+  await lines.locator("label").filter({ hasText: "材料名称" }).locator("input").fill("隔离材料");
+  await lines.locator("label").filter({ hasText: "单位" }).locator("input").fill("件");
+  await lines.locator("label").filter({ hasText: "数量" }).locator("input").fill("1");
+  const second = await context.newPage();
+  await prepare(second);
+  await expect(second.getByPlaceholder("如：工程部")).toHaveValue("本次已完成申请");
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "新建采购申请", exact: true }).click();
+  let creates = 0;
+  await page.route("**/api/spot-procurements", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    creates++;
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ procurementId: "confirmed-draft", code: "LOCAL-1" }) });
+  });
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page).toHaveURL(/confirmed-draft/u);
+  await second.getByRole("button", { name: "取消", exact: true }).click();
+  await second.getByRole("button", { name: "新建采购申请", exact: true }).click();
+  await expect(second.getByPlaceholder("如：工程部")).toHaveValue("");
+  await expect(second.getByPlaceholder("如：杨帅")).toHaveValue("");
+  await expect(second.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
+  expect(creates).toBe(1);
+  await second.close();
+});
