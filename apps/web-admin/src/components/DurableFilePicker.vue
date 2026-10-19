@@ -3,8 +3,9 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { pendingAttachmentStore, type PendingAttachment } from "../lib/pending-attachment-store";
 import { formatFileSize } from "./file-upload-summary.config";
+import { formatUnknownApiError } from "../api/error-message";
 
-const props = defineProps<{ modelValue: UploadFile[]; owner: string; scope: string; accept: string; limitBytes: number; disabled?: boolean }>();
+const props = defineProps<{ modelValue: UploadFile[]; owner: string; scope: string; accept: string; limitBytes: number; disabled?: boolean; runMutation: (task: () => Promise<void>) => Promise<void> }>();
 const emit = defineEmits<{ "update:modelValue": [files: UploadFile[]]; busy: [busy: boolean] }>();
 const store = pendingAttachmentStore();
 const input = ref<HTMLInputElement>();
@@ -40,7 +41,7 @@ async function restoreFiles() {
   files.value = []; error.value = ""; message.value = ""; closePreview(); publish();
   if (!props.owner || !props.scope) return;
   try { await refresh(props.owner, props.scope, request); }
-  catch (cause) { if (request === generation) { error.value = String((cause as Error).message); restoreFailed.value = true; } }
+  catch (cause) { if (request === generation) { error.value = formatUnknownApiError(cause, "本机附件读取失败，请保留原文件并重新读取。"); restoreFailed.value = true; } }
   finally { if (request === generation) { hydrating.value = false; publish(); } }
 }
 watch(() => [props.owner, props.scope], restoreFiles, { immediate: true });
@@ -56,11 +57,11 @@ async function selectFiles(event: Event) {
   const owner = props.owner, scope = props.scope, request = generation;
   busy.value = true; error.value = ""; message.value = "正在保留原文件，请稍候再关闭页面。"; publish();
   try {
-    await store.stage(owner, scope, selected);
+    await props.runMutation(() => store.stage(owner, scope, selected));
     await refresh(owner, scope, request);
     if (request === generation) message.value = "原文件已保留，正在检查重复附件。";
   } catch (cause) {
-    if (request === generation) { error.value = (cause as Error).message; message.value = "本批附件尚未添加，请保留原文件并重试。"; }
+    if (request === generation) { error.value = formatUnknownApiError(cause, "原文件读取或保留失败，请检查文件仍可访问后重新选择。"); message.value = "本批附件尚未添加，请保留原文件并重试。"; }
     return;
   }
   finally { busy.value = false; publish(); }
@@ -72,21 +73,23 @@ async function processFiles() {
   busy.value = true; error.value = ""; publish();
   let duplicates = 0;
   try {
-    for (const file of files.value.filter((file) => !file.bytes)) {
-      if (document.hidden || disposed || generation !== request) break;
-      if (await store.finish(file)) duplicates++;
-      await refresh(owner, scope, request);
-    }
+    await props.runMutation(async () => {
+      for (const file of files.value.filter((file) => !file.bytes)) {
+        if (document.hidden || disposed || generation !== request) break;
+        if (await store.finish(file)) duplicates++;
+        await refresh(owner, scope, request);
+      }
+    });
     if (request === generation) message.value = pending.value ? "原文件已保留，返回后点“继续添加”。" : `已在本机保留 ${files.value.length} 份附件，保存草稿时上传。${duplicates ? `已跳过 ${duplicates} 份重复文件。` : ""}`;
-  } catch (cause) { if (request === generation) error.value = (cause as Error).message; }
+  } catch (cause) { if (request === generation) error.value = formatUnknownApiError(cause, "附件检查未完成，原文件已保留，请稍后继续添加。"); }
   finally { busy.value = false; publish(); }
 }
 async function remove(file: PendingAttachment) {
   if (unavailable.value) return;
   const owner = props.owner, scope = props.scope, request = generation;
   busy.value = true; publish();
-  try { await store.remove(owner, scope, file.id); await refresh(owner, scope, request); }
-  catch (cause) { if (request === generation) error.value = (cause as Error).message; }
+  try { await props.runMutation(() => store.remove(owner, scope, file.id)); await refresh(owner, scope, request); }
+  catch (cause) { if (request === generation) error.value = formatUnknownApiError(cause, "附件尚未移除，请核对原页面后重试。"); }
   finally { busy.value = false; publish(); }
 }
 function closePreview() { if (preview.value) URL.revokeObjectURL(preview.value.url); preview.value = undefined; }
@@ -94,8 +97,12 @@ function showPreview(file: PendingAttachment) {
   closePreview();
   if (file.bytes) preview.value = { url: URL.createObjectURL(new Blob([file.bytes], { type: file.type })), name: file.name, type: file.type };
 }
-async function clear() { await store.clear(props.owner, props.scope); files.value = []; publish(); }
-defineExpose({ clear });
+async function removeConfirmed(ids: readonly string[]) {
+  const owner = props.owner, scope = props.scope, request = generation;
+  await store.removeConfirmed(owner, scope, ids);
+  await refresh(owner, scope, request);
+}
+defineExpose({ removeConfirmed });
 onBeforeUnmount(() => { disposed = true; closePreview(); });
 </script>
 

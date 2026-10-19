@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { localBusinessForm } from "./local-business-form";
 function memoryStorage() {
   const map = new Map<string, string>();
@@ -12,6 +12,39 @@ function memoryStorage() {
   } satisfies Storage;
 }
 describe("local business form recovery", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it("rechecks the draft after waiting for another tab to finish submitting", async () => {
+    let queue: Promise<unknown> = Promise.resolve();
+    vi.stubGlobal("navigator", { locks: { request: (_key: string, task: () => Promise<unknown>) => {
+      const result = queue.then(task); queue = result.catch(() => undefined); return result;
+    } } });
+    const storage = memoryStorage();
+    const a = localBusinessForm(storage, "owner", "form");
+    a.restore(); a.save({ reason: "本次申请" });
+    const b = localBusinessForm(storage, "owner", "form"); b.restore();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const submitting = a.submit(async () => {
+      a.save({ reason: "本次申请", uncertain: true });
+      await gate;
+      a.complete({ reason: "本次申请" });
+    });
+    const attachmentMutation = vi.fn(async () => undefined);
+    const queued = b.submit(attachmentMutation);
+    const rejection = expect(queued).rejects.toThrow("另一页面");
+    release();
+    await submitting; await rejection;
+    expect(attachmentMutation).not.toHaveBeenCalled();
+    expect(localBusinessForm(storage, "owner", "form").restore()).toBeUndefined();
+  });
+  it("does not call a business API when cross-tab locking is unavailable", async () => {
+    vi.stubGlobal("navigator", {});
+    const local = localBusinessForm(memoryStorage(), "owner", "form");
+    local.restore(); local.save({ reason: "仍在本机" });
+    const submit = vi.fn(async () => undefined);
+    await expect(local.submit(submit)).rejects.toThrow("浏览器暂不支持");
+    expect(submit).not.toHaveBeenCalled();
+  });
   it("recovers project and request identity on refresh, isolated by account and form", () => {
     const storage = memoryStorage();
     const saved = { projectId: "project-a", requestKey: "same-operation", reason: "待保存", uncertain: true };

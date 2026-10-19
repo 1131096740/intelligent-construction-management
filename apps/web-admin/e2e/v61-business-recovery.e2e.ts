@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
 
 async function prepare(page: Page) {
   const project = { id: "local-project", code: "LOCAL", name: "隔离项目" };
@@ -77,4 +79,53 @@ test("V6.1 手机短视口保留底部操作且帮助可点击和关闭", async 
   await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
   await expect(footer.getByRole("button", { name: "取消", exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("short-mobile-dialog.png"), fullPage: true });
+});
+
+test("V6.1 旧标签不能改附件且项目切换不会遗留附件", async ({ page, context }) => {
+  await prepare(page);
+  const second = await context.newPage();
+  await prepare(second);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aJ7sAAAAASUVORK5CYII=", "base64");
+  const current = second.locator(".durable-file-picker").nth(1);
+  await current.locator('input[type="file"]').setInputFiles({ name: "current.png", mimeType: "image/png", buffer: png });
+  await expect(current.getByText("已在本机保留 1 份附件，保存草稿时上传。", { exact: true })).toBeVisible();
+  const project = second.locator(".t-dialog:visible").getByPlaceholder("请选择项目");
+  await expect(project).toBeDisabled();
+  const old = page.locator(".durable-file-picker").nth(1);
+  await old.locator('input[type="file"]').setInputFiles({ name: "stale.png", mimeType: "image/png", buffer: png });
+  await expect(old.getByText(/另一页面已更新这份草稿/u)).toBeVisible();
+  await expect(old.getByText("本批附件尚未添加，请保留原文件并重试。", { exact: true })).toBeVisible();
+  await second.reload();
+  await second.getByRole("button", { name: "新建采购申请", exact: true }).click();
+  await expect(current.locator("li")).toHaveCount(1);
+  await expect(current.locator("li")).toContainText("current.png");
+  await current.getByRole("button", { name: "移除", exact: true }).click();
+  await expect(current.locator("li")).toHaveCount(0);
+  await expect(project).toBeEnabled();
+  await second.close();
+});
+
+test("V6.1 仅移除已确认关联的附件且原生读取失败给出中文下一步", async ({ page }) => {
+  // Serve the actual persistence module only inside this isolated browser test.
+  const source = readFileSync(new URL("../src/lib/pending-attachment-store.ts", import.meta.url), "utf8");
+  await page.route("**/v61-store-test.js", (route) => route.fulfill({ contentType: "text/javascript", body: ts.transpile(source, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }) }));
+  await page.goto("/login");
+  const retained = await page.evaluate(async () => {
+    const modulePath = "/v61-store-test.js";
+    const { pendingAttachmentStore } = await import(/* @vite-ignore */ modulePath);
+    const a = pendingAttachmentStore(), b = pendingAttachmentStore();
+    await a.stage("isolated", "same-draft", [new File(["a"], "confirmed.png")]);
+    const submitted = await a.list("isolated", "same-draft");
+    await b.stage("isolated", "same-draft", [new File(["b"], "unsubmitted.png")]);
+    await a.removeConfirmed("isolated", "same-draft", submitted.map((file: { id: string }) => file.id));
+    return (await b.list("isolated", "same-draft")).map((file: { name: string }) => file.name);
+  });
+  expect(retained).toEqual(["unsubmitted.png"]);
+  await prepare(page);
+  await page.evaluate(() => { File.prototype.arrayBuffer = async () => { throw new DOMException("File is not readable", "NotReadableError"); }; });
+  const picker = page.locator(".durable-file-picker").nth(1);
+  await picker.locator('input[type="file"]').setInputFiles({ name: "unreadable.png", mimeType: "image/png", buffer: Buffer.from("test") });
+  await expect(picker.getByText("本批附件尚未添加，请保留原文件并重试。", { exact: true })).toBeVisible();
+  await expect(picker).not.toContainText("NotReadableError");
+  await expect(picker).not.toContainText("File is not readable");
 });

@@ -106,10 +106,15 @@ export function pendingAttachmentStore(factory: IDBFactory = indexedDB) {
         };
       });
     },
-    clear(owner: string, scope: string) {
+    removeConfirmed(owner: string, scope: string, ids: readonly string[]) {
       return transact<void>("readwrite", (store) => {
-        const request = store.index("scope").openKeyCursor([owner, scope]);
-        request.onsuccess = () => { const cursor = request.result; if (cursor) { store.delete(cursor.primaryKey); cursor.continue(); } };
+        for (const id of ids) {
+          const request = store.get(id);
+          request.onsuccess = () => {
+            const item = request.result as PendingAttachment | undefined;
+            if (item?.owner === owner && item.scope === scope) store.delete(id);
+          };
+        }
       });
     }
   };

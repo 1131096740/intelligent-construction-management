@@ -89,10 +89,11 @@ const createForm = reactive({
   note: "",
   lines: [blankLine()] as ProcurementLineDraft[]
 });
-let recoveryReady = false;
+const recoveryReady = ref(false);
+let recoveryOwner = "";
 let recovery: ReturnType<typeof localBusinessForm<{ form: typeof createForm; id: string; uncertain: boolean }>> | undefined;
 function persistRecovery() {
-  if (!recoveryReady || !recovery) return false;
+  if (!recoveryReady.value || !recovery) return false;
   try {
     recovery.save({ form: JSON.parse(JSON.stringify(createForm)), id: localDraftId.value, uncertain: submissionUncertain.value });
     recoveryMessage.value = "填写已暂存本机，保存草稿后才能在其他设备继续。";
@@ -100,6 +101,16 @@ function persistRecovery() {
   } catch { recoveryMessage.value = "本机暂存失败，请保留当前页面并检查浏览器存储或其他已打开页面。"; return false; }
 }
 watch(createForm, persistRecovery, { deep: true, flush: "sync" });
+const projectLockedByAttachments = computed(() => fileBusy.quotation || fileBusy.photo || quotationFiles.value.length > 0 || referencePhotoFiles.value.length > 0);
+async function changeAttachments(task: () => Promise<void>) {
+  const current = recovery;
+  if (!current || !recoveryReady.value || createBusy.value || submissionUncertain.value) throw new Error("请先核对本次草稿状态，再添加或移除附件。");
+  await current.submit(async () => {
+    if (current !== recovery || auth.user?.id !== recoveryOwner || !recoveryReady.value || createBusy.value || submissionUncertain.value) throw new Error("草稿或登录状态已变化，请回到原页面核对；本次未修改附件。");
+    if (!persistRecovery()) throw new Error("另一页面已更新这份填写，请回到原页面继续；本次未修改附件。");
+    await task();
+  });
+}
 
 const columns = [
   { colKey: "code", title: "采购编号", width: 130, fixed: "left" as const },
@@ -310,7 +321,9 @@ function changeLifecycleView() {
 }
 
 async function openCreate() {
-  recoveryReady = false;
+  recoveryReady.value = false;
+  recovery = undefined;
+  recoveryOwner = auth.user?.id ?? "";
   if (auth.user?.id) {
     recovery = localBusinessForm(localStorage, auth.user.id, "spot-procurement-create");
     try {
@@ -333,11 +346,15 @@ async function openCreate() {
       loadApplicationTextSuggestions(createForm.projectId)
     ]);
   }
-  recoveryReady = true;
+  recoveryReady.value = true;
   persistRecovery();
 }
 
 async function handleCreateProjectChange(value: unknown) {
+  if (value !== createForm.projectId && projectLockedByAttachments.value) {
+    createError.value = "本项目已有附件或正在恢复附件，请先保存本项目草稿，或明确移除附件后再切换项目。";
+    return;
+  }
   createForm.projectId = typeof value === "string" ? value : "";
   capabilities.value = null;
   entryDefinitions.value = null;
@@ -404,11 +421,17 @@ async function saveDraft() {
   }
   createBusy.value = true;
   createError.value = "";
-  const submittedForm = JSON.parse(JSON.stringify(createForm)) as typeof createForm;
   try {
+    const current = recovery;
+    if (!current) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
+    await current.submit(async () => {
+    if (auth.user?.id !== recoveryOwner || current !== recovery) throw new Error("登录或草稿状态已变化，本次未提交，请重新打开填写窗口。");
+    const submittedForm = JSON.parse(JSON.stringify(createForm)) as typeof createForm;
+    const submittedQuotes = selectedUploadFiles(quotationFiles.value);
+    const submittedPhotos = selectedUploadFiles(referencePhotoFiles.value);
     const projectId = requiredText(submittedForm.projectId, "项目");
     const attachments: SpotProcurementAttachmentPayload[] = [];
-    for (const file of selectedUploadFiles(quotationFiles.value)) {
+    for (const file of submittedQuotes) {
       assertQuotationFile(file);
       const uploaded = await uploadSpotProcurementCreateFileWithCapability(
         projectId,
@@ -416,7 +439,7 @@ async function saveDraft() {
       );
       attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
-    for (const file of selectedUploadFiles(referencePhotoFiles.value)) {
+    for (const file of submittedPhotos) {
       assertReferencePhotoFile(file);
       const uploaded = await uploadSpotProcurementCreateFileWithCapability(
         projectId,
@@ -446,15 +469,20 @@ async function saveDraft() {
       })),
       attachments
     });
-    recoveryReady = false;
+    recoveryReady.value = false;
     try { recovery?.complete({ form: submittedForm, id: localDraftId.value, uncertain: false }); } catch { /* Business creation is already confirmed. */ }
-    await Promise.allSettled([quotationPicker.value?.clear(), photoPicker.value?.clear()]);
+    const attachmentIds = (files: File[]) => files.flatMap((file) => {
+      const id = (file as File & { uploadRequestKey?: string }).uploadRequestKey;
+      return id ? [id] : [];
+    });
+    await Promise.allSettled([quotationPicker.value?.removeConfirmed(attachmentIds(submittedQuotes)), photoPicker.value?.removeConfirmed(attachmentIds(submittedPhotos))]);
     localDraftId.value = crypto.randomUUID();
     submissionUncertain.value = false;
     createVisible.value = false;
     resetCreateForm();
     await MessagePlugin.success(`零星材料采购草稿已保存，采购申请单号为 ${result.code}。`);
     await router.push(`/零星采购/${encodeURIComponent(result.procurementId)}`);
+    });
   } catch (error) {
     createError.value = formatUnknownApiError(error, "零星采购草稿保存失败");
   } finally {
@@ -474,11 +502,12 @@ async function createSpotProcurementDraftWithCapability(
   );
   if (!operationAllowed) throw new Error("当前项目不可创建零星采购");
   if (!recovery) throw new Error("本机草稿尚未就绪，请保留填写并重新登录后再试。");
-  try { return await recovery.submit(async () => {
+  if (auth.user?.id !== recoveryOwner) throw new Error("登录状态已变化，本次未提交，请重新打开填写窗口。");
+  try {
     submissionUncertain.value = true;
     if (!persistRecovery()) { submissionUncertain.value = false; throw new Error("本机暂存失败，本次尚未提交。请保留当前页面并检查浏览器存储。"); }
-    return createSpotProcurementDraft(body);
-  }); }
+    return await createSpotProcurementDraft(body);
+  }
   catch (cause) {
     const status = (cause as { status?: number }).status;
     if (status && status >= 400 && status < 500) { submissionUncertain.value = false; persistRecovery(); }
@@ -489,7 +518,7 @@ async function createSpotProcurementDraftWithCapability(
 function finishRecovery() {
   try {
     recovery?.complete({ form: JSON.parse(JSON.stringify(createForm)), id: localDraftId.value, uncertain: true });
-    recoveryReady = false;
+    recoveryReady.value = false;
     createVisible.value = false;
     submissionUncertain.value = false;
     localDraftId.value = crypto.randomUUID();
@@ -508,6 +537,7 @@ async function uploadSpotProcurementCreateFileWithCapability(
     "create_spot_procurement"
   );
   if (!operationAllowed) throw new Error("当前项目不可上传零星采购附件");
+  if (auth.user?.id !== recoveryOwner) throw new Error("登录状态已变化，本次未上传，请重新打开填写窗口。");
   return uploadSpotProcurementCreateFile(projectId, file, file.name, (file as File & { uploadRequestKey?: string }).uploadRequestKey);
 }
 
@@ -845,9 +875,11 @@ onMounted(() => {
             <t-select
               :value="createForm.projectId"
               :options="createProjectOptions"
+              :disabled="projectLockedByAttachments || submissionUncertain"
               placeholder="请选择项目"
               @change="handleCreateProjectChange"
             />
+            <small v-if="projectLockedByAttachments">附件属于当前项目；请先保存草稿，或移除附件后再切换项目。</small>
           </label>
           <label class="form-field">
             <span>申请部门 <b aria-hidden="true">*</b></span>
@@ -924,7 +956,8 @@ onMounted(() => {
             :scope="createForm.projectId ? `${localDraftId}:${createForm.projectId}:quotation` : ''"
             :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
             :limit-bytes="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes"
-            :disabled="createBusy"
+            :disabled="createBusy || submissionUncertain || !recoveryReady"
+            :run-mutation="changeAttachments"
             @busy="fileBusy.quotation = $event"
           />
         </section>
@@ -940,7 +973,8 @@ onMounted(() => {
             :scope="createForm.projectId ? `${localDraftId}:${createForm.projectId}:photo` : ''"
             :accept="SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptAttribute"
             :limit-bytes="SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitBytes"
-            :disabled="createBusy"
+            :disabled="createBusy || submissionUncertain || !recoveryReady"
+            :run-mutation="changeAttachments"
             @busy="fileBusy.photo = $event"
           />
         </section>
