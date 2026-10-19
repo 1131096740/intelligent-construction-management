@@ -1861,10 +1861,11 @@ async function loadOverview() {
     let nextOverview: ProjectOperatingOverviewReadModel | null = null;
     let overviewError = "";
     if (canReadProjectOverview.value) {
-      nextOverview = await fetchProjectOperatingOverview(projectId).catch((error: unknown) => {
+      try {
+        nextOverview = await fetchProjectOperatingOverview(projectId);
+      } catch (error: unknown) {
         overviewError = formatUnknownApiError(error, "加载项目经营数据失败");
-        return null;
-      });
+      }
     }
     const [
       nextUpstreamFundFacts,
