@@ -3167,9 +3167,15 @@ test("受信启动器 capability 工件为 0600 且命令结束后无残留", as
     const modeOutput = path.join(tmpdir(), `pol22-capability-mode-${process.pid}`);
     await mkdir(fakeBin);
     const fakeNode = path.join(fakeBin, "node");
+    const modeProbe = path.join(fakeBin, "capability-mode.cjs");
+    await writeFile(modeProbe, [
+      'const { statSync, writeFileSync } = require("node:fs");',
+      'const mode = statSync(process.env.POL22_LAUNCHER_CAPABILITY_PATH).mode & 0o777;',
+      'writeFileSync(process.env.POL22_CAPABILITY_MODE_OUTPUT, mode.toString(8));'
+    ].join("\n"), "utf8");
     await writeFile(
       fakeNode,
-      "#!/bin/sh\nstat -f '%Lp' \"$POL22_LAUNCHER_CAPABILITY_PATH\" >\"$POL22_CAPABILITY_MODE_OUTPUT\"\n",
+      '#!/bin/sh\nexec "$POL22_REAL_NODE" "$POL22_CAPABILITY_PROBE"\n',
       "utf8"
     );
     await chmod(fakeNode, 0o700);
@@ -3183,6 +3189,8 @@ test("受信启动器 capability 工件为 0600 且命令结束后无残留", as
           PATH: `${fakeBin}:${process.env.PATH}`,
           TMPDIR: capabilityRoot,
           POL22_CAPABILITY_MODE_OUTPUT: modeOutput,
+          POL22_REAL_NODE: process.execPath,
+          POL22_CAPABILITY_PROBE: modeProbe,
           NODE_OPTIONS: undefined,
           NODE_PATH: undefined
         }
