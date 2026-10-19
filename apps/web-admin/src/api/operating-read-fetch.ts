@@ -7,11 +7,16 @@ export function createOperatingReadFetch(fetchApi: ApiFetch, getSession: () => u
   let queueSession: unknown;
   return (path, init = {}) => {
     const pathname = path.split("?")[0];
-    const projectionRead = (init.method ?? "GET").toUpperCase() === "GET" && (
+    const method = (init.method ?? "GET").toUpperCase();
+    const usesProjectionBudget = (method === "GET" && (
       pathname.startsWith("/operating-projections/") ||
-      /^\/projects\/[^/]+\/(operating-funds-overview|close-profit)$/u.test(pathname)
-    );
-    if (!projectionRead) return fetchApi(path, init);
+      pathname === "/funds-workbench" ||
+      /^\/projects\/[^/]+\/(operating-funds-overview|upstream-fund-facts|close-profit)$/u.test(pathname)
+    )) || (method === "POST" && (
+      pathname === "/operating-projections/export" ||
+      /^\/projects\/[^/]+\/close-profit\//u.test(pathname)
+    ));
+    if (!usesProjectionBudget) return fetchApi(path, init);
 
     const session = getSession();
     if (session !== queueSession) {
@@ -23,9 +28,9 @@ export function createOperatingReadFetch(fetchApi: ApiFetch, getSession: () => u
       if (getSession() !== session) throw new Error("登录身份已变化，请刷新页面后重试");
       return fetchApi(path, init);
     };
-    // These endpoints share the backend's per-actor projection limit. Keep one
-    // read in flight, leaving capacity for explicit business commands. No cache
-    // or retry: each caller still receives its own authorized, fresh response.
+    // Reads, exports and close-profit commands use the same backend projection
+    // budget. Keep one in flight, including transaction-internal reads. No cache
+    // or retry: callers retain their own body, idempotency key and fresh response.
     const result = tail ? tail.then(run) : run();
     tail = result.then(() => undefined, () => undefined);
     const signal = init.signal;
