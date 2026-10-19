@@ -2,7 +2,7 @@
 import { GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -22,6 +22,7 @@ import {
   reverseExpenseClaimLoanRepayment,
   reviewExpenseClaim,
   submitExpenseClaim,
+  deleteExpenseClaimDraft,
   uploadExpenseClaimAppendAttachmentFile,
   uploadExpenseClaimDraftAttachmentFile,
   uploadExpenseClaimLoanDisbursementVoucherFile,
@@ -39,6 +40,7 @@ import { centsTextToYuanText } from "../../lib/money";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 
 const route = useRoute();
+const router = useRouter();
 const mobileQuery = typeof window !== "undefined" && typeof window.matchMedia === "function"
   ? window.matchMedia("(max-width: 767px)") : null;
 const isMobile = ref(mobileQuery?.matches ?? false);
@@ -291,6 +293,25 @@ async function uploadExpenseClaimLoanRepaymentVoucherWithCapability(claimId: str
   if (!operationAllowed) throw new Error("当前借款申请不能上传还款凭证");
   return uploadExpenseClaimLoanRepaymentVoucherFile(claimId, file, file.name);
 }
+async function deleteExpenseClaimDraftWithCapability(claimId: string, updatedAt: string) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("当前草稿已变化，请刷新后核对");
+  const operationAllowed = capability.availableActions.includes("delete_expense_claim_draft");
+  if (!operationAllowed) throw new Error("当前草稿不能删除，请刷新后核对");
+  return deleteExpenseClaimDraft(claimId, updatedAt);
+}
+async function deleteDraft() {
+  if (!detail.value || submitting.value) return;
+  const row = detail.value;
+  submitting.value = true; actionError.value = "";
+  try {
+    await deleteExpenseClaimDraftWithCapability(row.id, row.updatedAt);
+    await router.replace("/费用与报销工作台");
+  } catch (cause) { actionError.value = formatUnknownApiError(cause, "删除草稿失败，请刷新后重试"); }
+  finally { submitting.value = false; }
+}
+
 async function submit() {
   if (!detail.value || submitting.value) return;
   submitting.value = true;
@@ -513,6 +534,21 @@ onMounted(() => void loadDetail());
           :requested-amount="amount(detail.requestedAmountCents)"
         >
           <template #actions>
+            <t-popconfirm
+              v-if="detail.canDeleteDraft"
+              content="彻底删除此未提交草稿及其明细、附件关联？删除后无法恢复。"
+              confirm-btn="确认删除"
+              cancel-btn="保留草稿"
+              @confirm="deleteDraft"
+            >
+              <t-button
+                theme="danger"
+                variant="outline"
+                :disabled="submitting"
+              >
+                删除草稿
+              </t-button>
+            </t-popconfirm>
             <t-popconfirm
               v-if="detail.status === 'draft'"
               content="提交后将按当前有效岗位冻结审批候选，草稿不能再按原方式修改。"

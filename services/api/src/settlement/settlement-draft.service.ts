@@ -597,6 +597,14 @@ export class SettlementDraftService {
           );
         }
 
+        if (expectedAction === "delete_pristine_draft") {
+          const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+            SELECT public.jg_delete_unsubmitted_settlement(${draftId}, ${actorUserId}, ${input.expectedRevision}::integer) AS deleted
+          `);
+          if (!result?.deleted) throw new ConflictException("草稿已有提交或正式业务事实，不能删除，请刷新后核对");
+          return { draftId, status: "deleted", action: expectedAction, lifecycleKind: "pristine_draft", releasedFinalSettlementOccupancy: draft.isFinal, idempotent: false };
+        }
+
         const now = new Date();
         const updated = await tx.settlementDraft.updateMany({
           where: {

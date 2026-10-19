@@ -8,6 +8,7 @@ export interface ProcurementListItem {
 export interface ProcurementDetail extends ProcurementListItem {
   projectId: string; companyEntityId: string; companyName: string; category: GeneralProcurementCategory; revision: number;
   currentNodeName: string | null; requiresSelfReviewConfirmation: boolean;
+  canDeleteDraft?: boolean;
   canCancelPayment: boolean; canEdit: boolean; canSubmit: boolean; canReview: boolean; canWithdraw: boolean; canArchive: boolean;
   archive: { fileId: string; fileName: string; note: string; archivedAt: string } | null;
   approvals: Array<{ id: string; status: string; nodes: Array<{ name: string; approved: boolean }>; actions: Array<{ action: string; actorName: string; comment: string | null; createdAt: string }> }>;
@@ -44,7 +45,7 @@ export async function createProcurement(body: ProcurementDraft & { requestKey: s
   if (!capability.canCreate) throw new Error("当前账号没有可申请的项目或费用承担公司，请联系综合部");
   return post<{ id: string }>(root, body);
 }
-async function mutate<T extends { revision: number }>(id: string, action: "canEdit" | "canSubmit" | "canReview" | "canWithdraw" | "canArchive", endpoint: string, body: T) {
+async function mutate<T extends { revision: number }>(id: string, action: "canDeleteDraft" | "canEdit" | "canSubmit" | "canReview" | "canWithdraw" | "canArchive", endpoint: string, body: T) {
   const capability = await fetchProcurementDetail(id);
   if (capability.id !== id || capability.revision !== body.revision || !capability[action]) throw new Error("申请状态或办理权限已变化，请刷新后重试");
   return post<{ id: string }>(`${detailPath(id)}/${endpoint}`, body);
@@ -66,3 +67,5 @@ export async function cancelProcurementPayment(id: string, claimId: string, reas
   if (!capability.payments.some((payment) => payment.id === claimId && payment.canCancel)) throw new Error("当前付款草稿不可撤销");
   return post(`${detailPath(id)}/payments/${encodeURIComponent(claimId)}/cancellation`, { reason });
 }
+
+export const deleteProcurementDraft = (id: string, revision: number) => mutate(id, "canDeleteDraft", "draft-deletion", { revision });

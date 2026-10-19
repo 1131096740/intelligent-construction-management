@@ -149,6 +149,11 @@ describe("settlement draft lifecycle database concurrency", () => {
           2
         );
         await seedAbandonmentEvidence(clients[0]!, fixture);
+        // Existing approval history keeps the retain-and-abandon path; files alone no longer do.
+        await clients[0]!.approvalInstance.create({ data: {
+          flowType: "settlement.approve", businessType: "settlement_draft", businessId: fixture.abandonDraftId,
+          status: "returned_to_applicant", currentNodeIndex: 0, frozenNodes: [], applicantUserId: fixture.ownerUserId
+        } });
 
         const abandonPause = deferred();
         releaseGates.push(abandonPause);

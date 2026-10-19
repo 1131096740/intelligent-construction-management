@@ -155,7 +155,7 @@ function transactionDelegate() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     approvalActionLog: { create: jest.fn() },
-    auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }), findMany: jest.fn().mockResolvedValue([]) }
   };
 }
 
@@ -944,8 +944,8 @@ describe("Spot procurement payment DTOs", () => {
 });
 
 describe("SpotProcurementPaymentService", () => {
-  it("abandons an unsubmitted handler draft, releases only the residual reservation, and retains files", async () => {
-    const { service, tx, balance, audit } = harness();
+  it("deletes an unsubmitted handler draft, releases only the residual reservation, and retains files", async () => {
+    const { service, tx, balance } = harness();
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([draftPayment])
@@ -955,7 +955,8 @@ describe("SpotProcurementPaymentService", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ deleted: true }]);
     role(tx, "material_staff");
     tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 1 });
 
@@ -966,11 +967,8 @@ describe("SpotProcurementPaymentService", () => {
       })
     ).resolves.toMatchObject({
       id: "payment-1",
-      status: "invalidated",
-      invalidatedAt: expect.any(String),
-      invalidatedByUserId: "material-1",
-      invalidatedReason: "采购条件变化",
-      updatedAt: expect.any(String)
+      status: "deleted",
+      deleted: true
     });
 
     expect(balance.releaseForShortage).toHaveBeenCalledWith(
@@ -981,23 +979,8 @@ describe("SpotProcurementPaymentService", () => {
         releaseAmountCents: 60n
       })
     );
-    expect(tx.spotProcurementPayment.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        id: "payment-1",
-        status: "draft",
-        submittedAt: null,
-        updatedAt: draftPayment.updatedAt
-      }),
-      data: expect.objectContaining({
-        status: "invalidated",
-        invalidatedByUserId: "material-1",
-        invalidatedReason: "采购条件变化"
-      })
-    });
-    expect(audit.record).toHaveBeenCalledWith(
-      tx,
-      expect.objectContaining({ action: "spot_procurement.payment.draft.abandon" })
-    );
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls.some(([query]) => query.strings.join("").includes("jg_delete_unsubmitted_spot_payment"))).toBe(true);
     expect((tx as Record<string, unknown>).fileObject).toBeDefined();
   });
 
@@ -1189,6 +1172,32 @@ describe("SpotProcurementPaymentService", () => {
     };
     expect(paymentLockSql.strings?.join(" ")).toContain('ORDER BY "id"');
   });
+  it.each([
+    { name: "中间草稿", liveCodes: ["LXCG-001-V1-P002"], deletedCodes: ["LXCG-001-V1-P001"], expected: "LXCG-001-V1-P003" },
+    { name: "末尾草稿", liveCodes: ["LXCG-001-V1-P001"], deletedCodes: ["LXCG-001-V1-P002"], expected: "LXCG-001-V1-P003" },
+    { name: "全部草稿", liveCodes: [], deletedCodes: ["LXCG-001-V1-P003"], expected: "LXCG-001-V1-P004" },
+    { name: "超过四位序号", liveCodes: [], deletedCodes: ["LXCG-001-V1-P10000"], expected: "LXCG-001-V1-P10001" },
+    { name: "其他版本保留独立编号", liveCodes: ["LXCG-001-V1-P002"], deletedCodes: ["LXCG-001-V2-P10000"], expected: "LXCG-001-V1-P003" }
+  ])("删除$name后新建付款不冲突或复用审计编号", async ({ liveCodes, deletedCodes, expected }) => {
+    const { service, tx } = harness();
+    tx.$queryRaw.mockResolvedValueOnce([version]).mockResolvedValueOnce(liveCodes.map((code, index) => ({ ...draftPayment, id: `live-${index}`, code })));
+    role(tx, "material_staff");
+    tx.auditLog.findMany.mockResolvedValue(deletedCodes.map(code => ({ metadata: { code, procurementId: version.procurementId } })));
+    tx.spotProcurementPayment.create.mockImplementation(async ({ data }) => ({ ...draftPayment, ...data }));
+    await service.createNextDraft(version.procurementId, "material-1");
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({ data: expect.objectContaining({ code: expected }) });
+  });
+
+  it("删除审计缺失编号时拒绝分配，避免复用不可追溯的付款编号", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw.mockResolvedValueOnce([version]).mockResolvedValueOnce([]);
+    role(tx, "material_staff");
+    tx.auditLog.findMany.mockResolvedValue([{ metadata: { procurementId: version.procurementId } }]);
+    tx.spotProcurementPayment.create.mockImplementation(async ({ data }) => ({ ...draftPayment, ...data }));
+    await expect(service.createNextDraft(version.procurementId, "material-1")).rejects.toThrow("付款编号审计不完整");
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+  });
+
   it("creates a smaller subsequent draft for the frozen handler without occupying capacity", async () => {
     const { service, prisma, tx, balance } = harness();
     tx.$queryRaw

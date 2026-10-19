@@ -554,7 +554,7 @@ describe("SettlementController authorization wiring", () => {
         "settlement-1",
         file,
         { id: "contract-1" } as never,
-        "upload-1"
+        { idempotencyKey: "upload-1" }
       )
     ).resolves.toEqual({ id: "file-1" });
     await expect(
@@ -562,7 +562,7 @@ describe("SettlementController authorization wiring", () => {
         "settlement-1",
         file,
         { id: "finance-1" } as never,
-        "upload-2"
+        { idempotencyKey: "upload-2" }
       )
     ).resolves.toEqual({ id: "file-1" });
 
@@ -808,7 +808,7 @@ describe("SettlementController authorization wiring", () => {
       })
     );
     await expect(
-      controller.uploadPrivateFile(file, { id: "contract-1" } as never, "draft-upload-1")
+      controller.uploadPrivateFile(file, { id: "contract-1" } as never, { idempotencyKey: "draft-upload-1" })
     ).resolves.toEqual({ id: "file-2" });
     expect(files.uploadPrivateFile).toHaveBeenCalledWith(
       expect.objectContaining({

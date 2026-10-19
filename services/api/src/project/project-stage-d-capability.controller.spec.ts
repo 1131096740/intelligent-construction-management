@@ -94,7 +94,7 @@ describe("project stage D capability controller wiring", () => {
           buffer: Buffer.from("evidence")
         },
         { id: "employee-1" } as never,
-        "contract"
+        { businessType: "contract" }
       )
     ).rejects.toBe(denied);
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();

@@ -13,6 +13,7 @@ export class GeneralProcurementController {
   @Get() list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListGeneralProcurementDto) { return this.procurements.list(user.id, query); }
   @Get("create-options") options(@CurrentUser() user: AuthenticatedUser) { return this.procurements.options(user.id); }
   @Get(":id") detail(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) { return this.procurements.detail(id, user.id); }
+  @Post(":id/draft-deletion") deleteDraft(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: GeneralProcurementRevisionDto) { return this.procurements.deleteUnsubmittedDraft(id, user.id, body.revision); }
   @Post(":id/submission") submit(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: GeneralProcurementRevisionDto) { return this.procurements.submit(id, user.id, body.revision); }
   @Post(":id/review") review(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ReviewGeneralProcurementDto) { return this.procurements.review(id, user.id, body); }
 

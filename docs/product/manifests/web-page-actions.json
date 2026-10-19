@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 366,
+    "registeredActionCount": 370,
     "pageActionCount": 56,
-    "backgroundActionCount": 310,
+    "backgroundActionCount": 314,
     "reachableVueFileCount": 178,
     "routeRootCount": 67,
     "totalVueFileCount": 192,
     "parsedVueFileCount": 192,
-    "reachableProductionModuleCount": 309,
-    "templateEventDirectiveCount": 1096,
+    "reachableProductionModuleCount": 311,
+    "templateEventDirectiveCount": 1099,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 356,
-    "candidateProductionMutationConsumerCount": 356,
-    "acceptedProductionMutationConsumerCount": 356,
-    "productionMutationConsumerPairCount": 356,
+    "coveredProductionMutationConsumerCount": 359,
+    "candidateProductionMutationConsumerCount": 359,
+    "acceptedProductionMutationConsumerCount": 359,
+    "productionMutationConsumerPairCount": 359,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 330,
-    "reachableProductionModuleCount": 309,
+    "totalProductionModuleCount": 332,
+    "reachableProductionModuleCount": 311,
     "totalVueFileCount": 192,
     "parsedVueFileCount": 192
   },
@@ -4846,7 +4846,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2022,
+        "sourceLine": 2059,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4911,7 +4911,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1981,
+        "sourceLine": 2017,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4976,7 +4976,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1942,
+        "sourceLine": 1978,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5041,7 +5041,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2073,
+        "sourceLine": 2110,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5106,7 +5106,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2086,
+        "sourceLine": 2123,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5171,7 +5171,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2060,
+        "sourceLine": 2097,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5236,7 +5236,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2125,
+        "sourceLine": 2162,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5301,7 +5301,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2138,
+        "sourceLine": 2175,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5366,7 +5366,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1894,
+        "sourceLine": 1930,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5431,7 +5431,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1918,
+        "sourceLine": 1954,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5496,7 +5496,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2244,
+        "sourceLine": 2281,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5561,7 +5561,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1906,
+        "sourceLine": 1942,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5626,7 +5626,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1967,
+        "sourceLine": 2003,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5691,7 +5691,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1930,
+        "sourceLine": 1966,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5756,7 +5756,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2047,
+        "sourceLine": 2084,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5821,7 +5821,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2223,
+        "sourceLine": 2260,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5886,7 +5886,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2194,
+        "sourceLine": 2231,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5951,7 +5951,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 1954,
+        "sourceLine": 1990,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6016,7 +6016,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2099,
+        "sourceLine": 2136,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6081,7 +6081,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2112,
+        "sourceLine": 2149,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6146,7 +6146,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2208,
+        "sourceLine": 2245,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6211,7 +6211,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2181,
+        "sourceLine": 2218,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6276,7 +6276,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2035,
+        "sourceLine": 2072,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6341,7 +6341,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2009,
+        "sourceLine": 2046,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6406,7 +6406,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1996,
+        "sourceLine": 2032,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6473,7 +6473,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2151,
+        "sourceLine": 2188,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6538,7 +6538,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2166,
+        "sourceLine": 2203,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8251,7 +8251,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 138,
+        "sourceLine": 140,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8316,7 +8316,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 262,
+        "sourceLine": 264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8381,7 +8381,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 127,
+        "sourceLine": 129,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8446,7 +8446,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 254,
+        "sourceLine": 256,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8511,7 +8511,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 149,
+        "sourceLine": 151,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8627,6 +8627,107 @@
       ]
     },
     {
+      "id": "expense-claim.delete-draft",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "ownerRoutePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteExpenseClaimDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 296,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "delete_expense_claim_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "deleteExpenseClaimDraft",
+          "method": "GET",
+          "path": "/expense-claims/:param/capability",
+          "normalizedKey": "GET /expense-claims/:param/capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/expense-claims/:claimId/capability",
+            "normalizedKey": "GET /expense-claims/:param/capability",
+            "controller": "ExpenseClaimController",
+            "handler": "actionCapability",
+            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteExpenseClaimDraftWithCapability",
+              "deleteExpenseClaimDraft"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "deleteExpenseClaimDraft",
+          "method": "POST",
+          "path": "/expense-claims/:param/draft-deletion",
+          "normalizedKey": "POST /expense-claims/:param/draft-deletion",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/expense-claims/:claimId/draft-deletion",
+            "normalizedKey": "POST /expense-claims/:param/draft-deletion",
+            "controller": "ExpenseClaimController",
+            "handler": "deleteDraft",
+            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteExpenseClaimDraftWithCapability",
+              "deleteExpenseClaimDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "expense-claim.final-payment-pdf.generate",
       "usage": "background",
       "routePaths": [
@@ -8641,7 +8742,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 186,
+        "sourceLine": 188,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8706,7 +8807,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 278,
+        "sourceLine": 280,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8771,7 +8872,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 194,
+        "sourceLine": 196,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8836,7 +8937,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 205,
+        "sourceLine": 207,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8901,7 +9002,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 286,
+        "sourceLine": 288,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8966,7 +9067,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 224,
+        "sourceLine": 226,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9031,7 +9132,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 213,
+        "sourceLine": 215,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9096,7 +9197,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 239,
+        "sourceLine": 241,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9161,7 +9262,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 164,
+        "sourceLine": 166,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9230,7 +9331,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 270,
+        "sourceLine": 272,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9295,7 +9396,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 175,
+        "sourceLine": 177,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9360,7 +9461,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 116,
+        "sourceLine": 118,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9425,7 +9526,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 108,
+        "sourceLine": 110,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10092,7 +10193,7 @@
         "event": "call",
         "handler": "archiveProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 89,
+        "sourceLine": 108,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10192,7 +10293,7 @@
         "event": "call",
         "handler": "cancelProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 101,
+        "sourceLine": 120,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10292,7 +10393,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 107,
+        "sourceLine": 126,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10444,6 +10545,106 @@
       ]
     },
     {
+      "id": "general-procurement.delete-draft",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteProcurementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 38,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDeleteDraft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteProcurementDraftWithCapability",
+              "deleteProcurementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "deleteProcurementDraft",
+          "method": "POST",
+          "path": "/general-procurements/:param/draft-deletion",
+          "normalizedKey": "POST /general-procurements/:param/draft-deletion",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/draft-deletion",
+            "normalizedKey": "POST /general-procurements/:param/draft-deletion",
+            "controller": "GeneralProcurementController",
+            "handler": "deleteDraft",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteProcurementDraftWithCapability",
+              "deleteProcurementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "general-procurement.downloadPrivateFileByTicket",
       "usage": "background",
       "routePaths": [
@@ -10458,7 +10659,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 113,
+        "sourceLine": 132,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10575,7 +10776,7 @@
         "event": "call",
         "handler": "reviewProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 77,
+        "sourceLine": 96,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10675,7 +10876,7 @@
         "event": "call",
         "handler": "submitProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 71,
+        "sourceLine": 90,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10877,7 +11078,7 @@
         "event": "call",
         "handler": "uploadProcurementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 95,
+        "sourceLine": 114,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10977,7 +11178,7 @@
         "event": "call",
         "handler": "withdrawProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 83,
+        "sourceLine": 102,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11995,7 +12196,7 @@
         "event": "call",
         "handler": "activateOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 826,
+        "sourceLine": 925,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12060,7 +12261,7 @@
         "event": "call",
         "handler": "addOperatingTakeoverAttachmentGroupWithCapability",
         "kind": "background_call",
-        "sourceLine": 862,
+        "sourceLine": 961,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12125,7 +12326,7 @@
         "event": "call",
         "handler": "confirmOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 813,
+        "sourceLine": 912,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12190,7 +12391,7 @@
         "event": "call",
         "handler": "createOperatingTakeoverBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 801,
+        "sourceLine": 900,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12241,6 +12442,106 @@
       ]
     },
     {
+      "id": "operating-takeover.delete-draft",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteOperatingTakeoverDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 682,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDeleteDraft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "deleteOperatingTakeoverDraft",
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/:param",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/projects/:projectId/operating-takeovers/:batchId",
+            "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+            "controller": "OperatingTakeoverController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteOperatingTakeoverDraftWithCapability",
+              "deleteOperatingTakeoverDraft"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "deleteOperatingTakeoverDraft",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/draft-deletion",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/draft-deletion",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/draft-deletion",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/:param/draft-deletion",
+            "controller": "OperatingTakeoverController",
+            "handler": "deleteDraft",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteOperatingTakeoverDraftWithCapability",
+              "deleteOperatingTakeoverDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "operating-takeover.precheck",
       "usage": "background",
       "routePaths": [
@@ -12255,7 +12556,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 776,
+        "sourceLine": 875,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12320,7 +12621,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverXlsxWithCapability",
         "kind": "background_call",
-        "sourceLine": 788,
+        "sourceLine": 887,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12385,7 +12686,7 @@
         "event": "call",
         "handler": "updateOperatingTakeoverRowWithCapability",
         "kind": "background_call",
-        "sourceLine": 848,
+        "sourceLine": 947,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12450,7 +12751,7 @@
         "event": "call",
         "handler": "uploadOperatingTakeoverFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 839,
+        "sourceLine": 938,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20745,7 +21046,7 @@
         "event": "call",
         "handler": "attachSettlementLineFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 110,
+        "sourceLine": 150,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20792,42 +21093,6 @@
             ]
           },
           "ticketFollowups": []
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-          "wrapper": "uploadSettlementDraftPrivateFile",
-          "method": "POST",
-          "path": "/projects/:param/settlement-drafts/files",
-          "normalizedKey": "POST /projects/:param/settlement-drafts/files",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/projects/:projectId/settlement-drafts/files",
-            "normalizedKey": "POST /projects/:param/settlement-drafts/files",
-            "controller": "SettlementDraftController",
-            "handler": "uploadPrivateFile",
-            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "settlement.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "attachSettlementLineFileWithCapability",
-              "uploadSettlementDraftPrivateFile"
-            ]
-          },
-          "ticketFollowups": []
         }
       ]
     },
@@ -20846,7 +21111,7 @@
         "event": "call",
         "handler": "invalidateSettlementLineAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 133,
+        "sourceLine": 177,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20890,6 +21155,71 @@
             "localCallChain": [
               "invalidateSettlementLineAttachmentWithCapability",
               "invalidateSettlementDraftLineAttachment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.upload",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSettlementLineFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 141,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attach_line_file",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "uploadSettlementDraftPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/files",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/files",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+            "controller": "SettlementDraftController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSettlementLineFileWithCapability",
+              "uploadSettlementDraftPrivateFile"
             ]
           },
           "ticketFollowups": []
@@ -21446,7 +21776,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementPaymentDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1361,
+        "sourceLine": 1364,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21511,7 +21841,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1277,
+        "sourceLine": 1280,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21576,7 +21906,7 @@
         "event": "call",
         "handler": "updateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1249,
+        "sourceLine": 1252,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21641,7 +21971,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementExecutionVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 1380,
+        "sourceLine": 1383,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21706,7 +22036,7 @@
         "event": "call",
         "handler": "recordSpotProcurementPaymentExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1304,
+        "sourceLine": 1307,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21771,7 +22101,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentApprove",
         "kind": "event",
-        "sourceLine": 2293,
+        "sourceLine": 2296,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -21837,7 +22167,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentReturn",
         "kind": "event",
-        "sourceLine": 2322,
+        "sourceLine": 2325,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -21903,7 +22233,7 @@
         "event": "call",
         "handler": "updateSpotProcurementPaymentPayerWithCapability",
         "kind": "background_call",
-        "sourceLine": 1263,
+        "sourceLine": 1266,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21968,7 +22298,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1345,
+        "sourceLine": 1348,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22033,7 +22363,7 @@
         "event": "confirm",
         "handler": "submitRefund",
         "kind": "event",
-        "sourceLine": 1860,
+        "sourceLine": 1863,
         "sourceColumn": 59
       },
       "semantic": "business_write",
@@ -22206,7 +22536,7 @@
         "event": "approve",
         "handler": "confirmA5PaymentApprove",
         "kind": "event",
-        "sourceLine": 2263,
+        "sourceLine": 2266,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -22272,7 +22602,7 @@
         "event": "return-to-applicant",
         "handler": "confirmA5PaymentReturn",
         "kind": "event",
-        "sourceLine": 2264,
+        "sourceLine": 2267,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -22338,7 +22668,7 @@
         "event": "call",
         "handler": "submitSpotProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1318,
+        "sourceLine": 1321,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22403,7 +22733,7 @@
         "event": "call",
         "handler": "voidSpotProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1331,
+        "sourceLine": 1334,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22468,7 +22798,7 @@
         "event": "call",
         "handler": "withdrawSpotProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1291,
+        "sourceLine": 1294,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23443,7 +23773,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2148,
+        "sourceLine": 2149,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -23508,7 +23838,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2135,
+        "sourceLine": 2136,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -23573,7 +23903,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1325,
+        "sourceLine": 1326,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23768,7 +24098,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1343,
+        "sourceLine": 1344,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23833,7 +24163,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 1275,
+        "sourceLine": 1276,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23899,7 +24229,7 @@
         "event": "call",
         "handler": "deletePristineSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1256,
+        "sourceLine": 1257,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23965,7 +24295,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1215,
+        "sourceLine": 1216,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24232,7 +24562,7 @@
         "event": "call",
         "handler": "recreateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1294,
+        "sourceLine": 1295,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24362,7 +24692,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2065,
+        "sourceLine": 2066,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -24428,7 +24758,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2079,
+        "sourceLine": 2080,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -24494,7 +24824,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2093,
+        "sourceLine": 2094,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -24560,7 +24890,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1812,
+        "sourceLine": 1813,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -24625,7 +24955,7 @@
         "event": "call",
         "handler": "createSpotProcurementVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1231,
+        "sourceLine": 1232,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24690,7 +25020,7 @@
         "event": "call",
         "handler": "voidSpotProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1309,
+        "sourceLine": 1310,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24755,7 +25085,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2107,
+        "sourceLine": 2108,
         "sourceColumn": 6
       },
       "semantic": "business_write",

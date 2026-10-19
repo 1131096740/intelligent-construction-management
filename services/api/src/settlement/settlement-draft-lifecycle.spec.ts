@@ -18,7 +18,7 @@ describe("settlement draft lifecycle", () => {
     abandonReason: null
   };
 
-  it("keeps historical invalidated evidence monotonic", () => {
+  it("allows deleting unsubmitted drafts with uploaded evidence", () => {
     expect(classifySettlementDraftLifecycle(draft, {
       historicalEvidenceCount: 1,
       draftApprovalInstanceCount: 0,
@@ -27,9 +27,9 @@ describe("settlement draft lifecycle", () => {
       paymentRequestCount: 0,
       formalApprovalInstanceCount: 0
     })).toEqual({
-      lifecycleKind: "approval_draft",
-      expectedAction: "abandon_application",
-      blockers: ["存在冻结或签章文件"]
+      lifecycleKind: "pristine_draft",
+      expectedAction: "delete_pristine_draft",
+      blockers: []
     });
   });
 

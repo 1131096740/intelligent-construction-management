@@ -30,6 +30,7 @@ export interface ExpenseClaimListItemReadModel {
 }
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  canDeleteDraft?: boolean;
   generalProcurement?: { id: string; code: string } | null;
   entrySnapshots: ExpenseClaimEntrySnapshotReadModel[];
   applicantPhoneSnapshot: string | null;
@@ -445,4 +446,14 @@ export async function reverseExpenseClaimLoanRepayment(claimId: string, repaymen
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/reversal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   await ensureOk(response);
   return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
+}
+
+export async function deleteExpenseClaimDraft(claimId: string, expectedUpdatedAt: string) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  if (capability.claimId !== claimId || !capability.availableActions.includes("delete_expense_claim_draft")) throw new Error("当前费用草稿不能删除，请刷新后核对");
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/draft-deletion`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedUpdatedAt })
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; deleted: boolean }>;
 }

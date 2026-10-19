@@ -427,6 +427,7 @@ export class ExpenseClaimService {
       : [[], []];
     return {
       ...claim,
+      canDeleteDraft: claim.status === "draft" && !claim.submittedAt && claim.handledByUserId === actorUserId,
       generalProcurement: claim.generalProcurementId ? await this.prisma.generalProcurement.findUnique({ where: { id: claim.generalProcurementId }, select: { id: true, code: true } }) : null,
       project,
       entrySnapshots: await this.prisma.expenseClaimEntrySnapshot.findMany({ where: { expenseClaimId: claim.id }, orderBy: [{ frozenAt: "asc" }, { id: "asc" }] }),
@@ -484,6 +485,7 @@ export class ExpenseClaimService {
     const detail = await this.getMine(claimId, actorUserId);
     const availableActions: string[] = [];
     const isHandler = detail.handledByUserId === actorUserId;
+    if (detail.canDeleteDraft) availableActions.push("delete_expense_claim_draft");
 
     if (detail.status === "draft" && isHandler) {
       availableActions.push(
@@ -772,6 +774,28 @@ export class ExpenseClaimService {
         metadata: { attachmentId: attachment.id, fileId: attachment.fileId, reason: optionalText(input.reason) }
       });
       return removed;
+    });
+  }
+
+  async deleteUnsubmittedDraft(claimId: string, actorUserId: string, expectedUpdatedAt: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const source = await tx.expenseClaim.findUnique({ where: { id: claimId }, select: { generalProcurementId: true } });
+      if (source?.generalProcurementId) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "GeneralProcurement" WHERE "id" = ${source.generalProcurementId} FOR UPDATE`);
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+      const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
+      if (!claim) throw new NotFoundException("费用草稿不存在或已删除");
+      if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以删除费用草稿");
+      const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+      if (!actor?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
+      if (claim.applicantUserId !== actorUserId || claim.generalProcurementId) {
+        const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
+        if (!roles.includes(COMPREHENSIVE_ROLE)) throw new ForbiddenException("只有当前综合部主管可以办理代办草稿");
+      }
+      const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
+        SELECT public.jg_delete_unsubmitted_expense_claim(${claimId}, ${actorUserId}, ${new Date(expectedUpdatedAt)}::timestamp) AS deleted
+      `);
+      if (!result?.deleted) throw new ConflictException("只能删除从未提交审批的草稿；内容或状态已变化，请刷新后重试");
+      return { id: claimId, deleted: true };
     });
   }
 

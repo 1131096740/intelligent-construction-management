@@ -40,6 +40,7 @@ export interface OperatingTakeoverRowReadModel {
 }
 
 export interface OperatingTakeoverDetailReadModel extends OperatingTakeoverBatchReadModel {
+  canDeleteDraft?: boolean;
   rows: OperatingTakeoverRowReadModel[];
   confirmations: Array<{ profession: string; revision: number; confirmedAt: string }>;
   activation: { status: string; generatedFactIds: string[]; gapRowIds: string[] } | null;
@@ -155,9 +156,10 @@ export function precheckOperatingTakeoverXlsx(projectId: string, file: File, sce
   return postFormData<OperatingTakeoverPrecheckReadModel>(path(projectId, `/precheck-xlsx${query}`), formData, "历史经营接管 Excel 预检失败");
 }
 
-export function uploadOperatingTakeoverSourceFile(projectId: string, file: File) {
+export function uploadOperatingTakeoverSourceFile(projectId: string, file: File, idempotencyKey?: string) {
   const formData = new FormData();
   formData.append("file", file);
+  if (idempotencyKey) formData.append("idempotencyKey", idempotencyKey);
   return postFormData<OperatingTakeoverSourceFileReadModel>(path(projectId, "/files"), formData, "上传历史经营接管原始文件失败");
 }
 
@@ -186,4 +188,10 @@ export async function downloadOperatingTakeoverTemplate(projectId: string, scene
   const response = await apiFetch(path(projectId, `/workbook-template${query}`));
   if (!response.ok) throw new Error(formatApiErrorMessage("", response.status, "下载历史经营接管模板失败"));
   return response.blob();
+}
+
+export async function deleteOperatingTakeoverDraft(projectId: string, batchId: string, expectedRevision: number) {
+  const current = await fetchOperatingTakeoverDetail(projectId, batchId);
+  if (current.id !== batchId || !current.canDeleteDraft || current.revision !== expectedRevision) throw new Error("当前接管草稿不能删除，请刷新后核对");
+  return postJson<{ id: string; deleted: boolean }>(`/projects/${encodeURIComponent(projectId)}/operating-takeovers/${encodeURIComponent(batchId)}/draft-deletion`, { expectedRevision }, "删除接管草稿失败，请刷新后重试");
 }

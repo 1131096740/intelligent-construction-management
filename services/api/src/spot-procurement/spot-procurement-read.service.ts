@@ -3065,12 +3065,12 @@ export class SpotProcurementReadService {
     return [
       detailAction({
         key: "abandon_payment_draft",
-        label: "放弃付款草稿",
+        label: "删除付款草稿",
         kind: "danger",
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.payment.submit",
         enabled: input.payment.status === "draft" && isHandler,
-        disabledReason: "只有当前采购经办人可放弃尚未提交的付款草稿",
+        disabledReason: "只有当前采购经办人可删除尚未提交的付款草稿",
         requiresComment: true
       }),
       detailAction({

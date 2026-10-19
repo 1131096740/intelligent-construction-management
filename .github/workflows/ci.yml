@@ -167,6 +167,12 @@ jobs:
       - name: Verify capability and usage manifests
         run: pnpm inspect:release-manifests
 
+      - name: Install upload and draft feedback browser runtime
+        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+
+      - name: Verify upload retry and draft deletion feedback
+        run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.upload-draft.config.ts
+
   postgresql16-dynamic-gates:
     name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
     runs-on: ubuntu-latest

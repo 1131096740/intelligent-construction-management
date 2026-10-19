@@ -6784,3 +6784,19 @@ model GeneralProcurement {
   @@index([applicantUserId, updatedAt])
   @@index([archiveFileId])
 }
+
+// Stable immutable identities for reserve/release audit after unsubmitted drafts are deleted.
+model SpotProcurementAuditSource {
+  id String @id
+  code String
+  projectId String
+  createdAt DateTime @default(now())
+}
+
+model SpotPaymentAuditSource {
+  id String @id
+  code String
+  projectId String
+  procurementId String
+  createdAt DateTime @default(now())
+}

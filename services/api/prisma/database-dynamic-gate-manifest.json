@@ -3,7 +3,7 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 176,
+    "expectedDirectoryCount": 177,
     "terminalMigration": "20261019140000_operating_context_noop_update",
     "terminalMigrationChecksum": "4f22018eed019478384ae27af7f768c6dc3fb745ea9d69cc41b2adc382b0d865",
     "postgresMajorVersion": 16,
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 67,
-    "fullyPendingSuites": 56,
+    "pendingFiles": 69,
+    "fullyPendingSuites": 58,
     "partiallyPendingSuites": 11,
-    "pendingTests": 346,
-    "coveredFiles": 67,
-    "coveredTests": 346,
+    "pendingTests": 403,
+    "coveredFiles": 69,
+    "coveredTests": 403,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 56,
+      "pendingTests": 113,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -351,7 +351,7 @@
         },
         {
           "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-          "pendingTests": 15,
+          "pendingTests": 53,
           "suiteStatus": "fully_pending"
         },
         {
@@ -367,6 +367,16 @@
         {
           "path": "services/api/src/settlement/settlement-template-workbench.http.pg.spec.ts",
           "pendingTests": 9,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/draft-hard-deletion.pg.spec.ts",
+          "pendingTests": 17,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/draft-deletion-numbering.pg.spec.ts",
+          "pendingTests": 2,
           "suiteStatus": "fully_pending"
         }
       ],

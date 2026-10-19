@@ -1,3 +1,5 @@
+import { UploadAffiliateEvidenceFileDto } from "./dto/upload-affiliate-evidence-file.dto";
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import {
   BadRequestException,
   Body,
@@ -373,7 +375,7 @@ export class ProjectController {
   uploadAffiliateCompanyContractPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(file, user, idempotencyKey, "线下合同登记文件");
   }
@@ -467,7 +469,7 @@ export class ProjectController {
   uploadUpstreamFundPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(file, user, idempotencyKey, "上游资金依据");
   }
@@ -517,7 +519,7 @@ export class ProjectController {
   uploadAffiliateContractPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业合同依据");
   }
@@ -558,7 +560,7 @@ export class ProjectController {
   uploadAffiliateSettlementPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业结算依据");
   }
@@ -599,7 +601,7 @@ export class ProjectController {
   uploadAffiliatePaymentPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业付款依据");
   }
@@ -648,8 +650,7 @@ export class ProjectController {
     @Param("factId") factId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("businessType") businessType?: string,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { businessType, idempotencyKey }: UploadAffiliateEvidenceFileDto = new UploadAffiliateEvidenceFileDto()
   ) {
     await this.affiliateBusinessService().assertEvidenceUploadAllowed(
       projectId,
@@ -794,7 +795,7 @@ export class ProjectController {
   uploadProjectFinancingQuotaPrivateFile(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     return this.uploadPrivateFile(file, user, idempotencyKey, "项目垫资额度申请依据");
   }

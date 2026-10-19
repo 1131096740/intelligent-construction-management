@@ -11,7 +11,19 @@ const FILE_DOWNLOAD_AUDIT_ACTION_LABELS = {
   "settlement.approval_pdf.download": "结算审批单下载"
 } as const;
 
+const DRAFT_DELETION_ACTION_LABELS: Record<string, string> = {
+  "expense_claim.draft.delete": "删除费用草稿",
+  "general_procurement.draft.delete": "删除综合采购草稿",
+  "settlement.draft.delete": "删除结算草稿",
+  "contract_takeover.draft.delete": "删除历史合同接管草稿",
+  "spot_procurement.draft.delete": "删除零星采购草稿",
+  "spot_procurement.payment.draft.delete": "删除零采付款草稿",
+  "contract.tax_fact_revision.draft.delete": "删除税务修订草稿",
+  "operating_takeover.draft.delete": "删除历史经营接管草稿"
+};
+
 const AUDIT_ACTION_LABELS: Record<string, string> = {
+  ...DRAFT_DELETION_ACTION_LABELS,
   ...FILE_DOWNLOAD_AUDIT_ACTION_LABELS,
   "auth.login": "登录",
   "auth.application.login": "登录本人入职申请",
@@ -36,6 +48,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  expense_claim: "费用申请",
+  general_procurement: "综合采购",
+  spot_procurement: "零星采购",
+  spot_procurement_payment: "零采付款",
+  contract_tax_fact_revision: "税务事实修订",
+  operating_takeover_batch: "历史经营接管批次",
   employee_registration: "员工入职申请",
   user: "人员账号",
   approval_instance: "审批事项",
@@ -99,7 +117,7 @@ export class AuditService {
         action: this.actionLabel(log.action),
         actionTone: this.actionTone(log.action),
         businessType: this.businessTypeLabel(log.businessType),
-        businessTarget: log.businessId ? "相关业务" : "—",
+        businessTarget: this.businessTarget(log),
         ipAddress: log.ipAddress ?? "-",
         resultRisk: this.resultRisk(log.action),
         riskTone: this.riskTone(log.action),
@@ -191,6 +209,14 @@ export class AuditService {
     if (action === "file.download.ticket") return "ticket";
     if (action === "file.download") return "download";
     return "other";
+  }
+
+  private businessTarget(log: { action: string; businessId: string | null; metadata: unknown }) {
+    if (DRAFT_DELETION_ACTION_LABELS[log.action]) {
+      const metadata = jsonObject(log.metadata);
+      return stringFromMetadata(metadata, "code") ?? stringFromMetadata(metadata, "batchNo") ?? "已删除草稿";
+    }
+    return log.businessId ? "相关业务" : "—";
   }
 
   private actionLabel(action: string) {
