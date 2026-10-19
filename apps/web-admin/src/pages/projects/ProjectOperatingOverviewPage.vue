@@ -1900,7 +1900,7 @@ async function loadOverview() {
       closeProfitError.value = nextCloseProfit.error;
       closeProfitLoading.value = false;
       spotProcurementEnabled.value = spotCapability.enabled;
-      if (!nextOverview && nextFinancingQuota.workbench) {
+      if (!nextOverview && nextFinancingQuota.workbench && activeTab.value === "overview") {
         activeTab.value = "operations";
       }
       if (
