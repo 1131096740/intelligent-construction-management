@@ -44,6 +44,18 @@ describe("operating ledger PostgreSQL concurrency", () => {
         ).rejects.toThrow("只有当前项目财务人员可以登记经营事实");
 
         const first = await service.appendFromSource(baseInput(fixture, "formal"), fixture.financeUserId);
+        // The second row collides only at the guarded DB write, after the first
+        // row has exercised close-stage invalidation. The entire envelope must roll back.
+        const rollbackInput = baseInput(fixture, "batch_rollback");
+        rollbackInput.impacts[1]!.idempotencyKey = baseInput(fixture, "formal").impacts[1]!.idempotencyKey;
+        await expect(service.appendFromSource(rollbackInput, fixture.financeUserId)).rejects.toThrow();
+        const [rolledBack] = await clients[0]!.$queryRaw<Array<{ facts: bigint; impacts: bigint }>>(Prisma.sql`
+          SELECT
+            (SELECT COUNT(*) FROM "OperatingFact" WHERE "sourceBusinessId" = ${rollbackInput.sourceBusinessId}) AS facts,
+            (SELECT COUNT(*) FROM "OperatingImpactEntry" WHERE "sourceBusinessId" = ${rollbackInput.sourceBusinessId}) AS impacts
+        `);
+        expect(rolledBack).toEqual({ facts: 0n, impacts: 0n });
+
         const replay = await service.appendFromSource(
           { ...baseInput(fixture, "formal"), idempotencyKey: `${fixture.prefix}_replay` },
           fixture.financeUserId

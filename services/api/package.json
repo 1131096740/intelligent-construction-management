@@ -68,7 +68,13 @@
     "typecheck": "tsc --noEmit",
     "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "lint": "eslint src --ext .ts",
-    "verify:settlement-template-workbench:local": "node prisma/run-settlement-template-workbench-local.cjs"
+    "verify:settlement-template-workbench:local": "node prisma/run-settlement-template-workbench-local.cjs",
+    "verify:pol108-operating-projection:core:local": "node prisma/run-pol108-operating-projection-local.cjs --shard core",
+    "preverify:pol108-operating-projection:core:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
+    "verify:pol108-operating-projection:facts:local": "node prisma/run-pol108-operating-projection-local.cjs --shard facts",
+    "preverify:pol108-operating-projection:facts:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
+    "verify:pol108-operating-projection:impacts:local": "node prisma/run-pol108-operating-projection-local.cjs --shard impacts",
+    "preverify:pol108-operating-projection:impacts:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate"
   },
   "dependencies": {
     "@jiangkong/shared-domain": "workspace:*",

@@ -2,7 +2,7 @@
 "use strict";
 
 const { randomUUID } = require("node:crypto");
-const { mkdtemp, rm } = require("node:fs/promises");
+const { mkdtemp, rm, readFile } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
@@ -11,6 +11,8 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+
+const { runSelectedShards, assertTestResults } = require("./pol108-shards.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
@@ -102,7 +104,8 @@ async function waitForPostgres(containerName) {
   fail("临时 PostgreSQL 16 未在 30 秒内就绪");
 }
 
-async function main() {
+async function runShard(shard) {
+  const shards = [shard];
   assertSafeEnvironment(process.env);
   const candidateSha = await assertExactCleanCandidate(process.env);
   const dockerEvidence = await assertLocalDocker();
@@ -157,12 +160,13 @@ async function main() {
       "run", "--detach", "--rm", "--pull=never", "--name", containerName,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
       "--env", `POSTGRES_DB=${DATABASE_NAME}`,
-      "--publish", `127.0.0.1:${port}:5432`, IMAGE
+      "--publish", `127.0.0.1:${port}:5432`, IMAGE, "-c", "track_functions=all"
     ], {
       env: { ...process.env, POSTGRES_PASSWORD: password },
       forwardOutput: true,
       timeoutMs: 60_000
     });
+    const setupStarted = Date.now();
     await waitForPostgres(containerName);
     const schemaPath = path.join(root, "services/api/prisma/schema.prisma");
     for (let pass = 0; pass < 2; pass += 1) {
@@ -178,10 +182,13 @@ async function main() {
       forwardOutput: true,
       timeoutMs: 15 * 60 * 1000
     });
+    console.log(`[pol108-timing] ${JSON.stringify({ phase: "database.migrate-and-seed", durationMs: Date.now() - setupStarted })}`);
+    const resultPath = path.join(temporaryRoot, "jest-results.json");
     await command(process.execPath, [
       jestCli,
       "--runInBand",
-      "src/database/operating-projection-postgresql.spec.ts"
+      "--runTestsByPath", ...shards.map(shard => shard.file),
+      "--json", "--outputFile", resultPath
     ], {
       cwd: path.join(root, "services/api"),
       env: runtimeEnvironment,
@@ -190,8 +197,25 @@ async function main() {
       // This runner-only allowance does not alter API transaction/read timeouts.
       timeoutMs: 90 * 60 * 1000
     });
+    const actualTests = assertTestResults(JSON.parse(await readFile(resultPath, "utf8")), shards);
+    const functionStats = await command(docker, [
+      "exec", containerName, "psql", "-U", "jiangkong", "-d", DATABASE_NAME, "-At", "-c",
+      `SELECT COALESCE(json_agg(s), '[]'::json) FROM (
+        SELECT funcname, calls, total_time, self_time FROM pg_stat_user_functions
+        WHERE funcname IN ('crypt', 'authorizeOperatingLedgerWrite',
+          'appendOperatingFactThroughService', 'appendOperatingImpactThroughService')
+        ORDER BY funcname
+      ) s`
+    ]);
+    console.log(`[pol108-timing] ${JSON.stringify({
+      phase: "database.functions", functions: JSON.parse(functionStats.stdout.trim())
+    })}`);
+    // Evidence binds to an unchanged clean candidate after execution too.
+    await assertExactCleanCandidate(process.env);
     console.log(JSON.stringify({
       result: "PASS",
+      actualTests,
+      testFiles: shards.map(shard => shard.file),
       candidateSha,
       postgresImage: IMAGE,
       postgresImageId: dockerEvidence.imageId,
@@ -199,6 +223,7 @@ async function main() {
       database: DATABASE_NAME,
       productionTouched: false
     }));
+    return actualTests;
   } finally {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
@@ -206,7 +231,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+runSelectedShards(process.argv.slice(2), runShard).catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

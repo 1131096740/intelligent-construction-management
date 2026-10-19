@@ -229,11 +229,11 @@ test("manifest derives all 346 pending tests as executable local coverage", () =
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 65,
-    fullyPendingSuites: 54,
+    pendingFiles: 67,
+    fullyPendingSuites: 56,
     partiallyPendingSuites: 11,
     pendingTests: 346,
-    coveredFiles: 65,
+    coveredFiles: 67,
     coveredTests: 346,
     remainingFiles: 0,
     remainingTests: 0,
@@ -243,29 +243,18 @@ test("manifest derives all 346 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all 14 POL-108 PG16 tests", () => {
-  const manifest = loadManifest();
-  const group = manifest.coveredGroups.find(
-    (candidate) => candidate.id === "operating_projection_pol108"
-  );
-
-  assert.deepEqual(group, {
-    id: "operating_projection_pol108",
-    pendingTests: 14,
-    testFiles: [
-      {
-        path: "services/api/src/database/operating-projection-postgresql.spec.ts",
-        pendingTests: 14,
-        suiteStatus: "fully_pending"
-      }
-    ],
-    runner: {
-      kind: "workspaceScript",
-      script: "verify:pol108-operating-projection:local",
-      path: "services/api/prisma/run-pol108-operating-projection-local.cjs"
-    },
-    state: "executable_local_runner"
-  });
+test("canonical manifest executes all 14 POL-108 PG16 tests across three independent shards", () => {
+  const { SHARDS } = require("./pol108-shards.cjs");
+  const groups = loadManifest().coveredGroups.filter(group => group.id.startsWith("operating_projection_pol108"));
+  assert.equal(groups.length, 3);
+  assert.equal(groups.reduce((sum, group) => sum + group.pendingTests, 0), 14);
+  for (const [shard, config] of Object.entries(SHARDS)) {
+    const id = "operating_projection_pol108" + (shard === "core" ? "" : `_${shard}`);
+    const group = groups.find(entry => entry.id === id);
+    assert.equal(group.pendingTests, config.titles.length);
+    assert.deepEqual(group.testFiles, [{ path: `services/api/${config.file}`, pendingTests: config.titles.length, suiteStatus: "fully_pending" }]);
+    assert.equal(group.runner.script, `verify:pol108-operating-projection:${shard}:local`);
+  }
 });
 
 test("canonical manifest executes the POL-109 project close PG16 and HTTP acceptance", () => {

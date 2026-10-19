@@ -48,8 +48,34 @@ export async function invalidateProjectCloseForOperatingImpact(
   tx: Prisma.TransactionClient,
   impact: NewOperatingImpact
 ): Promise<void> {
+  await invalidateOperatingImpact(tx, impact);
+}
+
+/**
+ * Scope this closure to ONE sequential source-envelope write, never a transaction-wide
+ * or service-wide cache. The aggregate row lock remains held until transaction end.
+ * No stage commands may be interleaved inside that envelope. Only stages proven not
+ * completed under that lock are remembered; completed stages retain per-impact cutoff checks.
+ */
+export function createOperatingImpactInvalidator(
+  tx: Prisma.TransactionClient,
+  projectId: string
+): (impact: NewOperatingImpact) => Promise<void> {
+  const inactiveStages = new Set<ProjectStage>();
+  return async (impact) => {
+    if (impact.projectId !== projectId) throw new Error("经营影响与当前写入项目不一致");
+    await invalidateOperatingImpact(tx, impact, inactiveStages);
+  };
+}
+
+async function invalidateOperatingImpact(
+  tx: Prisma.TransactionClient,
+  impact: NewOperatingImpact,
+  inactiveStages?: Set<ProjectStage>
+): Promise<void> {
   const policy = resolveProjectCloseImpactPolicy(impact.impactKind);
   if (policy.affectedStages.length === 0) return;
+  if (inactiveStages && policy.affectedStages.every(stage => inactiveStages.has(stage))) return;
   await appendProjectCloseInvalidation(tx, {
     projectId: impact.projectId,
     sourceType: impact.sourceType,
@@ -66,7 +92,7 @@ export async function invalidateProjectCloseForOperatingImpact(
     actorUserId: impact.actorUserId,
     basis: { operatingImpactEntryId: impact.id },
     requiresObservedAfterProjectionCutoff: true
-  });
+  }, inactiveStages);
 }
 
 export async function invalidateProjectCloseForParticipationChange(
@@ -105,7 +131,8 @@ export function projectParticipationChangeFingerprint(change: Pick<
 
 async function appendProjectCloseInvalidation(
   tx: Prisma.TransactionClient,
-  source: InvalidationSource
+  source: InvalidationSource,
+  inactiveStages?: Set<ProjectStage>
 ): Promise<void> {
   await tx.projectCloseAggregate.upsert({
     where: { projectId: source.projectId },
@@ -141,6 +168,10 @@ async function appendProjectCloseInvalidation(
   for (const version of versions) {
     const stageKey = version.stageKey as ProjectStage;
     if (!latest.has(stageKey)) latest.set(stageKey, version);
+  }
+  // This observation is safe only after the aggregate lock and latest-version read.
+  for (const stageKey of source.affectedStages) {
+    if (latest.get(stageKey)?.status !== "completed") inactiveStages?.add(stageKey);
   }
   const affectedStages = source.affectedStages.filter((stageKey) => {
     const version = latest.get(stageKey);
@@ -206,6 +237,7 @@ async function appendProjectCloseInvalidation(
     where: { projectId: source.projectId },
     data: { revision: { increment: affectedStages.length } }
   });
+  for (const stageKey of affectedStages) inactiveStages?.add(stageKey);
 }
 
 function fingerprint(value: unknown): string {

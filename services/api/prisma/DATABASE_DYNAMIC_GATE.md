@@ -83,7 +83,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 ## 当前覆盖
 
-canonical manifest 当前登记 53 个文件、243 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。其中 `operating_projection_pol108` 覆盖 1 个文件、14 条用例，`remaining_dynamic_postgresql16` 覆盖 37 个文件、149 条用例。#108 专组含公开写入 20,001 facts / 100,001 impacts 的压力夹具，runner 的 90 分钟上限仅用于本机测试，不改变 API 15/30 秒限制。
+canonical manifest 当前登记 67 个文件、346 条 pending tests，全部已有本机 PostgreSQL 16 runner，`remaining=0`。POL-108 分为 `operating_projection_pol108`（普通 12 项）、`operating_projection_pol108_facts`（20,001 facts，1 项）及 `operating_projection_pol108_impacts`（100,001 impacts，1 项），CI 三组并行，每组使用独立临时数据库。三组均为必要门禁，Jest 实际结果须逐一匹配用例名称、数量及通过状态，漏跑、跳过、重复或未知分组均失败。原无参数 POL-108 本机入口仍执行全部 14 项，但每组各自建库，避免共享 seed 项目污染。分段计时只输出阶段、查询类别、数量及耗时，不输出 SQL 参数或密钥。压力数据仍逐笔经过原受控写入 API；90 分钟仅为测试 runner 上限，业务 API 的 15/30 秒限制不变。
 
 #284 的 `participant_history_integrity` 子组使用独立数据库 `jiangkong_participant_history_integrity_test`，在同一文件内执行原有经营档案 17 条与参与公司历史完整性 13 条，共登记 30 条；完整 Jest 文件另含 2 条非 pending 的错误映射守卫，因此专组执行时显示 32/32。其中包含激活时拒绝未来覆盖断点、允许半开区间无缝接续，以及以最小运行时角色 `SET ROLE` 执行合法停止/删除、拒绝直接写 fence 表的权限回归：
 
