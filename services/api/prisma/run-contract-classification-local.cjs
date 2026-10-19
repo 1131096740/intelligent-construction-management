@@ -23,30 +23,7 @@ try{
  let testEnv={...process.env,NODE_ENV:'test',DATABASE_URL:target,PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL:target,RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS:'1',OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(),FILE_STORAGE_DRIVER:"local",FILE_STORAGE_ROOT:join(artifacts,"files"),INITIAL_USER_TEMPORARY_PASSWORD:"Local-Transfer-Initial-01",SMS_ENABLED:"false",RUN_COMPANY_TRANSFER_HTTP:"1"};
  run('pnpm',['exec','prisma','migrate','deploy'],testEnv);
  run('pnpm',['exec','prisma','migrate','deploy'],testEnv);
- // Production-shaped roles: owner creates objects; runtime alone may invoke the bounded issuer.
- run('docker',['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','jiangkong','-d',db,'-c',`
-   CREATE ROLE contract_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${password}';
-   CREATE ROLE contract_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${password}';
-   GRANT USAGE ON SCHEMA public TO contract_runtime,contract_backup;
-   GRANT SELECT ON ALL TABLES IN SCHEMA public TO contract_runtime,contract_backup;
-   GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO contract_backup;
-   REVOKE ALL ON TABLE "OperatingLedgerWriteSecret","OperatingLedgerWriteContext" FROM contract_runtime;
-   GRANT INSERT,UPDATE ON "ContractBankVerificationRequest","VerifiedBankTransactionObservation","AuditLog","Project","CompanyEntity","User","HandwrittenSignatureVersion","FileObject" TO contract_runtime;
-   GRANT UPDATE ON "PaymentExecutionPayerVerification" TO contract_runtime;
-   GRANT EXECUTE ON FUNCTION "appendOperatingFactThroughService"("OperatingLedgerFactWritePayload",text,text) TO contract_runtime;
- `]);
- const grantFile=join(__dirname,'contract-bank-verification-runtime-grants.sql');
- {
-   run('docker',['cp',grantFile,name+':/tmp/bank-grants.sql']);
-   run('docker',['exec','--env','OPERATING_LEDGER_RUNTIME_ROLE=contract_runtime',name,'psql','-v','ON_ERROR_STOP=1','-U','jiangkong','-d',db,'-f','/tmp/bank-grants.sql']);
- }
- const badGrant=spawnSync('docker',['exec','--env','OPERATING_LEDGER_RUNTIME_ROLE=contract_backup',name,'psql','-v','ON_ERROR_STOP=1','-U','jiangkong','-d',db,'-f','/tmp/bank-grants.sql'],{encoding:'utf8'});
- if(badGrant.status===0||!badGrant.stderr.includes('existing restricted operating-ledger runtime role')) throw Error('Backup identity must not receive runtime grants');
- const denied=spawnSync('docker',['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d',db,'-c',"SELECT issue_contract_bank_holder('missing','missing','missing','missing','missing')"],{encoding:'utf8'});
- if(denied.status===0||!denied.stderr.includes('permission denied for function issue_contract_bank_holder')) throw Error('Backup issuer invocation must fail at the privilege boundary');
- run('docker',['cp',resolve(__dirname,'../../../scripts/ops/db-backup-read-role.sql'),name+':/tmp/backup-role.sql']);
- run('docker',['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d',db,'-f','/tmp/backup-role.sql']);
- testEnv.CONTRACT_BANK_RUNTIME_DATABASE_URL=target.replace('://jiangkong:', '://contract_runtime:');
+ testEnv.CONTRACT_BANK_RUNTIME_DATABASE_URL=require('./contract-bank-runtime-fixture.cjs').prepareContractBankRuntime({name,db,password,target});
  run('pnpm',['exec','jest','--runInBand','src/database/project-affiliate-company-contract-db.spec.ts','--json','--outputFile',join(artifacts,'contract-tests.json')],testEnv);
  run('docker',['exec',name,'pg_dump','-U','contract_backup','-d',db,'-Fc','-f','/tmp/contract-backup.dump']);
  run('docker',['exec',name,'createdb','-U','jiangkong','contract_restored']);

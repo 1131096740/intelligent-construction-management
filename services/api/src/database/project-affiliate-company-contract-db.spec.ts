@@ -198,6 +198,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     const runtimeUrl = process.env.CONTRACT_BANK_RUNTIME_DATABASE_URL;
     if (!runtimeUrl) throw new Error("银行核验验收必须提供独立运行身份");
     const bankRuntime = new PrismaClient({datasources:{db:{url:projectAffiliateCompanyContractDatabaseUrl(runtimeUrl)}}});
+    try {
     const [identity] = await bankRuntime.$queryRaw<Array<{name:string;allowed:boolean;backup:boolean;publicAllowed:boolean}>>`
       SELECT current_user AS name,
         has_function_privilege(current_user,'public.issue_contract_bank_holder(text,text,text,text,text)','EXECUTE') AS allowed,
@@ -206,7 +207,6 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
           WHERE p.oid='public.issue_contract_bank_holder(text,text,text,text,text)'::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS "publicAllowed"`;
     expect(identity).toEqual({name:"contract_runtime",allowed:true,backup:false,publicAllowed:false});
     const bankVerification=new ContractBankVerificationService(bankRuntime as never,new ProjectVisibilityService(bankRuntime as never),auth as never,audit);
-    try {
     const bankObservation=async(amountCents:string,direction:"inflow"|"outflow",date="2026-08-20")=>{
       const bankInput={projectId:f.projectId,companyEntityId:f.companyId,accountNumber:"6222000012345678",bankReference:randomUUID(),direction,amountCents,occurredAt:date,evidenceFileId:await newFile(),reason:"真实开户公司和银行交易人工独立核验",idempotencyKey:randomUUID(),confirmationPassword:"test-password"};
       const row=await bankVerification.prepare(f.recorderId,bankInput);
