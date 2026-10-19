@@ -615,7 +615,13 @@ if (enabled) {
           expectedRevision: rejectedQuantityDraft.revision, action: "delete_pristine_draft"
         });
         expect(await prisma.settlementDraft.count({
-          where: { id: rejectedQuantityDraft.id, status: "abandoned", submittedSettlementId: null }
+          where: { id: rejectedQuantityDraft.id }
+        })).toBe(0);
+        expect(await prisma.settlementDraftLine.count({
+          where: { settlementDraftId: rejectedQuantityDraft.id }
+        })).toBe(0);
+        expect(await prisma.auditLog.count({
+          where: { businessId: rejectedQuantityDraft.id, action: "settlement.draft.delete" }
         })).toBe(1);
         const settlementCode = process.env.POL114_HTTP_SETTLEMENT_CODE ?? `POL114-ST-${randomUUID()}`;
         const settlementDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
