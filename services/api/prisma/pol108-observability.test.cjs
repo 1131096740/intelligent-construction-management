@@ -18,6 +18,7 @@ test("environment observation exposes only an explicit non-secret allowlist", as
 test("unsupported host counters are explicitly unavailable rather than zero", async () => {
   const result = await collectEnvironment({ platform: "darwin", arch: "arm64", cpus: [], totalMemory: 2, read: async () => { throw Error("missing"); }, environment: {} });
   assert.equal(result.cpuQuota, null); assert.equal(result.cpuModel, null);
+  assert.equal(result.githubActions, null);
 });
 
 test("database observation includes context churn and waits but never query text or credentials", () => {

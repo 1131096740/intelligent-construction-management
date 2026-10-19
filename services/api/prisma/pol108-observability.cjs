@@ -11,7 +11,7 @@ async function collectEnvironment({
     platform, arch, nodeVersion: process.version, cpuModel: cpus[0]?.model ?? null,
     logicalCpus: cpus.length, totalMemoryBytes: totalMemory,
     cpuQuota: platform === "linux" ? await optional("/sys/fs/cgroup/cpu.max") : null,
-    githubActions: environment.GITHUB_ACTIONS === "true"
+    githubActions: environment.GITHUB_ACTIONS === "true" ? true : environment.GITHUB_ACTIONS === "false" ? false : null
   };
 }
 

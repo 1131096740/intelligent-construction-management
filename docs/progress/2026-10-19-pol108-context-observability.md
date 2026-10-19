@@ -22,7 +22,7 @@
 - 两侧复制相同观测 helper 与原14项用例；优化侧仅数据库授权函数变化影响分录测量。依赖、构建产物复用同一来源。每轮 migrate deploy 两次、原 seed、原 Jest 身份/数量核验；测量前后源码指纹必须一致。
 - 完整分录配对顺序：旧→新、新→旧、旧→新，串行运行，不并行启动其他构建/数据库测试；随后两侧执行 core12项和facts1项，连同重复分录测试覆盖原14项。
 - 测量使用 `/private/tmp/pol108-context-measure.cjs` 和固定快照 `/private/tmp/pol108-context-before`、`/private/tmp/pol108-context-after`。正式 runner 的准确提交/干净工作树门禁不变；本轮是 source fingerprint 绑定的 local_diagnostic，acceptanceEvidence=false。
-- 快照固定后，仅正式 runner 的日志呈现/失败路径及对应 VM 测试在工作树进一步修复；配对使用的观测 helper、业务用例、迁移均未变化。最终分别核验这些文件一致性，不能将临时快照整体指纹视为最终提交 SHA。
+- 快照固定后，正式 runner 的日志呈现/失败路径及对应 VM 测试进一步修复。首轮 GitHub CI 另发现受控子进程未继承 GITHUB_ACTIONS 时被误标 false，现将缺失/非法标记报告为 null，不扩大环境变量继承；真实 CI 来源仍绑定 workflow 与 SHA。该 helper 元数据修复不改变探针、业务用例或 SQL。最终分别核验这些文件一致性，不能将临时快照整体指纹视为最终提交 SHA。
 
 ## 测量结果
 
@@ -39,7 +39,7 @@
 - 六轮累计限流时间各为 0.139～0.214 秒；共 740 条定时样本，采样错误0，deadlocks0、wal_buffers_full0。样本只表示采样瞬间，不能直接换算等待时间百分比。
 - 旧实现三次总耗时范围 10分53秒～11分23秒，同机仍有波动；不能据此追溯确定此前两个GitHub runner的波动根因。新增观测用于后续准确提交的CI分析。
 - 原14项在两侧全部通过：core12、facts1、impacts1；分录用例各额外重复两次。所有结果无跳过，测试身份/数量与源码不变检查通过。
-- 基线快照源码指纹 `c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d`；优化快照 `15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a`，每轮前后一致。观测helper和原POL108用例两侧逐字节一致；最终用例/helper与测量快照一致；提交差异检查另去除新迁移EOF多余空行并同步清单校验和，SQL语义不变。
+- 基线快照源码指纹 `c0c1fc1d61ac71d4f0759ae0332a10b7ce0f2c38a7cb50dab39684de4908991d`；优化快照 `15f05255f0398ebd6013a86094889792b98042a65e43840aa611b46c6468ad5a`，每轮前后一致。观测helper和原POL108用例两侧逐字节一致；最终业务用例与测量快照一致，helper 仅缺失环境标记由 false 改为 null；提交差异检查另去除新迁移EOF多余空行并同步清单校验和，SQL语义不变。
 - 原始数据见本机 `/private/tmp/pol108-context-pair-*`、`/private/tmp/pol108-context-before-core`、`/private/tmp/pol108-context-before-facts`、`/private/tmp/pol108-context-after-core`、`/private/tmp/pol108-context-after-facts`；配对驱动日志 `/private/tmp/pol108-context-paired-series.log`。本记录旁的JSON仅保留无秘密的计数、指纹与耗时。
 
 其他分组仅各运行一次完整回归，不据此宣称稳定提速：
@@ -64,3 +64,14 @@
 ## 交付状态
 
 本地实现与配对测量已完成，用户授权的固定提交、双轴复审、PR、候选与合并后 CI 正在推进。GitHub 实测和准确 SHA 收据将登记于本轮 PR；未取得结果前不宣称云端提速。无部署/生产操作。
+
+
+## GitHub 首轮验证与最终收据入口
+
+- [PR #340](https://github.com/1131096740/intelligent-construction-management/pull/340)，首候选 `af426b6a8abae91c3ca664b9811a6b54180e270f` 的 [CI39253274597](https://github.com/1131096740/intelligent-construction-management/actions/runs/39253274597) 25/25 成功；原 core12/facts1/impacts1 全部通过。
+- 按 job 自身起止时间（不含排队），分录648秒、事实536秒；此前PR339/main同树两轮分录599/780秒、事实505/501秒。首轮分录处于旧范围内，不能单凭它宣称稳定云端收益；事实比旧两轮慢6.1%～7.0%，保留为待后续轮次判断的回归信号。
+- Jest套件耗时：分录562.085秒、事实444.929秒；分录写入539.181秒，授权函数self_time4.810秒（旧30.866/44.663秒）、crypt362.982秒（旧317.744/396.381秒），授权100035/crypt100036/业务幂等查询100001次均保持。上下文插入14、UPDATE0，110次采样错误0。
+- 事实写入421.340秒（旧404.298/394.051秒），授权self_time2.839秒、crypt145.378秒；授权40033/crypt40034次保持，UPDATE0，87次采样错误0。与旧main的crypt145.135秒接近，不能把全部差异归于密码哈希。
+- 新观测确认此轮两个大分组均为AMD EPYC7763、4逻辑核、约16GiB，镜像ID与旧两轮相同；容器CPU限流增量0、WAL buffers full增量0、deadlocks0。旧两轮缺完整资源观测，无法据此做同机因果归因。
+- 首轮受控子进程缺失GITHUB_ACTIONS而记录false，只影响来源元数据，真实来源以该workflow/SHA为准。最小反例先失败（false != null），修正为缺失/非法值null后，相关11项通过；不扩大环境变量继承，不改变业务/探针/SQL。原始失败保存在本机临时证据目录。
+- 最终准确候选与合并后CI、分录组和事实组各轮完整对比，持续补充于上述PR收据，不把首轮结果冒充最终SHA结果。无部署、生产迁移或生产操作。
