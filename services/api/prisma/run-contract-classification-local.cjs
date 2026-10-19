@@ -23,7 +23,17 @@ try{
  let testEnv={...process.env,NODE_ENV:'test',DATABASE_URL:target,PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL:target,RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS:'1',OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(),FILE_STORAGE_DRIVER:"local",FILE_STORAGE_ROOT:join(artifacts,"files"),INITIAL_USER_TEMPORARY_PASSWORD:"Local-Transfer-Initial-01",SMS_ENABLED:"false",RUN_COMPANY_TRANSFER_HTTP:"1"};
  run('pnpm',['exec','prisma','migrate','deploy'],testEnv);
  run('pnpm',['exec','prisma','migrate','deploy'],testEnv);
+ testEnv.CONTRACT_BANK_RUNTIME_DATABASE_URL=require('./contract-bank-runtime-fixture.cjs').prepareContractBankRuntime({name,db,password,target});
  run('pnpm',['exec','jest','--runInBand','src/database/project-affiliate-company-contract-db.spec.ts','--json','--outputFile',join(artifacts,'contract-tests.json')],testEnv);
+ run('docker',['exec',name,'pg_dump','-U','contract_backup','-d',db,'-Fc','-f','/tmp/contract-backup.dump']);
+ run('docker',['exec',name,'createdb','-U','jiangkong','contract_restored']);
+ run('docker',['exec',name,'pg_restore','--exit-on-error','--no-owner','-U','jiangkong','-d','contract_restored','/tmp/contract-backup.dump']);
+ run('docker',['exec',name,'psql','-v','ON_ERROR_STOP=1','-U','contract_backup','-d','contract_restored','-f','/tmp/backup-role.sql']);
+ const restored=run('docker',['exec',name,'psql','-At','-U','jiangkong','-d','contract_restored','-c',`
+   SELECT count(*)>0 FROM "ContractBankVerificationRequest" WHERE status='confirmed';
+   SELECT has_function_privilege('contract_runtime','issue_contract_bank_holder(text,text,text,text,text)','EXECUTE'),has_function_privilege('contract_backup','issue_contract_bank_holder(text,text,text,text,text)','EXECUTE');
+ `]).trim();
+ if(restored!=="t\nt|f") throw Error('Restored bank facts and role ACL must survive the complete backup');
  const coreDb='jiangkong_pol114';
  run('docker',['exec',name,'createdb','-U','jiangkong',coreDb]);
  const coreEnv={...testEnv,DATABASE_URL:target.replace('/'+db,'/'+coreDb),RUN_POL114_HTTP_PG16:'1',RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16:'1',RUN_POL114_PAYMENT_HTTP_PG16:'1',COMPANY_TRANSFER_CORE_RECEIPT:join(artifacts,'core-fixture.json')};

@@ -79,7 +79,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     await app.listen(0, "127.0.0.1");
     base = await app.getUrl();
     const db = app.get(PrismaService);
-    const project = async (name: string, isActive = true) => (await db.project.create({ data: { code: randomUUID(), name, isActive } })).id;
+    const project = async (name: string, isActive = true) => (await db.project.create({ data: { id: name == "合成乙项目" ? "legacy-project-business-scope" : randomUUID(), code: randomUUID(), name, isActive } })).id;
     first = await project("合成甲项目");
     second = await project("合成乙项目");
     inactive = await project("合成已停用项目", false);
