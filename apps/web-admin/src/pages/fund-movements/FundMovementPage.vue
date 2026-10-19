@@ -37,6 +37,7 @@ const columns = [
   { colKey: "scope", title: "项目与公司范围", minWidth: 230 },
   { colKey: "paymentAmountCents", title: "金额（元）", width: 150, align: "right" as const },
   { colKey: "legs", title: "分腿", width: 100 },
+  { colKey: "repayment", title: "已有往来及归还", minWidth: 240 },
   { colKey: "status", title: "状态", width: 110 },
   { colKey: "createdAt", title: "创建时间", width: 170 }
 ];
@@ -76,6 +77,7 @@ onMounted(() => void load());
 
 <template>
   <section class="fund-movement-page">
+    <router-link to="/公司互转台账">办理公司互转审批及查询资金台账</router-link>
     <BusinessPageHeader
       title="项目与公司资金移动"
       description="每条资金移动按项目分腿形成经营事实；确认前会重新核验余额、往来和职责分离。"
@@ -117,6 +119,7 @@ onMounted(() => void load());
           <template #legs="{ row }">
             {{ row.legs.length }} 条项目腿
           </template>
+          <template #repayment="{row}"><p v-for="debt in row.repaymentBalances??[]" :key="debt.originalId">未清 {{ amount(debt.remainingCents) }} · 可申请 {{ amount(debt.availableCents) }} <router-link :to="{path:'/公司互转台账',query:{originalFundMovementRelationshipId:debt.originalId}}">申请归还</router-link></p></template>
           <template #status="{ row }">
             <JgStatusTag :label='statusLabels[row.status] ?? "待处理"' :tone="statusTone(row.status)" />
           </template>

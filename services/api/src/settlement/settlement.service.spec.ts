@@ -1,3 +1,5 @@
+// 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
+jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), lockEconomicProject: jest.fn().mockResolvedValue(undefined), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import * as ExcelJS from "exceljs";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";

@@ -17,6 +17,7 @@ export const OPERATING_FACT_KINDS = Object.freeze([
   "construction_enterprise_deduction",
   "invoice",
   "fund_movement",
+  "company_transfer",
   "profit_distribution",
   "project_cash_restriction",
   "historical_gap"
@@ -36,6 +37,7 @@ export const OPERATING_FACT_KIND_LABELS = Object.freeze({
   construction_enterprise_deduction: "施工企业扣费",
   invoice: "发票事实",
   fund_movement: "项目资金流动",
+  company_transfer: "公司互转资金",
   profit_distribution: "项目盈亏分配",
   project_cash_restriction: "项目现金使用限制",
   historical_gap: "历史资料缺口"

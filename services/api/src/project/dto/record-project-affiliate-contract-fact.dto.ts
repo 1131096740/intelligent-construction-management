@@ -40,6 +40,9 @@ export type ProjectAffiliateAmountNature =
   (typeof PROJECT_AFFILIATE_AMOUNT_NATURES)[number];
 
 export class RecordProjectAffiliateContractFactDto {
+  @IsOptional()
+  @IsString()
+  counterpartyVersionId?: string;
   @IsIn(PROJECT_AFFILIATE_CONTRACT_TYPES, { message: "施工企业对下合同类型不正确" })
   contractType!: ProjectAffiliateContractType;
 

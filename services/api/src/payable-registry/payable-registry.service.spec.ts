@@ -1085,7 +1085,7 @@ describe("PayableRegistryService", () => {
     expect(tx.payableSettlementCase.update).not.toHaveBeenCalled();
   });
 
-  it("records a partial inter-entity return as a new decrease without touching payable allocations", async () => {
+  it("requires leader-approved company transfer for existing inter-entity debt", async () => {
     const root = {
       id: "relationship-1",
       entryKind: "proxy_payment",
@@ -1159,28 +1159,10 @@ describe("PayableRegistryService", () => {
       evidenceClaimId: "claim-return",
       reason: "代付公司部分归还",
       idempotencyKey: "00000000-0000-4000-8000-000000000031"
-    })).resolves.toEqual(expect.objectContaining({
-      relationshipEntryId: "relationship-1",
-      returnedAmountCents: "3000",
-      remainingAmountCents: "5000",
-      status: "open"
-    }));
-    expect(tx.interEntityRelationshipEntry.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        entryKind: "proxy_return",
-        direction: "decrease",
-        adjustsEntryId: "relationship-1",
-        status: "draft",
-        amountCents: 3_000n,
-        evidenceFileId: "voucher-return"
-      })
-    });
-    const createdReturn = tx.interEntityRelationshipEntry.create.mock.calls[0]?.[0]?.data;
-    expect(createdReturn).not.toHaveProperty("confirmedByUserId");
-    expect(createdReturn).not.toHaveProperty("confirmedAt");
-    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
-      action: "inter_entity_relationship.return"
-    }));
+    })).rejects.toThrow("公司间往来归还请从公司互转台账发起");
+    expect(tx.interEntityRelationshipEntry.create).not.toHaveBeenCalled();
+    expect(tx.interEntityRelationshipEvidenceClaim.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("requires a confirmed root relationship before uploading return evidence", async () => {

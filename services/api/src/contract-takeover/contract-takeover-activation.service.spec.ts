@@ -1,3 +1,5 @@
+// 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
+jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import { AuditService } from "../audit/audit.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { ContractTakeoverActivationService } from "./contract-takeover-activation.service";
@@ -54,7 +56,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
     expect(
       operatingSources.appendConfirmedSourceIfEnabledInTransaction
     ).toHaveBeenNthCalledWith(
-      1,
+      2,
       tx,
       {
         projectId: "project-1",
@@ -66,7 +68,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
     expect(
       operatingSources.appendConfirmedSourceIfEnabledInTransaction
     ).toHaveBeenNthCalledWith(
-      2,
+      3,
       tx,
       {
         projectId: "project-1",
@@ -193,7 +195,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
     });
     expect(
       operatingSources.appendConfirmedSourceIfEnabledInTransaction
-    ).toHaveBeenCalledTimes(1);
+    ).toHaveBeenCalledTimes(2);
   });
 });
 

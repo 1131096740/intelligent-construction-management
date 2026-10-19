@@ -38,7 +38,9 @@
               <t-radio-button value="create">
                 新增项目
               </t-radio-button>
-              <t-radio-button value="status">停用与恢复</t-radio-button>
+              <t-radio-button value="status">
+                停用与恢复
+              </t-radio-button>
             </t-radio-group>
             <ProjectLifecyclePanel
               v-if="projectMaintenanceMode === 'status'"
@@ -90,6 +92,7 @@
       正在加载项目经营数据
     </div>
 
+    <ContractRelationshipLedger :project-id="selectedProjectId" />
     <t-tabs
       v-if="overview || canViewExecutiveOverview || financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && selectedProjectId)"
       v-model="activeTab"
@@ -391,6 +394,11 @@
                 :message="receiptEntryDefinitionError || '请刷新后重试'"
               />
               <label>
+                <CompanyBankEventSelect
+                  v-if="receiptForm.factType==='affiliate_remittance_to_company'"
+                  v-model="receiptForm.bankObservationReference"
+                  :project-id="selectedProjectId"
+                />
                 <span>{{ receiptForm.basisType === "written" ? "书面依据" : "补充文件（选填）" }}</span>
                 <input
                   ref="receiptVoucherInput"
@@ -879,6 +887,8 @@
 </template>
 
 <script setup lang="ts">
+import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -986,6 +996,7 @@ const GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS = new Set<RoleKey>([
 ]);
 
 interface ReceiptFormState {
+  bankObservationReference:string;
   factType: ProjectUpstreamFundFactType;
   basisType: ProjectUpstreamFundBasisType;
   occurredAt: string;
@@ -1394,6 +1405,8 @@ const receivablePayableItems = computed(() => {
   return [
     { label: "已确认收入", value: formatCents(operating?.confirmedIncomeCents ?? null) },
     { label: "已确认成本", value: formatCents(operating?.confirmedCostCents ?? null) },
+    ...(overview.value?.operatingProjection.relationshipTotals ?? []).filter((row) => ["inside", "outside", "unclassified", "non_contract"].includes(row.relationship)).map((row) => ({ label: `${row.label}确认成本`, value: formatCents(row.confirmedCostCents) })),
+    { label: "对上内部应收（项目合并抵销）", value: formatCents(operating?.internalReceivableCents ?? null) },
     { label: "业主及其他应收", value: formatCents(operating?.receivableCents ?? null) },
     { label: "下游及其他应付", value: formatCents(operating?.payableCents ?? null) }
   ];
@@ -2153,6 +2166,7 @@ async function submitReceipt() {
       : undefined;
     await recordProjectUpstreamFundFactWithCapability(projectId, {
       factType: form.factType,
+      bankObservationReference:form.factType==='affiliate_remittance_to_company'?form.bankObservationReference:undefined,
       basisType: form.basisType,
       occurredAt,
       amountCents,
@@ -2398,6 +2412,7 @@ function createReceiptForm(
 ): ReceiptFormState {
   return {
     factType,
+    bankObservationReference:"",
     basisType: "written",
     occurredAt: todayText(),
     amountYuan: "",

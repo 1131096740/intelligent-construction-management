@@ -1,10 +1,18 @@
-import { IsDateString, IsString, IsUUID } from "class-validator";
+import { IsDateString, IsString, IsUUID, IsIn, ValidateIf } from "class-validator";
 import {
+  IsCanonicalMoneyText,
   IsMaxUnicodeTextLength,
   IsRequiredText
 } from "../../validation/static-field-validation";
 
 export class RecordProjectAffiliateCompanyContractDto {
+  @IsIn(["fixed", "uncapped"], { message: "请选择对上合同金额性质" })
+  amountNature!: "fixed" | "uncapped";
+
+  @ValidateIf((object, value) => object.amountNature === "fixed" || value !== undefined)
+  @IsCanonicalMoneyText({ typeMessage: "合同金额格式不正确", formatMessage: "合同金额必须为非负整数分" })
+  amountCents?: string;
+
   @IsRequiredText({
     requiredMessage: "线下合同编号不能为空",
     typeMessage: "线下合同编号必须是文字",

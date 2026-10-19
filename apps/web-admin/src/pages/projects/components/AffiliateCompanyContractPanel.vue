@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { yuanTextToCentsText, centsTextToYuanText } from "../../../lib/money";
 import {
   onBeforeUnmount,
   onMounted,
@@ -101,6 +102,7 @@ const columns: PrimaryTableCol[] = [
   { colKey: "contractName", title: "合同名称", width: 200 },
   { colKey: "affiliateNameSnapshot", title: "施工企业", width: 180 },
   { colKey: "companyEntityNameSnapshot", title: "我方主体", width: 180 },
+  { colKey: "amountCents", title: "对上合同额（元）", width: 160, cell: (_h, { row }) => row.amountCents != null ? centsTextToYuanText(row.amountCents) : row.amountNature === "uncapped" ? "未约定总额" : "待确认金额" },
   { colKey: "signedAt", title: "签订日期", width: 120 },
   { colKey: "rightsObligationsSummary", title: "权利义务摘要", width: 300 },
   { colKey: "status", title: "状态", width: 100 },
@@ -257,10 +259,12 @@ function openRecord() {
 
 function submitRecord() {
   const context = captureRecordOperation();
+  let amountCents:string|undefined;
+  try {amountCents=form.value.amountNature === "fixed" ? yuanTextToCentsText(form.value.amountYuan) : undefined;} catch(error){if(recordContextIsCurrent(context))recordError.value=error instanceof Error?error.message:"合同金额不正确";return Promise.resolve();}
   const request = recordProjectAffiliateCompanyContractWithUpload(
     context.projectId,
     {
-      form: form.value,
+      form: { ...form.value, amountCents },
       files: signedFiles.value,
       idempotencyKey: context.idempotencyKey,
       context,
@@ -556,6 +560,8 @@ function createForm() {
     contractReference: "",
     contractName: "",
     signedAt: todayText(),
+    amountNature: "fixed" as "fixed" | "uncapped",
+    amountYuan: "",
     rightsObligationsSummary: "",
     companyEntityId: ""
   };
@@ -684,6 +690,16 @@ function errorMessage(error: unknown, fallback: string) {
             label: `${company.name} · ${company.unifiedSocialCreditCode ?? '信用代码待治理'}`,
             value: company.id
           }))"
+        />
+        <t-select
+          v-model="form.amountNature"
+          label="对上合同金额性质"
+          :options="[{ label: '确定金额', value: 'fixed' }, { label: '未约定总额', value: 'uncapped' }]"
+        />
+        <t-input
+          v-if="form.amountNature === 'fixed'"
+          v-model="form.amountYuan"
+          label="对上合同额（元）"
         />
         <t-textarea
           v-model="form.rightsObligationsSummary"

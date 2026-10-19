@@ -37,7 +37,7 @@ describe("archive ledger page configuration", () => {
 
   it("shows business relation, source, permission, and audit columns", () => {
     expect(archiveLedgerColumns.map((column) => column.title)).toEqual([
-      "资料编号",
+      "资料编号", "合同分类",
       "资料类型",
       "关联业务",
       "项目",

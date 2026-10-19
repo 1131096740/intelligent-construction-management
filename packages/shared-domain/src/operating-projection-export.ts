@@ -27,7 +27,8 @@ export interface OperatingProjectionExportFilters {
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   "owner_settlement", "project_upstream_settlement", "project_upstream_fund_fact",
   "project_affiliate_contract_fact", "project_affiliate_settlement_fact",
-  "project_affiliate_payment_fact", "project_proxy_payment", "contract_version",
+  "project_affiliate_payment_fact", "project_proxy_payment", "contract_version", "contract_economic_review", "contract_proxy_execution", "company_transfer_event", "upward_receipt_match",
+  "fund_execution_counterparty",
   "settlement", "payment_execution", "expense_claim_approval",
   "expense_claim_payment_execution", "employee_project_loan_entry",
   "spot_procurement_receipt_review", "spot_procurement_payment_execution",
@@ -60,7 +61,7 @@ const history = Object.freeze([takeover] as const);
 export const OPERATING_EXPORT_SOURCE_KINDS = Object.freeze({
   owner_settlement: none, project_upstream_settlement: none, project_upstream_fund_fact: none,
   project_affiliate_contract_fact: none, project_affiliate_settlement_fact: none,
-  project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none,
+  project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none, contract_economic_review: none, contract_proxy_execution: none, company_transfer_event:none, upward_receipt_match: none, fund_execution_counterparty:none,
   settlement: none, payment_execution: none, expense_claim_approval: none,
   expense_claim_payment_execution: none, employee_project_loan_entry: none,
   spot_procurement_receipt_review: none, spot_procurement_payment_execution: none,
@@ -74,7 +75,7 @@ export const OPERATING_EXPORT_FACT_KINDS = Object.freeze({
   owner_settlement: none, owner_payment: none, downstream_contract: none,
   downstream_settlement: none, downstream_payment: none, expense: none, employee_loan: none,
   project_wage: none, construction_enterprise_deduction: Object.freeze([enterprise]),
-  invoice: none, fund_movement: none, profit_distribution: none, project_cash_restriction: none,
+  invoice: none, fund_movement: none, company_transfer:none, profit_distribution: none, project_cash_restriction: none,
   historical_gap: none, clearing_reconciliation_risk: none
 } satisfies Readonly<Record<ExportFactKind, readonly OperatingProjectionExportKind[]>>);
 export const OPERATING_EXPORT_IMPACT_KINDS = Object.freeze({

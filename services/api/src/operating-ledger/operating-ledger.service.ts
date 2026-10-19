@@ -1288,12 +1288,6 @@ function validateImpactInput(impact: OperatingImpactInput) {
     throw new BadRequestException("资料依据提示必须使用notice方向");
   }
   if (
-    impact.impactKind === "contract_commitment_reference" &&
-    impact.direction !== "notice"
-  ) {
-    throw new BadRequestException("合同承诺引用必须使用notice方向");
-  }
-  if (
     ["confirmed_cost", "estimated_clearing_expense"].includes(impact.impactKind) &&
     !impact.costCategoryCode
   ) {

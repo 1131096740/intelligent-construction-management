@@ -1,3 +1,4 @@
+import type { ContractRelationshipLedgerRow } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import type {
   ArchiveListReadModel,
@@ -9,6 +10,7 @@ import type {
 export type GlobalSearchType = "合同" | "结算" | "付款" | "资料";
 
 export interface GlobalSearchSources {
+  relationships?: ContractRelationshipLedgerRow[];
   contracts: ContractLedgerListReadModel["rows"];
   settlements: SettlementLedgerListReadModel["rows"];
   payments: PaymentLedgerListReadModel["rows"];
@@ -39,11 +41,12 @@ export const globalSearchColumns: PrimaryTableCol<GlobalSearchItem>[] = [
 
 export function buildGlobalSearchItems(input: GlobalSearchSources): GlobalSearchItem[] {
   return [
+    ...(input.relationships??[]).filter(row=>!row.detailPath.startsWith("/合同管理/")&&!row.detailPath.startsWith("/结算管理/")&&!row.detailPath.startsWith("/付款管理/")).map((row):GlobalSearchItem=>({id:`relationship:${row.section}:${row.id}`,type:row.section==="contracts"?"合同":row.section==="settlements"?"结算":"付款",title:row.reference,subtitle:`${row.relationshipLabel} · ${row.signingParty} · ${row.counterparty}`,project:row.projectName,status:row.statusLabel,updatedAt:row.occurredAt,targetPath:row.detailPath,keywords:`${row.relationshipLabel} ${row.name} ${row.accountingEffect}`})),
     ...input.contracts.map((row): GlobalSearchItem => ({
       id: `contract:${row.id}`,
       type: "合同",
       title: row.contractNo,
-      subtitle: `${row.name} · ${row.counterparty} · ${row.amount}`,
+      subtitle: `${row.contractRelationshipLabel ?? "待确认分类"} · ${row.name} · ${row.counterparty} · ${row.amount}`,
       project: row.project,
       status: row.currentNode,
       updatedAt: row.updatedAt,
@@ -63,7 +66,7 @@ export function buildGlobalSearchItems(input: GlobalSearchSources): GlobalSearch
       id: `settlement:${row.id}`,
       type: "结算",
       title: row.settlementNo,
-      subtitle: `${row.contractNo} · ${row.period} · ${row.amount}`,
+      subtitle: `${row.contractRelationshipLabel ?? "待确认分类"} · ${row.contractNo} · ${row.period} · ${row.amount}`,
       project: row.project,
       status: row.currentNode,
       updatedAt: row.updatedAt,
@@ -83,7 +86,7 @@ export function buildGlobalSearchItems(input: GlobalSearchSources): GlobalSearch
       id: `payment:${row.id}`,
       type: "付款",
       title: row.paymentNo,
-      subtitle: `${row.settlementNo} · 申请 ${row.requestedAmount} · ${row.paymentStatus}`,
+      subtitle: `${row.contractRelationshipLabel ?? "待确认分类"} · ${row.settlementNo} · 申请 ${row.requestedAmount} · ${row.paymentStatus}`,
       project: row.project,
       status: row.approvalStatus,
       updatedAt: row.updatedAt,
@@ -103,7 +106,7 @@ export function buildGlobalSearchItems(input: GlobalSearchSources): GlobalSearch
       id: `archive:${row.id}`,
       type: "资料",
       title: row.documentNo,
-      subtitle: `${row.documentType} · ${row.businessRef} · ${row.fileSource}`,
+      subtitle: `${row.contractRelationshipLabel??"待确认分类"} · ${row.documentType} · ${row.businessRef} · ${row.fileSource}`,
       project: row.project,
       status: row.archiveStatus,
       updatedAt: row.lastAction,

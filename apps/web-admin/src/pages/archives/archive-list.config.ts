@@ -16,6 +16,7 @@ export interface ArchiveSummaryItem {
 }
 
 export interface ArchiveLedgerRow {
+  contractRelationshipLabel?: string;
   id: string;
   documentNo: string;
   fileId: string;
@@ -91,6 +92,7 @@ export const archiveSummaryItems: ArchiveSummaryItem[] = [
 
 export const archiveLedgerColumns: PrimaryTableCol<ArchiveLedgerRow>[] = [
   { colKey: "documentNo", title: "资料编号", width: 96 },
+  { colKey:"contractRelationshipLabel",title:"合同分类",width:180 },
   { colKey: "documentType", title: "资料类型", width: 96 },
   { colKey: "businessRef", title: "关联业务", minWidth: 120 },
   { colKey: "project", title: "项目", minWidth: 100 },

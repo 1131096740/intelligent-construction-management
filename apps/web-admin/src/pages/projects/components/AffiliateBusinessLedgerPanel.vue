@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { fetchContractCounterparties } from "../../../api/contract-economic-review.api";
 import { computed, onMounted, ref, watch } from "vue";
 import type { PrimaryTableCol, UploadFile } from "tdesign-vue-next";
 import {
@@ -31,7 +32,7 @@ import SensitiveActionDialog from "../../../components/SensitiveActionDialog.vue
 import { formatUnknownApiError } from "../../../api/error-message";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
 
-const props = defineProps<{ projectId: string }>();
+const props = defineProps<{ projectId: string; startWithUpwardSettlement?: boolean }>();
 
 type RecordType = ProjectAffiliateBusinessFactType;
 type AdjustmentMode = ProjectAffiliateEntryKind;
@@ -64,8 +65,12 @@ const supplementError = ref("");
 const supplementDescription = ref("");
 const supplementFiles = ref<UploadFile[]>([]);
 
+const counterparties=ref<Array<{value:string;label:string}>>([]);
+const counterpartyVersionId=ref("");
+watch(counterpartyVersionId,id=>{contractForm.value.counterpartyName=counterparties.value.find(p=>p.value===id)?.label??"";});
 const contractForm = ref(createContractForm());
 const settlementForm = ref(createSettlementForm());
+const settlementRelationship = ref<"outside" | "upward">("outside");
 const paymentForm = ref(createPaymentForm());
 
 const contractTypeOptions = [
@@ -105,6 +110,7 @@ const contractColumns: PrimaryTableCol[] = [
   { colKey: "operation", title: "操作", fixed: "right", width: 280 }
 ];
 const settlementColumns: PrimaryTableCol[] = [
+  { colKey: "relationship", title: "合同分类", width: 190, cell: (_h, { row }) => row.affiliateCompanyContractId ? "对上（施工企业—我方）" : "表外（施工企业签约）" },
   { colKey: "periodLabel", title: "结算期间", width: 130 },
   { colKey: "counterpartyName", title: "相对方", width: 180 },
   { colKey: "amountCents", title: "金额", width: 130 },
@@ -177,7 +183,7 @@ const drawerTitle = computed(() => {
 });
 const canSubmitRecord = computed(() => !recordBusy.value);
 
-onMounted(load);
+onMounted(async () => { await load(); if (props.startWithUpwardSettlement) { openRecord("settlement"); settlementRelationship.value = "upward"; activeTab.value = "settlement"; } });
 watch(
   () => props.projectId,
   () => {
@@ -192,11 +198,13 @@ async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    const [facts, options] = await Promise.all([
+    const [facts, options,parties] = await Promise.all([
       fetchProjectAffiliateBusinessFacts(props.projectId),
-      fetchProjectAffiliateCompanyContracts(props.projectId)
+      fetchProjectAffiliateCompanyContracts(props.projectId),
+      fetchContractCounterparties(props.projectId)
     ]);
     data.value = facts;
+    counterparties.value=parties;
     referenceOptions.value = options;
   } catch (error) {
     loadError.value = errorMessage(error, "施工企业业务持续接管台账读取失败");
@@ -206,12 +214,13 @@ async function load() {
 }
 
 function openRecord(type: RecordType) {
+  counterpartyVersionId.value="";
   recordType.value = type;
   recordMode.value = "original";
   recordError.value = "";
   evidenceFiles.value = [];
   if (type === "contract") contractForm.value = createContractForm();
-  if (type === "settlement") settlementForm.value = createSettlementForm();
+  if (type === "settlement") { settlementForm.value = createSettlementForm(); settlementRelationship.value = "outside"; }
   if (type === "payment") paymentForm.value = createPaymentForm();
   recordVisible.value = true;
 }
@@ -242,6 +251,7 @@ function openAdjustment(target: ConfirmTarget, mode: "correction" | "reversal") 
     };
   } else if (target.businessType === "settlement") {
     const fact = target.fact;
+    settlementRelationship.value = fact.affiliateCompanyContractId ? "upward" : "outside";
     settlementForm.value = {
       contractLedgerId: fact.contractLedgerId,
       affiliateCompanyContractId: fact.affiliateCompanyContractId ?? "",
@@ -317,6 +327,7 @@ async function submitRecord() {
         contractType: form.contractType,
         externalContractReference: required(form.externalContractReference, "外部合同编号"),
         counterpartyName: required(form.counterpartyName, "合同相对方"),
+        ...(recordMode.value=== "original"?{counterpartyVersionId:required(counterpartyVersionId.value,"受控相对方档案")}:{}),
         signedAt: required(form.signedAt, "合同签订日期"),
         amountNature: form.amountNature,
         ...(form.amountNature === "fixed"
@@ -775,6 +786,16 @@ function targetOf(
   return { businessType, fact } as ConfirmTarget;
 }
 
+function changeSettlementRelationship() {
+  settlementForm.value.contractLedgerId = "";
+  settlementForm.value.affiliateCompanyContractId = "";
+  settlementForm.value.counterpartyName = "";
+}
+function syncUpwardContract() {
+  const contract = referenceOptions.value?.contracts.find((c) => c.id === settlementForm.value.affiliateCompanyContractId);
+  settlementForm.value.contractLedgerId = contract?.id ?? "";
+  settlementForm.value.counterpartyName = contract?.companyEntityNameSnapshot ?? "";
+}
 function syncSettlementContract() {
   const fact = data.value?.contracts.find(
     (item) => item.ledgerId === settlementForm.value.contractLedgerId
@@ -970,7 +991,7 @@ function errorMessage(error: unknown, fallback: string) {
     <t-alert
       theme="warning"
       title="主体与资金边界"
-      message="施工企业签约的合同只能由施工企业付款；本台账不会创建我方付款申请、实付记录或审批实例。"
+      message="签约主体与实际付款方分别记录；真实代付保留原债务并形成主体间往来；本台账不会创建我方付款申请、实付记录或审批实例。"
     />
     <t-alert
       v-if="notice"
@@ -1199,10 +1220,18 @@ function errorMessage(error: unknown, fallback: string) {
             label="外部合同编号"
             :disabled="recordMode !== 'original'"
           />
+          <t-select
+            v-if="recordMode==='original'"
+            v-model="counterpartyVersionId"
+            :options="counterparties"
+            filterable
+            placeholder="选择受控合作单位档案"
+            aria-label="合同相对方档案"
+          />
           <t-input
             v-model="contractForm.counterpartyName"
-            label="合同相对方"
-            :disabled="recordMode !== 'original'"
+            label="合同相对方（冻结名称）"
+            readonly
           />
           <t-date-picker
             v-model="contractForm.signedAt"
@@ -1242,6 +1271,14 @@ function errorMessage(error: unknown, fallback: string) {
 
         <template v-else-if="recordType === 'settlement'">
           <t-select
+            v-model="settlementRelationship"
+            label="结算签约关系"
+            :disabled="recordMode !== 'original'"
+            :options="[{ label: '表外下游结算（确认项目成本）', value: 'outside' }, { label: '对上结算（仅主体往来）', value: 'upward' }]"
+            @change="changeSettlementRelationship"
+          />
+          <t-select
+            v-if="settlementRelationship === 'outside'"
             v-model="settlementForm.contractLedgerId"
             label="已确认外部合同"
             :options="settlementContractOptions"
@@ -1249,13 +1286,15 @@ function errorMessage(error: unknown, fallback: string) {
             @change="syncSettlementContract"
           />
           <t-select
+            v-if="settlementRelationship === 'upward'"
             v-model="settlementForm.affiliateCompanyContractId"
-            label="拨款链路的施工企业—我方合同（选填）"
+            label="对上合同（必填）"
             placeholder="请按合同编号或名称选择"
             :options="affiliateCompanyContractOptions"
             :disabled="recordMode !== 'original'"
             clearable
             filterable
+            @change="syncUpwardContract"
           />
           <t-input
             v-model="settlementForm.counterpartyName"

@@ -1,0 +1,7 @@
+import {contractHandlingWorkItems} from "./contract-handling-workitems";
+const row={id:"r",projectId:"p",createdAt:new Date("2026-10-19"),status:"pending_review",frozenSource:{contractRelationship:"inside"}};
+const db=()=>({contractEconomicReview:{findMany:jest.fn().mockResolvedValue([row])},upwardContractAmountRevision:{findMany:jest.fn().mockResolvedValue([row])},contractProxyExecution:{findMany:jest.fn().mockResolvedValue([row])},upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([row])}});
+describe("新增办理待办保持项目和独立复核权限",()=>{
+ it("普通员工没有新增复核待办且不查询敏感业务",async()=>{const tx=db();expect(await contractHandlingWorkItems(tx as never,"actor",[{projectId:"p",roleKeys:["employee"]}],new Map())).toEqual([]);expect(tx.contractProxyExecution.findMany).not.toHaveBeenCalled();});
+ it("财务主管收到代付与对上核销，路径带回来源项目和对应台账",async()=>{const tx=db();const items=await contractHandlingWorkItems(tx as never,"actor",[{projectId:"p",roleKeys:["finance_director"]}],new Map([["p","项目一"]]));expect(items.find(i=>i.businessType==="contract_proxy_execution")).toMatchObject({projectId:"p",contractRelationshipLabel:"表内（我方签约）",targetPath:"/合同工作台?projectId=p&ledgerSection=payments"});expect(items.find(i=>i.businessType==="upward_receipt_match")?.targetPath).toContain("ledgerSection=receipts");expect(tx.contractProxyExecution.findMany).toHaveBeenCalledWith({where:{projectId:{in:["p"]},status:"pending_confirm",recordedByUserId:{not:"actor"}}});});
+});

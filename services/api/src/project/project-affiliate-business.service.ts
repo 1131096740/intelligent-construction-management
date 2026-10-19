@@ -1,3 +1,7 @@
+import { matchedUpwardReceipts } from "../contract-ledger/upward-receipt-capacity";
+import { controlledDownstreamParty } from "../contract-ledger/contract-counterparty";
+import { contractProxyPaid } from "../contract-ledger/contract-proxy-capacity";
+import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
@@ -70,6 +74,7 @@ interface AffiliateFactConfirmation {
 }
 
 interface AffiliateContractFactRow extends AffiliateFactConfirmation {
+  counterpartyVersionId?: string|null;
   ledgerId: string;
   entryKind: string;
   adjustsFactId: string | null;
@@ -319,6 +324,7 @@ export class ProjectAffiliateBusinessService {
       adjustsFactId,
       externalContractReference,
       counterpartyName,
+      counterpartyVersionId: input.counterpartyVersionId??null,
       signedAt: signedAt.toISOString(),
       amountNature,
       amountCents: amountCents?.toString() ?? null,
@@ -348,6 +354,7 @@ export class ProjectAffiliateBusinessService {
         if (!roleKeys.includes("contract_staff")) {
           throw new ForbiddenException("只有合同人员可以录入施工企业对下合同事实");
         }
+        await assertDownstreamCounterparty(tx, counterpartyName);
         const affiliate = await readAffiliateSnapshot(tx, {
           projectId,
           occurredAt: signedAt
@@ -356,6 +363,8 @@ export class ProjectAffiliateBusinessService {
           ? await lockAndLoadContractTarget(tx, projectId, adjustsFactId)
           : null;
         if (target) {
+          const pendingAdjustment=await tx.projectAffiliateContractFact.findFirst({where:{ledgerId:target.ledgerId,status:"pending_confirm",entryKind:{in:["correction","reversal"]}}});
+          if(pendingAdjustment)throw new ConflictException("该合同已有待确认更正，请先完成该版本复核与确认，再录入下一次更正");
           assertContractAdjustmentTarget(target, {
             contractType,
             externalContractReference,
@@ -376,6 +385,8 @@ export class ProjectAffiliateBusinessService {
             "施工企业合同"
           );
         }
+        const counterpartyVersionId=target?.counterpartyVersionId??input.counterpartyVersionId??null;
+        if(counterpartyVersionId)await controlledDownstreamParty(tx,counterpartyVersionId,counterpartyName);
         const evidence = await validateExclusiveEvidence(
           tx,
           actorUserId,
@@ -394,6 +405,7 @@ export class ProjectAffiliateBusinessService {
             contractType,
             externalContractReference,
             counterpartyName,
+            counterpartyVersionId,
             signedAt,
             amountNature,
             amountCents,
@@ -587,7 +599,10 @@ export class ProjectAffiliateBusinessService {
         if (!roleKeys.includes("budget_staff")) {
           throw new ForbiddenException("只有项目预算人员可以录入施工企业对下结算事实");
         }
-        const contract = await loadActiveContractLedger(tx, projectId, contractLedgerId);
+        const contract = affiliateCompanyContractId
+          ? await loadUpwardSettlementContract(tx, projectId, affiliateCompanyContractId, contractLedgerId)
+          : await loadActiveContractLedger(tx, projectId, contractLedgerId);
+        if (!affiliateCompanyContractId) await assertDownstreamCounterparty(tx, counterpartyName);
         if (contract.contractType === "general_direct_payment") {
           throw new BadRequestException("通用直接付款合同不办理结算");
         }
@@ -598,9 +613,8 @@ export class ProjectAffiliateBusinessService {
         const resolvedAffiliateCompanyContractId =
           affiliateCompanyContractId ?? target?.affiliateCompanyContractId ?? null;
         if (
-          affiliateCompanyContractId &&
-          target?.affiliateCompanyContractId &&
-          affiliateCompanyContractId !== target.affiliateCompanyContractId
+          target &&
+          (affiliateCompanyContractId ?? null) !== (target.affiliateCompanyContractId ?? null)
         ) {
           throw new BadRequestException("施工企业结算更正不得改变施工企业—我方合同关联");
         }
@@ -1184,6 +1198,7 @@ export class ProjectAffiliateBusinessService {
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
+      await lockEconomicProject(tx, projectId);
       const delegate = factDelegate(tx, businessType);
       const replay = await delegate.findUnique({ where: { confirmationActionId } });
       if (replay) {
@@ -1214,8 +1229,27 @@ export class ProjectAffiliateBusinessService {
       if (fact.status !== "pending_confirm") {
         throw new BadRequestException("当前施工企业外部事实状态不可确认");
       }
+      if (businessType === "contract") {
+        const identity=fact as unknown as AffiliateContractFactRow;
+        if(!identity.counterpartyVersionId)throw new BadRequestException("外部合同缺少受控相对方档案，请核对后重新登记，不能按名称推断签约身份");
+        await controlledDownstreamParty(tx,identity.counterpartyVersionId,identity.counterpartyName);
+        await assertEconomicContractReady(tx, projectId, `affiliate:${(fact as unknown as AffiliateContractFactRow).ledgerId}`,undefined,undefined,fact.id);
+        await assertDownstreamCounterparty(tx, (fact as unknown as AffiliateContractFactRow).counterpartyName);
+      }
       if (businessType === "settlement") {
         const settlementFact = fact as unknown as AffiliateSettlementFactRow;
+        if (!settlementFact.affiliateCompanyContractId) {
+          await assertEconomicContractReady(tx, projectId, `affiliate:${settlementFact.contractLedgerId}`, settlementFact.effectDirection === "decrease" ? -settlementFact.amountCents : settlementFact.amountCents, `affiliate_settlement:${settlementFact.id}`);
+          await assertDownstreamCounterparty(tx, settlementFact.counterpartyName);
+        } else {
+          const upward = await tx.projectAffiliateCompanyContract.findFirst({ where: {
+            id: settlementFact.affiliateCompanyContractId, projectId, status: "confirmed"
+          } });
+          if (!upward || upward.companyEntityNameSnapshot !== settlementFact.counterpartyName ||
+              upward.affiliateAssignmentId !== settlementFact.affiliateAssignmentId) {
+            throw new BadRequestException("对上结算合同或双方主体不一致，不能正式确认");
+          }
+        }
         await lockSettlementLedger(tx, projectId, settlementFact.ledgerId);
         await assertSettlementEffectiveAmountCoversExistingPayments(
           tx,
@@ -1225,6 +1259,12 @@ export class ProjectAffiliateBusinessService {
           0n,
           settlementFact.id
         );
+      }
+      if (businessType === "payment" && (fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!) {
+        const settlement = await loadActiveSettlementLedger(tx, projectId, (fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!, true);
+        const payments = await tx.projectAffiliatePaymentFact.findMany({where:{projectId,settlementLedgerId:(fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!,status:{in:["pending_confirm","confirmed"]}}});
+        const total = netMoneyFacts(payments.filter(p=>p.status==="confirmed"||p.effectDirection!=="decrease"||p.id===factId)) + await contractProxyPaid(tx, `affiliate_settlement:${(fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!}`);
+        if(total > settlement.netAmountCents) throw new ConflictException("结算已被其他付款或代付核销，不能重复付款");
       }
       const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
       assertCanConfirm(businessType, fact.basisType, roleKeys);
@@ -1836,12 +1876,12 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
       where: {
         projectId,
         settlementLedgerId,
-        status: { in: ["pending_confirm", "confirmed"] }
+        OR:[{status:"confirmed"},{status:"pending_confirm",effectDirection:"increase"}]
       },
       select: { effectDirection: true, amountCents: true }
     })
   );
-  if (effectiveAmountCents < paymentAmountCents) {
+  if (effectiveAmountCents < paymentAmountCents + await contractProxyPaid(tx,`affiliate_settlement:${settlementLedgerId}`,true)) {
     throw new BadRequestException("施工企业结算有效金额不能低于已登记付款金额");
   }
   const settlementFacts = await tx.projectAffiliateSettlementFact.findMany({
@@ -1859,13 +1899,13 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
             projectId,
             factType: "affiliate_remittance_to_company",
             affiliateSettlementFactId: { in: settlementFacts.map((fact) => fact.id) },
-            status: { in: ["pending_confirm", "confirmed"] }
+            OR:[{status:"confirmed"},{status:"pending_confirm",effectDirection:"increase"}]
           },
           select: { effectDirection: true, amountCents: true }
         })
       )
     : 0n;
-  if (effectiveAmountCents < remittanceAmountCents + additionalRemittanceAmountCents) {
+  if (effectiveAmountCents < remittanceAmountCents + additionalRemittanceAmountCents + await matchedUpwardReceipts(tx,{settlementLedgerId},true)) {
     throw new BadRequestException("施工企业结算有效金额不能低于已登记拨款金额");
   }
 }
@@ -1997,7 +2037,7 @@ async function assertPaymentCapacity(
   const facts = await tx.projectAffiliatePaymentFact.findMany({
     where: {
       ...where,
-      status: { in: ["pending_confirm", "confirmed"] }
+      OR:[{status:"confirmed"},{status:"pending_confirm",effectDirection:"increase"}]
     },
     select: {
       id: true,
@@ -2006,7 +2046,7 @@ async function assertPaymentCapacity(
       amountCents: true
     }
   });
-  const current = netMoneyFacts(facts);
+  const current = netMoneyFacts(facts) + (input.settlement ? await contractProxyPaid(tx, `affiliate_settlement:${input.settlement.ledgerId}`, true) : 0n);
   const delta = input.effectDirection === "decrease" ? -input.amountCents : input.amountCents;
   const next = input.target ? current + delta : current + input.amountCents;
   const limit =
@@ -2444,4 +2484,17 @@ function fingerprint(value: unknown): string {
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+/** 名称匹配只用于拦截可疑主体，不据此自动确定分类或改写历史。 */
+async function assertDownstreamCounterparty(tx: Prisma.TransactionClient, name: string) {
+  const ownCompany = await tx.companyEntityVersion.findFirst({ where: { name: name.trim() }, select: { id: true } });
+  if (ownCompany) throw new BadRequestException("相对方与我方公司档案相符，请从对上合同/结算入口核对，不能登记为表外下游成本");
+}
+async function loadUpwardSettlementContract(tx: Prisma.TransactionClient, projectId: string, id: string, ledgerId: string) {
+  const contract = await tx.projectAffiliateCompanyContract.findFirst({ where: {
+    id, projectId, status: "confirmed", confirmedAt: { not: null }, confirmedByUserId: { not: null }
+  } });
+  if (!contract || ledgerId !== id) throw new BadRequestException("对上结算必须直接关联已确认的对上合同，不能另建一份表外合同");
+  return { ...contract, contractType: "upward", counterpartyName: contract.companyEntityNameSnapshot };
 }

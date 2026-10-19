@@ -1,3 +1,7 @@
+import type { Prisma } from "@prisma/client";
+import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
+import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
+import { contractClassifications } from "../contract-ledger/contract-classification-read";
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type {
   BusinessEntryFrozenSnapshot,
@@ -591,6 +595,7 @@ export class PaymentReadService {
       );
     }
 
+    const classificationByVersion = await contractClassifications(this.prisma, payments.map((p) => p.contractVersionId));
     const requestRows = payments.map((payment) => {
       const latestApproval = latestApprovalByPaymentId.get(payment.id);
       const returnedForRevision = payment.status === "draft" &&
@@ -625,6 +630,7 @@ export class PaymentReadService {
       return {
         id: payment.code,
         paymentNo: payment.code,
+        contractRelationshipLabel: classificationByVersion.get(payment.contractVersionId) ?? "待确认分类",
         contractNo: contract
           ? [contract.code, contract.name].filter(Boolean).join(" · ")
           : "合同信息未读取",
@@ -1132,6 +1138,7 @@ export class PaymentReadService {
       values: snapshot.valuesSnapshot as unknown as Record<string, unknown>, frozenAt: snapshot.frozenAt.toISOString()
     }));
     return {
+      projectId:payment.projectId,
       id: payment.code,
       businessEntryHistory,
       financeEntry: { definition: PAYMENT_FINANCE_ENTRY_DEFINITION, history: financeHistory },
@@ -1147,6 +1154,7 @@ export class PaymentReadService {
         { label: "实付状态", value: execution.label, tone: execution.tone },
         { label: "付款条款版本", value: `v${terms.versionNo} 随合同生效` },
         { label: "关联合同版本", value: `合同 v${contractVersion.versionNo}` },
+        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(contractVersion)] },
         { label: "责任部门", value: "财务部" },
         { label: "下一步动作", value: nextStep, tone: execution.tone }
       ],
@@ -1481,7 +1489,7 @@ export class PaymentReadService {
     );
     const proxyPaidCents = sumMoneyCents(
       projectProxyPayments.map((payment) => payment.amountCents)
-    );
+    ) + await contractProxyPaidForContract(this.prisma as unknown as Prisma.TransactionClient, contractVersion.contractId);
     const preview = buildContractPaymentApplicationPreview({
       asOf,
       contractEffectiveAt: contractVersion.effectiveAt,

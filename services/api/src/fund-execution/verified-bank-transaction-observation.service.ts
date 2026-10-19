@@ -26,8 +26,10 @@ export class VerifiedBankTransactionObservationService {
   constructor(private readonly prisma: PrismaService) {}
 
   async record(input: RecordVerifiedBankTransactionObservationInput) {
-    return this.prisma.$transaction(
-      async (tx) => {
+    return this.prisma.$transaction(tx=>this.recordInTransaction(tx,input),{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }
+
+  async recordInTransaction(tx:Prisma.TransactionClient,input:RecordVerifiedBankTransactionObservationInput){
         await this.authorizeContext(tx, input);
         const [verification, evidence, executedBy] = await Promise.all([
           tx.paymentExecutionPayerVerification.findUnique({
@@ -129,9 +131,6 @@ export class VerifiedBankTransactionObservationService {
             createdBackendPid: 0
           }
         });
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    );
   }
 
   private async authorizeContext(

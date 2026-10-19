@@ -1,3 +1,5 @@
+import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
+import { contractClassifications } from "../contract-ledger/contract-classification-read";
 import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -546,6 +548,7 @@ export class SettlementReadService {
         : Promise.resolve([])
     ]);
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const classificationByVersion = await contractClassifications(this.prisma, settlements.map((s) => s.contractVersionId));
     const termsById = new Map(terms.map((term) => [term.id, term]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
 
@@ -556,7 +559,8 @@ export class SettlementReadService {
         settlement,
         contract,
         termsVersion,
-        projectById.get(settlement.projectId)
+        projectById.get(settlement.projectId),
+        { contractRelationshipLabel: classificationByVersion.get(settlement.contractVersionId) ?? "待确认分类" }
       );
     });
 
@@ -610,6 +614,7 @@ export class SettlementReadService {
       loadSettlementDraftLifecycles(this.prisma, drafts)
     ]);
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const classificationByVersion = await contractClassifications(this.prisma, settlements.map((s) => s.contractVersionId));
     const termsById = new Map(terms.map((term) => [term.id, term]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const formal = settlements.filter((item) => !["approval_rejected", "withdrawn", "voided"].includes(item.status));
@@ -633,6 +638,7 @@ export class SettlementReadService {
       termsById.get(settlement.paymentTermsVersionId),
       projectById.get(settlement.projectId),
       {
+        contractRelationshipLabel: classificationByVersion.get(settlement.contractVersionId) ?? "待确认分类",
         settlementId: settlement.id,
         projectId: settlement.projectId,
         lifecycleKind: "formal_record",
@@ -717,6 +723,7 @@ export class SettlementReadService {
       loadSettlementDraftLifecycles(this.prisma, drafts)
     ]);
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const classificationByVersion = await contractClassifications(this.prisma, settlements.map((s) => s.contractVersionId));
     const termsById = new Map(terms.map((term) => [term.id, term]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const pendingSettlementIds = new Set(
@@ -739,6 +746,7 @@ export class SettlementReadService {
       termsById.get(settlement.paymentTermsVersionId),
       projectById.get(settlement.projectId),
       {
+        contractRelationshipLabel: classificationByVersion.get(settlement.contractVersionId) ?? "待确认分类",
         settlementId: settlement.id,
         projectId: settlement.projectId,
         status: settlement.status,
@@ -803,6 +811,7 @@ export class SettlementReadService {
     const rows = ledger.rows.map((row) => ({
       settlementNo: row.settlementNo,
       contractNo: row.contractNo,
+      contractRelationshipLabel: "contractRelationshipLabel" in row ? row.contractRelationshipLabel : "待确认分类",
       project: row.project,
       period: row.period,
       amount: row.amount,
@@ -819,6 +828,7 @@ export class SettlementReadService {
       columns: [
         { header: "结算编号", key: "settlementNo", width: 20 },
         { header: "合同编号", key: "contractNo", width: 20 },
+        { header: "合同分类", key: "contractRelationshipLabel", width: 24 },
         { header: "项目", key: "project", width: 24 },
         { header: "结算期间", key: "period", width: 14 },
         { header: "结算金额", key: "amount", width: 18 },
@@ -1000,6 +1010,7 @@ export class SettlementReadService {
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
         { label: "关联合同版本", value: `合同 v${contractVersion.versionNo}` },
+        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(contractVersion)] },
         { label: "付款条款版本", value: `v${terms.versionNo} 随合同生效` },
         { label: "结算期间", value: settlement.periodLabel },
         { label: "责任部门", value: "合同部" },

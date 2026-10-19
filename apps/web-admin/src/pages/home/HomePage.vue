@@ -232,6 +232,8 @@ const columns: PrimaryTableCol<HomeWorkItemRow>[] = [
   { colKey: "title", title: "工作项", minWidth: 176, ellipsis: true },
   { colKey: "businessCode", title: "业务编号", width: 112, ellipsis: true },
   { colKey: "projectName", title: "项目", minWidth: 132, ellipsis: true },
+  { colKey: "contractRelationshipLabel", title:"合同分类", minWidth:150 },
+  { colKey: "signingParty", title:"原签约主体", minWidth:150 },
   { colKey: "businessTypeLabel", title: "业务类型", width: 104 },
   { colKey: "amountText", title: "金额/数量", width: 112, align: "right" },
   { colKey: "currentNode", title: "当前节点", minWidth: 128, ellipsis: true },
@@ -269,7 +271,7 @@ const visibleRows = computed(() =>
 const mobileRows = computed(() => visibleRows.value.map((row) => ({
   id: row.id, title: row.title, code: row.businessCode, meta: row.projectName,
   status: row.statusLabel, tone: row.statusTone, amount: row.amountText,
-  facts: [{ label: "当前办理", value: row.currentNode }, { label: "停留时间", value: row.stayedText }],
+  facts: [{label:"合同分类",value:row.contractRelationshipLabel??"非合同事项"},{label:"签约主体",value:row.signingParty??"—"},{ label: "当前办理", value: row.currentNode }, { label: "停留时间", value: row.stayedText }],
   nextAction: row.nextAction
 })));
 function openMobileRow(id: string) {

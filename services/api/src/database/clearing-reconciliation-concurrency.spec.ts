@@ -3770,6 +3770,7 @@ async function createAuthorityBackedClearingCase(
     {
       contractReference: `${prefix}-AFFILIATE-CONTRACT`,
       contractName: "POL-275挂靠管理协议",
+      amountNature: "uncapped",
       signedAt: "2026-08-01",
       rightsObligationsSummary: "双方确认保证金权威上限、返还条件与清算边界。",
       companyEntityId: fixture.companyId,

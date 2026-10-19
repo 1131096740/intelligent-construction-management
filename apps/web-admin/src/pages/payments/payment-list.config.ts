@@ -43,6 +43,7 @@ export interface PaymentCreateSourceOption {
 }
 
 export interface PaymentLedgerRow {
+  contractRelationshipLabel?: string;
   id: string;
   paymentNo: string;
   contractNo: string;
@@ -139,6 +140,7 @@ export const paymentCreateSourceOptions: PaymentCreateSourceOption[] = [
 ];
 
 export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
+  { colKey: "contractRelationshipLabel", title: "合同分类", minWidth: 180 },
   { colKey: "paymentNo", title: "付款编号", width: 104 },
   { colKey: "contractNo", title: "关联合同", minWidth: 168 },
   { colKey: "settlementNo", title: "付款来源", width: 104 },

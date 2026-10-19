@@ -20,6 +20,8 @@
         </t-button>
       </template>
     </BusinessPageHeader>
+    <ContractRelationshipLedger initial-section="payments" />
+
 
     <t-tabs v-model="activeView">
       <t-tab-panel
@@ -224,6 +226,7 @@
 </template>
 
 <script setup lang="ts">
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -328,7 +331,7 @@ const paymentColumnOptions = computed(() =>
 const visiblePaymentLedgerColumns = computed(() => {
   const visible = new Set(visiblePaymentColumnKeys.value);
   return paymentLedgerColumns.filter((column) =>
-    column.colKey === "operation" || visible.has(String(column.colKey))
+    column.colKey === "operation" || column.colKey === "contractRelationshipLabel" || visible.has(String(column.colKey))
   );
 });
 

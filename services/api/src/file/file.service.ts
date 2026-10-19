@@ -1,3 +1,4 @@
+import {companyTransferRoles} from "../company-transfer/company-transfer.access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { canReadGeneralProcurement, generalProcurementActor } from "../general-procurement/general-procurement-access";
 import {
@@ -2252,6 +2253,17 @@ export class FileService {
     if (expenseAttachmentAccess === true) return;
     if (expenseAttachmentAccess === false) {
       throw new ForbiddenException("当前账号无权下载该费用附件");
+    }
+
+    const transferEvidence=await tx.companyTransfer?.findFirst({where:{evidenceFileId:file.id}});
+    if(transferEvidence){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director","chairman","general_manager"].includes(r)))return;const projects=[transferEvidence.sourceProjectId,transferEvidence.destinationProjectId];if(projects.every(Boolean)&&(await Promise.all(projects.map(p=>this.hasProjectRole(tx,actorUserId,p!,["finance_staff","finance_director"])))).every(Boolean))return;throw new ForbiddenException("无权查看互转申请依据");}
+    const bankVerificationEvidence=await tx.contractBankVerificationRequest?.findFirst({where:{OR:[{evidenceFileId:file.id},{holderEvidenceFileId:file.id}]},select:{projectId:true}});
+    if(bankVerificationEvidence){if(!bankVerificationEvidence.projectId){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director"].includes(r)))return;throw new ForbiddenException("无权访问公司自有资金核验依据");}if(await this.hasProjectRole(tx,actorUserId,bankVerificationEvidence.projectId,["finance_staff","finance_director"]))return;throw new ForbiddenException("当前账号无权访问银行核验依据");}
+    const classificationEvidence=await tx.contractProxyExecution?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}})
+      ??await tx.upwardContractAmountRevision?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}});
+    if(classificationEvidence){
+      if(await this.hasProjectRole(tx,actorUserId,classificationEvidence.projectId,["finance_staff","finance_director","contract_director"]))return;
+      throw new ForbiddenException("当前账号无权访问本项目核验依据");
     }
 
     const affiliateBusinessClients = tx as unknown as {

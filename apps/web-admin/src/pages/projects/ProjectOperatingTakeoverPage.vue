@@ -1,5 +1,6 @@
 <template>
   <section class="operating-takeover-page jg-responsive-detail">
+    <ContractRelationshipLedger :project-id="selectedProjectId" />
     <div class="page-head">
       <div>
         <span class="page-eyebrow">项目经营</span>
@@ -128,8 +129,15 @@
         </template>
         <template #actions="{ rowIndex }">
           <t-space>
-            <t-link @click="openDraftEdit(rowIndex)">编辑</t-link>
-            <t-link theme="danger" @click="removeDraftRow(rowIndex)">删除</t-link>
+            <t-link @click="openDraftEdit(rowIndex)">
+              编辑
+            </t-link>
+            <t-link
+              theme="danger"
+              @click="removeDraftRow(rowIndex)"
+            >
+              删除
+            </t-link>
           </t-space>
         </template>
       </t-table>
@@ -259,12 +267,16 @@
               v-if="POL_215_WRITE_UI_ENABLED"
               :disabled="detail.status === 'activated'"
               @click="openRowEdit(row)"
-            >编辑</t-link>
+            >
+              编辑
+            </t-link>
             <t-link
               v-if="POL_215_WRITE_UI_ENABLED"
               :disabled="detail.status === 'activated'"
               @click="selectAttachmentTarget(row)"
-            >附件</t-link>
+            >
+              附件
+            </t-link>
           </t-space>
         </template>
       </t-table>
@@ -274,13 +286,23 @@
         title="批次附件与证据来源"
         :bordered="false"
       >
-        <p class="helper-text">原始 Excel 已绑定到批次；可继续补充批次或具体行的依据文件。附件只保存文件关联，不把附件文件名写入 Excel 字段。</p>
+        <p class="helper-text">
+          原始 Excel 已绑定到批次；可继续补充批次或具体行的依据文件。附件只保存文件关联，不把附件文件名写入 Excel 字段。
+        </p>
         <div class="attachment-form">
-          <div v-if="attachmentTargetRow" class="attachment-target">
+          <div
+            v-if="attachmentTargetRow"
+            class="attachment-target"
+          >
             当前附件目标：第 {{ attachmentTargetRow.rowNo }} 行 · {{ String(attachmentTargetRow.values.businessRef ?? "—") }}
-            <t-link @click="clearAttachmentTarget">改为批次附件</t-link>
+            <t-link @click="clearAttachmentTarget">
+              改为批次附件
+            </t-link>
           </div>
-          <t-input v-model="attachmentPurpose" placeholder="附件用途，例如：付款凭据、对账单" />
+          <t-input
+            v-model="attachmentPurpose"
+            placeholder="附件用途，例如：付款凭据、对账单"
+          />
           <t-upload
             :model-value="attachmentFiles"
             theme="file-flow"
@@ -296,8 +318,14 @@
             {{ attachmentTargetRow ? "关联到当前行" : "关联到批次" }}
           </t-button>
         </div>
-        <ul v-if="detail.rows.some((row) => row.attachmentGroups.length)" class="attachment-list">
-          <li v-for="group in detail.rows.flatMap((row) => row.attachmentGroups)" :key="group.id">
+        <ul
+          v-if="detail.rows.some((row) => row.attachmentGroups.length)"
+          class="attachment-list"
+        >
+          <li
+            v-for="group in detail.rows.flatMap((row) => row.attachmentGroups)"
+            :key="group.id"
+          >
             {{ group.purpose }} · {{ group.links.length }} 份文件
           </li>
         </ul>
@@ -314,7 +342,11 @@
   >
     <t-form label-align="top">
       <t-form-item label="接管场景">
-        <t-select v-model="draftSceneKey" :options="sceneOptions" :disabled="draftRowIndex !== null" />
+        <t-select
+          v-model="draftSceneKey"
+          :options="sceneOptions"
+          :disabled="draftRowIndex !== null"
+        />
       </t-form-item>
       <BusinessEntryForm
         v-if="draftScene"
@@ -341,7 +373,10 @@
         <t-input v-model="editingDuplicateNote" />
       </t-form-item>
       <t-form-item label="复核结论">
-        <t-textarea v-model="editingReviewConclusion" :autosize="{ minRows: 2, maxRows: 4 }" />
+        <t-textarea
+          v-model="editingReviewConclusion"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+        />
       </t-form-item>
     </t-form>
   </t-dialog>
@@ -352,7 +387,10 @@
     :confirm-btn="{ content: '确认提交', loading: actionSubmitting }"
     @confirm="confirm"
   >
-    <t-alert theme="warning" :close="false">
+    <t-alert
+      theme="warning"
+      :close="false"
+    >
       本次将以当前批次版本提交{{ professionLabel(confirmationProfession) }}确认；提交后如需修改行，必须重新复核。
     </t-alert>
   </t-dialog>
@@ -363,13 +401,18 @@
     :confirm-btn="{ content: '确认激活', loading: actionSubmitting }"
     @confirm="activate"
   >
-    <t-alert theme="warning" :close="false">
+    <t-alert
+      theme="warning"
+      :close="false"
+    >
       激活后 A/B 级行将写入正式经营账，C 级行只保留为历史缺口；已激活原始行不能直接修改。
     </t-alert>
   </t-dialog>
 </template>
 
 <script setup lang="ts">
+import { useRoute } from "vue-router";
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import type { BusinessEntryDraftPayload } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
@@ -407,7 +450,8 @@ const scenes = ref<OperatingTakeoverSceneReadModel[]>([]);
 const batches = ref<OperatingTakeoverBatchReadModel[]>([]);
 const financialBatches = ref<HistoricalFinancialTakeoverBatchReadModel[]>([]);
 const detail = ref<OperatingTakeoverDetailReadModel | null>(null);
-const selectedProjectId = ref("");
+const route = useRoute();
+const selectedProjectId = ref(typeof route.query.projectId === "string" ? route.query.projectId : "");
 const selectedSceneKey = ref("");
 const excelFiles = ref<UploadFile[]>([]);
 const pendingSourceFile = ref<File | null>(null);

@@ -93,6 +93,43 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     );
   });
 
+  it("批准施工企业代付也保留我方债务并只形成一次代付往来", async () => {
+    const tx = paymentTx({ paymentSubjectType: "affiliate" });
+    const request = await tx.paymentRequest.findUnique();
+    tx.paymentRequest.findUnique.mockResolvedValue({ ...request, paymentSubjectType: "affiliate" });
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(tx as never, { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input.subjects.debtor).toEqual({ kind: "participating_company", id: "company-entity-1" });
+    expect(input.subjects.approvedPayer).toEqual(input.subjects.actualPayer);
+    expect(input.subjects.actualPayer?.kind).toBe("construction_enterprise");
+    expect(input.impacts.filter((i) => i.impactKind === "inter_subject_balance_increase")).toHaveLength(1);
+    expect(input.impacts.some((i) => i.impactKind === "confirmed_cost")).toBe(false);
+  });
+
+  it("表外合同批准我方代付时，施工企业债务人不覆盖批准或实际付款方", async () => {
+    const tx = paymentTx();
+    const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, signingSubjectType: "affiliate" });
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(tx as never, { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input.subjects.debtor).toEqual({ kind: "construction_enterprise", id: "affiliate-version-1" });
+    expect(input.subjects.approvedPayer).toEqual({ kind: "participating_company", id: "company-entity-1" });
+    expect(input.subjects.actualPayer).toEqual(input.subjects.approvedPayer);
+    expect(input.impacts.filter((i) => i.impactKind === "inter_subject_balance_increase")).toHaveLength(1);
+    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + i.amountCents, 0n)).toBe(600_00n);
+    expect(input.impacts.some((i) => i.impactKind === "confirmed_cost")).toBe(false);
+  });
+
+  it("批准付款方不明时拒绝推断为我方，不能以签约主体替代批准记录", async () => {
+    const tx = paymentTx();
+    const request = await tx.paymentRequest.findUnique();
+    tx.paymentRequest.findUnique.mockResolvedValue({ ...request, paymentSubjectType: "unknown" });
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    await expect(adapter.readSourceSnapshot(tx as never, { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" })).rejects.toThrow("批准付款主体类型不明确");
+  });
+
   it("projects the server-issued bank-holder snapshot as the actual payer", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx({

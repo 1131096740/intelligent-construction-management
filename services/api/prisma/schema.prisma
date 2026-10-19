@@ -5029,6 +5029,7 @@ model ProjectReceipt {
 }
 
 model ProjectUpstreamFundFact {
+  bankObservationReference String?
   id                              String    @id @default(uuid())
   projectId                       String
   factType                        String
@@ -5086,6 +5087,7 @@ model ProjectAffiliateContractFact {
   contractType                    String
   externalContractReference       String
   counterpartyName                String
+  counterpartyVersionId           String?
   signedAt                        DateTime
   amountNature                    String
   amountCents                     BigInt?
@@ -5232,6 +5234,8 @@ model ProjectAffiliateCompanyContract {
   contractName                           String
   signedAt                               DateTime
   rightsObligationsSummary               String
+  amountNature                           String    @default("unconfirmed")
+  amountCents                            BigInt?
   affiliateAssignmentId                  String
   affiliateBusinessPartyVersionId        String
   affiliateNameSnapshot                  String
@@ -6783,4 +6787,221 @@ model GeneralProcurement {
   @@index([projectId, status])
   @@index([applicantUserId, updatedAt])
   @@index([archiveFileId])
+}
+
+// 同一履约事项的两份文书保持各自身份；复核只明确重叠范围及唯一统计归属。
+model ContractEconomicReview {
+  id                    String   @id @default(uuid())
+  projectId             String
+  leftSourceRef         String
+  rightSourceRef        String
+  leftFingerprint       String
+  rightFingerprint      String
+  supersedesReviewId String?
+  relation              String
+  coverage              Json
+  reason                String
+  status                String   @default("pending_review")
+  revision              Int      @default(1)
+  preparedByUserId      String
+  contractReviewedById  String?
+  financeReviewedById   String?
+  financeRequired      Boolean  @default(false)
+  idempotencyKey        String   @unique
+  requestFingerprint    String
+  targetSourceRef       String?
+  targetVersionId       String?
+  frozenSources         Json?
+  createdAt             DateTime @default(now())
+  confirmedAt           DateTime?
+  returnedAt            DateTime?
+  returnReason          String?
+
+  @@index([projectId, leftSourceRef, rightSourceRef, status])
+}
+
+model ContractEconomicSettlementCoverage {
+  id String @id @default(uuid())
+  projectId String
+  sourceRef String @unique
+  contractRef String
+  amountCents BigInt
+  reviewFingerprint String
+  allocations Json
+  preparedByUserId String
+  status String @default("prepared")
+  createdAt DateTime @default(now())
+  confirmedAt DateTime?
+  @@index([projectId, contractRef, status])
+}
+
+model ContractProxyExecution {
+  receivingBankObservationId String?
+  bankObservationId String?
+ id String @id @default(uuid())
+ projectId String
+ sourceRef String
+ entryKind String
+ originalId String?
+ amountCents BigInt
+ occurredAt DateTime
+ actualPayerKey String
+ bankReference String
+ evidenceFileId String
+ evidenceSha256 String
+ reason String
+ paymentRequestId String?
+ frozenSource Json
+ status String @default("pending_confirm")
+ recordedByUserId String
+ confirmedByUserId String?
+ confirmedAt DateTime?
+ confirmationSignatureVersionId String?
+ idempotencyKey String @unique
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ @@index([projectId, sourceRef, status])
+ @@index([originalId, status])
+}
+
+model UpwardContractAmountRevision {
+ id String @id @default(uuid())
+ projectId String
+ contractId String
+ supersedesId String?
+ amountNature String
+ amountCents BigInt?
+ effectiveAt DateTime
+ reason String
+ evidenceFileId String
+ evidenceSha256 String
+ status String @default("pending_confirm")
+ recordedByUserId String
+ confirmedByUserId String?
+ confirmedAt DateTime?
+ confirmationSignatureVersionId String?
+ idempotencyKey String @unique
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ @@index([projectId, contractId, status, effectiveAt])
+}
+
+model UpwardReceiptMatch {
+ id String @id @default(uuid())
+ projectId String
+ receiptFactId String
+ settlementLedgerId String
+ originalId String?
+ amountCents BigInt
+ occurredAt DateTime
+ reason String
+ frozenSource Json
+ status String @default("pending_confirm")
+ recordedByUserId String
+ confirmedByUserId String?
+ confirmedAt DateTime?
+ confirmationSignatureVersionId String?
+ idempotencyKey String @unique
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ @@index([projectId, receiptFactId, status])
+ @@index([settlementLedgerId, status])
+}
+
+model ContractProxyBankClaim {
+ observationId String @id
+ proxyExecutionId String
+ createdAt DateTime @default(now())
+}
+
+model ContractBankEventClaim {
+ observationId String @id
+ sourceType String
+ sourceId String
+ createdByUserId String
+ createdAt DateTime @default(now())
+ @@unique([sourceType,sourceId])
+}
+
+model ContractBankVerificationRequest {
+ id String @id @default(uuid())
+ projectId String?
+ companyEntityId String
+ companyName String
+ companyCreditCode String
+ accountHash String
+ accountLast4 String
+ bankReference String
+ bankIdentity String
+ direction String
+ amountCents BigInt
+ occurredAt DateTime
+ evidenceFileId String
+ evidenceSha256 String
+ reason String
+ status String @default("pending_confirm")
+ recordedByUserId String
+ confirmedByUserId String?
+ confirmedAt DateTime?
+ signatureVersionId String?
+ holderEvidenceFileId String?
+ payerVerificationId String?
+ observationId String?
+ idempotencyKey String @unique
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ @@index([projectId,status])
+}
+
+model CompanyTransfer {
+ id String @id @default(uuid())
+ code String @unique
+ kind String
+ sourceCompanyId String
+ destinationCompanyId String
+ sourceProjectId String?
+ destinationProjectId String?
+ sourceAccountHash String
+ destinationAccountHash String
+ sourceAccountLast4 String
+ destinationAccountLast4 String
+ amountCents BigInt
+ originalTransferId String?
+ originalProxyId String?
+ originalFundMovementRelationshipId String?
+ originalInterEntityRelationshipId String?
+ reason String
+ evidenceFileId String
+ evidenceSha256 String
+ frozenParties Json
+ status String @default("submitted")
+ approvalInstanceId String? @unique
+ applicantUserId String
+ approvedByUserId String?
+ approvedAt DateTime?
+ idempotencyKey String @unique
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ @@index([sourceProjectId,status])
+ @@index([destinationProjectId,status])
+}
+model CompanyTransferEvent {
+ id String @id @default(uuid())
+ transferId String
+ kind String
+ outgoingEventId String?
+ observationId String @unique
+ amountCents BigInt
+ occurredAt DateTime
+ recordedByUserId String
+ idempotencyKey String @unique
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ @@index([transferId,kind])
+ @@index([outgoingEventId])
+}
+model CompanyTransferBankClaim {
+ observationId String @id
+ eventId String @unique
+ createdAt DateTime @default(now())
 }

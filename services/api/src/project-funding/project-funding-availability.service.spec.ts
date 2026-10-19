@@ -1,3 +1,4 @@
+jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ proxyRepaymentCompanyCash: jest.fn().mockResolvedValue(0n) }));
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { ProjectFundingAvailabilityService } from "./project-funding-availability.service";
@@ -50,7 +51,8 @@ function transactionMock(options: {
     $queryRaw: jest
       .fn()
       .mockResolvedValueOnce([options.project ?? { id: "project-1", isActive: true }])
-      .mockResolvedValueOnce(options.quotas ?? []),
+      .mockResolvedValueOnce(options.quotas ?? [])
+      .mockResolvedValue([{amount:0n}]),
     projectReceipt: {
       findMany: jest.fn().mockResolvedValue(
         (options.receipts ?? []).map((amountCents) => ({ amountCents }))

@@ -59,6 +59,8 @@
         @click="goDetail(item)"
       >
         <span class="item-title">{{ item.title }}</span>
+        <span>{{ item.contractRelationshipLabel }} · {{ item.signingParty }}</span>
+        <span>{{ item.accountingEffect }}</span>
         <strong :class="['item-amount', `tone-${item.tone}`]">{{ item.amountText }}</strong>
         <span>{{ item.projectName }} · {{ item.businessCode }}</span>
         <span>{{ item.currentNode }} · {{ item.stayedText }}</span>

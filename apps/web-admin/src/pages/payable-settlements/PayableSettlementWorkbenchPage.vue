@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useRouter} from "vue-router";
 import { computed, onMounted, ref } from "vue";
 import { MessagePlugin, type UploadFile } from "tdesign-vue-next";
 
@@ -32,6 +33,7 @@ const emptyCapabilities: PayableSettlementCapabilities = {
   return: false
 };
 
+const router=useRouter();
 const loading = ref(false);
 const submitting = ref(false);
 const errorMessage = ref("");
@@ -131,11 +133,7 @@ async function loadInitial() {
 }
 
 function requestRelationshipReturn(row: InterEntityRelationshipReadModel) {
-  selectedRelationship.value = row;
-  relationshipAmountYuan.value = "";
-  relationshipReason.value = "";
-  relationshipEvidenceFiles.value = [];
-  relationshipDialogVisible.value = false;
+ void router.push({path:"/公司互转台账",query:{originalInterEntityRelationshipId:row.relationshipEntryId}});
 }
 
 async function uploadInterEntityRelationshipEvidenceWithCapability(

@@ -441,6 +441,7 @@ const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>
+  !["CompanyTransfer","ContractProxyExecution","UpwardContractAmountRevision","ContractBankVerificationRequest"].includes(table) &&
   !REAL_FORM_FILE_BINDING_TABLES.has(table) &&
   !GOVERNANCE_FILE_BINDING_TABLES.has(table) &&
   !POST_INVOICE_EVIDENCE_FILE_BINDING_TABLES.has(table) &&

@@ -21,6 +21,8 @@
         </t-button>
       </template>
     </BusinessPageHeader>
+    <ContractRelationshipLedger initial-section="contracts" />
+
 
     <t-tabs
       v-model="activeTab"
@@ -298,6 +300,7 @@
 </template>
 
 <script setup lang="ts">
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { MessagePlugin } from "tdesign-vue-next";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
@@ -427,7 +430,7 @@ const contractColumnOptions = computed(() =>
 const visibleContractLedgerColumns = computed(() => {
   const visible = new Set(visibleContractColumnKeys.value);
   return contractLedgerColumns.filter((column) =>
-    column.colKey === "operation" || visible.has(String(column.colKey))
+    column.colKey === "operation" || column.colKey === "contractRelationshipLabel" || visible.has(String(column.colKey))
   );
 });
 
