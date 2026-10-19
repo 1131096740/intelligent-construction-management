@@ -1,0 +1,214 @@
+{
+  "mode": "local_diagnostic_not_remote_ci",
+  "baseSha": "d899e4eacd8276f04fae4e26d21416650fcc1b84",
+  "sourceFingerprints": {
+    "before": "1b30858a4febe0c8ecf66e85207c5bccf81e618bb7f9213d3e703ed3cf86832f",
+    "after": "7d5aeb6cae861e892af9f8429ece7b276425f6a0f17845b9db87eebd623f7266"
+  },
+  "implementationFiles": {
+    "services/api/prisma/database-dynamic-gate-manifest.json": "1e729615b5b59ae8f52b6180b8a3ef0f2aa5d06be3f9e504673a29ffed2ac046",
+    "services/api/prisma/migrations/20261019120000_operating_impact_created_at_return/migration.sql": "fd8fe068e6301b39bd004dda88092d9d1279682cd45794652182e1b778a22ff7",
+    "services/api/prisma/run-database-dynamic-gate-local.cjs": "93135cdf40259888acf07cda5dfebaf62bb315470e96a56d4cfb03a3e535f4ed",
+    "services/api/prisma/run-database-dynamic-gate-local.test.cjs": "8c12aae13ecb254421f79d912820928e98671a697368732be4d3e303e965e608",
+    "services/api/prisma/run-database-dynamic-remaining-local.cjs": "cc2da3a73542210d3eecc5a4b0d56e9063b02bb29b1062aa1fd93ee331bb7594",
+    "services/api/src/database/operating-ledger-concurrency.spec.ts": "316efa74f7ed2a0d0a216ba038406dc4b4fb9f757c34b9971ac2d1c4f6458108",
+    "services/api/src/database/operating-projection-postgresql.cases.ts": "1c7fea23bdd606558b3e56928ea3c01e580b624c1be988c6cba2ca8b7f44eb72"
+  },
+  "fullTests": {
+    "before": 14,
+    "after": 14
+  },
+  "wallClockObservationOnly": {
+    "core": {
+      "beforeMs": 35265,
+      "afterMs": 30758,
+      "observedReductionPercent": 12.8
+    },
+    "facts": {
+      "beforeMs": 521699,
+      "afterMs": 306883,
+      "observedReductionPercent": 41.2
+    },
+    "impacts": {
+      "beforeMs": 803978,
+      "afterMs": 464997,
+      "observedReductionPercent": 42.2
+    }
+  },
+  "preparationOnly": {
+    "beforeMs": 72479,
+    "afterMs": 15003,
+    "apiBuilds": {
+      "before": 2,
+      "after": 1
+    },
+    "sharedBuilds": {
+      "before": 18,
+      "after": 1
+    },
+    "prismaGenerates": {
+      "before": 17,
+      "after": 1
+    }
+  },
+  "pairedDiagnostic": {
+    "sourceSha256": "14afb6011944b210707b33af5feb4546044747b9fe0259037846660a578ed852",
+    "method": "Same real controlled DB writer, alternate id-only response forcing existing service fallback vs full id+createdAt response; 2 warmups then 3 batches of 1000 each per mode; does not replace full tests.",
+    "readbackMeanMs": 4458.333333333333,
+    "returnMeanMs": 4090.3333333333335,
+    "meanReductionPercent": 8.3
+  },
+  "pairedRounds": [
+    {
+      "phase": "paired.2.readback",
+      "durationMs": 4431
+    },
+    {
+      "phase": "paired.3.return",
+      "durationMs": 4057
+    },
+    {
+      "phase": "paired.4.return",
+      "durationMs": 4296
+    },
+    {
+      "phase": "paired.5.readback",
+      "durationMs": 4555
+    },
+    {
+      "phase": "paired.6.readback",
+      "durationMs": 4389
+    },
+    {
+      "phase": "paired.7.return",
+      "durationMs": 3918
+    }
+  ],
+  "databaseCounters": {
+    "facts": {
+      "before": {
+        "authorizeOperatingLedgerWrite": {
+          "funcname": "authorizeOperatingLedgerWrite",
+          "calls": 40033,
+          "total_time": 174547.617,
+          "self_time": 2848.799
+        },
+        "crypt": {
+          "funcname": "crypt",
+          "calls": 40034,
+          "total_time": 171703.32,
+          "self_time": 171703.32
+        },
+        "appendOperatingFactThroughService": {
+          "funcname": "appendOperatingFactThroughService",
+          "calls": 20012,
+          "total_time": 96827.002,
+          "self_time": 6173.742
+        },
+        "appendOperatingImpactThroughService": {
+          "funcname": "appendOperatingImpactThroughService",
+          "calls": 20021,
+          "total_time": 94144.271,
+          "self_time": 5196.722
+        }
+      },
+      "after": {
+        "authorizeOperatingLedgerWrite": {
+          "funcname": "authorizeOperatingLedgerWrite",
+          "calls": 40033,
+          "total_time": 112174.854,
+          "self_time": 1529.991
+        },
+        "crypt": {
+          "funcname": "crypt",
+          "calls": 40034,
+          "total_time": 110647.718,
+          "self_time": 110647.718
+        },
+        "appendOperatingFactThroughService": {
+          "funcname": "appendOperatingFactThroughService",
+          "calls": 20012,
+          "total_time": 61821.214,
+          "self_time": 3683.114
+        },
+        "appendOperatingImpactThroughService": {
+          "funcname": "appendOperatingImpactThroughService",
+          "calls": 20021,
+          "total_time": 60035.793,
+          "self_time": 3155.183
+        }
+      }
+    },
+    "impacts": {
+      "before": {
+        "appendOperatingImpactThroughService": {
+          "funcname": "appendOperatingImpactThroughService",
+          "calls": 100021,
+          "total_time": 533172.136,
+          "self_time": 25320.764
+        },
+        "authorizeOperatingLedgerWrite": {
+          "funcname": "authorizeOperatingLedgerWrite",
+          "calls": 100035,
+          "total_time": 468534.268,
+          "self_time": 56792.006
+        },
+        "crypt": {
+          "funcname": "crypt",
+          "calls": 100036,
+          "total_time": 411747.11,
+          "self_time": 411747.11
+        },
+        "appendOperatingFactThroughService": {
+          "funcname": "appendOperatingFactThroughService",
+          "calls": 14,
+          "total_time": 78.973,
+          "self_time": 9.222
+        }
+      },
+      "after": {
+        "appendOperatingImpactThroughService": {
+          "funcname": "appendOperatingImpactThroughService",
+          "calls": 100021,
+          "total_time": 341183.013,
+          "self_time": 14998.405
+        },
+        "authorizeOperatingLedgerWrite": {
+          "funcname": "authorizeOperatingLedgerWrite",
+          "calls": 100035,
+          "total_time": 305275.274,
+          "self_time": 30685.936
+        },
+        "crypt": {
+          "funcname": "crypt",
+          "calls": 100036,
+          "total_time": 274592.429,
+          "self_time": 274592.429
+        },
+        "appendOperatingFactThroughService": {
+          "funcname": "appendOperatingFactThroughService",
+          "calls": 14,
+          "total_time": 59.524,
+          "self_time": 8.463
+        }
+      }
+    }
+  },
+  "timestampReadbacks": {
+    "facts": {
+      "before": 20001,
+      "after": 0
+    },
+    "impacts": {
+      "before": 100001,
+      "after": 0
+    }
+  },
+  "retainedIdempotencyLookups": {
+    "facts": 20001,
+    "impacts": 100001
+  },
+  "gitHubUpdated": false,
+  "deployed": false,
+  "productionTouched": false
+}
