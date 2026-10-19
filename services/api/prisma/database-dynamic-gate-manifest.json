@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 175,
-    "terminalMigration": "20261019120000_unsubmitted_draft_deletion",
-    "terminalMigrationChecksum": "da89594599092186030a80c63c21cdd329b7c7a313d305ebc78026362abc5559",
+    "expectedDirectoryCount": 177,
+    "terminalMigration": "20261019140000_operating_context_noop_update",
+    "terminalMigrationChecksum": "4f22018eed019478384ae27af7f768c6dc3fb745ea9d69cc41b2adc382b0d865",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,11 +26,11 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 65,
-    "fullyPendingSuites": 54,
+    "pendingFiles": 67,
+    "fullyPendingSuites": 56,
     "partiallyPendingSuites": 11,
     "pendingTests": 346,
-    "coveredFiles": 65,
+    "coveredFiles": 67,
     "coveredTests": 346,
     "remainingFiles": 0,
     "remainingTests": 0
@@ -264,17 +264,51 @@
     },
     {
       "id": "operating_projection_pol108",
-      "pendingTests": 14,
+      "pendingTests": 12,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-projection-postgresql.spec.ts",
-          "pendingTests": 14,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
         "kind": "workspaceScript",
-        "script": "verify:pol108-operating-projection:local",
+        "script": "verify:pol108-operating-projection:core:local",
+        "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "operating_projection_pol108_facts",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/operating-projection-postgresql-facts.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol108-operating-projection:facts:local",
+        "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "operating_projection_pol108_impacts",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/operating-projection-postgresql-impacts.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:pol108-operating-projection:impacts:local",
         "path": "services/api/prisma/run-pol108-operating-projection-local.cjs"
       },
       "state": "executable_local_runner"

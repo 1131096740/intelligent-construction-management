@@ -6,6 +6,11 @@ const runner = readFileSync(
   "utf8"
 );
 
+const shards = readFileSync(
+  resolve(__dirname, "../../prisma/pol108-shards.cjs"),
+  "utf8"
+);
+
 describe("POL-108 disposable PostgreSQL 16 runner", () => {
   it("is exact-SHA, clean-worktree, local-only and never pulls an image", () => {
     expect(runner).toContain("LOCAL_PG16_DYNAMIC_GATE");
@@ -24,7 +29,17 @@ describe("POL-108 disposable PostgreSQL 16 runner", () => {
     expect(runner).toContain("for (let pass = 0; pass < 2; pass += 1)");
     expect(runner).toContain("cwd: temporaryRoot");
     expect(runner).toContain('RUN_POL108_OPERATING_PROJECTION_PG16: "1"');
-    expect(runner).toContain("operating-projection-postgresql.spec.ts");
+    expect(runner).toContain('require("./pol108-shards.cjs")');
+    expect(runner).toContain("runSelectedShards(process.argv.slice(2), runShard)");
+    expect(runner).toContain('"--runTestsByPath", ...shards.map(shard => shard.file)');
+    expect(runner).toContain("assertTestResults(JSON.parse(await readFile(resultPath, ");
+    for (const file of [
+      "operating-projection-postgresql.spec.ts",
+      "operating-projection-postgresql-facts.spec.ts",
+      "operating-projection-postgresql-impacts.spec.ts"
+    ]) {
+      expect(shards).toContain(file);
+    }
     expect(runner).toContain('productionTouched: false');
   });
 });

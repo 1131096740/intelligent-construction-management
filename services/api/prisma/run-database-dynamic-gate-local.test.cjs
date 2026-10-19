@@ -229,11 +229,11 @@ test("manifest derives all 346 pending tests as executable local coverage", () =
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 65,
-    fullyPendingSuites: 54,
+    pendingFiles: 67,
+    fullyPendingSuites: 56,
     partiallyPendingSuites: 11,
     pendingTests: 346,
-    coveredFiles: 65,
+    coveredFiles: 67,
     coveredTests: 346,
     remainingFiles: 0,
     remainingTests: 0,
@@ -243,29 +243,18 @@ test("manifest derives all 346 pending tests as executable local coverage", () =
   });
 });
 
-test("canonical manifest executes all 14 POL-108 PG16 tests", () => {
-  const manifest = loadManifest();
-  const group = manifest.coveredGroups.find(
-    (candidate) => candidate.id === "operating_projection_pol108"
-  );
-
-  assert.deepEqual(group, {
-    id: "operating_projection_pol108",
-    pendingTests: 14,
-    testFiles: [
-      {
-        path: "services/api/src/database/operating-projection-postgresql.spec.ts",
-        pendingTests: 14,
-        suiteStatus: "fully_pending"
-      }
-    ],
-    runner: {
-      kind: "workspaceScript",
-      script: "verify:pol108-operating-projection:local",
-      path: "services/api/prisma/run-pol108-operating-projection-local.cjs"
-    },
-    state: "executable_local_runner"
-  });
+test("canonical manifest executes all 14 POL-108 PG16 tests across three independent shards", () => {
+  const { SHARDS } = require("./pol108-shards.cjs");
+  const groups = loadManifest().coveredGroups.filter(group => group.id.startsWith("operating_projection_pol108"));
+  assert.equal(groups.length, 3);
+  assert.equal(groups.reduce((sum, group) => sum + group.pendingTests, 0), 14);
+  for (const [shard, config] of Object.entries(SHARDS)) {
+    const id = "operating_projection_pol108" + (shard === "core" ? "" : `_${shard}`);
+    const group = groups.find(entry => entry.id === id);
+    assert.equal(group.pendingTests, config.titles.length);
+    assert.deepEqual(group.testFiles, [{ path: `services/api/${config.file}`, pendingTests: config.titles.length, suiteStatus: "fully_pending" }]);
+    assert.equal(group.runner.script, `verify:pol108-operating-projection:${shard}:local`);
+  }
 });
 
 test("canonical manifest executes the POL-109 project close PG16 and HTTP acceptance", () => {
@@ -960,7 +949,7 @@ test("default and list modes stay read-only even with no executable PATH", () =>
   }
 });
 
-async function artifactLifecycleFixture(shouldFail) {
+async function artifactLifecycleFixture(shouldFail, groupId = "artifact-fixture") {
   // Exercise the real executeGate/finally filesystem lifecycle. Infrastructure
   // callbacks are substituted; this fixture does not execute a business/PG gate.
   const Module = require('node:module');
@@ -968,17 +957,18 @@ async function artifactLifecycleFixture(shouldFail) {
   fixtureModule.filename = runnerPath;
   fixtureModule.paths = Module._nodeModulePaths(path.dirname(runnerPath));
   const hook = `
-module.exports.artifactLifecycleFixture = async (shouldFail) => {
+module.exports.artifactLifecycleFixture = async (shouldFail, groupId) => {
+  let preparations = 0;
   let directory;
   assertExecutionArguments = () => {};
   assertSafeExecutionEnvironment = () => {};
-  selectCoveredGroups = () => [{ id: 'artifact-fixture', pendingTests: 1, runner: {} }];
+  selectCoveredGroups = () => [{ id: groupId, pendingTests: 1, runner: {} }];
   selectedCoverage = () => ({ coveredFiles: 1, coveredTests: 1 });
   createProbeEnvironment = () => ({});
   assertRepositoryState = async () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   resolveLocalDocker = async () => ({ endpoint: 'unix:///fixture', imageId: 'fixture-only' });
   createChildEnvironment = (_source, temporaryRoot) => { directory = temporaryRoot; return { TMPDIR: temporaryRoot }; };
-  runPreflight = async () => {};
+  runPreflight = async () => { preparations += 1; };
   resolveGroupCommand = () => ({ command: 'fixture', args: [] });
   runCommand = async () => {
     await require('node:fs/promises').mkdir(path.join(directory, 'browser-failure'));
@@ -990,10 +980,10 @@ module.exports.artifactLifecycleFixture = async (shouldFail) => {
     await executeGate({ manifest: { id: 'filesystem-lifecycle-fixture', executionPolicy: { confirmation: 'fixture' },
       migrationBaseline: { containerImage: 'fixture', expectedDirectoryCount: 0 }, inventory: { remainingTests: 0, remainingFiles: 0 } }, options: {} });
   } catch (error) { failure = error; }
-  return { directory, failure };
+  return { directory, failure, preparations };
 };`;
   fixtureModule._compile("const process = { ...require('node:process'), stdout: { write: () => true }, stderr: { write: () => true } };\n" + readFileSync(runnerPath, 'utf8').replace(/^#!.*\n/u, '') + hook, runnerPath);
-  return fixtureModule.exports.artifactLifecycleFixture(shouldFail);
+  return fixtureModule.exports.artifactLifecycleFixture(shouldFail, groupId);
 }
 
 test('failed dynamic gate preserves its private browser trace instead of deleting evidence', async () => {
@@ -1013,4 +1003,59 @@ test('successful dynamic gate still removes its own temporary directory', async 
     assert.equal(result.failure, undefined);
     await assert.rejects(stat(result.directory), { code: 'ENOENT' });
   } finally { await rm(result.directory, { recursive: true, force: true }); }
+});
+
+
+test("POL108 prepared dispatch preserves every shard without rerunning pnpm lifecycle", () => {
+  const { resolveGroupCommand } = require("./run-database-dynamic-gate-local.cjs");
+  const manifest = loadManifest();
+  for (const [id, shard] of [["operating_projection_pol108", "core"], ["operating_projection_pol108_facts", "facts"], ["operating_projection_pol108_impacts", "impacts"]]) {
+    const group = manifest.coveredGroups.find(group => group.id === id);
+    const result = resolveGroupCommand(group);
+    assert.equal(result.command, process.execPath);
+    assert.deepEqual(result.args, [path.join(__dirname, "run-pol108-operating-projection-local.cjs"), "--shard", shard]);
+  }
+});
+
+test("remaining runner prepares once before all batches and invokes Jest without pretest", async () => {
+  const Module = require("node:module");
+  const filename = path.join(__dirname, "run-database-dynamic-remaining-local.cjs");
+  const fixture = new Module(filename, module);
+  fixture.filename = filename;
+  fixture.paths = Module._nodeModulePaths(__dirname);
+  fixture._compile(readFileSync(filename, "utf8").replace(/^#!.*\n/u, "") + `
+module.exports.capturePreparation = async () => {
+  const commands = [];
+  assertSafeEnvironment = () => {};
+  assertRepositoryState = async () => {};
+  assertLocalDockerEndpoint = () => "unix:///fixture";
+  freePort = async () => 1234;
+  waitForPostgres = async () => {};
+  migrate = async () => {};
+  assertTerminalMigrationProof = async () => {};
+  selectGroups = () => GROUPS.filter(g => !g.preTerminalMigrationFixture).slice(0, 2);
+  run = async (bin, args) => { commands.push({bin, args}); return { stdout: "fixture-image" }; };
+  await main({PATH: "fixture", DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: "a".repeat(40)}, []);
+  return commands;
+};`, filename);
+  const commands = await fixture.exports.capturePreparation();
+  const build = commands.filter(c => c.args.includes("build"));
+  const generate = commands.filter(c => c.args.includes("generate"));
+  const tests = commands.filter(c => c.args.includes("--runInBand"));
+  assert.equal(build.length, 1);
+  assert.equal(generate.length, 1);
+  assert.equal(tests.length, 2);
+  assert.ok(commands.indexOf(generate[0]) < commands.indexOf(build[0]));
+  for (const entry of tests) {
+    assert.ok(commands.indexOf(build[0]) < commands.indexOf(entry));
+    assert.equal(entry.args.includes("test"), false);
+    assert.ok(entry.args.includes("jest"));
+    assert.ok(entry.args.includes("--runTestsByPath"));
+  }
+});
+
+
+test("outer gate delegates preparation only to the remaining runner that always prepares itself", async () => {
+  assert.equal((await artifactLifecycleFixture(false)).preparations, 1);
+  assert.equal((await artifactLifecycleFixture(false, "remaining_dynamic_postgresql16")).preparations, 0);
 });

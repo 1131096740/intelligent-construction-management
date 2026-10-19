@@ -777,12 +777,16 @@ describe("MeService", () => {
       ): Promise<{ items: Array<{ id: string; businessType?: string; agingStatus?: string }>; total: number }>;
     };
 
+    // Keep recent versus stale fixtures stable as the real calendar advances.
+    const now = jest.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-07-21T08:00:00.000Z").getTime()
+    );
     const result = await service.myDraftWorkItems(
       "user-1",
       ["project-1"],
       ["project-1"],
       new Map([["project-1", "测试项目"]])
-    );
+    ).finally(() => now.mockRestore());
 
     expect(result.total).toBe(40);
     expect(result.items).toHaveLength(31);

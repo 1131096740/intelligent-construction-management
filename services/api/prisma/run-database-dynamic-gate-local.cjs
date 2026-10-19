@@ -518,6 +518,19 @@ async function resolveLocalDocker(environment, image) {
 }
 
 function resolveGroupCommand(group) {
+  // This dispatcher runs only after the gate's real generate + build preflight.
+  // Standalone pnpm entry points retain their normal preparation lifecycle.
+  const pol108Shards = {
+    operating_projection_pol108: "core",
+    operating_projection_pol108_facts: "facts",
+    operating_projection_pol108_impacts: "impacts"
+  };
+  if (Object.hasOwn(pol108Shards, group.id)) {
+    return { command: process.execPath, args: [
+      resolveRepositoryPath(group.runner.path, `${group.id}.runner.path`),
+      "--shard", pol108Shards[group.id]
+    ] };
+  }
   if (group.runner.kind === "workspaceScript") {
     return { command: pnpm, args: [group.runner.script] };
   }
@@ -534,6 +547,7 @@ function resolveGroupCommand(group) {
 }
 
 async function runPreflight(environment) {
+  const started = performance.now();
   await runCommand(
     pnpm,
     ["--filter", "@jiangkong/api", "exec", "prisma", "generate"],
@@ -543,6 +557,7 @@ async function runPreflight(environment) {
     env: environment,
     forwardOutput: true
   });
+  process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - started) })}\n`);
 }
 
 async function executeGate({ manifest, options, sourceEnv = process.env }) {
@@ -574,7 +589,11 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     childEnvironment.LOCAL_PG16_DYNAMIC_GATE =
       manifest.executionPolicy.confirmation;
     childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
-    await runPreflight(childEnvironment);
+    // The remaining runner owns preparation for both standalone and CI use.
+    // No environment flag or persisted cache can bypass that preparation.
+    if (coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16")) {
+      await runPreflight(childEnvironment);
+    }
 
     for (const group of coveredGroups) {
       await assertRepositoryState(candidateSha, probeEnvironment);

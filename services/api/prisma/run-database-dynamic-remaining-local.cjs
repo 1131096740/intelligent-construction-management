@@ -637,14 +637,17 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
     const imageId = image.stdout.trim();
     if (!imageId) fail(`本机缺少已缓存镜像 ${IMAGE}`);
 
-    await run(pnpm, ["--filter", "@jiangkong/api", "build"], {
-      env: {
-        PATH: sourceEnv.PATH ?? "",
-        NODE_ENV: "test",
-        CI: "true"
-      },
-      forwardOutput: true
+    const preparationStarted = performance.now();
+    const preparationEnvironment = {
+      PATH: sourceEnv.PATH ?? "", NODE_ENV: "test", CI: "true"
+    };
+    await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "generate"], {
+      env: preparationEnvironment, forwardOutput: true
     });
+    await run(pnpm, ["--filter", "@jiangkong/api", "build"], {
+      env: preparationEnvironment, forwardOutput: true
+    });
+    process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - preparationStarted) })}\n`);
 
     await run(
       docker,
@@ -711,7 +714,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
       await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
       await run(
         pnpm,
-        ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...group.files],
+        ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath", ...group.files],
         { env: environment, forwardOutput: true }
       );
       receipts.push({
