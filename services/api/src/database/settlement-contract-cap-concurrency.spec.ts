@@ -71,6 +71,20 @@ describe("settlement contract cap database concurrency", () => {
         "overageReason" TEXT, "reason" TEXT, "remark" TEXT, "sortOrder" INTEGER NOT NULL,
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "User" (
+        "id" TEXT PRIMARY KEY, "isActive" BOOLEAN NOT NULL
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ProjectMember" (
+        "projectId" TEXT NOT NULL, "userId" TEXT NOT NULL, "positionKey" TEXT NOT NULL
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "Position" (
+        "id" TEXT PRIMARY KEY, "key" TEXT NOT NULL
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "UserPosition" (
+        "userId" TEXT NOT NULL, "positionId" TEXT NOT NULL, "projectId" TEXT
+      )`);
+      await clients[0]!.$executeRaw`INSERT INTO "User" VALUES ('staff-1', TRUE)`;
+      await clients[0]!.$executeRaw`INSERT INTO "ProjectMember" VALUES ('project-1', 'staff-1', 'contract_staff')`;
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "Project" ("id" TEXT PRIMARY KEY)`);
       await clients[0]!.$executeRaw`INSERT INTO "Project" VALUES ('project-1')`;
       await clients[0]!.$executeRaw`INSERT INTO "Contract" VALUES ('contract-1','project-1','material_purchase')`;

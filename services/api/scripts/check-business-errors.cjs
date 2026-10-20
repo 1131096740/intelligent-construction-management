@@ -75,7 +75,6 @@ const ALLOWED_INTERNAL_ERRORS = [
   { file: "src/project-expense/project-expense.service.ts", kind: "Error", message: "Auth service is required to confirm project expense execution", expectedOccurrences: 1, reason: "支出实付认证依赖缺失时的内部保护" },
   { file: "src/project-expense/project-expense.service.ts", kind: "Error", message: "Auth service is required to confirm project expense purchase execution", expectedOccurrences: 1, reason: "采购执行认证依赖缺失时的内部保护" },
   { file: "src/project-expense/project-expense.service.ts", kind: "Error", message: "Auth service is required to confirm project expense purchase receipt", expectedOccurrences: 1, reason: "采购收货认证依赖缺失时的内部保护" },
-  { file: "src/project-expense/project-expense.service.ts", kind: "Error", message: "File service is required to generate project expense approval PDF", expectedOccurrences: 1, reason: "支出审批 PDF 文件依赖缺失时的内部保护" },
   { file: "src/project-expense/project-expense.service.ts", kind: "Error", message: "File service is required to generate project expense finance PDF", expectedOccurrences: 1, reason: "支出财务 PDF 文件依赖缺失时的内部保护" }
 ];
 

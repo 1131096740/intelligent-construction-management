@@ -41,7 +41,7 @@ export async function verifyApprovedPdf(input: {
     method: "POST", headers: { authorization: `Bearer ${input.token}`, "content-type": "application/json" },
     body: JSON.stringify({ confirmationPassword: input.password, downloadReason: "本地审批与签名一致性验收" })
   });
-  if (response.status !== 201) throw new Error(`${input.label} PDF download ${response.status}: ${await response.text()}`);
+  if (response.status !== 201) throw new Error(`${input.label} 审批单下载失败，状态码 ${response.status}：${await response.text()}`);
   assert.match(response.headers.get("content-type") ?? "", /application\/pdf/u);
   const bytes = Buffer.from(await response.arrayBuffer());
   const pdf = await PDFDocument.load(bytes);
