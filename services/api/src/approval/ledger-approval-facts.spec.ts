@@ -2,6 +2,16 @@ import { ledgerApprovalFacts } from "./ledger-approval-facts";
 
 const createdAt = new Date("2026-10-20T00:00:00Z");
 describe("ledger approval paper facts", () => {
+  it.each([
+    ["payment", "代付公司", "材料商"], ["refund", "材料商", "代付公司"], ["repayment", "原债务施工企业", "代付公司"]
+  ])("prints the actual current %s direction rather than reusing the original payment direction", async (entryKind, payer, payee) => {
+    const row = { id: "proxy", createdAt, projectId: "p", amountCents: 1000n, entryKind, occurredAt: createdAt, bankReference: "回单-001", reason: "往来确认",
+      frozenSource: { reference: "结算-001", debtor: { name: "原债务施工企业" }, actualPayer: { name: "代付公司" }, payee: { name: "材料商" } } };
+    const tx = { project: { findUniqueOrThrow: jest.fn().mockResolvedValue({ name: "项目甲" }) }, contractProxyExecution: { findUniqueOrThrow: jest.fn().mockResolvedValue(row) } };
+    const form = await ledgerApprovalFacts(tx as never, "contract_proxy_execution", "proxy");
+    expect(form.summary).toEqual(expect.arrayContaining([{ label: "本次付款人", value: payer }, { label: "本次收款人", value: payee }, { label: "原代付人", value: "代付公司" }]));
+  });
+
   it("freezes bank company, reference, direction, amount and business date without full account", async () => {
     const row = { id: "bank-id", createdAt, projectId: "p", companyName: "建设公司", bankReference: "回单-001", accountLast4: "1234", direction: "outflow", amountCents: 12345n, occurredAt: new Date("2026-10-19T16:00:00Z"), reason: "核验付款" };
     const tx = { project: { findUniqueOrThrow: jest.fn().mockResolvedValue({ name: "项目甲" }) }, contractBankVerificationRequest: { findUniqueOrThrow: jest.fn().mockResolvedValue(row) } };

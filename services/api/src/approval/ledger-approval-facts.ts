@@ -57,8 +57,12 @@ export async function ledgerApprovalFacts(tx: Prisma.TransactionClient, business
     if ("entryKind" in row) {
       code = `${typeof source.reference === "string" ? source.reference : "原付款依据"} · ${row.bankReference}`;
       summary.push({ label: "办理类别", value: ({ payment: "代付", refund: "退款", repayment: "归还" } as Record<string, string>)[row.entryKind] ?? "往来确认" });
-      for (const [key, label] of [["debtor", "原债务人"], ["actualPayer", "实际付款人"], ["payee", "收款人"]]) {
-        const person = approvalEvidenceMetadata(source[key]);
+      const originalPayer = approvalEvidenceMetadata(source.actualPayer);
+      const debtor = approvalEvidenceMetadata(source.debtor);
+      const originalPayee = approvalEvidenceMetadata(source.payee);
+      const payer = row.entryKind === "refund" ? originalPayee : row.entryKind === "repayment" ? debtor : originalPayer;
+      const payee = row.entryKind === "payment" ? originalPayee : originalPayer;
+      for (const [person, label] of [[debtor, "原债务人"], [originalPayer, "原代付人"], [payer, "本次付款人"], [payee, "本次收款人"]] as const) {
         if (typeof person.name === "string") summary.push({ label, value: person.name });
       }
       if (Array.isArray(source.allocations)) for (const allocation of source.allocations) {
