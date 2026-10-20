@@ -1083,7 +1083,7 @@ test("contract finance remaining subgroup creates its own ledger write credentia
 
 test("contract settlement V2 runner isolates seed files per run and cleans only its temporary storage", async () => {
   const Module = require("node:module");
-  const { stat } = require("node:fs/promises");
+  const { mkdtemp, readFile, rm, stat, writeFile } = require("node:fs/promises");
   const filename = path.join(__dirname, "run-contract-settlement-v2-local.cjs");
   const fixture = new Module(filename, module);
   fixture.filename = filename;
@@ -1096,6 +1096,11 @@ module.exports.captureSeedStorage = async () => {
   run = async (_bin, args, options = {}) => {
     if (args.includes("context")) return "unix:///fixture";
     if (options.env?.DATABASE_URL) environments.push({ args, env: options.env, cwd: options.cwd });
+    if (args.some(arg => arg.endsWith("seed.cjs"))) {
+      const { mkdir, writeFile } = require("node:fs/promises");
+      await mkdir(options.env.FILE_STORAGE_ROOT, { recursive: true });
+      await writeFile(path.join(options.env.FILE_STORAGE_ROOT, "synthetic-seed-file"), "this run only");
+    }
     return "";
   };
   await main();
@@ -1105,8 +1110,11 @@ module.exports.captureSeedStorage = async () => {
     evidence: process.env.CONTRACT_SETTLEMENT_V2_LOCAL_EVIDENCE_PATH,
     storage: process.env.FILE_STORAGE_ROOT
   };
-  process.env.CONTRACT_SETTLEMENT_V2_LOCAL_EVIDENCE_PATH = path.join(require("node:os").tmpdir(), "synthetic-v2-evidence.json");
-  process.env.FILE_STORAGE_ROOT = "/existing-private-originals";
+  const existingRoot = await mkdtemp(path.join(require("node:os").tmpdir(), "v2-existing-private-"));
+  const existingFile = path.join(existingRoot, "synthetic-existing-file");
+  await writeFile(existingFile, "preserve this external file");
+  process.env.CONTRACT_SETTLEMENT_V2_LOCAL_EVIDENCE_PATH = path.join(existingRoot, "synthetic-v2-evidence.json");
+  process.env.FILE_STORAGE_ROOT = existingRoot;
   try {
     const roots = [];
     for (let run = 0; run < 2; run += 1) {
@@ -1121,7 +1129,8 @@ module.exports.captureSeedStorage = async () => {
       assert.equal(seed.cwd, path.dirname(path.dirname(storage)), "seed resolves its private files from its working directory");
       assert.ok(commands.some(({ args }) => args.includes("build")), "preserve the seed prerequisite build");
       for (const command of commands) assert.equal(command.env.FILE_STORAGE_ROOT, storage);
-      await assert.rejects(stat(storage), { code: "ENOENT" });
+      await assert.rejects(stat(path.dirname(path.dirname(storage))), { code: "ENOENT" });
+      assert.equal(await readFile(existingFile, "utf8"), "preserve this external file");
       roots.push(storage);
     }
     assert.notEqual(roots[0], roots[1]);
@@ -1129,5 +1138,6 @@ module.exports.captureSeedStorage = async () => {
     for (const [name, value] of [["CONTRACT_SETTLEMENT_V2_LOCAL_EVIDENCE_PATH", previous.evidence], ["FILE_STORAGE_ROOT", previous.storage]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
+    await rm(existingRoot, { recursive: true, force: true });
   }
 });
