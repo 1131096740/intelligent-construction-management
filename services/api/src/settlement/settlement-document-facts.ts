@@ -28,6 +28,8 @@ export interface FrozenDraftBusinessSnapshot {
   contractTypeKey: string;
   counterparty: string;
   companyEntityName: string;
+  contractRelationshipLabel?: string;
+  signingSubjectType?: string;
   taxFactRevision: number;
   invoiceType: string | null;
   taxMode: string;
@@ -58,6 +60,7 @@ export function settlementFrozenDocumentInput(
     contractName: snapshot.contractName,
     counterparty: snapshot.counterparty,
     companyEntityName: snapshot.companyEntityName,
+    contractRelationshipLabel: snapshot.contractRelationshipLabel,
     amountCents: snapshot.calculated.amountCents,
     invoiceType: invoiceTypeLabel(snapshot.invoiceType),
     taxMode: taxModeLabel(snapshot.taxMode),

@@ -59,10 +59,7 @@ const MAX_PAGE_SIZE = 100;
 const PAYMENT_TASK_SORT_AT = Symbol("paymentTaskSortAt");
 const PAYMENT_AMOUNT_FACTS = Symbol("paymentAmountFacts");
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
-const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>([
-  "material_staff",
-  "material_director"
-]);
+const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>(["material_staff"]);
 const PROCUREMENT_VOID_ROLES = new Set<RoleKey>([
   "project_manager",
   "finance_director"
@@ -399,7 +396,7 @@ export class SpotProcurementReadService {
     const unavailableReason = !enabled
       ? "零星采购未对当前项目开放"
       : !canCreate
-        ? "当前账号不是本项目物资员或物资主管"
+        ? "当前账号不是本项目物资员"
         : null;
     const handlerOptions =
       enabled && canCreate
@@ -2788,8 +2785,7 @@ export class SpotProcurementReadService {
       !hasRevisionDownstreamFacts;
     const canReview =
       canMutateCurrentApplicationRevision &&
-      Boolean(reviewAccess?.canAct) &&
-      input.currentApproval?.applicantUserId !== input.actorUserId;
+      Boolean(reviewAccess?.canReview);
     const canWithdraw =
       input.pilotEnabled &&
       canMutateCurrentApplicationRevision &&
@@ -2928,9 +2924,7 @@ export class SpotProcurementReadService {
               ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
             : hasRevisionDownstreamFacts
               ? "当前采购已存在付款或收货事实，不能处理审批"
-            : reviewAccess?.canAct
-              ? "申请人不能审批自己发起的采购"
-              : "当前账号不是本审批节点处理人"
+            : "当前账号不是本审批节点处理人"
       }),
       detailAction({
         key: "withdraw_approval",
@@ -4351,7 +4345,7 @@ function payerManagementReadModel(input: {
   return {
     visible: true,
     enabled: false,
-    disabledReason: "综合部主管审批完成后，仅财务主管可在本节点调整付款主体",
+    disabledReason: "首个审批节点完成后，仅财务主管可在财务审批节点调整付款主体",
     requiresReapproval: false
   };
 }

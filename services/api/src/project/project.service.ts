@@ -24,7 +24,7 @@ import { freezeProjectCreation, validateProjectCreation } from "./project-base-e
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { PrismaService } from "../database/prisma.service";
 import {
   acquireFileBusinessBindingTransactionLock,
@@ -3742,7 +3742,7 @@ export class ProjectService {
             : {})
         };
         await tx.approvalActionLog.create({
-          data: {
+          data: await withApprovalIdentity(tx, {
             id: actionId,
             approvalInstanceId: instance.id,
             action: input.decision,
@@ -3753,7 +3753,7 @@ export class ProjectService {
             signatureSha256Snapshot: signature.sha256,
             signatureVersionIdSnapshot: signature.versionId,
             metadata: actionMetadata
-          }
+          }, signature)
         });
         await this.audit.record(tx, {
           actorUserId,

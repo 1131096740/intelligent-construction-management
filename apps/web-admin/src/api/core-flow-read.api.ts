@@ -3607,15 +3607,18 @@ export function downloadProjectExpenseAttachment(
   );
 }
 
-export function downloadProjectExpenseApprovalPdf(
+export async function downloadProjectExpenseApprovalPdf(
   projectId: string,
   expenseRequestId: string,
   body: CreatePrivateFileDownloadTicketPayload
-) {
-  return postJson<PrivateFileDownloadTicketReadModel>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-pdf-download-ticket`,
-    body
-  );
+): Promise<void> {
+  const response = await apiFetch(`/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/approval-pdf-download-ticket`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  await ensureOk(response, "下载审批单失败");
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const name = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1];
+  saveBlob(await response.blob(), name ? decodeURIComponent(name) : "项目费用审批单.pdf");
 }
 
 export function fetchContractLedger() {
@@ -7203,7 +7206,7 @@ export async function downloadSettlementLatestApprovalPdf(
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
-  const fileName = match ? decodeURIComponent(match[1]) : `${settlementId}-结算审批最新.pdf`;
+  const fileName = match ? decodeURIComponent(match[1]) : `${settlementId}-结算单最新.pdf`;
   saveBlob(blob, fileName);
 }
 

@@ -319,7 +319,7 @@
                 >
                   <t-alert
                     theme="warning"
-                    title="领导自审二次确认"
+                    title="本人申请审批二次确认"
                     message="当前单据由您本人发起，请填写独立自审原因；当前密码将在确认对话框中输入。"
                   />
                   <label class="action-field">
@@ -373,7 +373,7 @@
                   :loading="archiveActionBusy === 'approvalForm'"
                   @click="requestApprovalFormDownload"
                 >
-                  下载审批单
+                  下载结算单
                 </t-button>
               </div>
             </div>
@@ -1334,7 +1334,7 @@ async function downloadSettlementApprovalPdfWithCapability(
   const operationAllowed = capability.availableActions.includes(
     "download_approval_form"
   );
-  if (!operationAllowed) throw new Error("当前用户不能下载该结算审批单");
+  if (!operationAllowed) throw new Error("当前用户不能下载该结算单");
   return downloadSettlementLatestApprovalPdf(settlementId, body);
 }
 
@@ -1525,11 +1525,11 @@ function requestApprovalFormDownload() {
   try {
     currentSettlementId();
   } catch (error) {
-    setActionError(error, "无法下载审批单，请刷新后重试。");
+    setActionError(error, "无法下载结算单，请刷新后重试。");
     return;
   }
   openSensitiveAction("approvalFormDownload", {
-    title: "确认下载结算审批单？",
+    title: "确认下载结算单？",
     description: "系统将校验当前密码，并记录下载人、单据、原因和下载时间。",
     confirmText: "确认下载",
     requireReason: true,

@@ -1,3 +1,4 @@
+import { ApprovalFormService } from "../approval/approval-form.service";
 import {
   BadRequestException,
   ConflictException,
@@ -19,12 +20,11 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import {
-  isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
   type FrozenApprovalNode
 } from "../approval/approval-review-identity";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -274,7 +274,8 @@ export class ProjectExpenseService {
     private readonly auth?: AuthService,
     @Optional()
     private readonly files?: FileService,
-    private readonly projectFunding?: ProjectFundingAvailabilityService
+    private readonly projectFunding?: ProjectFundingAvailabilityService,
+    @Optional() private readonly approvalForms?: ApprovalFormService
   ) {}
 
   async list(projectId: string, actorUserId: string, query?: ProjectExpenseLedgerQuery) {
@@ -987,20 +988,9 @@ export class ProjectExpenseService {
     if (!canRead) {
       throw new BadRequestException(unavailable);
     }
-    const pdf = await this.prisma.pdfDocument.findFirst({
-      where: {
-        businessType: "project_expense_request",
-        businessId: expense.id,
-        templateKey: APPROVAL_PDF_TEMPLATE_KEY
-      },
-      select: { fileId: true }
-    });
-    if (!pdf) {
-      throw new BadRequestException(unavailable);
-    }
+    if (!this.approvalForms) throw new BadRequestException("审批单下载服务暂不可用");
+    return this.approvalForms.renderForDownload("project_expense_request", expense.id, actorUserId, confirmationPassword, downloadReason);
 
-    await this.auth.confirmPassword(actorUserId, confirmationPassword);
-    return this.files.createDownloadTicket(pdf.fileId, { actorUserId, downloadReason });
   }
 
   async create(projectId: string, actorUserId: string, input: CreateProjectExpenseRequestDto) {
@@ -1260,7 +1250,7 @@ export class ProjectExpenseService {
       }
 
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: isGovernedFrozenApprovalNode(currentNode)
+        required: true
       });
 
       const approvedAmountCents = input.approvedAmountCents === undefined
@@ -1304,22 +1294,18 @@ export class ProjectExpenseService {
         }
       });
       await tx.approvalActionLog.create({
-        data: {
+        data: await withApprovalIdentity(tx, {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
           approvedRoleKey,
           representedUserId: identity.representedUserId,
-          ...(isGovernedFrozenApprovalNode(currentNode)
-            ? {
-                signatureFileIdSnapshot: signature.fileId,
-                signatureSha256Snapshot: signature.sha256,
-                signatureVersionIdSnapshot: signature.versionId
-              }
-            : {}),
+          signatureFileIdSnapshot: signature.fileId,
+          signatureSha256Snapshot: signature.sha256,
+          signatureVersionIdSnapshot: signature.versionId,
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
-        }
+        }, signature)
       });
       if (flowCompleted) {
         await this.shrinkFinancingQuotaUsageToApprovedAmount(
@@ -2540,85 +2526,13 @@ export class ProjectExpenseService {
   }
 
   private async ensureApprovalPdfArchive(expenseRequestId: string, actorUserId: string) {
-    if (!this.files) {
-      throw new Error("File service is required to generate project expense approval PDF");
-    }
-
-    const expense = await this.prisma.projectExpenseRequest.findFirst({
-      where: { OR: [{ id: expenseRequestId }, { code: expenseRequestId }] }
+    if (!this.approvalForms) throw new BadRequestException("审批单生成服务暂不可用");
+    const instance = await this.prisma.approvalInstance.findFirst({
+      where: { businessType: "project_expense_request", businessId: expenseRequestId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     });
-    if (!expense) {
-      throw new NotFoundException("项目支出申请不存在");
-    }
-    if (expense.status !== "approved_pending_payment") {
-      throw new BadRequestException("项目支出审批完成后才能生成审批单 PDF");
-    }
-
-    const existingPdf = await this.prisma.pdfDocument.findFirst({
-      where: {
-        businessType: "project_expense_request",
-        businessId: expense.id,
-        templateKey: APPROVAL_PDF_TEMPLATE_KEY
-      }
-    });
-    if (existingPdf) {
-      return { pdfDocument: existingPdf, archiveRecord: null };
-    }
-
-    const buffer = renderSimplePdf([
-      projectExpenseApprovalPdfTitle(expense.expenseType),
-      `单据编号：${expense.code}`,
-      `支出类型：${projectExpenseTypeLabel(expense.expenseType)}`,
-      `明细类型：${projectExpenseSubtypeLabel(expense.expenseSubtype)}`,
-      `付款事由：${expense.paymentSubject}`,
-      `用途说明：${expense.reason}`,
-      `收款对象：${expense.counterpartyName ?? "未填写"}`,
-      `附件状态：${expense.attachmentFileId ? "已上传" : "未上传"}`,
-      `申请金额：${formatCents(expense.requestedAmountCents)} 元`,
-      `批准金额：${formatCents(expense.approvedAmountCents ?? expense.requestedAmountCents)} 元`,
-      `申请人：${expense.applicantUserId}`,
-      `生成时间：${new Date().toISOString()}`
-    ]);
-    const file = await this.files.uploadPrivateFile({
-      originalName: `${expense.code}-${APPROVAL_PDF_TEMPLATE_KEY}.pdf`,
-      mimeType: "application/pdf",
-      sizeBytes: buffer.length,
-      uploadedByUserId: actorUserId,
-      buffer
-    });
-
-    return this.prisma.$transaction(async (tx) => {
-      const pdfDocument = await tx.pdfDocument.create({
-        data: {
-          businessType: "project_expense_request",
-          businessId: expense.id,
-          fileId: file.id,
-          templateKey: APPROVAL_PDF_TEMPLATE_KEY
-        }
-      });
-      const archiveRecord = await tx.archiveRecord.create({
-        data: {
-          businessType: "project_expense_request",
-          businessId: expense.id,
-          fileId: file.id,
-          departmentScope: "finance"
-        }
-      });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project_expense.approval_pdf.archive",
-        businessType: "project_expense_request",
-        businessId: expense.id,
-        metadata: {
-          code: expense.code,
-          fileId: file.id,
-          pdfDocumentId: pdfDocument.id,
-          archiveRecordId: archiveRecord.id,
-          templateKey: APPROVAL_PDF_TEMPLATE_KEY
-        }
-      });
-      return { pdfDocument, archiveRecord };
-    });
+    if (!instance || instance.status !== "approved") throw new BadRequestException("项目支出最终审批通过后才能生成审批单");
+    return this.approvalForms.generateForInstance(instance.id, actorUserId);
   }
 
   private async ensureFinancePdfArchive(expenseRequestId: string, actorUserId: string) {
@@ -3325,12 +3239,6 @@ function getProjectExpenseApprovalNodes(expenseType: (typeof EXPENSE_TYPES)[numb
 
 function formatCents(amountCents: bigint) {
   return formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "项目支出金额")).replace(/,/g, "");
-}
-
-function projectExpenseApprovalPdfTitle(expenseType: string) {
-  if (expenseType === "reimbursement") return "报销审批单";
-  if (expenseType === "spot_purchase") return "零星采购审批单";
-  return "项目支出审批单";
 }
 
 function projectExpenseFinancePdfTitle(expenseType: string) {

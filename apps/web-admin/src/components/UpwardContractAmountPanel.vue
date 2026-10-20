@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import { onBeforeUnmount,ref,watch } from "vue";
 import { fetchUpwardAmounts,prepareUpwardAmount,decideUpwardAmount,type UpwardAmountData } from "../api/upward-contract-amount.api";
 import { uploadPrivateFile } from "../api/core-flow-read.api";
@@ -78,7 +79,8 @@ async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPri
           退回补充
         </t-button>
       </template>
-    </div>
+          <ApprovalDocumentDownload business-type="upward_contract_amount_revision" :business-id="row.id" :refresh-key="row.status" />
+</div>
     <t-drawer
       v-model:visible="show"
       header="对上合同金额修订"

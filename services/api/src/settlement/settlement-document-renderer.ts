@@ -5,7 +5,9 @@ import { degrees, PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument = require("pdfkit");
 
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
-const PDF_LINE_ROWS_PER_PAGE = 9;
+const PDF_CONTENT_CAPACITY = 382;
+const PDF_FINAL_CONTENT_CAPACITY = 242;
+const LINE_TABLE_WIDTHS = [26, 94, 84, 34, 48, 64, 64, 40, 70, 56, 70, 143.89];
 const PDF_TABLE_HEADERS = [
   "序号",
   "名称",
@@ -72,6 +74,7 @@ export interface SettlementDocumentInput {
   contractName: string;
   counterparty: string;
   companyEntityName: string;
+  contractRelationshipLabel?: string;
   amountCents: bigint;
   invoiceType: string;
   taxMode: string;
@@ -102,6 +105,11 @@ export interface SettlementDocumentLine {
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
   remark: string | null;
+}
+
+export function settlementDocumentTitle(input: Pick<SettlementDocumentInput, "contractTypeKey" | "isFinal">) {
+  const names: Record<string, string> = { material_purchase: "材料采购", equipment_rental: "机械设备租赁", labor_subcontract: "劳务", professional_subcontract: "专业分包" };
+  return `${names[input.contractTypeKey ?? ""] ?? "工程"}${input.isFinal ? "最终" : "过程"}结算单`;
 }
 
 export function settlementStatusLabel(value: string): string {
@@ -160,10 +168,7 @@ export function settlementSignatureBoardPageIndexes(
   signaturePageCount: number
 ): number[] {
   const pageCount = Math.max(Math.trunc(rangeCount), 0);
-  const signatureCount = Math.min(Math.max(Math.trunc(signaturePageCount), 0), pageCount);
-  const startPage = rangeStart + pageCount - signatureCount;
-
-  return Array.from({ length: signatureCount }, (_, offset) => startPage + offset);
+  return pageCount > 0 && signaturePageCount > 0 ? [rangeStart + pageCount - 1] : [];
 }
 
 export async function renderSettlementDraftExcel(input: SettlementDocumentInput): Promise<Buffer> {
@@ -224,8 +229,8 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
   const infoRows = [
     ["项目名称", input.projectName, "", "结算编号", input.settlementCode, "", "结算期次", input.periodLabel, "", "", "", ""],
     ["合同名称", input.contractName, "", "合同编号", input.contractCode, "", "相对方", input.counterparty, "", "", "", ""],
-    ["我方主体", input.companyEntityName, "", "结算类型", input.isFinal ? "最终结算" : "过程结算", "", "生成日期", formatDate(input.generatedAt), "", "", "", ""],
-    ["状态", settlementStatusLabel(input.status), "", "", "", "", "", "", "", "", "", ""]
+    ["签约主体", input.companyEntityName, "", "结算类型", input.isFinal ? "最终结算" : "过程结算", "", "生成日期", formatDate(input.generatedAt), "", "", "", ""],
+    ["状态", settlementStatusLabel(input.status), "", "合同分类", input.contractRelationshipLabel ?? "待确认分类", "", "", "", "", "", "", ""]
   ];
   for (const values of infoRows) {
     sheet.addRow(values);
@@ -376,27 +381,80 @@ export interface SettlementPdfPagePlan {
   lineStartIndex: number;
   lines: SettlementDocumentLine[];
   tableHeaders: readonly string[];
+  renderedRows: Array<{ cells: string[]; height: number }>;
   signatureRoleLabels: readonly string[];
 }
 
 export function settlementPdfPagePlan(input: SettlementDocumentInput): SettlementPdfPagePlan[] {
-  const linePages: SettlementDocumentLine[][] = [];
-  for (let index = 0; index < input.lines.length; index += PDF_LINE_ROWS_PER_PAGE) {
-    linePages.push(input.lines.slice(index, index + PDF_LINE_ROWS_PER_PAGE));
+  const measure = new PDFDocument({ size: "A4", layout: "landscape", margin: 0 });
+  measure.on("data", () => undefined);
+  measure.registerFont("cn", FONT_PATH).font("cn").fontSize(6.5);
+  const heightOf = (cells: string[]) => Math.max(26, ...cells.map((cell, i) =>
+    measure.heightOfString(cell, { width: LINE_TABLE_WIDTHS[i] - 6 }) + 10));
+  const pages: Array<{ lines: SettlementDocumentLine[]; renderedRows: Array<{ cells: string[]; height: number }>; lineStartIndex: number }> = [];
+  let current = { lines: [] as SettlementDocumentLine[], renderedRows: [] as Array<{ cells: string[]; height: number }>, lineStartIndex: 0 };
+  let used = 0;
+  const append = (line: SettlementDocumentLine, cells: string[], lineIndex: number) => {
+    const height = heightOf(cells);
+    if (used + height > PDF_CONTENT_CAPACITY) {
+      pages.push(current);
+      current = { lines: [], renderedRows: [], lineStartIndex: lineIndex };
+      used = 0;
+    }
+    current.lines.push(line);
+    current.renderedRows.push({ cells, height });
+    used += height;
+  };
+  input.lines.forEach((line, index) => {
+    let remaining = settlementLineCells(line, index + 1);
+    while (heightOf(remaining) > 242) {
+      const segment = remaining.map((text, column) => {
+        const chars = Array.from(text);
+        let low = 0, high = chars.length;
+        while (low < high) {
+          const middle = Math.ceil((low + high) / 2);
+          if (measure.heightOfString(chars.slice(0, middle).join(""), { width: LINE_TABLE_WIDTHS[column] - 6 }) + 10 <= 242) low = middle;
+          else high = middle - 1;
+        }
+        return chars.slice(0, low).join("");
+      });
+      append(line, segment, index);
+      remaining = remaining.map((text, column) => text.slice(segment[column].length));
+    }
+    if (remaining.some(Boolean)) append(line, remaining, index);
+  });
+  if (current.renderedRows.length || !pages.length) pages.push(current);
+  const last = pages.at(-1)!;
+  if (last.renderedRows.reduce((sum, row) => sum + row.height, 0) > PDF_FINAL_CONTENT_CAPACITY) {
+    let split = last.renderedRows.length;
+    let tailHeight = 0;
+    while (split > 0 && tailHeight + last.renderedRows[split - 1].height <= PDF_FINAL_CONTENT_CAPACITY) {
+      tailHeight += last.renderedRows[--split].height;
+    }
+    pages.push({ lines: last.lines.splice(split), renderedRows: last.renderedRows.splice(split), lineStartIndex: last.lineStartIndex + split });
   }
-  if (!linePages.length) linePages.push([]);
+  measure.end();
   const signatureRoleLabels = settlementSignatureRoleSlots(input).map((slot) => slot.label);
-  return linePages.map((lines, pageIndex) => ({
+  return pages.map((page, pageIndex) => ({
+    ...page,
     pageNumber: pageIndex + 1,
-    pageCount: linePages.length,
+    pageCount: pages.length,
     settlementCode: input.settlementCode,
     revisionLabel: "结算单",
-    pageMarker: `第 ${pageIndex + 1}/${linePages.length} 页`,
-    lineStartIndex: pageIndex * PDF_LINE_ROWS_PER_PAGE,
-    lines,
+    pageMarker: `第 ${pageIndex + 1}/${pages.length} 页`,
     tableHeaders: PDF_TABLE_HEADERS,
-    signatureRoleLabels
+    signatureRoleLabels: pageIndex === pages.length - 1 ? signatureRoleLabels : []
   }));
+}
+
+function settlementLineCells(line: SettlementDocumentLine, number: number): string[] {
+  const prefix = line.sourceType === "manual_adjustment" ? "人工调整" : line.sourceType === "visa_change" ? "签证/变更" : "";
+  return [String(number), line.name, line.specification ?? "—", line.unit ?? "—", line.quantity ?? "—",
+    line.taxExclusiveUnitPrice ?? "—", line.taxInclusiveUnitPrice ?? "—",
+    line.taxRatePercent == null ? "—" : `${line.taxRatePercent}%`,
+    line.taxExclusiveAmountCents === null ? "—" : centsToYuanText(line.taxExclusiveAmountCents),
+    line.taxAmountCents === null ? "—" : centsToYuanText(line.taxAmountCents), centsToYuanText(line.taxInclusiveAmountCents),
+    [prefix, line.remark].filter(Boolean).join("；")];
 }
 
 export function settlementSignatureRoleSlots(input: SettlementDocumentInput) {
@@ -416,7 +474,7 @@ export function settlementSignatureRoleSlots(input: SettlementDocumentInput) {
       { key: "counterparty", label: "乙方" },
       { key: "preparer", label: "编制人" },
       { key: "material_staff", label: "物资员" },
-      { key: "material_director", label: "物资主管" },
+      { key: "material_director", label: "物资部主管" },
       { key: "contract_director", label: "合同部主管" },
       { key: "project_manager", label: "项目经理" },
       { key: "finance_director", label: "财务主管" }
@@ -455,9 +513,9 @@ function drawSettlementPdfPage(
   doc.font("cn");
   const pageWidth = doc.page.width;
   const contentWidth = pageWidth - margin * 2;
-  doc.fontSize(16).text("工程结算单", margin, 18, { width: contentWidth, align: "center" });
+  doc.fontSize(16).text(settlementDocumentTitle(input), margin, 18, { width: contentWidth, align: "center" });
   doc.fontSize(7.5).fillColor("#334155").text(
-    `结算编号：${page.settlementCode}    单据：${page.revisionLabel}`,
+    `结算编号：${page.settlementCode}    合同编号：${input.contractCode}    单据：${page.revisionLabel}`,
     margin,
     44,
     { width: contentWidth / 2, align: "left" }
@@ -472,10 +530,10 @@ function drawSettlementPdfPage(
   drawSettlementLineTable(doc, page, margin, 136, contentWidth);
   if (page.pageNumber === page.pageCount) {
     drawSettlementSummary(doc, input, margin, 408, contentWidth);
+    drawSingleRowSignatureBoard(doc, input, margin, contentWidth);
   }
-  drawSingleRowSignatureBoard(doc, input, margin, contentWidth);
   doc.fontSize(6.5).fillColor("#475569").text(
-    `生成日期：${formatDate(input.generatedAt)}  ·  本页表头及签名栏按结算单版式生成`,
+    `生成日期：${formatDate(input.generatedAt)}`,
     margin,
     558,
     { width: contentWidth, align: "center" }
@@ -492,7 +550,7 @@ function drawCompactInfoRows(
 ) {
   const widths = [58, 210, 58, 150, 58, contentWidth - 534];
   drawFixedRow(doc, x, y, ["项目", input.projectName, "合同", input.contractName, "乙方", input.counterparty], widths, 21, [0, 2, 4]);
-  drawFixedRow(doc, x, y + 21, ["我方主体", input.companyEntityName, "合同编号", input.contractCode, "结算期次", input.periodLabel], widths, 21, [0, 2, 4]);
+  drawFixedRow(doc, x, y + 21, ["签约主体", input.companyEntityName, "合同分类", input.contractRelationshipLabel ?? "待确认分类", "结算期次", input.periodLabel], widths, 21, [0, 2, 4]);
   drawFixedRow(
     doc,
     x,
@@ -547,40 +605,13 @@ function drawSettlementLineTable(
   y: number,
   contentWidth: number
 ) {
-  const widths = [26, 94, 84, 34, 48, 64, 64, 40, 70, 56, 70, contentWidth - 650];
+  const widths = [...LINE_TABLE_WIDTHS.slice(0, 11), contentWidth - 650];
   drawFixedRow(doc, x, y, [...PDF_TABLE_HEADERS], widths, 30, PDF_TABLE_HEADERS.map((_, index) => index), 6.5);
-  page.lines.forEach((line, index) => {
-    const manualAdjustment = line.sourceType === "manual_adjustment";
-    const visaChange = line.sourceType === "visa_change";
-    drawFixedRow(
-      doc,
-      x,
-      y + 30 + index * 26,
-      [
-        String(page.lineStartIndex + index + 1),
-        line.name,
-        line.specification ?? "—",
-        line.unit ?? "—",
-        line.quantity ?? "—",
-        line.taxExclusiveUnitPrice ?? "—",
-        line.taxInclusiveUnitPrice ?? "—",
-        line.taxRatePercent === null ? "—" : `${line.taxRatePercent}%`,
-        line.taxExclusiveAmountCents === null ? "—" : centsToYuanText(line.taxExclusiveAmountCents),
-        line.taxAmountCents === null ? "—" : centsToYuanText(line.taxAmountCents),
-        centsToYuanText(line.taxInclusiveAmountCents),
-        manualAdjustment
-          ? `人工调整${line.remark ? `；${line.remark}` : ""}`
-          : visaChange
-            ? `签证/变更${line.remark ? `；${line.remark}` : ""}`
-          : line.remark ?? ""
-      ],
-      widths,
-      26,
-      [],
-      6.5,
-      [0, 4, 5, 6, 7, 8, 9, 10]
-    );
-  });
+  let rowY = y + 30;
+  for (const row of page.renderedRows) {
+    drawFixedRow(doc, x, rowY, row.cells, widths, row.height, [], 6.5, [0, 4, 5, 6, 7, 8, 9, 10]);
+    rowY += row.height;
+  }
 }
 
 function drawSettlementSummary(
@@ -640,13 +671,13 @@ function drawSingleRowSignatureBoard(
           valign: "center"
         });
       } catch {
-        drawSignatureFallback(doc, evidence.approverName, x, boardY, cellWidth);
+        throw new BadRequestException("结算签名图片无法解码，不能生成正式结算单");
       }
     } else {
       drawSignatureFallback(doc, evidence?.approverName ?? "", x, boardY, cellWidth);
     }
     doc.fontSize(6.5).fillColor("#334155").text(
-      evidence?.approvedAt ? formatDate(evidence.approvedAt) : "日期：____-__-__",
+      evidence?.approvedAt ? formatDate(evidence.approvedAt) : "",
       x + 3,
       boardY + SETTLEMENT_SIGNATURE_BOARD_LAYOUT.dateTopOffset,
       { width: cellWidth - 6, height: SETTLEMENT_SIGNATURE_BOARD_LAYOUT.dateHeight, align: "center" }
@@ -662,7 +693,7 @@ function drawSignatureFallback(
   y: number,
   width: number
 ) {
-  doc.font("cn").fontSize(7).fillColor("#334155").text(name || "签名：________", x + 4, y + 32, {
+  doc.font("cn").fontSize(7).fillColor("#334155").text(name, x + 4, y + 32, {
     width: width - 8,
     height: 12,
     align: "center"

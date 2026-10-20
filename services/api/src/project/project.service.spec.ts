@@ -50,7 +50,7 @@ function addApprovalSignatureQueries<T extends Record<string, unknown>>(
       }
       if (text.includes('FROM "Project"')) return [{ id: "project-1" }];
       if (text.includes('FROM "User"')) {
-        return [{ id: "signature-user", isActive: true }];
+        return [{ id: "signature-user", isActive: true, name: "签批人甲" }];
       }
       if (text.includes('FROM "HandwrittenSignatureVersion"')) {
         return [{
@@ -975,7 +975,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
@@ -1198,7 +1198,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
@@ -1288,7 +1288,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1411,7 +1411,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1548,7 +1548,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn()
@@ -1606,7 +1606,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn()
@@ -1812,7 +1812,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       contract: {
         findFirst: jest.fn().mockResolvedValue({ id: "contract-1" })
@@ -2621,7 +2621,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user" })
@@ -2655,7 +2655,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user" })
@@ -2774,7 +2774,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
@@ -2817,7 +2817,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
@@ -2903,7 +2903,7 @@ describe("ProjectService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
@@ -3011,7 +3011,7 @@ describe("ProjectService", () => {
       const tx = {
         $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
         project: {
-          findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+          findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
         },
         fileObject: {
           findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
@@ -3136,7 +3136,7 @@ describe("ProjectService", () => {
       const tx = {
         $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
         project: {
-          findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+          findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
         },
         fileObject: {
           findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })

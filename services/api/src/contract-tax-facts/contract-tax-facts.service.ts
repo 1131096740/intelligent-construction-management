@@ -1,3 +1,4 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import {
   BadRequestException,
   ConflictException,
@@ -390,6 +391,7 @@ export class ContractTaxFactsService {
   ) {
     return this.prisma.$transaction(async (tx) => {
       const context = await this.loadContext(tx, projectId, takeoverId);
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractTaxFactRevision" WHERE "id" = ${revisionId} FOR UPDATE`);
       const revision = await this.loadRevision(tx, context.version.id, revisionId);
       if (revision.status !== "pending_finance_review") {
         throw new BadRequestException("当前税务事实修订不在财务复核节点");
@@ -420,6 +422,15 @@ export class ContractTaxFactsService {
           }
         });
       }
+      if (input.decision === "approve") await recordIndependentApproval(tx, {
+        businessType: "contract_tax_fact_revision", businessId: revision.id, applicantUserId: revision.createdByUserId,
+        actorUserId, roleKey: "finance_director", nodeName: "财务主管", comment, signedAt: updated.financeReviewedAt, stageIndex: 0,
+        nodes: [{ name: "财务主管", mode: "any", roleKeys: ["finance_director"] }, { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }],
+        form: { title: "历史税务事实审批单", code: `税务修订 ${revision.revisionNo}`, projectId, companyName: "",
+          summary: [{ label: "发票类型", value: revision.invoiceType === "vat_special" ? "增值税专用发票" : "增值税普通发票" },
+            { label: "税率", value: `${revision.defaultTaxRatePercent?.toString() ?? "—"}%` },
+            { label: "确认说明", value: revision.confirmationExplanation ?? "" }] }
+      });
       await this.audit.record(tx, {
         actorUserId,
         action:
@@ -449,6 +460,7 @@ export class ContractTaxFactsService {
       await tx.$queryRaw(
         Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${context.version.id} FOR UPDATE`
       );
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractTaxFactRevision" WHERE "id" = ${revisionId} FOR UPDATE`);
       const revision = await this.loadRevision(tx, context.version.id, revisionId);
       if (revision.status !== "pending_contract_confirmation") {
         throw new BadRequestException("当前税务事实修订不在合同部确认节点");
@@ -575,6 +587,15 @@ export class ContractTaxFactsService {
           confirmedAt,
           contractReviewComment: comment
         }
+      });
+      await recordIndependentApproval(tx, {
+        businessType: "contract_tax_fact_revision", businessId: revision.id, applicantUserId: revision.createdByUserId,
+        actorUserId, roleKey: "contract_director", nodeName: "合同部主管", comment, signedAt: confirmedAt, stageIndex: 1,
+        nodes: [{ name: "财务主管", mode: "any", roleKeys: ["finance_director"] }, { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }],
+        form: { title: "历史税务事实审批单", code: `税务修订 ${revision.revisionNo}`, projectId, companyName: "",
+          summary: [{ label: "发票类型", value: revision.invoiceType === "vat_special" ? "增值税专用发票" : "增值税普通发票" },
+            { label: "税率", value: `${revision.defaultTaxRatePercent?.toString() ?? "—"}%` },
+            { label: "确认说明", value: revision.confirmationExplanation ?? "" }] }
       });
       await this.audit.record(tx, {
         actorUserId,

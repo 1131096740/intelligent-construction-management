@@ -223,18 +223,18 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 452 pending tests as executable local coverage", () => {
+test("manifest derives all 470 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 70,
-    fullyPendingSuites: 59,
+    pendingFiles: 72,
+    fullyPendingSuites: 61,
     partiallyPendingSuites: 11,
-    pendingTests: 452,
-    coveredFiles: 70,
-    coveredTests: 452,
+    pendingTests: 470,
+    coveredFiles: 72,
+    coveredTests: 470,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -299,7 +299,31 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
-test("canonical manifest executes all 154 entry tests including the template workbench", () => {
+test("POL-109 readiness ignores the Unix-only initialization server until TCP PostgreSQL is ready", async () => {
+  const source = readFileSync(path.join(__dirname, "run-pol109-project-close-profit-local.cjs"), "utf8");
+  const start = source.indexOf("async function waitForPostgres(");
+  const end = source.indexOf("async function waitForApi(", start);
+  assert.ok(start >= 0 && end > start);
+  const calls = [];
+  const command = async (_bin, args) => {
+    calls.push(args);
+    // PostgreSQL's temporary init server accepts Unix sockets before its final TCP server starts.
+    if (args.includes("-h") && calls.length === 1) throw new Error("TCP server still initializing");
+    return { stdout: "accepting connections" };
+  };
+  const wait = new Function("command", "docker", "DATABASE_NAME", "fail", "setTimeout",
+    `${source.slice(start, end)}; return waitForPostgres;`)(
+    command, "docker", "jiangkong_pol109", (message) => { throw new Error(message); }, (callback) => callback()
+  );
+  await wait("owned-disposable-container");
+  assert.equal(calls.length, 2, "Unix-only readiness must not allow migration to start");
+  for (const args of calls) {
+    assert.deepEqual(args.slice(0, 3), ["exec", "owned-disposable-container", "pg_isready"]);
+    assert.equal(args[args.indexOf("-h") + 1], "127.0.0.1");
+  }
+});
+
+test("canonical manifest executes all 169 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -307,7 +331,7 @@ test("canonical manifest executes all 154 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 154,
+    pendingTests: 169,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -316,17 +340,17 @@ test("canonical manifest executes all 154 entry tests including the template wor
       },
       {
         path: "services/api/src/database/contract-business-entry-http.spec.ts",
-        pendingTests: 4,
+        pendingTests: 8,
         suiteStatus: "fully_pending"
       },
       {
         path: "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-        pendingTests: 53,
+        pendingTests: 56,
         suiteStatus: "fully_pending"
       },
       {
         path: "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
-        pendingTests: 3,
+        pendingTests: 2,
         suiteStatus: "fully_pending"
       },
       {
@@ -347,6 +371,11 @@ test("canonical manifest executes all 154 entry tests including the template wor
       {
         path: "services/api/src/database/draft-deletion-numbering.pg.spec.ts",
         pendingTests: 2,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/database/approval-v6-independent-http-postgres.spec.ts",
+        pendingTests: 9,
         suiteStatus: "fully_pending"
       }
     ],
@@ -615,7 +644,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=452/u
+    /inventory\.coveredTests=26，派生值=470/u
   );
 });
 

@@ -439,7 +439,7 @@ function snapshot() {
         <div><dt>申请金额</dt><dd>{{ previewAmount }}</dd></div>
         <div><dt>收款渠道</dt><dd>{{ form.channels.length }} 个，{{ form.channels.filter((item) => item.isPrimary).length }} 个主渠道</dd></div>
         <div><dt>我方付款主体</dt><dd>{{ detail.payment.payerCompanyName ?? "待财务/综合部补全" }}</dd></div>
-        <div><dt>首个审批节点</dt><dd>综合部主管</dd></div>
+        <div><dt>首个审批节点</dt><dd>物资部主管</dd></div>
       </dl>
     </div>
 

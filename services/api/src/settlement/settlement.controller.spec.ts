@@ -417,14 +417,14 @@ describe("SettlementController authorization wiring", () => {
   });
 
   it.each([
-    [{}, ["结算审批单下载密码必填", "结算审批单下载原因必填"]],
+    [{}, ["结算单下载密码必填", "结算单下载原因必填"]],
     [
       { confirmationPassword: "current-password", downloadReason: "   " },
-      ["结算审批单下载原因不能为空白"]
+      ["结算单下载原因不能为空白"]
     ],
     [
       { confirmationPassword: "current-password", downloadReason: "复".repeat(201) },
-      ["结算审批单下载原因不能超过 200 个字"]
+      ["结算单下载原因不能超过 200 个字"]
     ]
   ])("validates approval PDF download facts: %p", async (value, errors) => {
     const response = await getSettlementValidationResponse(

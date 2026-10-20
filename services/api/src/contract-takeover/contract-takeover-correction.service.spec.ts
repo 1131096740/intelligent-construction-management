@@ -1,3 +1,4 @@
+import { attachApprovalEvidenceFixture } from "../approval/approval-evidence-test-fixture";
 import {
   BadRequestException,
   ConflictException,
@@ -64,6 +65,7 @@ function createContext(options: {
   const takeover = {
     id: "takeover-1",
     projectId: "project-1",
+    contractId: "contract-1",
     activatedAt:
       options.takeoverActivated === false
         ? null
@@ -88,6 +90,7 @@ function createContext(options: {
       [account]
     ];
   const tx = {
+    contract: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: "contract-1", code: "HT-001", name: "材料合同", companyEntityName: "施工公司" }) },
     $queryRaw: jest.fn().mockImplementation(() =>
       Promise.resolve(lockedRows.shift() ?? [])
     ),
@@ -151,7 +154,7 @@ function createContext(options: {
     user: {
       findUnique: jest.fn().mockResolvedValue({
         id: "finance-1",
-        isActive: true
+        name: "签批人甲", isActive: true
       })
     },
     project: {
@@ -163,6 +166,7 @@ function createContext(options: {
       findUnique: jest.fn()
     }
   };
+    attachApprovalEvidenceFixture(tx);
   const prisma = {
     $transaction: jest.fn(
       (callback: (client: typeof tx) => unknown) => callback(tx)

@@ -200,9 +200,9 @@ const operationalActions = computed(() =>
 const payerManagement = computed(() => payment.value?.payerManagement ?? null);
 const approvalApproveDestination = computed(() => {
   const node = detail.value?.approval.currentNodeName ?? "";
-  if (/综合部/u.test(node)) return "项目经理审批";
+  if (/(物资|综合部)/u.test(node)) return "项目经理审批";
   if (/项目经理/u.test(node)) return "财务主管审批";
-  if (/财务主管/u.test(node)) return "董事长/总经理审批";
+  if (/财务主管/u.test(node)) return "董事长/总经理或签审批";
   if (/(董事长|总经理)/u.test(node)) return "审批完成，进入待付款";
   return "下一审批节点";
 });
@@ -522,7 +522,7 @@ async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
     assertCurrentApplicationOperation(operationToken, operationPaymentId);
     applicationVisible.value = false;
     applicationOpenedPaymentId = null;
-    showSuccess("付款申请已提交审批。综合部主管通过前必须确定我方付款主体和拟付款方式。");
+    showSuccess("付款申请已提交审批。首个审批节点通过前必须确定我方付款主体和拟付款方式。");
     await loadDetail();
     assertCurrentApplicationOperation(operationToken, operationPaymentId);
     await restoreApplicationTriggerFocus();
@@ -592,7 +592,7 @@ async function savePayer() {
     await updateSpotProcurementPaymentPayerWithCapability(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
     if (paymentId.value !== operationPaymentId) return;
     payerVisible.value = false;
-    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，综合部、项目经理和财务主管将从综合部节点重新审批。" : "付款主体和拟付款方式已保存。");
+    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，将从本轮冻结的首个节点重新审批；原审批记录保留。" : "付款主体和拟付款方式已保存。");
     await loadDetail();
     await restorePayerTriggerFocus();
   } catch (error) {
@@ -2016,7 +2016,7 @@ watch(
           <p>{{ payment.payerCompanyName ?? '尚未确定付款主体' }}；{{ detail.paymentMethods?.map((method) => method.label).join('、') || '尚未确定拟付款方式' }}</p>
           <BusinessStatusText
             v-if="payerManagement.requiresReapproval"
-            text="财务主管调整后将从综合部节点重新审批"
+            text="财务主管调整后将从本轮冻结的首个节点重新审批"
             semantic="progress"
           />
           <t-button
@@ -2222,14 +2222,14 @@ watch(
           <t-alert
             theme="warning"
             title="受控变更"
-            :message="payerManagement?.requiresReapproval ? '财务主管变更后将从综合部节点重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
+            :message="payerManagement?.requiresReapproval ? '财务主管变更后将从本轮冻结的首个节点重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
           /><dl
             v-if="payerManagement?.requiresReapproval"
             class="detail-grid"
           >
             <div><dt>原付款主体</dt><dd>{{ payment.payerCompanyName ?? "未确定" }}</dd></div>
             <div><dt>新付款主体</dt><dd>{{ selectedPayerCompanyName }}</dd></div>
-            <div><dt>审批影响</dt><dd>清除综合部主管和项目经理本轮通过事实，从综合部主管重新审批</dd></div>
+            <div><dt>审批影响</dt><dd>重置本轮前序节点的通过状态，从本轮冻结的首个节点重新审批；原审批记录保留</dd></div>
           </dl><label><span>我方付款主体</span><t-select
             v-model="payerForm.companyEntityId"
             :options="payerOptions"

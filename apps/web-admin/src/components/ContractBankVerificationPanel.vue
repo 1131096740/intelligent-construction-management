@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import {onBeforeUnmount,reactive,ref,watch} from "vue";
 import {fetchBankVerifications,prepareBankVerification,decideBankVerification,type BankVerificationData} from "../api/contract-bank-verification.api";
 import {uploadPrivateFile,downloadPrivateFileByTicket} from "../api/core-flow-read.api";
@@ -108,6 +109,7 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
           退回重填
         </t-button>
       </template>
+      <ApprovalDocumentDownload business-type="contract_bank_verification" :business-id="r.id" :refresh-key="r.status" />
     </article>
     <t-drawer
       v-model:visible="show"

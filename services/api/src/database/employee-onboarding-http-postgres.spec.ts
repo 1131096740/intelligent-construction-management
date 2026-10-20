@@ -1,3 +1,4 @@
+import { verifyApprovedPdf } from "./approval-pdf-acceptance.test-support";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../app.module";
@@ -34,6 +35,9 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     await db.userPosition.create({ data: { userId: user.id, positionId: position.id } });
     const login = await request("/auth/login", "POST", { phone, password });
     expect(login.status).toBe(201);
+    const signature = new FormData();
+    signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "验收签名.png");
+    expect((await fetch(`${base}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${login.body.tokens.accessToken}` }, body: signature })).status).toBe(201);
     return { id: user.id, token: login.body.tokens.accessToken as string, phone };
   }
 
@@ -96,6 +100,9 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     const body = { revision: 1, decision: "approve", departmentId: department.id,
       roles: [{ roleKey: "contract_staff" }], identityVerified: true, confirmationPassword: password };
     expect((await request(`/employee-onboarding/applications/${ordinary.body.application.id}/review`, "POST", body, comprehensive.token)).status).toBe(201);
+    await verifyApprovedPdf({ db, baseUrl: base, token: comprehensive.token, password,
+      businessType: "employee_registration", businessId: ordinary.body.application.id,
+      roles: ["comprehensive_director"], label: "员工入职-综合部审批" });
     const login = await request("/auth/login", "POST", { phone: "13910000002", password });
     expect(login.body.user).toMatchObject({ name: "合成合同经办", mustChangePassword: false, roleKeys: ["contract_staff"] });
     const financial = await request("/employee-onboarding/register", "POST", { name: "合成财务经办", phone: "13910000003", password });

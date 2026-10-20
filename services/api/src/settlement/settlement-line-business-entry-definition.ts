@@ -21,7 +21,7 @@ type SettlementLineFacts = {
   remark?: string | null;
 };
 
-const permissions = { view: ["contract_staff"], edit: ["contract_staff"] } as const;
+const permissions = { view: ["contract_staff", "engineering_tech", "engineering_foreman", "engineering_director"], edit: ["contract_staff", "engineering_tech", "engineering_foreman", "engineering_director"] } as const;
 const options = (value: string | null | undefined, label: string) => value ? [{ value, label }] : [];
 
 function field(key: string, label: string, type: BusinessEntryFieldDefinition["type"], order: number,

@@ -19,7 +19,7 @@ import {
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import {
@@ -50,10 +50,7 @@ import { BusinessEntryTransactionService } from "../business-entry-definition/bu
 import { BusinessEntryDefinitionService } from "../business-entry-definition/business-entry-definition.service";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 
-const CREATE_ROLES = new Set<RoleKey>([
-  "material_staff",
-  "material_director"
-]);
+const CREATE_ROLES = new Set<RoleKey>(["material_staff"]);
 const VOID_ROLES = new Set<RoleKey>(["project_manager", "finance_director"]);
 const ABNORMAL_TERMINATION_REQUEST_ROLES = new Set<RoleKey>([
   "finance_staff"
@@ -428,21 +425,6 @@ export class SpotProcurementApplicationService {
           where: { id: procurement.id },
           data: { status: "approval_pending" }
         });
-        if (actorRoles.includes("material_director")) {
-          await tx.approvalActionLog.create({
-            data: {
-              approvalInstanceId: approval.id,
-              action: "node_skipped",
-              actorUserId,
-              comment: "申请人具备物资主管岗位，自动跳过物资主管审批",
-              metadata: {
-                skippedRoleKey: "material_director",
-                reason: "applicant_has_material_director_role",
-                applicantUserId: procurement.applicantUserId
-              }
-            }
-          });
-        }
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.approval.submit",
@@ -618,7 +600,7 @@ export class SpotProcurementApplicationService {
               })
             : null;
         await tx.approvalActionLog.create({
-          data: {
+          data: await withApprovalIdentity(tx, {
             approvalInstanceId: approval.id,
             action: input.decision,
             actorUserId,
@@ -633,7 +615,7 @@ export class SpotProcurementApplicationService {
                 }
               : {}),
             metadata: { reviewRoleKey: approvedRoleKey }
-          }
+          }, signature)
         });
         if (input.decision === "reject") {
           await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: "rejected" } });

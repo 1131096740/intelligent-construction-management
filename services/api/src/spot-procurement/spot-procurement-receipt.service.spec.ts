@@ -1,3 +1,4 @@
+import { attachApprovalEvidenceFixture } from "../approval/approval-evidence-test-fixture";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
@@ -781,6 +782,7 @@ describe("SpotProcurementReceiptService workflow", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 2 })
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest
         .fn()

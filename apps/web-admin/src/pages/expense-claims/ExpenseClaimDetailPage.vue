@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import { GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
@@ -534,6 +535,7 @@ onMounted(() => void loadDetail());
           :requested-amount="amount(detail.requestedAmountCents)"
         >
           <template #actions>
+<ApprovalDocumentDownload  business-type="expense_claim" :business-id="detail.id" :refresh-key="detail.status" />
             <t-popconfirm
               v-if="detail.canDeleteDraft"
               content="彻底删除此未提交草稿及其明细、附件关联？删除后无法恢复。"

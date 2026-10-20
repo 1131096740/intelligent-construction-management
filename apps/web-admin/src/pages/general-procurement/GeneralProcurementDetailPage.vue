@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
@@ -159,6 +160,7 @@ onMounted(load);
           :requested-amount="money(detail.requestedAmountCents)"
         >
           <template #actions>
+<ApprovalDocumentDownload  business-type="general_procurement" :business-id="detail.id" :refresh-key="detail.status" />
             <t-space break-line>
               <t-popconfirm
                 v-if="detail.canDeleteDraft"
@@ -312,7 +314,7 @@ onMounted(load);
       :close-on-overlay-click="false"
       @confirm="submit"
     >
-      <p>将依次交综合部主管、项目经理和董事长审批，通过后由综合部归档。</p><t-alert
+      <p>将依次交综合部主管、项目经理、董事长/总经理或签审批，通过后由综合部归档。发起人兼任审批岗位时仍须本人审批并签名。</p><t-alert
         v-if="error"
         theme="error"
         :message="error"
@@ -417,7 +419,7 @@ onMounted(load);
           v-if="error"
           theme="error"
           :message="error"
-        /><p>还可申请 {{ detail ? money(detail.paymentSummary.availableAmountCents) : '' }}。保存后在付款详情提交原审批流程。</p><label>本次付款金额（元）<YuanMoneyInput
+        /><p>还可申请 {{ detail ? money(detail.paymentSummary.availableAmountCents) : '' }}。保存后在付款详情提交付款审批（综合部主管 → 项目经理 → 财务主管 → 董事长/总经理或签）。</p><label>本次付款金额（元）<YuanMoneyInput
           v-model="payment.amountCents"
           placeholder="填写本次付款金额（元）"
         /></label><label>收款对象<t-input

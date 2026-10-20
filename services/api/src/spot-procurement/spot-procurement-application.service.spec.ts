@@ -95,7 +95,7 @@ function frozenRealFormLine(overrides: Record<string, unknown> = {}) {
 
 function context(roleKey = "material_staff") {
   const tx = {
-    project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+    project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" }) },
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
     projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: roleKey }]) },
     position: { findMany: jest.fn().mockResolvedValue([]) },
@@ -207,7 +207,8 @@ function queueActiveSignature(
   actorUserId = "manager-1"
 ) {
   queryRaw
-    .mockResolvedValueOnce([{ id: actorUserId, isActive: true }])
+    .mockResolvedValueOnce([{
+name: "签批人甲", id: actorUserId, isActive: true }])
     .mockResolvedValueOnce([
       {
         id: "signature-version-1",
@@ -442,28 +443,13 @@ describe("SpotProcurementApplicationService real-form application", () => {
     }
   });
 
-  it("logs the material-director skip when the purchaser is the material director", async () => {
+  it("requires same-project material staff even when the requester is a material director", async () => {
     const { service, tx } = context("material_director");
-    tx.$queryRaw
-      .mockResolvedValueOnce([procurement()])
-      .mockResolvedValueOnce([version()]);
-
+    tx.$queryRaw.mockResolvedValueOnce([procurement()]).mockResolvedValueOnce([version()]);
     mockConfiguredApprovalAssignments(tx);
-    await service.submit("procurement-1", "material-1");
-
-    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        frozenNodes: [
-          expect.objectContaining({ name: "项目经理审批", roleKeys: ["project_manager"] })
-        ]
-      })
-    });
-    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        action: "node_skipped",
-        comment: "申请人具备物资主管岗位，自动跳过物资主管审批"
-      })
-    });
+    await expect(service.submit("procurement-1", "material-1")).rejects.toThrow("当前用户不再具备采购创建岗位");
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
   it("freezes the locked current version and each real line before creating approval facts", async () => {
@@ -611,7 +597,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
         signatureFileIdSnapshot: "signature-file-1",
         signatureSha256Snapshot: "a".repeat(64),
         signatureVersionIdSnapshot: "signature-version-1",
-        metadata: { reviewRoleKey: "project_manager" }
+        metadata: { reviewRoleKey: "project_manager", approverName: "签批人甲" }
       })
     });
     expect(result).toMatchObject({ status: "approved_in_progress" });
@@ -633,7 +619,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
           applicantUserId: "material-1"
         }
       ])
-      .mockResolvedValueOnce([{ id: "manager-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "manager-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([]);
 
     await expect(
@@ -675,7 +661,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
           applicantUserId: "material-1"
         }
       ])
-      .mockResolvedValueOnce([{ id: "manager-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "manager-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([
         {
           id: "signature-version-1",
@@ -1668,7 +1654,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
       }
     ]
   ])(
-    "returns the same 403 with zero writes for %s",
+    "rejects unauthorized or stale review without writes for %s",
     async (_label, roleKey, actorUserId, applicantUserId, coordinates) => {
       const { service, tx, audit, approvalForms } = context(roleKey);
       tx.$queryRaw
@@ -1696,7 +1682,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
           ...coordinates
         } as never)
       ).rejects.toMatchObject({
-        status: 403
+        status: actorUserId === applicantUserId ? 409 : 403
       });
 
       expect(tx.approvalActionLog.create).not.toHaveBeenCalled();

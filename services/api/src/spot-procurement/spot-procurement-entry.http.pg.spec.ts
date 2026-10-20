@@ -1,3 +1,4 @@
+import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -268,7 +269,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expectHttpStatus(`${label}付款提交`, await json(`/spot-procurement-payments/${paymentId}/submission`, applicant, "POST", {}), 201);
     const executor = sessions.get("finance_staff")!;
     expectHttpStatus(`${label}付款主体`, await json(`/spot-procurement-payments/${paymentId}/payer`, executor, "PATCH", { companyEntityId: payerCompanyEntityId, paymentMethods: ["bank_transfer"] }), 200);
-    for (const role of ["comprehensive_director", "project_manager", "finance_director", "chairman"]) {
+    for (const role of ["material_director", "project_manager", "finance_director", "chairman"]) {
       expectHttpStatus(`${label}付款审批${role}`, await json(`/spot-procurement-payments/${paymentId}/approval`, sessions.get(role)!, "POST", { decision: "approve", comment: `${label}${role}通过` }), 201);
     }
     const paymentView = expectHttpStatus(`${label}付款读取`, await json(`/spot-procurement-payments/${paymentId}`, executor), 200).body as unknown as { paymentChannels: Array<{ id: string; channelType: string }> };
@@ -422,6 +423,11 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expectHttpStatus("物资审批", await reviewCurrent(id, director, "approve", "物资确认"), 201);
     expectHttpStatus("项目审批", await reviewCurrent(id, manager, "approve", "项目确认"), 201);
     const approved = (await json(`/spot-procurements/${id}`, applicant)).body!;
+    const prisma = app.get(PrismaService);
+    const applicationInstance = await prisma.approvalInstance.findFirstOrThrow({ where: { businessType: "spot_procurement_version", businessId: approved.currentVersion.id }, orderBy: { createdAt: "desc" } });
+    await verifyApprovedPdf({ db: prisma, baseUrl, token: director.tokens.accessToken, password: accountPassword,
+      businessType: "spot_procurement_version", businessId: applicationInstance.businessId,
+      roles: ["material_director", "project_manager"], label: "零星材料采购" });
     const paymentId = approved.payments[0]!.id;
     const paymentDraft = await json(`/spot-procurement-payments/${paymentId}`, applicant);
     expect(paymentDraft.status).toBe(200);
@@ -440,10 +446,13 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(payerCandidates.status).toBe(200);
     expect((payerCandidates.body as unknown as Array<{ id: string }>).map((candidate) => candidate.id)).toContain(payerCompanyEntityId);
     expectHttpStatus("付款主体补全", await json(`/spot-procurement-payments/${paymentId}/payer`, finance, "PATCH", { companyEntityId: payerCompanyEntityId, paymentMethods: ["bank_transfer"] }), 200);
-    for (const role of ["comprehensive_director", "project_manager", "finance_director", "chairman"]) {
+    for (const role of ["material_director", "project_manager", "finance_director", "chairman"]) {
       const approvalResult = await json(`/spot-procurement-payments/${paymentId}/approval`, sessions.get(role)!, "POST", { decision: "approve", comment: `${role}合成通过` });
       if (approvalResult.status !== 201) throw new Error(`付款审批 ${role} 失败: ${approvalResult.status} ${safeResponseBody(approvalResult.body)}`);
     }
+    await verifyApprovedPdf({ db: prisma, baseUrl, token: director.tokens.accessToken, password: accountPassword,
+      businessType: "spot_procurement_payment", businessId: paymentId,
+      roles: ["material_director", "project_manager", "finance_director", "chairman"], label: "零星材料付款" });
     const approvedPayment = expectHttpStatus("付款审批结果读取", await json(`/spot-procurement-payments/${paymentId}`, finance), 200);
     const paymentChannels = (approvedPayment.body as unknown as { paymentChannels: Array<{ id: string; channelType: string }> }).paymentChannels;
     expect(paymentChannels).toEqual(expect.arrayContaining([expect.objectContaining({ id: expect.any(String), channelType: "bank_transfer" })]));
@@ -485,6 +494,10 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     }), 200);
     expectHttpStatus("收货提交", await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {}), 201);
     expectHttpStatus("少货审核", await json(`/spot-procurements/${id}/receipt/review`, director, "POST", { decision: "approved", comment: "确认少货" }), 201);
+    const receipt = await prisma.spotProcurementReceipt.findUniqueOrThrow({ where: { procurementId: id } });
+    const receiptReview = await prisma.spotProcurementReceiptReview.findFirstOrThrow({ where: { receiptId: receipt.id, decision: "approved" }, orderBy: { createdAt: "desc" } });
+    await verifyApprovedPdf({ db: prisma, baseUrl, token: director.tokens.accessToken, password: accountPassword,
+      businessType: "spot_procurement_receipt", businessId: receiptReview.id, roles: ["material_director"], label: "零星材料到货审核" });
     expectHttpStatus("差异发起", await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", { operation: "initiate", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
     expectHttpStatus("差异物资确认", await json(`/spot-procurements/${id}/discrepancy`, director, "POST", { operation: "confirm", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
     expect((await json(`/spot-procurements/${id}/receipt`, refundFinance)).status).toBe(403);

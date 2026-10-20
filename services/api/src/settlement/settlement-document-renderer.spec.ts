@@ -75,6 +75,18 @@ const baseInput: SettlementDocumentInput = {
 };
 
 describe("settlement document renderer", () => {
+  it("preserves very long settlement text across pages and uses the lower content area on earlier pages", async () => {
+    const remark = "逐项核对施工范围、数量及计价依据。".repeat(300);
+    const input = { ...baseInput, lines: [{ ...baseInput.lines[0], remark }] };
+    const pages = settlementPdfPagePlan(input);
+    expect(pages.length).toBeGreaterThan(1);
+    expect(pages.flatMap(page => page.renderedRows).map(row => row.cells[11]).join("")).toBe(remark);
+    expect(pages.filter(page => page.signatureRoleLabels.length)).toEqual([pages.at(-1)]);
+    expect((await PdfLibDocument.load(await renderSettlementArchivePdf(input))).getPageCount()).toBe(pages.length);
+    const many = settlementPdfPagePlan({ ...baseInput, lines: Array.from({ length: 35 }, () => baseInput.lines[0]) });
+    expect(many).toHaveLength(3);
+    expect(many[0].renderedRows.length).toBeGreaterThan(9);
+  });
   it.each([
     ["approved_pending_archive", "已批待归档"],
     ["archive_pending", "待归档确认"],
@@ -236,7 +248,7 @@ describe("settlement document renderer", () => {
       "乙方",
       "编制人",
       "物资员",
-      "物资主管",
+      "物资部主管",
       "合同部主管",
       "项目经理",
       "财务主管"
@@ -258,7 +270,7 @@ describe("settlement document renderer", () => {
     const plan = settlementPdfPagePlan(multiPageInput);
     expect(plan.map((page) => page.pageMarker)).toEqual(["第 1/2 页", "第 2/2 页"]);
     expect(plan.every((page) => page.tableHeaders.length === 12)).toBe(true);
-    expect(plan.every((page) => page.signatureRoleLabels.length === 7)).toBe(true);
+    expect(plan.map((page) => page.signatureRoleLabels.length)).toEqual([0, 7]);
 
     const pdf = await PdfLibDocument.load(await renderSettlementArchivePdf(multiPageInput));
     expect(pdf.getPageCount()).toBe(2);
@@ -292,8 +304,8 @@ describe("settlement document renderer", () => {
   });
 
   it("maps signature board drawing to the buffered tail pages", () => {
-    expect(settlementSignatureBoardPageIndexes(0, 5, 2)).toEqual([3, 4]);
-    expect(settlementSignatureBoardPageIndexes(2, 3, 5)).toEqual([2, 3, 4]);
+    expect(settlementSignatureBoardPageIndexes(0, 5, 2)).toEqual([4]);
+    expect(settlementSignatureBoardPageIndexes(2, 3, 5)).toEqual([4]);
   });
 });
 

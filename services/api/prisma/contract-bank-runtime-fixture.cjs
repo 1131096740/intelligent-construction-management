@@ -25,6 +25,8 @@ function prepareContractBankRuntime({ name, db, password, target, env = process.
    GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO contract_backup;
    REVOKE ALL ON TABLE "OperatingLedgerWriteSecret","OperatingLedgerWriteContext" FROM contract_runtime;
    GRANT INSERT,UPDATE ON "ContractBankVerificationRequest","VerifiedBankTransactionObservation","AuditLog","Project","CompanyEntity","User","HandwrittenSignatureVersion","FileObject" TO contract_runtime;
+   GRANT INSERT,UPDATE ON "ApprovalInstance" TO contract_runtime;
+   GRANT INSERT ON "ApprovalActionLog" TO contract_runtime;
    GRANT UPDATE ON "PaymentExecutionPayerVerification" TO contract_runtime;
    GRANT EXECUTE ON FUNCTION "appendOperatingFactThroughService"("OperatingLedgerFactWritePayload",text,text) TO contract_runtime;
  `]);

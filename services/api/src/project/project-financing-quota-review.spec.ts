@@ -117,7 +117,7 @@ function makeHarness(input: {
       if (text.includes('FROM "ProjectFinancingQuota"')) return [quota];
       if (text.includes('FROM "ApprovalInstance"')) return [approval];
       if (text.includes('FROM "User"')) {
-        return [{ id: "finance-director-1", isActive: true }];
+        return [{ id: "finance-director-1", isActive: true, name: "签批人甲" }];
       }
       if (text.includes('FROM "HandwrittenSignatureVersion"')) {
         if (input.signatureVersion === null) return [];

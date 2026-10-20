@@ -156,6 +156,7 @@
           {{ row.validUntil ? formatDate(row.validUntil) : "长期有效" }}
         </template>
         <template #operation="{ row }">
+<ApprovalDocumentDownload  business-type="project_financing_quota" :business-id="row.id" :refresh-key="row.status" />
           <div
             v-if="reviewActionEnabled(row.reviewAction) || terminateActionEnabled(row.terminateAction)"
             class="quota-actions"
@@ -272,7 +273,7 @@
       <div class="request-form">
         <t-alert
           theme="info"
-          message="提交后进入财务主管→董事长/总经理审批；审批通过不等于已发生实际付款。"
+          message="提交后进入财务主管 → 董事长/总经理或签审批；审批通过不等于已发生实际付款。"
         />
         <t-input
           v-model="requestForm.amountYuan"
@@ -474,6 +475,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
+import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocumentDownload.vue";
 import {
   computed,
   onBeforeUnmount,
@@ -1487,7 +1490,7 @@ function createTerminationForm() {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  return formatUnknownApiError(error, fallback);
 }
 
 function formatMoney(value: string): string {

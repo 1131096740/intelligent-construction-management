@@ -1431,10 +1431,7 @@ describe("core flow read API client", () => {
       confirmationPassword: "current-password",
       downloadReason: "报销附件复核"
     });
-    await downloadProjectExpenseApprovalPdf("project-1", "expense-1", {
-      confirmationPassword: "current-password",
-      downloadReason: "审批单复核"
-    });
+
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/expense-requests",
@@ -1442,8 +1439,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/executions",
       "/api/projects/project-1/expense-requests/expense-1/purchase-execution",
       "/api/projects/project-1/expense-requests/expense-1/finance-records",
-      "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket",
-      "/api/projects/project-1/expense-requests/expense-1/approval-pdf-download-ticket"
+      "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
@@ -1496,12 +1492,7 @@ describe("core flow read API client", () => {
         downloadReason: "报销附件复核"
       })
     );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
-      JSON.stringify({
-        confirmationPassword: "current-password",
-        downloadReason: "审批单复核"
-      })
-    );
+
   });
 
   it("reads project expense approval detail from the encoded route", async () => {
@@ -2650,6 +2641,58 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/settlements/settlement-1/approval-pdf/latest"
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Content-Type")).toBe(
+      "application/json"
+    );
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ confirmationPassword: "current-password", downloadReason: "结算审批复核" })
+    );
+    expect(anchor.download).toBe("JS-2026-019-结算审批最新.pdf");
+    expect(click).toHaveBeenCalled();
+    expect(createObjectUrl).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:download");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("downloads a historical expense approval as a verified PDF blob", async () => {
+    const click = vi.fn();
+    const anchor = {
+      href: "",
+      download: "",
+      click,
+      remove: vi.fn()
+    } as unknown as HTMLAnchorElement;
+    const appendChild = vi.fn().mockReturnValue(anchor);
+    const createElement = vi.fn().mockReturnValue(anchor);
+    const createObjectUrl = vi.fn().mockReturnValue("blob:download");
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal("document", {
+      createElement,
+      body: { appendChild }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["pdf"]),
+      headers: new Headers({
+        "Content-Disposition":
+          "attachment; filename*=UTF-8''JS-2026-019-%E7%BB%93%E7%AE%97%E5%AE%A1%E6%89%B9%E6%9C%80%E6%96%B0.pdf"
+      })
+    } as Response);
+
+    await downloadProjectExpenseApprovalPdf("project-1", "expense-1", {
+      confirmationPassword: "current-password",
+      downloadReason: "结算审批复核"
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/projects/project-1/expense-requests/expense-1/approval-pdf-download-ticket"
     );
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Content-Type")).toBe(

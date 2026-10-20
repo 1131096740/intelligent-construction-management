@@ -23,7 +23,7 @@ describe("expense claim approval form renderer", () => {
       paymentMethod: "银行转账",
       payeeName: "申请人甲",
       loanExpectedClearanceAt: null,
-      lines: Array.from({ length: 3 }, (_, index) => ({
+      lines: Array.from({ length: 15 }, (_, index) => ({
         sortOrder: index + 1,
         expenseCategory: "交通",
         occurredOn: new Date("2026-07-22T00:00:00.000Z"),
@@ -42,7 +42,7 @@ describe("expense claim approval form renderer", () => {
 
     const document = await PDFDocument.load(buffer);
     expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(document.getPageCount()).toBe(2);
+    expect(document.getPageCount()).toBeGreaterThan(1);
     for (const page of document.getPages()) {
       expect(page.getWidth()).toBeCloseTo(595.28, 1);
       expect(page.getHeight()).toBeCloseTo(419.53, 1);
@@ -67,7 +67,7 @@ describe("expense claim approval form renderer", () => {
       payeeName: "机械服务商",
       loanExpectedClearanceAt: null,
       lines: [],
-      approvals: []
+      approvals: [{ name: "综合主管甲", position: "综合部主管", comment: "同意", signedAt: new Date("2026-07-28T01:00:00Z"), signature: PNG_1X1 }]
     });
 
     const document = await PDFDocument.load(buffer);

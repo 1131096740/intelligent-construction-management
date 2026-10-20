@@ -66,7 +66,10 @@ describe("settlement frozen document facts", () => {
       (value: FrozenDraftBusinessSnapshot) => { value.calculated.currentSettlementStage.ratioBps = 8000; },
       (value: FrozenDraftBusinessSnapshot) => { value.calculated.finalCumulativeAmountCents = 2_112_200n; },
       (value: FrozenDraftBusinessSnapshot) => { value.taxFactRevision += 1; },
-      (value: FrozenDraftBusinessSnapshot) => { value.contractVersionId = "version-3"; }
+      (value: FrozenDraftBusinessSnapshot) => { value.contractVersionId = "version-3"; },
+      (value: FrozenDraftBusinessSnapshot) => { value.contractRelationshipLabel = "表外（施工企业签约）"; },
+      (value: FrozenDraftBusinessSnapshot) => { value.companyEntityName = "原施工企业"; },
+      (value: FrozenDraftBusinessSnapshot) => { value.signingSubjectType = "affiliate"; }
     ]) {
       const changed = snapshot();
       change(changed);

@@ -60,6 +60,7 @@ function detailFixture(
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
     user: {
       findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
         id: "reviewer-1",
         isActive: true
       }),
@@ -80,7 +81,7 @@ function reviewFixture({
     roleKeys: ["finance_director"]
   },
   instances,
-  signature = false,
+  signature = true,
   actorRoleKey = "finance_director",
   paidAmountCents = 0n
 }: {
@@ -116,7 +117,7 @@ function reviewFixture({
   if (signature) {
     const sha256 = "a".repeat(64);
     queryResults.push(
-      [{ id: "reviewer-1", isActive: true }],
+      [{ id: "reviewer-1", isActive: true, name: "签批人甲" }],
       [{ id: "signature-version-1", fileId: "signature-file-1", contentSha256: sha256 }],
       [{ id: "signature-file-1", contentSha256: sha256, storageStatus: "active" }]
     );
@@ -140,6 +141,7 @@ function reviewFixture({
     approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
     user: {
       findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
         id: "reviewer-1",
         isActive: true
       }),
@@ -254,8 +256,8 @@ describe("ProjectExpense review approval concurrency contract", () => {
       { fromUserId: "former-finance-1" }
     ]);
     prisma.user.findMany.mockResolvedValue([
-      { id: "reviewer-1", isActive: true },
-      { id: "former-finance-1", isActive: true }
+      { id: "reviewer-1", isActive: true, name: "签批人甲" },
+      { id: "former-finance-1", isActive: true, name: "签批人甲" }
     ]);
 
     await expect(service.getApprovalDetail(
@@ -276,8 +278,8 @@ describe("ProjectExpense review approval concurrency contract", () => {
       { fromUserId: "former-finance-1" }
     ]);
     prisma.user.findMany.mockResolvedValue([
-      { id: "reviewer-1", isActive: true },
-      { id: "former-finance-1", isActive: true }
+      { id: "reviewer-1", isActive: true, name: "签批人甲" },
+      { id: "former-finance-1", isActive: true, name: "签批人甲" }
     ]);
     prisma.projectMember.findMany.mockImplementation(
       ({ where }: { where: { userId: string } }) =>
@@ -472,8 +474,8 @@ describe("ProjectExpense review approval concurrency contract", () => {
       { fromUserId: "former-finance-1" }
     ]);
     tx.user.findMany.mockResolvedValue([
-        { id: "reviewer-1", isActive: true },
-        { id: "former-finance-1", isActive: true }
+        { id: "reviewer-1", isActive: true, name: "签批人甲" },
+        { id: "former-finance-1", isActive: true, name: "签批人甲" }
     ]);
     tx.projectMember.findMany.mockImplementation(
       ({ where }: { where: { userId: string } }) =>
@@ -499,8 +501,8 @@ describe("ProjectExpense review approval concurrency contract", () => {
       { fromUserId: "former-finance-1" }
     ]);
     tx.user.findMany.mockResolvedValue([
-      { id: "reviewer-1", isActive: true },
-      { id: "former-finance-1", isActive: true }
+      { id: "reviewer-1", isActive: true, name: "签批人甲" },
+      { id: "former-finance-1", isActive: true, name: "签批人甲" }
     ]);
     tx.projectMember.findMany.mockImplementation(
       ({ where }: { where: { userId: string } }) =>
@@ -549,7 +551,7 @@ describe("ProjectExpense review approval concurrency contract", () => {
       .not.toHaveProperty("signatureFileIdSnapshot");
   });
 
-  it("keeps legacy role-only approval compatible with null signature snapshots", async () => {
+  it("records a canvas signature for new approvals on legacy role-only nodes", async () => {
     const { service, tx } = reviewFixture();
 
     await service.reviewApproval("project-1", "expense-1", "reviewer-1", {
@@ -557,13 +559,13 @@ describe("ProjectExpense review approval concurrency contract", () => {
       ...REVIEW_COORDINATES
     });
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(5);
     const data = tx.approvalActionLog.create.mock.calls[0]?.[0].data;
     expect(data).toEqual(expect.objectContaining({
       approvedRoleKey: "finance_director",
       representedUserId: "reviewer-1"
     }));
-    expect(data).not.toHaveProperty("signatureFileIdSnapshot");
+    expect(data).toMatchObject({ signatureFileIdSnapshot: "signature-file-1", signatureVersionIdSnapshot: "signature-version-1", metadata: { approverName: "签批人甲" } });
   });
 
   it("fails final approval when used financing makes the requested shrink impossible", async () => {

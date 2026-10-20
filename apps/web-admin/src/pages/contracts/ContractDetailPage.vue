@@ -15,6 +15,7 @@
       @primary-action="openPrimaryAction"
     >
       <template #actions>
+<ApprovalDocumentDownload v-if="contractDetail?.sealTask" business-type="contract_seal" :business-id="contractDetail.sealTask.id" :refresh-key="contractDetail.sealTask" />
         <t-button
           v-if="changeEligibility && contractChangeActionEnabled()"
           variant="outline"
@@ -1231,6 +1232,7 @@
 </template>
 
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from "vue";

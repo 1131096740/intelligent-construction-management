@@ -1,6 +1,6 @@
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 
-const permissions = { view: ["contract_staff"], edit: ["contract_staff"] } as const;
+const permissions = { view: ["contract_staff", "engineering_tech", "engineering_foreman", "engineering_director"], edit: ["contract_staff", "engineering_tech", "engineering_foreman", "engineering_director"] } as const;
 
 export const SETTLEMENT_LINE_ATTACHMENT_PURPOSE_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
   key: "settlement_line_attachment_purpose",

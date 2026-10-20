@@ -1,3 +1,5 @@
+import { approvalDate as formatDate, approvalDateTime } from "../approval/approval-date";
+import { BadRequestException } from "@nestjs/common";
 import { resolve } from "node:path";
 import PDFDocument = require("pdfkit");
 import { formatChineseUppercaseMoney } from "../contract-document/contract-docx-renderer";
@@ -8,6 +10,7 @@ const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf"
 export type ExpenseClaimApprovalFormInput = {
   claimType: "reimbursement" | "loan" | "incidental_expense";
   incidentalExpenseCategory?: string | null;
+  generalProcurementId?: string | null;
   code: string;
   companyName: string;
   projectName: string;
@@ -52,14 +55,14 @@ export async function renderExpenseClaimApprovalForm(
   const doc = createDocument(margin);
   const done = collectPdf(doc);
   const contentWidth = doc.page.width - margin * 2;
-  const title =
+  const title = input.generalProcurementId ? "综合采购付款申请单" :
     input.claimType === "reimbursement"
       ? "费用报销单"
       : input.claimType === "incidental_expense"
         ? "零星费用支付申请单"
         : "借款申请单";
   const detailLines = input.claimType === "reimbursement" ? input.lines : [];
-  const firstPageLines = detailLines.slice(0, 2);
+  const firstPageLines = detailLines;
 
   doc.fontSize(17).text(title, margin, 16, { width: contentWidth, align: "center" });
   let y = 44;
@@ -126,39 +129,20 @@ export async function renderExpenseClaimApprovalForm(
   y += 3;
   y = drawApprovalRows(doc, margin, y, contentWidth, input.approvals);
   doc.fontSize(7.5).text(
-    "审批完成版：签名、日期和意见均为审批动作当时冻结快照；后续付款或归档不改写本件。",
+    "最终审批通过后留存",
     margin,
     Math.min(y + 4, doc.page.height - 18),
     { width: contentWidth }
   );
 
-  const overflow = detailLines.slice(2);
-  const perPage = 10;
-  for (let offset = 0; offset < overflow.length; offset += perPage) {
-    const pageNumber = offset / perPage + 2;
-    doc.addPage({ size: "A5", layout: "landscape", margin });
-    doc.fontSize(14).text(`${title}（费用明细附页 ${pageNumber}）`, margin, 18, {
-      width: contentWidth,
-      align: "center"
-    });
-    let appendixY = 46;
-    appendixY = row(doc, margin, appendixY, [82, contentWidth - 82], 20, ["关联单据", input.code]);
-    appendixY = row(doc, margin, appendixY, [28, 72, 76, 170, 46, contentWidth - 392], 20, [
-      "序", "日期", "类别", "用途", "票数", "金额"
-    ], true);
-    for (const line of overflow.slice(offset, offset + perPage)) {
-      appendixY = row(doc, margin, appendixY, [28, 72, 76, 170, 46, contentWidth - 392], 26, [
-        String(line.sortOrder),
-        formatDate(line.occurredOn),
-        line.expenseCategory,
-        line.purpose,
-        String(line.receiptCount),
-        `￥${formatMoneyCentsAsYuan(line.amountCents)}`
-      ]);
-    }
-    row(doc, margin, doc.page.height - margin - 13, [contentWidth], 13, [
-      `第 ${pageNumber} 页（A5 横向附页）`
-    ]);
+  const range = doc.bufferedPageRange();
+  for (let page = range.start; page < range.start + range.count; page++) {
+    doc.switchToPage(page);
+    const bottomMargin = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.fontSize(7).text(`${input.code}  第 ${page + 1} / ${range.count} 页`, margin, doc.page.height - 17,
+      { width: contentWidth, align: "right", lineBreak: false });
+    doc.page.margins.bottom = bottomMargin;
   }
 
   stampWatermark(doc, input.watermark);
@@ -191,60 +175,66 @@ function row(
   cells: string[],
   header = false
 ) {
+  const layout = fitRow(doc, widths, cells, height, header ? 7.5 : 8.5);
+  const y = ensureSpace(doc, startY, layout.height);
+  drawCells(doc, startX, y, widths, layout.height, cells, layout.fontSize, header);
+  return y + layout.height;
+}
+
+function fitRow(doc: PDFKit.PDFDocument, widths: number[], cells: string[], minimum: number, preferredFont: number) {
+  const available = doc.page.height - 85;
+  for (let fontSize = preferredFont; fontSize >= 5; fontSize -= 0.5) {
+    doc.fontSize(fontSize);
+    const height = Math.max(minimum, ...widths.map((width, index) =>
+      doc.heightOfString(cells[index] ?? "", { width: Math.max(1, width - 8) }) + 10));
+    if (height <= available) return { height, fontSize };
+  }
+  throw new BadRequestException("单条审批意见或明细过长，无法在纸质页内完整保留，请调整内容后重试");
+}
+
+function ensureSpace(doc: PDFKit.PDFDocument, y: number, height: number) {
+  if (y + height <= doc.page.height - 25) return y;
+  doc.addPage({ size: "A5", layout: "landscape", margin: 20 });
+  doc.font("cn").fontSize(10).text("单据续页", 20, 14, { lineBreak: false });
+  return 36;
+}
+
+function drawCells(doc: PDFKit.PDFDocument, startX: number, y: number, widths: number[], height: number,
+  cells: string[], fontSize: number, header = false) {
   let x = startX;
   for (const [index, width] of widths.entries()) {
-    doc.rect(x, startY, width, height).lineWidth(0.6).strokeColor("#111").stroke();
-    doc.fontSize(header ? 7.5 : 8.5).fillColor("#111").text(cells[index] ?? "", x + 3, startY + 4, {
-      width: Math.max(width - 6, 1),
-      height: Math.max(height - 6, 1),
-      align: header ? "center" : "left"
+    doc.rect(x, y, width, height).lineWidth(0.6).strokeColor("#111").stroke();
+    doc.fontSize(fontSize).fillColor("#111").text(cells[index] ?? "", x + 4, y + 4, {
+      width: Math.max(width - 8, 1), align: header ? "center" : "left"
     });
     x += width;
   }
-  return startY + height;
 }
 
-function drawApprovalRows(
-  doc: PDFKit.PDFDocument,
-  startX: number,
-  startY: number,
-  width: number,
-  approvals: ExpenseClaimApprovalFormInput["approvals"]
-) {
-  let y = row(doc, startX, startY, [92, 92, width - 316, 132], 18, [
-    "审批岗位", "审批人/日期", "审批意见", "真实手写签名"
-  ], true);
-  const rows = approvals.length ? approvals : [{
-    name: "",
-    position: "（无通过审批记录）",
-    comment: "",
-    signedAt: new Date(0),
-    signature: null
-  }];
-  for (const approval of rows) {
-    const height = 30;
-    const widths = [92, 92, width - 316, 132];
-    row(doc, startX, y, widths, height, [
-      approval.position,
-      approval.name + (approval.signedAt.getTime() ? `\\n${formatDate(approval.signedAt)}` : ""),
-      approval.comment,
-      ""
-    ]);
-    if (approval.signature) {
-      try {
-        doc.image(approval.signature, startX + width - 128, y + 4, { fit: [124, height - 8] });
-      } catch {
-        // 签名缓冲在业务层已做 PNG/JPEG 与摘要校验；这里不以姓名文字伪造签名。
-      }
+function drawApprovalRows(doc: PDFKit.PDFDocument, startX: number, startY: number, width: number,
+  approvals: ExpenseClaimApprovalFormInput["approvals"]) {
+  if (!approvals.length || approvals.some(approval => !approval.signature || !approval.name.trim())) {
+    throw new BadRequestException("实际签批记录或手写签名不完整，不能生成正式审批单");
+  }
+  const widths = [78, 98, width - 292, 116];
+  const header = ["审批岗位", "审批人/时间", "审批意见", "手写签名"];
+  let y = row(doc, startX, startY, widths, 18, header, true);
+  for (const approval of approvals) {
+    const cells = [approval.position, `${approval.name}\n${approvalDateTime(approval.signedAt)}`, approval.comment, ""];
+    const layout = fitRow(doc, widths, cells, 34, 8);
+    if (y + layout.height > doc.page.height - 25) {
+      y = ensureSpace(doc, y, layout.height + 18);
+      y = row(doc, startX, y, widths, 18, header, true);
     }
-    y += height;
+    drawCells(doc, startX, y, widths, layout.height, cells, layout.fontSize);
+    try {
+      doc.image(approval.signature!, startX + width - 112, y + 4, { fit: [108, Math.min(42, layout.height - 8)], align: "center", valign: "center" });
+    } catch {
+      throw new BadRequestException("审批签名图片无法解码，不能生成正式审批单");
+    }
+    y += layout.height;
   }
   return y;
-}
-
-function formatDate(value: Date) {
-  const pad = (number: number) => String(number).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
 
 function incidentalExpenseCategoryLabel(category: string | null | undefined) {

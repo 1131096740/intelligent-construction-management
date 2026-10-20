@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "ced43b41df9f4eea1b0e2a50ba1d6879d278587f2b2af3372b3570c5cab2637c",
+      "sha256": "52c5236f75207c4dd5bd373427e70ae4b76813d9af2d58ab63dbf43aa37fe4e8",
       "status": "ready",
       "summary": {
-        "routeCount": 686
+        "routeCount": 688
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "b5eb53aab590675448377525a65be9f0d31af910b908127be94579bdc241e05b",
+      "sha256": "06e35dc436bc3c6db8392b0ccb8142562bd19c67fc58324ac322cdf3b0d20c43",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 38,
-        "exportedFunctionCount": 662,
-        "transportWrapperCount": 640,
+        "apiModuleCount": 39,
+        "exportedFunctionCount": 664,
+        "transportWrapperCount": 642,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 679,
+        "mainRequestBindingCount": 681,
         "ticketFollowupCount": 4,
-        "requestEdgeCount": 667,
-        "productionConsumerCount": 547,
+        "requestEdgeCount": 669,
+        "productionConsumerCount": 549,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "f2dd91506bef2fa72d5ed1d52d8ffc67618ba715976ffe380c589279b9cea246",
+      "sha256": "d4528790acb8b70bdc49dc4589e366178cb53b087fa78015283a50fb0f834cad",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 391,
+        "registeredActionCount": 392,
         "pageActionCount": 56,
-        "backgroundActionCount": 335,
-        "reachableVueFileCount": 189,
-        "routeRootCount": 68,
-        "totalVueFileCount": 203,
-        "parsedVueFileCount": 203,
-        "reachableProductionModuleCount": 330,
-        "templateEventDirectiveCount": 1175,
+        "backgroundActionCount": 336,
+        "reachableVueFileCount": 191,
+        "routeRootCount": 69,
+        "totalVueFileCount": 205,
+        "parsedVueFileCount": 205,
+        "reachableProductionModuleCount": 333,
+        "templateEventDirectiveCount": 1182,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 380,
-        "candidateProductionMutationConsumerCount": 380,
-        "acceptedProductionMutationConsumerCount": 380,
-        "productionMutationConsumerPairCount": 380,
+        "coveredProductionMutationConsumerCount": 382,
+        "candidateProductionMutationConsumerCount": 382,
+        "acceptedProductionMutationConsumerCount": 382,
+        "productionMutationConsumerPairCount": 382,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9c7219c3bf721042b86d61631317bc4d92947e447843c44866ee4cf8b25dd040",
+      "sha256": "4a3a81e98d1f226e2012cf04ca40df660eb9a70f79aec49563397e18c46e62a6",
       "status": "ready",
       "summary": {
-        "routeCount": 686,
-        "exactRouteCount": 686,
-        "normalizedRouteCount": 686,
+        "routeCount": 688,
+        "exactRouteCount": 688,
+        "normalizedRouteCount": 688,
         "classificationOverrideCount": 219,
         "consumerSurfaceOverrideCount": 38,
         "classificationOverrideSha256": "30ef73f5d88d4e1468e36bec2117c9a36d5e9bc80f91b3801f6079a3a10999f5",
         "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-        "derivedProductionPageCount": 467,
-        "pageRouteCount": 483,
+        "derivedProductionPageCount": 469,
+        "pageRouteCount": 485,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 96,
         "internalTaskCount": 37,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 536,
+          "web_api_wrapper": 538,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 686,
-    "pageRouteCount": 483,
+    "routeCount": 688,
+    "pageRouteCount": 485,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 96,
     "internalTaskRouteCount": 37,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 679,
+    "mainRequestBindingCount": 681,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 391,
-    "actionBindingCount": 451,
-    "acceptedActionBindingCount": 414,
+    "registeredActionCount": 392,
+    "actionBindingCount": 452,
+    "acceptedActionBindingCount": 415,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 380,
-    "coveredProductionMutationConsumerPairCount": 380,
+    "productionMutationConsumerPairCount": 382,
+    "coveredProductionMutationConsumerPairCount": 382,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -792,6 +792,87 @@
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/approval-forms/:businessType/:businessId/capability",
+        "normalizedKey": "GET /approval-forms/:param/:param/capability",
+        "controller": "ApprovalFormController",
+        "handler": "capability",
+        "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
+          "wrapper": "approvalDocumentCapability",
+          "method": "GET",
+          "path": "/approval-forms/:param/:param/capability",
+          "normalizedKey": "GET /approval-forms/:param/:param/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/approval-forms",
+        "normalizedKey": "GET /approval-forms",
+        "controller": "ApprovalFormController",
+        "handler": "list",
+        "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
+          "wrapper": "listApprovalDocuments",
+          "method": "GET",
+          "path": "/approval-forms",
+          "normalizedKey": "GET /approval-forms",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -13794,6 +13875,8 @@
           "normalizedKey": "POST /approval-forms/:param/:param/download",
           "bodyKind": "json",
           "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
@@ -13804,6 +13887,31 @@
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "approval-documents.download-form",
+          "bindingIndex": 0,
+          "identity": "approval-documents.download-form\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadApprovalForm\u0000POST\u0000POST /approval-forms/:param/:param/download\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.available",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "contract-approval.download-form",
           "bindingIndex": 0,
@@ -13821,9 +13929,11 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "downloadApprovalForm",
           "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "causalVerified": true,

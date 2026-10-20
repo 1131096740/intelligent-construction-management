@@ -1222,7 +1222,7 @@ describe("ProjectAffiliateBusinessService", () => {
         .fn()
         .mockResolvedValueOnce([{ id: "settlement-decrease-1" }])
         .mockResolvedValueOnce([{ id: "settlement-ledger-1" }])
-        .mockResolvedValueOnce([{ id: "budget-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "budget-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([
           {
             id: "signature-version-2",
@@ -1320,7 +1320,7 @@ describe("ProjectAffiliateBusinessService", () => {
         .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{ id: "payment-fact-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
-        .mockResolvedValueOnce([{ id: "finance-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "finance-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([
           {
             id: "signature-version-3",

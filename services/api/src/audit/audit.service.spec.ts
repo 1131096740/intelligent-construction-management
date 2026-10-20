@@ -171,7 +171,7 @@ describe("AuditService", () => {
       "生成下载票据",
       "实际下载",
       "审批单下载",
-      "结算审批单下载"
+      "结算单下载"
     ]);
     expect(JSON.stringify(result.rows)).not.toContain("secret-token");
     expect(JSON.stringify(result.rows)).not.toContain("cos.example.com");

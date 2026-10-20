@@ -608,6 +608,7 @@ describe("web admin routes", () => {
       { label: "首页", path: "/首页" },
       { label: "全局搜索", path: "/全局搜索" },
       { label: "审批中心", path: "/审批中心" },
+      { label: "审批单留存", path: "/审批单留存" },
       { label: "项目工作台", path: "/项目经营" },
       { label: "历史经营接管", path: "/历史经营接管" },
       { label: "清分工作台", path: "/清分工作台" },

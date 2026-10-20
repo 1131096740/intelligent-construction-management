@@ -29,6 +29,7 @@ const APPLICATION_PROJECT_ROLES = new Set<RoleKey>([
   "project_manager"
 ]);
 const PAYMENT_PROJECT_ROLES = new Set<RoleKey>([
+  "material_director",
   "comprehensive_director",
   "project_manager",
   "finance_director"

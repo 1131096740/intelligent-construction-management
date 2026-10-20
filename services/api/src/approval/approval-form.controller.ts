@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, Query, Param, Post, Res, StreamableFile } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ApprovalFormService } from "./approval-form.service";
@@ -12,6 +12,16 @@ interface DownloadApprovalFormDto {
 @Controller("approval-forms")
 export class ApprovalFormController {
   constructor(private readonly approvalForms: ApprovalFormService) {}
+
+  @Get()
+  list(@CurrentUser() user: AuthenticatedUser, @Query("cursor") cursor?: string) {
+    return this.approvalForms.listForDownload(user.id, cursor);
+  }
+
+  @Get(":businessType/:businessId/capability")
+  capability(@Param("businessType") businessType: string, @Param("businessId") businessId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.approvalForms.downloadAvailability(businessType, businessId, user.id);
+  }
 
   @Post(":businessType/:businessId/download")
   async download(

@@ -1744,11 +1744,11 @@ describe("MeService", () => {
       })
     ]);
     expect(counts).toMatchObject({ spotProcurement: 1, spotPayment: 1, total: 2 });
-    expect(applicantPending).toEqual([]);
+    expect(applicantPending).toHaveLength(2);
     expect(applicantCounts).toMatchObject({
-      spotProcurement: 0,
-      spotPayment: 0,
-      total: 0
+      spotProcurement: 1,
+      spotPayment: 1,
+      total: 2
     });
     expect(leaderSelfReviewPending).toEqual([
       expect.objectContaining({
